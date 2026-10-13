@@ -14213,12 +14213,12 @@ function yearRangeBanner(text4) {
 function sameBanner(a, b) {
   if (!/\d/.test(String(a || "")) || !/\d/.test(String(b || ""))) return false;
   if (yearRangeBanner(a) && yearRangeBanner(b)) return true;
-  const A = bannerWords(a);
+  const A2 = bannerWords(a);
   const B = bannerWords(b);
-  if (A.length < 2 || B.length < 2) return false;
+  if (A2.length < 2 || B.length < 2) return false;
   const set = new Set(B);
-  const inter = A.filter((w) => set.has(w)).length;
-  return inter >= 2 && inter / Math.min(A.length, B.length) >= 0.6;
+  const inter = A2.filter((w) => set.has(w)).length;
+  return inter >= 2 && inter / Math.min(A2.length, B.length) >= 0.6;
 }
 function spanningBannerTexts(table) {
   const out = [];
@@ -14824,15 +14824,15 @@ function pinCaption(block, doc) {
   return squash(block.text || block.latex || "").slice(0, CAPTION_CAP);
 }
 function rectIou(a, b) {
-  const A = rectOf2(a);
+  const A2 = rectOf2(a);
   const B = rectOf2(b);
-  if (!A || !B) return 0;
-  if (![A.x, A.y, A.w, A.h, B.x, B.y, B.w, B.h].every(Number.isFinite)) return 0;
-  const iw = Math.min(A.x + A.w, B.x + B.w) - Math.max(A.x, B.x);
-  const ih = Math.min(A.y + A.h, B.y + B.h) - Math.max(A.y, B.y);
+  if (!A2 || !B) return 0;
+  if (![A2.x, A2.y, A2.w, A2.h, B.x, B.y, B.w, B.h].every(Number.isFinite)) return 0;
+  const iw = Math.min(A2.x + A2.w, B.x + B.w) - Math.max(A2.x, B.x);
+  const ih = Math.min(A2.y + A2.h, B.y + B.h) - Math.max(A2.y, B.y);
   if (iw <= 0 || ih <= 0) return 0;
   const inter = iw * ih;
-  const union = A.w * A.h + B.w * B.h - inter;
+  const union = A2.w * A2.h + B.w * B.h - inter;
   return union > 0 ? inter / union : 0;
 }
 function findDuplicatePin(regions, { page, frac } = {}, min = PIN_IOU) {
@@ -15111,15 +15111,15 @@ function boxOf6(value) {
   return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
 }
 function iou2(a, b) {
-  const A = boxOf6(a);
+  const A2 = boxOf6(a);
   const B = boxOf6(b);
-  if (!A || !B) return 0;
-  const ix0 = Math.max(A[0], B[0]);
-  const iy0 = Math.max(A[1], B[1]);
-  const ix1 = Math.min(A[2], B[2]);
-  const iy1 = Math.min(A[3], B[3]);
+  if (!A2 || !B) return 0;
+  const ix0 = Math.max(A2[0], B[0]);
+  const iy0 = Math.max(A2[1], B[1]);
+  const ix1 = Math.min(A2[2], B[2]);
+  const iy1 = Math.min(A2[3], B[3]);
   const inter = Math.max(0, ix1 - ix0) * Math.max(0, iy1 - iy0);
-  const areaA = (A[2] - A[0]) * (A[3] - A[1]);
+  const areaA = (A2[2] - A2[0]) * (A2[3] - A2[1]);
   const areaB = (B[2] - B[0]) * (B[3] - B[1]);
   const union = areaA + areaB - inter;
   if (union <= 0) return 0;
@@ -22522,14 +22522,14 @@ function oklabToHex([L, a, b]) {
 function colorPalette(rgba, { k = 5, iterations = 10 } = {}) {
   const n3 = Math.floor((rgba?.length || 0) / 4);
   const L = new Float32Array(n3);
-  const A = new Float32Array(n3);
+  const A2 = new Float32Array(n3);
   const B = new Float32Array(n3);
   let count = 0;
   for (let i = 0; i < n3; i += 1) {
     if (rgba[i * 4 + 3] < 128) continue;
     const lab = rgbToOklab(rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2]);
     L[count] = lab[0];
-    A[count] = lab[1];
+    A2[count] = lab[1];
     B[count] = lab[2];
     count += 1;
   }
@@ -22540,13 +22540,13 @@ function colorPalette(rgba, { k = 5, iterations = 10 } = {}) {
   let mB = 0;
   for (let i = 0; i < count; i += 1) {
     mL += L[i];
-    mA += A[i];
+    mA += A2[i];
     mB += B[i];
   }
   mL /= count;
   mA /= count;
   mB /= count;
-  const d2 = (i, l, a, b) => (L[i] - l) ** 2 + (A[i] - a) ** 2 + (B[i] - b) ** 2;
+  const d2 = (i, l, a, b) => (L[i] - l) ** 2 + (A2[i] - a) ** 2 + (B[i] - b) ** 2;
   let first = 0;
   let best = Infinity;
   for (let i = 0; i < count; i += 1) {
@@ -22557,7 +22557,7 @@ function colorPalette(rgba, { k = 5, iterations = 10 } = {}) {
     }
   }
   const cl = [L[first]];
-  const ca = [A[first]];
+  const ca = [A2[first]];
   const cb = [B[first]];
   const near2 = new Float32Array(count);
   for (let i = 0; i < count; i += 1) near2[i] = d2(i, cl[0], ca[0], cb[0]);
@@ -22570,9 +22570,9 @@ function colorPalette(rgba, { k = 5, iterations = 10 } = {}) {
     }
     if (at < 0) break;
     cl.push(L[at]);
-    ca.push(A[at]);
+    ca.push(A2[at]);
     cb.push(B[at]);
-    for (let i = 0; i < count; i += 1) near2[i] = Math.min(near2[i], d2(i, L[at], A[at], B[at]));
+    for (let i = 0; i < count; i += 1) near2[i] = Math.min(near2[i], d2(i, L[at], A2[at], B[at]));
   }
   const m = cl.length;
   const owner = new Int32Array(count);
@@ -22595,7 +22595,7 @@ function colorPalette(rgba, { k = 5, iterations = 10 } = {}) {
         moved += 1;
       }
       sums[bj * 4] += L[i];
-      sums[bj * 4 + 1] += A[i];
+      sums[bj * 4 + 1] += A2[i];
       sums[bj * 4 + 2] += B[i];
       sums[bj * 4 + 3] += 1;
     }
@@ -22667,9 +22667,9 @@ function colorScore(palette, target) {
   return best;
 }
 function paletteDistance(a, b) {
-  const A = Array.isArray(a) ? a : [];
+  const A2 = Array.isArray(a) ? a : [];
   const B = Array.isArray(b) ? b : [];
-  const n3 = A.length;
+  const n3 = A2.length;
   const m = B.length;
   if (!n3 || !m) return Infinity;
   const ra = new Float64Array(n3);
@@ -22677,7 +22677,7 @@ function paletteDistance(a, b) {
   let sa = 0;
   let sb = 0;
   for (let i = 0; i < n3; i += 1) {
-    ra[i] = Math.max(0, Number(A[i]?.weight) || 0);
+    ra[i] = Math.max(0, Number(A2[i]?.weight) || 0);
     sa += ra[i];
   }
   for (let j = 0; j < m; j += 1) {
@@ -22689,7 +22689,7 @@ function paletteDistance(a, b) {
   for (let j = 0; j < m; j += 1) rb[j] /= sb;
   const d = new Float64Array(n3 * m);
   for (let i = 0; i < n3; i += 1) {
-    const x = A[i].lab;
+    const x = A2[i].lab;
     for (let j = 0; j < m; j += 1) {
       const y = B[j].lab;
       d[i * m + j] = Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
@@ -29228,6 +29228,11 @@ function createItemRenderer({
     } catch {
     }
     rec.authorUnwatch = null;
+    try {
+      rec.contentUnwatch?.();
+    } catch {
+    }
+    rec.contentUnwatch = null;
     rec.blockStringNode = null;
     rec.pageRoots = [];
     rec.pageHolder = null;
@@ -29854,9 +29859,138 @@ function createItemRenderer({
     if (sectionNodes.childNodes.length) sectionsLayer.append(sectionNodes);
     if (itemNodes.childNodes.length) itemsLayer.append(itemNodes);
   };
+  const VIRTUAL_MIN = 400;
+  const OPEN_NOW_MAX = 150;
+  const PUMP_MS = 12;
+  let pendingView = null;
+  const viewWaiters = [];
+  const BULK_ATTACH = 64;
+  let cullRect = null;
+  const virtual = () => (lastBoard?.items?.size || 0) > VIRTUAL_MIN;
+  const isAttached = (rec) => Boolean(rec?.el?.parentElement);
+  const activeShellUid = () => {
+    const active2 = doc.activeElement;
+    if (!active2 || typeof active2.closest !== "function") return null;
+    return active2.closest(".pxd-item[data-uid], .pxd-section[data-uid]")?.getAttribute?.("data-uid") || null;
+  };
+  const keepAttached = (uid, rec, active2) => rec.type === "section" || uid === selectedPrimary || rec.hover || editing?.uid === uid || mounted.has(uid) || uid === active2;
+  const farRect = () => cullRect ? { x: cullRect.x - cullRect.w * 0.5, y: cullRect.y - cullRect.h * 0.5, w: cullRect.w * 2, h: cullRect.h * 2 } : null;
+  const nearView = (uid, rect = cullRect) => {
+    if (!rect) return true;
+    const r = drawnRect(uid, lastRects?.get(uid));
+    return !r || rectsIntersect(r, rect);
+  };
+  let orderIndexOf = null;
+  let orderIndex = /* @__PURE__ */ new Map();
+  const indexOfUid = (uid) => {
+    const order = lastBoard?.order || [];
+    if (orderIndexOf !== order) {
+      orderIndexOf = order;
+      orderIndex = new Map(order.map((u, i) => [u, i]));
+    }
+    return orderIndex.get(uid) ?? order.length;
+  };
+  const layerOf = (rec) => rec.type === "section" ? sectionsLayer : itemsLayer;
+  const freshen = (rec) => {
+    if (!rec?.stalePaint) return;
+    rec.stalePaint = false;
+    const item = lastBoard?.items.get(rec.uid);
+    if (!item) return;
+    noteRender(rec.uid);
+    paintShell(rec, item);
+    const rect = lastRects?.get(rec.uid);
+    rec.el.style.display = rect ? "" : "none";
+    if (rect) position(rec, rect);
+    if (showBadges) renderBadges(rec);
+  };
+  const attachShell = (rec) => {
+    if (!rec?.el || isAttached(rec)) return;
+    freshen(rec);
+    const layer = layerOf(rec);
+    const order = lastBoard?.order || [];
+    let before = null;
+    for (let j = indexOfUid(rec.uid) + 1; j < order.length; j += 1) {
+      const next = shells.get(order[j]);
+      if (next?.el && next.el.parentElement === layer) {
+        before = next.el;
+        break;
+      }
+    }
+    if (before && typeof layer.insertBefore === "function") layer.insertBefore(rec.el, before);
+    else layer.append(rec.el);
+  };
+  const placeVirtual = (extra = null) => {
+    const active2 = activeShellUid();
+    const frag = typeof doc.createDocumentFragment === "function";
+    const sectionNodes = frag ? doc.createDocumentFragment() : null;
+    const itemNodes = frag ? doc.createDocumentFragment() : null;
+    for (const uid of lastBoard?.order || []) {
+      const rec = shells.get(uid);
+      if (!rec?.el) continue;
+      if (extra?.has(rec) || keepAttached(uid, rec, active2) || nearView(uid)) {
+        freshen(rec);
+        if (frag) (rec.type === "section" ? sectionNodes : itemNodes).append(rec.el);
+        else layerOf(rec).append(rec.el);
+      } else if (isAttached(rec)) rec.el.remove();
+    }
+    if (sectionNodes?.childNodes.length) sectionsLayer.append(sectionNodes);
+    if (itemNodes?.childNodes.length) itemsLayer.append(itemNodes);
+  };
+  const cullShells = (rect, { reveal = false, budget = Infinity } = {}) => {
+    if (rect) cullRect = rect;
+    if (!virtual() || !cullRect) return [];
+    const active2 = activeShellUid();
+    let add = [];
+    const far = farRect();
+    for (const [uid, rec] of shells) {
+      if (!rec.el) continue;
+      const on = isAttached(rec);
+      const want = keepAttached(uid, rec, active2) || nearView(uid, on ? far : cullRect);
+      if (want && !on) add.push(rec);
+      else if (!want && on && !reveal) rec.el.remove();
+    }
+    if (!add.length) return add;
+    if (add.length > budget) {
+      const cx = cullRect.x + cullRect.w / 2;
+      const cy = cullRect.y + cullRect.h / 2;
+      const dist = (rec) => {
+        const r = drawnRect(rec.uid, lastRects?.get(rec.uid));
+        return r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity;
+      };
+      add = add.map((rec) => [rec, dist(rec)]).sort((a, b) => a[1] - b[1]).slice(0, budget).map(([rec]) => rec);
+    }
+    if (add.length > BULK_ATTACH) attachMany(new Set(add));
+    else {
+      add.sort((a, b) => indexOfUid(a.uid) - indexOfUid(b.uid));
+      for (const rec of add) attachShell(rec);
+    }
+    return add;
+  };
+  const attachMany = (set) => {
+    const order = lastBoard?.order || [];
+    const next = /* @__PURE__ */ new Map([[sectionsLayer, null], [itemsLayer, null]]);
+    for (let i = order.length - 1; i >= 0; i -= 1) {
+      const rec = shells.get(order[i]);
+      if (!rec?.el) continue;
+      const layer = layerOf(rec);
+      if (set.has(rec) && !isAttached(rec)) {
+        freshen(rec);
+        const before = next.get(layer);
+        if (before && typeof layer.insertBefore === "function") layer.insertBefore(rec.el, before);
+        else layer.append(rec.el);
+      }
+      if (rec.el.parentElement === layer) next.set(layer, rec.el);
+    }
+    for (const rec of set) if (!isAttached(rec)) layerOf(rec).append(rec.el);
+  };
   const pumpShells = () => {
-    const chunk = shellQueue.splice(0, 40);
-    for (const uid of chunk) {
+    const t0 = now2();
+    const built = [];
+    let taken = 0;
+    while (shellQueue.length && taken < 40 && (taken === 0 || now2() - t0 < PUMP_MS)) {
+      const uid = shellQueue.shift();
+      taken += 1;
+      pendingView?.delete(uid);
       const item = lastBoard?.items.get(uid);
       if (!item || shells.has(uid)) continue;
       const rec = buildShell2(item);
@@ -29865,10 +29999,29 @@ function createItemRenderer({
       noteRender(uid);
       paintShell(rec, item);
       if (rect) position(rec, rect);
+      built.push(rec);
     }
-    if (chunk.length) placeShells();
-    if (chunk.length && lastContent) paintOffscreen(lastContent.visibleRect);
+    if (virtual()) {
+      const active2 = activeShellUid();
+      for (const rec of built) if (keepAttached(rec.uid, rec, active2) || nearView(rec.uid)) attachShell(rec);
+      if (built.length && lastContent) {
+        for (const rec of built) if (isAttached(rec)) paintOneOffscreen(rec.uid, rec, lastContent.visibleRect);
+      }
+    } else {
+      if (taken) placeShells();
+      if (taken && lastContent) paintOffscreen(lastContent.visibleRect);
+    }
+    if (pendingView && !pendingView.size) viewBuilt();
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
+  };
+  const viewBuilt = () => {
+    pendingView = null;
+    for (const fn of viewWaiters.splice(0)) {
+      try {
+        fn();
+      } catch {
+      }
+    }
   };
   const sync = ({ board: board2, rects, dirty: changed2 = null, structural = false, view = null }) => {
     sourcePass += 1;
@@ -29912,6 +30065,21 @@ function createItemRenderer({
         later2.sort((a, b) => dist(a) - dist(b));
       }
       if (!now4.length) now4.push(...later2.splice(0, 24));
+      if (now4.length > OPEN_NOW_MAX && view) {
+        const cx = view.x + view.w / 2;
+        const cy = view.y + view.h / 2;
+        const dist = (uid) => {
+          const r = rects.get(uid);
+          return r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity;
+        };
+        const ranked = now4.slice().sort((a, b) => dist(a) - dist(b));
+        const keep = new Set(ranked.slice(0, OPEN_NOW_MAX));
+        const rest = ranked.slice(OPEN_NOW_MAX);
+        now4.length = 0;
+        for (const uid of board2.order) if (keep.has(uid)) now4.push(uid);
+        pendingView = new Set(rest);
+        later2.unshift(...rest);
+      }
       if (now4.length && later2.length) defer = new Set(later2);
     }
     for (const uid of board2.order) {
@@ -29926,6 +30094,11 @@ function createItemRenderer({
       const rect = rects.get(uid);
       rec.el.style.display = rect ? "" : "none";
       if (fresh || !dirty || dirty.has(uid)) {
+        if (!fresh && virtual() && !isAttached(rec) && editing?.uid !== uid && !mounted.has(uid)) {
+          rec.stalePaint = true;
+          if (rect) position(rec, rect);
+          continue;
+        }
         if (!fresh && editing?.uid === uid) {
           if (rect && (!rec.rect || rec.rect.x !== rect.x || rec.rect.y !== rect.y || rec.rect.w !== rect.w || rec.rect.h !== rect.h)) position(rec, rect);
         } else {
@@ -29951,10 +30124,18 @@ function createItemRenderer({
         position(rec, rect);
       }
     }
-    if (orderChanged) placeShells();
+    if (orderChanged) {
+      if (view) cullRect = view;
+      if (virtual()) placeVirtual();
+      else placeShells();
+    }
     if (defer?.size) {
       shellQueue = [...defer];
       timers.frame(pumpShells);
+    }
+    if (pendingView) {
+      for (const uid of [...pendingView]) if (shells.has(uid) || !board2.items.has(uid)) pendingView.delete(uid);
+      if (!pendingView.size) viewBuilt();
     }
   };
   let peek = null;
@@ -30173,6 +30354,7 @@ function createItemRenderer({
     open.textContent = "Open";
     open.setAttribute("aria-label", "Open");
     open.dataset.action = "open";
+    open.setAttribute("data-open-board", openUid);
     for (const type of ["pointerdown", "mousedown", "dblclick"]) open.addEventListener(type, stopEvent);
     open.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -32477,6 +32659,13 @@ function createItemRenderer({
     reserveCardHeight(rec, item);
     mountContentBody(rec, item);
     syncKidsBadge(rec, item);
+    if (rec.type !== "section" && !rec.contentUnwatch && typeof host?.watchContent === "function") {
+      try {
+        const off = host.watchContent(item.uid);
+        if (typeof off === "function") rec.contentUnwatch = off;
+      } catch {
+      }
+    }
   };
   const mountSectionTitle = (rec, item) => {
     noteRender(item.uid);
@@ -32511,6 +32700,7 @@ function createItemRenderer({
     rec.contentKey = null;
     mounted.delete(uid);
     contentSched?.drop(uid);
+    if (virtual() && isAttached(rec) && !keepAttached(uid, rec, activeShellUid()) && !nearView(uid, farRect())) rec.el.remove();
   };
   const mountScheduled = (uid) => {
     if (disposed || paused) return false;
@@ -32617,30 +32807,36 @@ function createItemRenderer({
     return dx * dx + dy * dy;
   };
   const cssVar = (style, name) => (typeof style.getPropertyValue === "function" ? style.getPropertyValue(name) : style[name]) || "";
+  const paintOneOffscreen = (uid, rec, visibleRect) => {
+    if (!rec.el || rec.type === "section") return;
+    const rect = drawnRect(uid, lastRects?.get(uid));
+    const off = !virtual() && Boolean(visibleRect) && shellOffscreen(uid, rect, visibleRect, { editingUid: editing?.uid ?? null });
+    if (rec.el.classList.contains("pxd-item--offscreen") !== off) {
+      rec.el.classList.toggle("pxd-item--offscreen", off);
+    }
+    if (!off) {
+      if (cssVar(rec.el.style, "--pxd-iw")) rec.el.style.removeProperty("--pxd-iw");
+      if (cssVar(rec.el.style, "--pxd-ih")) rec.el.style.removeProperty("--pxd-ih");
+      const item = lastBoard?.items.get(uid);
+      if (!paused && item?.kind === "region-ref" && lod === "detail" && mounted.has(uid) && editing?.uid !== uid && thumbRequest(rec.regionWidth, rec.rect?.w)) {
+        mountContent(rec, item);
+      }
+      return;
+    }
+    const [iw, ih] = intrinsicSize(rect).split(" ");
+    if (cssVar(rec.el.style, "--pxd-iw") !== iw) rec.el.style.setProperty("--pxd-iw", iw);
+    if (cssVar(rec.el.style, "--pxd-ih") !== ih) rec.el.style.setProperty("--pxd-ih", ih);
+  };
   const paintOffscreen = (visibleRect) => {
+    const virt = virtual();
     for (const [uid, rec] of shells) {
-      if (!rec.el || rec.type === "section") continue;
-      const rect = drawnRect(uid, lastRects?.get(uid));
-      const off = Boolean(visibleRect) && shellOffscreen(uid, rect, visibleRect, { editingUid: editing?.uid ?? null });
-      if (rec.el.classList.contains("pxd-item--offscreen") !== off) {
-        rec.el.classList.toggle("pxd-item--offscreen", off);
-      }
-      if (!off) {
-        if (cssVar(rec.el.style, "--pxd-iw")) rec.el.style.removeProperty("--pxd-iw");
-        if (cssVar(rec.el.style, "--pxd-ih")) rec.el.style.removeProperty("--pxd-ih");
-        const item = lastBoard?.items.get(uid);
-        if (!paused && item?.kind === "region-ref" && lod === "detail" && mounted.has(uid) && editing?.uid !== uid && thumbRequest(rec.regionWidth, rec.rect?.w)) {
-          mountContent(rec, item);
-        }
-        continue;
-      }
-      const [iw, ih] = intrinsicSize(rect).split(" ");
-      if (cssVar(rec.el.style, "--pxd-iw") !== iw) rec.el.style.setProperty("--pxd-iw", iw);
-      if (cssVar(rec.el.style, "--pxd-ih") !== ih) rec.el.style.setProperty("--pxd-ih", ih);
+      if (virt && !isAttached(rec)) continue;
+      paintOneOffscreen(uid, rec, visibleRect);
     }
   };
   const fillContent = ({ visibleRect, zoom = zoomCache, tier = null, dirty = null } = {}) => {
     zoomCache = zoom;
+    cullShells(visibleRect);
     paintOffscreen(visibleRect);
     if (!lastBoard || !lastRects || !contentSched) return;
     const next = /* @__PURE__ */ new Set();
@@ -33039,6 +33235,7 @@ function createItemRenderer({
     if (primary === selectedPrimary) return;
     selectedPrimary = primary;
     if (!primary) return;
+    if (virtual()) attachShell(shells.get(primary));
     const heavy = ownHeavyUid(lastBoard?.items.get(primary));
     if (heavy) openEmbed(heavy, { implicit: true });
   };
@@ -33356,6 +33553,7 @@ function createItemRenderer({
     const item = lastBoard?.items.get(uid);
     if (!rec || !item || rec.type === "section" || item.kind === "board" || item.kind === "drawing-ref" || rec.refBoard) return false;
     if (editing?.uid === uid) return true;
+    if (virtual()) attachShell(rec);
     const pending = pagePointer;
     const fresh = Boolean(pending && pending.uid === uid && now2() - pending.at <= PAGE_CARET_MS);
     if (fresh) pagePointer = null;
@@ -34024,6 +34222,37 @@ function createItemRenderer({
     renameBoard,
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
+    // fn runs once every shell in the open view is built (at once when none is queued).
+    whenViewBuilt(fn) {
+      if (typeof fn !== "function") return;
+      if (!pendingView?.size) {
+        fn();
+        return;
+      }
+      let fired = false;
+      const once = () => {
+        if (!fired) {
+          fired = true;
+          fn();
+        }
+      };
+      viewWaiters.push(once);
+      timers?.later?.(once, 3e3);
+    },
+    // Every shell element, in the DOM or not (lenses paint detached shells too).
+    shellEls: () => [...shells.values()].map((rec) => rec.el).filter(Boolean),
+    // A gesture frame: attach shells coming into `rect` (a few per frame). Detaching waits for the settle.
+    reveal(rect, budget = 48) {
+      if (disposed || !rect || !virtual()) return 0;
+      const added = cullShells(rect, { reveal: true, budget });
+      for (const rec of added) paintOneOffscreen(rec.uid, rec, rect);
+      return added.length;
+    },
+    attachedCount: () => {
+      let n3 = 0;
+      for (const rec of shells.values()) if (isAttached(rec)) n3 += 1;
+      return n3;
+    },
     // INSTANT-4. A table thumbnail arrived: show it on the card if its body is still bare.
     repaintThumb: (uid) => {
       const rec = shells.get(uid);
@@ -37705,6 +37934,274 @@ function asTree(list) {
   }));
 }
 
+// src/host/split-watch.js
+init_schema();
+var A = ":block/uid :block/string :block/order :block/heading :block/open :block/props";
+var STRUCT_PATTERN = `[${A} {(limit :block/children nil) [${A}]}]`;
+var EDGES_PATTERN = `[${A} {(limit :block/children nil) [${A} {(limit :block/children nil) [${A} {(limit :block/children nil) [:block/uid]}]}]}]`;
+var THUMB_PATTERN = `[${A} {(limit :block/children nil) [${A} {(limit :block/children nil) [${A}]}]}]`;
+var THUMB_DEPTH = 2;
+var SPLIT_WATCH_MIN = 2e3;
+var UID = ":block/uid";
+var KIDS = ":block/children";
+var kidsOf2 = (node2) => Array.isArray(node2?.[KIDS]) ? node2[KIDS] : [];
+var MARKERS = { edges: "edges", snapshots: "deep", regions: "deep", trails: "deep" };
+function treeSize(node2, cap4 = Infinity) {
+  let n3 = 0;
+  const stack = [node2];
+  while (stack.length && n3 < cap4) {
+    const cur = stack.pop();
+    if (!cur || typeof cur !== "object") continue;
+    n3 += 1;
+    for (const kid of kidsOf2(cur)) stack.push(kid);
+  }
+  return n3;
+}
+function containerKind(node2, atRoot) {
+  const plexus = readPlexus(node2?.[":block/props"]);
+  const type = plexus?.type;
+  if (atRoot && type && MARKERS[type]) return MARKERS[type];
+  if (type === "section") return "struct";
+  if (!plexus && (node2?.[":block/heading"] || 0) > 0) return "struct";
+  return null;
+}
+var shallow = (node2) => {
+  const out = {};
+  for (const k in node2) if (k !== KIDS) out[k] = node2[k];
+  return out;
+};
+var propsKey = (p) => p == null ? "" : JSON.stringify(p);
+function sameKids(a, b, depth = Infinity) {
+  const x = Array.isArray(a) ? a : [];
+  const y = Array.isArray(b) ? b : [];
+  if (x.length !== y.length) return false;
+  for (let i = 0; i < x.length; i += 1) {
+    const p = x[i];
+    const q2 = y[i];
+    if (p?.[UID] !== q2?.[UID] || (p?.[":block/string"] ?? "") !== (q2?.[":block/string"] ?? "") || (p?.[":block/order"] ?? null) !== (q2?.[":block/order"] ?? null) || (p?.[":block/heading"] || 0) !== (q2?.[":block/heading"] || 0) || (p?.[":block/open"] ?? null) !== (q2?.[":block/open"] ?? null) || propsKey(p?.[":block/props"]) !== propsKey(q2?.[":block/props"])) return false;
+    if (depth > 1 && !sameKids(kidsOf2(p), kidsOf2(q2), depth - 1)) return false;
+  }
+  return true;
+}
+var isBoardItem = (node2) => classifyString(String(node2?.[":block/string"] ?? "")).kind === "board";
+function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, guard = (_name, fn) => fn, schedule = (fn) => queueMicrotask(fn) }) {
+  const entityOf = (id) => `[:block/uid "${String(id).replace(/["\\]/g, "")}"]`;
+  const nodes = /* @__PURE__ */ new Map();
+  const kinds = /* @__PURE__ */ new Map([[uid, "struct"]]);
+  const live2 = /* @__PURE__ */ new Map();
+  let content = /* @__PURE__ */ new Map();
+  const itemWatch = /* @__PURE__ */ new Map();
+  let disposed = false;
+  let pending = false;
+  let lastTree = null;
+  const patternOf = (kind) => kind === "edges" ? EDGES_PATTERN : kind === "deep" ? deepPattern : STRUCT_PATTERN;
+  const read2 = (pattern, id) => {
+    try {
+      return pull(pattern, entityOf(id));
+    } catch {
+      return null;
+    }
+  };
+  const seedFrom = (full) => {
+    if (!full?.[UID]) return;
+    nodes.set(uid, full);
+    const nextContent = /* @__PURE__ */ new Map();
+    const walk3 = (node2, atRoot) => {
+      for (const kid of kidsOf2(node2)) {
+        const id = kid?.[UID];
+        if (!id) continue;
+        const kind = containerKind(kid, atRoot);
+        if (kind) {
+          kinds.set(id, kind);
+          nodes.set(id, kid);
+          if (kind === "struct") walk3(kid, false);
+        } else nextContent.set(id, kidsOf2(kid));
+      }
+    };
+    walk3(full, true);
+    for (const [id, kids] of content) if (!nextContent.has(id) && itemWatch.has(id)) nextContent.set(id, kids);
+    content = nextContent;
+  };
+  const kick = () => {
+    if (pending || disposed) return;
+    pending = true;
+    schedule(() => {
+      pending = false;
+      if (disposed) return;
+      const tree = assemble();
+      onTree(tree);
+    });
+  };
+  const onContainer = (id) => guard("watchBoard", (_before, after) => {
+    if (disposed) return;
+    if (!after?.[UID]) {
+      if (id === uid) {
+        disposed = true;
+        dropAll();
+        onTree(null);
+        return;
+      }
+      nodes.delete(id);
+    } else nodes.set(id, after);
+    kick();
+  });
+  const sync = () => {
+    for (const [id, kind] of kinds) {
+      const have = live2.get(id);
+      if (have && have.kind === kind) continue;
+      if (have) data.removePullWatch(have.pattern, have.entity, have.cb);
+      const entry = { kind, pattern: patternOf(kind), entity: entityOf(id), cb: onContainer(id) };
+      data.addPullWatch(entry.pattern, entry.entity, entry.cb);
+      live2.set(id, entry);
+    }
+    for (const [id, entry] of [...live2]) {
+      if (kinds.has(id)) continue;
+      data.removePullWatch(entry.pattern, entry.entity, entry.cb);
+      live2.delete(id);
+      nodes.delete(id);
+    }
+  };
+  const assemble = () => {
+    const root = nodes.get(uid);
+    if (!root?.[UID]) return null;
+    const seenKinds = /* @__PURE__ */ new Map([[uid, "struct"]]);
+    const seenContent = /* @__PURE__ */ new Map();
+    const build = (node2, atRoot) => {
+      const out = shallow(node2);
+      const kids = [];
+      for (const kid of kidsOf2(node2)) {
+        const id = kid?.[UID];
+        if (!id) continue;
+        const kind = containerKind(kid, atRoot);
+        if (kind) {
+          seenKinds.set(id, kind);
+          let own = kinds.get(id) === kind ? nodes.get(id) : null;
+          if (!own?.[UID]) {
+            own = read2(patternOf(kind), id) || kid;
+            nodes.set(id, own);
+          }
+          kids.push(kind === "struct" ? build(own, false) : own);
+          continue;
+        }
+        let stored = content.get(id);
+        if (stored === void 0) {
+          const pulled = read2(isBoardItem(kid) ? THUMB_PATTERN : deepPattern, id);
+          stored = kidsOf2(pulled);
+        }
+        seenContent.set(id, stored);
+        const item = shallow(kid);
+        if (stored.length) item[KIDS] = stored;
+        kids.push(item);
+      }
+      if (kids.length) out[KIDS] = kids;
+      return out;
+    };
+    const tree = build(root, true);
+    kinds.clear();
+    for (const [id, kind] of seenKinds) kinds.set(id, kind);
+    for (const [id, kids] of content) if (!seenContent.has(id) && itemWatch.has(id)) seenContent.set(id, kids);
+    content = seenContent;
+    sync();
+    lastTree = tree;
+    return tree;
+  };
+  const dropAll = () => {
+    for (const entry of live2.values()) {
+      try {
+        data.removePullWatch(entry.pattern, entry.entity, entry.cb);
+      } catch {
+      }
+    }
+    live2.clear();
+    for (const w of itemWatch.values()) {
+      try {
+        data.removePullWatch(w.pattern, w.entity, w.cb);
+      } catch {
+      }
+    }
+    itemWatch.clear();
+  };
+  seedFrom(seed);
+  sync();
+  return {
+    // A mounted card keeps its contents live. Null when the item is not on this board.
+    watchItem(id) {
+      const key = String(id ?? "");
+      if (disposed || !key || !content.has(key)) return null;
+      let w = itemWatch.get(key);
+      if (!w) {
+        const board2 = isBoardItem(findItem(key));
+        const pattern = board2 ? THUMB_PATTERN : deepPattern;
+        const depth = board2 ? THUMB_DEPTH : Infinity;
+        w = {
+          n: 0,
+          pattern,
+          entity: entityOf(key),
+          cb: guard("watchContent", (_before, after) => {
+            if (disposed || !after?.[UID] || !itemWatch.has(key)) return;
+            const kids = kidsOf2(after);
+            if (sameKids(content.get(key), kids, depth)) return;
+            content.set(key, kids);
+            kick();
+          })
+        };
+        itemWatch.set(key, w);
+        data.addPullWatch(w.pattern, w.entity, w.cb);
+        const now4 = read2(pattern, key);
+        if (now4?.[UID] && !sameKids(content.get(key), kidsOf2(now4), depth)) {
+          content.set(key, kidsOf2(now4));
+          kick();
+        }
+      }
+      w.n += 1;
+      let on = true;
+      return () => {
+        if (!on) return;
+        on = false;
+        w.n -= 1;
+        if (w.n > 0 || itemWatch.get(key) !== w) return;
+        itemWatch.delete(key);
+        try {
+          data.removePullWatch(w.pattern, w.entity, w.cb);
+        } catch {
+        }
+      };
+    },
+    // Read every container again now (an undo, a refresh) and return the assembled tree; contents stay as stored.
+    refresh() {
+      if (disposed) return null;
+      for (const [id, kind] of kinds) {
+        const fresh = read2(patternOf(kind), id);
+        if (fresh?.[UID]) nodes.set(id, fresh);
+        else if (id === uid) return null;
+        else nodes.delete(id);
+      }
+      return assemble();
+    },
+    // A fresh full pull of the board (catch-up, refresh) replaces what the watches hold.
+    reseed(full) {
+      if (disposed) return;
+      seedFrom(full);
+      sync();
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      dropAll();
+    },
+    stats: () => ({ containers: live2.size, items: content.size, itemWatches: itemWatch.size }),
+    get tree() {
+      return lastTree;
+    }
+  };
+  function findItem(id) {
+    for (const node2 of nodes.values()) {
+      for (const kid of kidsOf2(node2)) if (kid?.[UID] === id) return kid;
+    }
+    return null;
+  }
+}
+
 // src/host/roam.js
 var READER_STATE = ":pdf-settings";
 function sameButReaderState(a, b) {
@@ -38408,6 +38905,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const pdfUrls = /* @__PURE__ */ new Map();
   const boardCovers = /* @__PURE__ */ new Map();
   const watchedBoards = /* @__PURE__ */ new Map();
+  const bigBoards = /* @__PURE__ */ new Map();
+  const splitWatches = /* @__PURE__ */ new Map();
   const unwatchedAt = /* @__PURE__ */ new Map();
   let pullSeq = 0;
   const watchedBlocks = /* @__PURE__ */ new Map();
@@ -38417,6 +38916,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const PRIME_CHUNK = 40;
   const STATS_CHUNK = 80;
   const STATS_TTL_MS = 12e4;
+  const IDLE_SLICE_MS = 40;
+  const IDLE_RESERVE_MS = 8;
+  const IDLE_PART = 10;
+  const IDLE_REF_PART = 60;
   const MISS = /* @__PURE__ */ Symbol("pull-miss");
   const rawPull = typeof data.pull === "function" ? data.pull.bind(data) : () => null;
   const parseEntity = (entity) => {
@@ -38677,6 +39180,50 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     }
     return hit.stats;
   };
+  const watchSplit = (uid, cb) => {
+    let slot2 = watchedBoards.get(uid);
+    if (!slot2) {
+      slot2 = { coversRefs: false, n: 0, pages: /* @__PURE__ */ new Map() };
+      watchedBoards.set(uid, slot2);
+    }
+    slot2.n += 1;
+    unwatchedAt.delete(uid);
+    let split = splitWatches.get(uid);
+    if (!split) {
+      const subs = /* @__PURE__ */ new Set();
+      split = createSplitWatch({
+        uid,
+        seed: bigBoards.get(uid),
+        data,
+        pull: rawPull,
+        deepPattern: BOARD_PATTERN,
+        guard: (name, fn2) => guardCallback(name, fn2, { stats }),
+        onTree: (tree) => {
+          if (tree?.[":block/uid"]) absorb(uid, tree, false);
+          for (const fn2 of [...subs]) fn2(tree);
+        }
+      });
+      split.subs = subs;
+      splitWatches.set(uid, split);
+    }
+    const fn = guardCallback("watchBoard", (tree) => cb(tree), { stats });
+    split.subs.add(fn);
+    stats.watches++;
+    let active2 = true;
+    return () => {
+      if (!active2) return;
+      active2 = false;
+      split.subs.delete(fn);
+      if (!split.subs.size && splitWatches.get(uid) === split) {
+        split.dispose();
+        splitWatches.delete(uid);
+      }
+      stats.watches--;
+      slot2.n = Math.max(0, slot2.n - 1);
+      if (slot2.n === 0 && slot2.pages.size === 0) watchedBoards.delete(uid);
+      if (slot2.n === 0) unwatchedAt.set(uid, pullSeq);
+    };
+  };
   const notifyPages = (slot2, after) => {
     for (const set of slot2.pages.values()) for (const fn of set) fn(after);
   };
@@ -38859,6 +39406,15 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     tabs: createTabStore({ storage, graph: gname }),
     // One wide pull fills the session cache, so later card, page, and badge reads do not call Roam again.
     pullBoard(uid, { light = false, deferRefs = false } = {}) {
+      const split = light ? splitWatches.get(uid) : null;
+      if (split) {
+        const tree = split.refresh();
+        if (tree?.[":block/uid"]) {
+          absorb(uid, tree, false);
+          bigBoards.set(uid, tree);
+          return tree;
+        }
+      }
       if (warm.has(uid)) {
         const cached = cache.blockOf(uid);
         if (cached?.[":block/uid"]) return cached;
@@ -38872,7 +39428,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         plain2 = null;
       }
       let node2 = null;
-      const refBlocks = plain2?.[":block/uid"] ? refBlocksOf(plain2, OPEN_PULL_MAX_REFS) : 0;
+      const big = Boolean(plain2?.[":block/uid"]) && treeSize(plain2, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN;
+      const refBlocks = plain2?.[":block/uid"] && !big ? refBlocksOf(plain2, OPEN_PULL_MAX_REFS) : 0;
       if (!plain2?.[":block/uid"] || refBlocks > 0 && refBlocks <= OPEN_PULL_MAX_REFS) {
         try {
           node2 = rawPull(OPEN_PATTERN, boardEntity);
@@ -38887,13 +39444,28 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       }
       if (!node2?.[":block/uid"]) return null;
       absorb(uid, node2, honored);
+      if (big) {
+        bigBoards.set(uid, node2);
+        splitWatches.get(uid)?.reseed(node2);
+      } else bigBoards.delete(uid);
       const found = collectTargets(node2);
       const pullRefs = () => {
         if (!honored && (found.uids.length || found.titles.length)) {
           for (const entity of pullMany(found.uids, found.titles)) addEntity(uid, entity);
         }
       };
-      const refsLater = light && deferRefs;
+      let refAt = 0;
+      const pullRefsPart = (n3) => {
+        if (honored) return true;
+        const total = found.uids.length + found.titles.length;
+        const end = Math.min(total, refAt + n3);
+        const uids = found.uids.slice(Math.min(refAt, found.uids.length), Math.min(end, found.uids.length));
+        const titles = found.titles.slice(Math.max(0, refAt - found.uids.length), Math.max(0, end - found.uids.length));
+        refAt = end;
+        if (uids.length || titles.length) for (const entity of pullMany(uids, titles)) addEntity(uid, entity);
+        return refAt >= total;
+      };
+      const refsLater = light && (deferRefs || big);
       if (!refsLater) pullRefs();
       boardCovers.set(uid, honored);
       const prime = () => {
@@ -38925,44 +39497,52 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (!light) prime();
       else {
         const idle = globalThis.requestIdleCallback;
-        const later = (fn) => typeof idle === "function" ? idle(() => fn(), { timeout: 1500 }) : setTimeout(fn, 250);
-        const titles = found.titles;
-        const targets = found.stats;
+        const later = (fn) => typeof idle === "function" ? idle((deadline) => fn(deadline), { timeout: 1500 }) : setTimeout(fn, 250);
+        const titles = big ? [] : found.titles;
+        const targets = big ? [] : found.stats;
         const pulledAt = ++pullSeq;
         let ti = 0;
         let si = 0;
         let statsDone = false;
         let refsDone = !refsLater;
-        const step = () => {
+        let dropped = false;
+        const clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
+        const step = (deadline) => {
           if (unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt) return;
-          if (!refsDone) {
-            refsDone = true;
-            try {
-              pullRefs();
-            } catch {
-            }
-            later(step);
-            return;
-          }
-          if (ti === 0 && si === 0 && !statsDone) dropStats(uid);
-          if (ti < titles.length) {
-            try {
-              fetchLinked(titles.slice(ti, ti + PRIME_CHUNK));
-            } catch {
-            }
-            ti += PRIME_CHUNK;
-          } else if (!statsDone) {
-            const part = targets.slice(si, si + STATS_CHUNK);
-            si += STATS_CHUNK;
-            if (si >= targets.length) statsDone = true;
-            if (part.length) {
+          const t0 = clock();
+          const left = () => Math.min(IDLE_SLICE_MS - (clock() - t0), typeof deadline?.timeRemaining === "function" && !deadline.didTimeout ? deadline.timeRemaining() : Infinity);
+          do {
+            if (!refsDone) {
               try {
-                host.cardStats(part, { boardUid: uid });
+                refsDone = pullRefsPart(IDLE_REF_PART);
+              } catch {
+                refsDone = true;
+              }
+              continue;
+            }
+            if (!dropped) {
+              dropped = true;
+              dropStats(uid);
+            }
+            if (ti < titles.length) {
+              try {
+                fetchLinked(titles.slice(ti, ti + IDLE_PART));
               } catch {
               }
-            }
-          }
-          if (ti < titles.length || !statsDone) later(step);
+              ti += IDLE_PART;
+            } else if (!statsDone) {
+              const part = targets.slice(si, si + IDLE_PART);
+              si += IDLE_PART;
+              if (si >= targets.length) statsDone = true;
+              if (part.length) {
+                try {
+                  host.cardStats(part, { boardUid: uid });
+                } catch {
+                }
+              }
+            } else break;
+          } while (left() > IDLE_RESERVE_MS);
+          if (!refsDone || ti < titles.length || !statsDone) later(step);
         };
         later(step);
       }
@@ -38989,6 +39569,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     },
     watchBoard(uid, cb) {
       const covers2 = boardCovers.get(uid) === true;
+      if (!covers2 && bigBoards.has(uid)) return watchSplit(uid, cb);
       const pattern = covers2 ? OPEN_PATTERN : BOARD_PATTERN;
       let slot2 = watchedBoards.get(uid);
       if (!slot2) {
@@ -39016,6 +39597,19 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         if (slot2.n === 0 && slot2.pages.size === 0) watchedBoards.delete(uid);
         if (slot2.n === 0) unwatchedAt.set(uid, pullSeq);
       };
+    },
+    // A mounted card on a big board keeps its contents live (the board's own watches stop at the cards).
+    // A no-op on other boards: their one board watch already covers every card's contents.
+    watchContent(itemUid) {
+      for (const split of splitWatches.values()) {
+        const off = split.watchItem(itemUid);
+        if (off) return off;
+      }
+      return () => {
+      };
+    },
+    splitStats(uid) {
+      return splitWatches.get(uid)?.stats() ?? null;
     },
     // True when this ref was joined into a board pull whose one watch still includes it.
     coversBlock(uid) {
@@ -41444,10 +42038,10 @@ async function executeImport(plan, host, board2) {
 }
 
 // src/session.js
-var UID = ":block/uid";
+var UID2 = ":block/uid";
 var STR = ":block/string";
 var ORD = ":block/order";
-var KIDS = ":block/children";
+var KIDS2 = ":block/children";
 var PROPS = ":block/props";
 var OPEN = ":block/open";
 var LINK_MODES = ["off", "attributes", "all"];
@@ -41566,7 +42160,27 @@ function extendSession(fn) {
     if (at >= 0) extensions.splice(at, 1);
   };
 }
-var clone = (v) => v == null ? v : JSON.parse(JSON.stringify(v));
+function cloneTree(v) {
+  if (Array.isArray(v)) {
+    const out = new Array(v.length);
+    for (let i = 0; i < v.length; i += 1) {
+      const x = v[i];
+      out[i] = x !== null && typeof x === "object" ? cloneTree(x) : x === void 0 ? null : x;
+    }
+    return out;
+  }
+  if (v !== null && typeof v === "object") {
+    const out = {};
+    for (const k in v) {
+      const x = v[k];
+      if (x === void 0 || typeof x === "function") continue;
+      out[k] = x !== null && typeof x === "object" ? cloneTree(x) : x;
+    }
+    return out;
+  }
+  return v;
+}
+var clone = (v) => v == null ? v : cloneTree(v);
 var round14 = (n3) => Math.round(n3 * 10) / 10;
 function sortKeys(v) {
   if (Array.isArray(v)) return v.map(sortKeys);
@@ -41578,15 +42192,15 @@ function sortKeys(v) {
   return v;
 }
 var stable = (v) => v == null ? "null" : JSON.stringify(sortKeys(v));
-function kidsOf2(node2) {
-  const kids = Array.isArray(node2?.[KIDS]) ? node2[KIDS] : [];
+function kidsOf3(node2) {
+  const kids = Array.isArray(node2?.[KIDS2]) ? node2[KIDS2] : [];
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[ORD] ?? a.i) - (b.c[ORD] ?? b.i) || a.i - b.i).map(({ c }) => c);
 }
 function indexTree(root) {
   const map = /* @__PURE__ */ new Map();
   const walk3 = (node2, parent) => {
-    map.set(node2[UID], { node: node2, parent });
-    for (const c of node2[KIDS] ?? []) walk3(c, node2);
+    map.set(node2[UID2], { node: node2, parent });
+    for (const c of node2[KIDS2] ?? []) walk3(c, node2);
   };
   if (root) walk3(root, null);
   return map;
@@ -41594,28 +42208,28 @@ function indexTree(root) {
 function detach(idx, uid) {
   const hit = idx.get(uid);
   if (!hit?.parent) return null;
-  const kids = hit.parent[KIDS] ?? [];
+  const kids = hit.parent[KIDS2] ?? [];
   const at = kids.indexOf(hit.node);
   if (at >= 0) kids.splice(at, 1);
   return hit;
 }
 function attach(parentNode, node2, order) {
-  const kids = kidsOf2(parentNode);
+  const kids = kidsOf3(parentNode);
   if (order === "first") kids.unshift(node2);
   else if (order === "last" || typeof order !== "number") kids.push(node2);
   else kids.splice(Math.max(0, Math.min(order, kids.length)), 0, node2);
   kids.forEach((k, i) => {
     k[ORD] = i;
   });
-  parentNode[KIDS] = kids;
+  parentNode[KIDS2] = kids;
 }
 function findChild(root, uid) {
   const stack = [root];
   while (stack.length) {
     const node2 = stack.pop();
     if (!node2 || typeof node2 !== "object") continue;
-    if (node2[UID] === uid) return node2;
-    const kids = node2[KIDS];
+    if (node2[UID2] === uid) return node2;
+    const kids = node2[KIDS2];
     if (Array.isArray(kids)) for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]);
   }
   return null;
@@ -41624,13 +42238,13 @@ function refList(node2) {
   const refs = node2?.[":block/refs"];
   if (!refs) return [];
   const list = Array.isArray(refs) ? refs : [refs];
-  return list.filter((ref) => ref && typeof ref === "object" && !Array.isArray(ref)).slice().sort((a, b) => String(a[UID] ?? "").localeCompare(String(b[UID] ?? "")));
+  return list.filter((ref) => ref && typeof ref === "object" && !Array.isArray(ref)).slice().sort((a, b) => String(a[UID2] ?? "").localeCompare(String(b[UID2] ?? "")));
 }
 function sameTree(a, b, allowed, state, stack) {
   if (a === b) return true;
   if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
-  const id = a[UID] ?? null;
-  if (id !== (b[UID] ?? null)) return false;
+  const id = a[UID2] ?? null;
+  if (id !== (b[UID2] ?? null)) return false;
   if (id && stack.has(id)) return true;
   if (id) stack.add(id);
   try {
@@ -41645,8 +42259,8 @@ function sameTree(a, b, allowed, state, stack) {
     if ((a[":block/heading"] || 0) !== (b[":block/heading"] || 0)) return false;
     if (a[OPEN] !== false !== (b[OPEN] !== false)) return false;
     if (stable(a[PROPS] ?? null) !== stable(b[PROPS] ?? null)) return false;
-    const ak = kidsOf2(a);
-    const bk = kidsOf2(b);
+    const ak = kidsOf3(a);
+    const bk = kidsOf3(b);
     if (ak.length !== bk.length) return false;
     for (let i = 0; i < ak.length; i++) if (!sameTree(ak[i], bk[i], allowed, state, stack)) return false;
     const ar = refList(a);
@@ -41662,8 +42276,8 @@ function contentSig(nodes) {
   const out = [];
   const walk3 = (list) => {
     for (const node2 of list || []) {
-      out.push(node2?.[UID] ?? "", node2?.[STR] ?? "");
-      const kids = node2?.[KIDS];
+      out.push(node2?.[UID2] ?? "", node2?.[STR] ?? "");
+      const kids = node2?.[KIDS2];
       if (Array.isArray(kids) && kids.length) walk3(kids);
     }
   };
@@ -41843,7 +42457,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   const insertOrder = (parentUid) => {
     const node2 = raw ? rawNode(parentUid) : null;
     if (!node2) return "last";
-    const at = kidsOf2(node2).findIndex((k) => {
+    const at = kidsOf3(node2).findIndex((k) => {
       const type = readPlexus(k[PROPS])?.type;
       if (type === "edges" || type === "snapshots" || type === "regions" || type === "trails") return true;
       return isContainerString(k[":block/string"] ?? k.string ?? "");
@@ -41941,13 +42555,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (!tracked.length) return incoming;
     const ours = ix();
     const inc = indexTree(incoming);
-    const incUid = incoming[UID];
+    const incUid = incoming[UID2];
     for (const [id, field] of tracked) {
       if (field === "parent") {
         const mine = ours.get(id);
         const theirs = inc.get(id);
-        const myParent = mine?.parent?.[UID] ?? "";
-        const theirParent = theirs?.parent?.[UID] ?? "";
+        const myParent = mine?.parent?.[UID2] ?? "";
+        const theirParent = theirs?.parent?.[UID2] ?? "";
         if (ledger.accept(id, "parent", theirParent)) continue;
         if (myParent === theirParent) continue;
         if (!mine) {
@@ -41956,15 +42570,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         } else if (!theirs) {
           const target = myParent === incUid ? incoming : inc.get(myParent)?.node;
           if (!target) continue;
-          const node2 = { ...mine.node, [KIDS]: [] };
-          target[KIDS] = [...target[KIDS] ?? [], node2];
+          const node2 = { ...mine.node, [KIDS2]: [] };
+          target[KIDS2] = [...target[KIDS2] ?? [], node2];
           inc.set(id, { node: node2, parent: target });
         } else {
           const target = myParent === incUid ? incoming : inc.get(myParent)?.node;
           if (!target) continue;
           detach(inc, id);
           theirs.node[ORD] = mine.node[ORD];
-          target[KIDS] = [...target[KIDS] ?? [], theirs.node];
+          target[KIDS2] = [...target[KIDS2] ?? [], theirs.node];
           inc.set(id, { node: theirs.node, parent: target });
         }
       } else if (field === "props") {
@@ -41993,9 +42607,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const node2 = findChild(root, id);
     if (node2) {
       const walk3 = (n3) => {
-        const nid = n3?.[UID];
+        const nid = n3?.[UID2];
         if (nid) allowed.add(nid);
-        for (const child of kidsOf2(n3)) walk3(child);
+        for (const child of kidsOf3(n3)) walk3(child);
       };
       walk3(node2);
     }
@@ -42006,13 +42620,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     let found = null;
     const walk3 = (node2, itemUid) => {
       if (!node2 || found) return;
-      const nid = node2[UID];
+      const nid = node2[UID2];
       const next = nid && board2?.items.has(nid) ? nid : itemUid;
       if (nid === id) {
         found = next;
         return;
       }
-      for (const child of kidsOf2(node2)) walk3(child, next);
+      for (const child of kidsOf3(node2)) walk3(child, next);
     };
     walk3(root, null);
     return found;
@@ -42037,7 +42651,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (own) writeItemString(item, nextString);
     let dirty = own;
     if (item.type !== "section") {
-      const kids = kidsOf2(node2);
+      const kids = kidsOf3(node2);
       if (contentSig(item.content) !== contentSig(kids)) dirty = true;
       item.content = kids;
     }
@@ -42068,7 +42682,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   };
   const onBoard = (after) => {
     if (destroyed || pausedHolds >= holders) return;
-    if (!after || !after[UID]) {
+    if (!after || !after[UID2]) {
       if (!host.pullBoard(uid, { light: true })) markGone();
       return;
     }
@@ -42105,7 +42719,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     } catch {
       return;
     }
-    if (!fresh || !fresh[UID]) {
+    if (!fresh || !fresh[UID2]) {
       markGone();
       return;
     }
@@ -42368,7 +42982,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       create({ parent, uid: id, string = "", plexus, open, order }) {
         const newUid = id ?? host.generateUid();
         const ord = order ?? insertOrder(parent);
-        const node2 = { [UID]: newUid, [STR]: string, [ORD]: 0, [KIDS]: [] };
+        const node2 = { [UID2]: newUid, [STR]: string, [ORD]: 0, [KIDS2]: [] };
         if (plexus) node2[PROPS] = { plexus: plainKeys(plexus) };
         if (open !== void 0) node2[OPEN] = open;
         rawInsert(parent, node2, ord);
@@ -42436,8 +43050,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   };
   function ensureContainer(t) {
     if (board2.containerUid) return board2.containerUid;
-    const existing = kidsOf2(raw).find((k) => readPlexus(k[PROPS])?.type === "edges");
-    if (existing) return existing[UID];
+    const existing = kidsOf3(raw).find((k) => readPlexus(k[PROPS])?.type === "edges");
+    if (existing) return existing[UID2];
     return t.create({ parent: uid, order: "last", string: "Connections", plexus: { type: "edges" }, open: false });
   }
   function writeImageRegion(t, item, frac, label, regionUid, poly) {
@@ -42587,8 +43201,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   }
   function ensureTrails(t) {
     if (board2.trailsUid) return board2.trailsUid;
-    const existing = kidsOf2(raw).find((k) => readPlexus(k[PROPS])?.type === "trails");
-    if (existing) return existing[UID];
+    const existing = kidsOf3(raw).find((k) => readPlexus(k[PROPS])?.type === "trails");
+    if (existing) return existing[UID2];
     return t.create({ parent: uid, order: "last", string: "Trails", plexus: { type: "trails" }, open: false });
   }
   function trailByUid(id) {
@@ -43475,7 +44089,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       for (const id of top) for (const d of descendantsOf(board2, id)) moved.add(d);
       const undoItems = top.map((id) => {
         const hit = ix().get(id);
-        return { uid: id, parentUid: hit.parent[UID], order: kidsOf2(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])) };
+        return { uid: id, parentUid: hit.parent[UID2], order: kidsOf3(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])) };
       }).sort((a, b) => a.order - b.order);
       const undoEdges = [];
       const info = { createdContainer: null };
@@ -43600,8 +44214,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return txn((t) => {
         for (const m of moves) {
           const parent = rawNode(m.parentUid) ? m.parentUid : board2.items.get(m.pdfUid).parentUid;
-          const kids = kidsOf2(rawNode(parent));
-          const at = Math.max(0, kids.findIndex((k) => k[UID] === m.pdfUid));
+          const kids = kidsOf3(rawNode(parent));
+          const at = Math.max(0, kids.findIndex((k) => k[UID2] === m.pdfUid));
           const pdfString = rawNode(m.pdfUid)?.[STR] || `{{[[pdf]]: ${m.url}}}`;
           const originalProps = clone(rawPlexus(m.pdfUid));
           const pageUid2 = m.page.uid || t.page({ uid: m.page.newUid || void 0, title: m.page.title });
@@ -43670,8 +44284,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return txn((t) => {
         for (const f of folds) {
           const parent = board2.items.get(f.tableUid).parentUid;
-          const kids = kidsOf2(rawNode(parent));
-          const at = Math.max(0, kids.findIndex((k) => k[UID] === f.tableUid));
+          const kids = kidsOf3(rawNode(parent));
+          const at = Math.max(0, kids.findIndex((k) => k[UID2] === f.tableUid));
           const props = clone(rawPlexus(f.tableUid));
           records.push({ tableUid: f.tableUid, captionUid: f.captionUid, parentUid: parent, order: at, props });
           t.create({ parent, uid: f.captionUid, string: f.caption, plexus: f.layout, open: false, order: at });
@@ -44097,8 +44711,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         let moves = 0;
         for (const group of readingOrder(board2, rects)) {
           group.uids.forEach((id, index) => {
-            const kids = kidsOf2(rawNode(group.parent));
-            const at = kids.findIndex((k) => k[UID] === id);
+            const kids = kidsOf3(rawNode(group.parent));
+            const at = kids.findIndex((k) => k[UID2] === id);
             if (at < 0 || at === index) return;
             t.move(id, group.parent, index);
             moves += 1;
@@ -44253,7 +44867,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     },
     createTrail(name, cardUids) {
       return txn((t) => {
-        const had = Boolean(board2.trailsUid) || kidsOf2(raw).some((k) => readPlexus(k[PROPS])?.type === "trails");
+        const had = Boolean(board2.trailsUid) || kidsOf3(raw).some((k) => readPlexus(k[PROPS])?.type === "trails");
         const parent = ensureTrails(t);
         const id = t.create({ parent, order: "last", string: trailString(name), plexus: { type: "trail" }, open: true });
         const ids = [];
@@ -44466,12 +45080,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         if (src.kind === "page") {
           const page = host.pullPage(src.target.title);
           if (!page) return { ok: false, reason: "no-page" };
-          const attr = kidsOf2(page).find((k) => String(k[STR] ?? "").trim() === `${label}::`);
+          const attr = kidsOf3(page).find((k) => String(k[STR] ?? "").trim() === `${label}::`);
           if (attr) {
-            await write(() => host.createBlock({ parentUid: attr[UID], order: "last", string: dstRef }));
+            await write(() => host.createBlock({ parentUid: attr[UID2], order: "last", string: dstRef }));
             return { ok: true, reason: "appended" };
           }
-          await write(() => host.createBlock({ parentUid: page[UID], order: "last", string: `${label}:: ${dstRef}` }));
+          await write(() => host.createBlock({ parentUid: page[UID2], order: "last", string: `${label}:: ${dstRef}` }));
           return { ok: true, reason: "created" };
         }
         const srcUid = src.kind === "block" ? src.target.uid : src.uid;
@@ -44631,9 +45245,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     let childContainer = null;
     const childEdges = () => {
       if (childContainer) return childContainer;
-      const existing = kidsOf2(rawNode(boardUid)).find((k) => readPlexus(k[PROPS])?.type === "edges");
+      const existing = kidsOf3(rawNode(boardUid)).find((k) => readPlexus(k[PROPS])?.type === "edges");
       if (existing) {
-        childContainer = existing[UID];
+        childContainer = existing[UID2];
         return childContainer;
       }
       childContainer = t.create({ parent: boardUid, order: "last", string: "Connections", plexus: { type: "edges" }, open: false });
@@ -44646,7 +45260,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     for (const e2 of touched) {
       const hit = ix().get(e2.uid);
       if (hit?.parent) {
-        snapshots.set(e2.uid, { uid: e2.uid, parent: hit.parent[UID], order: kidsOf2(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])), string: hit.node[STR] ?? "" });
+        snapshots.set(e2.uid, { uid: e2.uid, parent: hit.parent[UID2], order: kidsOf3(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])), string: hit.node[STR] ?? "" });
       }
     }
     for (const e2 of touched) {
@@ -44704,7 +45318,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     txn,
     rawNode,
     ix,
-    kidsOf: kidsOf2,
+    kidsOf: kidsOf3,
     rawPlexus,
     itemPlexus,
     edgePlexus,
@@ -44761,9 +45375,9 @@ function acquireSession(boardUid, options = {}) {
 }
 
 // src/session-clip.js
-var UID2 = ":block/uid";
+var UID3 = ":block/uid";
 var STR2 = ":block/string";
-var KIDS2 = ":block/children";
+var KIDS3 = ":block/children";
 var PROPS2 = ":block/props";
 var STACK_GAP = 24;
 var OUTLINE_CARD = { w: 240, h: 72 };
@@ -44772,8 +45386,8 @@ var SPREAD_CAP = 22;
 var SPREAD_GAP = 40;
 function findNode2(node2, uid) {
   if (!node2) return null;
-  if (node2[UID2] === uid) return node2;
-  for (const c of node2[KIDS2] ?? []) {
+  if (node2[UID3] === uid) return node2;
+  for (const c of node2[KIDS3] ?? []) {
     const hit = findNode2(c, uid);
     if (hit) return hit;
   }
@@ -44799,11 +45413,11 @@ extendSession((session, api3) => {
     return t.create({ parent, string, plexus: serializeItemLayout(layout) });
   }
   function cloneRegions(t, node2, oldUid, freshUid) {
-    for (const kid of node2[KIDS2] ?? []) {
+    for (const kid of node2[KIDS3] ?? []) {
       const isBox = isContainerString(kid[STR2] ?? "") || readPlexus(kid[PROPS2])?.type === "regions";
       if (!isBox) continue;
       const box2 = t.create({ parent: freshUid, uid: gen(), string: kid[STR2] ?? "", plexus: { type: "regions" }, open: false, order: "last" });
-      for (const region of kid[KIDS2] ?? []) {
+      for (const region of kid[KIDS3] ?? []) {
         const text4 = region[STR2] ?? "";
         const parsed = parseRegion(text4);
         const string = parsed && parsed.drawingUid === oldUid ? text4.replace(`d=${oldUid}`, `d=${freshUid}`) : text4;
@@ -44916,8 +45530,8 @@ extendSession((session, api3) => {
       const nodes = top.map(copy).filter(Boolean);
       if (!nodes.length) return null;
       const edgeNodes = [...board2.edges.values()].filter((e2) => e2.valid && set.has(e2.from) && set.has(e2.to)).map((e2) => copy(e2.uid)).filter(Boolean);
-      if (edgeNodes.length) nodes.push({ [UID2]: "plexus-cut-edges", [STR2]: "Connections", [PROPS2]: { [PLEXUS_KEY]: { type: "edges" } }, [KIDS2]: edgeNodes });
-      return { [UID2]: session.uid, [STR2]: "", [KIDS2]: nodes };
+      if (edgeNodes.length) nodes.push({ [UID3]: "plexus-cut-edges", [STR2]: "Connections", [PROPS2]: { [PLEXUS_KEY]: { type: "edges" } }, [KIDS3]: edgeNodes });
+      return { [UID3]: session.uid, [STR2]: "", [KIDS3]: nodes };
     },
     // data comes from parseClipboard (the `plexus` payload or its `.data`). mode 'refs' makes ref cards,
     // 'clone' clones the copied items (from this board or, for another board, from its pulled tree). A payload
@@ -44970,7 +45584,7 @@ extendSession((session, api3) => {
       const node2 = api3.rawNode(targetUid);
       if (node2) {
         if (!isEnhancedBoardNode(node2)) return Promise.resolve(null);
-        const origin2 = outlineOrigin(boardPreview({ uid: targetUid, string: node2[STR2], content: node2[KIDS2] ?? [] }));
+        const origin2 = outlineOrigin(boardPreview({ uid: targetUid, string: node2[STR2], content: node2[KIDS3] ?? [] }));
         const title = parseBoardTitle(node2[STR2]) || UNTITLED_BOARD;
         return api3.txn((t) => {
           for (const c of stackAt(top.map((id) => api3.refOf(id)), origin2.x, origin2.y)) {
@@ -44982,7 +45596,7 @@ extendSession((session, api3) => {
       const pulled = host.pullBoard(targetUid);
       if (!isEnhancedBoardNode(pulled)) return Promise.resolve(null);
       const target = buildBoard(pulled);
-      const origin = outlineOrigin(boardPreview({ uid: targetUid, string: pulled[STR2], content: pulled[KIDS2] ?? [] }));
+      const origin = outlineOrigin(boardPreview({ uid: targetUid, string: pulled[STR2], content: pulled[KIDS3] ?? [] }));
       const cards = stackAt(top.map((id) => api3.refOf(id)), origin.x, origin.y);
       return api3.queue.run(async () => {
         for (let i = 0; i < cards.length; i++) {
@@ -45008,8 +45622,8 @@ extendSession((session, api3) => {
       const item = board2?.items.get(cardUid);
       if (!item || item.type !== "card") return Promise.resolve(none);
       let kids;
-      if (item.kind === "note") kids = (item.content ?? []).map((n3) => ({ uid: n3[UID2] ?? n3.uid, string: n3[STR2] ?? n3.string ?? "" }));
-      else if (item.kind === "block") kids = (host.pullTree(item.target.uid, 1, 60) ?? []).map((n3) => ({ uid: n3[UID2] ?? n3.uid, string: n3[STR2] ?? n3.string ?? "" }));
+      if (item.kind === "note") kids = (item.content ?? []).map((n3) => ({ uid: n3[UID3] ?? n3.uid, string: n3[STR2] ?? n3.string ?? "" }));
+      else if (item.kind === "block") kids = (host.pullTree(item.target.uid, 1, 60) ?? []).map((n3) => ({ uid: n3[UID3] ?? n3.uid, string: n3[STR2] ?? n3.string ?? "" }));
       else return Promise.resolve(none);
       const onBoard = /* @__PURE__ */ new Set();
       for (const it of board2.items.values()) if (it.target?.kind === "block" && it.target.uid) onBoard.add(it.target.uid);
@@ -45075,13 +45689,13 @@ extendSession((session, api3) => {
         string: n3.string ?? "",
         children: plain2(n3.children ?? [])
       }));
-      const rawTree = (list) => list.filter((n3) => n3?.[UID2]).map((n3) => ({
-        uid: n3[UID2],
+      const rawTree = (list) => list.filter((n3) => n3?.[UID3]).map((n3) => ({
+        uid: n3[UID3],
         string: n3[STR2] ?? "",
         children: rawTree(api3.kidsOf(n3))
       }));
       let tree;
-      if (item.kind === "note") tree = rawTree(api3.kidsOf({ [KIDS2]: item.content }));
+      if (item.kind === "note") tree = rawTree(api3.kidsOf({ [KIDS3]: item.content }));
       else if (item.kind === "block") tree = plain2(host.pullTree(item.target.uid, preset.depth, max) ?? []);
       else if (item.kind === "page") tree = plain2(host.pagePreview(item.target.title, preset.depth, max)?.blocks ?? []);
       else return Promise.resolve(none);
@@ -45456,7 +46070,7 @@ function captionForView(sections, point, fallbackTitle) {
 }
 
 // src/views.js
-var UID3 = ":block/uid";
+var UID4 = ":block/uid";
 var STR3 = ":block/string";
 var CONTAINER = "{{[[plexus-regions]]}}";
 function regionsParent(api3, board2) {
@@ -45464,7 +46078,7 @@ function regionsParent(api3, board2) {
   const root = api3.rawNode(api3.uid);
   for (const child of api3.kidsOf(root)) {
     const text4 = child[STR3] ?? child.string ?? "";
-    if (isContainerString(text4)) return child[UID3] || child.uid;
+    if (isContainerString(text4)) return child[UID4] || child.uid;
   }
   return null;
 }
@@ -45479,7 +46093,7 @@ function imageCardContainer(api3, cardUid) {
   const card2 = api3.rawNode(cardUid);
   if (!card2) return null;
   for (const child of api3.kidsOf(card2)) {
-    const id = child[UID3] || child.uid;
+    const id = child[UID4] || child.uid;
     if (!id) continue;
     const text4 = child[STR3] ?? child.string ?? "";
     if (isContainerString(text4) || api3.rawPlexus(id)?.type === "regions") return id;
@@ -46358,7 +46972,7 @@ function isBlankCanvas(canvas, { threshold = 235 } = {}) {
 
 // src/model/pdf-drag.js
 var PDF_MARK = ".TextHighlight__part, .AreaHighlight__part, .AreaHighlight";
-var UID4 = /^[A-Za-z0-9_-]{9}$/;
+var UID5 = /^[A-Za-z0-9_-]{9}$/;
 var FIBER_LIMIT = 10;
 var CHIP_LEN = 60;
 function fiberOf(node2) {
@@ -46386,7 +47000,7 @@ function highlightFromFiber(fiber) {
   return null;
 }
 function acceptId(id, exists) {
-  if (typeof id !== "string" || !UID4.test(id)) return null;
+  if (typeof id !== "string" || !UID5.test(id)) return null;
   if (typeof exists !== "function") return id;
   try {
     if (exists(id) !== true) return null;
@@ -48262,6 +48876,9 @@ init_geometry();
 var SNAP_VERSION = 1;
 var SNAP_MAX_BYTES = 300 * 1024;
 var SNAP_MAX_ITEMS = 500;
+var SNAP_MAX_BOXES = 4e3;
+var BOX_BYTES = 256;
+var snapByteCap = (items) => SNAP_MAX_BYTES + BOX_BYTES * Math.max(0, (Number(items) || 0) - SNAP_MAX_ITEMS);
 var FACE_MAX_NODES = 400;
 var FACE_MAX_CHARS = 16 * 1024;
 var LAYER_MAX_NODES = 1500;
@@ -48415,7 +49032,7 @@ function fnv(text4) {
   return (h >>> 0).toString(36);
 }
 var strOf = (node2) => String(node2?.[":block/string"] ?? node2?.string ?? "");
-var kidsOf3 = (node2) => {
+var kidsOf4 = (node2) => {
   const kids = node2?.[":block/children"] ?? node2?.children;
   if (!Array.isArray(kids)) return [];
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c?.[":block/order"] ?? a.i) - (b.c?.[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
@@ -48424,7 +49041,7 @@ function contentText(nodes, depth = 0, out = []) {
   if (!Array.isArray(nodes) || depth > 4 || out.length > 400) return out;
   for (const node2 of nodes) {
     out.push(`${depth}:${strOf(node2)}`);
-    contentText(kidsOf3(node2), depth + 1, out);
+    contentText(kidsOf4(node2), depth + 1, out);
   }
   return out;
 }
@@ -48457,13 +49074,13 @@ function boardStamp(board2, rects = null) {
 }
 function tableGrid2(item, { rows: maxRows = 30, cols: maxCols = 10 } = {}) {
   const rows = [];
-  for (const row4 of kidsOf3({ ":block/children": item?.content })) {
+  for (const row4 of kidsOf4({ ":block/children": item?.content })) {
     if (rows.length >= maxRows) break;
     const cells = [];
     let cell = row4;
     while (cell && cells.length < maxCols) {
       cells.push(plainCell(strOf(cell)));
-      cell = kidsOf3(cell)[0];
+      cell = kidsOf4(cell)[0];
     }
     rows.push(cells);
   }
@@ -48728,7 +49345,7 @@ function cleanRootStyle(style) {
 }
 function cleanSnapshot(value) {
   if (!value || typeof value !== "object" || value.v !== SNAP_VERSION || !Array.isArray(value.items)) return null;
-  if (value.items.length > SNAP_MAX_ITEMS) return null;
+  if (value.items.length > SNAP_MAX_BOXES) return null;
   const items = [];
   for (const item of value.items) {
     const clean2 = cleanItem(item);
@@ -48756,9 +49373,10 @@ function cleanSnapshot(value) {
 function packSnapshot(snap) {
   const clean2 = cleanSnapshot(snap);
   if (!clean2) return null;
+  const cap4 = snapByteCap(clean2.items.length);
   const fit3 = (value) => {
     const text5 = JSON.stringify(value);
-    return text5.length <= SNAP_MAX_BYTES ? text5 : null;
+    return text5.length <= cap4 ? text5 : null;
   };
   let text4 = fit3(clean2);
   if (text4) return text4;
@@ -48769,6 +49387,14 @@ function packSnapshot(snap) {
   text4 = fit3(lean);
   if (text4) return text4;
   const items = lean.items.map((item) => ({ ...item }));
+  let over = JSON.stringify({ ...lean, items }).length - cap4;
+  for (let i = items.length - 1; i >= 0 && over > 0; i -= 1) {
+    if (!items[i].face) continue;
+    over -= JSON.stringify(items[i].face).length + 8;
+    delete items[i].face;
+  }
+  text4 = fit3({ ...lean, items });
+  if (text4) return text4;
   for (let i = items.length - 1; i >= 0; i -= 1) {
     if (!items[i].face) continue;
     delete items[i].face;
@@ -53448,12 +54074,12 @@ function normCell2(text4) {
   return String(text4 || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 function setJaccard(a, b) {
-  const A = new Set((a?.cells || []).map((c) => normCell2(c.text)).filter(Boolean));
+  const A2 = new Set((a?.cells || []).map((c) => normCell2(c.text)).filter(Boolean));
   const B = new Set((b?.cells || []).map((c) => normCell2(c.text)).filter(Boolean));
-  if (!A.size && !B.size) return 1;
+  if (!A2.size && !B.size) return 1;
   let inter = 0;
-  for (const t of A) if (B.has(t)) inter++;
-  return inter / (A.size + B.size - inter);
+  for (const t of A2) if (B.has(t)) inter++;
+  return inter / (A2.size + B.size - inter);
 }
 function tokenJaccard(a, b) {
   const tokens2 = (table) => {
@@ -53463,12 +54089,12 @@ function tokenJaccard(a, b) {
     }
     return out;
   };
-  const A = tokens2(a);
+  const A2 = tokens2(a);
   const B = tokens2(b);
-  if (!A.size && !B.size) return 1;
+  if (!A2.size && !B.size) return 1;
   let inter = 0;
-  for (const t of A) if (B.has(t)) inter++;
-  return inter / (A.size + B.size - inter);
+  for (const t of A2) if (B.has(t)) inter++;
+  return inter / (A2.size + B.size - inter);
 }
 function iou4(a, b) {
   if (!a || !b) return 0;
@@ -53948,14 +54574,14 @@ function matchWeight(a, b) {
   if (editDistanceAtMost(a, b, slack) > slack) return 0;
   return 0.7 * Math.min(a.length, b.length, 8);
 }
-function weightedLcs(A, B) {
-  const n3 = A.length;
+function weightedLcs(A2, B) {
+  const n3 = A2.length;
   const m = B.length;
   if (!n3 || !m || n3 * m > ALIGN_CELLS_MAX) return [];
   const W = m + 1;
   const dp = new Float32Array((n3 + 1) * W);
   for (let i2 = 1; i2 <= n3; i2++) {
-    const a = A[i2 - 1];
+    const a = A2[i2 - 1];
     for (let j2 = 1; j2 <= m; j2++) {
       let best = Math.max(dp[(i2 - 1) * W + j2], dp[i2 * W + j2 - 1]);
       const w = matchWeight(a, B[j2 - 1]);
@@ -73982,18 +74608,18 @@ init_region_menu();
 init_offscreen();
 
 // src/view/editor-keys.js
-var UID5 = /^[A-Za-z0-9_-]{9,15}$/;
+var UID6 = /^[A-Za-z0-9_-]{9,15}$/;
 function blockUidFromNode(node2) {
   let el2 = node2;
   while (el2 && el2.nodeType === 1) {
     const id = String(el2.id || el2.getAttribute?.("id") || "");
     if (id.startsWith("block-input-")) {
       const rest = id.slice("block-input-".length);
-      if (UID5.test(rest)) return rest;
+      if (UID6.test(rest)) return rest;
     }
-    if (UID5.test(id)) return id;
+    if (UID6.test(id)) return id;
     const data = el2.dataset?.uid || el2.getAttribute?.("data-uid") || "";
-    if (UID5.test(data)) return data;
+    if (UID6.test(data)) return data;
     el2 = el2.parentElement;
   }
   return null;
@@ -74080,6 +74706,25 @@ function paintSuggest(doc, svg, lines) {
 var SVG_NS5 = "http://www.w3.org/2000/svg";
 var PAIR_OFFSET = 18;
 var LABEL_HIDE_ZOOM = 0.3;
+function segmentMeetsRect(x1, y1, x2, y2, r) {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const clip7 = (p, q2) => {
+    if (p === 0) return q2 >= 0;
+    const t = q2 / p;
+    if (p < 0) {
+      if (t > t1) return false;
+      if (t > t0) t0 = t;
+    } else {
+      if (t < t0) return false;
+      if (t < t1) t1 = t;
+    }
+    return true;
+  };
+  return clip7(-dx, x1 - r.x) && clip7(dx, r.x + r.w - x1) && clip7(-dy, y1 - r.y) && clip7(dy, r.y + r.h - y1);
+}
 var setClass = (el2, name) => {
   el2.setAttribute("class", name);
   if (el2.classList && !el2.classList.contains(name.split(" ")[0])) el2.className = name;
@@ -74111,13 +74756,58 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     el2.addEventListener(type, fn, opts);
     listeners3.push(() => el2.removeEventListener(type, fn, opts));
   };
+  let pairsOf = null;
+  let pairs = /* @__PURE__ */ new Map();
   const pairOffset2 = (board2, edge) => {
-    for (const other of board2.edges.values()) {
-      if (other.uid !== edge.uid && other.from === edge.to && other.to === edge.from) {
-        return edge.uid < other.uid ? PAIR_OFFSET : -PAIR_OFFSET;
+    if (pairsOf !== board2.edges) {
+      pairsOf = board2.edges;
+      pairs = /* @__PURE__ */ new Map();
+      for (const e2 of board2.edges.values()) {
+        const key = `${e2.from}\0${e2.to}`;
+        const list = pairs.get(key);
+        if (list) list.push(e2.uid);
+        else pairs.set(key, [e2.uid]);
       }
     }
+    for (const uid of pairs.get(`${edge.to}\0${edge.from}`) || []) {
+      if (uid !== edge.uid) return edge.uid < uid ? PAIR_OFFSET : -PAIR_OFFSET;
+    }
     return 0;
+  };
+  const VIRTUAL_EDGES = 300;
+  let view = null;
+  const widen = (r, f) => r ? { x: r.x - r.w * f, y: r.y - r.h * f, w: r.w * (1 + 2 * f), h: r.h * (1 + 2 * f) } : r;
+  const edgeFar = (board2, edge, rects) => {
+    const keep = view;
+    view = widen(keep, 0.5);
+    try {
+      return !edgeNear(board2, edge, rects);
+    } finally {
+      view = keep;
+    }
+  };
+  const edgeNear = (board2, edge, rects) => {
+    if (!view) return true;
+    const a = rects.get(anchorUid(board2, edge.from));
+    const b = rects.get(anchorUid(board2, edge.to));
+    if (!a || !b) return true;
+    const meets = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
+    if (meets(a) || meets(b)) return true;
+    return segmentMeetsRect(a.x + a.w / 2, a.y + a.h / 2, b.x + b.w / 2, b.y + b.h / 2, view);
+  };
+  const parkEdge = (rec) => {
+    if (rec.parked) return;
+    rec.parked = true;
+    rec.stale = true;
+    rec.g.remove();
+    rec.label.remove();
+    for (const end of ["from", "to"]) dropInner(rec, end);
+  };
+  const unparkEdge = (rec) => {
+    if (!rec.parked) return;
+    rec.parked = false;
+    svg?.append(rec.g);
+    labelsLayer?.append(rec.label);
   };
   const endOn = (spec, rect, other) => {
     if (!spec || !rect || spec.face) return null;
@@ -74613,14 +75303,27 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     rec.label.remove();
     linkEls.delete(key);
   };
-  const render = ({ board: board2, rects, links = [], coveredEdges = /* @__PURE__ */ new Set(), selection = {}, zoom = 1, dirty = null }) => {
+  let lastPass = null;
+  const render = ({ board: board2, rects, links = [], coveredEdges = /* @__PURE__ */ new Set(), selection = {}, zoom = 1, dirty = null, view: near2 = void 0 }) => {
     zoomCache = zoom;
+    if (near2 !== void 0) view = near2;
+    lastPass = { board: board2, rects, coveredEdges, selection };
+    const virt = Boolean(view) && board2.edges.size > VIRTUAL_EDGES;
     for (const uid of [...edgeEls.keys()]) if (!board2.edges.has(uid)) removeEdge(uid);
     for (const edge of board2.edges.values()) {
       let rec = edgeEls.get(edge.uid);
+      if (virt && selection.edge !== edge.uid && editingLabel?.uid !== edge.uid) {
+        const attached = rec && !rec.parked;
+        if (attached ? edgeFar(board2, edge, rects) : !edgeNear(board2, edge, rects)) {
+          if (rec) parkEdge(rec);
+          continue;
+        }
+      }
       const fresh = !rec;
       if (!rec) rec = buildEdge(edge);
-      if (fresh || !dirty || dirty.has(edge.uid)) {
+      else if (rec.parked) unparkEdge(rec);
+      if (fresh || !dirty || dirty.has(edge.uid) || rec.stale) {
+        rec.stale = false;
         paintEdge(board2, edge, rec, { covered: coveredEdges.has(edge.uid), selected: selection.edge === edge.uid });
         placeEdge(board2, edge, rec, rects, zoom);
       }
@@ -74633,11 +75336,53 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     }
     labelsLayer?.classList.toggle("pxd-labels--hidden", zoom < LABEL_HIDE_ZOOM);
   };
+  const reveal = (rect, budget = 80) => {
+    if (!rect || !lastPass) return 0;
+    view = rect;
+    const { board: board2, rects, coveredEdges, selection } = lastPass;
+    if (board2.edges.size <= VIRTUAL_EDGES) return 0;
+    let n3 = 0;
+    for (const edge of board2.edges.values()) {
+      if (n3 >= budget) break;
+      const rec = edgeEls.get(edge.uid);
+      if (rec && !rec.parked) continue;
+      if (!edgeNear(board2, edge, rects)) continue;
+      const live2 = rec || buildEdge(edge);
+      if (rec) unparkEdge(live2);
+      live2.stale = false;
+      paintEdge(board2, edge, live2, { covered: coveredEdges.has(edge.uid), selected: selection.edge === edge.uid });
+      placeEdge(board2, edge, live2, rects, zoomCache);
+      n3 += 1;
+    }
+    return n3;
+  };
+  const cull = (rect) => {
+    if (!rect || !lastPass) return;
+    view = rect;
+    const { board: board2, rects, coveredEdges, selection } = lastPass;
+    if (board2.edges.size <= VIRTUAL_EDGES) return;
+    for (const edge of board2.edges.values()) {
+      const rec = edgeEls.get(edge.uid);
+      const pinned2 = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
+      const near2 = pinned2 || (rec && !rec.parked ? !edgeFar(board2, edge, rects) : edgeNear(board2, edge, rects));
+      if (!near2) {
+        if (rec) parkEdge(rec);
+        continue;
+      }
+      if (rec && !rec.parked && !rec.stale) continue;
+      const live2 = rec || buildEdge(edge);
+      if (rec?.parked) unparkEdge(live2);
+      live2.stale = false;
+      paintEdge(board2, edge, live2, { covered: coveredEdges.has(edge.uid), selected: selection.edge === edge.uid });
+      placeEdge(board2, edge, live2, rects, zoomCache);
+    }
+  };
   const update = ({ board: board2, edgeUids, rects, zoom = zoomCache, linkKeys = null, links = [] }) => {
     for (const uid of edgeUids) {
       const edge = board2.edges.get(uid);
       const rec = edgeEls.get(uid);
-      if (edge && rec) placeEdge(board2, edge, rec, rects, zoom);
+      if (edge && rec && !rec.parked) placeEdge(board2, edge, rec, rects, zoom);
+      else if (rec?.parked) rec.stale = true;
     }
     if (linkKeys) {
       for (const link of links) {
@@ -74895,6 +75640,15 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   return {
     render,
     update,
+    reveal,
+    cull,
+    // Every built edge group, in the DOM or parked (lenses paint parked edges too).
+    groups: () => [...edgeEls.values()].map((rec) => rec.g),
+    attachedCount: () => {
+      let n3 = 0;
+      for (const rec of edgeEls.values()) if (!rec.parked) n3 += 1;
+      return n3;
+    },
     setSelection,
     setHover,
     setTempWire,
@@ -75675,10 +76429,12 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       if (line) toolbar.style.setProperty("--pxd-board-line", line);
       else toolbar.style.removeProperty("--pxd-board-line");
     },
+    // Every camera frame calls this. A text write even of the same label is a DOM mutation, and each one re-ran the
+    // board root's :has() invalidation (PhD main board: ~110 ms style recalc per wheel frame).
     setZoom(z) {
       const label = `${Math.round((z || 1) * 100)}%`;
-      zoomLabel.textContent = label;
-      railZoom.textContent = label;
+      if (zoomLabel.textContent !== label) zoomLabel.textContent = label;
+      if (railZoom.textContent !== label) railZoom.textContent = label;
     },
     setLinkMode(mode) {
       const key = LINK_ICONS[mode] ? mode : "all";
@@ -77016,6 +77772,8 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
   }
   let open = false;
   let filterText = "";
+  const TABLE_PAGE = 200;
+  let rowLimit = TABLE_PAGE;
   let sortColumn = null;
   let sortDir = "asc";
   const pending = [];
@@ -77128,7 +77886,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
     }
     thead.append(head);
     tbody.replaceChildren();
-    for (const row4 of body) {
+    for (const row4 of body.slice(0, rowLimit)) {
       const tr = doc.createElement("tr");
       tr.className = "pxd-table__row";
       tr.setAttribute("data-uid", row4.uid);
@@ -77176,9 +77934,28 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
       }
       tbody.append(tr);
     }
+    if (body.length > rowLimit) {
+      const tr = doc.createElement("tr");
+      tr.className = "pxd-table__more";
+      const td = doc.createElement("td");
+      td.setAttribute("colspan", String(Math.max(1, cols.length)));
+      const more = doc.createElement("button");
+      more.type = "button";
+      more.className = "pxd-btn pxd-table__more-btn";
+      const next = Math.min(TABLE_PAGE, body.length - rowLimit);
+      more.textContent = `Show ${next} more of ${body.length - rowLimit}`;
+      listen(more, "click", () => {
+        rowLimit += TABLE_PAGE;
+        paint2();
+      }, paintOffs);
+      td.append(more);
+      tr.append(td);
+      tbody.append(tr);
+    }
   };
   listen(filter, "input", () => {
     filterText = filter.value;
+    rowLimit = TABLE_PAGE;
     paint2();
   });
   const addColumn = () => {
@@ -87028,8 +87805,8 @@ function buildBoardView(onFail, {
       if (wanted.has(item.uid) || target && wanted.has(target)) pulseItem(item.uid);
     }
   };
-  const edgeList = () => root.querySelectorAll?.(".pxd-edge") || [];
-  const dustShells = () => [...root.querySelectorAll?.(".pxd-item[data-uid]") || []];
+  const edgeList = () => edgesR?.groups?.() || root.querySelectorAll?.(".pxd-edge") || [];
+  const dustShells = () => itemsR?.shellEls ? itemsR.shellEls().filter((el3) => el3.classList?.contains("pxd-item")) : [...root.querySelectorAll?.(".pxd-item[data-uid]") || []];
   const paintLenses = () => {
     if (disposed) return;
     if (strengthOn && strengthScores) {
@@ -87606,16 +88383,36 @@ function buildBoardView(onFail, {
       refreshBadges();
     }, ms);
   };
+  let suspendedBoard = null;
+  let edgesZoomAt = NaN;
+  let wheelLayer = false;
+  let minimapAt = -Infinity;
+  const MINIMAP_WHEEL_MS = 150;
+  const perfNow2 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
+  const edgeZoomKey = (z) => !(z > 0) ? "" : `${z >= 0.6 ? "hi" : Math.round(Math.log(z) / Math.log(1.25))}:${z < 0.3}`;
   const settle2 = () => {
     settleTimer?.();
     settleTimer = timers.later(() => {
       settleTimer = null;
       if (gesturing) return;
+      if (wheelLayer) {
+        wheelLayer = false;
+        world.style.willChange = "";
+      }
       applyLod();
       scheduleContent();
       vpStore.set(vpId, vp);
-      dirty.edges = new Set(board2()?.edges.keys() || []);
-      dirty.links = true;
+      if (vp.zoom !== edgesZoomAt) {
+        const full = edgeZoomKey(vp.zoom) !== edgeZoomKey(edgesZoomAt);
+        edgesZoomAt = vp.zoom;
+        if (full) {
+          dirty.edges = new Set(board2()?.edges.keys() || []);
+          dirty.links = true;
+        } else {
+          for (const e2 of board2()?.edges.values() || []) if (e2.fromBlock || e2.toBlock) dirty.edges.add(e2.uid);
+        }
+      }
+      if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, CULL_MARGIN));
       dirty.minimap = true;
       schedule();
       updateBackToContent();
@@ -91460,8 +92257,8 @@ ${url}`;
     if (!native) return;
     native.click?.();
     if (node2.querySelector?.("textarea")) return;
-    const propsKey = Object.keys(native).find((k) => k.startsWith("__reactProps"));
-    const onClick = propsKey && native[propsKey]?.onClick;
+    const propsKey2 = Object.keys(native).find((k) => k.startsWith("__reactProps"));
+    const onClick = propsKey2 && native[propsKey2]?.onClick;
     if (typeof onClick === "function") {
       onClick({ preventDefault() {
       }, stopPropagation() {
@@ -91605,6 +92402,7 @@ ${url}`;
           applyLod();
           propsPanel.place();
           scheduleContent();
+          if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, CULL_MARGIN));
           vpStore.set(vpId, vp);
           dirty.selection = true;
           schedule();
@@ -92463,6 +93261,11 @@ ${url}`;
     const kind = nativeClickKind(event.target);
     if (kind === "image" || kind === "checkbox") return;
     if (inRoamTable(event.target)) return;
+    const open = event.target?.closest?.(".pxd-item__open");
+    if (open) {
+      const uid = open.getAttribute?.("data-open-board") || open.closest?.(".pxd-item[data-uid]")?.getAttribute?.("data-uid");
+      if (uid) void openBoard(uid);
+    }
     if (!leavesBoardPointer(event.target)) event.stopPropagation();
   });
   listen(root, "dblclick", (event) => {
@@ -92488,6 +93291,10 @@ ${url}`;
     if (handled) {
       event.preventDefault();
       event.stopPropagation();
+      if (!wheelLayer && !gesturing) {
+        wheelLayer = true;
+        world.style.willChange = "transform";
+      }
       settle2();
     }
   }, { passive: false });
@@ -93380,10 +94187,16 @@ ${url}`;
         firstPainted = true;
         snapShells?.clear();
         if (typeof onFirstPaint === "function") {
-          try {
-            onFirstPaint();
-          } catch {
-          }
+          const done2 = () => {
+            if (!disposed) {
+              try {
+                onFirstPaint();
+              } catch {
+              }
+            }
+          };
+          if (typeof itemsR.whenViewBuilt === "function") itemsR.whenViewBuilt(done2);
+          else done2();
         }
       }
     }
@@ -93393,7 +94206,7 @@ ${url}`;
       const shown = paintRects();
       if (edgesDue) {
         const links = paintedLinks();
-        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || /* @__PURE__ */ new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges });
+        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || /* @__PURE__ */ new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges, view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null });
         paintLegend();
         if (suggestMode !== "off") refreshSuggest();
       }
@@ -93406,6 +94219,11 @@ ${url}`;
     }
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
+      if (size.width) {
+        const near2 = visibleWorldRect(vp, size, CULL_MARGIN);
+        itemsR.reveal?.(near2);
+        edgesR.reveal?.(near2);
+      }
       const focused = doc.activeElement;
       if (focused?.tagName === "TEXTAREA" && root.contains(focused)) {
         try {
@@ -93455,7 +94273,9 @@ ${url}`;
       chrome.ctx.reposition();
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLiftIdle();
-    if (itemsChanged || dirty.minimap || dirty.viewport && !gesturing) {
+    const wheelMinimap = wheelLayer && !itemsChanged && !dirty.minimap;
+    if ((itemsChanged || dirty.minimap || dirty.viewport && !gesturing) && !(wheelMinimap && perfNow2() - minimapAt < MINIMAP_WHEEL_MS)) {
+      minimapAt = perfNow2();
       const shown = paintRects();
       chrome.minimap.update({ board: b, rects: shown, vp, size });
       paintLandmarkDots(b, shown);
@@ -93946,7 +94766,11 @@ ${url}`;
     // A kept board comes back into a new mount element (Roam re-rendered the page).
     // Point the view at it and re-apply fullscreen chrome or the inline height there.
     rebind(nextMount) {
-      if (disposed || !nextMount || nextMount === mountEl) return;
+      if (disposed || !nextMount) return;
+      if (nextMount === mountEl) {
+        if (root.parentElement !== mountEl) mountEl.append(root);
+        return;
+      }
       try {
         fsDispose();
       } catch {
@@ -93962,6 +94786,7 @@ ${url}`;
     suspend() {
       if (disposed || suspended) return;
       suspended = true;
+      suspendedBoard = board2();
       if (frameHandle) {
         const cancel = frameHandle;
         frameHandle = null;
@@ -94006,8 +94831,15 @@ ${url}`;
       suspended = false;
       resumeObservers();
       armCoverWarm();
-      dirty.all = true;
-      dirty.structural = true;
+      if (board2() !== suspendedBoard) {
+        dirty.all = true;
+        dirty.structural = true;
+      } else {
+        dirty.viewport = true;
+        dirty.selection = true;
+        dirty.minimap = true;
+      }
+      suspendedBoard = null;
       schedule();
     },
     cameraRect() {
@@ -94067,6 +94899,7 @@ ${url}`;
     // Swap the settings object (feature.js calls this when a setting changes) and re-apply what depends on it.
     setSettings(next) {
       if (disposed) return;
+      if (next === settingsRef) return;
       const minimapBefore = setting("show-minimap", true) !== false;
       const opensBefore = trackOpensOn();
       const interopBefore = readSetting2("interop") !== false;
@@ -95128,7 +95961,8 @@ function captureBoardSnap({
   now: now4 = Date.now
 } = {}) {
   if (!board2?.items || !rects || !isSnapViewport(vp) || typeof shellOf !== "function") return null;
-  if (board2.items.size > SNAP_MAX_ITEMS) return null;
+  if (board2.items.size > SNAP_MAX_BOXES) return null;
+  const faced = board2.items.size > SNAP_MAX_ITEMS ? nearestFaces(board2, rects, vp, width, height) : null;
   const prevItems = new Map((prev?.items || []).map((item) => [item.uid, item]));
   const items = [];
   const order = Array.isArray(board2.order) ? board2.order : [...board2.items.keys()];
@@ -95141,6 +95975,15 @@ function captureBoardSnap({
     const sig = itemSig(item);
     const cls = cleanClasses(typeof el2.getAttribute === "function" ? el2.getAttribute("class") : el2.className);
     const bare = cls.includes("pxd-item--bare") || cls.includes("pxd-item--collapsed");
+    if (faced && !section2 && !faced.has(id)) {
+      const box3 = shellBox(el2) || rect;
+      const out2 = { uid: id, section: section2, x: box3.x, y: box3.y, w: box3.w, h: box3.h, cls: cls.join(" "), sig };
+      if (item.parentUid && item.parentUid !== board2.uid) out2.parent = item.parentUid;
+      const stats2 = badges?.get?.(id);
+      if (stats2) out2.badges = stats2;
+      items.push(out2);
+      continue;
+    }
     let face = captureFace(el2, { thumbs, skip: skipChrome });
     const old = prevItems.get(id);
     if (!section2 && bare && old?.face && old.sig === sig && !cls.includes("pxd-item--collapsed")) {
@@ -95194,6 +96037,22 @@ function captureBoardSnap({
     chrome,
     items
   };
+}
+function nearestFaces(board2, rects, vp, width, height) {
+  const w = (width || 1600) / vp.zoom;
+  const h = (height || 1e3) / vp.zoom;
+  const x = -vp.x / vp.zoom - w * 0.25;
+  const y = -vp.y / vp.zoom - h * 0.25;
+  const cx = x + w * 0.75;
+  const cy = y + h * 0.75;
+  const near2 = [];
+  for (const [id, r] of rects) {
+    if (!r || r.x > x + w * 1.5 || r.x + r.w < x || r.y > y + h * 1.5 || r.y + r.h < y) continue;
+    if (board2.items.get(id)?.type === "section") continue;
+    near2.push([id, (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2]);
+  }
+  near2.sort((a, b) => a[1] - b[1]);
+  return new Set(near2.slice(0, SNAP_MAX_ITEMS).map(([id]) => id));
 }
 function shellBox(el2) {
   const style = el2?.style;
@@ -95309,7 +96168,9 @@ function paintBoardSnap(doc, mountEl, snap, vp, { thumbs = null, faceOk = null, 
       h: boxH * 1.5
     };
     const onScreen = (item) => item.x < seen.x + seen.w && item.x + item.w > seen.x && item.y < seen.y + seen.h && item.y + item.h > seen.y;
+    const big = (snap.items?.length || 0) > SNAP_MAX_ITEMS;
     for (const item of snap.items || []) {
+      if (big && !item.section && !onScreen(item)) continue;
       const node2 = el(doc, "div", `${cleanClasses(item.cls).join(" ")} ${SNAP_CLASS}`, item.section ? sections : itemsLayer);
       node2.setAttribute("data-uid", item.uid);
       if (node2.dataset) node2.dataset.uid = item.uid;
@@ -95615,9 +96476,12 @@ function createBoardChips({ doc = globalThis.document, cache } = {}) {
   };
   const scanUids = (uids) => {
     if (!doc?.querySelectorAll) return;
-    for (const uid of uids || []) {
-      if (!/^[\w-]+$/.test(String(uid))) continue;
-      for (const el2 of doc.querySelectorAll(`.roam-block-container[data-block-uid="${uid}"]`)) attach3(el2);
+    const want = /* @__PURE__ */ new Set();
+    for (const uid of uids || []) if (/^[\w-]+$/.test(String(uid))) want.add(String(uid));
+    if (want.size) {
+      for (const el2 of doc.querySelectorAll(".roam-block-container[data-block-uid]")) {
+        if (want.has(el2.getAttribute("data-block-uid"))) attach3(el2);
+      }
     }
     reconcile();
   };
@@ -96212,7 +97076,7 @@ ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).jo
       return;
     }
     const article = articleOf(node2) || node2.querySelector?.(".roam-article");
-    if (article && !article.querySelector?.(".pxd-cardchip-row")) scheduleArticle(article);
+    if (article && !placeQueue?.has(article) && !article.querySelector?.(".pxd-cardchip-row")) scheduleArticle(article);
   };
   const scan = (node2) => {
     if (enabled() === false) {
@@ -97408,6 +98272,7 @@ async function installPlexusDiagram({
   let closeCommandSheet = () => {
   };
   const mounts = /* @__PURE__ */ new Map();
+  const viewOwners = /* @__PURE__ */ new WeakMap();
   const trusted = /* @__PURE__ */ new Set();
   const portalObservers = /* @__PURE__ */ new Map();
   const negativeUntil = /* @__PURE__ */ new Map();
@@ -98592,29 +99457,30 @@ async function installPlexusDiagram({
     timer.unref?.();
     handoff.holdTimer = timer;
   }
-  function callMountView(rec, autofocus, viewport2, extra = {}) {
-    return mountView({
-      onFirstPaint: () => notePaint(rec, false),
-      onSettled: () => scheduleSnap(rec),
-      tableThumb: (item) => tableThumbFor(rec, item),
-      onTableShown: (item) => tableShown(rec, item),
+  function callMountView(rec0, autofocus, viewport2, extra = {}) {
+    const owner = { rec: rec0 };
+    const view = mountView({
+      onFirstPaint: () => notePaint(owner.rec, false),
+      onSettled: () => scheduleSnap(owner.rec),
+      tableThumb: (item) => tableThumbFor(owner.rec, item),
+      onTableShown: (item) => tableShown(owner.rec, item),
       ...extra,
       host,
-      session: rec.session,
-      mountEl: rec.mountEl,
-      nativeEl: rec.native,
+      session: rec0.session,
+      mountEl: rec0.mountEl,
+      nativeEl: rec0.native,
       settings,
-      fullscreen: rec.fullscreen,
+      fullscreen: rec0.fullscreen,
       version: badge,
-      onRequestFullscreen: (want) => setFullscreen(rec, want === void 0 ? !rec.fullscreen : want),
-      crumbs: rec.crumbs.slice(),
-      routeUid: rec.uid,
+      onRequestFullscreen: (want) => setFullscreen(owner.rec, want === void 0 ? !owner.rec.fullscreen : want),
+      crumbs: rec0.crumbs.slice(),
+      routeUid: rec0.uid,
       autofocus,
       initialViewport: viewport2,
-      onOpenBoard: (child) => visit(rec, [...rec.crumbs, { uid: child, title: boardTitle2(host.blockString?.(child)) }]),
+      onOpenBoard: (child) => visit(owner.rec, [...owner.rec.crumbs, { uid: child, title: boardTitle2(host.blockString?.(child)) }]),
       onSelectTab: (uid) => {
         if (!uid) return;
-        visit(rec, [{ uid, title: boardTitle2(host.blockString?.(uid)) }]);
+        visit(owner.rec, [{ uid, title: boardTitle2(host.blockString?.(uid)) }]);
       },
       tabStore: host.tabs,
       boardsOf: (uid) => {
@@ -98624,13 +99490,15 @@ async function installPlexusDiagram({
           return [];
         }
       },
-      onCrumb: (index) => visit(rec, rec.crumbs.slice(0, index + 1)),
-      onHistoryBack: () => historyMove(rec, "back"),
-      onHistoryForward: () => historyMove(rec, "forward"),
+      onCrumb: (index) => visit(owner.rec, owner.rec.crumbs.slice(0, index + 1)),
+      onHistoryBack: () => historyMove(owner.rec, "back"),
+      onHistoryForward: () => historyMove(owner.rec, "forward"),
       onSetDefaults: (patch) => setDefaults(patch),
       perfLog,
       lifecycle
     });
+    if (view && typeof view === "object") viewOwners.set(view, owner);
+    return view;
   }
   function finishLive(rec, view, logging, t0) {
     rec.view = view;
@@ -99082,6 +99950,8 @@ async function installPlexusDiagram({
     for (const entry of [...alive]) dropAlive(entry);
   }
   function adoptAlive(rec, pooled) {
+    const owner = pooled.view ? viewOwners.get(pooled.view) : null;
+    if (owner) owner.rec = rec;
     rec.session = pooled.session;
     if (pooled.crumbs?.length) rec.crumbs = crumbCopy(pooled.crumbs);
     rec.view = pooled.view;

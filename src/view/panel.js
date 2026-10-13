@@ -797,7 +797,23 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     wantNames(cards, { front: true });
   };
 
-  const runSearch = async ({ quiet = false } = {}) => {
+  // Browse and type-only lists show LIMIT rows and page by LIMIT on Show more. Any new search starts at LIMIT again.
+  let browseLimit = LIMIT;
+  let pendingScroll = null;
+  const showMoreRow = (pack) => {
+    if (pendingScroll != null) { results.scrollTop = pendingScroll; pendingScroll = null; }
+    if (pack?.more !== true) return;
+    const b = el("button", "pxd-btn pxd-panel__show-more", results, "Show more");
+    b.type = "button";
+    listenRow(b, "click", (event) => {
+      event.stopPropagation();
+      browseLimit += LIMIT;
+      void runSearch({ quiet: true, more: true });
+    });
+  };
+  const runSearch = async ({ quiet = false, more = false } = {}) => {
+    if (!more) browseLimit = LIMIT;
+    pendingScroll = more ? results.scrollTop : null;
     const filter = readFilter();
     paintMore();
     const id = queryId += 1;
@@ -835,7 +851,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       if (wantImages && !hostFilter.types.length) {
         pack = { rows: [], queries: [] };
       } else if (typeof host?.librarySearch === "function") {
-        pack = await Promise.resolve(host.librarySearch(hostFilter, LIMIT, { pdfMatch: on.pdfMatch, pdfList: on.pdfList, sort }));
+        pack = await Promise.resolve(host.librarySearch(hostFilter, browseLimit, { pdfMatch: on.pdfMatch, pdfList: on.pdfList, sort }));
       } else {
         const q = String(filter.text || "").trim();
         if (!q) return;
@@ -860,7 +876,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     const log = JSON.stringify(queries.map((q) => ({ name: q.name, ms: Math.round((Number(q.ms) || 0) * 10) / 10 })));
     results.dataset.queryLog = log;
     results.setAttribute("data-query-log", log);
-    let rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
+    let rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, browseLimit);
     // What only the board knows: on this board, a kept parse, highlights (PDFs only).
     if (filter.thisBoard) rows = rows.filter((r) => on.isOnBoard?.(r.string));
     const parsedUrls = filter.parsed ? await parsedSet() : null;
@@ -903,6 +919,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     images.forEach((img) => row(results, { ...libraryCard({ kind: "block", uid: img.uid, string: img.string, pageTitle: img.pageTitle }), palette: img.palette, likeKey: img.key, likeName: imageName(img) }));
     parts.forEach((part) => partRow(results, part, needle));
     figures.forEach((part) => partRow(results, part, needle));
+    showMoreRow(pack);
     results.dataset.paintMs = String(Date.now() - started);
     results.setAttribute("data-paint-ms", String(Date.now() - started));
     // The whole PDF list is read only when PDFs are what the user filters for.
@@ -920,7 +937,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     if (id !== queryId) return;
     let pack = null;
     try {
-      pack = await Promise.resolve(host.filterBrowse(filter, LIMIT, {
+      pack = await Promise.resolve(host.filterBrowse(filter, browseLimit, {
         sort,
         parsedUrls,
         pdfList: typeof on.pdfList === "function" ? on.pdfList : null,
@@ -937,6 +954,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     if (pack?.defaulted && rows.length) el("div", "pxd-panel__empty pxd-panel__hint pxd-panel__window", results, DEFAULT_WINDOW_NOTE);
     if (!rows.length) el("div", "pxd-panel__empty", results, browseEmptyText(pack?.spec));
     rows.forEach((r) => row(results, r));
+    showMoreRow(pack);
     results.dataset.browse = "filter";
     results.setAttribute("data-browse", "filter");
     results.dataset.paintMs = String(Date.now() - started);

@@ -2599,7 +2599,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!librarySelective(f)) return { rows: [], queries };
       const nowMs = Date.now();
       const since = f.days ? nowMs - f.days * 86400000 : null;
-      const cap = libraryCap();
+      // Room for one more page than is shown, so the panel can tell whether Show more has anything behind it.
+      const cap = Math.max(libraryCap(), lim * 2);
       const candidates = [];
       const seen = new Set();
       const push = (row) => {
@@ -2907,7 +2908,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         kept = narrowByMeta(kept, filter, { days: f.days, now: nowMs });
       }
       const rows = sortRows(kept, sort).slice(0, lim).map(libraryCard);
-      return { rows, queries };
+      return { rows, queries, total: kept.length, more: kept.length > lim || candidates.length >= cap };
     },
 
     // Rows with no search text: the pages a sort puts first (recently edited / created, oldest, title), with their numbers.
@@ -2952,7 +2953,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const hit = key ? filterBrowseCache.get(key) : null;
       if (hit && now - hit.at < FILTER_BROWSE_TTL_MS) {
         queries.push({ name: "browse-cache", ms: 0 });
-        return { rows: hit.rows, queries, spec, defaulted: spec.defaulted };
+        return { rows: hit.rows, total: hit.total ?? hit.rows.length, more: hit.more === true, queries, spec, defaulted: spec.defaulted };
       }
       const pass = (rows) => {
         let out = narrowLibrary(rows, { types: spec.types });
@@ -2990,7 +2991,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         const edited = plan?.time === "edited";
         const wantBoard = spec.types.length === 0 || spec.types.includes("board");
         const pullMany = (eids) => (typeof data.pull_many === "function" ? data.pull_many(BROWSE_PULL, eids) : eids.map((e) => rawPull(BROWSE_PULL, e)));
-        for (let i = 0; i < order.length && i < BROWSE_SCAN && kept.length < BROWSE_ROWS; i += BROWSE_CHUNK) {
+        const keepMax = Math.max(BROWSE_ROWS, lim);
+        for (let i = 0; i < order.length && i < BROWSE_SCAN && kept.length < keepMax; i += BROWSE_CHUNK) {
           const chunk = order.slice(i, Math.min(i + BROWSE_CHUNK, BROWSE_SCAN));
           const nodes = timed("browse-pull", () => pullMany(chunk.map((o) => o.eid)) || []);
           const rows = [];
@@ -3016,7 +3018,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
             }
             rows.push({ ...base, kind: "block", string, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
           });
-          for (const row of pass(rows)) { if (kept.length < BROWSE_ROWS) kept.push(row); }
+          for (const row of pass(rows)) { if (kept.length < keepMax) kept.push(row); }
         }
       }
       // The query gave the order: numbers only for the rows shown. Otherwise every kept row's numbers, then the sort.
@@ -3031,10 +3033,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const rows = top.map((r) => libraryCard(r));
       if (key) {
         filterBrowseCache.delete(key);
-        filterBrowseCache.set(key, { at: now, rows });
+        filterBrowseCache.set(key, { at: now, rows, total: kept.length, more: kept.length > lim || (!pdfOnly && kept.length >= Math.max(BROWSE_ROWS, lim)) });
         while (filterBrowseCache.size > FILTER_BROWSE_MAX) filterBrowseCache.delete(filterBrowseCache.keys().next().value);
       }
-      return { rows, queries, spec, defaulted: spec.defaulted };
+      return { rows, total: kept.length, more: kept.length > lim || (!pdfOnly && kept.length >= Math.max(BROWSE_ROWS, lim)), queries, spec, defaulted: spec.defaulted };
     },
 
     // Parsed PDFs / PDFs with highlights over rows another search found (keyword rows, Meaning rows). Non-PDF rows go.

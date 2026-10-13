@@ -369,3 +369,75 @@ test("Meaning: with the PDF filters on, a hit on a Roam PDF page itself is that 
   const mapped = semanticCandidates([{ uid: "pp" }], { pull, pdfBlockOf, pdfPages: true });
   assert.deepEqual([mapped[0].kind, mapped[0].uid, mapped[0].string], ["block", "p1", PDF]);
 });
+
+// ---- paging (P5-B item 4)
+
+test("host librarySearch: PDFs only lists 122 PDFs 40 at a time and says when there is more", () => {
+  const fake = createFakeRoam();
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  const rows = Array.from({ length: 122 }, (_, i) => [`{{[[pdf]]: https://x/${i}.pdf}}`, `p${String(i).padStart(3, "0")}`, `Page ${i}`]);
+  fake.onQuery(/re-pattern/, () => rows);
+  const ask = (limit) => host.librarySearch({ text: "", types: ["pdf"] }, limit, { sort: "title" });
+  const a = ask(40);
+  assert.equal(a.rows.length, 40);
+  assert.equal(a.more, true);
+  const b = ask(80);
+  assert.equal(b.rows.length, 80);
+  assert.equal(b.more, true);
+  const c = ask(120);
+  assert.equal(c.rows.length, 120);
+  assert.equal(c.more, true);
+  const d = ask(160);
+  assert.equal(d.rows.length, 122);
+  assert.equal(d.more, false, "nothing behind the last page");
+});
+
+test("panel: an empty-box filter shows 40 rows and Show more pages through the rest", async (t) => {
+  const ALL = Array.from({ length: 122 }, (_, i) => libraryCard({ kind: "page", title: `Doc ${String(i).padStart(3, "0")}`, uid: `d${i}` }));
+  const asked = [];
+  const f = mount({}, {
+    filterBrowse(filter, limit) { asked.push(limit); return { rows: ALL.slice(0, limit), total: ALL.length, more: ALL.length > limit, queries: [], spec: browseSpec(filter), defaulted: false }; },
+  });
+  t.after(f.restore);
+  q(f.root, ".pxd-panel__days").value = "7";
+  f.stub.dispatch(q(f.root, ".pxd-panel__input"), "keydown", { key: "Enter" });
+  await tick();
+  assert.equal(rowStrings(f.root).length, 40);
+  const more = () => q(f.root, ".pxd-panel__show-more");
+  assert.ok(more(), "a Show more button");
+  more().click();
+  await tick();
+  assert.equal(rowStrings(f.root).length, 80);
+  more().click();
+  await tick();
+  assert.equal(rowStrings(f.root).length, 120);
+  more().click();
+  await tick();
+  assert.equal(rowStrings(f.root).length, 122);
+  assert.equal(more(), null, "nothing left to page");
+  assert.deepEqual(asked, [40, 80, 120, 160]);
+  // A new search starts again at 40.
+  f.stub.dispatch(q(f.root, ".pxd-panel__input"), "keydown", { key: "Enter" });
+  await tick();
+  assert.equal(asked.at(-1), 40);
+});
+
+test("panel: PDFs only with an empty box pages through librarySearch with Show more", async (t) => {
+  const ALL = Array.from({ length: 122 }, (_, i) => libraryCard({ kind: "block", uid: `p${i}`, string: `{{[[pdf]]: https://x/${i}.pdf}}`, pageTitle: `P${i}` }));
+  const asked = [];
+  const f = mount({ loadTypes: () => ["pdf"] }, {
+    librarySearch(filter, limit) { asked.push(limit); return { rows: ALL.slice(0, limit), queries: [], total: ALL.length, more: ALL.length > limit }; },
+  });
+  t.after(f.restore);
+  f.stub.dispatch(q(f.root, ".pxd-panel__input"), "keydown", { key: "Enter" });
+  await tick();
+  assert.equal(rowStrings(f.root).length, 40);
+  const more = () => q(f.root, ".pxd-panel__show-more");
+  for (const n of [80, 120, 122]) {
+    more().click();
+    await tick();
+    assert.equal(rowStrings(f.root).length, n);
+  }
+  assert.equal(more(), null);
+  assert.deepEqual(asked, [40, 80, 120, 160]);
+});

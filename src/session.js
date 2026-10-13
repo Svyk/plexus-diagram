@@ -94,6 +94,8 @@ const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "
 const MAX_PARENT_STRINGS = 200;
 // A held big board whose resume Roam refused (rate limit while rebuilding an expired hold) tries again after this.
 export const RESUME_RETRY_MS = 1000;
+// A parked big board's highlight watches go when the host's hold on its own watches does (SPLIT_HOLD_MS).
+export const HIGHLIGHT_HOLD_MS = 60000;
 // Link-query targets per idle slice on a big board.
 const LINK_CHUNK = 120;
 const DAILY_GAP = 20;
@@ -797,6 +799,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   let boardWatchOn = false;
   let resumeRetry = null;
   let highlightParked = false;
+  let highlightHoldTimer = null;
   // Paused through a host handle that keeps its watches registered (big boards): no remove/add per park.
   let boardWatchHeld = false;
   if (raw && typeof host.watchBoard === "function") {
@@ -851,7 +854,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       boardWatchHeld = false;
       // A tree that arrived in the frame before the park was kept by the skipped flush; the host will not re-send it.
       if (latest && !scheduled) { scheduled = true; schedule(flush); }
-      // Highlight watches went at the park: rebuild them, and read their colours once.
+      if (highlightHoldTimer != null) { clearTimeout(highlightHoldTimer); highlightHoldTimer = null; }
+      // Highlight watches went when the hold ended: rebuild them, and read their colours once.
       const hadHighlights = highlightParked;
       highlightParked = false;
       try { syncHighlightWatches(); } catch { /* highlights follow the board watch */ }
@@ -867,9 +871,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       if (typeof boardWatch.pause === "function") {
         boardWatch.pause();
         boardWatchHeld = true;
-        // Each highlight watch is re-pulled on every Roam transaction: they do not stay for the whole park.
-        highlightParked = highlightWatches.size > 0;
-        disposeHighlightWatches();
+        // Each highlight watch is re-pulled on every Roam transaction: they stay as long as the host holds the
+        // board's own watches (a quick return costs no watch calls), not for the whole park.
+        if (highlightHoldTimer == null) {
+          highlightHoldTimer = setTimeout(() => {
+            highlightHoldTimer = null;
+            if (destroyed || !boardWatchHeld) return;
+            highlightParked = highlightParked || highlightWatches.size > 0;
+            disposeHighlightWatches();
+          }, HIGHLIGHT_HOLD_MS);
+          try { highlightHoldTimer.unref?.(); } catch { /* a browser timer has no unref */ }
+        }
       } else dropBoardWatch();
     }
   }
@@ -3498,6 +3510,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       }
       boardWatch = () => {};
       if (resumeRetry != null) { clearTimeout(resumeRetry); resumeRetry = null; }
+      if (highlightHoldTimer != null) { clearTimeout(highlightHoldTimer); highlightHoldTimer = null; }
       disposeHighlightWatches();
       cancelScheduledLinks();
       linkResolve?.();

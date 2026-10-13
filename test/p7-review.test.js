@@ -270,7 +270,7 @@ test("P7-6: a refused rebuild on resume leaves no orphan watch, stays held, and 
   assert.ok(fake.watchList().length > 0, "watches back after the retry");
 });
 
-test("P7-6: a parked big board drops its highlight watches and rebuilds them on resume", async () => {
+test("P7-6: a parked big board drops its highlight watches when the hold ends and rebuilds them on resume", async () => {
   const fake = createFakeRoam({ echoDelay: 1 });
   fake.roamWatch = true;
   const board = seedBoard("main", "m");
@@ -294,7 +294,16 @@ test("P7-6: a parked big board drops its highlight watches and rebuilds them on 
   assert.equal(s.board.items.get("hlc")?.kind, "highlight");
   assert.equal(blockWatches, 1);
   s.pauseWatches();
-  assert.equal(blockWatches, 0, "highlight watches go at the park");
+  assert.equal(blockWatches, 1, "a quick park keeps them (no watch calls on return)");
+  s.resumeWatches();
+  await fake.flush();
+  assert.equal(blockWatches, 1);
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    s.pauseWatches();
+    mock.timers.tick(SPLIT_HOLD_MS);
+    assert.equal(blockWatches, 0, "highlight watches go when the hold ends");
+  } finally { mock.timers.reset(); }
   s.resumeWatches();
   await fake.flush();
   assert.equal(blockWatches, 1, "and come back on resume");

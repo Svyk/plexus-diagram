@@ -42792,6 +42792,7 @@ var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "
 var EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 var MAX_PARENT_STRINGS = 200;
 var RESUME_RETRY_MS = 1e3;
+var HIGHLIGHT_HOLD_MS = 6e4;
 var LINK_CHUNK = 120;
 var DAILY_GAP = 20;
 var HIGHLIGHT_WATCH_CAP = 60;
@@ -43454,6 +43455,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   let boardWatchOn = false;
   let resumeRetry = null;
   let highlightParked = false;
+  let highlightHoldTimer = null;
   let boardWatchHeld = false;
   if (raw && typeof host.watchBoard === "function") {
     boardWatch = host.watchBoard(uid, onBoard);
@@ -43521,6 +43523,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         scheduled = true;
         schedule(flush);
       }
+      if (highlightHoldTimer != null) {
+        clearTimeout(highlightHoldTimer);
+        highlightHoldTimer = null;
+      }
       const hadHighlights = highlightParked;
       highlightParked = false;
       try {
@@ -43545,8 +43551,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       if (typeof boardWatch.pause === "function") {
         boardWatch.pause();
         boardWatchHeld = true;
-        highlightParked = highlightWatches.size > 0;
-        disposeHighlightWatches();
+        if (highlightHoldTimer == null) {
+          highlightHoldTimer = setTimeout(() => {
+            highlightHoldTimer = null;
+            if (destroyed || !boardWatchHeld) return;
+            highlightParked = highlightParked || highlightWatches.size > 0;
+            disposeHighlightWatches();
+          }, HIGHLIGHT_HOLD_MS);
+          try {
+            highlightHoldTimer.unref?.();
+          } catch {
+          }
+        }
       } else dropBoardWatch();
     }
   }
@@ -46143,6 +46159,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       if (resumeRetry != null) {
         clearTimeout(resumeRetry);
         resumeRetry = null;
+      }
+      if (highlightHoldTimer != null) {
+        clearTimeout(highlightHoldTimer);
+        highlightHoldTimer = null;
       }
       disposeHighlightWatches();
       cancelScheduledLinks();

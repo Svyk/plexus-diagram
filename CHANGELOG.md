@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.28.0 — 2026-10-13
+
+Big boards. Plexus was stress-tested on a board with 1,560 cards, 2,114 connections, 24 nested boards and about 23,000 blocks, and every slow or unstable spot that turned up was fixed. Normal boards are as fast as 3.27.0 or faster.
+
+- **Smooth on big boards.** Panning the 1,560-card board at fit zoom takes one frame (about 20 ms, was about 240 ms), and zooming is 5–7× smoother. Only the cards near the view are kept on the page, and nothing is added in the middle of a gesture.
+- **Fast back and forth.** Going back to a big board from a nested board is live in about a third of a second; 3.27.0 could freeze for half a minute. Nested boards open from a snapshot.
+- **Edits on big boards** reach the board in about a quarter of a second instead of a second. Each section and the Connections block are watched on their own, and a board you leave keeps its watches for a minute, so moving between boards no longer runs into Roam's API limit.
+- **Memory stays flat.** A 20-minute session no longer grows memory. Leaving a page no longer keeps its board, card chips or PDF documents alive.
+- **Safer bulk writes.** Plexus asks before a change that writes 600 or more blocks and refuses one that writes 3,000 or more. Large writes wait while Roam is still saving (the sync dot says "Waiting for Roam"). Holding an arrow key writes one move, not one per repeat.
+- **Fold sections in the outline** (Commands): the board's outline then opens in about a second instead of rendering thousands of blocks. One undo unfolds.
+- **Search "Show more"** pages through every PDF and every filter result when the search box is empty.
+- **Fixes.** Boards with more than 1,000 connections show all of them (Roam's read stopped at 1,000). Export as PNG works on big boards. SVG export stays valid when card text holds control characters copied from PDFs. After an undo of Fold sections, Move PDFs to their own pages or Fold tables, the next undo no longer reaches into Roam's own undo history.
+- **Kill switches.** Every new big-board path can be turned off in the hidden speed flags: `splitWatch`, `virtualShells`, `virtualEdges`, `deferReveal`, `hitShield`, `parkInPlace`. The experimental `edgeFingerprint` watch ships off.
+
 ## 3.27.0 — 2026-10-12
 
 The rest of the bug hunt: every item on its Later list is fixed.

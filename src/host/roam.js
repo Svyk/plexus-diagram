@@ -790,6 +790,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // Mounted cards that want their contents live: itemUid -> { n, offs: split -> release }. Kept here, not on the
   // split, so a split recreated after a keep-alive pause arms them again without the view asking.
   const contentWants = new Map();
+  const edgeFingerprintOn = () => { try { return notedSpeedFlags().edgeFingerprint !== false; } catch { return true; } };
   const splitWatchOn = () => { try { return notedSpeedFlags().splitWatch !== false; } catch { return true; } };
   const armContent = (key, want) => {
     for (const split of splitWatches.values()) {
@@ -1097,6 +1098,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         seed: bigBoards.get(uid),
         data,
         pull: rawPull,
+        pullMany: typeof data.pull_many === "function" ? (pattern, entities) => data.pull_many(pattern, entities) : null,
+        fingerprint: edgeFingerprintOn(),
         deepPattern: BOARD_PATTERN,
         guard: (name, fn) => guardCallback(name, fn, { stats }),
         onTree: (tree) => {

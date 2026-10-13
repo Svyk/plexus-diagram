@@ -33,6 +33,7 @@ const ALL_ON = {
   splitWatch: true,
   virtualShells: true,
   virtualEdges: true,
+  edgeFingerprint: true,
 };
 
 test("the panel has no speed-flags control, and bad JSON leaves all ten on", () => {

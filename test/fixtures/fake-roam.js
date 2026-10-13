@@ -639,6 +639,7 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   fake.setUpload = (fn) => { uploadStub = fn; };
   fake.setFileGet = (fn) => { fileGetStub = fn; };
   fake.watchCount = () => watches.length;
+  fake.watchList = () => watches.map((w) => ({ uid: w.uid, pattern: String(w.pattern) }));
   fake.pull = (uid) => pull("[*]", [":block/uid", uid]);
   fake.block = (uid) => {
     const b = blocks.get(uid);

@@ -283,3 +283,17 @@ test("TP-7: a sticky note exports a colored sheet and a shadow", () => {
   assert.match(shapedSvg, /<path /);
   assert.doesNotMatch(shapedSvg, /pxd-sticky-shadow/);
 });
+
+// verify 3.28: a PDF highlight carried U+0015 into a card title; the SVG export was not well-formed XML, so viewers
+// refused it and "Export as PNG" failed on PhD MAIN ("PNG failed").
+test("the SVG export drops characters XML 1.0 does not allow", () => {
+  const b = buildBoard({
+    ":block/uid": "boardCTRL",
+    ":block/string": "{{[[diagram]]:Ctrl}}",
+    ":block/props": { ":plexus": { ":v": 2 } },
+    ":block/children": [blk("cardCTRL1", 0, "55°C\u0015 pH\u0001 🦠 ok", { x: 0, y: 0, w: 200, h: 100 })],
+  });
+  const svg = boardToSvg(b, worldRects(b));
+  assert.equal(/[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]/.test(svg), false);
+  assert.ok(svg.includes("55°C pH 🦠 ok"), "other text, astral characters included, stays");
+});

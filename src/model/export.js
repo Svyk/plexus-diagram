@@ -25,7 +25,10 @@ const THEME = {
   dark: { bg: "#1e2a35", card: "#26333f", border: "#3b4b58", text: "#e6edf3", muted: "#a7b6c2", edge: "#a7b6c2" },
 };
 
+// XML 1.0 refuses C0 controls other than tab, newline and return (and U+FFFE/U+FFFF); one in a card's text (PDF
+// highlights carry them) makes the whole SVG unreadable, and the PNG export with it.
 const esc = (s) => String(s ?? "")
+  .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/g, "")
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 const n1 = (n) => Math.round(n * 10) / 10;

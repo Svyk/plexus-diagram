@@ -34330,6 +34330,8 @@ function createItemRenderer({
     },
     // The gesture underlay draws a box for every item whose shell is not in the DOM.
     isVirtual: () => virtual(),
+    // Past VIRTUAL_MIN items whatever the virtualShells kill switch says (the hit shield matters most with it off).
+    isBig: () => (lastBoard?.items?.size || 0) > VIRTUAL_MIN,
     attachedUid: (uid) => isAttached(shells.get(uid)),
     attachedCount: () => {
       let n3 = 0;
@@ -38295,7 +38297,9 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
     }
   };
   const seedFrom = (full) => {
-    if (!full?.[UID]) return;
+    if (!full?.[UID]) return false;
+    const depthOf = (kind) => kind === "edges" ? 3 : kind === "deep" ? Infinity : 2;
+    let changed2 = !sameKids([nodes.get(uid)], [full], 2);
     nodes.set(uid, full);
     const nextContent = /* @__PURE__ */ new Map();
     const walk3 = (node2, atRoot) => {
@@ -38304,15 +38308,20 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
         if (!id) continue;
         const kind = containerKind(kid, atRoot);
         if (kind) {
+          if (!changed2 && !sameKids([nodes.get(id)], [kid], depthOf(kind))) changed2 = true;
           kinds.set(id, kind);
           nodes.set(id, kid);
           if (kind === "struct") walk3(kid, false);
-        } else nextContent.set(id, kidsOf2(kid));
+        } else {
+          if (!changed2 && !sameKids(content.get(id), kidsOf2(kid))) changed2 = true;
+          nextContent.set(id, kidsOf2(kid));
+        }
       }
     };
     walk3(full, true);
     for (const [id, kids] of content) if (!nextContent.has(id) && itemWatch.has(id)) nextContent.set(id, kids);
     content = nextContent;
+    return changed2;
   };
   const kick = () => {
     if (held) {
@@ -38563,7 +38572,13 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
     };
   };
   seedFrom(seed);
-  sync();
+  try {
+    sync();
+  } catch (error) {
+    disposed = true;
+    dropAll();
+    throw error;
+  }
   return {
     watchItem,
     // Read every container again now (an undo, a refresh) and return the assembled tree; contents stay as stored.
@@ -38580,12 +38595,21 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
       return assemble();
     },
     // A fresh full pull of the board (catch-up, refresh) replaces what the watches hold.
+    // Callers pass a fresh read only (a cached tree can be older than what the watches hold). A seed that differs
+    // from the stored tree publishes once (or marks a held split dirty): a card mounting later compares against the
+    // stored contents, so a silent reseed would hide the change from it.
     reseed(full) {
       if (disposed) return;
-      seedFrom(full);
+      const changed2 = seedFrom(full);
       for (const id of fingerprints.keys()) fingerprints.set(id, null);
       sync();
       armPending();
+      if (changed2) kick();
+    },
+    // The assembled tree without reading the containers again (a split just seeded from a fresh read).
+    current() {
+      if (disposed) return null;
+      return lastTree ?? assemble();
     },
     dispose() {
       if (disposed) return;
@@ -38732,15 +38756,20 @@ function uniqueStrings(list) {
   return out;
 }
 var STATS_CHUNK_ITEMS = 400;
+var STATS_ONE_CALL_MAX = 1e4;
 function manyItems(node2) {
   let n3 = 0;
-  for (const kid of childNodes(node2)) {
-    n3 += 1;
-    if (containerKind(kid, true) === "struct") n3 += childNodes(kid).length;
-    if (n3 > STATS_CHUNK_ITEMS) return true;
-  }
-  return false;
+  const walk3 = (cur, atRoot) => {
+    for (const kid of childNodes(cur)) {
+      n3 += 1;
+      if (n3 > STATS_CHUNK_ITEMS) return true;
+      if (containerKind(kid, atRoot) === "struct" && walk3(kid, false)) return true;
+    }
+    return false;
+  };
+  return walk3(node2, true);
 }
+var statsInParts = (node2, targets) => manyItems(node2) || targets.length > STATS_ONE_CALL_MAX;
 function collectTargets(node2) {
   const titles = [];
   const uids = [];
@@ -38989,9 +39018,11 @@ function isRateLimitError(error) {
 }
 function createWritePacer({ now: now4 = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), burst = WRITE_BURST, gapMs = WRITE_GAP_MS, cap: cap4 = WRITE_CAP, windowMs = 6e4 } = {}) {
   const stamps = [];
+  const writes = [];
   let chain = Promise.resolve();
   const trim = (t) => {
     while (stamps.length && t - stamps[0] >= windowMs) stamps.shift();
+    while (writes.length && t - writes[0] >= windowMs) writes.shift();
   };
   const take = async () => {
     let t = now4();
@@ -39000,14 +39031,15 @@ function createWritePacer({ now: now4 = Date.now, sleep = (ms) => new Promise((r
       await sleep(stamps[0] + windowMs - t);
       t = now4();
       trim(t);
-    } else if (stamps.length >= burst) {
-      const wait2 = stamps[stamps.length - 1] + gapMs - t;
+    } else if (writes.length >= burst) {
+      const wait2 = writes[writes.length - 1] + gapMs - t;
       if (wait2 > 0) {
         await sleep(wait2);
         t = now4();
       }
     }
     stamps.push(t);
+    writes.push(t);
   };
   return {
     // Resolves when this write may go. Calls queue in order.
@@ -39017,7 +39049,7 @@ function createWritePacer({ now: now4 = Date.now, sleep = (ms) => new Promise((r
       });
       return p;
     },
-    // A call that Roam counts but that does not wait (add/removePullWatch).
+    // A call that Roam counts but that does not wait (add/removePullWatch): it counts toward the cap only.
     note() {
       const t = now4();
       trim(t);
@@ -39303,12 +39335,32 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {}, errors: 0 };
   bindGuardStats(stats);
   const data = countReads(api3.data, stats);
+  const registered = /* @__PURE__ */ new Map();
   const watchData = new Proxy(data, {
     get(target, prop2) {
-      if (prop2 === "addPullWatch" || prop2 === "removePullWatch") {
-        return (...args) => {
+      if (prop2 === "addPullWatch") {
+        return (pattern, entity, cb, ...rest) => {
           pacer.note();
-          return target[prop2](...args);
+          const out = target.addPullWatch(pattern, entity, cb, ...rest);
+          let list = registered.get(cb);
+          if (!list) {
+            list = [];
+            registered.set(cb, list);
+          }
+          list.push([pattern, entity]);
+          return out;
+        };
+      }
+      if (prop2 === "removePullWatch") {
+        return (pattern, entity, cb, ...rest) => {
+          pacer.note();
+          const list = registered.get(cb);
+          if (list) {
+            const at = list.findIndex(([p, e2]) => p === pattern && e2 === entity);
+            if (at >= 0) list.splice(at, 1);
+            if (!list.length) registered.delete(cb);
+          }
+          return target.removePullWatch(pattern, entity, cb, ...rest);
         };
       }
       const value = target[prop2];
@@ -39399,6 +39451,16 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const off = split.watchItem(key, { pending: true });
       if (off) want.offs.set(split, off);
     }
+  };
+  const idleHandles = /* @__PURE__ */ new Map();
+  const idleLater = (idle, fn) => {
+    const key = {};
+    const run = (deadline) => {
+      idleHandles.delete(key);
+      fn(deadline);
+    };
+    if (typeof idle === "function") idleHandles.set(key, { idle: idle(run, { timeout: 1500 }) });
+    else idleHandles.set(key, { timer: setTimeout(run, 250) });
   };
   const unwatchedAt = /* @__PURE__ */ new Map();
   let pullSeq = 0;
@@ -39698,34 +39760,60 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       active2 = false;
       const own = sub.split;
       own.subs.delete(sub);
-      if (!own.disposed && splitWatches.get(uid) === own && [...own.subs].every((x) => x.paused)) holdSplit(uid, own);
+      if (!own.disposed && !own.held && splitWatches.get(uid) === own && [...own.subs].every((x) => x.paused)) holdSplit(uid, own);
       stats.watches--;
-      slot2.n = Math.max(0, slot2.n - 1);
+      if (!sub.paused) slot2.n = Math.max(0, slot2.n - 1);
       if (slot2.n === 0 && slot2.pages.size === 0) watchedBoards.delete(uid);
       if (slot2.n === 0) unwatchedAt.set(uid, pullSeq);
     };
     off.pause = () => {
       if (!active2 || sub.paused) return;
       sub.paused = true;
+      slot2.n = Math.max(0, slot2.n - 1);
+      if (slot2.n === 0) unwatchedAt.set(uid, pullSeq);
       const own = sub.split;
       if (!own.disposed && [...own.subs].every((x) => x.paused)) holdSplit(uid, own);
     };
     off.resume = () => {
       if (!active2 || !sub.paused) return;
-      sub.paused = false;
+      const live2 = () => {
+        sub.paused = false;
+        slot2.n += 1;
+        unwatchedAt.delete(uid);
+        if (watchedBoards.get(uid) !== slot2 && !watchedBoards.has(uid)) watchedBoards.set(uid, slot2);
+      };
       let own = sub.split;
       if (own.disposed || splitWatches.get(uid) !== own) {
+        let fresh = null;
+        try {
+          fresh = rawPull(BOARD_PATTERN, eidKey(uid));
+        } catch {
+          fresh = null;
+        }
+        if (!fresh?.[":block/uid"]) {
+          own.subs.delete(sub);
+          sub.missed = false;
+          live2();
+          queueMicrotask(() => {
+            if (active2 && !sub.paused) sub.fn(null);
+          });
+          return;
+        }
+        absorb(uid, fresh, false);
+        bigBoards.set(uid, fresh);
         own.subs.delete(sub);
         own = attach3();
         sub.missed = false;
+        live2();
         queueMicrotask(() => {
-          if (!active2 || sub.paused || sub.split !== own) return;
-          const tree = own.refresh();
+          if (!active2 || sub.paused || sub.split !== own || own.tree) return;
+          const tree = own.current();
           if (tree?.[":block/uid"]) absorb(uid, tree, false);
           sub.fn(tree);
         });
         return;
       }
+      live2();
       unhold(own);
       if (own.release()) sub.missed = false;
       if (!sub.missed) return;
@@ -39978,12 +40066,11 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         }
       }
       if (warm.has(uid)) {
+        const own = splitWatches.get(uid);
+        if (own && !own.disposed && own.tree?.[":block/uid"]) return own.tree;
         const cached = cache.blockOf(uid);
         if (cached?.[":block/uid"]) {
-          if (treeSize(cached, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN) {
-            bigBoards.set(uid, cached);
-            splitWatches.get(uid)?.reseed(cached);
-          }
+          if (treeSize(cached, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN && !(own && !own.disposed)) bigBoards.set(uid, cached);
           return cached;
         }
       }
@@ -40043,13 +40130,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         }
         dropStats(uid);
         if (!found.stats.length) return;
-        const chunk = manyItems(node2) ? STATS_CHUNK : found.stats.length;
+        const chunk = statsInParts(node2, found.stats) ? STATS_CHUNK : found.stats.length;
         try {
           host.cardStats(found.stats.slice(0, chunk), { boardUid: uid });
         } catch {
         }
         const idle = globalThis.requestIdleCallback;
-        const later = (fn) => typeof idle === "function" ? idle((deadline) => fn(deadline), { timeout: 1500 }) : setTimeout(fn, 250);
+        const later = (fn) => idleLater(idle, fn);
         const pulledAt = pullSeq;
         let si = chunk;
         const clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
@@ -40072,9 +40159,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         if (doPrime) prime();
       } else {
         const idle = globalThis.requestIdleCallback;
-        const later = (fn) => typeof idle === "function" ? idle((deadline) => fn(deadline), { timeout: 1500 }) : setTimeout(fn, 250);
+        const later = (fn) => idleLater(idle, fn);
         const titles = big ? [] : found.titles;
         const targets = big ? [] : found.stats;
+        const statsPart = statsInParts(node2, targets) ? STATS_CHUNK : Infinity;
         const pulledAt = ++pullSeq;
         let ti = 0;
         let si = 0;
@@ -40106,8 +40194,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
               }
               ti += PRIME_CHUNK;
             } else if (!statsDone) {
-              const part = targets.slice(si);
-              si = targets.length;
+              const part = targets.slice(si, si + statsPart);
+              si = Math.min(targets.length, si + statsPart);
               if (si >= targets.length) statsDone = true;
               if (part.length) {
                 try {
@@ -40204,6 +40292,38 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           }
         }
       };
+    },
+    // Unload / teardown: every pull watch this host registered goes now, with every hold, arm and sweep timer.
+    // Held splits would otherwise keep Roam re-pulling them on every transaction for SPLIT_HOLD_MS after unload.
+    dispose() {
+      if (armTimer != null) {
+        clearTimeout(armTimer);
+        armTimer = null;
+      }
+      for (const h of idleHandles.values()) {
+        if (h.timer != null) clearTimeout(h.timer);
+        else try {
+          globalThis.cancelIdleCallback?.(h.idle);
+        } catch {
+        }
+      }
+      idleHandles.clear();
+      for (const own of splitWatches.values()) {
+        unhold(own);
+        own.dispose();
+      }
+      splitWatches.clear();
+      for (const want of contentWants.values()) want.offs.clear();
+      for (const [cb, list] of [...registered]) {
+        for (const [pattern, entity] of [...list]) {
+          try {
+            watchData.removePullWatch(pattern, entity, cb);
+          } catch {
+          }
+        }
+      }
+      registered.clear();
+      watchedBlocks.clear();
     },
     splitStats(uid) {
       return splitWatches.get(uid)?.stats() ?? null;
@@ -42671,6 +42791,7 @@ var LINK_MODES = ["off", "attributes", "all"];
 var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
 var EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 var MAX_PARENT_STRINGS = 200;
+var RESUME_RETRY_MS = 1e3;
 var LINK_CHUNK = 120;
 var DAILY_GAP = 20;
 var HIGHLIGHT_WATCH_CAP = 60;
@@ -43331,6 +43452,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   let boardWatch = () => {
   };
   let boardWatchOn = false;
+  let resumeRetry = null;
+  let highlightParked = false;
   let boardWatchHeld = false;
   if (raw && typeof host.watchBoard === "function") {
     boardWatch = host.watchBoard(uid, onBoard);
@@ -43378,11 +43501,33 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (destroyed) return;
     const want = holders > pausedHolds && Boolean(raw);
     if (want && boardWatchOn && boardWatchHeld) {
-      boardWatchHeld = false;
       try {
         boardWatch.resume();
       } catch {
+        if (resumeRetry == null) {
+          resumeRetry = setTimeout(() => {
+            resumeRetry = null;
+            syncBoardWatch(false);
+          }, RESUME_RETRY_MS);
+          try {
+            resumeRetry.unref?.();
+          } catch {
+          }
+        }
+        return;
       }
+      boardWatchHeld = false;
+      if (latest && !scheduled) {
+        scheduled = true;
+        schedule(flush);
+      }
+      const hadHighlights = highlightParked;
+      highlightParked = false;
+      try {
+        syncHighlightWatches();
+      } catch {
+      }
+      if (hadHighlights) highlightDirty = true;
       if (highlightDirty && !highlightScheduled) {
         highlightScheduled = true;
         schedule(flushHighlights);
@@ -43400,6 +43545,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       if (typeof boardWatch.pause === "function") {
         boardWatch.pause();
         boardWatchHeld = true;
+        highlightParked = highlightWatches.size > 0;
+        disposeHighlightWatches();
       } else dropBoardWatch();
     }
   }
@@ -45993,6 +46140,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       }
       boardWatch = () => {
       };
+      if (resumeRetry != null) {
+        clearTimeout(resumeRetry);
+        resumeRetry = null;
+      }
       disposeHighlightWatches();
       cancelScheduledLinks();
       linkResolve?.();
@@ -94596,7 +94747,7 @@ ${url}`;
     // Big boards only: on a normal board the raise and drop cost a 55-80 ms frame per pan and save nothing.
     enabled: () => {
       try {
-        return notedSpeedFlags().hitShield !== false && Boolean(itemsR.isVirtual?.());
+        return notedSpeedFlags().hitShield !== false && Boolean(itemsR.isBig?.() ?? itemsR.isVirtual?.());
       } catch {
         return false;
       }
@@ -99729,6 +99880,7 @@ async function installPlexusDiagram({
   if (!mountView) mountView = mountBoardView;
   const host = injectedHost;
   const acquireSession2 = injectedAcquire;
+  lifecycle.add(() => host.dispose?.());
   const perfLog = createPerfLog();
   perfLog.bind(host.stats);
   const shiftWatch = createShiftWatch();

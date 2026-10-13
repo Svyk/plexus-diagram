@@ -3625,10 +3625,28 @@ function buildBoardView(onFail, {
       grid.style.setProperty("--pxd-grid-major-y", `${mod(vp.y)}px`);
     }
   };
+  // A long frame used to let the settle timer run between two queued wheel events: the settle attached a batch and
+  // dropped the hit shield, the next wheel raised it again (a hover change over the board), that frame ran past
+  // 120 ms, and the loop repeated (PhD main board: the first pan after an open, p95 152 ms with 6 s of long tasks).
+  // A settle waits while input is still queued, at most SETTLE_WAIT_MS.
+  const SETTLE_WAIT_MS = 600;
+  let settleWaitAt = 0;
+  const inputPending = () => {
+    try { return Boolean(win?.navigator?.scheduling?.isInputPending?.({ includeContinuous: true })); } catch { return false; }
+  };
   const settle = () => {
+    settleWaitAt = 0;
+    armSettle();
+  };
+  const armSettle = () => {
     settleTimer?.();
     settleTimer = timers.later(() => {
       settleTimer = null;
+      if (inputPending()) {
+        if (!settleWaitAt) settleWaitAt = perfNow();
+        if (perfNow() - settleWaitAt < SETTLE_WAIT_MS) { armSettle(); return; }
+      }
+      settleWaitAt = 0;
       if (gesturing) return;
       hitShield.drop();
       endUnderlay();
@@ -7672,7 +7690,10 @@ function buildBoardView(onFail, {
         wheelLayer = true;
         world.style.willChange = "transform";
       }
-      hitShield.raise();
+      // Pan bursts only: a zoom burst re-tiers the board under the cursor, and the hover change the shield causes at
+      // its start and end measured slower there (zoom-in p95 168 -> 268-300 ms on the PhD main board).
+      if (!event.ctrlKey && !event.metaKey) hitShield.raise();
+      else hitShield.drop();
       settle();
     }
     return handled;

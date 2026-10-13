@@ -52,9 +52,10 @@ test("one write re-pulls a bounded part of the board under the split watch", asy
   mock.timers.enable({ apis: ["setTimeout"] });
   try {
     off();
-    assert.equal(host.stats.watches, 0, "no watch is left behind");
+    assert.equal(host.stats.watches, 0, "no subscriber is left (the split is held until SPLIT_HOLD_MS)");
     mock.timers.tick(SPLIT_HOLD_MS);
     assert.equal(host.splitStats("bigroot"), null);
+    assert.equal(fake.watchCount(), 0, "every Roam watch is removed once the hold ends");
   } finally {
     mock.timers.reset();
   }

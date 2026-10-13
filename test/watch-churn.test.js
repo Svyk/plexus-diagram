@@ -74,7 +74,7 @@ test("20 page-return and nested enter/crumb cycles stay under 300 watch calls af
   const first = calls();
   for (let i = 0; i < 20; i += 1) await cycle();
   const after = calls() - first;
-  assert.ok(after < 300, `20 cycles made ${after} watch calls`);
+  assert.ok(after <= 20, `20 cycles made ${after} watch calls`);
   console.log(`# watch calls: first cycle ${first}, next 20 cycles ${after}`);
 });
 

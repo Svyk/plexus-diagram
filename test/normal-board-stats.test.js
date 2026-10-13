@@ -35,7 +35,7 @@ test("a big board reads the first chunk on open and the rest later", () => {
   const calls = spy(host);
   host.pullBoard("huge");
   assert.equal(calls.length, 1);
-  assert.ok(calls[0] < SPLIT_WATCH_MIN, `first chunk ${calls[0]}`);
+  assert.equal(calls[0], 80, `first chunk ${calls[0]}`);
 });
 
 test("a light read of a normal board (keep-alive catch-up) reads its card stats in one idle call", async () => {

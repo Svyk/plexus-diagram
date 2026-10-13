@@ -9199,6 +9199,8 @@ function buildBoardView(onFail, {
       step(() => { if (coverWarmWait) { coverWarmWait(); coverWarmWait = null; } });
       step(() => readPane?.dispose?.());
       step(() => { cardMotion?.dispose(); cardMotion = null; });
+      step(() => { pdfFlip?.destroy?.(); pdfFlip = null; });
+      step(() => pdfWarm?.cancelAll?.());
       step(() => itemsR.dispose());
       step(() => edgesR.dispose());
       step(() => { offPartsChange?.(); partsIdx?.dispose(); partsIdx = null; });

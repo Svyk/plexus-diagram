@@ -76,3 +76,11 @@ test("On board sits outside the highlight view, and only for a cached highlight"
     restore();
   }
 });
+
+test("scanUids reads the document once however many cards the board holds", () => {
+  let queries = 0;
+  const doc = { querySelectorAll: () => { queries += 1; return []; } };
+  const chips = createBoardChips({ doc, cache: createCardCache() });
+  chips.scanUids(Array.from({ length: 1000 }, (_, i) => `uid${i}`));
+  assert.equal(queries, 1);
+});

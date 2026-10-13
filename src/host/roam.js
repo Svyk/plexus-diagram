@@ -1355,7 +1355,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       };
       // A keep-alive catch-up already shows its cards: their refs are read again in the first idle slice
       // (PhD main board: 1,000 refs, 0.54 s of the reattach task).
-      const refsLater = light && deferRefs;
+      // A big board's first open reads them in idle slices too (PhD main board: 0.64 s inside the open).
+      const refsLater = light && (deferRefs || big);
       if (!refsLater) pullRefs();
       boardCovers.set(uid, honored);
       // A keep-alive catch-up is light: the board shows at once. Badge and linked-ref

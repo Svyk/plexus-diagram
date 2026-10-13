@@ -66,11 +66,15 @@ export function createBoardChips({ doc = globalThis.document, cache } = {}) {
   };
 
   // A board changed: look only at the blocks it holds, and drop chips whose card left.
+  // One query and a set: a query per uid was ~1,000 document-wide queries per open of the PhD main board (0.36 s).
   const scanUids = (uids) => {
     if (!doc?.querySelectorAll) return;
-    for (const uid of uids || []) {
-      if (!/^[\w-]+$/.test(String(uid))) continue;
-      for (const el of doc.querySelectorAll(`.roam-block-container[data-block-uid="${uid}"]`)) attach(el);
+    const want = new Set();
+    for (const uid of uids || []) if (/^[\w-]+$/.test(String(uid))) want.add(String(uid));
+    if (want.size) {
+      for (const el of doc.querySelectorAll(".roam-block-container[data-block-uid]")) {
+        if (want.has(el.getAttribute("data-block-uid"))) attach(el);
+      }
     }
     reconcile();
   };

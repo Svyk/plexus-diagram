@@ -1060,6 +1060,18 @@ export async function installPlexusDiagram({
     cancelSketchHandoff(rec);
   }
 
+  // A view keeps its onFirstPaint for life, and a kept-alive view outlives the record it was first mounted for. Built
+  // here, not in runSnapMount (whose closures share a context holding that record), and dropped once it fires: after a
+  // page leave the first record's native diagram is a detached page tree (86k nodes on the PhD board).
+  function snapFirstPaint(handoff) {
+    let pending = handoff;
+    return () => {
+      const once = pending;
+      pending = null;
+      finishSnapHandoff(once);
+    };
+  }
+
   function runSnapMount(handoff, standIn, { autofocus, viewport, acquire, onLive, logging, t0 }) {
     const rec = handoff.rec;
     if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
@@ -1085,7 +1097,7 @@ export async function installPlexusDiagram({
     try {
       view = callMountView(rec, autofocus, vpNow, {
         snapshot: { snap: handoff.painted.snap, shells: handoff.painted.shells },
-        onFirstPaint: () => finishSnapHandoff(handoff),
+        onFirstPaint: snapFirstPaint(handoff),
       });
     } catch (error) {
       fail(error);

@@ -2,6 +2,8 @@
 // snapshot shells to the live mount one frame later, and writes nothing on the way.
 import assert from "node:assert/strict";
 import test from "node:test";
+import v8 from "node:v8";
+import vm from "node:vm";
 
 import { createLifecycle } from "../src/lifecycle.js";
 import { installPlexusDiagram } from "../src/feature.js";
@@ -455,4 +457,35 @@ test("a sidebar copy paints its snapshot while dormant; the viewport watcher bri
     await env.lifecycle.dispose().catch(() => {});
     env.restore();
   }
+});
+
+// verify 3.28 heap protocol: a kept-alive MAIN view held the first page render's native diagram (86k detached nodes)
+// through the onFirstPaint callback of its snapshot mount, whose closure context held that mount record.
+test("the snapshot mount's onFirstPaint does not keep the first mount record and its native diagram alive", async () => {
+  const gcNow = async () => {
+    v8.setFlagsFromString("--expose-gc");
+    const gc = vm.runInNewContext("gc");
+    for (let i = 0; i < 3; i += 1) { gc(); await tick(5); }
+  };
+  const idb = await seededIdb();
+  const held = await (async () => {
+    const env = installEnv({ idb });
+    try {
+      await env.install();
+      await tick(20);
+      const onFirstPaint = env.seen[0].args.onFirstPaint;
+      onFirstPaint();
+      const native = env.doc.querySelector(".rm-diagram");
+      const ref = new WeakRef(native);
+      native.remove();
+      env.seen.length = 0;
+      return { onFirstPaint, ref };
+    } finally {
+      await env.lifecycle.dispose().catch(() => {});
+      env.restore();
+    }
+  })();
+  await gcNow();
+  assert.equal(typeof held.onFirstPaint, "function", "the view still holds its callback");
+  assert.equal(held.ref.deref(), undefined, "the first mount's native diagram was collected");
 });

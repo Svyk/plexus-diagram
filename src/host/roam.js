@@ -26,7 +26,7 @@ import { dailyTitle, dailyUid, journalRows } from "../model/journal.js";
 import { closeTab, normalizeTabs, openTab, tabStorageKey } from "../model/tabs.js";
 import { bindGuardStats, guardCallback } from "../guard.js";
 import { installCommentHost } from "./comments.js";
-import { SPLIT_WATCH_MIN, createSplitWatch, treeSize } from "./split-watch.js";
+import { SPLIT_WATCH_MIN, containerKind, createSplitWatch, treeSize } from "./split-watch.js";
 import { notedSpeedFlags } from "../settings.js";
 
 // Pull results equal but for Roam's own reader state (:pdf-settings: page, scale). Exits at the first other change.
@@ -153,6 +153,19 @@ function uniqueStrings(list) {
   return out;
 }
 
+// Card stats in idle chunks only past this many items (sections' members counted): Parse Lab is past
+// SPLIT_WATCH_MIN blocks (parsed PDFs) with few items, and its 80-target chunks were 58-98 ms tasks under the first pans.
+const STATS_CHUNK_ITEMS = 400;
+function manyItems(node) {
+  let n = 0;
+  for (const kid of childNodes(node)) {
+    n += 1;
+    if (containerKind(kid, true) === "struct") n += childNodes(kid).length;
+    if (n > STATS_CHUNK_ITEMS) return true;
+  }
+  return false;
+}
+
 // Page cards and block refs named by card strings. Nested outline rows are not cards.
 function collectTargets(node) {
   const titles = [];
@@ -252,8 +265,10 @@ const PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?u
 const PDF_PAGES_ALL_QUERY = `[:find ?url ?u ?t :where [?p :pdf/url ?url] [?p :block/uid ?u] [?p :node/title ?t]]`;
 const PDF_PAGE_PROPS_ALL_QUERY = `[:find ?u ?b ?props :where [?p :pdf/url _] [?p :block/uid ?u] [?b :block/page ?p] [?b :block/props ?props]]`;
 // A board that names this many PDFs reads covers from one index (PhD board: 122 PDFs asked ~8,900 times in one open,
-// 5 ms each, against 31 ms for the whole index). The index lives COVER_INDEX_MIN_MS, or 40× its own read time.
-export const COVER_INDEX_URLS = 4;
+// 5 ms each, against 31-71 ms for the whole index). The index lives COVER_INDEX_MIN_MS, or 40× its own read time.
+// Below the break-even a board reads per url, as 3.27.0 did: at 4, Parse Lab re-read the expired index on a zoom-out
+// mount (a 71 ms query, 75-83 ms tasks).
+export const COVER_INDEX_URLS = 15;
 export const COVER_INDEX_MIN_MS = 2000;
 const PDF_BLOCK_OUT_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?p :block/refs ?b] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
 const PDF_BLOCK_IN_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?b :block/refs ?p] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
@@ -846,11 +861,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const PRIME_CHUNK = 40;
   // Card-stat targets per idle slice (~1.3 ms each on a 28k-block board).
   const STATS_CHUNK = 80;
+  const STATS_PART = 20;
   const STATS_TTL_MS = 120000;
   // Idle work after an open: parts this small, until ~IDLE_SLICE_MS of a slice is used.
   const IDLE_SLICE_MS = 40;
   const IDLE_RESERVE_MS = 8;
-  const IDLE_PART = 10;
   const IDLE_REF_PART = 60;
   const MISS = Symbol("pull-miss");
   const rawPull = typeof data.pull === "function" ? data.pull.bind(data) : () => null;
@@ -1418,7 +1433,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     tabs: createTabStore({ storage, graph: gname }),
 
     // One wide pull fills the session cache, so later card, page, and badge reads do not call Roam again.
-    pullBoard(uid, { light = false, deferRefs = false } = {}) {
+    pullBoard(uid, { light = false, deferRefs = false, prime: doPrime = true } = {}) {
       // A big board under its split watch (undo, redo, refresh): its containers again, contents as stored. The whole
       // tree plus every ref was 1.2 s on the PhD main board.
       const split = light ? splitWatches.get(uid) : null;
@@ -1494,22 +1509,33 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         try { fetchLinked(found.titles); } catch { /* a later linkedRefs ask reads Roam */ }
         dropStats(uid);
         if (!found.stats.length) return;
-        try { host.cardStats(found.stats.slice(0, STATS_CHUNK), { boardUid: uid }); } catch { /* badges ask again */ }
+        // A normal board reads every stat in this call, as 3.27.0 did: each call pays four datalog queries of
+        // ~40-55 ms whatever its size, so idle chunks on Parse Lab were 50-134 ms tasks under the first pans.
+        const chunk = manyItems(node) ? STATS_CHUNK : found.stats.length;
+        try { host.cardStats(found.stats.slice(0, chunk), { boardUid: uid }); } catch { /* badges ask again */ }
         // The rest of a big board's stats in idle slices.
         const idle = globalThis.requestIdleCallback;
-        const later = (fn) => (typeof idle === "function" ? idle(() => fn(), { timeout: 1500 }) : setTimeout(fn, 250));
+        const later = (fn) => (typeof idle === "function" ? idle((deadline) => fn(deadline), { timeout: 1500 }) : setTimeout(fn, 250));
         const pulledAt = pullSeq;
-        let si = STATS_CHUNK;
-        const step = () => {
+        let si = chunk;
+        const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
+        // Parts of STATS_PART while the idle slice lasts, one part at least. A whole chunk per callback (PhD main
+        // board targets: 20 of them can take 150 ms) ran back to back under a pan on another board: 50-100 ms frames.
+        const step = (deadline) => {
           if (si >= found.stats.length || (unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt)) return;
-          try { host.cardStats(found.stats.slice(si, si + STATS_CHUNK), { boardUid: uid }); } catch { /* badges ask again */ }
-          si += STATS_CHUNK;
+          const t0 = clock();
+          // A callback past its timeout runs in a busy window (a pan): one part only.
+          const left = () => (deadline?.didTimeout ? 0 : Math.min(IDLE_SLICE_MS - (clock() - t0), typeof deadline?.timeRemaining === "function" ? deadline.timeRemaining() : Infinity));
+          do {
+            try { host.cardStats(found.stats.slice(si, si + STATS_PART), { boardUid: uid }); } catch { /* badges ask again */ }
+            si += STATS_PART;
+          } while (si < found.stats.length && left() > IDLE_RESERVE_MS);
           later(step);
         };
         if (si < found.stats.length) later(step);
       };
-      if (!light) prime();
-      else {
+      // prime: false (the card-chip cache): structure and refs only; badges and linked refs are asked for on demand.
+      if (!light) { if (doPrime) prime(); } else {
         // Linked refs stay in chunks of PRIME_CHUNK. Card stats are one pull:
         // 300 cards measured about 19 ms, inside one idle slice.
         const idle = globalThis.requestIdleCallback;
@@ -1539,11 +1565,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
             }
             if (!dropped) { dropped = true; dropStats(uid); }
             if (ti < titles.length) {
-              try { fetchLinked(titles.slice(ti, ti + IDLE_PART)); } catch { /* a later linkedRefs ask reads Roam */ }
-              ti += IDLE_PART;
+              try { fetchLinked(titles.slice(ti, ti + PRIME_CHUNK)); } catch { /* a later linkedRefs ask reads Roam */ }
+              ti += PRIME_CHUNK;
             } else if (!statsDone) {
-              const part = targets.slice(si, si + IDLE_PART);
-              si += IDLE_PART;
+              // One call, as 3.27.0: a call costs four datalog queries whatever its size (titles and targets are
+              // empty on a big board).
+              const part = targets.slice(si);
+              si = targets.length;
               if (si >= targets.length) statsDone = true;
               if (part.length) {
                 try { host.cardStats(part, { boardUid: uid }); } catch { /* badges ask again */ }

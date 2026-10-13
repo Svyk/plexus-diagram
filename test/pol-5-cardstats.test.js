@@ -300,7 +300,7 @@ test("a foreground pullBoard reads card stats once", () => {
   assert.deepEqual(calls, [6]);
 });
 
-test("light prime reads linked refs, then card stats, in parts of 10 while the idle slice lasts", () => {
+test("light prime reads linked refs 40 titles per part, then every card stat in one call (as 3.27.0)", () => {
   const queued = [];
   const previous = globalThis.requestIdleCallback;
   globalThis.requestIdleCallback = (fn, opts) => {
@@ -315,16 +315,13 @@ test("light prime reads linked refs, then card stats, in parts of 10 while the i
     assert.deepEqual(queued[0].opts, { timeout: 1500 });
     assert.deepEqual(calls, []);
     // A spent slice runs one part.
-    for (let i = 0; i < 5; i += 1) queued[i].fn(spent);
-    assert.deepEqual(linked, [10, 10, 10, 10, 1]);
+    for (let i = 0; i < 2; i += 1) queued[i].fn(spent);
+    assert.deepEqual(linked, [40, 1]);
     assert.deepEqual(calls, []);
-    queued[5].fn(spent);
-    assert.deepEqual(calls, [10]);
-    // A roomy slice runs the rest.
-    queued[6].fn({ timeRemaining: () => 50, didTimeout: false });
-    assert.equal(calls.reduce((a, n) => a + n, 0), 82);
-    assert.ok(calls.every((n) => n <= 10));
-    assert.equal(queued.length, 7);
+    // A card-stat call costs four queries whatever its size: one call for all of them.
+    queued[2].fn(spent);
+    assert.deepEqual(calls, [82]);
+    assert.equal(queued.length, 3);
   } finally {
     globalThis.requestIdleCallback = previous;
   }

@@ -427,7 +427,9 @@ export async function installPlexusDiagram({
       let board = null;
       let read = true;
       try {
-        const pulled = host.pullBoard?.(uid);
+        // Structure only: priming every enhanced board's card stats here (PhD main board, at install and every
+        // minute) ran in idle slices under gestures on whatever board was open.
+        const pulled = host.pullBoard?.(uid, { prime: false });
         board = pulled ? buildBoard(pulled) : null;
       } catch { board = null; read = false; }
       // The stamp is remembered only after a pull that did not throw, so a failed read is tried again.

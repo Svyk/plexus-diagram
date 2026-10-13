@@ -1,8 +1,8 @@
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
-import { createHost } from "../src/host/roam.js";
-import { SPLIT_WATCH_MIN, sameKids } from "../src/host/split-watch.js";
+import { SPLIT_HOLD_MS, createHost } from "../src/host/roam.js";
+import { ITEM_IDLE_MS, SPLIT_WATCH_MIN, sameKids } from "../src/host/split-watch.js";
 
 const SECTIONS = 16;
 const CARDS = 70;
@@ -74,7 +74,18 @@ test("a mounted card's contents stay live; an unmounted card's contents refresh 
   await fake.flush();
   assert.equal(trees.length, 2);
   assert.equal(find(trees.at(-1), "k2x2")[":block/string"], "changed on screen");
-  off();
+  // Unmounted, the watch idles (a card that mounts again costs no watch calls), then goes.
+  const watched = () => fake.watchList().some((w) => w.uid === "c2x2");
+  mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
+  try {
+    off();
+    assert.equal(watched(), true, "idle");
+    assert.equal(host.splitStats("big1").idleItemWatches, 1);
+    mock.timers.tick(ITEM_IDLE_MS * 2);
+    assert.equal(watched(), false, "dropped after ITEM_IDLE_MS");
+  } finally {
+    mock.timers.reset();
+  }
   await fake.api.data.block.update({ block: { uid: "k2x2", string: "after unmount" } });
   await fake.flush();
   assert.equal(trees.length, 2);
@@ -124,8 +135,15 @@ test("releasing the last board watch removes every Roam watch it added", async (
   const { fake, host, off } = setup();
   host.watchContent("c1x1");
   assert.ok(fake.watchCount() > SECTIONS);
-  off();
-  assert.equal(fake.watchCount(), 0);
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    off();
+    assert.ok(fake.watchCount() > SECTIONS, "the split lingers, held");
+    mock.timers.tick(SPLIT_HOLD_MS);
+    assert.equal(fake.watchCount(), 0);
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test("a small board keeps its one recursive watch", () => {

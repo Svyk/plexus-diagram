@@ -422,6 +422,11 @@ export function createWriteQueue({ onBusy } = {}) {
 export const WRITE_BURST = 200;
 export const WRITE_GAP_MS = 100;
 export const WRITE_CAP = 1200;
+// Content-watch arms wait while the last minute holds this many paced calls (writes plus watch calls).
+export const WATCH_ARM_LOW = 900;
+export const WATCH_ARM_RETRY_MS = 5000;
+// A big board's split watch stays registered and quiet this long after its last subscriber parks or leaves.
+export const SPLIT_HOLD_MS = 60000;
 export function isRateLimitError(error) {
   return /mutation rate limit|rate limit exceeded/i.test(String(error?.message ?? error ?? ""));
 }
@@ -451,6 +456,12 @@ export function createWritePacer({ now = Date.now, sleep = (ms) => new Promise((
       const p = chain.then(take);
       chain = p.catch(() => {});
       return p;
+    },
+    // A call that Roam counts but that does not wait (add/removePullWatch).
+    note() {
+      const t = now();
+      trim(t);
+      stamps.push(t);
     },
     // Roam refused a write: count the window as full so the next write waits it out.
     saturate() {
@@ -733,6 +744,17 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {}, errors: 0 };
   bindGuardStats(stats);
   const data = countReads(api.data, stats);
+  // add/removePullWatch count toward Roam's 1,500/min limiter too: they spend the write pacer's budget, so a burst of
+  // watch churn makes writes wait instead of Roam refusing them (and openPage).
+  const watchData = new Proxy(data, {
+    get(target, prop) {
+      if (prop === "addPullWatch" || prop === "removePullWatch") {
+        return (...args) => { pacer.note(); return target[prop](...args); };
+      }
+      const value = target[prop];
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
   // Every data.block.* call is its own Roam undo entry. The log groups the calls of one session transaction
   // (host.group) so one undo()/redo() steps over the whole user operation. A write outside a group is its own step.
   // A group holds at most MAX_GROUP_WRITES writes: a larger transaction is split into consecutive groups (one plexus
@@ -795,9 +817,21 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const contentWants = new Map();
   const edgeFingerprintOn = () => { try { return notedSpeedFlags().edgeFingerprint === true; } catch { return false; } };
   const splitWatchOn = () => { try { return notedSpeedFlags().splitWatch !== false; } catch { return true; } };
+  // A card's content watch can wait: with the minute budget low, arms wait until it recovers, so openPage and writes
+  // are not refused. The board's own watches never wait.
+  let armTimer = null;
+  const armLater = () => {
+    if (armTimer != null) return;
+    armTimer = setTimeout(() => {
+      armTimer = null;
+      for (const [key, want] of contentWants) armContent(key, want);
+    }, WATCH_ARM_RETRY_MS);
+    try { armTimer.unref?.(); } catch { /* a fake timer has no unref */ }
+  };
   const armContent = (key, want) => {
     for (const split of splitWatches.values()) {
       if (want.offs.has(split)) continue;
+      if (pacer.recent >= WATCH_ARM_LOW) { armLater(); return; }
       const off = split.watchItem(key, { pending: true });
       if (off) want.offs.set(split, off);
     }
@@ -1093,44 +1127,112 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     }
     slot.n += 1;
     unwatchedAt.delete(uid);
-    let split = splitWatches.get(uid);
-    if (!split) {
-      const subs = new Set();
-      split = createSplitWatch({
-        uid,
-        seed: bigBoards.get(uid),
-        data,
-        pull: rawPull,
-        fingerprint: edgeFingerprintOn(),
-        deepPattern: BOARD_PATTERN,
-        guard: (name, fn) => guardCallback(name, fn, { stats }),
-        onTree: (tree) => {
-          if (tree?.[":block/uid"]) absorb(uid, tree, false);
-          for (const fn of [...subs]) fn(tree);
-        },
-      });
-      split.subs = subs;
-      splitWatches.set(uid, split);
-      for (const [key, want] of contentWants) armContent(key, want);
-    }
-    const fn = guardCallback("watchBoard", (tree) => cb(tree), { stats });
-    split.subs.add(fn);
+    const sub = { fn: guardCallback("watchBoard", (tree) => cb(tree), { stats }), paused: false, missed: false, split: null };
+    const attach = () => {
+      const own = splitFor(uid);
+      sub.split = own;
+      own.subs.add(sub);
+      unhold(own);
+      // A held split comes back: one publish if it changed meanwhile.
+      if (own.held) own.release();
+      return own;
+    };
+    attach();
     stats.watches++;
     let active = true;
-    return () => {
+    const off = () => {
       if (!active) return;
       active = false;
-      split.subs.delete(fn);
-      if (!split.subs.size && splitWatches.get(uid) === split) {
-        split.dispose();
-        splitWatches.delete(uid);
-        for (const want of contentWants.values()) want.offs.delete(split);
-      }
+      const own = sub.split;
+      own.subs.delete(sub);
+      // Leaving a page drops its crumb pool; the way back opens the same nested board again. With no subscriber
+      // left the split is held like a parked one and goes after SPLIT_HOLD_MS.
+      if (!own.disposed && splitWatches.get(uid) === own && [...own.subs].every((x) => x.paused)) holdSplit(uid, own);
       stats.watches--;
       slot.n = Math.max(0, slot.n - 1);
       if (slot.n === 0 && slot.pages.size === 0) watchedBoards.delete(uid);
       if (slot.n === 0) unwatchedAt.set(uid, pullSeq);
     };
+    // A parked board keeps its watches registered and quiet for up to SPLIT_HOLD_MS; resume publishes once if
+    // anything changed. Past that the watches go (a parked board costs Roam a re-pull of each of them on every
+    // transaction anywhere in the graph), and resume builds the split again and reads it once.
+    off.pause = () => {
+      if (!active || sub.paused) return;
+      sub.paused = true;
+      const own = sub.split;
+      if (!own.disposed && [...own.subs].every((x) => x.paused)) holdSplit(uid, own);
+    };
+    off.resume = () => {
+      if (!active || !sub.paused) return;
+      sub.paused = false;
+      let own = sub.split;
+      if (own.disposed || splitWatches.get(uid) !== own) {
+        own.subs.delete(sub);
+        own = attach();
+        sub.missed = false;
+        queueMicrotask(() => {
+          if (!active || sub.paused || sub.split !== own) return;
+          const tree = own.refresh();
+          if (tree?.[":block/uid"]) absorb(uid, tree, false);
+          sub.fn(tree);
+        });
+        return;
+      }
+      unhold(own);
+      if (own.release()) sub.missed = false;
+      if (!sub.missed) return;
+      sub.missed = false;
+      queueMicrotask(() => { if (active && !sub.paused && own.tree) sub.fn(own.tree); });
+    };
+    return off;
+  };
+  const unhold = (own) => {
+    if (own.holdTimer != null) {
+      clearTimeout(own.holdTimer);
+      own.holdTimer = null;
+    }
+  };
+  const holdSplit = (uid, own) => {
+    own.hold();
+    unhold(own);
+    own.holdTimer = setTimeout(() => {
+      own.holdTimer = null;
+      if (!own.held || splitWatches.get(uid) !== own) return;
+      own.dispose();
+      splitWatches.delete(uid);
+      for (const want of contentWants.values()) want.offs.delete(own);
+    }, SPLIT_HOLD_MS);
+    try { own.holdTimer.unref?.(); } catch { /* a fake timer has no unref */ }
+  };
+  const splitFor = (uid) => {
+    let split = splitWatches.get(uid);
+    if (split?.disposed) {
+      splitWatches.delete(uid);
+      split = null;
+    }
+    if (split) return split;
+    const subs = new Set();
+    split = createSplitWatch({
+      uid,
+      seed: bigBoards.get(uid),
+      data: watchData,
+      pull: rawPull,
+      fingerprint: edgeFingerprintOn(),
+      deepPattern: BOARD_PATTERN,
+      guard: (name, fn) => guardCallback(name, fn, { stats }),
+      onTree: (tree) => {
+        if (tree?.[":block/uid"]) absorb(uid, tree, false);
+        for (const sub of [...subs]) {
+          // A parked subscriber gets the latest tree when it resumes.
+          if (sub.paused) sub.missed = true;
+          else sub.fn(tree);
+        }
+      },
+    });
+    split.subs = subs;
+    splitWatches.set(uid, split);
+    for (const [key, want] of contentWants) armContent(key, want);
+    return split;
   };
   const notifyPages = (slot, after) => {
     for (const set of slot.pages.values()) for (const fn of set) fn(after);
@@ -1498,13 +1600,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         cb(after);
         if (covers) notifyPages(slot, after);
       }, { stats });
-      data.addPullWatch(pattern, entity, wrapped);
+      watchData.addPullWatch(pattern, entity, wrapped);
       stats.watches++;
       let active = true;
       return () => {
         if (!active) return;
         active = false;
-        data.removePullWatch(pattern, entity, wrapped);
+        watchData.removePullWatch(pattern, entity, wrapped);
         stats.watches--;
         slot.n = Math.max(0, slot.n - 1);
         if (slot.n === 0 && slot.pages.size === 0) watchedBoards.delete(uid);
@@ -1572,7 +1674,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           for (const token of subs.slice()) if (token.on) token.cb(after);
         }, { stats });
         slot = { entity, wrapped, subs };
-        data.addPullWatch(BLOCK_WATCH_PATTERN, entity, wrapped);
+        watchData.addPullWatch(BLOCK_WATCH_PATTERN, entity, wrapped);
         watchedBlocks.set(id, slot);
         stats.watches++;
       }
@@ -1585,7 +1687,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         if (i >= 0) slot.subs.splice(i, 1);
         if (slot.subs.length > 0 || watchedBlocks.get(id) !== slot) return;
         watchedBlocks.delete(id);
-        data.removePullWatch(BLOCK_WATCH_PATTERN, slot.entity, slot.wrapped);
+        watchData.removePullWatch(BLOCK_WATCH_PATTERN, slot.entity, slot.wrapped);
         stats.watches--;
       };
     },
@@ -1659,13 +1761,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       }
       const entity = `[:node/title ${JSON.stringify(name)}]`;
       const wrapped = (before, after) => cb(after);
-      data.addPullWatch(BOARD_PATTERN, entity, wrapped);
+      watchData.addPullWatch(BOARD_PATTERN, entity, wrapped);
       stats.pageWatches++;
       let active = true;
       return () => {
         if (!active) return;
         active = false;
-        data.removePullWatch(BOARD_PATTERN, entity, wrapped);
+        watchData.removePullWatch(BOARD_PATTERN, entity, wrapped);
         stats.pageWatches--;
       };
     },

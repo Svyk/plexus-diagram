@@ -793,6 +793,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   };
   let boardWatch = () => {};
   let boardWatchOn = false;
+  // Paused through a host handle that keeps its watches registered (big boards): no remove/add per park.
+  let boardWatchHeld = false;
   if (raw && typeof host.watchBoard === "function") {
     boardWatch = host.watchBoard(uid, onBoard);
     boardWatchOn = true;
@@ -801,6 +803,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   function dropBoardWatch() {
     if (!boardWatchOn) return;
     boardWatchOn = false;
+    boardWatchHeld = false;
     try { boardWatch(); } catch { /* already dropped */ }
     boardWatch = () => {};
     disposeHighlightWatches();
@@ -829,14 +832,22 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   function syncBoardWatch(catchUp) {
     if (destroyed) return;
     const want = holders > pausedHolds && Boolean(raw);
-    if (want && !boardWatchOn) {
+    if (want && boardWatchOn && boardWatchHeld) {
+      // The host publishes once if the board changed while held; highlight watches stayed up.
+      boardWatchHeld = false;
+      try { boardWatch.resume(); } catch { /* the watch is already live */ }
+      if (highlightDirty && !highlightScheduled) { highlightScheduled = true; schedule(flushHighlights); }
+    } else if (want && !boardWatchOn) {
       if (typeof host.watchBoard !== "function") return;
       boardWatch = host.watchBoard(uid, onBoard);
       boardWatchOn = true;
       try { syncHighlightWatches(); } catch { /* highlights follow the board watch */ }
       if (catchUp) catchUpBoard();
-    } else if (!want && boardWatchOn) {
-      dropBoardWatch();
+    } else if (!want && boardWatchOn && !boardWatchHeld) {
+      if (typeof boardWatch.pause === "function") {
+        boardWatch.pause();
+        boardWatchHeld = true;
+      } else dropBoardWatch();
     }
   }
 
@@ -3439,8 +3450,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     resumeWatches() {
       if (destroyed || pausedHolds <= 0) return;
       pausedHolds -= 1;
-      const wasOn = boardWatchOn;
-      syncBoardWatch(!wasOn);
+      const wasOn = boardWatchOn && !boardWatchHeld;
+      syncBoardWatch(!boardWatchOn);
       if (wasOn) catchUpBoard();
     },
 
@@ -3459,6 +3470,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       destroyed = true;
       if (boardWatchOn) {
         boardWatchOn = false;
+        boardWatchHeld = false;
         try { boardWatch(); } catch { /* already dropped */ }
       }
       boardWatch = () => {};

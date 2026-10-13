@@ -116,12 +116,12 @@ test("content watches come back after the board watch is paused and resumed (kee
   let off = host.watchBoard("big1", (t) => trees.push(t));
   const offContent = host.watchContent("c3x5");
   assert.equal(host.splitStats("big1").itemWatches, 1);
-  // Park: the session drops its board watch, which disposes the split and its item watches.
+  // Park through a plain off (no pause handle): the split lingers held, its item watch stays.
   off();
-  assert.equal(host.splitStats("big1"), null);
-  // Return: a new split. The mounted card's content watch must be live on it without the view asking again.
+  assert.equal(host.splitStats("big1").itemWatches, 1);
+  // Return: the same split. The mounted card's content watch is still live without the view asking again.
   off = host.watchBoard("big1", (t) => trees.push(t));
-  assert.equal(host.splitStats("big1").itemWatches, 1, "the mounted card is watched on the new split");
+  assert.equal(host.splitStats("big1").itemWatches, 1, "the mounted card is watched on the split");
   await fake.api.data.block.create({ location: { "parent-uid": "c3x5", order: "last" }, block: { uid: "lateKid", string: "typed after resume" } });
   await fake.flush();
   assert.ok(find(trees.at(-1), "lateKid"), "a child typed after the resume reaches the tree");

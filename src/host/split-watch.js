@@ -21,6 +21,10 @@ export const FINGERPRINT_PATTERN = "[:block/uid {(limit :block/children nil) [:b
 // A nested board's thumbnail: its items and their direct children (section members).
 export const THUMB_PATTERN = `[${A} {(limit :block/children nil) [${A} {(limit :block/children nil) [${A}]}]}]`;
 export const THUMB_DEPTH = 2;
+// A card's content watch released by an unmount stays registered this long (at most ITEM_IDLE_MAX of them): a card
+// that mounts again (pan, page return, nested re-enter) costs no add/removePullWatch.
+export const ITEM_IDLE_MS = 60000;
+export const ITEM_IDLE_MAX = 150;
 // Boards with at least this many blocks get the split watch.
 export const SPLIT_WATCH_MIN = 2000;
 
@@ -121,12 +125,38 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
   const fingerprints = new Map();
   let content = new Map();
   const itemWatch = new Map();
+  // Released item watches still registered: key -> released at (insertion order is release order).
+  const idleItems = new Map();
+  let idleTimer = null;
+  const dropItem = (key) => {
+    const w = itemWatch.get(key);
+    idleItems.delete(key);
+    if (!w) return;
+    itemWatch.delete(key);
+    try { data.removePullWatch(w.pattern, w.entity, w.cb); } catch { /* already gone */ }
+  };
+  const sweepIdle = () => {
+    idleTimer = null;
+    const cutoff = Date.now() - ITEM_IDLE_MS;
+    for (const [key, at] of [...idleItems]) if (at <= cutoff) dropItem(key);
+    if (idleItems.size) armSweep();
+  };
+  const armSweep = () => {
+    if (idleTimer != null || disposed) return;
+    idleTimer = setTimeout(sweepIdle, ITEM_IDLE_MS);
+    try { idleTimer.unref?.(); } catch { /* a fake timer has no unref */ }
+  };
   // Cards asked for before a container watch has seen them (the optimistic model mounts a new card before Roam's
   // echo): key -> registrations armed by the next assemble that finds the card.
   const pendingItems = new Map();
   let disposed = false;
   let pending = false;
   let lastTree = null;
+  // Held: every subscriber is parked (keep-alive, crumb pool). The watches stay registered, so a park and its return
+  // cost no addPullWatch/removePullWatch (each counts toward Roam's 1,500/min limiter, as do openPage and writes).
+  // Callbacks only store what Roam sent and mark the tree dirty; release() assembles once if anything changed.
+  let held = false;
+  let dirty = false;
 
   const patternOf = (kind) => (kind === "edges" ? EDGES_PATTERN : kind === "deep" ? deepPattern : STRUCT_PATTERN);
   const read = (pattern, id) => {
@@ -155,6 +185,7 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
   };
 
   const kick = () => {
+    if (held) { dirty = true; return; }
     if (pending || disposed) return;
     pending = true;
     schedule(() => {
@@ -202,6 +233,13 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
   // the block whole.
   const onFingerprint = (id) => guard("watchEdges", (_before, after) => {
     if (disposed) return;
+    if (held && after?.[UID]) {
+      // Read whole on release: the fingerprint diff needs the stored block current.
+      nodes.delete(id);
+      fingerprints.set(id, null);
+      dirty = true;
+      return;
+    }
     if (!after?.[UID]) {
       nodes.delete(id);
       fingerprints.delete(id);
@@ -329,6 +367,8 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
       try { data.removePullWatch(w.pattern, w.entity, w.cb); } catch { /* already gone */ }
     }
     itemWatch.clear();
+    idleItems.clear();
+    if (idleTimer != null) { clearTimeout(idleTimer); idleTimer = null; }
     pendingItems.clear();
     // A parked card may still hold an off-closure from this generation; it must not pin the trees.
     nodes.clear();
@@ -371,6 +411,12 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
         entity: entityOf(key),
         cb: guard("watchContent", (_before, after) => {
           if (disposed || !after?.[UID] || !itemWatch.has(key)) return;
+          if (held) {
+            // The release's assemble reads this card whole.
+            content.delete(key);
+            dirty = true;
+            return;
+          }
           if (sameKids(content.get(key), kidsOf(after), depth)) return;
           content.set(key, whole(after));
           kick();
@@ -386,14 +432,16 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
       }
     }
     w.n += 1;
+    idleItems.delete(key);
     let on = true;
     return () => {
       if (!on) return;
       on = false;
       w.n -= 1;
-      if (w.n > 0 || itemWatch.get(key) !== w) return;
-      itemWatch.delete(key);
-      try { data.removePullWatch(w.pattern, w.entity, w.cb); } catch { /* already gone */ }
+      if (w.n > 0 || itemWatch.get(key) !== w || disposed) return;
+      idleItems.set(key, Date.now());
+      while (idleItems.size > ITEM_IDLE_MAX) dropItem(idleItems.keys().next().value);
+      armSweep();
     };
   };
 
@@ -429,7 +477,22 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
       disposed = true;
       dropAll();
     },
-    stats: () => ({ containers: live.size, items: content.size, itemWatches: itemWatch.size }),
+    hold() {
+      if (disposed) return;
+      held = true;
+    },
+    // Back from a park: one assemble when a watch fired meanwhile. True when it will publish.
+    release() {
+      if (disposed || !held) return false;
+      held = false;
+      if (!dirty) return false;
+      dirty = false;
+      kick();
+      return true;
+    },
+    get held() { return held; },
+    get disposed() { return disposed; },
+    stats: () => ({ containers: live.size, items: content.size, itemWatches: itemWatch.size - idleItems.size, idleItemWatches: idleItems.size }),
     get tree() { return lastTree; },
   };
 

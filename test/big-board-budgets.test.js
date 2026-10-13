@@ -4,11 +4,11 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import test, { mock } from "node:test";
 import { bigBoardTree, treeBlockCount } from "../src/model/stress-board.js";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { mountBoardView } from "../src/view/board-view.js";
-import { createHost } from "../src/host/roam.js";
+import { SPLIT_HOLD_MS, createHost } from "../src/host/roam.js";
 import { SPLIT_WATCH_MIN } from "../src/host/split-watch.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
@@ -49,9 +49,15 @@ test("one write re-pulls a bounded part of the board under the split watch", asy
   assert.equal(trees.length, 1);
   counts.blocksPerWatchFire = fake.pullCounter.n;
   assert.ok(counts.blocksPerWatchFire < total / 4, `one write re-pulled ${counts.blocksPerWatchFire} of ${total} blocks`);
-  off();
-  assert.equal(host.stats.watches, 0, "no watch is left behind");
-  assert.equal(host.splitStats("bigroot"), null);
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    off();
+    assert.equal(host.stats.watches, 0, "no watch is left behind");
+    mock.timers.tick(SPLIT_HOLD_MS);
+    assert.equal(host.splitStats("bigroot"), null);
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 function mount(vp) {

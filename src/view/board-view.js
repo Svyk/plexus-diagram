@@ -189,6 +189,14 @@ export function viewportStorageId(nativeEl, boardUid, readString) {
 }
 const DEFAULT_HEIGHT = 560;
 
+// Chrome refuses canvases past ~16k px a side or ~268M px in all; toBlob then gives null. Stay well inside both.
+export const PNG_MAX_SIDE = 16384;
+export const PNG_MAX_AREA = 64e6;
+export function pngScale(w, h) {
+  const width = Math.max(1, w), height = Math.max(1, h);
+  return Math.min(2, PNG_MAX_SIDE / width, PNG_MAX_SIDE / height, Math.sqrt(PNG_MAX_AREA / (width * height)) * 0.999);
+}
+
 function rasterizeSvg(doc, svg) {
   return new Promise((resolve, reject) => {
     const Img = doc.defaultView?.Image || globalThis.Image;
@@ -202,11 +210,12 @@ function rasterizeSvg(doc, svg) {
         const canvas = doc.createElement("canvas");
         const w = img.naturalWidth || img.width || 1;
         const h = img.naturalHeight || img.height || 1;
-        canvas.width = Math.max(1, Math.round(w * 2));
-        canvas.height = Math.max(1, Math.round(h * 2));
+        const scale = pngScale(w, h);
+        canvas.width = Math.max(1, Math.round(w * scale));
+        canvas.height = Math.max(1, Math.round(h * scale));
         const g = canvas.getContext?.("2d");
         if (!g || typeof canvas.toBlob !== "function") { URL.revokeObjectURL(url); resolve(null); return; }
-        g.setTransform(2, 0, 0, 2, 0, 0);
+        g.setTransform(scale, 0, 0, scale, 0, 0);
         g.drawImage(img, 0, 0, w, h);
         canvas.toBlob((blob) => { URL.revokeObjectURL(url); resolve(blob); }, "image/png");
       } catch (err) { try { URL.revokeObjectURL(url); } catch { /* already revoked */ } reject(err); }

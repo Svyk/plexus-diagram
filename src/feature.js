@@ -44,6 +44,7 @@ import { holeRect, previewImageBox, setCameraFromView } from "./view/region-hove
 import { drawViewMap, minimapSvg, viewMapModel } from "./view/minimap-svg.js";
 import { boundsOf, buildBoard, worldRects } from "./model/board.js";
 import { createHelperClient } from "./host/parse-helper-client.js";
+import { createDocCache } from "./host/doc-cache.js";
 import { createParseStore } from "./host/parse-store.js";
 import { createPdfTables } from "./host/pdf-tables.js";
 import { boardBounds, createPublicApi, emitPublicEvent, fitThumbSize, installPublicApi, thumbStroke, uninstallPublicApi } from "./model/public-api.js";
@@ -483,7 +484,7 @@ export async function installPlexusDiagram({
     return { title, section, svg };
   }
   const regionCrops = new Map(); // region button -> its destroy
-  const pinPdfDocs = new Map();
+  const pinPdfDocs = createDocCache();
   let pendingPin = null;
   const showStash = createShowStash();
   let showWhere = "main";
@@ -503,6 +504,7 @@ export async function installPlexusDiagram({
     for (const drop of [...regionCrops.values()]) drop();
     regionCrops.clear();
     pinPdfDocs.clear();
+    viewBoards.clear();
     pendingPin = null;
     resetCropUrls();
   });
@@ -2718,6 +2720,7 @@ export async function installPlexusDiagram({
       try { session?.release?.(); } catch { /* already released */ }
     }
     viewBoards.set(id, { board, at: Date.now() });
+    while (viewBoards.size > 12) viewBoards.delete(viewBoards.keys().next().value);
     return board;
   }
 

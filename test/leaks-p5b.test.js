@@ -7,6 +7,7 @@ import { MOUNT_STAMP_CAP, mountFpsFromStamps, pushFrameStamp } from "../src/view
 import { createCoverStore } from "../src/host/cover-store.js";
 import { createParseStore } from "../src/host/parse-store.js";
 import { createFakeIDB } from "./fixtures/fake-idb.js";
+import { createDocCache } from "../src/host/doc-cache.js";
 import { createSplitWatch } from "../src/host/split-watch.js";
 import { createChrome } from "../src/view/chrome.js";
 import { createPanel } from "../src/view/panel.js";
@@ -204,4 +205,16 @@ test("2e: many views share one IndexedDB connection for the cover and parse cach
   }
   const diagramOpens = idb.opens.filter((o) => (o.name ?? o[0]) === "plexus-diagram");
   assert.equal(diagramOpens.length, 1, `opens of plexus-diagram: ${diagramOpens.length}`);
+});
+
+test("2f: the pin crop document cache destroys what it evicts and what it clears", () => {
+  const made = [];
+  const doc = (i) => { const d = { i, destroyed: false, destroy() { d.destroyed = true; } }; made.push(d); return d; };
+  const cache = createDocCache({ cap: 3 });
+  for (let i = 0; i < 10; i += 1) cache.set(`u${i}`, doc(i));
+  assert.equal(cache.size(), 3);
+  assert.equal(made.filter((d) => !d.destroyed).length, 3, "only the cap stays open");
+  assert.ok(cache.get("u9"));
+  cache.clear();
+  assert.equal(made.every((d) => d.destroyed), true);
 });

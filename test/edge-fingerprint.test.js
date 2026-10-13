@@ -21,11 +21,12 @@ function seed(fake) {
   fake.seedBoard({ uid: "fp1", props: { plexus: { v: 2 } }, children: [...cards, { uid: "edges1", string: "Connections", props: { plexus: { type: "edges" } }, children: edges }] });
 }
 
-function setup({ flags = null } = {}) {
-  if (flags) noteSpeedFlags(flags);
+// The fingerprint is off by default (see the reference-stamp test below); these tests turn it on.
+function setup({ flags = null, seedWith = seed } = {}) {
+  noteSpeedFlags({ edgeFingerprint: true, ...flags });
   const fake = createFakeRoam({ echoDelay: 1, stamps: true, pullMany: true });
   fake.roamWatch = true;
-  seed(fake);
+  seedWith(fake);
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
   const full = host.pullBoard("fp1");
   const trees = [];
@@ -197,4 +198,44 @@ test("the edgeFingerprint switch restores the EDGES_PATTERN watch", async () => 
   await fake.api.data.block.update({ block: { uid: "e3", string: "off" } });
   await settle(fake);
   assert.equal(find(trees.at(-1), "e3")[":block/string"], "off");
+});
+
+// Live edges are `((A)) → label → ((B))`, and Roam re-stamps every block that references an edited block: one card
+// write changes the fingerprint of all that card's edges and the watch reads Connections whole on every card edit and
+// drag (+100 ms per write on PhD MAIN). So edgeFingerprint is off by default.
+function seedRefs(fake) {
+  const cards = Array.from({ length: 40 }, (_, i) => ({ uid: `c${i}`, string: `card ${i}`, props: { plexus: { type: "card", x: i * 10, y: 0, w: 200, h: 100 } } }));
+  const edges = Array.from({ length: EDGES }, (_, i) => ({ uid: `e${i}`, string: `((c${i % 40})) → x → ((c${(i + 1) % 40}))`, props: { plexus: { type: "edge", from: `c${i % 40}`, to: `c${(i + 1) % 40}` } } }));
+  fake.seedBoard({ uid: "fp1", props: { plexus: { v: 2 } }, children: [...cards, { uid: "edges1", string: "Connections", props: { plexus: { type: "edges" } }, children: edges }] });
+}
+
+// Whether one card write made the board read its Connections again: the published Connections node is a new object.
+async function cardWriteRereadsEdges(flags) {
+  const f = setup({ flags, seedWith: seedRefs });
+  await settle(f.fake);
+  await f.fake.api.data.block.update({ block: { uid: "e1", string: "((c1)) → warm → ((c2))" } });
+  await settle(f.fake);
+  const before = find(f.trees.at(-1), "edges1");
+  await f.fake.api.data.block.update({ block: { uid: "c3", props: { plexus: { type: "card", x: 999, y: 0, w: 200, h: 100 } } } });
+  await settle(f.fake);
+  const after = f.trees.at(-1);
+  assert.equal(find(after, "c3")[":block/props"][":plexus"][":x"], 999, "the card write reached the board");
+  return find(after, "edges1") !== before;
+}
+
+test("with the fingerprint on, a card write reads Connections again (Roam stamps the edges that cite the card)", async () => {
+  assert.equal(await cardWriteRereadsEdges({ edgeFingerprint: true }), true);
+});
+
+test("edgeFingerprint is off by default: the Connections watch is EDGES_PATTERN and a card write leaves the edges alone", async () => {
+  noteSpeedFlags(null);
+  const fake = createFakeRoam({ echoDelay: 1, stamps: true, pullMany: true });
+  fake.roamWatch = true;
+  seedRefs(fake);
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  host.pullBoard("fp1");
+  host.watchBoard("fp1", () => {});
+  await settle(fake);
+  assert.deepEqual(fake.watchList().filter((w) => w.uid === "edges1").map((w) => w.pattern), [EDGES_PATTERN]);
+  assert.equal(await cardWriteRereadsEdges({ edgeFingerprint: false }), false);
 });

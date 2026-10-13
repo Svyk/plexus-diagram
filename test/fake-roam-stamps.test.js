@@ -70,3 +70,13 @@ test("undo re-stamps the block it brings back; every write stamps the page and a
   assert.notEqual(kid(read(), "b")[":edit/time"], stamped, "undo stamped the restored block anew");
   assert.equal(fake.api.data.pull("[:block/uid :block/string]", [":block/uid", "b"])[":block/string"], "b");
 });
+
+test("an edit also stamps every block that references the edited one by ((uid))", async () => {
+  const { fake, read, kid } = setup();
+  await fake.api.data.block.update({ block: { uid: "c", string: "see ((a)) → x → ((b))" } });
+  const before = read();
+  await fake.api.data.block.update({ block: { uid: "a", string: "a2" } });
+  const after = read();
+  assert.notEqual(kid(after, "c")[":edit/time"], kid(before, "c")[":edit/time"], "the referencing block is stamped");
+  assert.equal(kid(after, "b")[":edit/time"], kid(before, "b")[":edit/time"], "an unrelated block is not");
+});

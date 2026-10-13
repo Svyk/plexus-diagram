@@ -496,10 +496,15 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
           return write(uid, () => {
             const b = blocks.get(uid);
             if (!b) throw new Error(`fake-roam: update unknown ${uid}`);
-            // Roam stamps :edit/time on the entity whose string or props changed, and on no other.
+            // Roam stamps :edit/time on the entity whose string or props changed.
             const nextProps = fields.props !== undefined ? plainKeys(fields.props) : undefined;
             if ((fields.string !== undefined && fields.string !== b.string)
-              || (nextProps !== undefined && JSON.stringify(nextProps) !== JSON.stringify(b.props))) b.editTime = stamp();
+              || (nextProps !== undefined && JSON.stringify(nextProps) !== JSON.stringify(b.props))) {
+              b.editTime = stamp();
+              // Roam also re-stamps every block that references the edited one: an edge `((A)) → x → ((B))` is
+              // stamped by any text or props write on card A (live, PhD MAIN 2026-10-13).
+              if (stamps) for (const r of blocks.values()) if (r !== b && r.string.includes(`((${uid}))`)) r.editTime = stamp();
+            }
             if (fields.string !== undefined) b.string = fields.string;
             if (nextProps !== undefined) b.props = nextProps;
             if (fields.open !== undefined) b.open = fields.open;

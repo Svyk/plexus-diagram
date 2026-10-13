@@ -216,13 +216,14 @@ export function normalizeSetting(id, value) {
   return value;
 }
 
-// FAST-9 + INSTANT-1. All on. A missing key stays on. JSON that does not parse leaves this.
+// FAST-9 + INSTANT-1. All on except edgeFingerprint. A missing key keeps its default. JSON that does not parse leaves this.
 // splitWatch, virtualShells, virtualEdges and edgeFingerprint are the big-board paths (PhD stress round): each off restores the
-// previous path without a release.
+// previous path without a release. edgeFingerprint is off: Roam re-stamps :edit/time on every block that references an
+// edited block, so each card write changed its edges' fingerprint and read Connections whole (+100 ms per write).
 const SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint"];
 
 export function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false };
 }
 
 export function parseSpeedFlags(raw) {

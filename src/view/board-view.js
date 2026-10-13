@@ -7738,7 +7738,8 @@ function buildBoardView(onFail, {
   const hitShield = createHitShield({
     doc,
     root,
-    enabled: () => { try { return notedSpeedFlags().hitShield !== false; } catch { return true; } },
+    // Big boards only: on a normal board the raise and drop cost a 55-80 ms frame per pan and save nothing.
+    enabled: () => { try { return notedSpeedFlags().hitShield !== false && Boolean(itemsR.isVirtual?.()); } catch { return false; } },
     later: (fn, ms) => timers.later(fn, ms),
     onWheel: (event) => (disposed || suspended ? false : wheelBurst(event)),
     onPress: (target, event) => {

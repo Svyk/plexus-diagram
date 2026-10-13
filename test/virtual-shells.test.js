@@ -10,15 +10,15 @@ const COLS = 40;
 const N = 1000;
 const EDGES = 600;
 
-function bigBoard({ nested = false } = {}) {
-  const cards = Array.from({ length: N }, (_, i) => ({
+function bigBoard({ nested = false, n = N } = {}) {
+  const cards = Array.from({ length: n }, (_, i) => ({
     ":block/uid": `card${String(i).padStart(5, "0")}`,
     ":block/string": `Card ${i}`,
     ":block/order": i,
     ":block/props": { ":plexus": { ":x": (i % COLS) * 260, ":y": Math.floor(i / COLS) * 200, ":w": 240, ":h": 180 } },
     ":block/children": [],
   }));
-  const edges = Array.from({ length: EDGES }, (_, i) => ({
+  const edges = Array.from({ length: Math.min(EDGES, n - 1) }, (_, i) => ({
     ":block/uid": `edge${String(i).padStart(5, "0")}`,
     ":block/string": "→",
     ":block/order": i,
@@ -254,6 +254,26 @@ test("a wheel pan attaches no shell until it settles, and the underlay stands in
       m.view.dispose();
       m.restore();
       noteSpeedFlags(null);
+    }
+  }
+});
+
+// The hit shield pays off on a long page under a big board (PhD MAIN: 12-15 ms hit tests per wheel event). On a normal
+// board raising and dropping it cost a 55-80 ms frame per pan (C. botulinum, 50 items; 3.27.0 had none), so only a
+// board past VIRTUAL_MIN items raises it.
+test("a wheel burst raises the hit shield on a big board only", async () => {
+  for (const [n, want] of [[1000, true], [100, false]]) {
+    const m = mount({ x: 0, y: 0, zoom: 0.4 }, {}, { n });
+    try {
+      await m.pump(80);
+      m.stub.flushTimers();
+      await m.pump(5);
+      m.view.root.dispatchEvent({ type: "wheel", deltaX: 0, deltaY: 300, deltaMode: 0, clientX: 600, clientY: 400 });
+      m.stub.flushFrames();
+      assert.equal(Boolean(m.stub.document.querySelector(".pxd-hit-shield")), want, `${n} cards`);
+    } finally {
+      m.view.dispose();
+      m.restore();
     }
   }
 });

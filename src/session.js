@@ -1524,8 +1524,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     }
     finishLinks();
   }
-  function cancelScheduledLinks() {
+  // One rAF chain is in flight at a time. A hidden tab pauses frames, and every board change used to queue
+  // another pair of closures behind the paused ones.
+  let linkChain = null;
+  function cancelScheduledLinks(keepChain = false) {
     linkEpoch += 1;
+    if (!keepChain) linkChain = null;
     if (linkTimer) clearTimeout(linkTimer);
     linkTimer = null;
     if (linkIdleId != null) {
@@ -1536,17 +1540,25 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   // The board is already published. Two frames let a sketch handoff mount
   // .pxd-item before this query; the idle timeout is 1s so the curves still show.
   function scheduleLinks() {
-    cancelScheduledLinks();
-    const epoch = linkEpoch;
+    cancelScheduledLinks(true);
     const ric = globalThis.requestIdleCallback;
     const raf = globalThis.requestAnimationFrame;
     if (linkDelay !== 0 && !idle && typeof ric === "function" && typeof raf === "function") {
+      if (linkChain) {
+        linkChain.epoch = linkEpoch;
+        return;
+      }
+      const chain = { epoch: linkEpoch };
+      linkChain = chain;
+      const live = () => linkChain === chain && chain.epoch === linkEpoch && !destroyed;
       raf(() => {
-        if (epoch !== linkEpoch || destroyed) return;
+        if (!live()) { if (linkChain === chain) linkChain = null; return; }
         raf(() => {
-          if (epoch !== linkEpoch || destroyed) return;
+          if (!live()) { if (linkChain === chain) linkChain = null; return; }
+          // From here the idle callback is the pending work; a later schedule cancels it and starts a new chain.
+          linkChain = null;
           linkIdleId = ric(() => {
-            if (epoch !== linkEpoch) return;
+            if (chain.epoch !== linkEpoch) return;
             linkIdleId = null;
             runLinks();
           }, { timeout: 1000 });
@@ -1554,6 +1566,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       });
       return;
     }
+    linkChain = null;
+    const epoch = linkEpoch;
     linkTimer = setTimeout(() => {
       if (epoch !== linkEpoch) return;
       linkTimer = null;

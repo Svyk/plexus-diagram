@@ -10,6 +10,9 @@ import { createFakeIDB } from "./fixtures/fake-idb.js";
 import { createDocCache } from "../src/host/doc-cache.js";
 import { createRelChips } from "../src/relchips.js";
 import { createLifecycle } from "../src/lifecycle.js";
+import { createHost } from "../src/host/roam.js";
+import { acquireSession, resetSessions } from "../src/session.js";
+import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { createSplitWatch } from "../src/host/split-watch.js";
 import { createChrome } from "../src/view/chrome.js";
 import { createPanel } from "../src/view/panel.js";
@@ -281,4 +284,30 @@ test("2h: lifecycle.timeout and idle drop their disposer once they fire", async 
   await new Promise((r) => setTimeout(r, 70));
   assert.equal(cleared, 0, "a pending timer is still cleared on dispose");
   void id;
+});
+
+test("2i: link scheduling does not stack rAF closures while frames are paused", async () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  const prevRaf = globalThis.requestAnimationFrame;
+  const prevRic = globalThis.requestIdleCallback;
+  const queued = [];
+  globalThis.requestAnimationFrame = (fn) => { queued.push(fn); return queued.length; };
+  globalThis.requestIdleCallback = (fn) => { queued.push(fn); return queued.length; };
+  try {
+    const fake = createFakeRoam({ echoDelay: 0 });
+    fake.seedPage({ title: "A", uid: "pageA" });
+    fake.seedBoard({ uid: "b1", props: { plexus: { v: 2 } }, children: [{ uid: "c1", string: "[[A]]", props: { plexus: { x: 0, y: 0, w: 200, h: 100 } } }] });
+    const host = createHost({ api: fake.api, storage: stub.localStorage, graph: "g" });
+    const session = acquireSession("b1", { host, raf: (fn) => fn(), linkDelay: 1500 });
+    const base = queued.length;
+    for (let i = 0; i < 60; i += 1) session.refreshLinks();
+    assert.ok(queued.length - base <= 2, `queued rAF/idle closures: ${queued.length - base}`);
+    session.release?.();
+  } finally {
+    resetSessions();
+    globalThis.requestAnimationFrame = prevRaf;
+    globalThis.requestIdleCallback = prevRic;
+    restore();
+  }
 });

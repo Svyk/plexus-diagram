@@ -888,7 +888,11 @@ function buildBoardView(onFail, {
       return fn(event);
     };
     el.addEventListener(type, wrapped, opts);
-    const off = () => el.removeEventListener(type, wrapped, opts);
+    const off = () => {
+      el.removeEventListener(type, wrapped, opts);
+      const at = listeners.lastIndexOf(off);
+      if (at >= 0) listeners.splice(at, 1);
+    };
     listeners.push(off);
     return off;
   };

@@ -24013,11 +24013,17 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   let rowCap = 128;
   const listenRow = (el3, type, fn, opts) => {
     el3.addEventListener(type, fn, opts);
-    rowOffs.push({ el: el3, off: () => el3.removeEventListener(type, fn, opts) });
+    rowOffs.push({ el: el3, off: () => el3.removeEventListener(type, fn, opts), seen: el3.isConnected !== false, misses: 0 });
     if (rowOffs.length <= rowCap) return;
     const keep = [];
     for (const entry of rowOffs) {
-      if (entry.el.isConnected === false && !root?.contains?.(entry.el)) entry.off();
+      if (entry.el.isConnected !== false || root?.contains?.(entry.el)) {
+        entry.seen = true;
+        entry.misses = 0;
+        keep.push(entry);
+        continue;
+      }
+      if (entry.seen || (entry.misses += 1) >= 2) entry.off();
       else keep.push(entry);
     }
     rowOffs.length = 0;
@@ -36423,7 +36429,7 @@ function openDb(factory, { name, version, stores, capMs = 2e3 }) {
 var sharedDiagramDb = /* @__PURE__ */ new WeakMap();
 function openDiagramDb(factory, { capMs = 2e3 } = {}) {
   const open = () => openDb(factory, { name: DIAGRAM_DB, version: DIAGRAM_DB_VERSION, stores: STORES, capMs });
-  if (!factory || typeof factory !== "object" && typeof factory !== "function") return open();
+  if (!isKey(factory)) return open();
   const have = sharedDiagramDb.get(factory);
   if (have) return have;
   const pending = open().then((db) => {
@@ -36447,6 +36453,22 @@ function openDiagramDb(factory, { capMs = 2e3 } = {}) {
   });
   sharedDiagramDb.set(factory, pending);
   return pending;
+}
+var isKey = (factory) => Boolean(factory) && (typeof factory === "object" || typeof factory === "function");
+function forgetDiagramDb(factory) {
+  if (isKey(factory)) sharedDiagramDb.delete(factory);
+}
+function closeDiagramDb(factory) {
+  if (!isKey(factory)) return;
+  const have = sharedDiagramDb.get(factory);
+  sharedDiagramDb.delete(factory);
+  if (have) have.then((db) => {
+    try {
+      db?.close?.();
+    } catch {
+    }
+  }, () => {
+  });
 }
 function openImageDb(factory, { capMs = 2e3 } = {}) {
   return openDb(factory, { name: IMAGE_DB, version: IMAGE_DB_VERSION, stores: [STORE_IMAGE_INDEX], capMs });
@@ -36627,36 +36649,43 @@ function createParseStore({ indexedDB: factory, now: now4, docCap = PARSE_DOC_CA
     images: /* @__PURE__ */ new Map(),
     index: /* @__PURE__ */ new Map()
   };
-  let dbPromise = null;
   let idbDead = !factory;
   const open = () => {
     if (idbDead) return Promise.resolve(null);
-    if (!dbPromise) {
-      dbPromise = openDiagramDb(factory).then((db) => {
-        if (!db) {
-          idbDead = true;
-          dbPromise = null;
-        }
-        return db;
-      });
-    }
-    return dbPromise;
+    return openDiagramDb(factory).then((db) => {
+      if (!db) idbDead = true;
+      return db;
+    });
   };
   const run = async (storeName, mode, fn) => {
     if (idbDead) return { ok: false };
-    try {
-      const db = await open();
-      if (!db || typeof db.transaction !== "function") {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      let store = null;
+      try {
+        const db = await open();
+        if (!db || typeof db.transaction !== "function") {
+          idbDead = true;
+          return { ok: false };
+        }
+        try {
+          store = db.transaction(storeName, mode).objectStore(storeName);
+        } catch {
+          forgetDiagramDb(factory);
+          continue;
+        }
+      } catch {
         idbDead = true;
         return { ok: false };
       }
-      const tx = db.transaction(storeName, mode);
-      const store = tx.objectStore(storeName);
-      return await fn(store);
-    } catch {
-      idbDead = true;
-      return { ok: false };
+      try {
+        return await fn(store);
+      } catch {
+        idbDead = true;
+        return { ok: false };
+      }
     }
+    idbDead = true;
+    return { ok: false };
   };
   const backend = {
     async get(storeName, key) {
@@ -37138,27 +37167,44 @@ function createSyncHold({
     const cls = typeof icon.className === "string" ? icon.className : String(icon.classList ?? "");
     return /saving/.test(cls);
   };
-  const wait2 = async ({ onHold } = {}) => {
-    let state = saving();
-    if (state !== true || !online()) return { waited: 0, capped: false, held: false };
-    onHold?.();
-    const win2 = doc?.defaultView || null;
-    const guard = (event) => {
-      event.preventDefault?.();
-      try {
-        event.returnValue = "";
-      } catch {
-      }
-    };
+  const win2 = () => doc?.defaultView || null;
+  const guard = (event) => {
+    event.preventDefault?.();
     try {
-      win2?.addEventListener?.("beforeunload", guard);
+      event.returnValue = "";
     } catch {
     }
+  };
+  let guarded = null;
+  const installGuard = () => {
+    if (guarded) return;
+    const w = win2();
+    try {
+      w?.addEventListener?.("beforeunload", guard);
+      guarded = w;
+    } catch {
+    }
+  };
+  const release = () => {
+    const w = guarded;
+    guarded = null;
+    try {
+      w?.removeEventListener?.("beforeunload", guard);
+    } catch {
+    }
+  };
+  const wait2 = async ({ onHold, capMs: budget, abort, keepGuard = false } = {}) => {
+    let state = saving();
+    if (state !== true || !online()) return { waited: 0, capped: false, held: false };
+    const cap4 = Math.min(capMs, Number.isFinite(budget) ? budget : capMs);
+    onHold?.();
+    installGuard();
     const start = now4();
     let capped = false;
     try {
       while (state === true) {
-        if (now4() - start >= capMs) {
+        if (abort?.()) break;
+        if (now4() - start >= cap4) {
           capped = true;
           break;
         }
@@ -37167,14 +37213,11 @@ function createSyncHold({
         state = saving();
       }
     } finally {
-      try {
-        win2?.removeEventListener?.("beforeunload", guard);
-      } catch {
-      }
+      if (!keepGuard) release();
     }
     return { waited: now4() - start, capped, held: true };
   };
-  return { saving, wait: wait2 };
+  return { saving, wait: wait2, release };
 }
 
 // src/session.js
@@ -38102,9 +38145,6 @@ var A = ":block/uid :block/string :block/order :block/heading :block/open :block
 var STRUCT_PATTERN = `[${A} {(limit :block/children nil) [${A}]}]`;
 var EDGES_PATTERN = `[${A} {(limit :block/children nil) [${A} {(limit :block/children nil) [${A} {(limit :block/children nil) [:block/uid]}]}]}]`;
 var FINGERPRINT_PATTERN = "[:block/uid {(limit :block/children nil) [:block/uid :block/order :edit/time {(limit :block/children nil) [:block/uid :block/order :edit/time {(limit :block/children nil) [:block/uid]}]}]}]";
-var EDGE_BODY_PATTERN = `[${A} {(limit :block/children nil) [${A} {(limit :block/children nil) [:block/uid]}]}]`;
-var FINGERPRINT_FULL_READ_ABOVE = 300;
-var FINGERPRINT_CHUNK = 50;
 var THUMB_PATTERN = `[${A} {(limit :block/children nil) [${A} {(limit :block/children nil) [${A}]}]}]`;
 var THUMB_DEPTH = 2;
 var SPLIT_WATCH_MIN = 2e3;
@@ -38160,7 +38200,7 @@ function fingerprintOf(node2) {
     out.set(id, {
       order: edge[ORDER] ?? null,
       time: edge[TIME] ?? null,
-      whys: kidsOf2(edge).map((why) => [why?.[UID], why?.[TIME] ?? null, why?.[ORDER] ?? null, kidsOf2(why).length])
+      whys: kidsOf2(edge).map((why) => [why?.[UID], why?.[TIME] ?? null, why?.[ORDER] ?? null, kidsOf2(why).map((g) => g?.[UID]).join(",")])
     });
   }
   return out;
@@ -38182,7 +38222,7 @@ function diffFingerprints(prev, next) {
   for (const id of prev.keys()) if (!next.has(id)) removed.push(id);
   return { changed: changed2, removed, reordered };
 }
-function createSplitWatch({ uid, seed, data, pull, pullMany = null, deepPattern, onTree, fingerprint = false, guard = (_name, fn) => fn, schedule = (fn) => queueMicrotask(fn) }) {
+function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerprint = false, guard = (_name, fn) => fn, schedule = (fn) => queueMicrotask(fn) }) {
   const entityOf = (id) => `[:block/uid "${String(id).replace(/["\\]/g, "")}"]`;
   const nodes = /* @__PURE__ */ new Map();
   const kinds = /* @__PURE__ */ new Map([[uid, "struct"]]);
@@ -38245,35 +38285,19 @@ function createSplitWatch({ uid, seed, data, pull, pullMany = null, deepPattern,
     } else nodes.set(id, after);
     kick();
   });
-  const initialFingerprint = (id) => {
-    const print = fingerprintOf(read2(FINGERPRINT_PATTERN, id));
-    const stored = kidsOf2(nodes.get(id)).map((edge) => edge?.[UID]);
-    if (stored.length !== print.size || stored.some((edgeUid) => !print.has(edgeUid))) return null;
-    return print;
-  };
-  const readEdgeBodies = (uids) => {
-    const out = /* @__PURE__ */ new Map();
-    for (let i = 0; i < uids.length; i += FINGERPRINT_CHUNK) {
-      const chunk = uids.slice(i, i + FINGERPRINT_CHUNK);
-      let rows = null;
-      if (typeof pullMany === "function") {
-        try {
-          rows = pullMany(EDGE_BODY_PATTERN, chunk.map((id) => [UID, id]));
-        } catch {
-          rows = null;
-        }
-      }
-      if (!Array.isArray(rows) || rows.length !== chunk.length) rows = chunk.map((id) => read2(EDGE_BODY_PATTERN, id));
-      chunk.forEach((id, at) => {
-        if (rows[at]?.[UID]) out.set(id, rows[at]);
-      });
-    }
-    return out;
-  };
   const readWholeEdges = (id) => {
     const fresh = read2(EDGES_PATTERN, id);
-    if (fresh?.[UID]) nodes.set(id, fresh);
-    return fresh;
+    return fresh?.[UID] ? fresh : null;
+  };
+  const readConsistent = (id) => {
+    const whole2 = readWholeEdges(id);
+    if (!whole2) return null;
+    const raw = read2(FINGERPRINT_PATTERN, id);
+    if (!raw?.[UID]) return null;
+    const print = fingerprintOf(raw);
+    const have = new Set(kidsOf2(whole2).map((edge) => edge?.[UID]));
+    for (const edgeUid of print.keys()) if (!have.has(edgeUid)) return null;
+    return { whole: whole2, print };
   };
   const onFingerprint = (id) => guard("watchEdges", (_before, after) => {
     if (disposed) return;
@@ -38286,37 +38310,32 @@ function createSplitWatch({ uid, seed, data, pull, pullMany = null, deepPattern,
     const next = fingerprintOf(after);
     const prev = fingerprints.get(id) || null;
     const stored = nodes.get(id);
-    if (!prev || !stored?.[UID] || next.size === 0 && prev.size > 0) {
-      readWholeEdges(id);
-      fingerprints.set(id, next);
+    let reordered = false;
+    if (prev && stored?.[UID]) {
+      const diff = diffFingerprints(prev, next);
+      if (!diff.changed.length && !diff.removed.length) {
+        if (!diff.reordered) return;
+        reordered = true;
+      }
+    }
+    if (!reordered) {
+      const got = readConsistent(id);
+      if (!got) {
+        fingerprints.set(id, null);
+        return;
+      }
+      nodes.set(id, got.whole);
+      fingerprints.set(id, got.print);
       kick();
       return;
     }
-    const { changed: changed2, removed, reordered } = diffFingerprints(prev, next);
-    if (!changed2.length && !removed.length && !reordered) return;
-    fingerprints.set(id, next);
-    let kids = kidsOf2(stored);
-    if (changed2.length > FINGERPRINT_FULL_READ_ABOVE) {
-      readWholeEdges(id);
-      kick();
-      return;
-    }
-    const fresh = changed2.length ? readEdgeBodies(changed2) : /* @__PURE__ */ new Map();
-    const byUid = new Map(kids.map((edge) => [edge[UID], edge]));
-    for (const gone of removed) byUid.delete(gone);
-    for (const edgeUid of changed2) {
-      const body = fresh.get(edgeUid);
-      if (body) byUid.set(edgeUid, body);
-      else byUid.delete(edgeUid);
-    }
-    kids = [];
-    for (const [edgeUid, edge] of byUid) {
-      const print = next.get(edgeUid);
-      if (!print) continue;
-      kids.push(print.order != null && edge[ORDER] !== print.order ? { ...edge, [ORDER]: print.order } : edge);
-    }
+    const kids = kidsOf2(stored).map((edge) => {
+      const order = next.get(edge[UID])?.order;
+      return order != null && edge[ORDER] !== order ? { ...edge, [ORDER]: order } : edge;
+    });
     kids.sort((a, b) => (a[ORDER] ?? 0) - (b[ORDER] ?? 0));
     nodes.set(id, { ...shallow(stored), [KIDS]: kids });
+    fingerprints.set(id, next);
     kick();
   });
   const sync = () => {
@@ -38328,7 +38347,7 @@ function createSplitWatch({ uid, seed, data, pull, pullMany = null, deepPattern,
       const entry = { kind, pattern: finger ? FINGERPRINT_PATTERN : patternOf(kind), entity: entityOf(id), cb: finger ? onFingerprint(id) : onContainer(id) };
       data.addPullWatch(entry.pattern, entry.entity, entry.cb);
       live2.set(id, entry);
-      if (finger) fingerprints.set(id, initialFingerprint(id));
+      if (finger) fingerprints.set(id, null);
     }
     for (const [id, entry] of [...live2]) {
       if (kinds.has(id)) continue;
@@ -38356,6 +38375,7 @@ function createSplitWatch({ uid, seed, data, pull, pullMany = null, deepPattern,
           if (!own?.[UID]) {
             own = read2(patternOf(kind), id) || kid;
             nodes.set(id, own);
+            if (kind === "edges" && fingerprints.has(id)) fingerprints.set(id, null);
           }
           kids.push(kind === "struct" ? build(own, false) : own);
           continue;
@@ -38480,8 +38500,10 @@ function createSplitWatch({ uid, seed, data, pull, pullMany = null, deepPattern,
       if (disposed) return null;
       for (const [id, kind] of kinds) {
         const fresh = read2(patternOf(kind), id);
-        if (fresh?.[UID]) nodes.set(id, fresh);
-        else if (id === uid) return null;
+        if (fresh?.[UID]) {
+          nodes.set(id, fresh);
+          if (kind === "edges" && fingerprints.has(id)) fingerprints.set(id, null);
+        } else if (id === uid) return null;
         else nodes.delete(id);
       }
       return assemble();
@@ -38490,6 +38512,7 @@ function createSplitWatch({ uid, seed, data, pull, pullMany = null, deepPattern,
     reseed(full) {
       if (disposed) return;
       seedFrom(full);
+      for (const id of fingerprints.keys()) fingerprints.set(id, null);
       sync();
       armPending();
     },
@@ -39178,6 +39201,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const UNDO_ECHO_MS = 900;
   let openGroup = null;
   let silent = false;
+  let nativeFloor = false;
   let lastWriteAt = -Infinity;
   let dropBurst = () => {
   };
@@ -39528,7 +39552,6 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         seed: bigBoards.get(uid),
         data,
         pull: rawPull,
-        pullMany: typeof data.pull_many === "function" ? (pattern, entities) => data.pull_many(pattern, entities) : null,
         fingerprint: edgeFingerprintOn(),
         deepPattern: BOARD_PATTERN,
         guard: (name, fn2) => guardCallback(name, fn2, { stats }),
@@ -40498,10 +40521,26 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         closeChunk(g);
       }
     },
+    // Closes the open group as a chunk now and returns a function that opens a fresh one with the same label. A long
+    // wait between batches (the sync hold) is outside any undo group: another session's writes made meanwhile are
+    // their own steps, and invalidateUndo works. No-op with no group open.
+    suspendGroup() {
+      const done2 = openGroup;
+      if (!done2) return () => {
+      };
+      openGroup = null;
+      closeChunk(done2);
+      return () => {
+        if (!openGroup) openGroup = { n: 0, kinds: [], label: done2.label || "" };
+      };
+    },
     // The open group becomes ONE entry that undoes and redoes through its own callbacks ({ undo, redo }, async),
     // not through a count of Roam's native undo steps (one Plexus write can be more than one native entry).
+    // null drops it again: a transaction that failed midway closes as a native chunk of the writes that ran.
     setCustomUndo(entry) {
-      if (openGroup && entry && typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
+      if (!openGroup) return;
+      if (entry && typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
+      else if (!entry) delete openGroup.custom;
     },
     async deletePage(uid) {
       stats.writes++;
@@ -40526,6 +40565,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     async undo() {
       lastWriteAt = Date.now();
       const entry = undoLog.pop();
+      if (!entry && nativeFloor) return;
       if (entry?.custom) {
         silent = true;
         try {
@@ -40537,7 +40577,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           silent = false;
           lastWriteAt = Date.now();
         }
+        undoLog.length = 0;
+        redoLog.length = 0;
         redoLog.push(entry);
+        nativeFloor = true;
         return;
       }
       const span = entry ? groupSpan(entry) : 1;
@@ -40558,6 +40601,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     async redo() {
       lastWriteAt = Date.now();
       const entry = redoLog.pop();
+      if (!entry && nativeFloor) return;
       if (entry?.custom) {
         silent = true;
         try {
@@ -40569,7 +40613,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           silent = false;
           lastWriteAt = Date.now();
         }
+        undoLog.length = 0;
+        redoLog.length = 0;
         undoLog.push(entry);
+        nativeFloor = true;
         return;
       }
       const span = entry ? groupSpan(entry) : 1;
@@ -40589,6 +40636,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (openGroup || Date.now() - lastWriteAt < UNDO_ECHO_MS) return;
       undoLog.length = 0;
       redoLog.length = 0;
+      nativeFloor = false;
     },
     openInSidebar(uid, type = "block") {
       return api3.ui.rightSidebar.addWindow({ window: { type, "block-uid": uid } });
@@ -42419,7 +42467,6 @@ var HIGHLIGHT_WATCH_CAP = 60;
 var registry = /* @__PURE__ */ new Map();
 var extensions = [];
 var BULK_CARD_CAP = 45;
-var CUSTOM_UNDO_ABOVE = 45;
 var BULK_CONFIRM_WRITES = 600;
 var BULK_REFUSE_WRITES = 3e3;
 function addPublicCard(opts = {}, createFn) {
@@ -42874,14 +42921,25 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     queueMicrotask(() => {
       dropQueued = false;
       if (destroyed || !board2) return;
+      let unconfirmed = false;
+      for (const id of [...lost]) {
+        if (host.blockExists?.(id) === true) {
+          lost.delete(id);
+          unconfirmed = true;
+        }
+      }
       const still = victims.filter((id) => {
         const edge = board2.edges.get(id);
         return edge && (lost.has(edge.from) || lost.has(edge.to));
       });
-      if (!still.length) return;
-      txn((t) => {
+      if (!still.length) {
+        if (unconfirmed) repull();
+        return;
+      }
+      const dropped = txn((t) => {
         for (const id of still) if (board2.edges.has(id)) t.del(id);
       });
+      if (unconfirmed) dropped.then(() => repull());
     });
   }
   const publish = () => {
@@ -43231,19 +43289,29 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     throw last;
   }
   const holder = syncHold || (typeof document === "undefined" ? null : createSyncHold());
-  async function execute(list, { hold = true } = {}) {
+  async function execute(list, { hold = false, suspend = false } = {}) {
     let i = 0;
+    let budget = SYNC_HOLD_CAP_MS;
     try {
       for (; i < list.length; i++) {
-        if (hold && holder && i > 0 && i % SYNC_HOLD_BATCH === 0 && list.length > SYNC_HOLD_BATCH) {
+        if (hold && holder && budget > 0 && i > 0 && i % SYNC_HOLD_BATCH === 0 && list.length > SYNC_HOLD_BATCH) {
           let held = false;
+          let resume = null;
           try {
-            await holder.wait({ onHold: () => {
-              held = true;
-              setSyncState("held");
-            } });
+            const out = await holder.wait({
+              capMs: budget,
+              abort: () => destroyed,
+              keepGuard: true,
+              onHold: () => {
+                held = true;
+                setSyncState("held");
+                if (suspend) resume = host.suspendGroup?.() ?? null;
+              }
+            });
+            if (out && Number.isFinite(out.waited)) budget -= out.waited;
           } catch {
           }
+          if (resume) resume();
           if (held) setSyncState("writing");
         }
         await runOpWithRetry(list[i]);
@@ -43253,6 +43321,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     } catch (err) {
       for (let j = i; j < list.length; j++) settleOp(list[j]);
       throw err;
+    } finally {
+      holder?.release?.();
     }
   }
   function coalesce(ops) {
@@ -43365,24 +43435,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (!ok) emit2("toast", { message: `Cancelled ${n3} writes.` });
     return ok;
   }
-  function autoUndo(list, inverse) {
-    const back = coalesce(inverse.slice().reverse());
-    const entry = {
-      forward: list,
-      async undo() {
-        await execute(back, { hold: false });
-      },
-      async redo() {
-        await execute(entry.forward, { hold: false });
-      }
-    };
-    return entry;
-  }
-  function commit(ops, result, custom = null, inverse = null) {
+  function commit(ops, result, custom = null) {
     if (!ops.length) return Promise.resolve(result);
     stampBoard(ops);
     const list = coalesce(ops);
-    if (!custom && inverse && list.length > CUSTOM_UNDO_ABOVE) custom = autoUndo(list, inverse);
     if (!bulkAllowed(list.length)) {
       repull();
       return Promise.resolve(void 0);
@@ -43390,9 +43446,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish();
     if (custom) custom.forward = list;
-    return queue.run(() => grouped(() => {
+    return queue.run(() => grouped(async () => {
       if (custom) host.setCustomUndo?.(custom);
-      return execute(list);
+      try {
+        return await execute(list, { hold: true, suspend: !custom });
+      } catch (err) {
+        if (custom) host.setCustomUndo?.(null);
+        throw err;
+      }
     })).then(() => result, (err) => {
       handleFailure(err);
       return result;
@@ -43401,14 +43462,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   function txn(fn, custom = null) {
     if (!board2 || destroyed || gone) return Promise.resolve(void 0);
     const ops = [];
-    const inverse = [];
-    const made = /* @__PURE__ */ new Set();
-    let invertible = true;
     const t = {
       create({ parent, uid: id, string = "", plexus, open, order }) {
         const newUid = id ?? host.generateUid();
-        made.add(newUid);
-        inverse.push({ op: "delete", uid: newUid });
         const ord = order ?? insertOrder(parent);
         const node2 = { [UID2]: newUid, [STR]: string, [ORD]: 0, [KIDS2]: [] };
         if (plexus) node2[PROPS] = { plexus: plainKeys(plexus) };
@@ -43418,30 +43474,23 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         return newUid;
       },
       move(id, parent, order = "last") {
-        const hit = ix().get(id);
-        if (!hit?.parent || made.has(parent) || made.has(id)) invertible = false;
-        else inverse.push({ op: "move", uid: id, parent: hit.parent[UID2], order: kidsOf3(hit.parent).indexOf(hit.node) });
         rawMove(id, parent, order);
         ops.push({ op: "move", uid: id, parent, order });
       },
       del(id) {
-        invertible = false;
         rawDelete(id);
         ops.push({ op: "delete", uid: id });
       },
       props(id, plexus) {
-        if (!made.has(id)) inverse.push({ op: "props", uid: id, plexus: clone(readPlexus(rawNode(id)?.[PROPS])) ?? null });
         rawProps(id, plexus);
         ops.push({ op: "props", uid: id, plexus });
       },
       string(id, string) {
-        if (!made.has(id)) inverse.push({ op: "string", uid: id, string: rawNode(id)?.[STR] ?? "" });
         rawString(id, string);
         ops.push({ op: "string", uid: id, string });
       },
       // A page outside the board. Nothing in the board tree changes.
       page({ uid: id, title }) {
-        invertible = false;
         const newUid = id ?? host.generateUid();
         ops.push({ op: "page", uid: newUid, title });
         return newUid;
@@ -43449,7 +43498,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       sync: rebuild
     };
     const result = fn(t);
-    return commit(ops, result, custom, invertible ? inverse : null);
+    return commit(ops, result, custom);
   }
   const rawPlexus = (id) => readPlexus(rawNode(id)?.[PROPS]) ?? {};
   function hasStoredLayout() {
@@ -44648,7 +44697,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
             ops.push({ op: "string", uid: e2.uid, string: e2.oldString });
             ops.push({ op: "props", uid: e2.uid, plexus: e2.oldProps });
           }
-          await execute(ops, { hold: false });
+          await execute(ops);
           for (const r of records) {
             if (!r.pageCreated) continue;
             for (let tries = 0; tries < 15; tries += 1) {
@@ -44664,7 +44713,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         },
         async redo() {
           const ops = custom.forward.filter((op) => op.op !== "page" || host.pageExists?.(op.title) !== true);
-          await execute(ops, { hold: false });
+          await execute(ops);
         }
       };
       return txn((t) => {
@@ -44722,7 +44771,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
             ops.push({ op: "string", uid: e2.uid, string: e2.oldString });
             ops.push({ op: "props", uid: e2.uid, plexus: e2.oldProps });
           }
-          await execute(ops, { hold: false });
+          await execute(ops);
           for (const r of back) {
             let out = false;
             for (let tries = 0; tries < 15 && !out; tries += 1) {
@@ -44730,11 +44779,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
               out = !loc || loc.parentUid !== r.captionUid;
               if (!out) await new Promise((resolve) => setTimeout(resolve, 200));
             }
-            if (out) await execute([{ op: "delete", uid: r.captionUid }], { hold: false });
+            if (out) await execute([{ op: "delete", uid: r.captionUid }]);
           }
         },
         async redo() {
-          await execute(custom.forward, { hold: false });
+          await execute(custom.forward);
         }
       };
       return txn((t) => {
@@ -44829,7 +44878,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return plan;
     },
     // Applies a sectionFoldPlan. Sections that no longer need the change are skipped. One custom undo entry; the
-    // writes go through execute(), so a long list pauses between batches while Roam's sync dot says saving.
+    // writes go through commit(), so a long list pauses between batches while Roam's sync dot says saving.
     async foldSections(plan) {
       const none = { changed: 0 };
       if (!plan || plan.boardUid !== uid || !board2 || destroyed || gone) return { ...none, refused: "board" };
@@ -44850,10 +44899,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       const custom = {
         forward: ops,
         async undo() {
-          await execute(back, { hold: false });
+          await execute(back);
         },
         async redo() {
-          await execute(custom.forward, { hold: false });
+          await execute(custom.forward);
         }
       };
       await commit(ops, void 0, custom);
@@ -47742,7 +47791,6 @@ function titleOf2(raw) {
 function createCoverStore({ indexedDB, storage } = {}) {
   const factory = indexedDB || null;
   const ls = storage || null;
-  let dbPromise = null;
   let idbDead = !factory;
   let book = null;
   const loadBook = () => {
@@ -47787,50 +47835,48 @@ function createCoverStore({ indexedDB, storage } = {}) {
   };
   const open = () => {
     if (idbDead) return Promise.resolve(null);
-    if (!dbPromise) {
-      dbPromise = openDb2(factory).then((db) => {
-        if (!db) {
-          idbDead = true;
-          dbPromise = null;
-        }
-        return db;
-      });
-    }
-    return dbPromise;
+    return openDb2(factory).then((db) => {
+      if (!db) idbDead = true;
+      return db;
+    });
   };
   const run = async (mode, fn) => {
     if (idbDead) return { ok: false, result: null };
-    try {
-      const db = await open();
-      if (!db || typeof db.transaction !== "function") {
-        idbDead = true;
-        return { ok: false, result: null };
-      }
-      let tx = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
       let store = null;
       try {
-        tx = db.transaction(COVER_STORE, mode);
-        store = tx.objectStore(COVER_STORE);
+        const db = await open();
+        if (!db || typeof db.transaction !== "function") {
+          idbDead = true;
+          return { ok: false, result: null };
+        }
+        let tx = null;
+        try {
+          tx = db.transaction(COVER_STORE, mode);
+          store = tx.objectStore(COVER_STORE);
+        } catch {
+          forgetDiagramDb(factory);
+          continue;
+        }
+        try {
+          tx.onerror = (event) => {
+            try {
+              event?.preventDefault?.();
+            } catch {
+            }
+          };
+          tx.onabort = () => {
+          };
+        } catch {
+        }
+        return await fn(store);
       } catch {
         idbDead = true;
         return { ok: false, result: null };
       }
-      try {
-        tx.onerror = (event) => {
-          try {
-            event?.preventDefault?.();
-          } catch {
-          }
-        };
-        tx.onabort = () => {
-        };
-      } catch {
-      }
-      return await fn(store);
-    } catch {
-      idbDead = true;
-      return { ok: false, result: null };
     }
+    idbDead = true;
+    return { ok: false, result: null };
   };
   const idbGet = (url) => withCap(
     () => run("readonly", (store) => requestResult2(store.get(url))),
@@ -51637,6 +51683,8 @@ function createInteractions({ actions, settings } = {}) {
     escape,
     isGesturing: () => Boolean(state.gesture),
     gestureKind: () => state.gesture?.kind ?? null,
+    // Writes a held-arrow nudge now: undo, redo and commands that do not come through handle() call it first.
+    flush: flushNudge,
     cancel: () => {
       flushNudge();
       cancelOpen();
@@ -76476,11 +76524,23 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     el3.addEventListener(type, fn, opts);
     const off = () => el3.removeEventListener(type, fn, opts);
     off.el = el3;
+    off.seen = el3.isConnected !== false;
+    off.misses = 0;
     listeners3.push(off);
     if (listeners3.length <= listenCap) return;
     const keep = [];
     for (const entry of listeners3) {
-      if (entry.el && entry.el.isConnected === false && !root?.contains?.(entry.el)) entry();
+      if (!entry.el) {
+        keep.push(entry);
+        continue;
+      }
+      if (entry.el.isConnected !== false || root?.contains?.(entry.el)) {
+        entry.seen = true;
+        entry.misses = 0;
+        keep.push(entry);
+        continue;
+      }
+      if (entry.seen || (entry.misses += 1) >= 2) entry();
       else keep.push(entry);
     }
     listeners3.length = 0;
@@ -87339,12 +87399,16 @@ function buildBoardView(onFail, {
     });
   };
   let pdfPagesDialog = null;
+  let pdfPagesPending = null;
   const closePdfPagesDialog = () => {
     try {
       pdfPagesDialog?.close?.();
     } catch {
     }
     pdfPagesDialog = null;
+    const settle3 = pdfPagesPending;
+    pdfPagesPending = null;
+    settle3?.(null);
   };
   const planPdfPages = async () => {
     const b = board2();
@@ -87404,10 +87468,12 @@ function buildBoardView(onFail, {
       return { moved: 0 };
     }
     return new Promise((resolve) => {
+      pdfPagesPending = resolve;
       pdfPagesDialog = openPdfPagesDialog(doc, {
         count: plan.moves.length,
         lines: migrationLines(plan),
         onApply: () => {
+          pdfPagesPending = null;
           closePdfPagesDialog();
           Promise.resolve(session.movePdfsToPages(plan)).then((res) => {
             if (disposed) return resolve(res);
@@ -87454,6 +87520,7 @@ function buildBoardView(onFail, {
     }
     const n3 = plan.folds.length;
     return new Promise((resolve) => {
+      pdfPagesPending = resolve;
       pdfPagesDialog = openPdfPagesDialog(doc, {
         count: n3,
         lines: tableCaptionLines(plan),
@@ -87461,6 +87528,7 @@ function buildBoardView(onFail, {
         headText: `Fold ${n3} ${n3 === 1 ? "table" : "tables"} on this board under ${n3 === 1 ? "a caption" : "captions"}? Each card becomes a one-line caption with the table folded under it, so the outline stops drawing every row.`,
         applyText: "Fold",
         onApply: () => {
+          pdfPagesPending = null;
           closePdfPagesDialog();
           Promise.resolve(session.foldTableCaptions(plan)).then((res) => {
             if (disposed) return resolve(res);
@@ -87504,6 +87572,7 @@ function buildBoardView(onFail, {
     const lines = titles.slice(0, 12);
     if (titles.length > lines.length) lines.push(`and ${titles.length - lines.length} more`);
     return new Promise((resolve) => {
+      pdfPagesPending = resolve;
       pdfPagesDialog = openPdfPagesDialog(doc, {
         count: n3,
         lines,
@@ -87511,6 +87580,7 @@ function buildBoardView(onFail, {
         headText: plan.fold ? `Fold ${n3} ${noun} in the Roam outline? Cards, pages and boards keep their contents; only the section rows collapse.` : `Unfold ${n3} ${noun} in the Roam outline?`,
         applyText: plan.fold ? "Fold" : "Unfold",
         onApply: () => {
+          pdfPagesPending = null;
           closePdfPagesDialog();
           Promise.resolve(session.foldSections(plan)).then((res) => {
             if (disposed) return resolve(res);
@@ -89356,7 +89426,10 @@ function buildBoardView(onFail, {
     }
     return false;
   };
-  const toast = (message, undo = false) => chrome.toast.show({ message, action: undo ? { label: "Undo", run: () => session.undo?.() } : void 0 });
+  const toast = (message, undo = false) => chrome.toast.show({ message, action: undo ? { label: "Undo", run: () => {
+    ctl.flush?.();
+    session.undo?.();
+  } } : void 0 });
   const pairKey2 = (a, b) => a < b ? `${a}|${b}` : `${b}|${a}`;
   const closeLinksMenu = () => {
     const menu2 = linksMenu;
@@ -90312,6 +90385,7 @@ function buildBoardView(onFail, {
   const onMenuPick = (id) => {
     const b = board2();
     if (!b || disposed) return;
+    ctl.flush?.();
     const mc = menuCtx || { kind: "canvas", uid: null, world: viewCenterWorld(), selection: [] };
     const world2 = mc.world || viewCenterWorld();
     const uids = mc.kind === "multi" ? selection.items.slice() : mc.uid && b.items.has(mc.uid) ? [mc.uid] : selection.items.slice();
@@ -93392,8 +93466,14 @@ ${url}`;
       return regionUid;
     },
     connectHint: (text4, screen) => showConnectHint(text4, screen),
-    undo: () => session.undo?.(),
-    redo: () => session.redo?.(),
+    undo: () => {
+      ctl.flush?.();
+      return session.undo?.();
+    },
+    redo: () => {
+      ctl.flush?.();
+      return session.redo?.();
+    },
     enterEdit: (uid, opts) => enterEdit(uid, opts),
     openPage: (uid, { sidebar = false } = {}) => {
       const item = board2()?.items.get(uid);
@@ -98022,37 +98102,98 @@ init_board();
 
 // src/host/doc-cache.js
 function createDocCache({ cap: cap4 = 4 } = {}) {
-  const docs = /* @__PURE__ */ new Map();
-  const drop = (doc) => {
+  const entries = /* @__PURE__ */ new Map();
+  const destroy = (doc) => {
     try {
       doc?.destroy?.();
     } catch {
     }
   };
+  const discard = (entry) => {
+    entry.out = true;
+    if (entry.users > 0) return;
+    if (entry.doc) destroy(entry.doc);
+    else entry.promise.then(destroy, () => {
+    });
+  };
+  const trim = () => {
+    while (entries.size > cap4) {
+      const [oldest] = entries.keys();
+      const entry = entries.get(oldest);
+      entries.delete(oldest);
+      discard(entry);
+    }
+  };
+  const touch = (key, entry) => {
+    entries.delete(key);
+    entries.set(key, entry);
+  };
   return {
     get(key) {
-      const doc = docs.get(key);
-      if (doc === void 0) return void 0;
-      docs.delete(key);
-      docs.set(key, doc);
-      return doc;
+      const entry = entries.get(key);
+      if (entry === void 0 || !entry.doc) return void 0;
+      touch(key, entry);
+      return entry.doc;
     },
     set(key, doc) {
-      const old = docs.get(key);
-      if (old && old !== doc) drop(old);
-      docs.delete(key);
-      docs.set(key, doc);
-      while (docs.size > cap4) {
-        const [oldest] = docs.keys();
-        drop(docs.get(oldest));
-        docs.delete(oldest);
+      const old = entries.get(key);
+      if (old && old.doc === doc) {
+        touch(key, old);
+        return;
       }
+      if (old) {
+        entries.delete(key);
+        discard(old);
+      }
+      entries.set(key, { promise: Promise.resolve(doc), doc, users: 0, out: false });
+      trim();
+    },
+    // load() opens the document (a promise of it, or null). Returns { doc, release() }, or null when it could not open.
+    async acquire(key, load) {
+      let entry = entries.get(key);
+      if (entry) touch(key, entry);
+      else {
+        entry = { promise: null, doc: null, users: 0, out: false };
+        const mine = entry;
+        mine.promise = (async () => load())().then((doc2) => {
+          mine.doc = doc2 || null;
+          if (!doc2 && entries.get(key) === mine) entries.delete(key);
+          return mine.doc;
+        }, () => {
+          if (entries.get(key) === mine) entries.delete(key);
+          return null;
+        });
+        entries.set(key, mine);
+        trim();
+      }
+      entry.users += 1;
+      const held = entry;
+      const doc = await held.promise;
+      if (!doc) {
+        held.users -= 1;
+        return null;
+      }
+      let released = false;
+      return {
+        doc,
+        release() {
+          if (released) return;
+          released = true;
+          held.users -= 1;
+          if (held.out && held.users === 0) destroy(held.doc);
+        }
+      };
     },
     clear() {
-      for (const doc of docs.values()) drop(doc);
-      docs.clear();
+      for (const entry of entries.values()) {
+        entry.out = true;
+        if (entry.doc) destroy(entry.doc);
+        else entry.promise.then(destroy, () => {
+        });
+      }
+      entries.clear();
     },
-    size: () => docs.size
+    size: () => entries.size
   };
 }
 
@@ -99240,6 +99381,7 @@ async function installPlexusDiagram({
     for (const drop of [...regionCrops.values()]) drop();
     regionCrops.clear();
     pinPdfDocs.clear();
+    closeDiagramDb(win2.indexedDB ?? globalThis.indexedDB);
     viewBoards.clear();
     pendingPin = null;
     resetCropUrls();
@@ -101608,7 +101750,11 @@ async function installPlexusDiagram({
     const id = region?.drawingUid;
     if (!id) return null;
     const hit = viewBoards.get(id);
-    if (hit && Date.now() - hit.at < VIEW_BOARD_TTL_MS) return hit.board;
+    if (hit && Date.now() - hit.at < VIEW_BOARD_TTL_MS) {
+      viewBoards.delete(id);
+      viewBoards.set(id, hit);
+      return hit.board;
+    }
     let session = null;
     let board2 = null;
     try {
@@ -101622,6 +101768,7 @@ async function installPlexusDiagram({
       } catch {
       }
     }
+    viewBoards.delete(id);
     viewBoards.set(id, { board: board2, at: Date.now() });
     while (viewBoards.size > 12) viewBoards.delete(viewBoards.keys().next().value);
     return board2;
@@ -101774,31 +101921,34 @@ async function installPlexusDiagram({
     if (!safe || !Array.isArray(frac) || frac.length < 4) return "";
     const lib = (doc?.defaultView || globalThis).pdfjsLib;
     if (!lib || typeof lib.getDocument !== "function") return "";
-    let pdf = pinPdfDocs.get(safe);
-    if (!pdf) {
-      const task2 = lib.getDocument({ url: safe });
-      pdf = task2?.promise ? await task2.promise : await task2;
-      if (!pdf || typeof pdf.getPage !== "function") return "";
-      pinPdfDocs.set(safe, pdf);
+    const lease = await pinPdfDocs.acquire(safe, async () => {
+      const task = lib.getDocument({ url: safe });
+      const pdf = task?.promise ? await task.promise : await task;
+      return pdf && typeof pdf.getPage === "function" ? pdf : null;
+    });
+    if (!lease) return "";
+    try {
+      const pdfPage = await lease.doc.getPage(Number(page));
+      if (!pdfPage || typeof pdfPage.getViewport !== "function") return "";
+      const viewport2 = pdfPage.getViewport({ scale: 2 });
+      const vw = Number(viewport2?.width) || 0;
+      const vh = Number(viewport2?.height) || 0;
+      if (!(vw > 0) || !(vh > 0)) return "";
+      const left = frac[0] * vw;
+      const top = frac[1] * vh;
+      const width = Math.max(1, frac[2] * vw);
+      const height = Math.max(1, frac[3] * vh);
+      const canvas = doc.createElement("canvas");
+      canvas.width = Math.ceil(width);
+      canvas.height = Math.ceil(height);
+      const ctx = canvas.getContext?.("2d");
+      if (!ctx || typeof pdfPage.render !== "function") return "";
+      const task = pdfPage.render({ canvasContext: ctx, viewport: viewport2, transform: [1, 0, 0, 1, -left, -top] });
+      if (task?.promise) await task.promise;
+      return typeof canvas.toDataURL === "function" ? canvas.toDataURL("image/png") || "" : "";
+    } finally {
+      lease.release();
     }
-    const pdfPage = await pdf.getPage(Number(page));
-    if (!pdfPage || typeof pdfPage.getViewport !== "function") return "";
-    const viewport2 = pdfPage.getViewport({ scale: 2 });
-    const vw = Number(viewport2?.width) || 0;
-    const vh = Number(viewport2?.height) || 0;
-    if (!(vw > 0) || !(vh > 0)) return "";
-    const left = frac[0] * vw;
-    const top = frac[1] * vh;
-    const width = Math.max(1, frac[2] * vw);
-    const height = Math.max(1, frac[3] * vh);
-    const canvas = doc.createElement("canvas");
-    canvas.width = Math.ceil(width);
-    canvas.height = Math.ceil(height);
-    const ctx = canvas.getContext?.("2d");
-    if (!ctx || typeof pdfPage.render !== "function") return "";
-    const task = pdfPage.render({ canvasContext: ctx, viewport: viewport2, transform: [1, 0, 0, 1, -left, -top] });
-    if (task?.promise) await task.promise;
-    return typeof canvas.toDataURL === "function" ? canvas.toDataURL("image/png") || "" : "";
   }
   function openPinOnBoard(plan) {
     if (!plan) return false;

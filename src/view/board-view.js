@@ -6498,12 +6498,18 @@ function buildBoardView(onFail, {
   // ------------------------------------------------------------ fullscreen
   // The strip lives inside .pxd-root so chrome tokens and overlay hit-testing apply. Leaving fullscreen keeps the list.
   let tabStrip = null;
+  let tabStripOff = null;
+  const dropTabStrip = () => {
+    tabStrip?.remove();
+    tabStrip = null;
+    tabStripOff?.();
+    tabStripOff = null;
+  };
   const paintTabStrip = (tabs, current) => {
     // P32-6: one tab is just the board you are on. The strip shows from two tabs up; the list,
     // its persistence and Cmd+1..9 do not depend on the strip being painted.
     if (!isFullscreen || !Array.isArray(tabs) || tabs.length < 2) {
-      tabStrip?.remove();
-      tabStrip = null;
+      dropTabStrip();
       root.classList.remove("pxd-root--fstabs");
       root.style.setProperty("--pxd-tabs-h", "0px");
       return;
@@ -6512,11 +6518,12 @@ function buildBoardView(onFail, {
     if (!tabStrip || !root.contains(tabStrip)) {
       // A nested board opened in place reuses this root; a strip the previous view left must not stay.
       for (const stray of root.querySelectorAll?.(".pxd-fstabs") || []) if (stray.parentElement === root) stray.remove();
+      tabStripOff?.();
       tabStrip = el("div", "pxd-fstabs pxd-chrome");
       tabStrip.setAttribute("role", "tablist");
       tabStrip.setAttribute("aria-label", "Boards");
       // .pxd-chrome already keeps the board's own pointer handling off the strip; one tracked click listener.
-      listen(tabStrip, "click", (event) => {
+      tabStripOff = listen(tabStrip, "click", (event) => {
         event.preventDefault?.();
         event.stopPropagation();
         const closer = event.target?.closest?.(".pxd-fstab__x");
@@ -9136,7 +9143,7 @@ function buildBoardView(onFail, {
       };
       // Each step stands alone. A throw used to set disposed and skip the body popover and the window listeners.
       step(() => perfLog?.cancelPan?.());
-      step(() => { tabStrip?.remove(); tabStrip = null; root.classList.remove("pxd-root--fstabs"); });
+      step(() => { dropTabStrip(); root.classList.remove("pxd-root--fstabs"); });
       step(() => closeLinksMenu());
       step(() => { whyPop?.close(); whyPop = null; });
       step(() => { contextsDrawer?.close(); contextsDrawer = null; });

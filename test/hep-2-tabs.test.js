@@ -256,3 +256,22 @@ test("HEP-2: a tab shortcut past the end does not switch boards", () => {
   view.dispose();
   restore();
 });
+
+test("leaving and re-entering fullscreen does not stack the tab strip's click listener", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const store = createTabStore({ storage: memoryStorage(), graph: "Notes" });
+    mount(stub, { uid: "boardAAA1", title: "Alpha", store }).view.dispose();
+    const { view } = mount(stub, { uid: "boardBBB2", title: "Beta", store });
+    const base = view.stats().listeners;
+    for (let i = 0; i < 20; i += 1) {
+      view.setFullscreen(false);
+      view.setFullscreen(true);
+    }
+    assert.equal(view.stats().listeners, base);
+    view.dispose();
+  } finally {
+    restore();
+  }
+});

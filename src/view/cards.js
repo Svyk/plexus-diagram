@@ -5,7 +5,7 @@
 
 import { countText } from "../model/card-face.js";
 import { placeNearAnchor } from "./avoid.js";
-import { createRowScheduler, isHeavyRow, mountFpsFromStamps } from "./progressive.js";
+import { createRowScheduler, isHeavyRow, mountFpsFromStamps, pushFrameStamp } from "./progressive.js";
 import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
 import { isQueryString } from "../model/query.js";
 import { createQueryCards } from "./query-card.js";
@@ -4576,7 +4576,7 @@ export function createItemRenderer({
     frameSample = timers.frame((t) => {
       frameSample = null;
       if (disposed) return;
-      frameStamps.push(Number.isFinite(t) ? t : now());
+      pushFrameStamp(frameStamps, Number.isFinite(t) ? t : now());
       publishMountFps();
       if (contentSched.pending() > 0) armFrames();
     });

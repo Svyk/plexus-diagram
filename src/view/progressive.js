@@ -8,6 +8,14 @@ const HEAVY_RE = /\{\{\s*(?:\[\[)?(?:roam\/render|embed[\w-]*|video|youtube|ifra
 export const isHeavyRow = (string) => HEAVY_RE.test(String(string || ""));
 
 // Median rAF delta during the open's pumps, as frames per second. One stamp has no delta.
+export const MOUNT_STAMP_CAP = 120;
+// The median only needs recent frames; the list stays bounded however long a board keeps mounting.
+export function pushFrameStamp(stamps, t, cap = MOUNT_STAMP_CAP) {
+  stamps.push(t);
+  if (stamps.length > cap) stamps.splice(0, stamps.length - cap);
+  return stamps;
+}
+
 export function mountFpsFromStamps(stamps) {
   const deltas = [];
   const list = Array.isArray(stamps) ? stamps : [];

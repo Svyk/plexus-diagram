@@ -1,6 +1,7 @@
 // P5-B memory-leak guards: view-lifetime lists must not grow per refresh / gesture / page return.
 import assert from "node:assert/strict";
 import test from "node:test";
+import { MOUNT_STAMP_CAP, mountFpsFromStamps, pushFrameStamp } from "../src/view/progressive.js";
 import { createChrome } from "../src/view/chrome.js";
 import { createPanel } from "../src/view/panel.js";
 import { createPropsPanel } from "../src/view/props-panel.js";
@@ -150,4 +151,11 @@ test("2b: the chrome context bar does not pin the buttons of every selection it 
   } finally {
     restore();
   }
+});
+
+test("2c: the mount frame stamps stay bounded and keep the same median", () => {
+  const stamps = [];
+  for (let i = 0; i < 5000; i += 1) pushFrameStamp(stamps, i * 16);
+  assert.ok(stamps.length <= MOUNT_STAMP_CAP, `stamps ${stamps.length}`);
+  assert.equal(mountFpsFromStamps(stamps), 63);
 });

@@ -6,6 +6,10 @@
 
 export const BG_SLICE_MS = 30;
 export const BG_QUIET_MS = 300;
+// Background work takes at most this share of the main thread: after a slice of X ms (any job) the next slice
+// (any job) waits X * (1 - BG_DUTY) / BG_DUTY ms (3X).
+export const BG_DUTY = 0.25;
+export const BG_GAP_MIN_MS = 5;
 const INPUT_EVENTS = ["wheel", "pointerdown", "pointermove", "keydown", "touchstart", "touchmove"];
 
 export function createBgBudget({
@@ -17,6 +21,7 @@ export function createBgBudget({
   clearTimer = (id) => clearTimeout(id),
   sliceMs = BG_SLICE_MS,
   quietMs = BG_QUIET_MS,
+  duty = BG_DUTY,
   enabled = () => true,
 } = {}) {
   let lastInput = -Infinity;
@@ -34,13 +39,15 @@ export function createBgBudget({
     }
   };
   const quietFor = () => now() - lastInput;
+  let nextAt = -Infinity;
   listen();
 
   // fn(deadline) runs once, in a quiet idle slice. deadline.timeRemaining() is the smaller of the browser's idle time
   // and what is left of this slice's work budget; didTimeout is always false (a callback forced by its timeout in a
   // busy window gets 0 ms and should do one small part at most). Returns cancel().
   // `since`: quiet also counts from this time (a job that must wait `quiet` ms after it was scheduled).
-  function idle(fn, { timeout = 1500, quiet = quietMs, since = -Infinity } = {}) {
+  // `delay`: wait this long before asking for the idle slice (the duty-cycle gap of a job in parts).
+  function idle(fn, { timeout = 1500, quiet = quietMs, since = -Infinity, delay = 0 } = {}) {
     if (!enabled()) {
       let id = null;
       try { id = ric((d) => fn(d), { timeout }); } catch { id = null; }
@@ -57,7 +64,7 @@ export function createBgBudget({
     const run = (d) => {
       idleId = null;
       if (cancelled) return;
-      const wait = quiet - Math.min(quietFor(), now() - since);
+      const wait = Math.max(quiet - Math.min(quietFor(), now() - since), nextAt - now());
       if (wait > 0) {
         timerId = setTimer(() => { timerId = null; arm(); }, Math.ceil(wait));
         try { timerId?.unref?.(); } catch { /* fake timer */ }
@@ -74,9 +81,18 @@ export function createBgBudget({
           return Math.max(0, Math.min(left, idleLeft));
         },
       };
-      fn(deadline);
+      try {
+        fn(deadline);
+      } finally {
+        const spent = now() - t0;
+        // A slice of a few ms does not move the share; only real work owes a gap.
+        if (duty > 0 && duty < 1 && spent >= BG_GAP_MIN_MS) nextAt = now() + (spent * (1 - duty)) / duty;
+      }
     };
-    arm();
+    if (delay > 0) {
+      timerId = setTimer(() => { timerId = null; arm(); }, Math.ceil(delay));
+      try { timerId?.unref?.(); } catch { /* fake timer */ }
+    } else arm();
     return () => {
       cancelled = true;
       if (idleId != null) cic(idleId);
@@ -87,16 +103,18 @@ export function createBgBudget({
   }
 
   // A job in parts: part(deadline) does one part and returns true when the job is finished. Parts run while the slice
-  // lasts (one at least per slice), then the job waits for the next quiet idle slice. Returns cancel().
-  function run(part, { timeout = 1500, quiet = quietMs, firstQuiet = quiet } = {}) {
+  // has `partMs` left (one at least per slice; a number or a function), then the job waits out its duty-cycle gap and
+  // the next quiet idle slice. Returns cancel().
+  function run(part, { timeout = 1500, quiet = quietMs, firstQuiet = quiet, partMs = 0 } = {}) {
     let cancel = null;
     let stopped = false;
+    const need = () => Math.max(0.001, typeof partMs === "function" ? Number(partMs()) || 0 : partMs);
     const slice = (deadline) => {
       if (stopped) return;
       let done = false;
       do {
         try { done = part(deadline) === true; } catch (err) { done = true; console.error("[plexus-diagram] background job", err); }
-      } while (!done && !stopped && deadline.timeRemaining() > 0);
+      } while (!done && !stopped && deadline.timeRemaining() >= need());
       if (!done && !stopped) cancel = idle(slice, { timeout, quiet });
     };
     cancel = idle(slice, { timeout, quiet: firstQuiet, since: firstQuiet > quiet ? now() : -Infinity });

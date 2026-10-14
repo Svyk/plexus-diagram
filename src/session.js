@@ -101,10 +101,11 @@ export const RESUME_RETRY_MS = 1000;
 export const HIGHLIGHT_HOLD_MS = 60000;
 // Link-query targets per idle slice on a big board.
 const LINK_CHUNK = 120;
-// P8 U2: a big board's links start after the board sat still this long, and size each part to the slice left
-// (refs read: ~0.3-0.5 ms per target on the PhD main board).
+// P8 U2: a big board's links start after the board sat still this long. Each refs query has a fixed cost (~9 ms on
+// the PhD main board whatever its size), so parts are LINK_PART targets (~25 ms there), one per slice unless the slice
+// still has room for another.
 const LINK_QUIET_MS = 1500;
-const LINK_MS_PER_TARGET = 0.4;
+const LINK_PART = 100;
 const DAILY_GAP = 20;
 const HIGHLIGHT_WATCH_CAP = 60;
 
@@ -1606,16 +1607,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         const epoch = linkEpoch;
         const rows = [];
         let i = 0;
-        let per = LINK_MS_PER_TARGET;
+        let partMs = 25;
         const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
-        linkJob = sharedBgBudget().run((deadline) => {
+        linkJob = sharedBgBudget().run(() => {
           if (destroyed || epoch !== linkEpoch) { linkJob = null; finishLinks(); return true; }
           try {
-            const n = Math.max(8, Math.min(LINK_CHUNK, Math.floor(Math.max(4, deadline.timeRemaining()) / per)));
             const t0 = clock();
-            rows.push(...linkRows(inputs, inputs.eids.slice(i, i + n)));
-            per = Math.max(0.02, (per + (clock() - t0) / n) / 2);
-            i += n;
+            rows.push(...linkRows(inputs, inputs.eids.slice(i, i + LINK_PART)));
+            partMs = (partMs + (clock() - t0)) / 2;
+            i += LINK_PART;
             if (i < inputs.eids.length) return false;
             finishLinkRows(inputs, rows);
             recomputeLinks(false);
@@ -1623,7 +1623,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           linkJob = null;
           finishLinks();
           return true;
-        }, { timeout: 1000, firstQuiet: LINK_QUIET_MS });
+        }, { timeout: 1000, firstQuiet: LINK_QUIET_MS, partMs: () => partMs });
         return;
       }
       if (inputs && inputs.eids.length > LINK_CHUNK && typeof ric === "function" && !idle) {

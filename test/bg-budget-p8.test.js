@@ -2,7 +2,7 @@
 // input is active and for 300 ms after it, waits for its first quiet window, and the flag off is plain idle callbacks.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BG_QUIET_MS, BG_SLICE_MS, createBgBudget } from "../src/bg-budget.js";
+import { BG_DUTY, BG_QUIET_MS, BG_SLICE_MS, createBgBudget } from "../src/bg-budget.js";
 
 function harness({ idleMs = 50, enabled = true } = {}) {
   let t = 10000;
@@ -60,7 +60,7 @@ test("a job in parts stops at its slice budget (BG_SLICE_MS) even when the idle 
     sliceStart = null;
     assert.ok(h.idle() >= 1, "a slice was queued");
     spent.push(h.now() - sliceStart);
-    h.advance(100);
+    h.wait(200); // past the duty-cycle gap
   }
   assert.ok(spent.every((ms) => ms <= BG_SLICE_MS + 8), JSON.stringify(spent));
   assert.ok(spent.length >= 5, "spread over several slices");
@@ -73,8 +73,41 @@ test("one part runs even when the idle period is already spent; the next part wa
   h.budget.run(() => { parts += 1; h.advance(5); return parts >= 3; });
   h.idle();
   assert.equal(parts, 1);
+  h.wait(50);
   h.idle();
   assert.equal(parts, 2);
+});
+
+test("duty cycle: after a slice of X ms the next slice of any job waits X * 3 ms (BG_DUTY 25%)", () => {
+  assert.equal(BG_DUTY, 0.25);
+  const h = harness({ idleMs: 50 });
+  let parts = 0;
+  h.budget.run(() => { parts += 1; h.advance(10); return parts >= 9; });
+  h.idle();
+  assert.equal(parts, 3, "30 ms of parts in the first slice");
+  h.idle();
+  assert.equal(parts, 3, "an idle period inside the gap does no work");
+  h.wait(80);
+  h.idle();
+  assert.equal(parts, 3, "not before 3 x 30 ms");
+  h.wait(15);
+  h.idle();
+  assert.equal(parts, 6);
+  // Another job asking now waits out the same gap.
+  let other = 0;
+  h.budget.idle(() => { other += 1; });
+  h.idle();
+  assert.equal(other, 0, "a second job waits for the shared gap");
+  let rounds = 0;
+  while (other === 0 && rounds < 10) { h.wait(200); h.idle(); rounds += 1; }
+  assert.equal(other, 1);
+  assert.ok(rounds <= 3, `the waiting job runs within a few gaps (${rounds})`);
+  // A part that says how long it takes stops the slice when that much is not left.
+  const h2 = harness({ idleMs: 50 });
+  let p2 = 0;
+  h2.budget.run(() => { p2 += 1; h2.advance(20); return p2 >= 5; }, { partMs: 20 });
+  h2.idle();
+  assert.equal(p2, 1, "20 ms used, 10 left: no second 20 ms part");
 });
 
 test("input pauses background work while it lasts and for BG_QUIET_MS after it; a hover does not", () => {

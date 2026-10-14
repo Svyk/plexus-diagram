@@ -2,7 +2,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { resetSharedBgBudget } from "../src/bg-budget.js";
 import { createHost } from "../src/host/roam.js";
+import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { defaultSpeedFlags, parseSpeedFlags } from "../src/settings.js";
 import { createCoverRepaintJob, mountBoardView } from "../src/view/board-view.js";
@@ -431,6 +433,84 @@ test("cardStatsJob runs one collection query per step and remembers only at the 
   assert.equal(pulled.length, 1);
   assert.deepEqual([...one.result()], [...fast.cardStats(targets, { boardUid: "board2" })]);
   assert.equal(pulled.length, 1);
+});
+
+test("an idle ref pull reads one outline level, at most 20 nodes, and a deep child stays readable", () => {
+  const kids = Array.from({ length: 25 }, (_, i) => ({
+    ":block/uid": `k${i}`,
+    ":block/string": `row ${i}`,
+    ":block/order": i,
+    ":block/children": i === 3 ? [{ ":block/uid": "deepKid", ":block/string": "deep line", ":block/order": 0, ":block/children": [] }] : [],
+  }));
+  const page = {
+    ":block/uid": "deepPage",
+    ":node/title": "Deep",
+    ":block/string": "",
+    ":block/order": 0,
+    ":block/children": kids,
+  };
+  const byId = new Map();
+  const index = (node) => {
+    if (node[":block/uid"]) byId.set(node[":block/uid"], node);
+    if (node[":node/title"]) byId.set(node[":node/title"], node);
+    for (const kid of node[":block/children"] || []) index(kid);
+  };
+  index(page);
+  const calls = [];
+  const fake = createFakeRoam();
+  const card = (uid, string) => ({ uid, string, props: { plexus: { x: 0, y: 0, w: 200, h: 100 } } });
+  fake.seedBoard({ uid: "syncBoard", props: { plexus: { v: 2 } }, children: [card("cardSync", "[[Other]]")] });
+  fake.seedBoard({ uid: "idleBoard", props: { plexus: { v: 2 } }, children: [card("cardIdle", "[[Deep]]")] });
+  fake.api.data.pull_many = (pattern, entities) => {
+    const text = String(pattern);
+    if (!text.includes(":block/children")) return entities.map(() => null);
+    calls.push({ pattern: text, n: entities.length });
+    return entities.map((entity) => {
+      const id = Array.isArray(entity) ? entity[1] : entity;
+      const node = byId.get(id);
+      if (!node) return null;
+      if (text.includes("...")) return node;
+      return {
+        ":block/uid": node[":block/uid"],
+        ":node/title": node[":node/title"],
+        ":block/string": node[":block/string"] ?? "",
+        ":block/order": node[":block/order"] ?? 0,
+        ":block/children": (node[":block/children"] || []).map((kid) => ({ ":block/uid": kid[":block/uid"], ":block/order": kid[":block/order"] ?? 0 })),
+      };
+    });
+  };
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  host.pullBoard("syncBoard");
+  const sync = calls.filter((c) => c.pattern.includes(":block/children"));
+  assert.ok(sync.some((c) => c.pattern.includes("...")), "a synchronous ref pull still uses the recursive body");
+  calls.length = 0;
+  const queued = [];
+  const previousIdle = globalThis.requestIdleCallback;
+  const previousNow = globalThis.performance.now;
+  globalThis.requestIdleCallback = (fn) => { queued.push(fn); return queued.length; };
+  globalThis.performance.now = () => 0;
+  resetSharedBgBudget();
+  try {
+    host.pullBoard("idleBoard", { light: true, deferRefs: true });
+    assert.equal(calls.length, 0, "deferred refs wait for idle");
+    const spent = { timeRemaining: () => 0, didTimeout: false };
+    let i = 0;
+    while (i < queued.length && i < 40) {
+      const fn = queued[i];
+      i += 1;
+      fn(spent);
+    }
+    const idle = calls.filter((c) => c.pattern.includes(":block/children"));
+    assert.ok(idle.length >= 2, "a deep page takes more than one pull");
+    assert.ok(idle.every((c) => c.n <= 20), `a pull names at most 20 nodes ${idle.map((c) => c.n).join(",")}`);
+    assert.ok(idle.every((c) => !c.pattern.includes("...")), "idle pulls are one level");
+    assert.ok(idle.some((c) => c.n === 20), "the wide level goes out 20 at a time");
+    assert.equal(host.blockString("deepKid"), "deep line");
+  } finally {
+    globalThis.requestIdleCallback = previousIdle;
+    globalThis.performance.now = previousNow;
+    resetSharedBgBudget();
+  }
 });
 
 test("a normal board builds every shell before live and does not queue a pump", () => {

@@ -71,6 +71,60 @@ const REF_BODY = `[:db/id :block/uid :block/string :node/title :block/order :blo
  {:block/page [:node/title :block/uid :pdf/url]}
  ${NATIVE_PULL}
  {(limit :block/children nil) ${REF_CHILD}}]`;
+// One outline level. Children are ids only, so the next pull is the next level. No recursive `...`.
+const LEVEL_ROOT = `[:db/id :block/uid :block/string :node/title :block/order :block/heading :block/open :block/props :pdf/url
+ {:block/page [:node/title :block/uid :pdf/url]}
+ ${NATIVE_PULL}
+ {(limit :block/children nil) [:block/uid :block/order]}]`;
+const LEVEL_KID = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
+ {(limit :block/children nil) [:block/uid :block/order]}]`;
+export const OUTLINE_BATCH = 20;
+
+// Idle ref reads. start() and step() each do one pull_many of at most `batch` nodes, all on the same level.
+// entities() is the finished roots once pending() is 0. A synchronous ref read stays on REF_BODY.
+export function createOutlineAssembler({ pullMany, batch = OUTLINE_BATCH } = {}) {
+  const queue = [];
+  const roots = [];
+  const take = () => {
+    if (!queue.length) return true;
+    const root = queue[0].root === true;
+    const part = [];
+    while (part.length < batch && queue.length && queue[0].root === root) part.push(queue.shift());
+    let nodes = [];
+    try { nodes = pullMany?.(root ? LEVEL_ROOT : LEVEL_KID, part.map((slot) => slot.entity)) || []; } catch { nodes = []; }
+    if (!Array.isArray(nodes)) nodes = [];
+    part.forEach((slot, i) => {
+      const raw = nodes[i];
+      const node = raw && typeof raw === "object" ? raw : {};
+      let current = node;
+      if (slot.root) roots.push(node);
+      else if (slot.parent && slot.stub) {
+        const list = slot.parent[":block/children"];
+        const at = Array.isArray(list) ? list.indexOf(slot.stub) : -1;
+        current = at >= 0 ? { ...slot.stub, ...node } : node;
+        if (at >= 0) list[at] = current;
+      }
+      const kids = Array.isArray(current[":block/children"]) ? current[":block/children"] : [];
+      if (!Array.isArray(current[":block/children"])) current[":block/children"] = kids;
+      for (const kid of kids) {
+        const id = kid?.[":block/uid"];
+        if (typeof id !== "string" || !id) continue;
+        queue.push({ entity: [":block/uid", id], root: false, parent: current, stub: kid });
+      }
+    });
+    return queue.length === 0;
+  };
+  return {
+    addRoots(uids, titles) {
+      for (const id of uids || []) if (typeof id === "string" && id) queue.push({ entity: [":block/uid", id], root: true });
+      for (const title of titles || []) if (typeof title === "string" && title) queue.push({ entity: [":node/title", title], root: true });
+    },
+    pending: () => queue.length,
+    entities: () => roots,
+    start: () => take(),
+    step: () => take(),
+  };
+}
 const OPEN_PATTERN = `[:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/page [:block/uid :pdf/url]}
  {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}
@@ -1959,16 +2013,64 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         }
       };
       // The same reads in slices for idle time (PhD main board: 1,000 refs were one 0.54 s task).
-      let refAt = 0;
-      const pullRefsPart = (n) => {
+      // One level at a time, at most OUTLINE_BATCH nodes per pull. A page with a deep outline was one
+      // recursive REF_BODY (77–199 ms). The synchronous pullRefs() above stays that one pull.
+      let refAsm = null;
+      const pullLevel = (pattern, entities) => {
+        if (typeof data.pull_many === "function") {
+          try {
+            const many = data.pull_many(pattern, entities);
+            if (Array.isArray(many)) return many;
+          } catch { /* one query of this level */ }
+        }
+        const uids = [];
+        const titles = [];
+        for (const entity of entities || []) {
+          if (!Array.isArray(entity)) continue;
+          if (entity[0] === ":node/title") titles.push(entity[1]);
+          else if (entity[0] === ":block/uid") uids.push(entity[1]);
+        }
+        let rows = [];
+        try {
+          if (uids.length && titles.length) {
+            rows = unpackPulls(host.q(
+              `[:find (pull ?e ${pattern}) :in $ [?uid ...] [?title ...] :where (or [?e :block/uid ?uid] [?e :node/title ?title])]`,
+              uids, titles,
+            ));
+          } else if (uids.length) {
+            rows = unpackPulls(host.q(
+              `[:find (pull ?e ${pattern}) :in $ [?uid ...] :where [?e :block/uid ?uid]]`,
+              uids,
+            ));
+          } else if (titles.length) {
+            rows = unpackPulls(host.q(
+              `[:find (pull ?e ${pattern}) :in $ [?title ...] :where [?e :node/title ?title]]`,
+              titles,
+            ));
+          }
+        } catch { rows = []; }
+        const byUid = new Map();
+        const byTitle = new Map();
+        for (const node of rows) {
+          if (typeof node?.[":block/uid"] === "string") byUid.set(node[":block/uid"], node);
+          if (typeof node?.[":node/title"] === "string") byTitle.set(node[":node/title"], node);
+        }
+        return entities.map((entity) => {
+          if (!Array.isArray(entity)) return null;
+          return entity[0] === ":node/title" ? (byTitle.get(entity[1]) || null) : (byUid.get(entity[1]) || null);
+        });
+      };
+      const pullRefsPart = (_n) => {
         if (honored) return true;
-        const total = found.uids.length + found.titles.length;
-        const end = Math.min(total, refAt + n);
-        const uids = found.uids.slice(Math.min(refAt, found.uids.length), Math.min(end, found.uids.length));
-        const titles = found.titles.slice(Math.max(0, refAt - found.uids.length), Math.max(0, end - found.uids.length));
-        refAt = end;
-        if (uids.length || titles.length) for (const entity of pullMany(uids, titles)) addEntity(uid, entity);
-        return refAt >= total;
+        if (!found.uids.length && !found.titles.length) return true;
+        if (!refAsm) {
+          refAsm = createOutlineAssembler({ pullMany: pullLevel, batch: OUTLINE_BATCH });
+          refAsm.addRoots(found.uids, found.titles);
+          if (refAsm.pending() === 0) return true;
+          if (refAsm.start() !== true) return false;
+        } else if (refAsm.step() !== true) return false;
+        for (const entity of refAsm.entities()) addEntity(uid, entity);
+        return true;
       };
       // A keep-alive catch-up already shows its cards: their refs are read again in the first idle slice
       // (PhD main board: 1,000 refs, 0.54 s of the reattach task).

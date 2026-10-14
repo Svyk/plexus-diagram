@@ -18260,7 +18260,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true };
 }
 function parseSpeedFlags(raw) {
   const base = defaultSpeedFlags();
@@ -18709,7 +18709,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -28585,6 +28585,7 @@ function createItemRenderer({
   readingUid = null,
   onPinOpen = null,
   settings: speedSettings = null,
+  onOverviewQueue = null,
   interopOn = null,
   adoptShell = null,
   tableThumb = null,
@@ -30058,7 +30059,13 @@ function createItemRenderer({
     }
     for (const rec of set) if (!isAttached(rec)) layerOf(rec).append(rec.el);
   };
-  const pumpShells = () => {
+  const noteOverviewQueue = () => {
+    try {
+      onOverviewQueue?.();
+    } catch {
+    }
+  };
+  const pumpChunk = () => {
     const t0 = now2();
     const built = [];
     let taken = 0;
@@ -30087,7 +30094,32 @@ function createItemRenderer({
       if (taken && lastContent) paintOffscreen(lastContent.visibleRect);
     }
     if (pendingView && !pendingView.size) viewBuilt();
+    noteOverviewQueue();
+    return shellQueue.length === 0;
+  };
+  const pumpShells = () => {
+    if (pumpChunk()) return;
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
+  };
+  let shellBg = null;
+  const stopShellBg = () => {
+    shellBg?.();
+    shellBg = null;
+  };
+  const armShellPump = () => {
+    stopShellBg();
+    if (!shellQueue.length) return;
+    let fast = false;
+    try {
+      fast = lod !== "detail" && speedOf().overviewFast !== false && typeof timers?.bgRun === "function";
+    } catch {
+      fast = false;
+    }
+    if (fast) {
+      shellBg = timers.bgRun(() => pumpChunk(), { label: "shells", partMs: 4 });
+      return;
+    }
+    if (timers?.frame) timers.frame(pumpShells);
   };
   const viewBuilt = () => {
     pendingView = null;
@@ -30097,6 +30129,26 @@ function createItemRenderer({
       } catch {
       }
     }
+  };
+  const ensureShell = (uid) => {
+    const have = shells.get(uid)?.el;
+    if (have) return have;
+    const item = lastBoard?.items.get(uid);
+    if (!item || disposed) return null;
+    const at = shellQueue.indexOf(uid);
+    if (at >= 0) shellQueue.splice(at, 1);
+    pendingView?.delete(uid);
+    if (pendingView && !pendingView.size) viewBuilt();
+    const rec = buildShell2(item);
+    const rect = lastRects?.get(uid);
+    rec.el.style.display = rect ? "" : "none";
+    noteRender(uid);
+    paintShell(rec, item);
+    if (rect) position(rec, rect);
+    if (showBadges) renderBadges(rec);
+    attachShell(rec);
+    noteOverviewQueue();
+    return rec.el;
   };
   const sync = ({ board: board2, rects, dirty: changed2 = null, structural = false, view = null, attachView = null }) => {
     sourcePass += 1;
@@ -30123,7 +30175,12 @@ function createItemRenderer({
       }
     }
     syncBoardHighlighter(doc, boardRoot());
-    if (dirty == null) shellQueue = [];
+    if (dirty == null) {
+      const hadQueue = shellQueue.length > 0 || shellBg;
+      shellQueue = [];
+      stopShellBg();
+      if (hadQueue) noteOverviewQueue();
+    }
     for (const uid of [...shells.keys()]) if (!board2.items.has(uid)) removeShell(uid);
     let orderChanged = structural;
     let defer = null;
@@ -30154,10 +30211,17 @@ function createItemRenderer({
         };
         const ranked = now4.slice().sort((a, b) => dist(a) - dist(b));
         const keep = new Set(ranked.slice(0, OPEN_NOW_MAX));
-        const rest = ranked.slice(OPEN_NOW_MAX);
+        for (const uid of ranked) if (board2.items.get(uid)?.type === "section") keep.add(uid);
+        const rest = ranked.filter((uid) => !keep.has(uid));
         now4.length = 0;
         for (const uid of board2.order) if (keep.has(uid)) now4.push(uid);
-        pendingView = new Set(rest);
+        let fast = false;
+        try {
+          fast = lod !== "detail" && speedOf().overviewFast !== false;
+        } catch {
+          fast = false;
+        }
+        if (!fast) pendingView = new Set(rest);
         later2.unshift(...rest);
       }
       if (now4.length && later2.length) defer = new Set(later2);
@@ -30211,7 +30275,8 @@ function createItemRenderer({
     }
     if (defer?.size) {
       shellQueue = [...defer];
-      timers.frame(pumpShells);
+      armShellPump();
+      noteOverviewQueue();
     }
     if (pendingView) {
       for (const uid of [...pendingView]) if (shells.has(uid) || !board2.items.has(uid)) pendingView.delete(uid);
@@ -34195,7 +34260,9 @@ function createItemRenderer({
     };
   };
   const dispose = () => {
+    if (disposed) return;
     disposed = true;
+    stopShellBg();
     tellPane({ open: false });
     if (freshTimer) {
       try {
@@ -34302,6 +34369,17 @@ function createItemRenderer({
     renameBoard,
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
+    ensureShell,
+    queuedCount: () => shellQueue.length,
+    pendingBoxes() {
+      const out = [];
+      for (const uid of shellQueue) {
+        if (shells.has(uid)) continue;
+        const rect = lastRects?.get(uid);
+        if (rect) out.push({ uid, rect });
+      }
+      return out;
+    },
     // fn runs once every shell in the open view is built (at once when none is queued).
     whenViewBuilt(fn) {
       if (typeof fn !== "function") return;
@@ -40381,6 +40459,60 @@ var REF_BODY = `[:db/id :block/uid :block/string :node/title :block/order :block
  {:block/page [:node/title :block/uid :pdf/url]}
  ${NATIVE_PULL}
  {(limit :block/children nil) ${REF_CHILD}}]`;
+var LEVEL_ROOT = `[:db/id :block/uid :block/string :node/title :block/order :block/heading :block/open :block/props :pdf/url
+ {:block/page [:node/title :block/uid :pdf/url]}
+ ${NATIVE_PULL}
+ {(limit :block/children nil) [:block/uid :block/order]}]`;
+var LEVEL_KID = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
+ {(limit :block/children nil) [:block/uid :block/order]}]`;
+var OUTLINE_BATCH = 20;
+function createOutlineAssembler({ pullMany, batch = OUTLINE_BATCH } = {}) {
+  const queue = [];
+  const roots = [];
+  const take = () => {
+    if (!queue.length) return true;
+    const root = queue[0].root === true;
+    const part = [];
+    while (part.length < batch && queue.length && queue[0].root === root) part.push(queue.shift());
+    let nodes = [];
+    try {
+      nodes = pullMany?.(root ? LEVEL_ROOT : LEVEL_KID, part.map((slot2) => slot2.entity)) || [];
+    } catch {
+      nodes = [];
+    }
+    if (!Array.isArray(nodes)) nodes = [];
+    part.forEach((slot2, i) => {
+      const raw = nodes[i];
+      const node2 = raw && typeof raw === "object" ? raw : {};
+      let current3 = node2;
+      if (slot2.root) roots.push(node2);
+      else if (slot2.parent && slot2.stub) {
+        const list = slot2.parent[":block/children"];
+        const at = Array.isArray(list) ? list.indexOf(slot2.stub) : -1;
+        current3 = at >= 0 ? { ...slot2.stub, ...node2 } : node2;
+        if (at >= 0) list[at] = current3;
+      }
+      const kids = Array.isArray(current3[":block/children"]) ? current3[":block/children"] : [];
+      if (!Array.isArray(current3[":block/children"])) current3[":block/children"] = kids;
+      for (const kid of kids) {
+        const id = kid?.[":block/uid"];
+        if (typeof id !== "string" || !id) continue;
+        queue.push({ entity: [":block/uid", id], root: false, parent: current3, stub: kid });
+      }
+    });
+    return queue.length === 0;
+  };
+  return {
+    addRoots(uids, titles) {
+      for (const id of uids || []) if (typeof id === "string" && id) queue.push({ entity: [":block/uid", id], root: true });
+      for (const title of titles || []) if (typeof title === "string" && title) queue.push({ entity: [":node/title", title], root: true });
+    },
+    pending: () => queue.length,
+    entities: () => roots,
+    start: () => take(),
+    step: () => take()
+  };
+}
 var OPEN_PATTERN = `[:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/page [:block/uid :pdf/url]}
  {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}
@@ -42240,16 +42372,66 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           for (const entity of pullMany(found.uids, found.titles)) addEntity(uid, entity);
         }
       };
-      let refAt = 0;
-      const pullRefsPart = (n3) => {
+      let refAsm = null;
+      const pullLevel = (pattern, entities) => {
+        if (typeof data.pull_many === "function") {
+          try {
+            const many = data.pull_many(pattern, entities);
+            if (Array.isArray(many)) return many;
+          } catch {
+          }
+        }
+        const uids = [];
+        const titles = [];
+        for (const entity of entities || []) {
+          if (!Array.isArray(entity)) continue;
+          if (entity[0] === ":node/title") titles.push(entity[1]);
+          else if (entity[0] === ":block/uid") uids.push(entity[1]);
+        }
+        let rows = [];
+        try {
+          if (uids.length && titles.length) {
+            rows = unpackPulls(host.q(
+              `[:find (pull ?e ${pattern}) :in $ [?uid ...] [?title ...] :where (or [?e :block/uid ?uid] [?e :node/title ?title])]`,
+              uids,
+              titles
+            ));
+          } else if (uids.length) {
+            rows = unpackPulls(host.q(
+              `[:find (pull ?e ${pattern}) :in $ [?uid ...] :where [?e :block/uid ?uid]]`,
+              uids
+            ));
+          } else if (titles.length) {
+            rows = unpackPulls(host.q(
+              `[:find (pull ?e ${pattern}) :in $ [?title ...] :where [?e :node/title ?title]]`,
+              titles
+            ));
+          }
+        } catch {
+          rows = [];
+        }
+        const byUid = /* @__PURE__ */ new Map();
+        const byTitle = /* @__PURE__ */ new Map();
+        for (const node3 of rows) {
+          if (typeof node3?.[":block/uid"] === "string") byUid.set(node3[":block/uid"], node3);
+          if (typeof node3?.[":node/title"] === "string") byTitle.set(node3[":node/title"], node3);
+        }
+        return entities.map((entity) => {
+          if (!Array.isArray(entity)) return null;
+          return entity[0] === ":node/title" ? byTitle.get(entity[1]) || null : byUid.get(entity[1]) || null;
+        });
+      };
+      const pullRefsPart = (_n) => {
         if (honored) return true;
-        const total = found.uids.length + found.titles.length;
-        const end = Math.min(total, refAt + n3);
-        const uids = found.uids.slice(Math.min(refAt, found.uids.length), Math.min(end, found.uids.length));
-        const titles = found.titles.slice(Math.max(0, refAt - found.uids.length), Math.max(0, end - found.uids.length));
-        refAt = end;
-        if (uids.length || titles.length) for (const entity of pullMany(uids, titles)) addEntity(uid, entity);
-        return refAt >= total;
+        if (!found.uids.length && !found.titles.length) return true;
+        if (!refAsm) {
+          refAsm = createOutlineAssembler({ pullMany: pullLevel, batch: OUTLINE_BATCH });
+          refAsm.addRoots(found.uids, found.titles);
+          if (refAsm.pending() === 0) return true;
+          if (refAsm.start() !== true) return false;
+        } else if (refAsm.step() !== true) return false;
+        for (const entity of refAsm.entities()) addEntity(uid, entity);
+        return true;
       };
       const refsLater = light && (deferRefs || big);
       if (!refsLater) pullRefs();
@@ -43685,7 +43867,16 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     },
     // Card footer stats. One reverse-attribute pull for the resolved targets.
     // The four collection-bound queries run only when that pull throws or is unusable.
-    cardStats(targets, { boardUid } = {}) {
+    // cardStats runs the whole job. cardStatsJob is one step per call: the pull (or the cache) is a
+    // single step, and a query fallback is one of refs, boards, open, done. The cache is written
+    // only when the job finishes, so a stopped job cannot answer the next read.
+    cardStats(targets, opts) {
+      const job = host.cardStatsJob(targets, opts);
+      let guard = 0;
+      while (guard < 8 && job.step() !== true) guard += 1;
+      return job.result();
+    },
+    cardStatsJob(targets, { boardUid } = {}) {
       const keySet = /* @__PURE__ */ new Set();
       for (const t of targets || []) {
         if (!t) continue;
@@ -43697,7 +43888,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (keys.length && keys.every((key) => freshStat(boardUid, key))) {
         const result2 = /* @__PURE__ */ new Map();
         for (const key of keys) result2.set(key, { ...freshStat(boardUid, key) });
-        return result2;
+        return { step: () => true, result: () => result2 };
       }
       const remember2 = (result2) => {
         const at = Date.now();
@@ -43718,7 +43909,19 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         if (!byEid.has(eid)) byEid.set(eid, []);
         byEid.get(eid).push(key);
       }
-      if (!byEid.size) return remember2(result);
+      if (!byEid.size) {
+        let ran = false;
+        return {
+          result: () => result,
+          step() {
+            if (!ran) {
+              ran = true;
+              remember2(result);
+            }
+            return true;
+          }
+        };
+      }
       const eids = [...byEid.keys()];
       const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
       const todoEid = host.resolveEid({ title: "TODO" });
@@ -43731,27 +43934,11 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         }
         for (const [t, set] of seen) for (const key of byEid.get(t) ?? []) result.get(key)[field] = set.size;
       };
-      const fromQueries = () => {
-        tally(host.q(
-          `[:find ?t ?b :in $ [?t ...] ?board :where [?b :block/refs ?t] (not [?b :block/parents ?board]) [(not= ?b ?board)]]`,
-          eids,
-          boardEid
-        ), "refs");
-        tally(host.q(
-          `[:find ?t ?d :in $ [?t ...] ?board ?pat :where [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/string ?s]
- [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [(not= ?d ?board)]]`,
-          eids,
-          boardEid,
-          DIAGRAM_RE3
-        ), "boards");
-        const listFor = (statusEid) => host.q(
-          `[:find ?t ?x :in $ [?t ...] ?status :where [?x :block/refs ?status] (or [?x :block/parents ?t] [?x :block/page ?t])]`,
-          eids,
-          statusEid
-        );
-        if (todoEid != null) tally(listFor(todoEid), "open");
-        if (doneEid != null) tally(listFor(doneEid), "done");
-      };
+      const listFor = (statusEid) => host.q(
+        `[:find ?t ?x :in $ [?t ...] ?status :where [?x :block/refs ?status] (or [?x :block/parents ?t] [?x :block/page ?t])]`,
+        eids,
+        statusEid
+      );
       const applyPulled = (node2, keyList) => {
         const refs = /* @__PURE__ */ new Set();
         const boards = /* @__PURE__ */ new Set();
@@ -43823,8 +44010,51 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         for (const [eid, keyList] of byEid) applyPulled(byId2.get(eid), keyList);
         return true;
       };
-      if (!fromPull()) fromQueries();
-      return remember2(result);
+      let phase = 0;
+      let remembered = false;
+      const finish = () => {
+        if (!remembered) {
+          remembered = true;
+          remember2(result);
+        }
+        phase = 5;
+        return true;
+      };
+      return {
+        result: () => result,
+        step() {
+          if (phase >= 5) return true;
+          if (phase === 0) {
+            phase = 1;
+            if (fromPull()) return finish();
+            tally(host.q(
+              `[:find ?t ?b :in $ [?t ...] ?board :where [?b :block/refs ?t] (not [?b :block/parents ?board]) [(not= ?b ?board)]]`,
+              eids,
+              boardEid
+            ), "refs");
+            return false;
+          }
+          if (phase === 1) {
+            phase = 2;
+            tally(host.q(
+              `[:find ?t ?d :in $ [?t ...] ?board ?pat :where [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [(not= ?d ?board)]]`,
+              eids,
+              boardEid,
+              DIAGRAM_RE3
+            ), "boards");
+            return false;
+          }
+          if (phase === 2) {
+            phase = 3;
+            if (todoEid != null) tally(listFor(todoEid), "open");
+            return false;
+          }
+          phase = 4;
+          if (doneEid != null) tally(listFor(doneEid), "done");
+          return finish();
+        }
+      };
     },
     // True when the graph is end-to-end encrypted: its files are .enc and no outside service can read them.
     graphEncrypted() {
@@ -88069,6 +88299,42 @@ function edgeEndNearWorld(centers, world, radius = 10, zoom = 1) {
   if (!best) return null;
   return { kind: "edge-end", uid: best.uid, end: best.end };
 }
+var COVER_PART = 6;
+function createCoverRepaintJob({ takeUrls, repaint, count, partSize = COVER_PART } = {}) {
+  let uids = null;
+  let at = 0;
+  let counting = false;
+  return () => {
+    if (counting) {
+      counting = false;
+      uids = null;
+      at = 0;
+      try {
+        count?.();
+      } catch {
+      }
+      return true;
+    }
+    if (!uids) {
+      uids = [...takeUrls?.() || []];
+      at = 0;
+      if (!uids.length) {
+        try {
+          count?.();
+        } catch {
+        }
+        uids = null;
+        return true;
+      }
+    }
+    const part = uids.slice(at, at + partSize);
+    at += part.length;
+    if (part.length) repaint?.(part);
+    if (at < uids.length) return false;
+    counting = true;
+    return false;
+  };
+}
 function toggleTodoAt(string, index = 0) {
   if (typeof string !== "string") return null;
   const marks = [...string.matchAll(/\{\{\[\[(?:TODO|DONE)\]\]\}\}/g)];
@@ -89600,6 +89866,8 @@ function buildBoardView(onFail, {
     }
     return node2;
   } : null;
+  let paintOverviewCover = () => {
+  };
   itemsR = createItemRenderer({
     doc,
     host,
@@ -89608,6 +89876,7 @@ function buildBoardView(onFail, {
     sectionsLayer,
     timers,
     adoptShell,
+    onOverviewQueue: () => paintOverviewCover(),
     tableThumb,
     onTableShown,
     onEditChange: (uid) => {
@@ -90922,33 +91191,34 @@ function buildBoardView(onFail, {
     if (notedSpeedFlags().bgBudget !== false) {
       if (!coverRepaint) {
         coverRepaint = /* @__PURE__ */ new Set();
-        let uids = null;
-        let at = 0;
-        coverJob = timers.bgRun(() => {
-          if (disposed) {
-            coverJob = null;
-            return true;
-          }
-          if (!uids) {
+        const step = createCoverRepaintJob({
+          takeUrls: () => {
             const urls2 = coverRepaint;
             coverRepaint = null;
-            uids = [];
+            const uids = [];
             for (const item of board2()?.items.values() || []) {
               if (item?.kind === "pdf" && urls2?.has(coverUrlOf(item))) uids.push(item.uid);
             }
-            at = 0;
+            return uids;
+          },
+          repaint: (part) => itemsR.repaintItems(part),
+          count: () => {
+            try {
+              refreshPdfHighlightCounts();
+            } catch {
+            }
           }
-          const part = uids.slice(at, at + 20);
-          at += part.length;
-          if (part.length) itemsR.repaintItems(part);
-          if (at < uids.length) return false;
-          coverJob = null;
-          try {
-            refreshPdfHighlightCounts();
-          } catch {
+        });
+        coverJob = timers.bgRun(() => {
+          if (disposed) {
+            coverJob = null;
+            coverRepaint = null;
+            return true;
           }
-          return true;
-        }, { label: "covers" });
+          const done3 = step() === true;
+          if (done3) coverJob = null;
+          return done3;
+        }, { label: "covers", partMs: 20 });
       }
       coverRepaint.add(url);
       return;
@@ -92073,6 +92343,34 @@ function buildBoardView(onFail, {
       return;
     }
     for (const m of misses) badgePending.add(m.key);
+    if (typeof host.cardStatsJob === "function") {
+      const job = host.cardStatsJob(misses.map((m) => m.target), { boardUid });
+      const pump = () => {
+        if (disposed) return;
+        let done3 = true;
+        try {
+          done3 = job.step() === true;
+        } catch {
+          done3 = true;
+        }
+        if (!done3) {
+          timers.bgIdle(pump, "badges");
+          return;
+        }
+        const res = job.result();
+        const at = Date.now();
+        for (const m of misses) {
+          badgePending.delete(m.key);
+          const stats = res instanceof Map ? res.get(m.key) : res?.[m.key];
+          badgeCache.set(m.key, { at, stats: stats || { refs: 0, boards: 0, open: 0, done: 0 } });
+        }
+        timers.bgIdle(() => {
+          if (!disposed) applyBadges();
+        }, "badges-paint");
+      };
+      timers.bgIdle(pump, "badges");
+      return;
+    }
     const runChunk = (list) => {
       if (disposed) return;
       const chunk = list.slice(0, BADGE_CHUNK);
@@ -92180,6 +92478,19 @@ function buildBoardView(onFail, {
   const endUnderlay = () => {
     underlayDrawn = false;
   };
+  paintOverviewCover = () => {
+    if (disposed || underlayDrawn) return;
+    const items = itemsR.pendingBoxes?.() || [];
+    if (!items.length) {
+      underlay.hide();
+      return;
+    }
+    underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1 });
+  };
+  const releaseUnderlay = () => {
+    underlay.hide();
+    paintOverviewCover();
+  };
   const revealNear = () => {
     if (!size.width) return;
     const near2 = visibleWorldRect(vp, size, ATTACH_MARGIN);
@@ -92247,7 +92558,7 @@ function buildBoardView(onFail, {
         }
       }
       if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
-      underlay.hide();
+      releaseUnderlay();
       dirty.minimap = true;
       schedule();
       updateBackToContent();
@@ -96249,7 +96560,7 @@ ${url}`;
           chrome.toolbar.setZoom(vp.zoom);
           scheduleContent();
           if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
-          underlay.hide();
+          releaseUnderlay();
           vpStore.set(vpId, vp);
           dirty.selection = true;
           schedule();
@@ -96755,10 +97066,30 @@ ${url}`;
       { uid, end: "to", x: geo.end.x, y: geo.end.y }
     ];
   };
+  const queuedOverview = () => {
+    if (tier === "detail") return false;
+    try {
+      if (notedSpeedFlags().overviewFast === false) return false;
+    } catch {
+      return false;
+    }
+    return (itemsR.queuedCount?.() || 0) > 0;
+  };
+  const promoteQueued = (hit) => {
+    if (!hit?.uid) return null;
+    itemsR.ensureShell?.(hit.uid);
+    if (hit.part === "title") return { kind: "section-title", uid: hit.uid };
+    if (hit.part === "border") return { kind: "section-border", uid: hit.uid };
+    return { kind: "item", uid: hit.uid };
+  };
   const normalize2 = (event, type = event.type) => {
     const screen = { x: (event.clientX || 0) - rootRect.left, y: (event.clientY || 0) - rootRect.top };
     const world2 = screenToWorld(vp, screen);
     let target = targetOf2(event.target);
+    if (target.kind === "empty" && queuedOverview()) {
+      const next = promoteQueued(hitTest(board2(), world2, rects()));
+      if (next) target = next;
+    }
     if (edgeEndWanted(type, event)) {
       const near2 = edgeEndNearWorld(handleCenters(), world2, 10, vp.zoom || 1);
       if (near2) target = near2;
@@ -97297,7 +97628,16 @@ ${url}`;
       return;
     }
     const node2 = event.target?.closest?.(".pxd-item--card");
-    showHover(node2?.getAttribute?.("data-uid") || node2?.dataset?.uid || null);
+    let uid = node2?.getAttribute?.("data-uid") || node2?.dataset?.uid || null;
+    if (!uid && queuedOverview() && !event.target?.closest?.(".pxd-item, .pxd-section")) {
+      const screen = { x: (event.clientX || 0) - (rootRect.left || 0), y: (event.clientY || 0) - (rootRect.top || 0) };
+      const hit = hitTest(board2(), screenToWorld(vp, screen), rects());
+      if (hit?.part === "body") {
+        itemsR.ensureShell?.(hit.uid);
+        uid = hit.uid;
+      }
+    }
+    showHover(uid);
   });
   const pinScroll = (node2) => () => {
     if (node2 && (node2.scrollTop || node2.scrollLeft)) {

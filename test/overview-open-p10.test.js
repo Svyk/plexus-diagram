@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createHost } from "../src/host/roam.js";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { defaultSpeedFlags, parseSpeedFlags } from "../src/settings.js";
 import { createCoverRepaintJob, mountBoardView } from "../src/view/board-view.js";
@@ -373,6 +374,63 @@ test("cover repaint paints six cards and counts highlights in their own part", (
   assert.equal(counts, 1);
   assert.equal(paintedAtCount, 3);
   assert.equal(paints.length, 3);
+});
+
+test("cardStatsJob runs one collection query per step and remembers only at the end", () => {
+  const queries = [];
+  const ids = {
+    ":block/uid:note1": 1,
+    ":block/uid:board1": 10,
+    ":block/uid:board2": 11,
+    ":node/title:TODO": 100,
+    ":node/title:DONE": 101,
+  };
+  const pull = (_pattern, entity) => {
+    const key = Array.isArray(entity) ? `${entity[0]}:${entity[1]}` : "";
+    return key in ids ? { ":db/id": ids[key] } : null;
+  };
+  const data = {
+    pull,
+    pull_many() { throw new Error("datascript"); },
+    q(text) { queries.push(String(text)); return []; },
+  };
+  const storage = { getItem: () => null, setItem() {}, removeItem() {} };
+  const host = createHost({ api: { data, util: { generateUID: () => "u" } }, storage, graph: "g" });
+  const targets = [{ kind: "block", uid: "note1" }];
+  const job = host.cardStatsJob(targets, { boardUid: "board1" });
+  assert.equal(job.step(), false);
+  assert.equal(queries.length, 1);
+  assert.equal(job.step(), false);
+  assert.equal(queries.length, 2);
+  assert.equal(job.step(), false);
+  assert.equal(queries.length, 3);
+  const mid = host.cardStats(targets, { boardUid: "board1" });
+  assert.equal(queries.length, 7);
+  assert.equal(job.step(), true);
+  assert.equal(queries.length, 8);
+  assert.deepEqual([...job.result()], [...mid]);
+  const cached = host.cardStatsJob(targets, { boardUid: "board1" });
+  assert.equal(cached.step(), true);
+  assert.equal(queries.length, 8);
+  assert.deepEqual([...cached.result()], [...job.result()]);
+  const pulled = [];
+  const fast = createHost({
+    api: {
+      data: {
+        pull,
+        pull_many(_pattern, eids) { pulled.push([...eids]); return eids.map((id) => ({ ":db/id": id })); },
+        q(text) { queries.push(String(text)); return []; },
+      },
+      util: { generateUID: () => "u" },
+    },
+    storage,
+    graph: "g",
+  });
+  const one = fast.cardStatsJob(targets, { boardUid: "board2" });
+  assert.equal(one.step(), true);
+  assert.equal(pulled.length, 1);
+  assert.deepEqual([...one.result()], [...fast.cardStats(targets, { boardUid: "board2" })]);
+  assert.equal(pulled.length, 1);
 });
 
 test("a normal board builds every shell before live and does not queue a pump", () => {

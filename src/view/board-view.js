@@ -3789,8 +3789,29 @@ function buildBoardView(onFail, {
       misses.push({ key, target: badgeTargetOf(item) });
     }
     if (!misses.length) { applyBadges(); return; }
-    // The stats queries scan the graph on the main thread: run them in idle slots, a few cards at a time.
+    // The stats queries scan the graph on the main thread. One cardStats call is four queries whatever
+    // the chunk size, so a host that can step them does one query per idle slice. The cache is written
+    // when the job finishes. A host with only cardStats keeps the old chunked call.
     for (const m of misses) badgePending.add(m.key);
+    if (typeof host.cardStatsJob === "function") {
+      const job = host.cardStatsJob(misses.map((m) => m.target), { boardUid });
+      const pump = () => {
+        if (disposed) return;
+        let done = true;
+        try { done = job.step() === true; } catch { done = true; }
+        if (!done) { timers.bgIdle(pump, "badges"); return; }
+        const res = job.result();
+        const at = Date.now();
+        for (const m of misses) {
+          badgePending.delete(m.key);
+          const stats = res instanceof Map ? res.get(m.key) : res?.[m.key];
+          badgeCache.set(m.key, { at, stats: stats || { refs: 0, boards: 0, open: 0, done: 0 } });
+        }
+        timers.bgIdle(() => { if (!disposed) applyBadges(); }, "badges-paint");
+      };
+      timers.bgIdle(pump, "badges");
+      return;
+    }
     const runChunk = (list) => {
       if (disposed) return;
       const chunk = list.slice(0, BADGE_CHUNK);

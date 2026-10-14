@@ -2050,8 +2050,6 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
               try { fetchLinked(titles.slice(ti, ti + PRIME_CHUNK)); } catch { /* a later linkedRefs ask reads Roam */ }
               ti += PRIME_CHUNK;
             } else if (!statsDone) {
-              // One call, as 3.27.0: a call costs four datalog queries whatever its size (titles and targets are
-              // empty on a big board).
               const part = targets.slice(si, si + statsPart);
               si = Math.min(targets.length, si + statsPart);
               if (si >= targets.length) statsDone = true;
@@ -3300,7 +3298,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     // Card footer stats. One reverse-attribute pull for the resolved targets.
     // The four collection-bound queries run only when that pull throws or is unusable.
-    cardStats(targets, { boardUid } = {}) {
+    // cardStats runs the whole job. cardStatsJob is one step per call: the pull (or the cache) is a
+    // single step, and a query fallback is one of refs, boards, open, done. The cache is written
+    // only when the job finishes, so a stopped job cannot answer the next read.
+    cardStats(targets, opts) {
+      const job = host.cardStatsJob(targets, opts);
+      let guard = 0;
+      while (guard < 8 && job.step() !== true) guard += 1;
+      return job.result();
+    },
+    cardStatsJob(targets, { boardUid } = {}) {
       const keySet = new Set();
       for (const t of targets || []) {
         if (!t) continue;
@@ -3312,7 +3319,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (keys.length && keys.every((key) => freshStat(boardUid, key))) {
         const result = new Map();
         for (const key of keys) result.set(key, { ...freshStat(boardUid, key) });
-        return result;
+        return { step: () => true, result: () => result };
       }
       const remember = (result) => {
         const at = Date.now();
@@ -3333,7 +3340,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         if (!byEid.has(eid)) byEid.set(eid, []);
         byEid.get(eid).push(key);
       }
-      if (!byEid.size) return remember(result);
+      if (!byEid.size) {
+        let ran = false;
+        return {
+          result: () => result,
+          step() { if (!ran) { ran = true; remember(result); } return true; },
+        };
+      }
       const eids = [...byEid.keys()];
       const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
       const todoEid = host.resolveEid({ title: "TODO" });
@@ -3346,23 +3359,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         }
         for (const [t, set] of seen) for (const key of byEid.get(t) ?? []) result.get(key)[field] = set.size;
       };
-      const fromQueries = () => {
-        tally(host.q(
-          `[:find ?t ?b :in $ [?t ...] ?board :where [?b :block/refs ?t] (not [?b :block/parents ?board]) [(not= ?b ?board)]]`,
-          eids, boardEid,
-        ), "refs");
-        tally(host.q(
-          `[:find ?t ?d :in $ [?t ...] ?board ?pat :where [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/string ?s]
- [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [(not= ?d ?board)]]`,
-          eids, boardEid, DIAGRAM_RE,
-        ), "boards");
-        const listFor = (statusEid) => host.q(
-          `[:find ?t ?x :in $ [?t ...] ?status :where [?x :block/refs ?status] (or [?x :block/parents ?t] [?x :block/page ?t])]`,
-          eids, statusEid,
-        );
-        if (todoEid != null) tally(listFor(todoEid), "open");
-        if (doneEid != null) tally(listFor(doneEid), "done");
-      };
+      const listFor = (statusEid) => host.q(
+        `[:find ?t ?x :in $ [?t ...] ?status :where [?x :block/refs ?status] (or [?x :block/parents ?t] [?x :block/page ?t])]`,
+        eids, statusEid,
+      );
       const applyPulled = (node, keyList) => {
         const refs = new Set();
         const boards = new Set();
@@ -3428,8 +3428,45 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         for (const [eid, keyList] of byEid) applyPulled(byId.get(eid), keyList);
         return true;
       };
-      if (!fromPull()) fromQueries();
-      return remember(result);
+      let phase = 0;
+      let remembered = false;
+      const finish = () => {
+        if (!remembered) { remembered = true; remember(result); }
+        phase = 5;
+        return true;
+      };
+      return {
+        result: () => result,
+        step() {
+          if (phase >= 5) return true;
+          if (phase === 0) {
+            phase = 1;
+            if (fromPull()) return finish();
+            tally(host.q(
+              `[:find ?t ?b :in $ [?t ...] ?board :where [?b :block/refs ?t] (not [?b :block/parents ?board]) [(not= ?b ?board)]]`,
+              eids, boardEid,
+            ), "refs");
+            return false;
+          }
+          if (phase === 1) {
+            phase = 2;
+            tally(host.q(
+              `[:find ?t ?d :in $ [?t ...] ?board ?pat :where [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [(not= ?d ?board)]]`,
+              eids, boardEid, DIAGRAM_RE,
+            ), "boards");
+            return false;
+          }
+          if (phase === 2) {
+            phase = 3;
+            if (todoEid != null) tally(listFor(todoEid), "open");
+            return false;
+          }
+          phase = 4;
+          if (doneEid != null) tally(listFor(doneEid), "done");
+          return finish();
+        },
+      };
     },
 
     // True when the graph is end-to-end encrypted: its files are .enc and no outside service can read them.

@@ -934,6 +934,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const adoptOffer = (uid) => {
     const offered = offeredTrees.get(uid);
     if (!offered || !splitWatchOn() || splitWatches.has(uid)) return false;
+    // trustSnapshot off restores the 3.29.0 open: nothing is absorbed and no split is held before acquire.
+    // The offer stays, and pullBoard uses it only while the page stamp still matches.
+    if (!trustOn()) return false;
     if (Date.now() - offered.at > OFFER_TTL_MS || pageStampOf(uid) !== offered.stamp) { offeredTrees.delete(uid); return false; }
     if (treeSize(offered.tree, SPLIT_WATCH_MIN) < SPLIT_WATCH_MIN) return false;
     if (offered.trusted && !trustOn()) { offeredTrees.delete(uid); return false; }
@@ -1851,8 +1854,19 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       let honored = false;
       let big = false;
       let found = null;
-      const adopted = adoptedTrees.get(uid);
+      let adopted = adoptedTrees.get(uid) || null;
       if (adopted) adoptedTrees.delete(uid);
+      // Every non-trusted adopt rechecks the page stamp. A card-body write moves it and leaves the split's
+      // content map on the old seed, so the held tree is dropped and the board is read, as an offer was on 3.29.0.
+      if (adopted && !adopted.trusted && pageStampOf(uid) !== adopted.stamp) {
+        const stale = adopted.split;
+        if (stale && splitWatches.get(uid) === stale) {
+          unhold(stale);
+          try { stale.dispose(); } catch { /* already gone */ }
+          splitWatches.delete(uid);
+        }
+        adopted = null;
+      }
       if (adopted && Date.now() - adopted.at <= OFFER_TTL_MS && splitWatches.get(uid) === adopted.split && !adopted.split.disposed) {
         node = adopted.node;
         found = adopted.found || collectTargets(node);

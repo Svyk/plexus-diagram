@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { createHost, BOARD_PATTERN } from "../src/host/roam.js";
 import { SLICED_LEVEL_PATTERN } from "../src/host/sliced-read.js";
+import { noteSpeedFlags } from "../src/settings.js";
 import { createModelStore } from "../src/host/model-store.js";
 import { acquireSession, resetSessions } from "../src/session.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
@@ -275,7 +276,7 @@ test("unverified window: no dependent drop runs before the check; afterwards a r
   } finally { s2.restore(); }
 });
 
-test("adopt step: a big board's preread takes its tree in (split held) so the acquire reads nothing; a change in between publishes on attach", async () => {
+test("adopt step: a big board's preread takes its tree in (split held) so an unchanged acquire reads nothing", async () => {
   const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
   seed(fake);
   const { host, store } = hostOver(fake, createFakeIDB());
@@ -285,18 +286,11 @@ test("adopt step: a big board's preread takes its tree in (split held) so the ac
   while (!reader.step()) phases.add(reader.phase);
   assert.ok(phases.has("adopt"), [...phases].join(","));
   assert.ok(fake.watchCount() > 0, "the split watches from the adopt step on");
-  await fake.api.data.block.update({ block: { uid: "sec2", string: "Section 2 renamed in between" } });
-  await tick(150);
   fake.pullLog = [];
   const node = host.pullBoard("sb1", { light: true });
   assert.equal(node[":block/uid"], "sb1");
   assert.equal(host.stats.slicedReads, 1);
-  assert.equal(fake.pullLog.length, 0, `no read in the acquire: ${JSON.stringify(fake.pullLog.slice(0, 3))}`);
-  const trees = [];
-  const off = host.watchBoard("sb1", (tree) => trees.push(tree));
-  await until(() => trees.length > 0);
-  assert.equal(trees[0][":block/children"].find((s) => s[":block/uid"] === "sec2")[":block/string"], "Section 2 renamed in between");
-  off();
+  assert.deepEqual(fake.pullLog.map((p) => p.pattern), ["[:page/edit-time :page/edit-nonce]"], "the acquire rechecks the stamp and does not read the board");
   host.dispose();
   await store.dispose();
 });
@@ -527,6 +521,61 @@ test("props read-ahead: the preread reads the board's block-ref props in batches
   assert.equal(fake.pullLog.length, 0, "answered from the read-ahead");
   host.blockProps("hl1");
   assert.equal(fake.pullLog.length, 1, "then from Roam");
+  host.dispose();
+  await store.dispose();
+});
+
+const boardPulls = (fake) => fake.pullLog.filter((p) => p.pattern === BOARD_PATTERN);
+
+test("trustSnapshot off: no adopt before acquire, and a moved stamp reads the board", { timeout: 30000 }, async () => {
+  noteSpeedFlags({ trustSnapshot: false });
+  try {
+    const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
+    seed(fake);
+    const { host, store } = hostOver(fake, createFakeIDB());
+    await store.ready;
+    await preread(host);
+    assert.equal(fake.watchCount(), 0, "no split held before acquire");
+    fake.pullLog = [];
+    const same = host.pullBoard("sb1", { light: true });
+    assert.equal(boardPulls(fake).length, 0, "an unchanged stamp still uses the sliced offer");
+    assert.equal(host.stats.slicedReads, 1);
+    assert.equal(host.boardUnverified("sb1"), false);
+    assert.equal(cardOf(same, "c0_3")[":block/children"][0][":block/string"], "kid 3");
+    host.dispose();
+    await store.dispose();
+    const next = hostOver(fake, createFakeIDB());
+    await next.store.ready;
+    await preread(next.host);
+    assert.equal(fake.watchCount(), 0);
+    await fake.api.data.block.update({ block: { uid: "k0_3", string: "body edited" } });
+    fake.pullLog = [];
+    const node = next.host.pullBoard("sb1", { light: true });
+    assert.ok(boardPulls(fake).length >= 1, "the stamp moved: the offer is dropped and the board is read");
+    assert.equal(cardOf(node, "c0_3")[":block/children"][0][":block/string"], "body edited");
+    assert.equal(next.host.boardUnverified("sb1"), false);
+    assert.ok(!next.host.stats.checks);
+    next.host.dispose();
+    await next.store.dispose();
+  } finally {
+    noteSpeedFlags(null);
+  }
+});
+
+test("non-trusted adopt: a card edit before acquire is read, not served from the seed", { timeout: 30000 }, async () => {
+  const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
+  seed(fake);
+  const { host, store } = hostOver(fake, createFakeIDB());
+  await store.ready;
+  await preread(host);
+  assert.ok(fake.watchCount() > 0, "the split is held from the adopt step");
+  await fake.api.data.block.update({ block: { uid: "k0_3", string: "body edited" } });
+  await tick(150);
+  fake.pullLog = [];
+  const node = host.pullBoard("sb1", { light: true });
+  assert.ok(boardPulls(fake).length >= 1, `stamp moved under a non-trusted adopt: ${JSON.stringify(fake.pullLog.slice(0, 3))}`);
+  assert.equal(cardOf(node, "c0_3")[":block/children"][0][":block/string"], "body edited");
+  assert.equal(host.boardUnverified("sb1"), false);
   host.dispose();
   await store.dispose();
 });

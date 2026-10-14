@@ -168,3 +168,18 @@ test("host.prereadBoard hands the walked targets to pullBoard (no collectTargets
   assert.equal(node[":block/uid"], "sb1");
   assert.equal(host.stats.slicedReads, 1);
 });
+
+test("sliced read: the tree is linked in bounded parts, not in one last step", () => {
+  const fake = createFakeRoam({ pullMany: true, stamps: true });
+  seed(fake, 200);
+  // Every pull costs 1; linking costs nothing on this clock, so a slice of 0 ms means one part per step.
+  const reader = readerFor(fake, { cost: 1, reader: { sliceMs: 0, batch: 1000, openBatch: 1000, linkBatch: 100 } });
+  const phases = [];
+  while (!reader.step()) phases.push(reader.phase);
+  const linkSteps = phases.filter((p) => p === "link").length;
+  assert.ok(linkSteps >= 10, `link spread over steps (${linkSteps})`);
+  const tree = reader.take();
+  const whole = fake.api.data.pull(BOARD_PATTERN, [":block/uid", "sb1"]);
+  const strip = (n) => { const o = {}; for (const k in n) if (!/^:edit\/time$|^:db\/id$/.test(k)) o[k] = k === ":block/children" ? n[k].map(strip) : n[k]; return o; };
+  assert.deepEqual(sortTree(strip(tree)), sortTree(strip(whole)));
+});

@@ -10,16 +10,20 @@ export const SLICED_LEVEL_PATTERN = "[:db/id :block/uid :block/string :block/ord
 export const SLICED_OPEN_PATTERN = "[:db/id :block/open]";
 export const SLICED_BATCH = 500;
 export const SLICED_OPEN_BATCH = 2000;
+export const SLICED_LINK_BATCH = 4000;
 export const SLICED_SLICE_MS = 40;
 
 // deps: pullMany(pattern, eids) -> nodes (null for a missing eid), stamp() -> string|null, clock() -> ms.
-export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.now(), sliceMs = SLICED_SLICE_MS, batch = SLICED_BATCH, openBatch = SLICED_OPEN_BATCH } = {}) {
+export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.now(), sliceMs = SLICED_SLICE_MS, batch = SLICED_BATCH, openBatch = SLICED_OPEN_BATCH, linkBatch = SLICED_LINK_BATCH } = {}) {
   const nodes = new Map();
+  // The output objects, made as each block is read; their children are linked in parts after the folds.
+  const outs = new Map();
   let frontier = rootEid == null ? [] : [rootEid];
   let next = [];
   let at = 0;
   let withKids = [];
   let openAt = 0;
+  let linkAt = 0;
   let phase = rootEid == null ? "failed" : "read";
   let tree = null;
   let first = null;
@@ -28,7 +32,7 @@ export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.
   try { first = stamp(); } catch { first = null; }
   if (first == null) phase = "failed";
 
-  const fail = () => { phase = "failed"; nodes.clear(); frontier = []; next = []; withKids = []; };
+  const fail = () => { phase = "failed"; nodes.clear(); outs.clear(); frontier = []; next = []; withKids = []; };
 
   function readPart() {
     const ids = frontier.slice(at, at + batch);
@@ -41,6 +45,9 @@ export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.
       // A block deleted between two levels: the read is not the board any more.
       if (!n || n[":db/id"] !== ids[i] || typeof n[":block/uid"] !== "string") return fail();
       nodes.set(ids[i], n);
+      const out = {};
+      for (const k in n) if (k !== ":db/id" && k !== ":block/children") out[k] = n[k];
+      outs.set(ids[i], out);
       const kids = n[":block/children"];
       if (Array.isArray(kids)) for (const k of kids) next.push(k?.[":db/id"]);
     }
@@ -65,30 +72,33 @@ export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.
       calls += 1;
       if (!Array.isArray(res) || res.length !== ids.length) return fail();
       for (let i = 0; i < ids.length; i += 1) {
-        const n = nodes.get(ids[i]);
+        const n = outs.get(ids[i]);
         const now = res[i];
         if (!now) return fail();
         if (Object.prototype.hasOwnProperty.call(now, ":block/open")) n[":block/open"] = now[":block/open"];
         else delete n[":block/open"];
       }
     }
-    if (openAt >= withKids.length) phase = "assemble";
+    if (openAt >= withKids.length) phase = "link";
+  }
+
+  // Children arrays, linkBatch parents per part (one 28k-block build was a 140 ms step).
+  function linkPart() {
+    const end = Math.min(withKids.length, linkAt + linkBatch);
+    for (; linkAt < end; linkAt += 1) {
+      const id = withKids[linkAt];
+      outs.get(id)[":block/children"] = nodes.get(id)[":block/children"].map((k) => outs.get(k[":db/id"]));
+    }
+    if (linkAt >= withKids.length) phase = "assemble";
   }
 
   function assemble() {
-    const build = (id) => {
-      const n = nodes.get(id);
-      const out = {};
-      for (const k in n) if (k !== ":db/id" && k !== ":block/children") out[k] = n[k];
-      const kids = n[":block/children"];
-      if (Array.isArray(kids)) out[":block/children"] = kids.map((k) => build(k[":db/id"]));
-      return out;
-    };
     let last = null;
     try { last = stamp(); } catch { last = null; }
     if (last == null || last !== first) return fail();
-    tree = build(rootEid);
+    tree = outs.get(rootEid);
     nodes.clear();
+    outs.clear();
     phase = "done";
   }
 
@@ -99,6 +109,7 @@ export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.
       do {
         if (phase === "read") readPart();
         else if (phase === "folds") foldPart();
+        else if (phase === "link") linkPart();
         else if (phase === "assemble") assemble();
         else break;
       } while (phase !== "done" && phase !== "failed" && clock() - t0 < sliceMs);

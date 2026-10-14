@@ -93,6 +93,7 @@ def make_converter(options: dict):
         do_formula_enrichment=bool(norm["formula"]),
         generate_picture_images=bool(norm["pictures"]),
         images_scale=2.0,
+        generate_parsed_pages=ocr_on,
         table_structure_options=TableStructureOptions(do_cell_matching=True, mode=mode),
         ocr_options=_ocr_options(norm["ocr"] == "on"),
         accelerator_options=AcceleratorOptions(device=AcceleratorDevice.AUTO),
@@ -139,6 +140,7 @@ def convert_file(pdf_path: str | Path, options: dict | None = None, on_event=Non
     started = time.perf_counter()
     parts = []
     per_page = []
+    ocr_lines: dict[int, list[dict]] = {}
     converter = converter_for(norm)
     chunks = chunk_pages(selected, CHUNK)
     done = 0
@@ -148,6 +150,7 @@ def convert_file(pdf_path: str | Path, options: dict | None = None, on_event=Non
         t0 = time.perf_counter()
         result = converter.convert(str(path), page_range=(chunk[0], chunk[-1]))
         parts.append(result.document.export_to_dict())
+        ocr_lines.update(page_lines(result))
         elapsed = int((time.perf_counter() - t0) * 1000)
         done += len(chunk)
         ms = int((time.perf_counter() - started) * 1000)
@@ -165,6 +168,9 @@ def convert_file(pdf_path: str | Path, options: dict | None = None, on_event=Non
     doc["pages"] = [page for page in doc["pages"] if int(page["n"]) in keep]
     doc["pageCount"] = page_count
     doc = refine_document(doc, path, ocr=norm["ocr"] != "off")
+    if norm["ocr"] != "off":
+        from plexus_parse_helper.checkmarks import apply_checkmarks
+        doc = apply_checkmarks(doc, path, ocr_lines)
     doc["stats"]["ms"] = int((time.perf_counter() - started) * 1000)
     doc["stats"]["perPage"] = per_page
     if on_event:
@@ -175,6 +181,25 @@ def convert_file(pdf_path: str | Path, options: dict | None = None, on_event=Non
         for page in selected:
             on_event("page", {"page": page, "blocks": by_page.get(page) or []})
     return doc
+
+
+def page_lines(result) -> dict[int, list[dict]]:
+    """Docling's text line cells per page, top-left PDF points. Scanned pages get them from OCR."""
+    out: dict[int, list[dict]] = {}
+    for page in result.pages or []:
+        parsed = getattr(page, "parsed_page", None)
+        if parsed is None or page.size is None:
+            continue
+        lines = []
+        for cell in parsed.textline_cells or []:
+            text = (cell.text or "").strip()
+            if not text:
+                continue
+            box = cell.rect.to_bounding_box().to_top_left_origin(page.size.height)
+            lines.append({"text": text, "bbox": [round(v, 3) for v in box.as_tuple()], "ocr": bool(cell.from_ocr)})
+        out[int(page.page_no)] = lines
+        page.parsed_page = None
+    return out
 
 
 def worker_main(in_q, out_q) -> None:

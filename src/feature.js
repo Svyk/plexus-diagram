@@ -254,6 +254,7 @@ export async function installPlexusDiagram({
   const sketchHandoffs = new Map();
   const snapTimers = new Map(); // rec -> settle timer
   const snapJobs = new Map(); // rec -> cancel of a capture in parts (P8 U2)
+  const snapParts = new Map(); // rec -> the parts of that capture once it started
   const SNAP_SETTLE_MS = 1000;
   const SNAP_WARM_WAIT_MS = 50;
   const openPerf = { lastOpen: null, opens: [] };
@@ -906,6 +907,7 @@ export async function installPlexusDiagram({
     snapTimers.delete(rec);
     const job = snapJobs.get(rec);
     snapJobs.delete(rec);
+    snapParts.delete(rec);
     try { job?.(); } catch { /* done */ }
   }
   // Returns true when stored, false when there is nothing to store, null to try again later (mid gesture).
@@ -999,11 +1001,12 @@ export async function installPlexusDiagram({
       if (notedSpeedFlags().bgBudget !== false && typeof (win.requestIdleCallback ?? globalThis.requestIdleCallback) === "function") {
         let parts = null;
         let job = null;
-        const end = () => { if (snapJobs.get(rec) === job) snapJobs.delete(rec); return true; };
+        const end = () => { if (snapJobs.get(rec) === job) { snapJobs.delete(rec); snapParts.delete(rec); } return true; };
         job = sharedBgBudget().run((deadline) => {
           if (stopped || mounts.get(rec.native) !== rec) return end();
           if (!parts) {
             parts = {};
+            snapParts.set(rec, parts);
             const r = captureSnap(rec, parts);
             if (r === null) { end(); scheduleSnap(rec); return true; }
             return parts.capture ? false : end();
@@ -1028,7 +1031,15 @@ export async function installPlexusDiagram({
   // Leaving the board (page change, park, nested open): the live DOM is still here.
   function saveSnapNow(rec) {
     const pending = snapTimers.has(rec) || snapJobs.has(rec);
+    // P8 U2: a capture in parts already under way finishes its remaining items now (a whole capture again was a
+    // 250 ms task on leaving the PhD main board).
+    const parts = snapParts.get(rec);
     clearSnapTimer(rec);
+    if (parts?.capture) {
+      let r = null;
+      try { parts.capture.step(Infinity); r = parts.finish(); } catch { r = null; }
+      if (r !== null) { try { void snapStore.flush(); } catch { /* storage is optional */ } return; }
+    }
     if (!rec?.snapDirty && !pending) return;
     try { captureSnap(rec); } catch { /* storage is optional */ }
     try { void snapStore.flush(); } catch { /* storage is optional */ }

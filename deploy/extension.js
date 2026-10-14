@@ -30067,8 +30067,11 @@ function createItemRenderer({
       return false;
     }
   };
+  let coverHeld = false;
   const noteOverviewQueue = () => {
-    if (!overviewFastOn()) return;
+    if (shellQueue.length && overviewFastOn()) coverHeld = true;
+    if (!overviewFastOn() && !coverHeld) return;
+    if (!shellQueue.length) coverHeld = false;
     try {
       onOverviewQueue?.();
     } catch {
@@ -30115,6 +30118,7 @@ function createItemRenderer({
   };
   let shellBg = null;
   let priorityFrame = null;
+  let shellsLive = true;
   let priorityLeft = 0;
   const stopPriorityFrame = () => {
     priorityFrame?.();
@@ -30127,7 +30131,9 @@ function createItemRenderer({
   };
   const pumpPriorityFrame = () => {
     priorityFrame = null;
+    if (!shellsLive) return;
     pumpChunk({ limit: OPEN_CHUNK, priority: true });
+    if (!shellsLive) return;
     if (priorityLeft > 0 && shellQueue.length && timers?.frame) {
       priorityFrame = timers.frame(pumpPriorityFrame);
       return;
@@ -30135,6 +30141,7 @@ function createItemRenderer({
     armShellPump();
   };
   const armShellPump = () => {
+    if (!shellsLive) return;
     stopShellBg();
     if (!shellQueue.length) return;
     if (priorityLeft > 0 && timers?.frame) {
@@ -30152,6 +30159,28 @@ function createItemRenderer({
       return;
     }
     if (timers?.frame) timers.frame(pumpShells);
+  };
+  const pauseShells = () => {
+    shellsLive = false;
+    stopShellBg();
+  };
+  const resumeShells = () => {
+    shellsLive = true;
+  };
+  const promoteQueue = (viewRect) => {
+    if (!viewRect || !shellQueue.length || !lastRects) return;
+    const inside8 = [];
+    const outside = [];
+    for (const uid of shellQueue) {
+      const rect = lastRects.get(uid);
+      if (rect && rectsIntersect(rect, viewRect)) inside8.push(uid);
+      else outside.push(uid);
+    }
+    if (!inside8.length) return;
+    shellQueue = inside8.concat(outside);
+    priorityLeft = inside8.length;
+    armShellPump();
+    noteOverviewQueue();
   };
   const viewBuilt = () => {
     pendingView = null;
@@ -30195,6 +30224,7 @@ function createItemRenderer({
     }
     lastBoard = board2;
     lastRects = rects;
+    coverShift = null;
     let dirty = changed2;
     if (dirty != null) {
       let touched = structural;
@@ -30210,14 +30240,20 @@ function createItemRenderer({
       }
     }
     syncBoardHighlighter(doc, boardRoot());
-    if (dirty == null) {
-      const hadQueue = shellQueue.length > 0 || shellBg || priorityFrame;
-      shellQueue = [];
-      priorityLeft = 0;
-      stopShellBg();
-      if (hadQueue) noteOverviewQueue();
-    }
     for (const uid of [...shells.keys()]) if (!board2.items.has(uid)) removeShell(uid);
+    if (shellQueue.length) {
+      const next = [];
+      let pri = 0;
+      const priLimit = priorityLeft;
+      for (let i = 0; i < shellQueue.length; i += 1) {
+        if (!board2.items.has(shellQueue[i])) continue;
+        next.push(shellQueue[i]);
+        if (i < priLimit) pri += 1;
+      }
+      shellQueue = next;
+      priorityLeft = pri;
+    }
+    const holdQueue = shells.size > 0 && shellQueue.length > 0;
     let orderChanged = structural;
     let defer = null;
     if (!shells.size && board2.order.length > 80 && typeof timers?.frame === "function") {
@@ -30280,8 +30316,21 @@ function createItemRenderer({
       shellQueue = [...defer];
       noteOverviewQueue();
     }
+    const held = holdQueue ? new Set(shellQueue) : null;
     for (const uid of board2.order) {
       if (defer?.has(uid)) continue;
+      if (held?.has(uid)) {
+        if (dirty?.has(uid)) {
+          ensureShell(uid);
+          held.delete(uid);
+        }
+        continue;
+      }
+      if (held && !shells.has(uid) && !dirty?.has(uid)) {
+        shellQueue.push(uid);
+        held.add(uid);
+        continue;
+      }
       const item = board2.items.get(uid);
       let rec = shells.get(uid);
       const fresh = !rec;
@@ -30332,6 +30381,8 @@ function createItemRenderer({
       for (const uid of [...pendingView]) if (shells.has(uid) || !board2.items.has(uid)) pendingView.delete(uid);
       if (!pendingView.size) viewBuilt();
     }
+    if (shellQueue.length) noteOverviewQueue();
+    if (shellQueue.length && shellsLive && !shellBg && !priorityFrame) armShellPump();
   };
   let peek = null;
   let peekTimer = null;
@@ -33175,9 +33226,19 @@ function createItemRenderer({
       }
     }
   };
+  let coverShift = null;
   const previewMove = (uids, dx, dy, board2, rects) => {
     const set = new Set(uids);
     for (const u of uids) for (const d of descendantsOf(board2, u)) set.add(d);
+    if (!dx && !dy) coverShift = null;
+    else {
+      coverShift = /* @__PURE__ */ new Map();
+      for (const uid of set) {
+        const r = rects.get(uid);
+        if (!r) continue;
+        coverShift.set(uid, { x: r.x + dx, y: r.y + dy, w: r.w, h: r.h });
+      }
+    }
     const live2 = /* @__PURE__ */ new Map();
     for (const uid of set) {
       const rec = shells.get(uid);
@@ -33187,6 +33248,7 @@ function createItemRenderer({
       rec.el.style.transform = `translate(${moved.x}px, ${moved.y}px)`;
       live2.set(uid, moved);
     }
+    noteOverviewQueue();
     return live2;
   };
   const previewRects = (list) => {
@@ -34420,12 +34482,17 @@ function createItemRenderer({
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     ensureShell,
+    pauseShells,
+    resumeShells,
+    promoteQueue,
+    coverHeld: () => coverHeld,
     queuedCount: () => shellQueue.length,
     pendingBoxes() {
+      const queued = new Set(shellQueue);
       const out = [];
-      for (const uid of shellQueue) {
-        if (shells.has(uid)) continue;
-        const rect = lastRects?.get(uid);
+      for (const uid of lastBoard?.order || []) {
+        if (!queued.has(uid) || shells.has(uid)) continue;
+        const rect = coverShift?.get(uid) || lastRects?.get(uid);
         if (rect) out.push({ uid, rect });
       }
       return out;
@@ -40519,11 +40586,12 @@ var OUTLINE_BATCH = 20;
 function createOutlineAssembler({ pullMany, batch = OUTLINE_BATCH } = {}) {
   const queue = [];
   const roots = [];
-  const take = () => {
+  const take = (n3) => {
     if (!queue.length) return true;
+    const limit = Number.isFinite(n3) ? Math.max(1, Math.floor(n3)) : batch;
     const root = queue[0].root === true;
     const part = [];
-    while (part.length < batch && queue.length && queue[0].root === root) part.push(queue.shift());
+    while (part.length < limit && queue.length && queue[0].root === root) part.push(queue.shift());
     let nodes = [];
     try {
       nodes = pullMany?.(root ? LEVEL_ROOT : LEVEL_KID, part.map((slot2) => slot2.entity)) || [];
@@ -40559,8 +40627,8 @@ function createOutlineAssembler({ pullMany, batch = OUTLINE_BATCH } = {}) {
     },
     pending: () => queue.length,
     entities: () => roots,
-    start: () => take(),
-    step: () => take()
+    start: (n3) => take(n3),
+    step: (n3) => take(n3)
   };
 }
 var OPEN_PATTERN = `[:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props
@@ -42471,15 +42539,16 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           return entity[0] === ":node/title" ? byTitle.get(entity[1]) || null : byUid.get(entity[1]) || null;
         });
       };
-      const pullRefsPart = (_n) => {
+      const pullRefsPart = (n3) => {
         if (honored) return true;
         if (!found.uids.length && !found.titles.length) return true;
+        const asked = n3 == null ? OUTLINE_BATCH : Math.max(1, Math.floor(Number(n3)) || 1);
         if (!refAsm) {
           refAsm = createOutlineAssembler({ pullMany: pullLevel, batch: OUTLINE_BATCH });
           refAsm.addRoots(found.uids, found.titles);
           if (refAsm.pending() === 0) return true;
-          if (refAsm.start() !== true) return false;
-        } else if (refAsm.step() !== true) return false;
+          if (refAsm.start(asked) !== true) return false;
+        } else if (refAsm.step(asked) !== true) return false;
         for (const entity of refAsm.entities()) addEntity(uid, entity);
         return true;
       };
@@ -50512,7 +50581,10 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     canvas = null;
     shown = false;
   };
-  return { draw, hide, dispose, isShown: () => shown, element: () => canvas };
+  const dropColors = () => {
+    colorCache = null;
+  };
+  return { draw, hide, dispose, dropColors, isShown: () => shown, element: () => canvas };
 }
 
 // src/view/board-view.js
@@ -78966,6 +79038,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
           continue;
         }
       }
+      if (!rec && dirty && !dirty.has(edge.uid)) continue;
       const fresh = !rec;
       if (!rec) rec = buildEdge(edge);
       else if (rec.parked) unparkEdge(rec);
@@ -89315,6 +89388,16 @@ function buildBoardView(onFail, {
     const key = `${dark}|${hl}`;
     const flipped = themeKey !== null && key !== themeKey;
     themeKey = key;
+    if (!disposed) {
+      try {
+        underlay.dropColors?.();
+      } catch {
+      }
+      try {
+        paintOverviewCover();
+      } catch {
+      }
+    }
     if (!flipped || disposed) return;
     try {
       askThemeChanged();
@@ -89396,6 +89479,7 @@ function buildBoardView(onFail, {
   let settleTimer = null;
   let searchMatches = [];
   let searchIndex = -1;
+  let searchQuery = "";
   let frameHandle = null;
   let fsDispose = () => {
   };
@@ -92305,8 +92389,9 @@ function buildBoardView(onFail, {
   };
   const fitAll = () => fitTo(boundsOf([...rects().values()]));
   const fitSelection = (uids) => {
+    for (const uid of uids || []) itemsR.ensureShell?.(uid);
     const r = rects();
-    const b = boundsOf(uids.map((u) => r.get(u)).filter(Boolean));
+    const b = boundsOf((uids || []).map((u) => r.get(u)).filter(Boolean));
     if (b) fitTo(b, { maxZoom: 1 });
   };
   const centerOn = (worldPoint) => {
@@ -92343,6 +92428,7 @@ function buildBoardView(onFail, {
     if (tier !== was) {
       pdfFlip?.setLod?.(tier);
       chrome.toolbar.scheduleDock?.();
+      if (was !== "detail" && tier === "detail" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0));
     }
   };
   const scheduleContent = () => {
@@ -92417,11 +92503,12 @@ function buildBoardView(onFail, {
       const job = host.cardStatsJob(misses.map((m) => m.target), { boardUid });
       const pump = () => {
         if (disposed) return;
-        let done3 = true;
+        let done3 = false;
         try {
           done3 = job.step() === true;
         } catch {
-          done3 = true;
+          for (const m of misses) badgePending.delete(m.key);
+          return;
         }
         if (!done3) {
           timers.bgIdle(pump, "badges");
@@ -92549,10 +92636,15 @@ function buildBoardView(onFail, {
     underlayDrawn = false;
   };
   paintOverviewCover = () => {
-    if (disposed || underlayDrawn || tier === "detail") return;
+    if (disposed || underlayDrawn) return;
     try {
       if (notedSpeedFlags().overviewFast === false) return;
     } catch {
+      return;
+    }
+    if (tier === "detail" && itemsR.coverHeld?.() !== true) {
+      const pending = itemsR.pendingBoxes?.() || [];
+      if (!pending.length) underlay.hide();
       return;
     }
     const items = itemsR.pendingBoxes?.() || [];
@@ -96271,6 +96363,7 @@ ${url}`;
   const searchFilter = (text4) => {
     const b = board2();
     const q2 = String(text4 || "").trim().toLowerCase();
+    searchQuery = q2;
     searchIndex = -1;
     setRootFlag("searching", Boolean(q2));
     searchMatches = b && q2 ? findOnBoard(b, q2, nestedBoards(b), (uid) => host?.blockString?.(uid)) : [];
@@ -96285,11 +96378,13 @@ ${url}`;
       ctl.select([hit.focus]);
       fitSelection([hit.focus]);
     }
+    paintSearch(board2(), searchMatches, searchQuery);
     const countEl = root.querySelector(".pxd-search__count");
     if (countEl) countEl.textContent = `${searchIndex + 1}/${searchMatches.length}`;
   };
   const enterEdit = async (uid, opts) => {
     ctl.select([uid]);
+    itemsR.ensureShell?.(uid);
     if (tier !== "detail") {
       fitSelection([uid]);
       applyLod();
@@ -98523,13 +98618,16 @@ ${url}`;
         firstPainted = true;
         snapShells?.clear();
         if (typeof onFirstPaint === "function") {
-          const done3 = () => {
+          const fire2 = () => {
             if (!disposed) {
               try {
                 onFirstPaint();
               } catch {
               }
             }
+          };
+          const done3 = () => {
+            if (!disposed) timers.frame(fire2);
           };
           if (typeof itemsR.whenViewBuilt === "function") itemsR.whenViewBuilt(done3);
           else done3();
@@ -98544,10 +98642,11 @@ ${url}`;
       if (edgesDue) {
         const links = paintedLinks();
         let part = dirty.all || dirty.structural || dirty.links && !dirty.edges.size ? null : dirty.edges;
-        if (part && part.size > EDGE_SLICE) {
+        const sliceSource = part || (b.edges.size > EDGE_SLICE ? b.edges.keys() : null);
+        if (sliceSource && (part ? part.size : b.edges.size) > EDGE_SLICE) {
           const slice = /* @__PURE__ */ new Set();
           edgeRest = /* @__PURE__ */ new Set();
-          for (const uid of part) (slice.size < EDGE_SLICE ? slice : edgeRest).add(uid);
+          for (const uid of sliceSource) (slice.size < EDGE_SLICE ? slice : edgeRest).add(uid);
           part = slice;
         }
         edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || /* @__PURE__ */ new Set(), selection, zoom: vp.zoom, dirty: part, view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null, skipLinks: edgeSlicing && !dirty.links });
@@ -98563,8 +98662,10 @@ ${url}`;
     }
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
-      if (size.width && !deferReveal()) revealNear();
-      else if (size.width) showUnderlay();
+      if (size.width && !deferReveal()) {
+        if (edgeRest) itemsR.reveal?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
+        else revealNear();
+      } else if (size.width) showUnderlay();
       const focused = doc.activeElement;
       if (focused?.tagName === "TEXTAREA" && root.contains(focused)) {
         try {
@@ -98576,10 +98677,12 @@ ${url}`;
       if (!gesturing) paintInvZoom();
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
       if (nextTier !== tier && !deferReveal()) {
+        const prevTier = tier;
         tier = nextTier;
         paintTier();
         pdfFlip?.setLod?.(tier);
         chrome.toolbar.scheduleDock?.();
+        if (prevTier !== "detail" && tier === "detail" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0));
       }
       if (!gesturing && !deferReveal()) paintGrid();
       if (!deferReveal()) chrome.toolbar.setZoom(vp.zoom);
@@ -99176,6 +99279,10 @@ ${url}`;
         clearZoomAnim();
       } catch {
       }
+      try {
+        itemsR.pauseShells?.();
+      } catch {
+      }
       timers.pauseBg();
       suspendObservers();
     },
@@ -99183,9 +99290,13 @@ ${url}`;
       if (disposed || !suspended) return;
       suspended = false;
       resumeObservers();
+      try {
+        itemsR.resumeShells?.();
+      } catch {
+      }
       timers.resumeBg();
       armCoverWarm();
-      if (board2() !== suspendedBoard) {
+      if (board2() !== suspendedBoard || itemsR.queuedCount?.() > 0) {
         dirty.all = true;
         dirty.structural = true;
       } else {

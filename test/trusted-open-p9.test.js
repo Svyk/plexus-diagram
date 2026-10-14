@@ -342,3 +342,25 @@ test("cover warm: a big board that needed the cover index in a first frame warms
   assert.equal(route.calls.length, 2, "read before live");
   b.dispose();
 });
+
+test("props read-ahead: the preread reads the board's block-ref props in batches; blockProps answers once from it", async () => {
+  const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
+  seed(fake);
+  fake.seedPage({ title: "Other", uid: "opage", children: [{ uid: "hl1", string: "a highlight", props: { "pdf-highlight": { color: "yellow" } } }] });
+  // A card that is a block ref.
+  await fake.api.data.block.create({ location: { "parent-uid": "sec0", order: "last" }, block: { uid: "refcard", string: "((hl1))" } });
+  const { host, store } = hostOver(fake, createFakeIDB());
+  await store.ready;
+  const reader = host.prereadBoard("sb1", { sliceMs: 5, batch: 100 });
+  const phases = new Set();
+  while (!reader.step()) phases.add(reader.phase);
+  assert.ok(phases.has("props"), [...phases].join(","));
+  fake.pullLog = [];
+  const first = host.blockProps("hl1");
+  assert.equal(first.string, "a highlight");
+  assert.equal(fake.pullLog.length, 0, "answered from the read-ahead");
+  host.blockProps("hl1");
+  assert.equal(fake.pullLog.length, 1, "then from Roam");
+  host.dispose();
+  await store.dispose();
+});

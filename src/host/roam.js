@@ -912,6 +912,20 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // read it: folds do not move the stamp, so an older one is never used.
   const OFFER_TTL_MS = 2000;
   const offeredTrees = new Map();
+  // P9: block props read ahead of an acquire (uid -> { at, res }), used by blockProps for PRIMED_PROPS_MS.
+  const primedProps = new Map();
+  const PRIMED_PROPS_MS = 3000;
+  const PRIME_PROPS_BATCH = 400;
+  const primePropsPart = (uids, at, n) => {
+    const ids = uids.slice(at, at + n);
+    if (!ids.length || typeof data.pull_many !== "function") return uids.length;
+    const res = data.pull_many(BLOCK_PROPS_PATTERN, ids.map((u) => [":block/uid", u]));
+    if (!Array.isArray(res) || res.length !== ids.length) return uids.length;
+    const now = Date.now();
+    if (at === 0) primedProps.clear();
+    for (let i = 0; i < ids.length; i += 1) primedProps.set(ids[i], { at: now, res: res[i] ?? null });
+    return at + ids.length;
+  };
   // P9: offers a preread already took in (absorbed, split created and held): { node, found, stamp, at, split, trusted }.
   const adoptedTrees = new Map();
   // The adopt step of a cold open, in its own task: what pullBoard would do with a big board's offer (absorb, the split
@@ -1997,20 +2011,32 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (warm.has(id) || splitWatches.has(id)) return null;
       const stored = opts.trust !== false && modelStore && trustOn() && splitWatchOn() ? modelStore.stampOf(id) : null;
       const reader = stored && pageStampOf(id) === stored ? host.trustedReader(id, stored, opts) : host.slicedReader(id, opts);
-      // A board whose snapshot shows enough PDF covers will ask for the cover index in its first live frame: read it
-      // now, one query per task.
-      if (!reader || !(Number(opts.covers) >= COVER_INDEX_URLS || coverBoardList().includes(id))) return reader;
-      let coverPart = -1;
+      if (!reader) return null;
+      // After the read, before the acquire, each in tasks of their own: the props of the board's block refs (the model
+      // build reads them one pull each: 35 ms of the acquire on the PhD main board), and, for a board whose first live
+      // frame needed the cover index, that index (one query per task).
+      const covers = Number(opts.covers) >= COVER_INDEX_URLS || coverBoardList().includes(id);
+      let stage = "read";
+      let propAt = 0;
+      let coverPart = 0;
       return new Proxy(reader, {
         get(target, key) {
-          if (key === "phase") return coverPart >= 0 ? "covers" : target.phase;
-          if (key === "waiting") return coverPart >= 0 ? null : target.waiting;
+          if (key === "phase") return stage === "read" ? target.phase : stage;
+          if (key === "waiting") return stage === "read" ? target.waiting : null;
           if (key !== "step") return typeof target[key] === "function" ? target[key].bind(target) : target[key];
           return () => {
-            if (coverPart < 0) {
+            if (stage === "read") {
               if (!target.step()) return false;
-              coverPart = 0;
-              return false;
+              stage = "props";
+            }
+            if (stage === "props") {
+              const uids = adoptedTrees.get(id)?.found?.uids || [];
+              if (propAt < uids.length) {
+                try { propAt = primePropsPart(uids, propAt, PRIME_PROPS_BATCH); } catch { propAt = uids.length; }
+                return false;
+              }
+              stage = "covers";
+              if (!covers) return true;
             }
             let done = true;
             try { done = coverIndexPart(coverPart); } catch { done = true; }
@@ -2607,7 +2633,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     // Highlight read: props, string, and the owning page title. No url query.
     blockProps(uid) {
       let res = null;
-      try { res = pull(BLOCK_PROPS_PATTERN, eidKey(uid)); } catch { return null; }
+      // A read-ahead answers once (the model build's first ask), then Roam again.
+      const primed = primedProps.get(uid);
+      if (primed) primedProps.delete(uid);
+      if (primed && Date.now() - primed.at <= PRIMED_PROPS_MS) res = primed.res;
+      else {
+        try { res = pull(BLOCK_PROPS_PATTERN, eidKey(uid)); } catch { return null; }
+      }
       if (!res || typeof res !== "object" || Array.isArray(res)) return null;
       const page = res[":block/page"];
       const node = Array.isArray(page) ? page[0] : page;

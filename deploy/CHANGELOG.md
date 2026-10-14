@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.30.0 — 2026-10-14
+
+Big boards are ready in about half a second when nothing changed.
+
+- **Instant reopen.** Plexus keeps a copy of each big board's layout with Roam's page stamp. When you open the board again and the page has not changed, the board is ready from that copy without reading every block first: on the 1,560-card stress board it responds in about 0.6 s instead of about 1.7 s.
+- **Checks itself.** Right after opening, Plexus re-reads the board in small background steps (pausing while you pan or zoom) and updates anything that changed while you were away, including folds and edits from other devices. Nothing is deleted or cleaned up until that check is done.
+- **Fewer pauses** after opening and when entering a nested board.
+- **Kill switch.** The hidden speed flag `trustSnapshot` turns the instant reopen off and opens boards exactly as 3.29.0 did.
+
 ## 3.29.0 — 2026-10-13
 
 Big boards open fast. On the 1,560-card stress board the board now shows in about a third of a second, and the

@@ -343,6 +343,129 @@ test("cover warm: a big board that needed the cover index in a first frame warms
   b.dispose();
 });
 
+// The check's accept pull is the third page-stamp read (reader start, assemble, then accept).
+function armAcceptQuiet(fake) {
+  let armed = false;
+  let stamps = 0;
+  const orig = fake.api.data.pull;
+  fake.api.data.pull = function (pattern, entity) {
+    if (armed && String(pattern).includes(":page/edit-time")) {
+      stamps += 1;
+      if (stamps === 3) {
+        fake.quiet("sec1", { open: false });
+        fake.quiet("k0_3", { string: "synced late" });
+      }
+    }
+    return orig.call(this, pattern, entity);
+  };
+  return {
+    arm() { armed = true; },
+    get stamps() { return stamps; },
+  };
+}
+
+test("background check: a change after the read, on the accept stamp pull, is not certified", { timeout: 30000 }, async () => {
+  const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
+  seed(fake);
+  const idb = await storedBoard(fake);
+  const accept = armAcceptQuiet(fake);
+  const { host, store } = hostOver(fake, idb);
+  await store.ready;
+  await preread(host);
+  host.pullBoard("sb1", { light: true });
+  const trees = [];
+  const off = host.watchBoard("sb1", (tree) => trees.push(tree));
+  accept.arm();
+  await until(() => !host.boardUnverified("sb1"), 12000);
+  assert.ok(accept.stamps >= 3, `the accept pull is where the late edit lands (${accept.stamps})`);
+  await until(() => trees.length > 0, 12000);
+  const last = trees[trees.length - 1];
+  assert.equal(last[":block/children"].find((s) => s[":block/uid"] === "sec1")[":block/open"], false);
+  assert.equal(cardOf(last, "c0_3")[":block/children"][0][":block/string"], "synced late");
+  assert.equal(host.stats.checkChanges, 1);
+  await until(() => (host.stats.modelsKept || 0) >= 1);
+  await tick(80);
+  const again = createModelStore({ indexedDB: idb, graph: "g" });
+  await again.ready;
+  const { decodeTree } = await import("../src/host/model-store.js");
+  const stored = decodeTree(await again.load("sb1"));
+  assert.equal(stored[":block/children"].find((s) => s[":block/uid"] === "sec1")[":block/open"], false);
+  assert.equal(cardOf(stored, "c0_3")[":block/children"][0][":block/string"], "synced late");
+  off();
+  host.dispose();
+  await store.dispose();
+  const next = hostOver(fake, idb);
+  await next.store.ready;
+  fake.pullLog = [];
+  await preread(next.host);
+  const node = next.host.pullBoard("sb1", { light: true });
+  assert.equal(next.host.stats.trustedOpens, 1);
+  const boardReads = fake.pullLog.filter((p) => p.pattern === BOARD_PATTERN || /\{\(limit :block\/children nil\) \[:db\/id\]\}/.test(p.pattern));
+  assert.equal(boardReads.length, 0, "the corrected model is what the next open trusts");
+  assert.equal(node[":block/children"].find((s) => s[":block/uid"] === "sec1")[":block/open"], false);
+  assert.equal(cardOf(node, "c0_3")[":block/children"][0][":block/string"], "synced late");
+  next.host.dispose();
+  await next.store.dispose();
+  await again.dispose();
+});
+
+test("background check: a torn level read is not stored; the retry publishes one tree", { timeout: 30000 }, async () => {
+  const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
+  seed(fake);
+  const idb = await storedBoard(fake);
+  const { host, store } = hostOver(fake, idb);
+  await store.ready;
+  await preread(host);
+  host.pullBoard("sb1", { light: true });
+  const trees = [];
+  const off = host.watchBoard("sb1", (tree) => trees.push(tree));
+  const origMany = fake.api.data.pull_many.bind(fake.api.data);
+  let torn = false;
+  fake.api.data.pull_many = (pattern, entities) => {
+    if (torn || !String(pattern).includes(":block/string")) return origMany(pattern, entities);
+    const out = [];
+    for (const entity of entities) {
+      const node = origMany(pattern, [entity])[0];
+      out.push(node);
+      if (!torn && node?.[":block/uid"] === "c0_3") {
+        torn = true;
+        fake.quiet("c0_3", { string: "torn-old" });
+        fake.quiet("c2_5", { string: "torn-new" });
+      }
+    }
+    return out;
+  };
+  await until(() => trees.length > 0, 12000);
+  const last = trees[trees.length - 1];
+  assert.equal(cardOf(last, "c0_3")[":block/string"], "torn-old");
+  assert.equal(cardOf(last, "c2_5")[":block/string"], "torn-new");
+  assert.equal(host.boardUnverified("sb1"), false);
+  await until(() => (host.stats.modelsKept || 0) >= 1);
+  await tick(80);
+  const again = createModelStore({ indexedDB: idb, graph: "g" });
+  await again.ready;
+  const { decodeTree } = await import("../src/host/model-store.js");
+  const stored = decodeTree(await again.load("sb1"));
+  assert.equal(cardOf(stored, "c0_3")[":block/string"], "torn-old");
+  assert.equal(cardOf(stored, "c2_5")[":block/string"], "torn-new");
+  off();
+  host.dispose();
+  await store.dispose();
+  const next = hostOver(fake, idb);
+  await next.store.ready;
+  fake.pullLog = [];
+  await preread(next.host);
+  const node = next.host.pullBoard("sb1", { light: true });
+  assert.equal(next.host.stats.trustedOpens, 1);
+  const boardReads = fake.pullLog.filter((p) => p.pattern === BOARD_PATTERN || /\{\(limit :block\/children nil\) \[:db\/id\]\}/.test(p.pattern));
+  assert.equal(boardReads.length, 0);
+  assert.equal(cardOf(node, "c0_3")[":block/string"], "torn-old");
+  assert.equal(cardOf(node, "c2_5")[":block/string"], "torn-new");
+  next.host.dispose();
+  await next.store.dispose();
+  await again.dispose();
+});
+
 test("props read-ahead: the preread reads the board's block-ref props in batches; blockProps answers once from it", async () => {
   const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
   seed(fake);

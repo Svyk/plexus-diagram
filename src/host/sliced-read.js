@@ -9,6 +9,9 @@
 
 export const SLICED_LEVEL_PATTERN = "[:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props {(limit :block/children nil) [:db/id]}]";
 export const SLICED_OPEN_PATTERN = "[:db/id :block/open]";
+// String, order, heading, props: the page stamp does not move for a fold, and a sync from another device may not
+// move it either. The background check re-reads these for every block it already copied before it accepts the tree.
+export const SLICED_FIELD_PATTERN = "[:db/id :block/string :block/order :block/heading :block/props]";
 export const SLICED_BATCH = 500;
 export const SLICED_OPEN_BATCH = 2000;
 export const SLICED_LINK_BATCH = 4000;
@@ -33,7 +36,17 @@ export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.
   try { first = stamp(); } catch { first = null; }
   if (first == null) phase = "failed";
 
-  const fail = () => { phase = "failed"; nodes.clear(); outs.clear(); frontier = []; next = []; withKids = []; };
+  const fail = () => {
+    phase = "failed";
+    nodes.clear();
+    outs.clear();
+    frontier = [];
+    next = [];
+    withKids = [];
+    fieldIds = [];
+    fieldSnap = [];
+    fieldsOk = false;
+  };
 
   function readPart() {
     const ids = frontier.slice(at, at + batch);
@@ -96,6 +109,22 @@ export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.
   // The folds as published, checked once more against Roam in one task: true when every row is there and the same.
   let openIds = [];
   let openVals = [];
+  // Copied blocks, in read order, so a later accept can re-read what was taken. Survives take() and outs.clear().
+  let fieldIds = [];
+  let fieldSnap = [];
+  let fieldAt = 0;
+  let fieldsOk = true;
+  const fieldKey = (n) => `${n?.[":block/string"] ?? ""}\0${n?.[":block/order"] ?? ""}\0${n?.[":block/heading"] ?? ""}\0${n?.[":block/props"] == null ? "" : JSON.stringify(n[":block/props"])}`;
+  function snapshotFields() {
+    fieldIds = [];
+    fieldSnap = [];
+    fieldAt = 0;
+    fieldsOk = true;
+    for (const [id, n] of outs) {
+      fieldIds.push(id);
+      fieldSnap.push(fieldKey(n));
+    }
+  }
   function openMatches() {
     for (let i = 0; i < openIds.length; i += openBatch) {
       const ids = openIds.slice(i, i + openBatch);
@@ -118,10 +147,29 @@ export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.
     let last = null;
     try { last = stamp(); } catch { last = null; }
     if (last == null || last !== first) return fail();
+    snapshotFields();
     tree = outs.get(rootEid);
     nodes.clear();
     outs.clear();
     phase = "done";
+  }
+
+  // One batch of the blocks already copied. "more" when some remain, "ok" when every string, order, heading and
+  // props still matches, "bad" when one does not (or the block is gone). A torn read fails here: the stamp did not move.
+  function readFieldsPart() {
+    if (phase !== "done" || !fieldsOk) return "bad";
+    if (fieldAt >= fieldIds.length) return "ok";
+    const ids = fieldIds.slice(fieldAt, fieldAt + batch);
+    const base = fieldAt;
+    fieldAt += ids.length;
+    const res = pullMany(SLICED_FIELD_PATTERN, ids);
+    calls += 1;
+    if (!Array.isArray(res) || res.length !== ids.length) { fieldsOk = false; return "bad"; }
+    for (let j = 0; j < ids.length; j += 1) {
+      const now = res[j];
+      if (!now || now[":db/id"] !== ids[j] || fieldKey(now) !== fieldSnap[base + j]) { fieldsOk = false; return "bad"; }
+    }
+    return fieldAt >= fieldIds.length ? "ok" : "more";
   }
 
   // One task's worth: parts until `sliceMs` is spent (one part at least). True when finished (done or failed).
@@ -159,6 +207,10 @@ export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.
     verifyOpen() {
       if (phase !== "done") return false;
       try { return openMatches(); } catch { return false; }
+    },
+    // Re-read string, order, heading and props of the blocks already copied. One batch per call.
+    verifyFieldsPart() {
+      try { return readFieldsPart(); } catch { fieldsOk = false; return "bad"; }
     },
   };
 }

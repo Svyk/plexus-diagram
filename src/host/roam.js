@@ -1003,13 +1003,17 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     keeps.set(uid, cancel);
   };
   // A board read in background slices: done(tree, stamp) with a consistent tree (one retry, then one whole pull).
-  // prepare(tree) runs in a part of its own between the read and done; done runs only when the stamp did not move.
+  // prepare(tree) runs in a part of its own between the read and done. The reader stays through the accept: done
+  // runs only when the page stamp did not move, the folds still match (verifyOpen), and every copied block's
+  // string, order, heading and props still match. A miss is a failed take. A frozen tree is never handed to done.
   const backgroundRead = (uid, label, done, { stopIf = () => false, prepare = null } = {}) => {
     let reader = null;
     let tries = 0;
     let cancel = null;
     let got = null;
     const whole = () => {
+      reader = null;
+      got = null;
       const stamp = pageStampOf(uid);
       let tree = null;
       try { tree = rawPull(BOARD_PATTERN, eidKey(uid)); } catch { tree = null; }
@@ -1017,15 +1021,34 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       done(tree?.[":block/uid"] ? tree : null, stamp);
       return true;
     };
+    // One retry of the sliced read, then the whole pull. The reader from the failed take is dropped.
+    const mismatch = () => {
+      reader = null;
+      got = null;
+      tries += 1;
+      stats[`${label}Retries`] = (stats[`${label}Retries`] || 0) + 1;
+      return tries >= 2 ? whole() : false;
+    };
     const part = () => {
       if (stopIf()) return true;
       if (got) {
         if (!got.prepared && prepare) { got.prepared = true; prepare(got.tree); return false; }
+        // The accept stamp pull is first, so an edit that lands on it is still unread when the compares run.
+        if (!got.checked) {
+          let openOk = false;
+          try { openOk = pageStampOf(uid) === got.stamp && reader.verifyOpen(); } catch { openOk = false; }
+          if (!openOk) return mismatch();
+          got.checked = true;
+        }
+        let fields = "bad";
+        try { fields = reader.verifyFieldsPart(); } catch { fields = "bad"; }
+        if (fields === "more") return false;
+        if (fields !== "ok") return mismatch();
         const { tree, stamp } = got;
+        reader = null;
         got = null;
-        if (pageStampOf(uid) === stamp) { done(tree, stamp); return true; }
-        tries += 1;
-        return tries >= 2 ? whole() : false;
+        done(tree, stamp);
+        return true;
       }
       if (!reader) {
         let rootEid = null;
@@ -1043,11 +1066,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!reader.step()) return false;
       const stamp = reader.stamp;
       const tree = reader.take();
-      reader = null;
-      if (tree?.[":block/uid"] === uid) { got = { tree, stamp, prepared: false }; return false; }
-      tries += 1;
-      stats[`${label}Retries`] = (stats[`${label}Retries`] || 0) + 1;
-      return tries >= 2 ? whole() : false;
+      if (tree?.[":block/uid"] === uid) { got = { tree, stamp, prepared: false, checked: false }; return false; }
+      return mismatch();
     };
     cancel = sharedBgBudget().run(part, { label, partMs: 4, firstQuiet: CHECK_QUIET_MS });
     return () => cancel?.();

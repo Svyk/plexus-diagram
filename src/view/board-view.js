@@ -335,6 +335,39 @@ export function edgeEndNearWorld(centers, world, radius = 10, zoom = 1) {
   return { kind: "edge-end", uid: best.uid, end: best.end };
 }
 
+// A cover slice used to repaint 20 cards and recount highlights together (104–122 ms). The duty gap
+// is applied after the slice, so the count has to be its own part. Six cards, then the count.
+export const COVER_PART = 6;
+export function createCoverRepaintJob({ takeUrls, repaint, count, partSize = COVER_PART } = {}) {
+  let uids = null;
+  let at = 0;
+  let counting = false;
+  return () => {
+    if (counting) {
+      counting = false;
+      uids = null;
+      at = 0;
+      try { count?.(); } catch { /* count */ }
+      return true;
+    }
+    if (!uids) {
+      uids = [...(takeUrls?.() || [])];
+      at = 0;
+      if (!uids.length) {
+        try { count?.(); } catch { /* count */ }
+        uids = null;
+        return true;
+      }
+    }
+    const part = uids.slice(at, at + partSize);
+    at += part.length;
+    if (part.length) repaint?.(part);
+    if (at < uids.length) return false;
+    counting = true;
+    return false;
+  };
+}
+
 export function toggleTodoAt(string, index = 0) {
   if (typeof string !== "string") return null;
   const marks = [...string.matchAll(/\{\{\[\[(?:TODO|DONE)\]\]\}\}/g)];
@@ -2746,32 +2779,30 @@ function buildBoardView(onFail, {
   let coverJob = null;
   const repaintForCover = (url) => {
     if (disposed) return;
-    // P8 U2: covers land from IndexedDB and FileReader callbacks after an open; repaint their cards on the
-    // background budget, 20 per part, with one highlight-count pass at the end.
+    // Covers land from IndexedDB after an open. Six cards per part, then the highlight count on its own,
+    // on the shared budget (partMs 20). bgBudget off still repaints in one turn.
     if (notedSpeedFlags().bgBudget !== false) {
       if (!coverRepaint) {
         coverRepaint = new Set();
-        let uids = null;
-        let at = 0;
-        coverJob = timers.bgRun(() => {
-          if (disposed) { coverJob = null; return true; }
-          if (!uids) {
+        const step = createCoverRepaintJob({
+          takeUrls: () => {
             const urls = coverRepaint;
             coverRepaint = null;
-            uids = [];
+            const uids = [];
             for (const item of board()?.items.values() || []) {
               if (item?.kind === "pdf" && urls?.has(coverUrlOf(item))) uids.push(item.uid);
             }
-            at = 0;
-          }
-          const part = uids.slice(at, at + 20);
-          at += part.length;
-          if (part.length) itemsR.repaintItems(part);
-          if (at < uids.length) return false;
-          coverJob = null;
-          try { refreshPdfHighlightCounts(); } catch { /* count */ }
-          return true;
-        }, { label: "covers" });
+            return uids;
+          },
+          repaint: (part) => itemsR.repaintItems(part),
+          count: () => { try { refreshPdfHighlightCounts(); } catch { /* count */ } },
+        });
+        coverJob = timers.bgRun(() => {
+          if (disposed) { coverJob = null; coverRepaint = null; return true; }
+          const done = step() === true;
+          if (done) coverJob = null;
+          return done;
+        }, { label: "covers", partMs: 20 });
       }
       coverRepaint.add(url);
       return;

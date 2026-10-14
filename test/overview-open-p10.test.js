@@ -4,7 +4,7 @@ import test from "node:test";
 
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { defaultSpeedFlags, parseSpeedFlags } from "../src/settings.js";
-import { mountBoardView } from "../src/view/board-view.js";
+import { createCoverRepaintJob, mountBoardView } from "../src/view/board-view.js";
 import { createItemRenderer } from "../src/view/cards.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
@@ -348,6 +348,31 @@ test("queued overview cards stay drawn after the gesture underlay hides", async 
     view.dispose();
     restore();
   }
+});
+
+test("cover repaint paints six cards and counts highlights in their own part", () => {
+  const uids = Array.from({ length: 13 }, (_, i) => `pdf${i}`);
+  const paints = [];
+  let counts = 0;
+  let paintedAtCount = -1;
+  const step = createCoverRepaintJob({
+    takeUrls: () => uids,
+    repaint: (part) => paints.push(part.slice()),
+    count: () => { counts += 1; paintedAtCount = paints.length; },
+  });
+  assert.equal(step(), false);
+  assert.deepEqual(paints, [uids.slice(0, 6)]);
+  assert.equal(counts, 0);
+  assert.equal(step(), false);
+  assert.deepEqual(paints[1], uids.slice(6, 12));
+  assert.equal(counts, 0);
+  assert.equal(step(), false);
+  assert.deepEqual(paints[2], ["pdf12"]);
+  assert.equal(counts, 0);
+  assert.equal(step(), true);
+  assert.equal(counts, 1);
+  assert.equal(paintedAtCount, 3);
+  assert.equal(paints.length, 3);
 });
 
 test("a normal board builds every shell before live and does not queue a pump", () => {

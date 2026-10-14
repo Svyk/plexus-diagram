@@ -23,6 +23,7 @@ const plainKeys = (v) => {
 
 function parseEntity(entity) {
   if (Array.isArray(entity)) return { key: entity[0], value: entity[1] };
+  if (typeof entity === "number") return { key: ":db/id", value: entity }; // a bare entity id, as Roam's pull takes
   const m = /^\[\s*(:[\w/.-]+)\s+"((?:[^"\\]|\\.)*)"\s*\]$/.exec(String(entity));
   if (m) return { key: m[1], value: m[2] };
   return { key: ":block/uid", value: String(entity) };
@@ -354,6 +355,14 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
       out = b ? pullBlock(b.uid) : null;
     } else if (pages.has(value)) out = pullPage(value);
     else out = pullBlock(value);
+    // The derived-link source pull (host.linkRows): page and every ancestor as eids, like Roam's :block/parents.
+    if (out && String(pattern).startsWith("[:db/id :block/uid :block/string {:block/page [:db/id]} {:block/parents [:db/id]}")) {
+      delete out[":block/children"];
+      const chain = topUid(out[":block/uid"]).slice(1);
+      out[":block/parents"] = chain.map((u) => ({ ":db/id": (blocks.get(u) || pages.get(u))?.eid })).filter((x) => x[":db/id"] != null);
+      const pg = chain.length ? pages.get(chain[chain.length - 1]) : null;
+      if (pg) out[":block/page"] = { ":db/id": pg.eid };
+    }
     if (out && String(pattern).includes(":block/_children")) {
       const child = blocks.get(out[":block/uid"]);
       const par = child?.parent ? containerOf(child.parent) : null;
@@ -651,6 +660,9 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
     return b ? { uid: b.uid, string: b.string, order: b.order, heading: b.heading, open: b.open, props: structuredClone(b.props), parent: b.parent, children: b.children.slice() } : null;
   };
   fake.props = (uid) => structuredClone(blocks.get(uid)?.props ?? null);
+  // A change no transaction made here (a fold, which Roam does not stamp; an edit synced in from another device): no
+  // page stamp, no watch callback.
+  fake.quiet = (uid, fields) => { const b = blocks.get(uid); if (b) Object.assign(b, fields); };
   fake.children = (uid) => (containerOf(uid)?.children ?? []).slice();
   fake.has = (uid) => blocks.has(uid) || pages.has(uid);
   fake.writesLog = () => fake.log.filter((e) => e[0] !== "fail");

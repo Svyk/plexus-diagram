@@ -633,6 +633,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
           continue;
         }
       }
+      // A slice names the edges for this frame. An edge that is not built yet waits for the frame that names it.
+      if (!rec && dirty && !dirty.has(edge.uid)) continue;
       const fresh = !rec;
       if (!rec) rec = buildEdge(edge);
       else if (rec.parked) unparkEdge(rec);

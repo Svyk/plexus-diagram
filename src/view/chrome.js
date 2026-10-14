@@ -382,14 +382,17 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const layoutDock = () => {
     fitDock();
     const b = paletteButtons.get(activeTool);
-    const visible = Boolean(b) && px(b.offsetWidth) > 0;
+    // Read the box before any indicator write. Interleaving offset reads with setProperty forced a layout
+    // per property (the go-live frame that was entirely style and layout).
+    const box = b ? { x: px(b.offsetLeft), y: px(b.offsetTop), w: px(b.offsetWidth), h: px(b.offsetHeight) } : null;
+    const visible = Boolean(box) && box.w > 0;
     dockIndicator.classList.toggle("pxd-dock__indicator--locked", activeLocked);
     dockIndicator.classList.toggle("pxd-dock__indicator--idle", !visible);
     if (!visible) return;
-    dockIndicator.style.setProperty("--pxd-ind-x", `${px(b.offsetLeft)}px`);
-    dockIndicator.style.setProperty("--pxd-ind-y", `${px(b.offsetTop)}px`);
-    dockIndicator.style.setProperty("--pxd-ind-w", `${px(b.offsetWidth)}px`);
-    dockIndicator.style.setProperty("--pxd-ind-h", `${px(b.offsetHeight)}px`);
+    dockIndicator.style.setProperty("--pxd-ind-x", `${box.x}px`);
+    dockIndicator.style.setProperty("--pxd-ind-y", `${box.y}px`);
+    dockIndicator.style.setProperty("--pxd-ind-w", `${box.w}px`);
+    dockIndicator.style.setProperty("--pxd-ind-h", `${box.h}px`);
   };
   // One row inside the board. When the tools do not fit: labels, separators and tool options go first, then the
   // trailing tools move behind a "…" button that opens them as a menu (the active tool stays in the row).
@@ -451,7 +454,10 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   let dockFrame = null;
   const scheduleDock = () => {
     if (dockFrame) return;
-    dockFrame = timers.frame(() => { dockFrame = null; layoutDock(); });
+    // A frame callback that runs immediately (tests) clears dockFrame before this assignment returns.
+    let ran = false;
+    const handle = timers.frame(() => { ran = true; dockFrame = null; layoutDock(); });
+    dockFrame = ran ? null : handle;
   };
   listen(palette, "pointerenter", () => layoutDock());
   let pendingMap = {};
@@ -543,7 +549,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     watchReveal(layout === "dock-only");
     paintBar();
     applyDockOptions();
-    layoutDock();
+    // layoutDock reads offset boxes. Doing it here, inside mount, was the long MessagePort task.
+    scheduleDock();
   };
 
   const toolbarApi = {
@@ -563,7 +570,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
         b.classList.toggle("pxd-dock__btn--locked", id === tool && Boolean(locked));
       }
       applyDockOptions();
-      layoutDock();
+      scheduleDock();
     },
     setPending(map) {
       pendingMap = map || {};

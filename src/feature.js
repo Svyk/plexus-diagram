@@ -1,6 +1,7 @@
 import pkg from "../package.json" with { type: "json" };
 import { createHost } from "./host/roam.js";
-import { acquireSession as acquireSessionDefault } from "./session.js";
+import { acquireSession as acquireSessionDefault, hasSession } from "./session.js";
+import { bindBgBudgetFlag, resetSharedBgBudget, sharedBgBudget } from "./bg-budget.js";
 import { clearPinnedToast, mountBoardView, viewportStorageId } from "./view/board-view.js";
 import {
   captureSketch,
@@ -14,10 +15,12 @@ import {
 } from "./view/sketch.js";
 import { isTextEntryTarget } from "./view/cards.js";
 import { createBoardSnapStore } from "./host/boardsnap-store.js";
-import { armSnapGestures, captureBoardSnap, paintBoardSnap, removeBoardSnap, resolveSnapViewport } from "./view/boardsnap-paint.js";
-import { itemSig, tableGrid } from "./model/boardsnap.js";
+import { createModelStore } from "./host/model-store.js";
+import { armSnapGestures, captureBoardSnap, createBoardSnapCapture, paintBoardSnap, removeBoardSnap, resolveSnapViewport } from "./view/boardsnap-paint.js";
+import { boardStamp, itemSig, tableGrid } from "./model/boardsnap.js";
 import { renderTableThumb, tableThumbKey, thumbBox } from "./view/table-thumb.js";
 import { tableUidOf } from "./model/roam-table.js";
+import { shouldNudgeQueries } from "./model/query-fold.js";
 import { applyFullscreenChrome } from "./view/fullscreen.js";
 import { hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
@@ -251,9 +254,12 @@ export async function installPlexusDiagram({
   const sketchTimers = new Map();
   const sketchHandoffs = new Map();
   const snapTimers = new Map(); // rec -> settle timer
+  const snapJobs = new Map(); // rec -> cancel of a capture in parts (P8 U2)
+  const snapParts = new Map(); // rec -> the parts of that capture once it started
   const SNAP_SETTLE_MS = 1000;
   const SNAP_WARM_WAIT_MS = 50;
   const openPerf = { lastOpen: null, opens: [] };
+  const QUERY_NUDGE_DELAY_MS = 4000;
 
   let settings = readSettings(extensionAPI);
   // Hidden speed-flags. The panel never lists this id, so the next gate re-reads the store.
@@ -269,7 +275,15 @@ export async function installPlexusDiagram({
     graph: graphKey,
     enabled: () => notedSpeedFlags().snapshot !== false,
   });
+  // P9. Stored board models for the trusted open (same database, own keys).
+  const modelStore = createModelStore({
+    indexedDB: win.indexedDB ?? globalThis.indexedDB,
+    graph: graphKey,
+    enabled: () => notedSpeedFlags().trustSnapshot !== false && notedSpeedFlags().snapshot !== false,
+  });
+  try { host.useModelStore?.(modelStore); } catch { /* a host without stored models */ }
   const speedFlags = () => notedSpeedFlags();
+  bindBgBudgetFlag(() => speedFlags().bgBudget !== false);
   // Sessions outlive a settings change (they are ref-counted and kept), so they read through this accessor.
   const liveSettings = { get: (id) => settings[id] };
   let stopped = false;
@@ -397,6 +411,7 @@ export async function installPlexusDiagram({
   const editSeen = new Map();
   lifecycle.add(() => previewBoards.clear());
   lifecycle.add(() => clearPinnedToast());
+  lifecycle.add(() => resetSharedBgBudget());
   let cacheLoadMs = null;
   // A board that left the enhanced set or was deleted takes its chips with it.
   const dropBoardCards = (uid) => {
@@ -819,10 +834,14 @@ export async function installPlexusDiagram({
   }
 
   function saveSketchNow(rec) {
+    // P9: the sketch is drawn from the board model alone and every change schedules its write; with no write pending
+    // and one stored, it is current (a 56 ms capture in the nested-enter task on the PhD main board).
+    const owed = sketchTimers.has(rec);
     clearSketchTimer(rec);
     saveSnapNow(rec);
     if (speedFlags().sketch === false) return;
     if (!rec?.view || !rec.session?.board || sketchGesturing(rec)) return;
+    if (!owed && sketchStore.has(currentUid(rec))) { sketchStore.flushAll(); return; }
     try {
       const sketch = captureSketch(rec.session.board);
       const uid = currentUid(rec);
@@ -837,6 +856,10 @@ export async function installPlexusDiagram({
   const snapAllowed = () => speedFlags().snapshot !== false;
   const readsNow = () => Number(host.stats?.reads) || 0;
   const runIdle = (fn) => {
+    // P8 U2: snapshot captures, table thumbnails and the query nudge wait for a quiet idle slice on the shared budget.
+    if (notedSpeedFlags().bgBudget !== false && typeof (win.requestIdleCallback ?? globalThis.requestIdleCallback) === "function") {
+      return sharedBgBudget().idle(() => fn(), { timeout: 2000, label: "snap" });
+    }
     const ric = win.requestIdleCallback ?? globalThis.requestIdleCallback;
     if (typeof ric === "function") return ric(() => fn(), { timeout: 2000 });
     const t = setTimeout(fn, 0);
@@ -894,9 +917,15 @@ export async function installPlexusDiagram({
     const timer = snapTimers.get(rec);
     if (timer) clearTimeout(timer);
     snapTimers.delete(rec);
+    const job = snapJobs.get(rec);
+    snapJobs.delete(rec);
+    snapParts.delete(rec);
+    try { job?.(); } catch { /* done */ }
   }
   // Returns true when stored, false when there is nothing to store, null to try again later (mid gesture).
-  function captureSnap(rec) {
+  // parts: a createBoardSnapCapture to step on the background budget; finish(capture) stores it. Without parts the
+  // whole capture runs now. True/false/null as before (null: a gesture, ask again).
+  function captureSnap(rec, parts = null) {
     if (!snapAllowed() || stopped || !rec?.view || rec.view.sketchStandIn === true) return false;
     let src = null;
     try { src = rec.view.snapshotSource?.() ?? null; } catch { src = null; }
@@ -906,8 +935,60 @@ export async function installPlexusDiagram({
     if (!uid) return false;
     const key = snapKey(uid, snapKindOf(rec));
     const dark = isDarkTheme(rec);
+    // P8 U2. The first settle after an open from a snapshot: when the board (items, boxes, sigs, edges) and the camera
+    // are what that snapshot holds, it is still the board; skip the capture (100-230 ms on the PhD main board).
+    const fresh = rec.snapFresh;
+    rec.snapFresh = null;
+    if (fresh && fresh.key === key && fresh.dark === dark) {
+      const prev = snapStore.get(key);
+      const vp = src.vp;
+      let same = false;
+      try {
+        same = Boolean(prev && prev === fresh.snap && vp && prev.vp && prev.vp.x === vp.x && prev.vp.y === vp.y && prev.vp.zoom === vp.zoom
+          && prev.stamp === boardStamp(src.board, src.rects));
+      } catch { same = false; }
+      if (same) {
+        rec.snapDirty = false;
+        if (host.stats && typeof host.stats === "object") host.stats.snapSkips = (host.stats.snapSkips || 0) + 1;
+        return true;
+      }
+    }
     const thumbs = new Map();
     let snap = null;
+    if (parts) {
+      let capture = null;
+      try {
+        capture = createBoardSnapCapture({
+          ...src,
+          uid,
+          prev: snapStore.get(key) || snapStore.get(uid),
+          thumbs,
+          tableThumbKey: (item) => {
+            if (!tableUidOf(item)) return null;
+            const key = thumbKeyOf(item, dark);
+            return key && snapStore.thumb(key) ? key : null;
+          },
+        });
+      } catch { capture = null; }
+      if (!capture) return false;
+      parts.capture = capture;
+      // The board, camera and theme the parts were taken under; any change and the capture is dropped.
+      parts.finish = () => {
+        let now = null;
+        try { now = rec.view?.snapshotSource?.() ?? null; } catch { now = null; }
+        // rects is a new map on every snapshotSource(): compare what it draws (the stamp), not its identity.
+        if (!now || now.gesturing || now.board !== src.board || now.vp?.x !== src.vp?.x || now.vp?.y !== src.vp?.y
+          || now.vp?.zoom !== src.vp?.zoom || currentUid(rec) !== uid || isDarkTheme(rec) !== dark) return null;
+        const out = capture.result();
+        if (!out) return false;
+        let same = false;
+        try { same = out.stamp === boardStamp(now.board, now.rects); } catch { same = false; }
+        if (!same) return null;
+        rec.snapDirty = false;
+        return snapStore.set(key, out, thumbs);
+      };
+      return true;
+    }
     try {
       snap = captureBoardSnap({
         ...src,
@@ -932,6 +1013,35 @@ export async function installPlexusDiagram({
     clearSnapTimer(rec);
     const timer = setTimeout(() => {
       snapTimers.delete(rec);
+      // P8 U2: the capture in parts on the budget (one capture was 100-230 ms on the PhD main board).
+      if (notedSpeedFlags().bgBudget !== false && typeof (win.requestIdleCallback ?? globalThis.requestIdleCallback) === "function") {
+        let parts = null;
+        let job = null;
+        const end = () => { if (snapJobs.get(rec) === job) { snapJobs.delete(rec); snapParts.delete(rec); } return true; };
+        job = sharedBgBudget().run((deadline) => {
+          if (stopped || mounts.get(rec.native) !== rec) return end();
+          if (!parts) {
+            parts = {};
+            snapParts.set(rec, parts);
+            const r = captureSnap(rec, parts);
+            if (r === null) { end(); scheduleSnap(rec); return true; }
+            return parts.capture ? false : end();
+          }
+          // The store (pack + parse, ~30 ms) is a part of its own.
+          if (!parts.captured) {
+            const left = Math.max(1, deadline.timeRemaining() - 2);
+            parts.captured = parts.capture.step(left);
+            return false;
+          }
+          end();
+          if (parts.finish() === null) scheduleSnap(rec);
+          // P9: the stored model follows the snapshot (a big board read again in the background when its page moved).
+          else if (notedSpeedFlags().trustSnapshot !== false) try { host.refreshModel?.(currentUid(rec)); } catch { /* optional */ }
+          return true;
+        }, { timeout: 2000, label: "snap", partMs: 4, urgent: true });
+        snapJobs.set(rec, job);
+        return;
+      }
       runIdle(() => {
         if (stopped || mounts.get(rec.native) !== rec) return;
         if (captureSnap(rec) === null) scheduleSnap(rec);
@@ -942,8 +1052,16 @@ export async function installPlexusDiagram({
   }
   // Leaving the board (page change, park, nested open): the live DOM is still here.
   function saveSnapNow(rec) {
-    const pending = snapTimers.has(rec);
+    const pending = snapTimers.has(rec) || snapJobs.has(rec);
+    // P8 U2: a capture in parts already under way finishes its remaining items now (a whole capture again was a
+    // 250 ms task on leaving the PhD main board).
+    const parts = snapParts.get(rec);
     clearSnapTimer(rec);
+    if (parts?.capture) {
+      let r = null;
+      try { parts.capture.step(Infinity); r = parts.finish(); } catch { r = null; }
+      if (r !== null) { try { void snapStore.flush(); } catch { /* storage is optional */ } return; }
+    }
     if (!rec?.snapDirty && !pending) return;
     try { captureSnap(rec); } catch { /* storage is optional */ }
     try { void snapStore.flush(); } catch { /* storage is optional */ }
@@ -992,6 +1110,14 @@ export async function installPlexusDiagram({
     };
     rec.openT0 = null;
     publishOpen(rec, entry);
+    // U1. Roam held the first paint (open {{query}} blocks on the page): offer the fold once, well after the open.
+    if (shouldNudgeQueries({ entry })) {
+      const t = setTimeout(() => runIdle(() => {
+        if (stopped || mounts.get(rec.native) !== rec) return;
+        try { rec.view?.queryNudge?.(entry); } catch { /* optional */ }
+      }), QUERY_NUDGE_DELAY_MS);
+      t?.unref?.();
+    }
   }
 
   // Paint the stored snapshot into the mount in this turn. No Roam read: the camera
@@ -1020,6 +1146,7 @@ export async function installPlexusDiagram({
       if (!painted) throw new Error("snapshot paint failed");
       painted.snap = snap;
       painted.vp = vp;
+      rec.snapFresh = { key: snapKey(uid, snapKindOf(rec)), snap, dark: isDarkTheme(rec) };
       painted.fsOff = fsOff;
       painted.fullscreen = Boolean(rec.fullscreen);
       notePaint(rec, true);
@@ -1096,6 +1223,20 @@ export async function installPlexusDiagram({
       try { ok = acquire() !== false; } catch (error) { fail(error); return; }
       if (!ok) { fail(null); return; }
     }
+    // P8 U3: after a sliced read the view mounts in the next task, so the acquire and the mount are two tasks.
+    if (handoff.reader && !handoff.splitMount) {
+      handoff.splitMount = true;
+      nextTask(() => {
+        if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec || rec.view !== standIn) return;
+        mountSnapView(handoff, standIn, { autofocus, viewport, onLive, logging, t0 }, fail);
+      });
+      return;
+    }
+    mountSnapView(handoff, standIn, { autofocus, viewport, onLive, logging, t0 }, fail);
+  }
+
+  function mountSnapView(handoff, standIn, { autofocus, viewport, onLive, logging, t0 }, fail) {
+    const rec = handoff.rec;
     const state = handoff.painted?.state;
     const vpNow = state?.moved ? { ...state.vp } : viewport;
     let view;
@@ -1129,7 +1270,34 @@ export async function installPlexusDiagram({
 
   // The snapshot is on screen. One frame and a macrotask later the session is read,
   // the live board mounts and adopts the snapshot shells in its first frame.
-  function beginSnapHandoff(rec, painted, { autofocus = false, viewport = null, acquire = null, onLive = null } = {}) {
+  // P8 U3. A task boundary without the nested setTimeout clamp (4 ms after five levels).
+  const nextTask = (fn) => {
+    const MC = win.MessageChannel ?? globalThis.MessageChannel;
+    if (typeof MC === "function") {
+      const ch = new MC();
+      ch.port1.onmessage = () => { ch.port1.onmessage = null; try { ch.port1.close?.(); } catch { /* closed */ } fn(); };
+      ch.port2.postMessage(0);
+      return;
+    }
+    const t = setTimeout(fn, 0);
+    t?.unref?.();
+  };
+  // The board read of the coming acquire, in tasks of ~40 ms while the snapshot shows (speed flag slicedMount).
+  // P9: the PDF covers the snapshot shows (the live board's first frame reads the cover index when there are many).
+  const snapCovers = (snap) => {
+    let n = 0;
+    const has = (face, depth) => Boolean(face && typeof face === "object" && (typeof face.y?.["--pxd-cover"] === "string"
+      || (depth < 3 && Array.isArray(face.k) && face.k.some((kid) => has(kid, depth + 1)))));
+    for (const item of snap?.items || []) if (has(item?.face, 0)) n += 1;
+    return n;
+  };
+  const prereadFor = (uid, snap = null) => {
+    if (!uid || speedFlags().slicedMount === false || typeof host.prereadBoard !== "function") return null;
+    if (injectedAcquire === acquireSessionDefault && hasSession(uid, host)) return null;
+    try { return host.prereadBoard(uid, { trust: speedFlags().trustSnapshot !== false, covers: snapCovers(snap) }); } catch { return null; }
+  };
+
+  function beginSnapHandoff(rec, painted, { autofocus = false, viewport = null, acquire = null, onLive = null, readUid = "" } = {}) {
     const logging = settings[SETTING_IDS.speedLog] === true;
     const handoff = {
       rec,
@@ -1162,21 +1330,39 @@ export async function installPlexusDiagram({
     });
     const opts = { autofocus, viewport, acquire, onLive, logging, t0: logging ? perfNow() : 0 };
     if (logging) shiftWatch.watchMount(rec.mountEl);
+    const live = () => !handoff.cancelled && !stopped && mounts.get(rec.native) === rec;
     const start = () => {
       handoff.timeoutId = null;
       runSnapMount(handoff, standIn, opts);
+    };
+    // Read the board in slices first; the acquire's pullBoard takes the result when the page did not change.
+    const read = () => {
+      handoff.timeoutId = null;
+      const reader = prereadFor(readUid, painted.snap);
+      if (!reader) { start(); return; }
+      handoff.reader = reader;
+      const slice = () => {
+        if (!live()) { reader.cancel(); return; }
+        let done = true;
+        try { done = reader.step(); } catch { done = true; }
+        // P9: a stored model on its way from IndexedDB; no task until it is here.
+        const waiting = done ? null : reader.waiting;
+        if (waiting) { waiting.then(() => nextTask(slice), () => nextTask(slice)); return; }
+        nextTask(done ? () => { if (live()) start(); else reader.cancel(); } : slice);
+      };
+      slice();
     };
     const raf = globalThis.requestAnimationFrame;
     if (typeof raf === "function") {
       handoff.rafId = raf(() => {
         handoff.rafId = null;
-        if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
-        const timer = setTimeout(start, 0);
+        if (!live()) return;
+        const timer = setTimeout(read, 0);
         timer?.unref?.();
         handoff.timeoutId = timer;
       });
     } else {
-      const timer = setTimeout(start, 0);
+      const timer = setTimeout(read, 0);
       timer?.unref?.();
       handoff.timeoutId = timer;
     }
@@ -1217,6 +1403,7 @@ export async function installPlexusDiagram({
     if (handoff) {
       handoff.cancelled = true;
       sketchHandoffs.delete(rec);
+      try { handoff.reader?.cancel?.(); } catch { /* already finished */ }
       clearSketchHandoffTimers(handoff);
       detachSketchInput(handoff);
       try { handoff.observer?.disconnect?.(); } catch { /* already gone */ }
@@ -2004,6 +2191,7 @@ export async function installPlexusDiagram({
             rec.view = beginSnapHandoff(rec, painted, {
               autofocus: true,
               viewport: viewport || null,
+              readUid: target,
               acquire: () => {
                 rec.session = acquireSession(target, { host, settings: liveSettings, ...virtualOptions(virtual) });
                 if (!rec.session?.board) {
@@ -2134,6 +2322,7 @@ export async function installPlexusDiagram({
         if (painted) {
           deferred = true;
           rec.view = beginSnapHandoff(rec, painted, {
+            readUid: currentUid(rec),
             acquire: () => {
               rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
               return Boolean(rec.session);
@@ -2353,6 +2542,7 @@ export async function installPlexusDiagram({
       try {
         rec.view = beginSnapHandoff(rec, painted, {
           viewport: rec.parkedVp || null,
+          readUid: currentUid(rec),
           acquire: () => {
             rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(rec.virtual && virtualUids.has(currentUid(rec))) });
             if (!rec.session?.board) {
@@ -3369,6 +3559,10 @@ export async function installPlexusDiagram({
     return targetView(context)?.foldTableCaptions?.();
   }
 
+  function foldQueriesCommand(context) {
+    return targetView(context)?.foldPageQueries?.();
+  }
+
   function foldSectionsCommand(context) {
     return targetView(context)?.foldSections?.(true);
   }
@@ -3410,6 +3604,7 @@ export async function installPlexusDiagram({
     ["Plexus: Resurface here", resurfaceCommand],
     ["Plexus: Move PDFs to their own pages", movePdfPagesCommand],
     ["Plexus: Fold tables under captions", foldTablesCommand],
+    ["Plexus: Fold queries on this page", foldQueriesCommand],
     ["Plexus: Fold sections in the outline", foldSectionsCommand],
     ["Plexus: Unfold sections", unfoldSectionsCommand],
     ["Plexus: Find related to the selected card", findRelatedCommand],
@@ -3912,6 +4107,7 @@ export async function installPlexusDiagram({
     },
     // INSTANT-1. Open timings: { snap, firstPaintMs, liveMs, queriesBeforePaint } per open.
     perf: openPerf,
+    bgOverruns: () => sharedBgBudget().overruns.slice(),
     snapshots: {
       size: () => snapStore.size(),
       has: (uid) => snapStore.has(uid),
@@ -4082,6 +4278,7 @@ export async function installPlexusDiagram({
     for (const rec of mounts.values()) forgetSketch(rec);
     sketchStore.dispose();
     void snapStore.dispose();
+    void modelStore.dispose();
   });
   // Registered last so it runs first on dispose: nothing may mount while teardown is in flight.
   lifecycle.add(() => { stopped = true; viewportWatch?.disconnect(); });

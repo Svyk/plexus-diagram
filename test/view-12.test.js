@@ -1319,6 +1319,9 @@ test("badges: stats are fetched once per key for visible cards at detail zoom, c
     assert.equal(calls.length, 1);
     assert.deepEqual(calls[0].opts, { boardUid: "board0001" });
     assert.deepEqual(calls[0].targets.map((t) => t.kind === "page" ? t.title : t.uid).sort(), ["Beta", "cardAAAA1", "cardDDDD4"].sort());
+    assert.equal(shell(f, "cardBBBB2").querySelectorAll(".pxd-badge-chip").length, 0, "P8 U2: the repaint waits for its own slice");
+    f.stub.flushIdle();
+    f.stub.flushFrames();
     const chips = shell(f, "cardBBBB2").querySelectorAll(".pxd-badge-chip").map((c) => c.textContent);
     assert.ok(chips.includes("3 refs"), `refs chip (${chips.join(" | ")})`);
     assert.ok(chips.includes("2/1"), "task chip");
@@ -1849,6 +1852,35 @@ test("badges: stats queries run in idle chunks and a failing query is retried, n
     await tick(140);
     for (let i = 0; i < 5; i += 1) { f.stub.flushIdle(); await tick(); }
     assert.ok(calls.length > before, "a failed chunk is asked for again on the next settle");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("badges: a suspended (parked) view runs no badge reads; resume runs them", async () => {
+  const calls = [];
+  const many = Array.from({ length: 30 }, (_, i) => ({
+    ":block/uid": `parkCard${String(i).padStart(2, "0")}`,
+    ":block/string": `Park ${i}`,
+    ":block/order": 20 + i,
+    ":block/props": { ":plexus": { ":x": 2000 + (i % 6) * 40, ":y": Math.floor(i / 6) * 30, ":w": 30, ":h": 20 } },
+    ":block/children": [],
+  }));
+  const f = mountFixture({
+    extra: many,
+    hostOverrides: { cardStats: (targets) => { calls.push(targets.length); return new Map(); } },
+    vp: { x: -1900, y: 0, zoom: 1 },
+  });
+  try {
+    await f.flush();
+    await tick(80);
+    f.view.suspend();
+    for (let i = 0; i < 5; i += 1) { f.stub.flushIdle(); await tick(); }
+    assert.equal(calls.length, 0, "no badge read while parked");
+    f.view.resume();
+    for (let i = 0; i < 5; i += 1) { f.stub.flushFrames(); f.stub.flushIdle(); await tick(); }
+    assert.ok(calls.length >= 1, "the reads run after resume");
   } finally {
     f.view.dispose();
     f.restore();

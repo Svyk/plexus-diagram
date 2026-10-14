@@ -109,7 +109,9 @@ test("a new card focuses its input on the first frame, before Roam's hydrate wai
     const p = r.enterEdit(uid);
     let done = false;
     p.then(() => { done = true; });
-    for (let i = 0; i < 60 && !done; i += 1) {
+    // enterEdit's hydrate wait has a 250 ms wall-clock grace; 60 x 4 ms timers is ~250 ms on Linux, so bound by time.
+    const until = Date.now() + 2000;
+    while (!done && Date.now() < until) {
       frame += 1;
       stub.flushFrames();
       await new Promise((resolve) => setTimeout(resolve, 4));

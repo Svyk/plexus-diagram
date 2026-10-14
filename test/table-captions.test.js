@@ -340,6 +340,40 @@ test("undo: one undo restores every table, its props and order and the edges; re
   assert.deepEqual(snap(), before);
 });
 
+test("undo: an unreadable table location never deletes a caption that still holds its table", { timeout: 20000 }, async () => {
+  const { fake, host, session } = seeded();
+  fake.trackUndo = true;
+  const plan = planFor(session, host);
+  await session.foldTableCaptions(plan);
+  const a = plan.folds.find((f) => f.tableUid === "tA");
+  // The move back of tA has not landed and its location read fails.
+  const move = fake.api.data.block.move;
+  fake.api.data.block.move = (args) => (args?.block?.uid === "tA" ? Promise.resolve() : move(args));
+  const loc = host.blockLocation;
+  host.blockLocation = (u) => (u === "tA" ? null : loc.call(host, u));
+  await session.undo();
+  fake.api.data.block.move = move;
+  host.blockLocation = loc;
+  assert.ok(fake.has("tA"), "the table survives");
+  assert.ok(fake.has(a.captionUid), "its caption is left");
+  assert.deepEqual(fake.children(a.captionUid), ["tA"]);
+  assert.equal(fake.block("tA").parent, a.captionUid);
+});
+
+test("undo: a null location read still deletes the caption once its children prove the table left", async () => {
+  const { fake, host, session } = seeded();
+  fake.trackUndo = true;
+  const before = { sec: fake.children("sec"), top: fake.children("b1") };
+  const plan = planFor(session, host);
+  await session.foldTableCaptions(plan);
+  const loc = host.blockLocation;
+  host.blockLocation = () => null;
+  await session.undo();
+  host.blockLocation = loc;
+  assert.deepEqual({ sec: fake.children("sec"), top: fake.children("b1") }, before);
+  assert.ok(plan.folds.every((f) => !fake.has(f.captionUid)));
+});
+
 test("insertParsedTable: chart -> table and a captioned parse both land as a folded caption over the table", async () => {
   const { fake, session } = seeded();
   const chart = chartToTable({ x: { label: "Year" }, y: { label: "N" }, series: [{ name: "A", points: [{ x: 1, y: 2 }, { x: 2, y: 3 }] }] }, { title: "Figure 3 · p. 4" });

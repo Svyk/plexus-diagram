@@ -28,6 +28,11 @@ import { bindGuardStats, guardCallback } from "../guard.js";
 import { installCommentHost } from "./comments.js";
 import { SPLIT_WATCH_MIN, containerKind, createSplitWatch, treeSize } from "./split-watch.js";
 import { notedSpeedFlags } from "../settings.js";
+import { linksQuery } from "../model/links.js";
+import { createSlicedRead, SLICED_SLICE_MS } from "./sliced-read.js";
+import { createTreeDecoder, createTreeEncoder } from "./model-store.js";
+import { createPartSizer } from "../part-sizer.js";
+import { sharedBgBudget } from "../bg-budget.js";
 
 // Pull results equal but for Roam's own reader state (:pdf-settings: page, scale). Exits at the first other change.
 const READER_STATE = ":pdf-settings";
@@ -66,6 +71,61 @@ const REF_BODY = `[:db/id :block/uid :block/string :node/title :block/order :blo
  {:block/page [:node/title :block/uid :pdf/url]}
  ${NATIVE_PULL}
  {(limit :block/children nil) ${REF_CHILD}}]`;
+// One outline level. Children are ids only, so the next pull is the next level. No recursive `...`.
+const LEVEL_ROOT = `[:db/id :block/uid :block/string :node/title :block/order :block/heading :block/open :block/props :pdf/url
+ {:block/page [:node/title :block/uid :pdf/url]}
+ ${NATIVE_PULL}
+ {(limit :block/children nil) [:block/uid :block/order]}]`;
+const LEVEL_KID = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
+ {(limit :block/children nil) [:block/uid :block/order]}]`;
+export const OUTLINE_BATCH = 20;
+
+// Idle ref reads. start() and step() each do one pull_many of at most `batch` nodes, all on the same level.
+// entities() is the finished roots once pending() is 0. A synchronous ref read stays on REF_BODY.
+export function createOutlineAssembler({ pullMany, batch = OUTLINE_BATCH } = {}) {
+  const queue = [];
+  const roots = [];
+  const take = (n) => {
+    if (!queue.length) return true;
+    const limit = Number.isFinite(n) ? Math.max(1, Math.floor(n)) : batch;
+    const root = queue[0].root === true;
+    const part = [];
+    while (part.length < limit && queue.length && queue[0].root === root) part.push(queue.shift());
+    let nodes = [];
+    try { nodes = pullMany?.(root ? LEVEL_ROOT : LEVEL_KID, part.map((slot) => slot.entity)) || []; } catch { nodes = []; }
+    if (!Array.isArray(nodes)) nodes = [];
+    part.forEach((slot, i) => {
+      const raw = nodes[i];
+      const node = raw && typeof raw === "object" ? raw : {};
+      let current = node;
+      if (slot.root) roots.push(node);
+      else if (slot.parent && slot.stub) {
+        const list = slot.parent[":block/children"];
+        const at = Array.isArray(list) ? list.indexOf(slot.stub) : -1;
+        current = at >= 0 ? { ...slot.stub, ...node } : node;
+        if (at >= 0) list[at] = current;
+      }
+      const kids = Array.isArray(current[":block/children"]) ? current[":block/children"] : [];
+      if (!Array.isArray(current[":block/children"])) current[":block/children"] = kids;
+      for (const kid of kids) {
+        const id = kid?.[":block/uid"];
+        if (typeof id !== "string" || !id) continue;
+        queue.push({ entity: [":block/uid", id], root: false, parent: current, stub: kid });
+      }
+    });
+    return queue.length === 0;
+  };
+  return {
+    addRoots(uids, titles) {
+      for (const id of uids || []) if (typeof id === "string" && id) queue.push({ entity: [":block/uid", id], root: true });
+      for (const title of titles || []) if (typeof title === "string" && title) queue.push({ entity: [":node/title", title], root: true });
+    },
+    pending: () => queue.length,
+    entities: () => roots,
+    start: (n) => take(n),
+    step: (n) => take(n),
+  };
+}
 const OPEN_PATTERN = `[:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/page [:block/uid :pdf/url]}
  {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}
@@ -174,7 +234,7 @@ function manyItems(node) {
 const statsInParts = (node, targets) => manyItems(node) || targets.length > STATS_ONE_CALL_MAX;
 
 // Page cards and block refs named by card strings. Nested outline rows are not cards.
-function collectTargets(node) {
+export function collectTargets(node) {
   const titles = [];
   const uids = [];
   const stats = [];
@@ -196,6 +256,49 @@ function collectTargets(node) {
   };
   walk(node, true);
   return { titles: uniqueStrings(titles), uids: uniqueStrings(uids), stats };
+}
+
+// collectTargets in resumable steps (P8 U3: a sliced read finishes it before the acquire). Same order: a node, then
+// its children in order, depth first. step(budgetMs, clock) is true when done; result() is collectTargets(node).
+export function createTargetsWalk(node) {
+  const titles = [];
+  const uids = [];
+  const stats = [];
+  const stack = node && typeof node === "object" ? [[node, true]] : [];
+  let out = null;
+  return {
+    step(budgetMs = Infinity, clock = () => 0) {
+      const t0 = clock();
+      let n = 0;
+      while (stack.length) {
+        const [cur, isRoot] = stack.pop();
+        if (cur && typeof cur === "object") {
+          if (!isRoot) {
+            const uid = cur[":block/uid"];
+            if (typeof uid === "string" && uid) stats.push({ kind: "block", uid });
+            const cls = classifyString(cur[":block/string"] ?? "");
+            if (cls.kind === "page" && cls.title) {
+              titles.push(cls.title);
+              stats.push({ kind: "page", title: cls.title });
+            } else if (cls.kind === "block" && cls.refUid) {
+              uids.push(cls.refUid);
+              stats.push({ kind: "block", uid: cls.refUid });
+            }
+          }
+          const kids = childNodes(cur);
+          for (let i = kids.length - 1; i >= 0; i -= 1) stack.push([kids[i], false]);
+        }
+        n += 1;
+        if ((n & 255) === 0 && clock() - t0 >= budgetMs) return false;
+      }
+      return true;
+    },
+    result() {
+      if (stack.length) return null;
+      if (!out) out = { titles: uniqueStrings(titles), uids: uniqueStrings(uids), stats };
+      return out;
+    },
+  };
 }
 
 function unpackPulls(rows) {
@@ -270,7 +373,10 @@ const USER_EID_QUERIES = Object.freeze([
 const PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?uid] [?b :block/page ?p] [?b :block/props ?props]]`;
 // Every Roam PDF page, and every block with props on one: one read covers all PDF cards on a big board.
 const PDF_PAGES_ALL_QUERY = `[:find ?url ?u ?t :where [?p :pdf/url ?url] [?p :block/uid ?u] [?p :node/title ?t]]`;
-const PDF_PAGE_PROPS_ALL_QUERY = `[:find ?u ?b ?props :where [?p :pdf/url _] [?p :block/uid ?u] [?b :block/page ?p] [?b :block/props ?props]]`;
+// Highlight blocks per Roam PDF page, counted in the query (P9 live: 57-64 ms, against 101-119 ms for the 3,445 props
+// rows the count used to be made from in JS; same 127 counts).
+const PDF_PAGE_COUNTS_ALL_QUERY = `[:find ?u (count-distinct ?b) :where [?p :pdf/url _] [?p :block/uid ?u] [?b :block/page ?p] [?b :block/props ?props]
+ (or [(contains? ?props :pdf-highlight)] [(contains? ?props "pdf-highlight")])]`;
 // A board that names this many PDFs reads covers from one index (PhD board: 122 PDFs asked ~8,900 times in one open,
 // 5 ms each, against 31-71 ms for the whole index). The index lives COVER_INDEX_MIN_MS, or 40× its own read time.
 // Below the break-even a board reads per url, as 3.27.0 did: at 4, Parse Lab re-read the expired index on a zoom-out
@@ -282,6 +388,9 @@ const PDF_BLOCK_IN_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?pa
 // The pdf block's pins container and its pins: two levels, nothing deeper.
 const PDF_KIDS_PATTERN = `[:block/uid {(limit :block/children nil) [:block/uid :block/string :block/order :block/props
  {(limit :block/children nil) [:block/uid :block/string :block/order :block/props]}]}]`;
+const LINK_REFS_QUERY = "[:find ?b ?src :in $ [?b ...] :where [?src :block/refs ?b]]";
+const LINK_SRC_PATTERN = "[:db/id :block/uid :block/string {:block/page [:db/id]} {:block/parents [:db/id]} {:block/_children [:block/string]}]";
+const OUTLINE_KIDS_PATTERN = "[:block/uid {(limit :block/children nil) [:block/uid :block/string :block/open :block/order]}]";
 const PDF_PAGE_PATTERN = "[:block/uid :node/title {(limit :block/children nil) [:block/uid :block/string :block/order]}]";
 const PDF_HASH_PAGE_QUERY = `[:find ?u ?t :in $ ?h :where [?p :pdf/content-hash ?h] [?p :block/uid ?u] [?p :node/title ?t]]`;
 const PDF_TOP_BLOCK_QUERY = `[:find ?u ?t :in $ ?url :where [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/page ?p] [?p :block/children ?b] [?p :block/uid ?u] [?p :node/title ?t]]`;
@@ -854,6 +963,237 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const groupSpan = (entry) => (entry.n || 0) + (entry.created?.length || 0);
   const cache = createCardCache();
   const warm = new Set();
+  // P8 U3: sliced reads waiting for their pullBoard, by board uid: { tree, stamp, at }. An offer is for the open that
+  // read it: folds do not move the stamp, so an older one is never used.
+  const OFFER_TTL_MS = 2000;
+  const offeredTrees = new Map();
+  // P9: block props read ahead of an acquire (uid -> { at, res }), used by blockProps for PRIMED_PROPS_MS.
+  const primedProps = new Map();
+  const PRIMED_PROPS_MS = 3000;
+  const PRIME_PROPS_BATCH = 400;
+  const primePropsPart = (uids, at, n) => {
+    const ids = uids.slice(at, at + n);
+    if (!ids.length || typeof data.pull_many !== "function") return uids.length;
+    const res = data.pull_many(BLOCK_PROPS_PATTERN, ids.map((u) => [":block/uid", u]));
+    if (!Array.isArray(res) || res.length !== ids.length) return uids.length;
+    const now = Date.now();
+    if (at === 0) primedProps.clear();
+    for (let i = 0; i < ids.length; i += 1) primedProps.set(ids[i], { at: now, res: res[i] ?? null });
+    return at + ids.length;
+  };
+  // P9: offers a preread already took in (absorbed, split created and held): { node, found, stamp, at, split, trusted }.
+  const adoptedTrees = new Map();
+  // The adopt step of a cold open, in its own task: what pullBoard would do with a big board's offer (absorb, the split
+  // watch, the trust mark), so the acquire task only builds the model. The split is held until the session attaches:
+  // a change meanwhile publishes on attach, and an open that never comes lets it go after SPLIT_HOLD_MS.
+  const adoptOffer = (uid) => {
+    const offered = offeredTrees.get(uid);
+    if (!offered || !splitWatchOn() || splitWatches.has(uid)) return false;
+    // trustSnapshot off restores the 3.29.0 open: nothing is absorbed and no split is held before acquire.
+    // The offer stays, and pullBoard uses it only while the page stamp still matches.
+    if (!trustOn()) return false;
+    if (Date.now() - offered.at > OFFER_TTL_MS || pageStampOf(uid) !== offered.stamp) { offeredTrees.delete(uid); return false; }
+    if (treeSize(offered.tree, SPLIT_WATCH_MIN) < SPLIT_WATCH_MIN) return false;
+    if (offered.trusted && !trustOn()) { offeredTrees.delete(uid); return false; }
+    offeredTrees.delete(uid);
+    const tree = offered.tree;
+    absorb(uid, tree, false);
+    bigBoards.set(uid, tree);
+    boardCovers.set(uid, false);
+    let split = null;
+    try { split = splitFor(uid); } catch { split = null; }
+    if (!split) return false;
+    holdSplit(uid, split);
+    if (offered.trusted) unverified.set(uid, offered.stamp);
+    else if (modelStore && trustOn() && modelStore.stampOf(uid) !== offered.stamp) keepModel(uid, tree, offered.stamp);
+    adoptedTrees.set(uid, { node: tree, found: offered.found, stamp: offered.stamp, at: Date.now(), split, trusted: offered.trusted === true });
+    return true;
+  };
+  // The board's page stamp "edit-time|edit-nonce", or null when Roam has none.
+  const pageStampOf = (uid) => {
+    let pageUid = "";
+    try { pageUid = String(host.blockPageUid?.(uid) || ""); } catch { pageUid = ""; }
+    if (!pageUid) return null;
+    let p = null;
+    try { p = rawPull("[:page/edit-time :page/edit-nonce]", eidKey(pageUid)); } catch { p = null; }
+    const t = p?.[":page/edit-time"];
+    const n = p?.[":page/edit-nonce"];
+    if (t == null && n == null) return null;
+    return `${t ?? ""}|${n ?? ""}`;
+  };
+  // P9. Trusted open: a big board whose page stamp is the one its stored model was read at mounts from that model
+  // with no board read. Until a background read verifies it, the board is "unverified" (boardUnverified): nothing
+  // destructive may act on it. Speed flag trustSnapshot.
+  const trustOn = () => { try { return notedSpeedFlags().trustSnapshot !== false; } catch { return true; } };
+  let modelStore = null;
+  const unverified = new Map(); // uid -> stamp the model was read at
+  const verifyListeners = new Map(); // uid -> Set(fn)
+  const checks = new Map(); // uid -> cancel of the running background check
+  const checkOwed = new Set(); // checks stopped by a park; they run again on resume
+  const checkTimers = new Map(); // uid -> retry timer after a failed check
+  const checkDelay = new Map(); // uid -> backoff before the next failed-check retry
+  const keeps = new Map(); // uid -> cancel of the running model store job
+  const refreshes = new Map(); // uid -> cancel of the running model refresh read
+  const CHECK_QUIET_MS = 1500;
+  const CHECK_SLICE_MS = 20;
+  const CHECK_BATCH = 250;
+  const markVerified = (uid) => {
+    if (!unverified.delete(uid)) return;
+    checkOwed.delete(uid);
+    const fns = verifyListeners.get(uid);
+    verifyListeners.delete(uid);
+    for (const fn of fns || []) {
+      try { fn(); } catch (error) { console.warn("[plexus-diagram] verified listener failed", error); }
+    }
+  };
+  // Store a consistent tree with its stamp: encoded in parts on the background budget, then one put.
+  const keepModel = (uid, tree, stamp) => {
+    if (!modelStore || !trustOn() || !tree?.[":block/uid"] || typeof stamp !== "string") return;
+    keeps.get(uid)?.();
+    const enc = createTreeEncoder(tree);
+    const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
+    const cancel = sharedBgBudget().run((deadline) => {
+      if (!enc.step(Math.max(1, deadline.timeRemaining() - 2), clock)) return false;
+      if (keeps.get(uid) === cancel) keeps.delete(uid);
+      const model = enc.result();
+      if (model) void modelStore.put(uid, stamp, model);
+      stats.modelsKept = (stats.modelsKept || 0) + 1;
+      return true;
+    }, { label: "model-keep", partMs: 4, firstQuiet: 1000 });
+    keeps.set(uid, cancel);
+  };
+  // A board read in background slices: done(tree, stamp) with a consistent tree (one retry, then one whole pull).
+  // prepare(tree) runs in a part of its own between the read and done. The reader stays through the accept: done
+  // runs only when the page stamp did not move, the folds still match (verifyOpen), and every copied block's
+  // string, order, heading and props still match. A miss is a failed take. A frozen tree is never handed to done.
+  const backgroundRead = (uid, label, done, { stopIf = () => false, prepare = null } = {}) => {
+    let reader = null;
+    let tries = 0;
+    let cancel = null;
+    let got = null;
+    const whole = () => {
+      reader = null;
+      got = null;
+      const stamp = pageStampOf(uid);
+      let tree = null;
+      try { tree = rawPull(BOARD_PATTERN, eidKey(uid)); } catch { tree = null; }
+      if (tree?.[":block/uid"] && prepare) prepare(tree);
+      done(tree?.[":block/uid"] ? tree : null, stamp);
+      return true;
+    };
+    // One retry of the sliced read, then the whole pull. The reader from the failed take is dropped.
+    const mismatch = () => {
+      reader = null;
+      got = null;
+      tries += 1;
+      stats[`${label}Retries`] = (stats[`${label}Retries`] || 0) + 1;
+      return tries >= 2 ? whole() : false;
+    };
+    const part = () => {
+      if (stopIf()) return true;
+      if (got) {
+        if (!got.prepared && prepare) { got.prepared = true; prepare(got.tree); return false; }
+        // The accept stamp pull is first, so an edit that lands on it is still unread when the compares run.
+        if (!got.checked) {
+          let openOk = false;
+          try { openOk = pageStampOf(uid) === got.stamp && reader.verifyOpen(); } catch { openOk = false; }
+          if (!openOk) return mismatch();
+          got.checked = true;
+        }
+        let fields = "bad";
+        try { fields = reader.verifyFieldsPart(); } catch { fields = "bad"; }
+        if (fields === "more") return false;
+        if (fields !== "ok") return mismatch();
+        const { tree, stamp } = got;
+        reader = null;
+        got = null;
+        done(tree, stamp);
+        return true;
+      }
+      if (!reader) {
+        let rootEid = null;
+        try { rootEid = rawPull("[:db/id]", eidKey(uid))?.[":db/id"] ?? null; } catch { rootEid = null; }
+        if (rootEid == null || typeof data.pull_many !== "function") return whole();
+        reader = createSlicedRead({
+          rootEid,
+          pullMany: (pattern, eids) => data.pull_many(pattern, eids),
+          stamp: () => pageStampOf(uid),
+          clock: () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now()),
+          sliceMs: CHECK_SLICE_MS,
+          batch: CHECK_BATCH,
+        });
+      }
+      if (!reader.step()) return false;
+      const stamp = reader.stamp;
+      const tree = reader.take();
+      if (tree?.[":block/uid"] === uid) { got = { tree, stamp, prepared: false, checked: false }; return false; }
+      return mismatch();
+    };
+    cancel = sharedBgBudget().run(part, { label, partMs: 4, firstQuiet: CHECK_QUIET_MS });
+    return () => cancel?.();
+  };
+  const clearCheckTimer = (uid) => {
+    const timer = checkTimers.get(uid);
+    if (timer == null) return;
+    clearTimeout(timer);
+    checkTimers.delete(uid);
+  };
+  // A failed check left the board unverified. Run it again, after a growing wait, while the split is still
+  // live and not held. A park owes the check to resume; an unmount or dispose drops it.
+  const retryCheck = (uid) => {
+    if (checkTimers.has(uid) || checks.has(uid) || !unverified.has(uid)) return;
+    const split = splitWatches.get(uid);
+    if (!split || split.disposed) return;
+    if (split.held) { checkOwed.add(uid); return; }
+    const delay = checkDelay.get(uid) || CHECK_QUIET_MS;
+    checkDelay.set(uid, Math.min(delay * 2, 8000));
+    const timer = setTimeout(() => {
+      checkTimers.delete(uid);
+      if (!unverified.has(uid)) return;
+      const live = splitWatches.get(uid);
+      if (!live || live.disposed) return;
+      if (live.held) { checkOwed.add(uid); return; }
+      scheduleCheck(uid);
+    }, delay);
+    try { timer.unref?.(); } catch { /* a fake timer has no unref */ }
+    checkTimers.set(uid, timer);
+  };
+  // The background check of a trusted open. A parked board stops it (resume runs it again).
+  const scheduleCheck = (uid) => {
+    clearCheckTimer(uid);
+    if (checks.has(uid) || !unverified.has(uid)) return;
+    let stopped = false;
+    const cancel = backgroundRead(uid, "check", (tree, stamp) => {
+      checks.delete(uid);
+      if (!unverified.has(uid)) return;
+      if (!tree) {
+        stats.checkFails = (stats.checkFails || 0) + 1;
+        retryCheck(uid);
+        return;
+      }
+      checkDelay.delete(uid);
+      bigBoards.set(uid, tree);
+      const split = splitWatches.get(uid);
+      let changed = true;
+      if (split && !split.disposed) changed = split.reseed(tree, { contents: true }) !== false;
+      stats.checks = (stats.checks || 0) + 1;
+      if (changed) stats.checkChanges = (stats.checkChanges || 0) + 1;
+      markVerified(uid);
+      if (changed || modelStore?.stampOf(uid) !== stamp) keepModel(uid, tree, stamp);
+    }, {
+      prepare: (tree) => absorb(uid, tree, false),
+      stopIf: () => {
+        if (stopped || !unverified.has(uid)) { checks.delete(uid); return true; }
+        if (splitWatches.get(uid)?.held) { checks.delete(uid); checkOwed.add(uid); return true; }
+        return false;
+      },
+    });
+    checks.set(uid, () => { stopped = true; cancel(); });
+  };
+  const resumeCheck = (uid) => {
+    if (!checkOwed.delete(uid)) return;
+    scheduleCheck(uid);
+  };
   const boardKeys = new Map();
   const boardPageOf = new Map();
   const pdfUrls = new Map();
@@ -891,7 +1231,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const idleLater = (idle, fn) => {
     const key = {};
     const run = (deadline) => { idleHandles.delete(key); fn(deadline); };
-    if (typeof idle === "function") idleHandles.set(key, { idle: idle(run, { timeout: 1500 }) });
+    // P8 U2: the shared background budget (quiet after input, 30 ms slices) unless the speed flag is off.
+    if (typeof idle === "function" && notedSpeedFlags().bgBudget !== false) idleHandles.set(key, { cancel: sharedBgBudget().idle(run, { timeout: 1500, label: "prime" }) });
+    else if (typeof idle === "function") idleHandles.set(key, { idle: idle(run, { timeout: 1500 }) });
     else idleHandles.set(key, { timer: setTimeout(run, 250) });
   };
   // uid -> pull sequence number at which its last board watch was dropped.
@@ -907,9 +1249,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const STATS_PART = 20;
   const STATS_TTL_MS = 120000;
   // Idle work after an open: parts this small, until ~IDLE_SLICE_MS of a slice is used.
-  const IDLE_SLICE_MS = 40;
-  const IDLE_RESERVE_MS = 8;
-  const IDLE_REF_PART = 60;
+  // P8 U2: 30 ms slices; 60 refs were one ~42 ms part on the PhD main board.
+  const IDLE_SLICE_MS = 30;
+  const IDLE_RESERVE_MS = 6;
+  const IDLE_REF_PART = 30;
   const MISS = Symbol("pull-miss");
   const rawPull = typeof data.pull === "function" ? data.pull.bind(data) : () => null;
   const parseEntity = (entity) => {
@@ -1193,6 +1536,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       unhold(own);
       // A held split comes back: one publish if it changed meanwhile.
       if (own.held) own.release();
+      resumeCheck(uid);
       return own;
     };
     attach();
@@ -1249,6 +1593,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         }
         absorb(uid, fresh, false);
         bigBoards.set(uid, fresh);
+        // A whole fresh read: a trusted open is verified by it.
+        markVerified(uid);
         own.subs.delete(sub);
         own = attach();
         sub.missed = false;
@@ -1265,6 +1611,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       live();
       unhold(own);
       if (own.release()) sub.missed = false;
+      resumeCheck(uid);
       if (!sub.missed) return;
       sub.missed = false;
       queueMicrotask(() => { if (active && !sub.paused && own.tree) sub.fn(own.tree); });
@@ -1375,11 +1722,61 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       pages.get(row[0]).push({ uid: row[1], title: typeof row[2] === "string" ? row[2] : "", url: row[0] });
     }
     const counts = new Map();
-    for (const row of queryRows(host, PDF_PAGE_PROPS_ALL_QUERY)) {
-      if (Array.isArray(row) && hasPdfHighlight(row[2])) counts.set(row[0], (counts.get(row[0]) || 0) + 1);
+    for (const row of queryRows(host, PDF_PAGE_COUNTS_ALL_QUERY)) {
+      if (Array.isArray(row) && typeof row[0] === "string" && Number(row[1]) > 0) counts.set(row[0], Number(row[1]));
     }
     coverIndex = { at: now, ttl: Math.max(COVER_INDEX_MIN_MS, (Date.now() - t0) * 40), pages, counts };
+    noteCoverBoards();
     return coverIndex;
+  };
+  // P9: big boards on screen when a first frame had to read the cover index (kept per graph across reloads): their next
+  // cold open reads it before live, one query per task.
+  const coverBoardsKey = () => `plexus-diagram:cover-boards:${graph ?? graphName()}`;
+  let coverBoards = null;
+  const coverBoardList = () => {
+    if (coverBoards) return coverBoards;
+    try { coverBoards = JSON.parse(storage?.getItem?.(coverBoardsKey()) || "[]"); } catch { coverBoards = []; }
+    if (!Array.isArray(coverBoards)) coverBoards = [];
+    return coverBoards;
+  };
+  const noteCoverBoards = () => {
+    const list = coverBoardList();
+    let changed = false;
+    for (const uid of watchedBoards.keys()) {
+      if (!bigBoards.has(uid) || list.includes(uid)) continue;
+      list.unshift(uid);
+      changed = true;
+    }
+    if (!changed) return;
+    list.length = Math.min(list.length, 20);
+    try { storage?.setItem?.(coverBoardsKey(), JSON.stringify(list)); } catch { /* quota or private mode */ }
+  };
+  // P9: the two index reads of coverIndexNow as separate tasks (live: 83 + 56 ms on Readwisenotes; together they were
+  // the first live frame's 150 ms task). part 0 reads the pages, part 1 the highlight counts and sets the index.
+  let coverWarm = null;
+  const coverIndexPart = (i) => {
+    const now = Date.now();
+    if (coverIndex && now - coverIndex.at < coverIndex.ttl) return true;
+    if (i === 0 || !coverWarm) {
+      const t0 = Date.now();
+      const pages = new Map();
+      for (const row of queryRows(host, PDF_PAGES_ALL_QUERY)) {
+        if (!Array.isArray(row) || typeof row[0] !== "string" || typeof row[1] !== "string" || row[1] === "") continue;
+        if (!pages.has(row[0])) pages.set(row[0], []);
+        pages.get(row[0]).push({ uid: row[1], title: typeof row[2] === "string" ? row[2] : "", url: row[0] });
+      }
+      coverWarm = { at: now, pages, ms: Date.now() - t0 };
+      return false;
+    }
+    const t0 = Date.now();
+    const counts = new Map();
+    for (const row of queryRows(host, PDF_PAGE_COUNTS_ALL_QUERY)) {
+      if (Array.isArray(row) && typeof row[0] === "string" && Number(row[1]) > 0) counts.set(row[0], Number(row[1]));
+    }
+    // A page change between the two reads is caught by the TTL like any other index change.
+    coverIndex = { at: coverWarm.at, ttl: Math.max(COVER_INDEX_MIN_MS, (coverWarm.ms + Date.now() - t0) * 40), pages: coverWarm.pages, counts };
+    coverWarm = null;
+    return true;
   };
   const useCoverIndex = (url) => {
     const now = Date.now();
@@ -1504,69 +1901,178 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     // One wide pull fills the session cache, so later card, page, and badge reads do not call Roam again.
     pullBoard(uid, { light = false, deferRefs = false, prime: doPrime = true } = {}) {
-      // A big board under its split watch (undo, redo, refresh): its containers again, contents as stored. The whole
-      // tree plus every ref was 1.2 s on the PhD main board.
-      const split = light ? splitWatches.get(uid) : null;
-      if (split) {
-        const tree = split.refresh();
-        if (tree?.[":block/uid"]) {
-          absorb(uid, tree, false);
-          bigBoards.set(uid, tree);
-          return tree;
-        }
-      }
-      if (warm.has(uid)) {
-        // A split is the authority for its board: the cache can hold the parent board's older copy of it, or the
-        // pre-park tree of a held split. Never reseed a split from the cache.
-        const own = splitWatches.get(uid);
-        if (own && !own.disposed && own.tree?.[":block/uid"]) return own.tree;
-        const cached = cache.blockOf(uid);
-        if (cached?.[":block/uid"]) {
-          // A nested board absorbed from its parent's pull is big by the same rule as a cold one: its watch must
-          // be the split, not one recursive pull (a 3,641-block nested board on the PhD main board).
-          if (treeSize(cached, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN && !(own && !own.disposed)) bigBoards.set(uid, cached);
-          return cached;
-        }
-      }
-      warm.delete(uid);
-      const boardEntity = eidKey(uid);
-      // The structure first; the wide pull only when few blocks carry refs.
-      let plain = null;
-      try { plain = rawPull(BOARD_PATTERN, boardEntity); } catch { plain = null; }
+      // P9: a board still showing an unverified stored model (an adopted open that was dropped, a held split taken
+      // back) gets its check whatever path this pull takes.
+      if (unverified.has(uid) && !checks.has(uid)) queueMicrotask(() => scheduleCheck(uid));
+      // P9: a tree the cold open's preread already adopted (absorbed, its split watching since then): no read here.
       let node = null;
-      const big = Boolean(plain?.[":block/uid"]) && treeSize(plain, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN;
-      const refBlocks = plain?.[":block/uid"] && !big ? refBlocksOf(plain, OPEN_PULL_MAX_REFS) : 0;
-      if (!plain?.[":block/uid"] || (refBlocks > 0 && refBlocks <= OPEN_PULL_MAX_REFS)) {
-        try { node = rawPull(OPEN_PATTERN, boardEntity); } catch { node = null; }
+      let honored = false;
+      let big = false;
+      let found = null;
+      let adopted = adoptedTrees.get(uid) || null;
+      if (adopted) adoptedTrees.delete(uid);
+      // Every non-trusted adopt rechecks the page stamp. A card-body write moves it and leaves the split's
+      // content map on the old seed, so the held tree is dropped and the board is read, as an offer was on 3.29.0.
+      if (adopted && !adopted.trusted && pageStampOf(uid) !== adopted.stamp) {
+        const stale = adopted.split;
+        if (stale && splitWatches.get(uid) === stale) {
+          unhold(stale);
+          try { stale.dispose(); } catch { /* already gone */ }
+          splitWatches.delete(uid);
+        }
+        adopted = null;
       }
-      let honored = Boolean(node?.[":block/uid"] && hasRefs(node));
-      if (!node?.[":block/uid"]) {
-        node = plain;
-        honored = false;
+      if (adopted && Date.now() - adopted.at <= OFFER_TTL_MS && splitWatches.get(uid) === adopted.split && !adopted.split.disposed) {
+        node = adopted.node;
+        found = adopted.found || collectTargets(node);
+        big = true;
+        warm.delete(uid);
+        if (adopted.trusted) {
+          stats.trustedOpens = (stats.trustedOpens || 0) + 1;
+          scheduleCheck(uid);
+        } else stats.slicedReads = (stats.slicedReads || 0) + 1;
+      } else {
+        if (adopted && unverified.has(uid)) scheduleCheck(uid);
+        // A big board under its split watch (undo, redo, refresh): its containers again, contents as stored. The whole
+        // tree plus every ref was 1.2 s on the PhD main board.
+        const split = light ? splitWatches.get(uid) : null;
+        if (split) {
+          const tree = split.refresh();
+          if (tree?.[":block/uid"]) {
+            absorb(uid, tree, false);
+            bigBoards.set(uid, tree);
+            return tree;
+          }
+        }
+        if (warm.has(uid)) {
+          // A split is the authority for its board: the cache can hold the parent board's older copy of it, or the
+          // pre-park tree of a held split. Never reseed a split from the cache.
+          const own = splitWatches.get(uid);
+          if (own && !own.disposed && own.tree?.[":block/uid"]) return own.tree;
+          const cached = cache.blockOf(uid);
+          if (cached?.[":block/uid"]) {
+            // A nested board absorbed from its parent's pull is big by the same rule as a cold one: its watch must
+            // be the split, not one recursive pull (a 3,641-block nested board on the PhD main board).
+            if (treeSize(cached, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN && !(own && !own.disposed)) bigBoards.set(uid, cached);
+            return cached;
+          }
+        }
+        warm.delete(uid);
+        const boardEntity = eidKey(uid);
+        // The structure first; the wide pull only when few blocks carry refs. A sliced read of a cold open (P8 U3)
+        // stands in for the structure pull while the board's page stamp is still the one it was read at.
+        let plain = null;
+        const offered = offeredTrees.get(uid);
+        offeredTrees.delete(uid);
+        let offeredFound = null;
+        let readStamp = null;
+        let trustedOpen = false;
+        if (offered && offered.stamp != null && Date.now() - offered.at <= OFFER_TTL_MS && pageStampOf(uid) === offered.stamp
+          && (!offered.trusted || (trustOn() && splitWatchOn() && treeSize(offered.tree, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN))) {
+          plain = offered.tree;
+          offeredFound = offered.found || null;
+          readStamp = offered.stamp;
+          trustedOpen = offered.trusted === true;
+          if (trustedOpen) stats.trustedOpens = (stats.trustedOpens || 0) + 1;
+          else stats.slicedReads = (stats.slicedReads || 0) + 1;
+        }
+        if (!plain) {
+          try { plain = rawPull(BOARD_PATTERN, boardEntity); } catch { plain = null; }
+          if (plain?.[":block/uid"]) markVerified(uid);
+        }
+        node = null;
+        big = Boolean(plain?.[":block/uid"]) && treeSize(plain, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN;
+        const refBlocks = plain?.[":block/uid"] && !big ? refBlocksOf(plain, OPEN_PULL_MAX_REFS) : 0;
+        if (!plain?.[":block/uid"] || (refBlocks > 0 && refBlocks <= OPEN_PULL_MAX_REFS)) {
+          try { node = rawPull(OPEN_PATTERN, boardEntity); } catch { node = null; }
+        }
+        honored = Boolean(node?.[":block/uid"] && hasRefs(node));
+        if (!node?.[":block/uid"]) {
+          node = plain;
+          honored = false;
+        }
+        if (!node?.[":block/uid"]) return null;
+        absorb(uid, node, honored);
+        if (big) {
+          bigBoards.set(uid, node);
+          splitWatches.get(uid)?.reseed(node);
+          if (trustedOpen) {
+            unverified.set(uid, readStamp);
+            scheduleCheck(uid);
+          } else if (node === plain && modelStore && trustOn()) {
+            // A whole pull: same task, so the stamp read now is the one the tree was read at.
+            readStamp ??= pageStampOf(uid);
+            if (readStamp && modelStore.stampOf(uid) !== readStamp) keepModel(uid, plain, readStamp);
+          }
+        } else bigBoards.delete(uid);
+
+        found = offeredFound && node === plain ? offeredFound : collectTargets(node);
       }
-      if (!node?.[":block/uid"]) return null;
-      absorb(uid, node, honored);
-      if (big) {
-        bigBoards.set(uid, node);
-        splitWatches.get(uid)?.reseed(node);
-      } else bigBoards.delete(uid);
-      const found = collectTargets(node);
       const pullRefs = () => {
         if (!honored && (found.uids.length || found.titles.length)) {
           for (const entity of pullMany(found.uids, found.titles)) addEntity(uid, entity);
         }
       };
       // The same reads in slices for idle time (PhD main board: 1,000 refs were one 0.54 s task).
-      let refAt = 0;
+      // One level at a time. The idle sizer picks how many nodes; a missing count stays at OUTLINE_BATCH.
+      // A page with a deep outline was one recursive REF_BODY (77–199 ms). The synchronous pullRefs() above stays that one pull.
+      let refAsm = null;
+      const pullLevel = (pattern, entities) => {
+        if (typeof data.pull_many === "function") {
+          try {
+            const many = data.pull_many(pattern, entities);
+            if (Array.isArray(many)) return many;
+          } catch { /* one query of this level */ }
+        }
+        const uids = [];
+        const titles = [];
+        for (const entity of entities || []) {
+          if (!Array.isArray(entity)) continue;
+          if (entity[0] === ":node/title") titles.push(entity[1]);
+          else if (entity[0] === ":block/uid") uids.push(entity[1]);
+        }
+        let rows = [];
+        try {
+          if (uids.length && titles.length) {
+            rows = unpackPulls(host.q(
+              `[:find (pull ?e ${pattern}) :in $ [?uid ...] [?title ...] :where (or [?e :block/uid ?uid] [?e :node/title ?title])]`,
+              uids, titles,
+            ));
+          } else if (uids.length) {
+            rows = unpackPulls(host.q(
+              `[:find (pull ?e ${pattern}) :in $ [?uid ...] :where [?e :block/uid ?uid]]`,
+              uids,
+            ));
+          } else if (titles.length) {
+            rows = unpackPulls(host.q(
+              `[:find (pull ?e ${pattern}) :in $ [?title ...] :where [?e :node/title ?title]]`,
+              titles,
+            ));
+          }
+        } catch { rows = []; }
+        const byUid = new Map();
+        const byTitle = new Map();
+        for (const node of rows) {
+          if (typeof node?.[":block/uid"] === "string") byUid.set(node[":block/uid"], node);
+          if (typeof node?.[":node/title"] === "string") byTitle.set(node[":node/title"], node);
+        }
+        return entities.map((entity) => {
+          if (!Array.isArray(entity)) return null;
+          return entity[0] === ":node/title" ? (byTitle.get(entity[1]) || null) : (byUid.get(entity[1]) || null);
+        });
+      };
       const pullRefsPart = (n) => {
         if (honored) return true;
-        const total = found.uids.length + found.titles.length;
-        const end = Math.min(total, refAt + n);
-        const uids = found.uids.slice(Math.min(refAt, found.uids.length), Math.min(end, found.uids.length));
-        const titles = found.titles.slice(Math.max(0, refAt - found.uids.length), Math.max(0, end - found.uids.length));
-        refAt = end;
-        if (uids.length || titles.length) for (const entity of pullMany(uids, titles)) addEntity(uid, entity);
-        return refAt >= total;
+        if (!found.uids.length && !found.titles.length) return true;
+        const asked = n == null ? OUTLINE_BATCH : Math.max(1, Math.floor(Number(n)) || 1);
+        if (!refAsm) {
+          refAsm = createOutlineAssembler({ pullMany: pullLevel, batch: OUTLINE_BATCH });
+          refAsm.addRoots(found.uids, found.titles);
+          if (refAsm.pending() === 0) return true;
+          if (refAsm.start(asked) !== true) return false;
+        } else if (refAsm.step(asked) !== true) return false;
+        for (const entity of refAsm.entities()) addEntity(uid, entity);
+        return true;
       };
       // A keep-alive catch-up already shows its cards: their refs are read again in the first idle slice
       // (PhD main board: 1,000 refs, 0.54 s of the reattach task).
@@ -1625,6 +2131,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         let statsDone = false;
         let refsDone = !refsLater;
         let dropped = false;
+        const refSizer = createPartSizer({ max: IDLE_REF_PART, start: 4 });
         const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
         // Small parts until the idle slice is nearly spent (PhD main board: 80 card stats or all refs per slice were
         // 0.2-0.6 s tasks). One part always runs, so a busy window still makes progress.
@@ -1635,7 +2142,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           const left = () => Math.min(IDLE_SLICE_MS - (clock() - t0), typeof deadline?.timeRemaining === "function" && !deadline.didTimeout ? deadline.timeRemaining() : Infinity);
           do {
             if (!refsDone) {
-              try { refsDone = pullRefsPart(IDLE_REF_PART); } catch { refsDone = true; /* cards read their refs on demand */ }
+              // P8 U2: as many refs as fit the slice at their measured cost (30 at once were 60-190 ms parts).
+              const n = refSizer.size(left() - IDLE_RESERVE_MS);
+              const r0 = clock();
+              try { refsDone = pullRefsPart(n); } catch { refsDone = true; /* cards read their refs on demand */ }
+              refSizer.note(n, clock() - r0);
               continue;
             }
             if (!dropped) { dropped = true; dropStats(uid); }
@@ -1643,8 +2154,6 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
               try { fetchLinked(titles.slice(ti, ti + PRIME_CHUNK)); } catch { /* a later linkedRefs ask reads Roam */ }
               ti += PRIME_CHUNK;
             } else if (!statsDone) {
-              // One call, as 3.27.0: a call costs four datalog queries whatever its size (titles and targets are
-              // empty on a big board).
               const part = targets.slice(si, si + statsPart);
               si = Math.min(targets.length, si + statsPart);
               if (si >= targets.length) statsDone = true;
@@ -1658,6 +2167,176 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         later(step);
       }
       return node;
+    },
+
+    // P8 U3. A cold open's board read in short tasks: null when pullBoard would not read Roam whole (warm cache, a
+    // split already holds the board), when pull_many or the page stamp is missing. reader.step() does one task's
+    // worth and is true when finished; a consistent result is offered to the next pullBoard of this board.
+    // P9: with a stored model read at the page's current stamp (speed flag trustSnapshot, big boards with the split
+    // watch), the reader loads and decodes that model instead (reader.waiting: a promise while IndexedDB answers) and
+    // offers it as trusted; any miss on the way falls back to the sliced read.
+    prereadBoard(uid, opts = {}) {
+      const id = String(uid ?? "");
+      if (!id || typeof data.pull_many !== "function") return null;
+      if (warm.has(id) || splitWatches.has(id)) return null;
+      const stored = opts.trust !== false && modelStore && trustOn() && splitWatchOn() ? modelStore.stampOf(id) : null;
+      const reader = stored && pageStampOf(id) === stored ? host.trustedReader(id, stored, opts) : host.slicedReader(id, opts);
+      if (!reader) return null;
+      // After the read, before the acquire, each in tasks of their own: the props of the board's block refs (the model
+      // build reads them one pull each: 35 ms of the acquire on the PhD main board), and, for a board whose first live
+      // frame needed the cover index, that index (one query per task).
+      const covers = Number(opts.covers) >= COVER_INDEX_URLS || coverBoardList().includes(id);
+      let stage = "read";
+      let propAt = 0;
+      let coverPart = 0;
+      return new Proxy(reader, {
+        get(target, key) {
+          if (key === "phase") return stage === "read" ? target.phase : stage;
+          if (key === "waiting") return stage === "read" ? target.waiting : null;
+          if (key !== "step") return typeof target[key] === "function" ? target[key].bind(target) : target[key];
+          return () => {
+            if (stage === "read") {
+              if (!target.step()) return false;
+              stage = "props";
+            }
+            if (stage === "props") {
+              const uids = adoptedTrees.get(id)?.found?.uids || [];
+              if (propAt < uids.length) {
+                try { propAt = primePropsPart(uids, propAt, PRIME_PROPS_BATCH); } catch { propAt = uids.length; }
+                return false;
+              }
+              stage = "covers";
+              if (!covers) return true;
+            }
+            let done = true;
+            try { done = coverIndexPart(coverPart); } catch { done = true; }
+            coverPart += 1;
+            return done || coverPart > 1;
+          };
+        },
+      });
+    },
+
+    trustedReader(id, stamp, opts = {}) {
+      const clock = opts.clock || (() => (globalThis.performance?.now ? globalThis.performance.now() : Date.now()));
+      const sliceMs = Number(opts.sliceMs) > 0 ? Number(opts.sliceMs) : SLICED_SLICE_MS;
+      let phase = "load";
+      let inner = null;
+      let decoder = null;
+      let tree = null;
+      let walk = null;
+      let cancelled = false;
+      let ms = 0;
+      const fallback = () => {
+        stats.trustMisses = (stats.trustMisses || 0) + 1;
+        inner = host.slicedReader(id, opts);
+        phase = inner ? "sliced" : "failed";
+      };
+      let waiting = modelStore.load(id).then((model) => {
+        waiting = null;
+        if (cancelled) return;
+        if (!model || model.stamp !== stamp) { fallback(); return; }
+        decoder = createTreeDecoder(model);
+        phase = "decode";
+      }, () => {
+        waiting = null;
+        if (!cancelled) fallback();
+      });
+      return {
+        get phase() { return inner ? inner.phase : phase; },
+        get trusted() { return !inner; },
+        get waiting() { return inner ? null : waiting; },
+        get calls() { return inner ? inner.calls : 0; },
+        get ms() { return inner ? inner.ms : ms; },
+        step() {
+          if (cancelled || phase === "failed" || phase === "done") return true;
+          if (inner) return inner.step();
+          if (waiting) return false;
+          if (phase === "adopt") {
+            phase = "done";
+            if (opts.adopt !== false) adoptOffer(id);
+            return true;
+          }
+          const t0 = clock();
+          try {
+            if (phase === "decode") {
+              if (!decoder.step(sliceMs, clock)) return false;
+              tree = decoder.result();
+              decoder = null;
+              if (tree?.[":block/uid"] !== id) { tree = null; fallback(); return false; }
+              walk = createTargetsWalk(tree);
+              phase = "targets";
+              if (clock() - t0 >= sliceMs) return false;
+            }
+            if (!walk.step(Math.max(1, sliceMs - (clock() - t0)), clock)) return false;
+            // The stamp once more right before the offer (pullBoard checks it again).
+            if (pageStampOf(id) !== stamp) { tree = null; fallback(); return false; }
+            offeredTrees.set(id, { tree, found: walk.result(), stamp, at: Date.now(), trusted: true });
+            tree = null;
+            walk = null;
+            phase = "adopt";
+            return false;
+          } finally {
+            ms += clock() - t0;
+          }
+        },
+        cancel() {
+          cancelled = true;
+          inner?.cancel();
+          offeredTrees.delete(id);
+          adoptedTrees.delete(id);
+        },
+      };
+    },
+
+    slicedReader(id, opts = {}) {
+      let rootEid = null;
+      try { rootEid = rawPull("[:db/id]", eidKey(id))?.[":db/id"] ?? null; } catch { rootEid = null; }
+      if (rootEid == null || pageStampOf(id) == null) return null;
+      const reader = createSlicedRead({
+        rootEid,
+        pullMany: (pattern, eids) => data.pull_many(pattern, eids),
+        stamp: () => pageStampOf(id),
+        clock: () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now()),
+        ...opts,
+      });
+      const step = reader.step;
+      const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
+      const sliceMs = Number(opts.sliceMs) > 0 ? Number(opts.sliceMs) : SLICED_SLICE_MS;
+      // After the read: the open's ref and stat targets (collectTargets) in the same slices, so the acquire skips it.
+      let tree = null;
+      let walk = null;
+      let offered = false;
+      return {
+        get phase() { return offered ? "adopt" : walk ? "targets" : reader.phase; },
+        get calls() { return reader.calls; },
+        get ms() { return reader.ms; },
+        step() {
+          // P9: a big board's offer is taken in by its own task (absorb, split watch) before the acquire.
+          if (offered) {
+            offered = false;
+            walk = null;
+            if (opts.adopt !== false) adoptOffer(id);
+            return true;
+          }
+          if (!walk) {
+            const done = step();
+            if (!done) return false;
+            tree = reader.take();
+            if (tree?.[":block/uid"] !== id) return true;
+            walk = createTargetsWalk(tree);
+            return false;
+          }
+          if (!walk.step(sliceMs, opts.clock || clock)) return false;
+          // Folds do not move the page stamp that pullBoard checks: read them again right before the offer.
+          if (!reader.verifyOpen()) { tree = null; return true; }
+          offeredTrees.set(id, { tree, found: walk.result(), stamp: reader.stamp, at: Date.now() });
+          tree = null;
+          offered = true;
+          return false;
+        },
+        cancel() { reader.cancel(); offeredTrees.delete(id); adoptedTrees.delete(id); },
+      };
     },
 
     // Hover warm of the session cache. No pull watch. A uid already in blockOf is not read again:
@@ -1741,12 +2420,50 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         for (const off of want.offs.values()) { try { off(); } catch { /* already gone */ } }
       };
     },
+    // P9. The stored models (src/host/model-store.js) this host reads trusted opens from and keeps fresh reads in.
+    useModelStore(store) { modelStore = store || null; },
+    // True while a board that went live from a stored model has not been read again: nothing destructive may act on
+    // what it shows. onBoardVerified(uid, fn) calls fn once when that read lands (at once when already verified).
+    boardUnverified(uid) { return unverified.has(String(uid ?? "")); },
+    onBoardVerified(uid, fn) {
+      const id = String(uid ?? "");
+      if (!unverified.has(id)) { try { fn(); } catch { /* listener */ } return () => {}; }
+      let set = verifyListeners.get(id);
+      if (!set) { set = new Set(); verifyListeners.set(id, set); }
+      set.add(fn);
+      return () => { set.delete(fn); };
+    },
+    // After a change settled (the snapshot capture): a big board whose stored model is older than its page is read
+    // again in background slices and stored. Not while it is unverified or parked.
+    refreshModel(uid) {
+      const id = String(uid ?? "");
+      if (!modelStore || !trustOn() || !id || refreshes.has(id) || unverified.has(id) || !bigBoards.has(id)) return false;
+      const split = splitWatches.get(id);
+      if (!split || split.held || split.disposed) return false;
+      const now = pageStampOf(id);
+      if (!now || modelStore.stampOf(id) === now) return false;
+      const cancel = backgroundRead(id, "refresh", (tree, stamp) => {
+        refreshes.delete(id);
+        if (tree && stamp) keepModel(id, tree, stamp);
+      }, { stopIf: () => (splitWatches.get(id)?.held || !splitWatches.has(id) ? (refreshes.delete(id), true) : false) });
+      refreshes.set(id, cancel);
+      return true;
+    },
     // Unload / teardown: every pull watch this host registered goes now, with every hold, arm and sweep timer.
     // Held splits would otherwise keep Roam re-pulling them on every transaction for SPLIT_HOLD_MS after unload.
     dispose() {
       if (armTimer != null) { clearTimeout(armTimer); armTimer = null; }
+      for (const timer of checkTimers.values()) clearTimeout(timer);
+      checkTimers.clear();
+      checkDelay.clear();
+      for (const jobs of [checks, keeps, refreshes]) {
+        for (const cancel of jobs.values()) { try { cancel(); } catch { /* done */ } }
+        jobs.clear();
+      }
+      verifyListeners.clear();
       for (const h of idleHandles.values()) {
         if (h.timer != null) clearTimeout(h.timer);
+        else if (h.cancel) h.cancel();
         else try { globalThis.cancelIdleCallback?.(h.idle); } catch { /* already ran */ }
       }
       idleHandles.clear();
@@ -1827,6 +2544,33 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const res = pull("[:block/props]", eidKey(uid));
       const props = res?.[":block/props"];
       return props && typeof props === "object" ? plainKeys(props) : {};
+    },
+
+    // One outline level per parent (page or block): Map(parentUid -> [{ uid, string, open, order }]). One pull_many
+    // for the whole level; "Fold queries on this page" walks only the open part of a page with it.
+    outlineKids(parentUids) {
+      const out = new Map();
+      const ids = [...new Set((parentUids || []).filter((id) => typeof id === "string" && id))];
+      if (!ids.length) return out;
+      let res = null;
+      try {
+        res = typeof data.pull_many === "function"
+          ? data.pull_many(OUTLINE_KIDS_PATTERN, ids.map(eidKey))
+          : ids.map((id) => rawPull(OUTLINE_KIDS_PATTERN, eidKey(id)));
+      } catch { res = null; }
+      if (!Array.isArray(res)) return out;
+      for (const node of res) {
+        const id = node?.[":block/uid"];
+        if (typeof id !== "string") continue;
+        const kids = Array.isArray(node[":block/children"]) ? node[":block/children"] : [];
+        out.set(id, kids.map((k) => ({
+          uid: k?.[":block/uid"],
+          string: typeof k?.[":block/string"] === "string" ? k[":block/string"] : "",
+          open: k?.[":block/open"] !== false,
+          order: Number.isFinite(k?.[":block/order"]) ? k[":block/order"] : 0,
+        })).filter((k) => typeof k.uid === "string" && k.uid));
+      }
+      return out;
     },
 
     pullTree(uid, depth = 2, limit = 12) {
@@ -2062,7 +2806,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     // Highlight read: props, string, and the owning page title. No url query.
     blockProps(uid) {
       let res = null;
-      try { res = pull(BLOCK_PROPS_PATTERN, eidKey(uid)); } catch { return null; }
+      // A read-ahead answers once (the model build's first ask), then Roam again.
+      const primed = primedProps.get(uid);
+      if (primed) primedProps.delete(uid);
+      if (primed && Date.now() - primed.at <= PRIMED_PROPS_MS) { res = primed.res; stats.primedProps = (stats.primedProps || 0) + 1; }
+      else {
+        try { res = pull(BLOCK_PROPS_PATTERN, eidKey(uid)); } catch { return null; }
+      }
       if (!res || typeof res !== "object" || Array.isArray(res)) return null;
       const page = res[":block/page"];
       const node = Array.isArray(page) ? page[0] : page;
@@ -2409,6 +3159,41 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return data.fast?.q ? data.fast.q(query, ...inputs) : data.q(query, ...inputs);
     },
 
+    // The derived-link rows of linksQuery() for `targets`, without its join: the sources that ref a target come from
+    // the refs index, then one pull_many of their page and parents, filtered here. Same rows as the datalog (live MAIN:
+    // 34-61 ms per 120 targets instead of 762-1,294 ms). `eids` is a Set of the board's card eids. Each row carries the
+    // source's parent string fifth (null at the top of a page), so the caller needs no parentString read.
+    linkRows(boardEid, eids, targets) {
+      if (typeof data.pull_many !== "function") return host.q(linksQuery(), boardEid, [...eids], targets) || [];
+      const pairs = host.q(LINK_REFS_QUERY, targets) || [];
+      if (!pairs.length) return [];
+      const srcs = [...new Set(pairs.map((p) => p[1]))];
+      const info = new Map();
+      for (const n of data.pull_many(LINK_SRC_PATTERN, srcs) || []) if (n?.[":db/id"] != null) info.set(n[":db/id"], n);
+      const seen = new Set();
+      const rows = [];
+      for (const [b, src] of pairs) {
+        const n = info.get(src);
+        if (!n || src === boardEid) continue;
+        const su = n[":block/uid"];
+        const ss = n[":block/string"];
+        if (typeof su !== "string" || typeof ss !== "string") continue;
+        const parents = Array.isArray(n[":block/parents"]) ? n[":block/parents"].map((p) => p?.[":db/id"]) : [];
+        if (parents.includes(boardEid)) continue;
+        const up = n[":block/_children"];
+        const first = Array.isArray(up) ? up[0] : up;
+        const ps = typeof first?.[":block/string"] === "string" ? first[":block/string"] : null;
+        for (const a of [n[":block/page"]?.[":db/id"], ...parents, src]) {
+          if (a == null || a === b || !eids.has(a)) continue;
+          const key = `${a}|${b}|${su}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          rows.push([a, b, su, ss, ps]);
+        }
+      }
+      return rows;
+    },
+
     // Page children for the highlight picker, four levels. No url query.
     pdfHighlightTree(pageUid) {
       const uid = typeof pageUid === "string" ? pageUid : "";
@@ -2617,7 +3402,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     // Card footer stats. One reverse-attribute pull for the resolved targets.
     // The four collection-bound queries run only when that pull throws or is unusable.
-    cardStats(targets, { boardUid } = {}) {
+    // cardStats runs the whole job. cardStatsJob is one step per call: the pull (or the cache) is a
+    // single step, and a query fallback is one of refs, boards, open, done. The cache is written
+    // only when the job finishes, so a stopped job cannot answer the next read.
+    cardStats(targets, opts) {
+      const job = host.cardStatsJob(targets, opts);
+      let guard = 0;
+      while (guard < 8 && job.step() !== true) guard += 1;
+      return job.result();
+    },
+    cardStatsJob(targets, { boardUid } = {}) {
       const keySet = new Set();
       for (const t of targets || []) {
         if (!t) continue;
@@ -2629,7 +3423,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (keys.length && keys.every((key) => freshStat(boardUid, key))) {
         const result = new Map();
         for (const key of keys) result.set(key, { ...freshStat(boardUid, key) });
-        return result;
+        return { step: () => true, result: () => result };
       }
       const remember = (result) => {
         const at = Date.now();
@@ -2650,7 +3444,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         if (!byEid.has(eid)) byEid.set(eid, []);
         byEid.get(eid).push(key);
       }
-      if (!byEid.size) return remember(result);
+      if (!byEid.size) {
+        let ran = false;
+        return {
+          result: () => result,
+          step() { if (!ran) { ran = true; remember(result); } return true; },
+        };
+      }
       const eids = [...byEid.keys()];
       const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
       const todoEid = host.resolveEid({ title: "TODO" });
@@ -2663,23 +3463,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         }
         for (const [t, set] of seen) for (const key of byEid.get(t) ?? []) result.get(key)[field] = set.size;
       };
-      const fromQueries = () => {
-        tally(host.q(
-          `[:find ?t ?b :in $ [?t ...] ?board :where [?b :block/refs ?t] (not [?b :block/parents ?board]) [(not= ?b ?board)]]`,
-          eids, boardEid,
-        ), "refs");
-        tally(host.q(
-          `[:find ?t ?d :in $ [?t ...] ?board ?pat :where [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/string ?s]
- [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [(not= ?d ?board)]]`,
-          eids, boardEid, DIAGRAM_RE,
-        ), "boards");
-        const listFor = (statusEid) => host.q(
-          `[:find ?t ?x :in $ [?t ...] ?status :where [?x :block/refs ?status] (or [?x :block/parents ?t] [?x :block/page ?t])]`,
-          eids, statusEid,
-        );
-        if (todoEid != null) tally(listFor(todoEid), "open");
-        if (doneEid != null) tally(listFor(doneEid), "done");
-      };
+      const listFor = (statusEid) => host.q(
+        `[:find ?t ?x :in $ [?t ...] ?status :where [?x :block/refs ?status] (or [?x :block/parents ?t] [?x :block/page ?t])]`,
+        eids, statusEid,
+      );
       const applyPulled = (node, keyList) => {
         const refs = new Set();
         const boards = new Set();
@@ -2745,8 +3532,45 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         for (const [eid, keyList] of byEid) applyPulled(byId.get(eid), keyList);
         return true;
       };
-      if (!fromPull()) fromQueries();
-      return remember(result);
+      let phase = 0;
+      let remembered = false;
+      const finish = () => {
+        if (!remembered) { remembered = true; remember(result); }
+        phase = 5;
+        return true;
+      };
+      return {
+        result: () => result,
+        step() {
+          if (phase >= 5) return true;
+          if (phase === 0) {
+            phase = 1;
+            if (fromPull()) return finish();
+            tally(host.q(
+              `[:find ?t ?b :in $ [?t ...] ?board :where [?b :block/refs ?t] (not [?b :block/parents ?board]) [(not= ?b ?board)]]`,
+              eids, boardEid,
+            ), "refs");
+            return false;
+          }
+          if (phase === 1) {
+            phase = 2;
+            tally(host.q(
+              `[:find ?t ?d :in $ [?t ...] ?board ?pat :where [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [(not= ?d ?board)]]`,
+              eids, boardEid, DIAGRAM_RE,
+            ), "boards");
+            return false;
+          }
+          if (phase === 2) {
+            phase = 3;
+            if (todoEid != null) tally(listFor(todoEid), "open");
+            return false;
+          }
+          phase = 4;
+          if (doneEid != null) tally(listFor(doneEid), "done");
+          return finish();
+        },
+      };
     },
 
     // True when the graph is end-to-end encrypted: its files are .enc and no outside service can read them.

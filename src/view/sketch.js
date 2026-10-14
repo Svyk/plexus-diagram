@@ -141,6 +141,11 @@ export function createSketchStore({ storage = globalThis.localStorage, graph = "
         return parseSketch(raw);
       } catch { return null; }
     },
+    has(uid) {
+      if (!allow() || !uid) return false;
+      if (latest.has(uid)) return true;
+      try { return storage?.getItem(key(uid)) != null; } catch { return false; }
+    },
     set(uid, sketch) {
       if (!allow() || !uid || !sketch) return;
       const text = packSketch(sketch);

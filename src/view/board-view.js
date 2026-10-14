@@ -7,6 +7,8 @@
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
 import { notedSpeedFlags } from "../settings.js";
+import { createPartSizer } from "../part-sizer.js";
+import { sharedBgBudget } from "../bg-budget.js";
 import { createHitShield } from "./hit-shield.js";
 import { createGestureUnderlay } from "./gesture-underlay.js";
 import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, readPlexus, semanticRef, plainText } from "../model/schema.js";
@@ -14,7 +16,7 @@ import { TABLE_SIZE, keyGate, ownershipOf, tablePointerTarget } from "../model/r
 import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../model/drawing-card.js";
 import { annotatePlan } from "../model/annotate.js";
 import { rewriteBgTag } from "../model/highlighter.js";
-import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
+import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, hitTest, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
 import { trailBadges, trailPoints } from "../model/trails.js";
 import { landmarkDots, landmarkUids, walkStops } from "../model/landmarks.js";
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
@@ -126,6 +128,7 @@ import { inlinePdfCards, migrationLines, pdfPageBaseTitle, pdfPageName, planPdfM
 import { highlightAsk, highlightPart } from "../model/highlight-ask.js";
 import { openPdfPagesDialog } from "./pdf-pages-dialog.js";
 import { oldTableCards, planTableCaptions, tableCaptionLines } from "../model/table-captions.js";
+import { queryFoldLines, queryNudgeKey, shouldNudgeQueries } from "../model/query-fold.js";
 import { dataUrlToBlob } from "./parse-crop.js";
 import { sharedDeviceOcr } from "../host/device-ocr.js";
 import { scheduleTitleLexiconWarm } from "./title-lexicon-warm.js";
@@ -332,6 +335,39 @@ export function edgeEndNearWorld(centers, world, radius = 10, zoom = 1) {
   return { kind: "edge-end", uid: best.uid, end: best.end };
 }
 
+// A cover slice used to repaint 20 cards and recount highlights together (104–122 ms). The duty gap
+// is applied after the slice, so the count has to be its own part. Six cards, then the count.
+export const COVER_PART = 6;
+export function createCoverRepaintJob({ takeUrls, repaint, count, partSize = COVER_PART } = {}) {
+  let uids = null;
+  let at = 0;
+  let counting = false;
+  return () => {
+    if (counting) {
+      counting = false;
+      uids = null;
+      at = 0;
+      try { count?.(); } catch { /* count */ }
+      return true;
+    }
+    if (!uids) {
+      uids = [...(takeUrls?.() || [])];
+      at = 0;
+      if (!uids.length) {
+        try { count?.(); } catch { /* count */ }
+        uids = null;
+        return true;
+      }
+    }
+    const part = uids.slice(at, at + partSize);
+    at += part.length;
+    if (part.length) repaint?.(part);
+    if (at < uids.length) return false;
+    counting = true;
+    return false;
+  };
+}
+
 export function toggleTodoAt(string, index = 0) {
   if (typeof string !== "string") return null;
   const marks = [...string.matchAll(/\{\{\[\[(?:TODO|DONE)\]\]\}\}/g)];
@@ -377,7 +413,51 @@ function createTimers() {
     active.add(entry);
     return entry;
   };
-  return { later, frame, idle, count: () => active.size, cancelAll: () => { for (const c of [...active]) c(); active.clear(); } };
+  // P8 U2: background reads (badge card stats, changed rows) on the shared budget: quiet after input, 30 ms, 25%.
+  // Visible card content keeps `idle`.
+  // A parked view (page left, crumb park) spends none of the shared budget: pauseBg() takes its background work off
+  // the budget and resumeBg() puts it back, where it left off.
+  let bgPaused = false;
+  const bgArmed = new Map();
+  const bgIdle = (fn, label = "view") => {
+    if (typeof globalThis.requestIdleCallback !== "function" || notedSpeedFlags().bgBudget === false) return idle(fn);
+    let entry;
+    let cancel = null;
+    const arm = () => { cancel = sharedBgBudget().idle((d) => { active.delete(entry); bgArmed.delete(entry); fn(d); }, { label }); };
+    entry = () => { cancel?.(); cancel = null; active.delete(entry); bgArmed.delete(entry); };
+    bgArmed.set(entry, { arm, off: () => { cancel?.(); cancel = null; } });
+    if (!bgPaused) arm();
+    active.add(entry);
+    return entry;
+  };
+  // A job in parts on the shared budget (sharedBgBudget().run); the returned function stops it.
+  const bgRun = (part, opts) => {
+    let entry;
+    let stop = null;
+    const arm = () => {
+      stop = sharedBgBudget().run((d) => {
+        let done = true;
+        try { done = part(d) === true; } finally { if (done) { active.delete(entry); bgArmed.delete(entry); } }
+        return done;
+      }, opts);
+    };
+    entry = () => { const s = stop; stop = null; active.delete(entry); bgArmed.delete(entry); s?.(); };
+    bgArmed.set(entry, { arm, off: () => { const s = stop; stop = null; s?.(); } });
+    if (!bgPaused) arm();
+    active.add(entry);
+    return entry;
+  };
+  const pauseBg = () => {
+    if (bgPaused) return;
+    bgPaused = true;
+    for (const b of bgArmed.values()) b.off();
+  };
+  const resumeBg = () => {
+    if (!bgPaused) return;
+    bgPaused = false;
+    for (const b of [...bgArmed.values()]) b.arm();
+  };
+  return { later, frame, idle, bgIdle, bgRun, pauseBg, resumeBg, count: () => active.size, cancelAll: () => { for (const c of [...active]) c(); active.clear(); bgArmed.clear(); } };
 }
 
 const ANNOTATE_TOAST = "Drop the image into the drawing";
@@ -992,7 +1072,7 @@ function buildBoardView(onFail, {
       panel.refreshChanged?.();
       return;
     }
-    timers.idle(() => {
+    timers.bgIdle(() => {
       if (disposed || gen !== changedGen) return;
       const b = board();
       if (!b || typeof host?.editTimes !== "function") return;
@@ -1113,6 +1193,8 @@ function buildBoardView(onFail, {
   let repaintItemStyles = () => {};
   let themeKey = null;
   let themeFollow = null;
+  // Computed-style sampling stays off the mount task. applyLooks refreshes tokens only after the first applyTheme.
+  let themeReady = false;
   try {
     themeFollow = createThemeFollow({
       doc,
@@ -1133,16 +1215,23 @@ function buildBoardView(onFail, {
     applyPdfDark();
     const hl = syncBoardHighlighter(doc, root);
     try { themeFollow?.apply?.(); } catch { /* theme */ }
+    themeReady = true;
     // Cards repaint only when the dark flag or the highlighter flips, not on every html/body class change.
     const key = `${dark}|${hl}`;
     const flipped = themeKey !== null && key !== themeKey;
     themeKey = key;
+    // The cover caches --pxd-card. A theme class change that does not flip dark mode still has to redraw it.
+    if (!disposed) {
+      try { underlay.dropColors?.(); } catch { /* cover */ }
+      try { paintOverviewCover(); } catch { /* cover */ }
+    }
     if (!flipped || disposed) return;
     try { askThemeChanged(); } catch { /* chat */ }
     repaintItemStyles();
     scheduleContent();
   };
-  applyTheme();
+  // applyTheme reads computed style (isLightHost, theme follow). That read stays off the mount task; the first
+  // frame applies it. A dark/light class change after mount still comes through the mutation observer.
 
   // ------------------------------------------------------------ state
   // Main keeps the 1.2 key. A sidebar copy adds the window kind. An embed keeps its own key.
@@ -1222,6 +1311,7 @@ function buildBoardView(onFail, {
   let settleTimer = null;
   let searchMatches = [];
   let searchIndex = -1;
+  let searchQuery = "";
   let frameHandle = null;
   let fsDispose = () => {};
   let routeOff = () => {};
@@ -1606,11 +1696,16 @@ function buildBoardView(onFail, {
   };
   const measure = () => {
     const r = root.getBoundingClientRect();
+    let box = null;
+    let bar = null;
+    try { box = viewport.getBoundingClientRect?.(); } catch { box = null; }
+    try { bar = root.querySelector?.(".pxd-toolbar")?.getBoundingClientRect?.() || null; } catch { bar = null; }
     rootRect = { left: r.left || 0, top: r.top || 0, width: r.width || 0, height: r.height || 0 };
     size = { width: rootRect.width, height: rootRect.height };
     root.classList.toggle("pxd-root--narrow", size.width > 0 && size.width < 560);
     readPane?.layout?.(size.width);
-    syncCramped();
+    const want = boardCramped(freeBoardArea(box, bar));
+    if (root.classList.contains("pxd-root--cramped") !== want) root.classList.toggle("pxd-root--cramped", want);
   };
 
   // ------------------------------------------------------------ layers
@@ -1657,6 +1752,7 @@ function buildBoardView(onFail, {
     }
     return node;
   } : null;
+  let paintOverviewCover = () => {};
   itemsR = createItemRenderer({
     doc,
     host,
@@ -1665,6 +1761,7 @@ function buildBoardView(onFail, {
     sectionsLayer,
     timers,
     adoptShell,
+    onOverviewQueue: () => paintOverviewCover(),
     tableThumb,
     onTableShown,
     onEditChange: (uid) => {
@@ -1948,6 +2045,46 @@ function buildBoardView(onFail, {
     return out;
   };
   repaintItemStyles = () => { if (!disposed) itemsR.repaintStyles(); };
+  // P8 U2. PDF titles land in the background after an open (stored parse titles, first-page names, metadata, the
+  // title lexicon), each one a whole-board repaint (PhD main board: 110-200 ms each, four of them). They now share one
+  // budgeted repaint of the PDF cards, 20 per part; a title that lands mid-run starts it again when it ends.
+  let pdfTitleJob = null;
+  let pdfTitleAgain = false;
+  const repaintPdfTitlesSoon = () => {
+    if (disposed) return;
+    if (notedSpeedFlags().bgBudget === false) {
+      try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
+      try { readPane?.refreshCards?.(); } catch { /* switcher */ }
+      return;
+    }
+    if (pdfTitleJob) { pdfTitleAgain = true; return; }
+    let uids = null;
+    let at = 0;
+    // P8 U2: the highlight counts and the switcher refresh are parts of their own (with the last repaint, 180 ms).
+    let tail = 0;
+    const sizer = createPartSizer({ max: 20, start: 5 });
+    const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
+    pdfTitleJob = timers.bgRun((deadline) => {
+      if (disposed) { pdfTitleJob = null; return true; }
+      if (tail === 1) { tail = 2; try { refreshPdfHighlightCounts(); } catch { /* count */ } return false; }
+      if (tail === 2) { pdfTitleJob = null; try { readPane?.refreshCards?.(); } catch { /* switcher */ } return true; }
+      if (!uids) {
+        uids = [];
+        for (const it of board()?.items.values() || []) if (it?.kind === "pdf") uids.push(it.uid);
+        at = 0;
+      }
+      const n = sizer.size((deadline?.timeRemaining?.() ?? 20) - 2);
+      const part = uids.slice(at, at + n);
+      at += part.length;
+      const t0 = clock();
+      if (part.length) { try { itemsR.repaintItems(part); } catch { /* paint */ } }
+      sizer.note(part.length, clock() - t0);
+      if (at < uids.length) return false;
+      if (pdfTitleAgain) { pdfTitleAgain = false; uids = null; return false; }
+      tail = 1;
+      return false;
+    }, { label: "pdfTitles", partMs: 4 });
+  };
 
   // PDF covers. Nothing here runs at mount: the renderer asks coverImageFor on first paint,
   // and the warm timer arms only when the setting is on.
@@ -2004,8 +2141,7 @@ function buildBoardView(onFail, {
       if (disposed || !title || parsedTitles.get(key)) return;
       parsedTitles.set(key, title);
       parsedEvidence.set(key, { pageTitle: title, lines: found.lines || [] });
-      try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
-      try { readPane?.refreshCards?.(); } catch { /* switcher */ }
+      repaintPdfTitlesSoon();
     }).catch(() => {});
   };
   const parseStoreShared = () => {
@@ -2276,6 +2412,66 @@ function buildBoardView(onFail, {
       pdfPagesDialog.focus?.();
     });
   };
+  // "Fold queries on this page": every {{query}} Roam draws on this board's page (outside every board) moves under a
+  // folded caption. Same dry-run dialog, one undo entry.
+  const foldPageQueries = async (plan = null) => {
+    if (disposed) return null;
+    closePdfPagesDialog();
+    if (typeof session.queryFoldPlan !== "function" || typeof session.foldPageQueries !== "function") { toast("Folding queries is not available here"); return null; }
+    const p = plan || session.queryFoldPlan();
+    if (!p.folds.length) {
+      toast("No open query on this page");
+      return { folded: 0 };
+    }
+    const n = p.folds.length;
+    const noun = n === 1 ? "query" : "queries";
+    return new Promise((resolve) => {
+      pdfPagesPending = resolve;
+      pdfPagesDialog = openPdfPagesDialog(doc, {
+        count: n,
+        lines: queryFoldLines(p),
+        label: "Fold queries on this page",
+        headText: `Fold ${n} ${noun} on this page under ${n === 1 ? "a caption" : "captions"}? `
+          + "Roam draws every open query before the page shows; a folded one runs when you open its caption.",
+        applyText: "Fold",
+        onApply: () => {
+          pdfPagesPending = null;
+          closePdfPagesDialog();
+          Promise.resolve(session.foldPageQueries(p)).then((res) => {
+            if (disposed) return resolve(res);
+            if (res?.refused === "bulk") { /* the session already said why */ }
+            else if (res?.refused) toast("This page changed. Run the command again");
+            else if (res?.folded) toast(`Folded ${res.folded} ${res.folded === 1 ? "query" : "queries"} under ${res.folded === 1 ? "a caption" : "captions"}`, true);
+            resolve(res);
+          }, () => { if (!disposed) toast("Couldn't fold the queries"); resolve(null); });
+        },
+        onCancel: () => { closePdfPagesDialog(); resolve(null); },
+      });
+      root.append(pdfPagesDialog.el);
+      pdfPagesDialog.focus?.();
+    });
+  };
+  // After an open that Roam held: one quiet toast per page per device when the page has open queries. Never writes.
+  const queryNudge = (entry) => {
+    if (disposed || typeof session.queryFoldPlan !== "function") return false;
+    let pageUid = "";
+    try { pageUid = String(host?.blockPageUid?.(boardUid) || ""); } catch { pageUid = ""; }
+    if (!pageUid) return false;
+    const key = queryNudgeKey(graph, pageUid);
+    let seen = false;
+    try { seen = storage?.getItem?.(key) != null; } catch { seen = false; }
+    if (!shouldNudgeQueries({ entry, seen })) return false;
+    const plan = session.queryFoldPlan({ limit: 5000 });
+    if (disposed || !plan.folds.length) return false;
+    try { storage?.setItem?.(key, String(Date.now())); } catch { /* storage is optional */ }
+    const k = plan.folds.length;
+    const secs = Math.max(1, Math.round((Number(entry.firstPaintMs) - Number(entry.paintTaskMs)) / 100) / 10);
+    chrome.toast.show({
+      message: `Roam took ${secs} s to draw ${k} ${k === 1 ? "query" : "queries"} on this page before the board could show.`,
+      action: { label: "Fold them", run: () => { void foldPageQueries(); } },
+    });
+    return true;
+  };
   // "Fold sections in the outline" / "Unfold sections": Roam's own fold on the section blocks (never page or board
   // cards). A preview with the count, one undo entry. This board only.
   const foldSections = async (fold = true) => {
@@ -2425,7 +2621,7 @@ function buildBoardView(onFail, {
       metaTail = job.then(() => {}, () => {});
       job.then((got) => {
         if (disposed || !got) return;
-        try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
+        repaintPdfTitlesSoon();
         try {
           if (readPane?.isOpen?.() !== true) return;
           const card = board()?.items.get(readPane.cardUid?.() || "");
@@ -2595,8 +2791,37 @@ function buildBoardView(onFail, {
   // A loaded cover repaints the cards that show it; covers that land in one turn share one pass.
   // Repainting every shell per cover was 14.5 s on the PhD main board (122 PDF covers × 1,512 shells).
   let coverRepaint = null;
+  let coverJob = null;
   const repaintForCover = (url) => {
     if (disposed) return;
+    // Covers land from IndexedDB after an open. Six cards per part, then the highlight count on its own,
+    // on the shared budget (partMs 20). bgBudget off still repaints in one turn.
+    if (notedSpeedFlags().bgBudget !== false) {
+      if (!coverRepaint) {
+        coverRepaint = new Set();
+        const step = createCoverRepaintJob({
+          takeUrls: () => {
+            const urls = coverRepaint;
+            coverRepaint = null;
+            const uids = [];
+            for (const item of board()?.items.values() || []) {
+              if (item?.kind === "pdf" && urls?.has(coverUrlOf(item))) uids.push(item.uid);
+            }
+            return uids;
+          },
+          repaint: (part) => itemsR.repaintItems(part),
+          count: () => { try { refreshPdfHighlightCounts(); } catch { /* count */ } },
+        });
+        coverJob = timers.bgRun(() => {
+          if (disposed) { coverJob = null; coverRepaint = null; return true; }
+          const done = step() === true;
+          if (done) coverJob = null;
+          return done;
+        }, { label: "covers", partMs: 20 });
+      }
+      coverRepaint.add(url);
+      return;
+    }
     if (!coverRepaint) {
       coverRepaint = new Set();
       const run = () => {
@@ -3469,8 +3694,9 @@ function buildBoardView(onFail, {
   };
   const fitAll = () => fitTo(boundsOf([...rects().values()]));
   const fitSelection = (uids) => {
+    for (const uid of uids || []) itemsR.ensureShell?.(uid);
     const r = rects();
-    const b = boundsOf(uids.map((u) => r.get(u)).filter(Boolean));
+    const b = boundsOf((uids || []).map((u) => r.get(u)).filter(Boolean));
     if (b) fitTo(b, { maxZoom: 1 });
   };
   const centerOn = (worldPoint) => {
@@ -3512,7 +3738,11 @@ function buildBoardView(onFail, {
     paintTier();
     paintInvZoom();
     // A tier held through a big-board gesture flips here, with what the frame-time flip does besides painting.
-    if (tier !== was) { pdfFlip?.setLod?.(tier); chrome.toolbar.scheduleDock?.(); }
+    if (tier !== was) {
+      pdfFlip?.setLod?.(tier);
+      chrome.toolbar.scheduleDock?.();
+      if (was !== "detail" && tier === "detail" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0));
+    }
   };
   const scheduleContent = () => {
     if (disposed || suspended || gesturing || !board()) return;
@@ -3579,8 +3809,33 @@ function buildBoardView(onFail, {
       misses.push({ key, target: badgeTargetOf(item) });
     }
     if (!misses.length) { applyBadges(); return; }
-    // The stats queries scan the graph on the main thread: run them in idle slots, a few cards at a time.
+    // The stats queries scan the graph on the main thread. One cardStats call is four queries whatever
+    // the chunk size, so a host that can step them does one query per idle slice. The cache is written
+    // when the job finishes. A host with only cardStats keeps the old chunked call.
     for (const m of misses) badgePending.add(m.key);
+    if (typeof host.cardStatsJob === "function") {
+      const job = host.cardStatsJob(misses.map((m) => m.target), { boardUid });
+      const pump = () => {
+        if (disposed) return;
+        let done = false;
+        try { done = job.step() === true; } catch {
+          // A throw is not a finished read. Drop the pending keys and leave the cache empty so the next change asks again.
+          for (const m of misses) badgePending.delete(m.key);
+          return;
+        }
+        if (!done) { timers.bgIdle(pump, "badges"); return; }
+        const res = job.result();
+        const at = Date.now();
+        for (const m of misses) {
+          badgePending.delete(m.key);
+          const stats = res instanceof Map ? res.get(m.key) : res?.[m.key];
+          badgeCache.set(m.key, { at, stats: stats || { refs: 0, boards: 0, open: 0, done: 0 } });
+        }
+        timers.bgIdle(() => { if (!disposed) applyBadges(); }, "badges-paint");
+      };
+      timers.bgIdle(pump, "badges");
+      return;
+    }
     const runChunk = (list) => {
       if (disposed) return;
       const chunk = list.slice(0, BADGE_CHUNK);
@@ -3594,10 +3849,14 @@ function buildBoardView(onFail, {
         const stats = res instanceof Map ? res.get(m.key) : res?.[m.key];
         badgeCache.set(m.key, { at, stats: stats || { refs: 0, boards: 0, open: 0, done: 0 } });
       }
-      applyBadges();
-      if (rest.length) timers.idle(() => runChunk(rest));
+      // P8 U2: the repaint in its own slice (read + repaint in one were 130 ms slices on the PhD main board).
+      timers.bgIdle(() => {
+        if (disposed) return;
+        applyBadges();
+        if (rest.length) timers.bgIdle(() => runChunk(rest), "badges");
+      }, "badges-paint");
     };
-    timers.idle(() => runChunk(misses));
+    timers.bgIdle(() => runChunk(misses), "badges");
   };
   // INSTANT-3. Badge counts from the snapshot paint in the first frame. They are
   // stamped stale, so the idle refresh still reads the graph once.
@@ -3653,6 +3912,11 @@ function buildBoardView(onFail, {
     if (gesturing) { const kind = ctl.gestureKind?.(); if (kind && kind !== "pan" && kind !== "pinch") return false; }
     return deferOn() && Boolean(itemsR.isVirtual?.());
   };
+  // Shell builds follow the same burst as the reveal cull. The flag is on before the event's hit-test,
+  // and off again when the burst ends, which rearms the priority frame and the background pump.
+  const syncShellHold = () => {
+    try { itemsR.holdShells?.(deferReveal()); } catch { /* renderer */ }
+  };
   const showUnderlay = () => {
     if (underlayDrawn) return;
     underlayDrawn = true;
@@ -3676,6 +3940,26 @@ function buildBoardView(onFail, {
     underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
   };
   const endUnderlay = () => { underlayDrawn = false; };
+  // Live at map zoom drops the snapshot while shells are still queued. Those cards stay as boxes on the
+  // gesture underlay (pointer-events none) until the pump or a hit builds them. A gesture hides that canvas
+  // when it settles; draw the queue again afterwards. A zoom from that cover into detail keeps the boxes
+  // until the queue is empty. Opening already at detail does not paint them.
+  paintOverviewCover = () => {
+    if (disposed || underlayDrawn) return;
+    try { if (notedSpeedFlags().overviewFast === false) return; } catch { return; }
+    if (tier === "detail" && itemsR.coverHeld?.() !== true) {
+      const pending = itemsR.pendingBoxes?.() || [];
+      if (!pending.length) underlay.hide();
+      return;
+    }
+    const items = itemsR.pendingBoxes?.() || [];
+    if (!items.length) { underlay.hide(); return; }
+    underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
+  };
+  const releaseUnderlay = () => {
+    underlay.hide();
+    paintOverviewCover();
+  };
   const revealNear = () => {
     if (!size.width) return;
     const near = visibleWorldRect(vp, size, ATTACH_MARGIN);
@@ -3727,6 +4011,7 @@ function buildBoardView(onFail, {
         world.style.willChange = "";
         propsPanel.place();
       }
+      syncShellHold();
       applyLod();
       scheduleContent();
       vpStore.set(vpId, vp);
@@ -3745,7 +4030,7 @@ function buildBoardView(onFail, {
       }
       if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
       // The shells and edges near the view are in the DOM again (both culls attach at once).
-      underlay.hide();
+      releaseUnderlay();
       dirty.minimap = true;
       schedule();
       updateBackToContent();
@@ -4364,6 +4649,7 @@ function buildBoardView(onFail, {
     root.classList.toggle("pxd-look--flat", setting("look-canvas", "dots") === "flat-grey");
     root.classList.toggle("pxd-look--pastel", setting("look-sections", "none") === "pastel");
     root.classList.toggle("pxd-look--tint", setting("look-highlights", "bar") === "tint");
+    if (!themeReady) return;
     try { themeFollow?.apply?.(); } catch { /* theme */ }
   };
   const applyMotion = () => {
@@ -6094,8 +6380,7 @@ function buildBoardView(onFail, {
           if (it.kind === "pdf" && names.get(pdfMacroUrl(pdfSourceOfItem(it)))?.title) { named = true; break; }
         }
         if (!named) return;
-        try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
-        try { readPane?.refreshCards?.(); } catch { /* switcher */ }
+        repaintPdfTitlesSoon();
       }).catch(() => {});
     }
     const got = names.get(url);
@@ -6578,6 +6863,7 @@ function buildBoardView(onFail, {
   const searchFilter = (text) => {
     const b = board();
     const q = String(text || "").trim().toLowerCase();
+    searchQuery = q;
     searchIndex = -1;
     setRootFlag("searching", Boolean(q));
     searchMatches = b && q ? findOnBoard(b, q, nestedBoards(b), (uid) => host?.blockString?.(uid)) : [];
@@ -6592,6 +6878,7 @@ function buildBoardView(onFail, {
       ctl.select([hit.focus]);
       fitSelection([hit.focus]);
     }
+    paintSearch(board(), searchMatches, searchQuery);
     const countEl = root.querySelector(".pxd-search__count");
     if (countEl) countEl.textContent = `${searchIndex + 1}/${searchMatches.length}`;
   };
@@ -6599,6 +6886,7 @@ function buildBoardView(onFail, {
   // ------------------------------------------------------------ editing
   const enterEdit = async (uid, opts) => {
     ctl.select([uid]);
+    itemsR.ensureShell?.(uid);
     // Editing at map zoom is unreadable: bring the card to a working zoom first.
     if (tier !== "detail") { fitSelection([uid]); applyLod(); }
     const ok = await itemsR.enterEdit(uid, opts);
@@ -6740,6 +7028,9 @@ function buildBoardView(onFail, {
     }
     paintTabStrip(next?.tabs || [], entry.uid);
   };
+  // Boot fits against 800×560 when the camera is not stored, because measuring there would read layout in the
+  // mount task. The first frame measures and fits again when this is set.
+  let refitWhenMeasured = false;
   const applyFullscreen = (on) => {
     isFullscreen = Boolean(on);
     fsDispose();
@@ -6750,7 +7041,21 @@ function buildBoardView(onFail, {
     if (isFullscreen) { root.style.height = ""; }
     else applyInlineHeight();
     syncFullscreenTabs();
-    timers.frame(() => { measure(); markViewport(); });
+    timers.frame(() => {
+      if (disposed || suspended) return;
+      applyTheme();
+      measure();
+      if (refitWhenMeasured) {
+        refitWhenMeasured = false;
+        if (size.width && size.height) {
+          const live = board();
+          const rs = live ? rects() : new Map();
+          vp = fitViewport(boundsOf([...rs.values()]), size, { padding: 64, maxZoom: 1 });
+          applyLod();
+        }
+      }
+      markViewport();
+    });
   };
   const requestFullscreen = (on) => {
     applyFullscreen(on);
@@ -6901,7 +7206,8 @@ function buildBoardView(onFail, {
       guardSelection(gesturing && Boolean(ctl.gestureKind?.()));
       if (!gesturing) { hitShield.drop(); endUnderlay(); }
       setRootFlag("gesturing", gesturing);
-      world.style.willChange = gesturing ? "transform" : "";
+      world.style.willChange = gesturing || wheelLayer ? "transform" : "";
+      syncShellHold();
       if (gesturing) {
         resumeTimer?.();
         resumeTimer = null;
@@ -6927,7 +7233,7 @@ function buildBoardView(onFail, {
           chrome.toolbar.setZoom(vp.zoom);
           scheduleContent();
           if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
-          underlay.hide();
+          releaseUnderlay();
           vpStore.set(vpId, vp);
           dirty.selection = true;
           schedule();
@@ -7347,10 +7653,27 @@ function buildBoardView(onFail, {
       { uid, end: "to", x: geo.end.x, y: geo.end.y },
     ];
   };
+  // Map and overview go live before every shell exists. A press on a queued card's rect is still that card.
+  const queuedOverview = () => {
+    if (tier === "detail") return false;
+    try { if (notedSpeedFlags().overviewFast === false) return false; } catch { return false; }
+    return (itemsR.queuedCount?.() || 0) > 0;
+  };
+  const promoteQueued = (hit) => {
+    if (!hit?.uid) return null;
+    itemsR.ensureShell?.(hit.uid);
+    if (hit.part === "title") return { kind: "section-title", uid: hit.uid };
+    if (hit.part === "border") return { kind: "section-border", uid: hit.uid };
+    return { kind: "item", uid: hit.uid };
+  };
   const normalize = (event, type = event.type) => {
     const screen = { x: (event.clientX || 0) - rootRect.left, y: (event.clientY || 0) - rootRect.top };
     const world = screenToWorld(vp, screen);
     let target = targetOf(event.target);
+    if (target.kind === "empty" && queuedOverview()) {
+      const next = promoteQueued(hitTest(board(), world, rects()));
+      if (next) target = next;
+    }
     if (edgeEndWanted(type, event)) {
       const near = edgeEndNearWorld(handleCenters(), world, 10, vp.zoom || 1);
       if (near) target = near;
@@ -7775,6 +8098,14 @@ function buildBoardView(onFail, {
     // wheel burst that read forced a style recalc of the whole board on every event (PhD main board: ~14 ms each).
     const t = perfNow();
     if (!wheelLayer || t - wheelMeasuredAt > WHEEL_MEASURE_MS) { measure(); wheelMeasuredAt = t; }
+    // The hit-test inside this wheel builds the queued card under the pointer unless the hold is already on.
+    // Raise the burst before normalize. A wheel the controller ignores puts the layer back.
+    const openedBurst = !wheelLayer && !gesturing && deferOn() && Boolean(itemsR.isVirtual?.());
+    if (openedBurst) {
+      wheelLayer = true;
+      world.style.willChange = "transform";
+      syncShellHold();
+    }
     const handled = ctl.handle(normalize(event, "wheel"));
     if (handled) {
       event.preventDefault();
@@ -7785,11 +8116,16 @@ function buildBoardView(onFail, {
         wheelLayer = true;
         world.style.willChange = "transform";
       }
+      syncShellHold();
       // Pan bursts only: a zoom burst re-tiers the board under the cursor, and the hover change the shield causes at
       // its start and end measured slower there (zoom-in p95 168 -> 268-300 ms on the PhD main board).
       if (!event.ctrlKey && !event.metaKey) hitShield.raise();
       else hitShield.drop();
       settle();
+    } else if (openedBurst) {
+      wheelLayer = false;
+      world.style.willChange = gesturing ? "transform" : "";
+      syncShellHold();
     }
     return handled;
   };
@@ -7864,7 +8200,16 @@ function buildBoardView(onFail, {
       return;
     }
     const node = event.target?.closest?.(".pxd-item--card");
-    showHover(node?.getAttribute?.("data-uid") || node?.dataset?.uid || null);
+    let uid = node?.getAttribute?.("data-uid") || node?.dataset?.uid || null;
+    if (!uid && queuedOverview() && !event.target?.closest?.(".pxd-item, .pxd-section")) {
+      const screen = { x: (event.clientX || 0) - (rootRect.left || 0), y: (event.clientY || 0) - (rootRect.top || 0) };
+      const hit = hitTest(board(), screenToWorld(vp, screen), rects());
+      if (hit?.part === "body") {
+        itemsR.ensureShell?.(hit.uid);
+        uid = hit.uid;
+      }
+    }
+    showHover(uid);
   });
   // The root is a clipped box, never a scroller: focus, scrollIntoView and Roam's reader can still move it, which slides the pane header under Roam's top bar.
   const pinScroll = (node) => () => {
@@ -8557,6 +8902,9 @@ function buildBoardView(onFail, {
     if (disposed || suspended) return;
     const b = board();
     if (!b) return;
+    // The mount task no longer measures. The first shell frame reads the board size before it appends cards,
+    // so the open split still sees the view. A later read, after those cards, is a different frame.
+    if (!size.width) measure();
     if (!coverPaintAt) {
       coverPaintAt = Date.now();
       armCoverWarm();
@@ -8565,10 +8913,7 @@ function buildBoardView(onFail, {
         hasPdf: () => [...b.items.values()].some((it) => it?.kind === "pdf"),
         ocr: sharedDeviceOcr,
         isDisposed: () => disposed,
-        onWarm: () => {
-          try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
-          try { readPane?.refreshCards?.(); } catch { /* switcher */ }
-        },
+        onWarm: () => repaintPdfTitlesSoon(),
         setTimer: (fn, ms) => timers.later(fn, ms),
       });
     }
@@ -8594,9 +8939,16 @@ function buildBoardView(onFail, {
         firstPainted = true;
         // Snapshot shells the live board did not keep (deleted since) go with the snapshot root.
         snapShells?.clear();
-        // A big board builds the rest of its view over a few frames: the snapshot stays up until it is complete.
+        // The cover and the first shells are presented in this frame. An overview-fast open (map or
+        // overview, shells still queued) takes the snapshot off on the next frame. Detail zoom, and
+        // overviewFast off, take it off in the frame that finishes the in-view shells.
         if (typeof onFirstPaint === "function") {
-          const done = () => { if (!disposed) { try { onFirstPaint(); } catch { /* the owner's hook */ } } };
+          const fire = () => { if (!disposed) { try { onFirstPaint(); } catch { /* the owner's hook */ } } };
+          const done = () => {
+            if (disposed) return;
+            if (queuedOverview()) timers.frame(fire);
+            else fire();
+          };
           if (typeof itemsR.whenViewBuilt === "function") itemsR.whenViewBuilt(done);
           else done();
         }
@@ -8614,10 +8966,13 @@ function buildBoardView(onFail, {
         // paintEdge, so dash and color never reached the DOM until a full render.
         const links = paintedLinks();
         let part = dirty.all || dirty.structural || (dirty.links && !dirty.edges.size) ? null : dirty.edges;
-        if (part && part.size > EDGE_SLICE) {
+        // A dirty set bigger than one slice still splits (a zoom settle). The first render has no dirty
+        // set. Only an overview-fast open places one slice of it. Detail zoom places every edge here.
+        const sliceSource = part || (queuedOverview() && b.edges.size > EDGE_SLICE ? b.edges.keys() : null);
+        if (sliceSource && (part ? part.size : b.edges.size) > EDGE_SLICE) {
           const slice = new Set();
           edgeRest = new Set();
-          for (const uid of part) (slice.size < EDGE_SLICE ? slice : edgeRest).add(uid);
+          for (const uid of sliceSource) (slice.size < EDGE_SLICE ? slice : edgeRest).add(uid);
           part = slice;
         }
         edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: part, view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null, skipLinks: edgeSlicing && !dirty.links });
@@ -8634,8 +8989,11 @@ function buildBoardView(onFail, {
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
       // Big boards keep far shells and edges out of the DOM: put back what this camera brings near.
-      if (size.width && !deferReveal()) revealNear();
-      else if (size.width) showUnderlay();
+      if (size.width && !deferReveal()) {
+        // This frame already sliced the edge render. reveal() would build another batch of the same edges.
+        if (edgeRest) itemsR.reveal?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
+        else revealNear();
+      } else if (size.width) showUnderlay();
       // Roam Caret re-places its caret when a field on the board is focused and the camera moves.
       const focused = doc.activeElement;
       if (focused?.tagName === "TEXTAREA" && root.contains(focused)) {
@@ -8647,7 +9005,14 @@ function buildBoardView(onFail, {
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
       // On a big board a mid-burst flip restyled every attached shell (PhD main board: 117-175 ms frames, twice in a
       // zoom from overview to detail); the shells scale with the world until the settle flips the tier.
-      if (nextTier !== tier && !deferReveal()) { tier = nextTier; paintTier(); pdfFlip?.setLod?.(tier); chrome.toolbar.scheduleDock?.(); }
+      if (nextTier !== tier && !deferReveal()) {
+        const prevTier = tier;
+        tier = nextTier;
+        paintTier();
+        pdfFlip?.setLod?.(tier);
+        chrome.toolbar.scheduleDock?.();
+        if (prevTier !== "detail" && tier === "detail" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0));
+      }
       // A moving grid is a repaint of the page every frame (PhD page: paint + layerize ~20 ms); with the world as
       // its own layer and nothing else written, a frame is a compositor move. The grid holds still during a drag
       // or a wheel burst on a big board and catches up when it settles.
@@ -8658,7 +9023,11 @@ function buildBoardView(onFail, {
       if (tooltip.isVisible()) tooltip.hide();
       // offsetHeight in place() forces layout. During a gesture or a wheel burst the toolbar height
       // does not change, and that read was the long task on a 300-card board; the settle places it.
-      if (!gesturing && !wheelLayer) propsPanel.place();
+      // The frame that just built shells must not read it either: that read lands on the next frame.
+      if (!gesturing && !wheelLayer) {
+        if (itemsChanged) timers.frame(() => { if (!disposed && !suspended && !gesturing && !wheelLayer) propsPanel.place(); });
+        else propsPanel.place();
+      }
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) liftBurst = true;
     if (dirty.selection || itemsChanged) {
@@ -8961,12 +9330,12 @@ function buildBoardView(onFail, {
 
   // ------------------------------------------------------------ boot
   applyFullscreen(fullscreen);
-  measure();
   if (autofocus) { try { root.focus({ preventScroll: true }); } catch { /* stub */ } }
   if (!vp) {
+    refitWhenMeasured = true;
     const b = board();
     const r = b ? rects() : new Map();
-    vp = fitViewport(boundsOf([...r.values()]), size.width && size.height ? size : { width: 800, height: 560 }, { padding: 64, maxZoom: 1 });
+    vp = fitViewport(boundsOf([...r.values()]), { width: 800, height: 560 }, { padding: 64, maxZoom: 1 });
   }
   applyBackground();
   applyMotion();
@@ -9131,16 +9500,23 @@ function buildBoardView(onFail, {
       try { pdfWarm?.cancelAll?.(); } catch { /* warm */ }
       try { cancelHoverGrace(); } catch { /* none armed */ }
       try { clearZoomAnim(); } catch { /* none armed */ }
+      // The priority shell pump is its own rAF. pauseBg holds the budget job, not that frame.
+      try { itemsR.pauseShells?.(); } catch { /* shells */ }
+      // The PDF title, cover and badge jobs wait on the shared budget; a parked board must not spend it.
+      timers.pauseBg();
       suspendObservers();
     },
     resume() {
       if (disposed || !suspended) return;
       suspended = false;
       resumeObservers();
+      try { itemsR.resumeShells?.(); } catch { /* shells */ }
+      timers.resumeBg();
       armCoverWarm();
       // The DOM was kept while parked. Only a board that changed meanwhile needs the full pass (a change that lands
       // later arrives through the session as usual); otherwise the camera, selection and minimap are enough.
-      if (board() !== suspendedBoard) {
+      // A shell queue still open has to sync before the pump arms again, even when the board object is the same.
+      if (board() !== suspendedBoard || itemsR.queuedCount?.() > 0) {
         dirty.all = true;
         dirty.structural = true;
       } else {
@@ -9303,6 +9679,8 @@ function buildBoardView(onFail, {
     addPage(at = null) { addPage(at); },
     movePdfsToPages() { return movePdfsToPages(); },
     foldTableCaptions() { return foldTableCaptions(); },
+    foldPageQueries() { return foldPageQueries(); },
+    queryNudge(entry) { return queryNudge(entry); },
     foldSections(fold = true) { return foldSections(fold); },
     newDrawing(at = null) {
       const d = DEFAULT_SIZES.card;
@@ -9352,6 +9730,8 @@ function buildBoardView(onFail, {
       if (disposing) return;
       disposing = true;
       disposed = true;
+      if (pdfTitleJob) { const stop = pdfTitleJob; pdfTitleJob = null; stop(); }
+      if (coverJob) { const stop = coverJob; coverJob = null; stop(); }
       hitShield.drop();
       underlay.dispose();
       guardSelection(false);

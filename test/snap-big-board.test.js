@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildBoard, worldRects } from "../src/model/board.js";
-import { captureBoardSnap, paintBoardSnap } from "../src/view/boardsnap-paint.js";
+import { captureBoardSnap, createBoardSnapCapture, paintBoardSnap } from "../src/view/boardsnap-paint.js";
 import { SNAP_MAX_ITEMS, packSnapshot, parseSnapshot } from "../src/model/boardsnap.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
@@ -43,8 +43,16 @@ test("a board past SNAP_MAX_ITEMS is snapshotted: every box, faces only near the
       shells.set(uid, el);
     }
     const vp = { x: 0, y: 0, zoom: 1 };
-    const raw2 = captureBoardSnap({ uid: "big000001", root: doc.createElement("div"), board, rects, vp, width: 1400, height: 900, shellOf: (uid) => shells.get(uid) });
+    const args = { uid: "big000001", root: doc.createElement("div"), board, rects, vp, width: 1400, height: 900, shellOf: (uid) => shells.get(uid), now: () => 7 };
+    const raw2 = captureBoardSnap(args);
     assert.ok(raw2, "captured");
+    // P8 U2: the same capture in parts (a clock that moves 1 ms per item, 50 ms parts) is the same snapshot.
+    let t = 0;
+    const parts = createBoardSnapCapture({ ...args, shellOf: (uid) => { t += 1; return shells.get(uid); } });
+    let steps = 0;
+    while (!parts.step(50, () => t)) steps += 1;
+    assert.ok(steps >= 20, `in parts (${steps})`);
+    assert.deepEqual(parts.result(), raw2);
     assert.equal(raw2.items.length, N);
     const withFace = raw2.items.filter((item) => item.face).length;
     assert.ok(withFace > 0 && withFace <= SNAP_MAX_ITEMS, `faces: ${withFace}`);

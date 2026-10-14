@@ -25,10 +25,12 @@ test("placing the props panel does not read the toolbar's layout on every call",
     const panel = createPropsPanel({ doc, root, storage: null });
     const after = reads;
     for (let i = 0; i < 50; i += 1) panel.place();
-    assert.equal(reads, after, "no layout read per place()");
-    assert.equal(panel.el.style.top, "54px");
+    assert.equal(reads, 0);
+    assert.equal(reads, after, "place() does not read the toolbar");
+    assert.equal(panel.el.style.top, "52px");
     height = 60;
     observers[0].cb([]);
+    assert.equal(reads, 1);
     assert.equal(panel.el.style.top, "74px");
     panel.dispose();
     assert.equal(observers[0].off, true);

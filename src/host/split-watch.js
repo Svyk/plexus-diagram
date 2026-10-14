@@ -487,14 +487,22 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
     // A fresh full pull of the board (catch-up, refresh) replaces what the watches hold.
     // Callers pass a fresh read only (a cached tree can be older than what the watches hold). A seed whose
     // containers differ publishes once (or marks a held split dirty).
-    reseed(full) {
-      if (disposed) return;
-      const changed = seedFrom(full);
+    // contents: also compare every item's contents with what was last published (a verifying read of a board that
+    // went live from a stored model: a card edited while away must publish). True when it will publish.
+    reseed(full, { contents = false } = {}) {
+      if (disposed) return false;
+      let changed = seedFrom(full);
+      if (contents && !changed) {
+        for (const [id, kids] of content) {
+          if (!published.has(id) || !sameKids(published.get(id), kids)) { changed = true; break; }
+        }
+      }
       // The seed may be older than what the watch already applied: the next Connections change reads whole.
       for (const id of fingerprints.keys()) fingerprints.set(id, null);
       sync();
       armPending();
       if (changed) kick();
+      return changed;
     },
     // The assembled tree without reading the containers again (a split just seeded from a fresh read).
     current() {

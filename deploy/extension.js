@@ -1,4 +1,4 @@
-/* Plexus Diagram v3.28.0 | MIT | generated; edit src/ */
+/* Plexus Diagram v3.31.0 | MIT | generated; edit src/ */
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __esm = (fn, res, err) => function __init() {
@@ -1141,8 +1141,8 @@ function firstLine(s) {
   return line === void 0 ? "" : plainText(line);
 }
 function itemLabel(item, resolve) {
-  const own = String(item?.title ?? "").trim();
-  if (own) return own;
+  const own2 = String(item?.title ?? "").trim();
+  if (own2) return own2;
   if (item?.kind === "block" && item.target?.uid) {
     let text4 = null;
     try {
@@ -8513,11 +8513,11 @@ function splitSideBySide(table) {
 `);
     if (!words.length || !(rightEdge - leftEdge >= 2.5 * size)) continue;
     const half = (from, to) => {
-      const own = cells.filter((k) => k.c >= from && k.c < to);
-      const rowsUsed = [...new Set(own.filter((k) => String(k.text || "").trim()).map((k) => k.r))].sort((a2, b2) => a2 - b2);
+      const own2 = cells.filter((k) => k.c >= from && k.c < to);
+      const rowsUsed = [...new Set(own2.filter((k) => String(k.text || "").trim()).map((k) => k.r))].sort((a2, b2) => a2 - b2);
       if (rowsUsed.length < 3) return null;
       const rowMap = new Map(rowsUsed.map((r, i) => [r, i]));
-      const out = own.filter((k) => rowMap.has(k.r)).map((k) => ({ ...k, r: rowMap.get(k.r), c: k.c - from }));
+      const out = own2.filter((k) => rowMap.has(k.r)).map((k) => ({ ...k, r: rowMap.get(k.r), c: k.c - from }));
       const ys2 = table.grid.ys ? [...rowsUsed.map((r) => table.grid.ys[r]), table.grid.ys[rowsUsed[rowsUsed.length - 1] + 1] ?? table.bbox[3]] : null;
       const x0 = xs2[from] ?? table.bbox[0];
       const x1 = xs2[to] ?? table.bbox[2];
@@ -13856,11 +13856,11 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       units.push({ id, x0: 0, y0: 0, x1: pg.w, y1: pg.h });
     }
     const dots = pg.graphics.dots;
-    const shared3 = splitSharedCaptions(pg.free);
-    pg.free = shared3.lines;
+    const shared4 = splitSharedCaptions(pg.free);
+    pg.free = shared4.lines;
     const keepGutter = (list) => {
       const out = [...list];
-      for (const g of shared3.gutters) {
+      for (const g of shared4.gutters) {
         if (!out.some((o) => g.x0 <= o.x1 + 8 && o.x0 <= g.x1 + 8)) out.push(g);
       }
       return out.sort((a, b) => a.x0 - b.x0);
@@ -13898,8 +13898,8 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       const line = byY[k];
       let wide = rowWide.has(line) || gutters.some((g) => crossesGutter(line, g));
       if (!wide && lastWide && line.base - lastWide.base <= 1.7 * line.size && Math.abs(line.x0 - lastWide.x0) <= 1.5 * line.size && Math.abs(line.size - lastWide.size) <= 0.6) {
-        const shared4 = byY.some((o) => o !== line && Math.abs(o.base - line.base) <= 0.3 * line.size);
-        if (!shared4) wide = true;
+        const shared5 = byY.some((o) => o !== line && Math.abs(o.base - line.base) <= 0.3 * line.size);
+        if (!shared5) wide = true;
       }
       if (wide) {
         wideSeq.push(line);
@@ -15849,8 +15849,8 @@ function edgeHidden(edges, itemFuture, t) {
   const out = [];
   for (const edge of edges || []) {
     if (!edge?.uid) continue;
-    const own = Number.isFinite(edge.time) && edge.time > t;
-    if (own || late.has(edge.from) || late.has(edge.to)) out.push(edge.uid);
+    const own2 = Number.isFinite(edge.time) && edge.time > t;
+    if (own2 || late.has(edge.from) || late.has(edge.to)) out.push(edge.uid);
   }
   return out;
 }
@@ -17156,9 +17156,9 @@ function cleanText(s) {
 }
 function relatedQueryText({ title = "", string = "", children = [] } = {}) {
   const head = title && !DAILY.test(title) ? cleanText(title) : "";
-  const own = cleanText(string);
+  const own2 = cleanText(string);
   const kids = (Array.isArray(children) ? children : []).map((c) => cleanText(typeof c === "string" ? c : c?.string)).filter(Boolean).slice(0, RELATED_CHILDREN);
-  return [head, own, ...kids].filter(Boolean).join("\n").slice(0, RELATED_CHARS).trim();
+  return [head, own2, ...kids].filter(Boolean).join("\n").slice(0, RELATED_CHARS).trim();
 }
 function pdfOf(pulled) {
   if (isPdfString(pulled?.[":block/string"])) return { uid: str(pulled[":block/uid"]), string: pulled[":block/string"] };
@@ -17904,11 +17904,11 @@ function ring(cap4) {
     }
   };
 }
-function isPlexusExtensionUrl(url, own = OWN_URL) {
+function isPlexusExtensionUrl(url, own2 = OWN_URL) {
   const text4 = String(url || "");
-  if (typeof own !== "string") own = OWN_URL;
+  if (typeof own2 !== "string") own2 = OWN_URL;
   if (!text4) return false;
-  if (own && text4.split(/[?#]/)[0] === own.split(/[?#]/)[0]) return true;
+  if (own2 && text4.split(/[?#]/)[0] === own2.split(/[?#]/)[0]) return true;
   if (text4.startsWith("blob:")) return false;
   let path = text4;
   try {
@@ -18267,7 +18267,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true };
 }
 function parseSpeedFlags(raw) {
   const base = defaultSpeedFlags();
@@ -18716,7 +18716,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -19114,18 +19114,18 @@ function rowFrom(node2, ancestors, placed) {
     note: highlightNote(node2.children)
   };
 }
-function walk(nodes, ancestors, placed, out) {
+function walk2(nodes, ancestors, placed, out) {
   for (const node2 of nodes) {
     if (!isObject3(node2)) continue;
     if (highlightRecord2(node2.props)) out.push(rowFrom(node2, ancestors, placed));
     const children = Array.isArray(node2.children) ? node2.children : [];
-    if (children.length) walk(children, ancestors.concat(node2), placed, out);
+    if (children.length) walk2(children, ancestors.concat(node2), placed, out);
   }
 }
 function highlightRows(blocks, { placed } = {}) {
   const nodes = Array.isArray(blocks) ? blocks : isObject3(blocks) ? [blocks] : [];
   const out = [];
-  walk(nodes, [], placedSet(placed), out);
+  walk2(nodes, [], placedSet(placed), out);
   return out;
 }
 function capOf(cap4) {
@@ -19367,12 +19367,12 @@ function tipIdForClass(cls) {
   let found = null;
   for (const token of String(cls || "").split(/\s+/)) {
     const m = BLOCKS.exec(token);
-    if (m && !SKIP.has(m[2])) found = `${m[1]}.${m[2]}`;
+    if (m && !SKIP2.has(m[2])) found = `${m[1]}.${m[2]}`;
   }
   if (!found && /(^|\s)pxd-badge(\s|$)/.test(String(cls || ""))) return "badge";
   return found;
 }
-var LOCK, e, cap, TIP_TEXT, BLOCKS, SKIP;
+var LOCK, e, cap, TIP_TEXT, BLOCKS, SKIP2;
 var init_tooltip_text = __esm({
   "src/view/tooltip-text.js"() {
     init_schema();
@@ -19653,7 +19653,7 @@ var init_tooltip_text = __esm({
     }
     for (const n3 of [1, 2, 3, 4]) TIP_TEXT[`ctx.weight.${n3}`] = e(`Weight ${n3}`, `Draw the connection ${n3} px thick.`);
     BLOCKS = /^pxd-(toolbar|rail|ctx|bg)__([a-z0-9-]+)$/;
-    SKIP = /* @__PURE__ */ new Set(["btn", "row", "group", "tools", "picker", "sources", "extra", "pattern", "tones", "pop-btn", "more-item", "more-label", "dot"]);
+    SKIP2 = /* @__PURE__ */ new Set(["btn", "row", "group", "tools", "picker", "sources", "extra", "pattern", "tones", "pop-btn", "more-item", "more-label", "dot"]);
   }
 });
 
@@ -20462,8 +20462,8 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
       const cr = rects.length > 1 ? { left: Math.min(...rects.map((r) => r.left)), top: Math.min(...rects.map((r) => r.top)), right: Math.max(...rects.map((r) => r.right)), bottom: Math.max(...rects.map((r) => r.bottom)) } : rects[0] || { left: 0, top: 0, right: 0, bottom: 0 };
       const vw = win2?.innerWidth || 1024;
       const vh = win2?.innerHeight || 768;
-      const own = rects[0] || cr;
-      if (own.bottom < 0 || own.top > vh || own.right < 0 || own.left > vw) {
+      const own2 = rects[0] || cr;
+      if (own2.bottom < 0 || own2.top > vh || own2.right < 0 || own2.left > vw) {
         closePop();
         return;
       }
@@ -22245,8 +22245,8 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
     return [];
   }
   const resolve = typeof resolveUid === "function" ? resolveUid : (uid) => `((${uid}))`;
-  const own = take(CARD_MIME).trim();
-  if (own) return [{ string: own }];
+  const own2 = take(CARD_MIME).trim();
+  if (own2) return [{ string: own2 }];
   const officeFiles = officeFilesFrom(dataTransfer);
   if (officeFiles.length) return officeFiles.map((office) => ({ office }));
   const tokens2 = (text4) => text4.split(/\s+/).filter((t) => /^[\w-]+$/.test(t));
@@ -26115,8 +26115,8 @@ function placeEditorMenus(doc, anchor) {
       nearestD = 0;
       break;
     }
-    const own = menu.getBoundingClientRect?.();
-    const d = own ? Math.hypot((own.left || 0) - box2.left, (own.top || 0) - box2.top) : Infinity;
+    const own2 = menu.getBoundingClientRect?.();
+    const d = own2 ? Math.hypot((own2.left || 0) - box2.left, (own2.top || 0) - box2.top) : Infinity;
     if (d < nearestD) {
       nearest = menu;
       nearestD = d;
@@ -28237,8 +28237,8 @@ function pageEditWindowId(editor) {
     const bodyAt = id.indexOf("-body-");
     if (bodyAt > prefix.length) return id.slice(prefix.length, bodyAt);
   }
-  const own = editor.getAttribute?.("data-window-id");
-  if (own) return String(own);
+  const own2 = editor.getAttribute?.("data-window-id");
+  if (own2) return String(own2);
   const marked = editor.querySelector?.("[data-window-id]")?.getAttribute?.("data-window-id");
   return marked ? String(marked) : "";
 }
@@ -28592,6 +28592,7 @@ function createItemRenderer({
   readingUid = null,
   onPinOpen = null,
   settings: speedSettings = null,
+  onOverviewQueue = null,
   interopOn = null,
   adoptShell = null,
   tableThumb = null,
@@ -28998,8 +28999,8 @@ function createItemRenderer({
     return queryCards;
   };
   const mountQuery = (parent, uid, string) => {
-    const own = typeof string === "string" ? queryCardsOf().mount(parent, uid, string) : null;
-    if (own) return own;
+    const own2 = typeof string === "string" ? queryCardsOf().mount(parent, uid, string) : null;
+    if (own2) return own2;
     const live2 = el2("div", "pxd-rs pxd-item__query", parent);
     const mount = el2("div", "pxd-rs__live", live2);
     try {
@@ -29933,6 +29934,7 @@ function createItemRenderer({
   };
   const VIRTUAL_MIN = 400;
   const OPEN_NOW_MAX = 150;
+  const OPEN_CHUNK = 30;
   const PUMP_MS = 12;
   let pendingView = null;
   const viewWaiters = [];
@@ -30065,13 +30067,45 @@ function createItemRenderer({
     }
     for (const rec of set) if (!isAttached(rec)) layerOf(rec).append(rec.el);
   };
-  const pumpShells = () => {
+  const overviewFastOn = () => {
+    try {
+      return lod !== "detail" && speedOf().overviewFast !== false;
+    } catch {
+      return false;
+    }
+  };
+  let coverHeld = false;
+  const noteOverviewQueue = () => {
+    if (shellQueue.length && overviewFastOn()) coverHeld = true;
+    if (!overviewFastOn() && !coverHeld) return;
+    if (!shellQueue.length) coverHeld = false;
+    try {
+      onOverviewQueue?.();
+    } catch {
+    }
+  };
+  let shellsHeld = false;
+  const holdShells = (on) => {
+    const next = Boolean(on);
+    if (next === shellsHeld) return;
+    shellsHeld = next;
+    if (shellsHeld) {
+      stopShellBg();
+      return;
+    }
+    if (shellsLive) armShellPump();
+  };
+  const pumpChunk = ({ limit = 40, priority = false } = {}) => {
+    if (shellsHeld) return false;
+    if (shellQueue.length) noteOverviewQueue();
     const t0 = now2();
     const built = [];
     let taken = 0;
-    while (shellQueue.length && taken < 40 && (taken === 0 || now2() - t0 < PUMP_MS)) {
+    while (shellQueue.length && taken < limit && (taken === 0 || now2() - t0 < PUMP_MS)) {
+      if (priority && priorityLeft <= 0) break;
       const uid = shellQueue.shift();
       taken += 1;
+      if (priority && priorityLeft > 0) priorityLeft -= 1;
       pendingView?.delete(uid);
       const item = lastBoard?.items.get(uid);
       if (!item || shells.has(uid)) continue;
@@ -30094,7 +30128,79 @@ function createItemRenderer({
       if (taken && lastContent) paintOffscreen(lastContent.visibleRect);
     }
     if (pendingView && !pendingView.size) viewBuilt();
+    if (!shellQueue.length) noteOverviewQueue();
+    return shellQueue.length === 0;
+  };
+  const pumpShells = () => {
+    if (shellsHeld) return;
+    if (pumpChunk()) return;
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
+  };
+  let shellBg = null;
+  let priorityFrame = null;
+  let shellsLive = true;
+  let priorityLeft = 0;
+  const stopPriorityFrame = () => {
+    priorityFrame?.();
+    priorityFrame = null;
+  };
+  const stopShellBg = () => {
+    shellBg?.();
+    shellBg = null;
+    stopPriorityFrame();
+  };
+  const pumpPriorityFrame = () => {
+    priorityFrame = null;
+    if (!shellsLive || shellsHeld) return;
+    pumpChunk({ limit: OPEN_CHUNK, priority: true });
+    if (!shellsLive || shellsHeld) return;
+    if (priorityLeft > 0 && shellQueue.length && timers?.frame) {
+      priorityFrame = timers.frame(pumpPriorityFrame);
+      return;
+    }
+    armShellPump();
+  };
+  const armShellPump = () => {
+    if (!shellsLive || shellsHeld) return;
+    stopShellBg();
+    if (!shellQueue.length) return;
+    if (priorityLeft > 0 && timers?.frame) {
+      priorityFrame = timers.frame(pumpPriorityFrame);
+      return;
+    }
+    let fast = false;
+    try {
+      fast = lod !== "detail" && speedOf().overviewFast !== false && typeof timers?.bgRun === "function";
+    } catch {
+      fast = false;
+    }
+    if (fast) {
+      shellBg = timers.bgRun(() => pumpChunk(), { label: "shells", partMs: 4 });
+      return;
+    }
+    if (timers?.frame) timers.frame(pumpShells);
+  };
+  const pauseShells = () => {
+    shellsLive = false;
+    stopShellBg();
+  };
+  const resumeShells = () => {
+    shellsLive = true;
+  };
+  const promoteQueue = (viewRect) => {
+    if (!viewRect || !shellQueue.length || !lastRects) return;
+    const inside8 = [];
+    const outside = [];
+    for (const uid of shellQueue) {
+      const rect = lastRects.get(uid);
+      if (rect && rectsIntersect(rect, viewRect)) inside8.push(uid);
+      else outside.push(uid);
+    }
+    if (!inside8.length) return;
+    shellQueue = inside8.concat(outside);
+    priorityLeft = inside8.length;
+    armShellPump();
+    noteOverviewQueue();
   };
   const viewBuilt = () => {
     pendingView = null;
@@ -30104,6 +30210,30 @@ function createItemRenderer({
       } catch {
       }
     }
+  };
+  const ensureShell = (uid) => {
+    const have = shells.get(uid)?.el;
+    if (have) return have;
+    if (shellsHeld) return null;
+    const item = lastBoard?.items.get(uid);
+    if (!item || disposed) return null;
+    const at = shellQueue.indexOf(uid);
+    if (at >= 0) {
+      shellQueue.splice(at, 1);
+      if (at < priorityLeft) priorityLeft -= 1;
+    }
+    pendingView?.delete(uid);
+    if (pendingView && !pendingView.size) viewBuilt();
+    noteOverviewQueue();
+    const rec = buildShell2(item);
+    const rect = lastRects?.get(uid);
+    rec.el.style.display = rect ? "" : "none";
+    noteRender(uid);
+    paintShell(rec, item);
+    if (rect) position(rec, rect);
+    if (showBadges) renderBadges(rec);
+    attachShell(rec);
+    return rec.el;
   };
   const sync = ({ board: board2, rects, dirty: changed2 = null, structural = false, view = null, attachView = null }) => {
     sourcePass += 1;
@@ -30115,6 +30245,7 @@ function createItemRenderer({
     }
     lastBoard = board2;
     lastRects = rects;
+    coverShift = null;
     let dirty = changed2;
     if (dirty != null) {
       let touched = structural;
@@ -30130,8 +30261,20 @@ function createItemRenderer({
       }
     }
     syncBoardHighlighter(doc, boardRoot());
-    if (dirty == null) shellQueue = [];
     for (const uid of [...shells.keys()]) if (!board2.items.has(uid)) removeShell(uid);
+    if (shellQueue.length) {
+      const next = [];
+      let pri = 0;
+      const priLimit = priorityLeft;
+      for (let i = 0; i < shellQueue.length; i += 1) {
+        if (!board2.items.has(shellQueue[i])) continue;
+        next.push(shellQueue[i]);
+        if (i < priLimit) pri += 1;
+      }
+      shellQueue = next;
+      priorityLeft = pri;
+    }
+    const holdQueue = shells.size > 0 && shellQueue.length > 0;
     let orderChanged = structural;
     let defer = null;
     if (!shells.size && board2.order.length > 80 && typeof timers?.frame === "function") {
@@ -30152,7 +30295,13 @@ function createItemRenderer({
         later2.sort((a, b) => dist(a) - dist(b));
       }
       if (!now4.length) now4.push(...later2.splice(0, 24));
-      if (now4.length > OPEN_NOW_MAX && view) {
+      let fast = false;
+      try {
+        fast = lod !== "detail" && speedOf().overviewFast !== false;
+      } catch {
+        fast = false;
+      }
+      if (view && (fast && now4.length > OPEN_CHUNK || now4.length > OPEN_NOW_MAX)) {
         const cx = view.x + view.w / 2;
         const cy = view.y + view.h / 2;
         const dist = (uid) => {
@@ -30160,17 +30309,49 @@ function createItemRenderer({
           return r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity;
         };
         const ranked = now4.slice().sort((a, b) => dist(a) - dist(b));
-        const keep = new Set(ranked.slice(0, OPEN_NOW_MAX));
-        const rest = ranked.slice(OPEN_NOW_MAX);
-        now4.length = 0;
-        for (const uid of board2.order) if (keep.has(uid)) now4.push(uid);
-        pendingView = new Set(rest);
-        later2.unshift(...rest);
+        const sections = [];
+        const cards = [];
+        for (const uid of ranked) (board2.items.get(uid)?.type === "section" ? sections : cards).push(uid);
+        if (fast) {
+          const priority = [...sections, ...cards.slice(0, OPEN_NOW_MAX)];
+          const first = new Set(priority.slice(0, OPEN_CHUNK));
+          const restPriority = priority.filter((uid) => !first.has(uid));
+          const restSet = new Set(restPriority);
+          priorityLeft = restPriority.length;
+          now4.length = 0;
+          for (const uid of board2.order) if (first.has(uid)) now4.push(uid);
+          const tail = [...restPriority, ...ranked.filter((uid) => !first.has(uid) && !restSet.has(uid))];
+          later2.unshift(...tail);
+        } else {
+          const keep = new Set(ranked.slice(0, OPEN_NOW_MAX));
+          const rest = ranked.slice(OPEN_NOW_MAX);
+          now4.length = 0;
+          for (const uid of board2.order) if (keep.has(uid)) now4.push(uid);
+          pendingView = new Set(rest);
+          later2.unshift(...rest);
+        }
       }
       if (now4.length && later2.length) defer = new Set(later2);
     }
+    if (defer?.size) {
+      shellQueue = [...defer];
+      noteOverviewQueue();
+    }
+    const held = holdQueue ? new Set(shellQueue) : null;
     for (const uid of board2.order) {
       if (defer?.has(uid)) continue;
+      if (held?.has(uid)) {
+        if (dirty?.has(uid)) {
+          ensureShell(uid);
+          held.delete(uid);
+        }
+        continue;
+      }
+      if (held && !shells.has(uid) && !dirty?.has(uid)) {
+        shellQueue.push(uid);
+        held.add(uid);
+        continue;
+      }
       const item = board2.items.get(uid);
       let rec = shells.get(uid);
       const fresh = !rec;
@@ -30213,17 +30394,18 @@ function createItemRenderer({
     }
     if (orderChanged) {
       if (attachView || view) cullRect = attachView || view;
-      if (virtual()) placeVirtual();
-      else placeShells();
+      if (!shellsHeld) {
+        if (virtual()) placeVirtual();
+        else placeShells();
+      }
     }
-    if (defer?.size) {
-      shellQueue = [...defer];
-      timers.frame(pumpShells);
-    }
+    if (defer?.size) armShellPump();
     if (pendingView) {
       for (const uid of [...pendingView]) if (shells.has(uid) || !board2.items.has(uid)) pendingView.delete(uid);
       if (!pendingView.size) viewBuilt();
     }
+    if (shellQueue.length) noteOverviewQueue();
+    if (shellQueue.length && shellsLive && !shellBg && !priorityFrame) armShellPump();
   };
   let peek = null;
   let peekTimer = null;
@@ -30240,8 +30422,8 @@ function createItemRenderer({
     } catch {
     }
   };
-  const peekRowsOf = (rec, item, done2) => {
-    const take = (list) => done2(visibleKids(list).slice(0, PEEK_TOP));
+  const peekRowsOf = (rec, item, done3) => {
+    const take = (list) => done3(visibleKids(list).slice(0, PEEK_TOP));
     if (item.kind === "note") return take(item.content);
     const tree = host?.pullTree?.(item.target.uid, 2, 200);
     if (tree && typeof tree.then === "function") tree.then(take).catch(() => {
@@ -30412,12 +30594,12 @@ function createItemRenderer({
       input.placeholder = "Name this board…";
       input.setAttribute("placeholder", "Name this board…");
       for (const type of ["pointerdown", "mousedown", "click", "dblclick"]) input.addEventListener(type, stopEvent);
-      let done2 = false;
+      let done3 = false;
       const commit = () => {
-        if (done2) return;
+        if (done3) return;
         const name = String(input.value || "").trim();
         if (!name) return;
-        done2 = true;
+        done3 = true;
         commitBoardName(item.uid, name);
       };
       input.addEventListener("keydown", (event) => {
@@ -33067,9 +33249,19 @@ function createItemRenderer({
       }
     }
   };
+  let coverShift = null;
   const previewMove = (uids, dx, dy, board2, rects) => {
     const set = new Set(uids);
     for (const u of uids) for (const d of descendantsOf(board2, u)) set.add(d);
+    if (!dx && !dy) coverShift = null;
+    else {
+      coverShift = /* @__PURE__ */ new Map();
+      for (const uid of set) {
+        const r = rects.get(uid);
+        if (!r) continue;
+        coverShift.set(uid, { x: r.x + dx, y: r.y + dy, w: r.w, h: r.h });
+      }
+    }
     const live2 = /* @__PURE__ */ new Map();
     for (const uid of set) {
       const rec = shells.get(uid);
@@ -33079,6 +33271,7 @@ function createItemRenderer({
       rec.el.style.transform = `translate(${moved.x}px, ${moved.y}px)`;
       live2.set(uid, moved);
     }
+    noteOverviewQueue();
     return live2;
   };
   const previewRects = (list) => {
@@ -33129,8 +33322,8 @@ function createItemRenderer({
   const attrChipsOf = (rec, item) => {
     if (item.kind === "board") return [];
     const lines = [];
-    const own = item.kind === "block" ? rec.refString : item.string;
-    if (typeof own === "string") lines.push(...own.split("\n"));
+    const own2 = item.kind === "block" ? rec.refString : item.string;
+    if (typeof own2 === "string") lines.push(...own2.split("\n"));
     for (const c of item.content || []) lines.push(...String(childString4(c)).split("\n"));
     const out = [];
     for (const line of lines) {
@@ -34202,7 +34395,9 @@ function createItemRenderer({
     };
   };
   const dispose = () => {
+    if (disposed) return;
     disposed = true;
+    stopShellBg();
     tellPane({ open: false });
     if (freshTimer) {
       try {
@@ -34309,6 +34504,23 @@ function createItemRenderer({
     renameBoard,
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
+    ensureShell,
+    holdShells,
+    pauseShells,
+    resumeShells,
+    promoteQueue,
+    coverHeld: () => coverHeld,
+    queuedCount: () => shellQueue.length,
+    pendingBoxes() {
+      const queued = new Set(shellQueue);
+      const out = [];
+      for (const uid of lastBoard?.order || []) {
+        if (!queued.has(uid) || shells.has(uid)) continue;
+        const rect = coverShift?.get(uid) || lastRects?.get(uid);
+        if (rect) out.push({ uid, rect });
+      }
+      return out;
+    },
     // fn runs once every shell in the open view is built (at once when none is queued).
     whenViewBuilt(fn) {
       if (typeof fn !== "function") return;
@@ -36364,7 +36576,7 @@ function openDb(factory, { name, version, stores, capMs = 2e3 }) {
   return new Promise((resolve) => {
     let settled = false;
     let timer = null;
-    const done2 = (value) => {
+    const done3 = (value) => {
       if (settled) return;
       settled = true;
       if (timer != null) {
@@ -36379,7 +36591,7 @@ function openDb(factory, { name, version, stores, capMs = 2e3 }) {
       try {
         const req = withVersion ? factory.open(name, version) : factory.open(name);
         if (!req) {
-          done2(null);
+          done3(null);
           return;
         }
         req.onupgradeneeded = () => {
@@ -36389,7 +36601,7 @@ function openDb(factory, { name, version, stores, capMs = 2e3 }) {
         req.onsuccess = () => {
           const db = req.result || null;
           if (!db) {
-            done2(null);
+            done3(null);
             return;
           }
           if (settled) {
@@ -36404,10 +36616,10 @@ function openDb(factory, { name, version, stores, capMs = 2e3 }) {
               db.close();
             } catch {
             }
-            done2(null);
+            done3(null);
             return;
           }
-          done2(arrange(db));
+          done3(arrange(db));
         };
         req.onerror = (event) => {
           try {
@@ -36423,16 +36635,16 @@ function openDb(factory, { name, version, stores, capMs = 2e3 }) {
             attempt(false);
             return;
           }
-          done2(null);
+          done3(null);
         };
-        req.onblocked = () => done2(null);
+        req.onblocked = () => done3(null);
       } catch {
-        done2(null);
+        done3(null);
       }
     };
-    timer = arm(capMs, () => done2(null));
+    timer = arm(capMs, () => done3(null));
     if (!factory || typeof factory.open !== "function") {
-      done2(null);
+      done3(null);
       return;
     }
     attempt(true);
@@ -36619,22 +36831,22 @@ function imageKey(sha256, blockId) {
 function requestResult(req) {
   return new Promise((resolve) => {
     let settled = false;
-    const done2 = (value) => {
+    const done3 = (value) => {
       if (settled) return;
       settled = true;
       resolve(value);
     };
     try {
-      req.onsuccess = () => done2({ ok: true, result: req.result });
+      req.onsuccess = () => done3({ ok: true, result: req.result });
       req.onerror = (event) => {
         try {
           event?.preventDefault?.();
         } catch {
         }
-        done2({ ok: false, result: null });
+        done3({ ok: false, result: null });
       };
     } catch {
-      done2({ ok: false, result: null });
+      done3({ ok: false, result: null });
     }
   });
 }
@@ -37162,10 +37374,10 @@ var POLL_MS = 250;
 var ICON = ".rm-sync__icon";
 var delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 var nextFrame = () => new Promise((resolve) => {
-  let done2 = false;
+  let done3 = false;
   const finish = () => {
-    if (!done2) {
-      done2 = true;
+    if (!done3) {
+      done3 = true;
       resolve();
     }
   };
@@ -37262,6 +37474,107 @@ init_timeline();
 init_board();
 init_why();
 init_pdf_page();
+
+// src/model/query-fold.js
+var QUERY_RE = /\{\{\s*(?:\[\[query\]\]|query)\s*:/i;
+var DIAGRAM_RE2 = /\{\{(?:\[\[)?diagram(?:\]\])?/;
+var QUERY_CAPTION_MAX = 120;
+var QUERY_CAPTION_PREFIX = "Query · ";
+var hasQueryMacro = (s) => QUERY_RE.test(String(s ?? ""));
+var isDiagramString = (s) => DIAGRAM_RE2.test(String(s ?? ""));
+function unwrapQuery(s) {
+  const m = QUERY_RE.exec(s);
+  if (!m) return s;
+  const start = m.index;
+  let i = start + m[0].length;
+  let depth = 2;
+  for (; i < s.length && depth > 0; i += 1) {
+    if (s[i] === "{") depth += 1;
+    else if (s[i] === "}") depth -= 1;
+  }
+  const end = depth === 0 ? i : s.length;
+  const body = s.slice(start + m[0].length, depth === 0 ? end - 2 : end);
+  return `${s.slice(0, start)} ${body} ${s.slice(end)}`;
+}
+function plainQueryText(string) {
+  let s = unwrapQuery(String(string ?? ""));
+  for (let pass = 0; pass < 8; pass += 1) {
+    const next = s.replace(/\[\[([^[\]]*)\]\]/g, "$1").replace(/\(\(([^()]*)\)\)/g, "$1");
+    if (next === s) break;
+    s = next;
+  }
+  s = s.replace(/\[\[|\]\]|\(\(|\)\)/g, "").replace(/#/g, "").replace(/::/g, ":");
+  while (/\{\{|\}\}/.test(s)) s = s.replace(/\{\{/g, "{ {").replace(/\}\}/g, "} }");
+  return s.replace(/\s+/g, " ").trim();
+}
+function queryCaption(string) {
+  const text4 = plainQueryText(string);
+  if (!text4) return QUERY_CAPTION_PREFIX.trim().replace(/\s*·$/, "");
+  const full = QUERY_CAPTION_PREFIX + text4;
+  if (full.length <= QUERY_CAPTION_MAX) return full;
+  return `${full.slice(0, QUERY_CAPTION_MAX - 1).trimEnd()}…`;
+}
+function planQueryFolds({ pageUid: pageUid2 = "", boardUid = "", graph = "", kidsOfMany, newUid, limit = 2e4 } = {}) {
+  const plan = { graph, boardUid, pageUid: pageUid2, folds: [], visited: 0, truncated: false };
+  if (!pageUid2 || typeof kidsOfMany !== "function") return plan;
+  let level = [pageUid2];
+  const seen = new Set(level);
+  while (level.length && !plan.truncated) {
+    let kids = null;
+    try {
+      kids = kidsOfMany(level);
+    } catch {
+      kids = null;
+    }
+    if (!(kids instanceof Map)) break;
+    const next = [];
+    for (const parentUid of level) {
+      const list = (kids.get(parentUid) || []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      for (let i = 0; i < list.length; i += 1) {
+        const kid = list[i];
+        if (!kid?.uid || seen.has(kid.uid)) continue;
+        seen.add(kid.uid);
+        plan.visited += 1;
+        if (plan.visited > limit) {
+          plan.truncated = true;
+          break;
+        }
+        const string = String(kid.string ?? "");
+        if (isDiagramString(string)) continue;
+        if (hasQueryMacro(string)) {
+          let captionUid = "";
+          try {
+            captionUid = String(newUid?.() || "");
+          } catch {
+            captionUid = "";
+          }
+          if (!captionUid) continue;
+          plan.folds.push({ queryUid: kid.uid, captionUid, parentUid, order: i, caption: queryCaption(string), string });
+          continue;
+        }
+        if (kid.open !== false) next.push(kid.uid);
+      }
+      if (plan.truncated) break;
+    }
+    level = next;
+  }
+  return plan;
+}
+function queryFoldLines(plan, max = 12) {
+  const folds = plan?.folds || [];
+  const lines = folds.slice(0, max).map((f) => f.caption);
+  if (folds.length > max) lines.push(`and ${folds.length - max} more`);
+  return lines;
+}
+var QUERY_NUDGE_HELD_MS = 1500;
+var queryNudgeKey = (graph, pageUid2) => `plexus-diagram:query-nudge:${graph || ""}:${pageUid2 || ""}`;
+function shouldNudgeQueries({ entry, seen = false } = {}) {
+  if (seen || !entry || entry.kind === "sidebar") return false;
+  const held = Number(entry.firstPaintMs) - Number(entry.paintTaskMs);
+  return Number.isFinite(held) && held >= QUERY_NUDGE_HELD_MS;
+}
+
+// src/session.js
 init_trails();
 init_schema();
 init_drawing_card();
@@ -37453,7 +37766,7 @@ var PREPAINT_STYLE_ID = "plexus-diagram-prepaint-guard";
 var PENDING_CLASS = "pxd-native-pending";
 var NATIVE_HIDDEN_CLASS = "pxd-native-hidden";
 var OUTLINE_NATIVE_CLASS = "pxd-outline-native";
-function isDiagramString(value) {
+function isDiagramString2(value) {
   const text4 = String(value ?? "");
   if (text4.indexOf("{") === -1) return false;
   return DIAGRAM_MARKER.test(text4);
@@ -38447,13 +38760,13 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
         const kind = containerKind(kid, atRoot);
         if (kind) {
           seenKinds.set(id, kind);
-          let own = kinds.get(id) === kind ? nodes.get(id) : null;
-          if (!own?.[UID]) {
-            own = read2(patternOf(kind), id) || kid;
-            nodes.set(id, own);
+          let own2 = kinds.get(id) === kind ? nodes.get(id) : null;
+          if (!own2?.[UID]) {
+            own2 = read2(patternOf(kind), id) || kid;
+            nodes.set(id, own2);
             if (kind === "edges" && fingerprints.has(id)) fingerprints.set(id, null);
           }
-          kids.push(kind === "struct" ? build(own, false) : own);
+          kids.push(kind === "struct" ? build(own2, false) : own2);
           continue;
         }
         let stored = content.get(id);
@@ -38606,13 +38919,24 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
     // A fresh full pull of the board (catch-up, refresh) replaces what the watches hold.
     // Callers pass a fresh read only (a cached tree can be older than what the watches hold). A seed whose
     // containers differ publishes once (or marks a held split dirty).
-    reseed(full) {
-      if (disposed) return;
-      const changed2 = seedFrom(full);
+    // contents: also compare every item's contents with what was last published (a verifying read of a board that
+    // went live from a stored model: a card edited while away must publish). True when it will publish.
+    reseed(full, { contents = false } = {}) {
+      if (disposed) return false;
+      let changed2 = seedFrom(full);
+      if (contents && !changed2) {
+        for (const [id, kids] of content) {
+          if (!published.has(id) || !sameKids(published.get(id), kids)) {
+            changed2 = true;
+            break;
+          }
+        }
+      }
       for (const id of fingerprints.keys()) fingerprints.set(id, null);
       sync();
       armPending();
       if (changed2) kick();
+      return changed2;
     },
     // The assembled tree without reading the containers again (a split just seeded from a fresh read).
     current() {
@@ -38658,6 +38982,1592 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
 
 // src/host/roam.js
 init_settings();
+
+// src/host/sliced-read.js
+var SLICED_LEVEL_PATTERN = "[:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props {(limit :block/children nil) [:db/id]}]";
+var SLICED_OPEN_PATTERN = "[:db/id :block/open]";
+var SLICED_FIELD_PATTERN = "[:db/id :block/string :block/order :block/heading :block/props]";
+var SLICED_BATCH = 500;
+var SLICED_OPEN_BATCH = 2e3;
+var SLICED_LINK_BATCH = 4e3;
+var SLICED_SLICE_MS = 70;
+function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date.now(), sliceMs = SLICED_SLICE_MS, batch = SLICED_BATCH, openBatch = SLICED_OPEN_BATCH, linkBatch = SLICED_LINK_BATCH } = {}) {
+  const nodes = /* @__PURE__ */ new Map();
+  const outs = /* @__PURE__ */ new Map();
+  let frontier = rootEid == null ? [] : [rootEid];
+  let next = [];
+  let at = 0;
+  let withKids = [];
+  let openAt = 0;
+  let linkAt = 0;
+  let phase = rootEid == null ? "failed" : "read";
+  let tree = null;
+  let first = null;
+  let calls = 0;
+  let readMs = 0;
+  try {
+    first = stamp2();
+  } catch {
+    first = null;
+  }
+  if (first == null) phase = "failed";
+  const fail4 = () => {
+    phase = "failed";
+    nodes.clear();
+    outs.clear();
+    frontier = [];
+    next = [];
+    withKids = [];
+    fieldIds = [];
+    fieldSnap = [];
+    fieldsOk = false;
+  };
+  function readPart() {
+    const ids = frontier.slice(at, at + batch);
+    at += ids.length;
+    const res = pullMany(SLICED_LEVEL_PATTERN, ids);
+    calls += 1;
+    if (!Array.isArray(res) || res.length !== ids.length) return fail4();
+    for (let i = 0; i < ids.length; i += 1) {
+      const n3 = res[i];
+      if (!n3 || n3[":db/id"] !== ids[i] || typeof n3[":block/uid"] !== "string") return fail4();
+      nodes.set(ids[i], n3);
+      const out = {};
+      for (const k in n3) if (k !== ":db/id" && k !== ":block/children") out[k] = n3[k];
+      outs.set(ids[i], out);
+      const kids = n3[":block/children"];
+      if (Array.isArray(kids)) for (const k of kids) next.push(k?.[":db/id"]);
+    }
+    if (at >= frontier.length) {
+      if (next.some((id) => id == null || nodes.has(id))) return fail4();
+      frontier = next;
+      next = [];
+      at = 0;
+      if (!frontier.length) {
+        phase = "folds";
+        for (const [id, n3] of nodes) if (Array.isArray(n3[":block/children"]) && n3[":block/children"].length) withKids.push(id);
+      }
+    }
+  }
+  function foldPart() {
+    const ids = withKids.slice(openAt, openAt + openBatch);
+    openAt += ids.length;
+    if (ids.length) {
+      const res = pullMany(SLICED_OPEN_PATTERN, ids);
+      calls += 1;
+      if (!Array.isArray(res) || res.length !== ids.length) return fail4();
+      for (let i = 0; i < ids.length; i += 1) {
+        const n3 = outs.get(ids[i]);
+        const now4 = res[i];
+        if (!now4) return fail4();
+        if (Object.prototype.hasOwnProperty.call(now4, ":block/open")) n3[":block/open"] = now4[":block/open"];
+        else delete n3[":block/open"];
+      }
+    }
+    if (openAt >= withKids.length) phase = "link";
+  }
+  function linkPart() {
+    const end = Math.min(withKids.length, linkAt + linkBatch);
+    for (; linkAt < end; linkAt += 1) {
+      const id = withKids[linkAt];
+      outs.get(id)[":block/children"] = nodes.get(id)[":block/children"].map((k) => outs.get(k[":db/id"]));
+    }
+    if (linkAt >= withKids.length) phase = "assemble";
+  }
+  let openIds = [];
+  let openVals = [];
+  let fieldIds = [];
+  let fieldSnap = [];
+  let fieldAt = 0;
+  let fieldsOk = true;
+  const fieldKey = (n3) => `${n3?.[":block/string"] ?? ""}\0${n3?.[":block/order"] ?? ""}\0${n3?.[":block/heading"] ?? ""}\0${n3?.[":block/props"] == null ? "" : JSON.stringify(n3[":block/props"])}`;
+  function snapshotFields() {
+    fieldIds = [];
+    fieldSnap = [];
+    fieldAt = 0;
+    fieldsOk = true;
+    for (const [id, n3] of outs) {
+      fieldIds.push(id);
+      fieldSnap.push(fieldKey(n3));
+    }
+  }
+  function openMatches() {
+    for (let i = 0; i < openIds.length; i += openBatch) {
+      const ids = openIds.slice(i, i + openBatch);
+      const res = pullMany(SLICED_OPEN_PATTERN, ids);
+      calls += 1;
+      if (!Array.isArray(res) || res.length !== ids.length) return false;
+      for (let j = 0; j < ids.length; j += 1) {
+        const now4 = res[j];
+        if (!now4 || now4[":db/id"] !== ids[j] || now4[":block/open"] !== openVals[i + j]) return false;
+      }
+    }
+    return true;
+  }
+  function assemble() {
+    openIds = withKids;
+    openVals = withKids.map((id) => outs.get(id)[":block/open"]);
+    if (!openMatches()) return fail4();
+    let last = null;
+    try {
+      last = stamp2();
+    } catch {
+      last = null;
+    }
+    if (last == null || last !== first) return fail4();
+    snapshotFields();
+    tree = outs.get(rootEid);
+    nodes.clear();
+    outs.clear();
+    phase = "done";
+  }
+  function readFieldsPart() {
+    if (phase !== "done" || !fieldsOk) return "bad";
+    if (fieldAt >= fieldIds.length) return "ok";
+    const ids = fieldIds.slice(fieldAt, fieldAt + batch);
+    const base = fieldAt;
+    fieldAt += ids.length;
+    const res = pullMany(SLICED_FIELD_PATTERN, ids);
+    calls += 1;
+    if (!Array.isArray(res) || res.length !== ids.length) {
+      fieldsOk = false;
+      return "bad";
+    }
+    for (let j = 0; j < ids.length; j += 1) {
+      const now4 = res[j];
+      if (!now4 || now4[":db/id"] !== ids[j] || fieldKey(now4) !== fieldSnap[base + j]) {
+        fieldsOk = false;
+        return "bad";
+      }
+    }
+    return fieldAt >= fieldIds.length ? "ok" : "more";
+  }
+  function step() {
+    const t0 = clock();
+    try {
+      do {
+        if (phase === "read") readPart();
+        else if (phase === "folds") foldPart();
+        else if (phase === "link") linkPart();
+        else if (phase === "assemble") assemble();
+        else break;
+      } while (phase !== "done" && phase !== "failed" && clock() - t0 < sliceMs);
+    } catch {
+      fail4();
+    }
+    readMs += clock() - t0;
+    return phase === "done" || phase === "failed";
+  }
+  return {
+    step,
+    get phase() {
+      return phase;
+    },
+    get stamp() {
+      return first;
+    },
+    get calls() {
+      return calls;
+    },
+    get ms() {
+      return readMs;
+    },
+    // The tree when done and consistent, else null. Taking it twice gives null.
+    take() {
+      const out = phase === "done" ? tree : null;
+      tree = null;
+      return out;
+    },
+    cancel() {
+      if (phase !== "done") fail4();
+    },
+    // Before the tree is offered (later tasks may have run since assemble): true when the folds are still the ones read.
+    verifyOpen() {
+      if (phase !== "done") return false;
+      try {
+        return openMatches();
+      } catch {
+        return false;
+      }
+    },
+    // Re-read string, order, heading and props of the blocks already copied. One batch per call.
+    verifyFieldsPart() {
+      try {
+        return readFieldsPart();
+      } catch {
+        fieldsOk = false;
+        return "bad";
+      }
+    }
+  };
+}
+
+// src/model/boardsnap.js
+var SNAP_VERSION = 1;
+var SNAP_MAX_BYTES = 300 * 1024;
+var SNAP_MAX_ITEMS = 500;
+var SNAP_MAX_BOXES = 4e3;
+var BOX_BYTES = 256;
+var snapByteCap = (items) => SNAP_MAX_BYTES + BOX_BYTES * Math.max(0, (Number(items) || 0) - SNAP_MAX_ITEMS);
+var FACE_MAX_NODES = 400;
+var FACE_MAX_CHARS = 16 * 1024;
+var LAYER_MAX_NODES = 1500;
+var TEXT_MAX = 2e3;
+var CLASS_MAX = 8;
+var DEPTH_MAX = 16;
+var THUMB_DATA_MAX = 160 * 1024;
+var TAGS = /* @__PURE__ */ new Set([
+  "div",
+  "span",
+  "p",
+  "ul",
+  "ol",
+  "li",
+  "strong",
+  "b",
+  "em",
+  "i",
+  "u",
+  "s",
+  "del",
+  "ins",
+  "code",
+  "pre",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "blockquote",
+  "table",
+  "thead",
+  "tbody",
+  "tfoot",
+  "tr",
+  "td",
+  "th",
+  "colgroup",
+  "col",
+  "br",
+  "hr",
+  "img",
+  "label",
+  "sup",
+  "sub",
+  "mark",
+  "small",
+  "button",
+  "svg",
+  "g",
+  "path",
+  "circle",
+  "rect",
+  "line",
+  "polyline",
+  "polygon",
+  "ellipse",
+  "text",
+  "tspan",
+  "defs",
+  "marker"
+]);
+var SVG_TAGS = /* @__PURE__ */ new Set(["svg", "g", "path", "circle", "rect", "line", "polyline", "polygon", "ellipse", "text", "tspan", "defs", "marker"]);
+var RENAME = { a: "span" };
+var SKIP = /* @__PURE__ */ new Set(["script", "style", "iframe", "object", "embed", "textarea", "input", "select", "video", "audio", "canvas", "noscript", "template", "link", "meta", "foreignobject"]);
+var SVG_ATTRS = /* @__PURE__ */ new Set([
+  "viewBox",
+  "d",
+  "fill",
+  "stroke",
+  "stroke-width",
+  "stroke-linejoin",
+  "stroke-linecap",
+  "stroke-dasharray",
+  "opacity",
+  "fill-opacity",
+  "stroke-opacity",
+  "width",
+  "height",
+  "cx",
+  "cy",
+  "r",
+  "rx",
+  "ry",
+  "x",
+  "y",
+  "x1",
+  "y1",
+  "x2",
+  "y2",
+  "points",
+  "transform",
+  "marker-end",
+  "marker-start",
+  "markerWidth",
+  "markerHeight",
+  "refX",
+  "refY",
+  "orient",
+  "text-anchor",
+  "dominant-baseline",
+  "font-size",
+  "id",
+  "preserveAspectRatio"
+]);
+var STYLE_PROPS = [
+  "width",
+  "height",
+  "max-width",
+  "min-height",
+  "transform",
+  "background",
+  "background-color",
+  "color",
+  "border-color",
+  "background-size",
+  "background-position",
+  "display",
+  "left",
+  "top"
+];
+var CLASS_RE = /^[A-Za-z0-9_-]{1,64}$/;
+var DATA_RE = /^data-[a-z0-9-]{1,32}$/;
+var UNSAFE_VALUE = /(javascript:|expression\(|url\(|@import|<)/i;
+var TRANSIENT = /* @__PURE__ */ new Set([
+  "pxd-item--selected",
+  "pxd-section--selected",
+  "pxd-item--drop",
+  "pxd-item--editing",
+  "pxd-item--typing",
+  "pxd-item--pulse",
+  "pxd-item--flash",
+  "pxd-item--hit",
+  "pxd-item--dim",
+  "pxd-item--offscreen",
+  "pxd-item--future",
+  "pxd-item--fresh",
+  "pxd-pdf-live",
+  "pxd-item--lift",
+  "pxd-item--snap"
+]);
+var ROOT_TRANSIENT = /* @__PURE__ */ new Set(["pxd-root--gesturing", "pxd-root--editing", "pxd-root--searching", "pxd-root--focus", "pxd-root--present"]);
+function fnv(text4) {
+  let h = 2166136261;
+  const s = String(text4 ?? "");
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+var strOf = (node2) => String(node2?.[":block/string"] ?? node2?.string ?? "");
+var kidsOf3 = (node2) => {
+  const kids = node2?.[":block/children"] ?? node2?.children;
+  if (!Array.isArray(kids)) return [];
+  return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c?.[":block/order"] ?? a.i) - (b.c?.[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
+};
+function contentText(nodes, depth = 0, out = []) {
+  if (!Array.isArray(nodes) || depth > 4 || out.length > 400) return out;
+  for (const node2 of nodes) {
+    out.push(`${depth}:${strOf(node2)}`);
+    contentText(kidsOf3(node2), depth + 1, out);
+  }
+  return out;
+}
+function itemSig(item) {
+  if (!item) return "";
+  return fnv(JSON.stringify([
+    item.type,
+    item.kind,
+    item.string ?? "",
+    item.title ?? "",
+    Boolean(item.collapsed),
+    item.color ?? "",
+    item.fill ?? "",
+    item.target?.uid ?? "",
+    item.target?.title ?? "",
+    contentText(item.content)
+  ]));
+}
+function boardStamp(board2, rects = null) {
+  if (!board2?.items) return "";
+  const parts = [];
+  for (const uid of board2.order || board2.items.keys()) {
+    const item = board2.items.get(uid);
+    if (!item) continue;
+    const r = rects?.get?.(uid) || item;
+    parts.push(`${uid}|${r.x},${r.y},${r.w},${r.h}|${item.parentUid ?? ""}|${itemSig(item)}`);
+  }
+  for (const edge of board2.edges?.values?.() || []) parts.push(`e:${edge.uid}|${edge.from}|${edge.to}|${edge.label ?? ""}`);
+  return fnv(parts.join("\n"));
+}
+function tableGrid2(item, { rows: maxRows = 30, cols: maxCols = 10 } = {}) {
+  const rows = [];
+  for (const row4 of kidsOf3({ ":block/children": item?.content })) {
+    if (rows.length >= maxRows) break;
+    const cells = [];
+    let cell = row4;
+    while (cell && cells.length < maxCols) {
+      cells.push(plainCell(strOf(cell)));
+      cell = kidsOf3(cell)[0];
+    }
+    rows.push(cells);
+  }
+  return rows;
+}
+function plainCell(text4) {
+  return String(text4 || "").replace(/\[\[([^\]]*)\]\]/g, "$1").replace(/\(\(([^)]*)\)\)/g, "…").replace(/\*\*|__|\^\^|~~/g, "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+function cleanClasses(value, drop = TRANSIENT) {
+  const out = [];
+  for (const name of String(value || "").split(/\s+/)) {
+    if (!name || !CLASS_RE.test(name) || drop.has(name)) continue;
+    out.push(name);
+  }
+  return out;
+}
+function classOf(el2) {
+  const raw = typeof el2.getAttribute === "function" ? el2.getAttribute("class") : el2.className;
+  return typeof raw === "string" ? raw : raw?.baseVal ?? "";
+}
+function readStyle(el2, thumbs) {
+  const style = el2.style;
+  if (!style) return null;
+  const out = {};
+  let n3 = 0;
+  const get = (name) => (typeof style.getPropertyValue === "function" ? style.getPropertyValue(name) : style[name]) || "";
+  for (const name of STYLE_PROPS) {
+    const value = String(get(name) || "").trim();
+    if (!value || value.length > 120 || UNSAFE_VALUE.test(value)) continue;
+    out[name] = value;
+    n3 += 1;
+  }
+  const cover = String(get("--pxd-cover") || "");
+  const m = /url\(\s*["']?(data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+)["']?\s*\)/.exec(cover);
+  if (m && thumbs && m[1].length <= THUMB_DATA_MAX) {
+    const key = `d:${fnv(m[1])}:${m[1].length}`;
+    thumbs.set(key, m[1]);
+    out["--pxd-cover"] = `@${key}`;
+    n3 += 1;
+  }
+  return n3 ? out : null;
+}
+function imageSrc(src, thumbs) {
+  const value = String(src || "");
+  if (/^https:\/\//i.test(value) && value.length <= 2e3 && !/["'<>\s]/.test(value)) return value;
+  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(value) && value.length <= THUMB_DATA_MAX && thumbs) {
+    const key = `d:${fnv(value)}:${value.length}`;
+    thumbs.set(key, value);
+    return `@${key}`;
+  }
+  return "";
+}
+function captureFace(el2, { thumbs = null, skip = null, maxNodes = FACE_MAX_NODES, maxChars = FACE_MAX_CHARS, canvases = false } = {}) {
+  const budget = { nodes: 0, chars: 0, maxNodes, maxChars, canvases };
+  return walk(el2, budget, thumbs, skip, 0, false);
+}
+function canvasFace(el2, thumbs) {
+  if (!thumbs || typeof el2.toDataURL !== "function") return null;
+  const w = Number(el2.width) || 0;
+  const h = Number(el2.height) || 0;
+  if (!w || !h || w * h > 400 * 400) return null;
+  let url = "";
+  try {
+    url = el2.toDataURL("image/png");
+  } catch {
+    return null;
+  }
+  const src = imageSrc(url, thumbs);
+  if (!src) return null;
+  const node2 = { t: "img", s: src, a: { width: String(w), height: String(h) } };
+  const cls = cleanClasses(classOf(el2)).slice(0, CLASS_MAX);
+  if (cls.length) node2.c = cls.join(" ");
+  return node2;
+}
+function walk(el2, budget, thumbs, skip, depth, inSvg) {
+  if (!el2 || budget.nodes >= budget.maxNodes || budget.chars >= budget.maxChars) return null;
+  if (el2.nodeType === 3) {
+    const text4 = String(el2.nodeValue ?? el2.textContent ?? "");
+    if (!text4) return null;
+    const cut = text4.slice(0, Math.min(TEXT_MAX, budget.maxChars - budget.chars));
+    budget.chars += cut.length;
+    return cut;
+  }
+  if (el2.nodeType !== 1) return null;
+  const raw = String(el2.localName || el2.tagName || "").toLowerCase();
+  if (raw === "canvas" && budget.canvases) {
+    budget.nodes += 1;
+    return canvasFace(el2, thumbs);
+  }
+  if (!raw || SKIP.has(raw)) return null;
+  const tag = RENAME[raw] || raw;
+  if (!TAGS.has(tag)) return null;
+  if (skip && skip(el2)) return null;
+  if (depth > DEPTH_MAX) return null;
+  budget.nodes += 1;
+  const svg = inSvg || tag === "svg";
+  const node2 = { t: tag };
+  const cls = cleanClasses(classOf(el2)).slice(0, CLASS_MAX);
+  if (cls.length) node2.c = cls.join(" ");
+  const attrs = {};
+  let hasAttr = false;
+  for (const attr of [...el2.attributes || []]) {
+    const name = attr.name;
+    const value = String(attr.value ?? "");
+    if (!name || name === "class" || name === "style" || /^on/i.test(name)) continue;
+    if (value.length > 400 || UNSAFE_VALUE.test(value)) continue;
+    if (DATA_RE.test(name) || name === "aria-hidden" || name === "hidden" || svg && SVG_ATTRS.has(name) || tag === "img" && (name === "width" || name === "height" || name === "alt")) {
+      attrs[name] = value.slice(0, 200);
+      hasAttr = true;
+    }
+  }
+  if (tag === "img") {
+    const src = imageSrc(el2.getAttribute?.("src") ?? el2.src, thumbs);
+    if (!src) {
+      budget.nodes -= 1;
+      return null;
+    }
+    node2.s = src;
+  }
+  if (hasAttr) node2.a = attrs;
+  const style = readStyle(el2, thumbs);
+  if (style) node2.y = style;
+  const kids = [];
+  const childNodes2 = [...el2.childNodes || el2.children || []];
+  for (const child of childNodes2) {
+    const face = walk(child, budget, thumbs, skip, depth + 1, svg);
+    if (face != null) kids.push(face);
+  }
+  if (!childNodes2.length && typeof el2.textContent === "string" && el2.textContent) {
+    const cut = el2.textContent.slice(0, Math.min(TEXT_MAX, budget.maxChars - budget.chars));
+    budget.chars += cut.length;
+    if (cut) kids.push(cut);
+  }
+  if (kids.length) node2.k = kids;
+  return node2;
+}
+var SVG_NS = "http://www.w3.org/2000/svg";
+function buildFace(doc, face, { thumbs = null, inSvg = false } = {}) {
+  if (face == null) return null;
+  if (typeof face === "string") return typeof doc.createTextNode === "function" ? doc.createTextNode(face.slice(0, TEXT_MAX)) : null;
+  if (typeof face !== "object") return null;
+  const tag = String(face.t || "");
+  if (!TAGS.has(tag)) return null;
+  const svg = inSvg || tag === "svg";
+  let el2;
+  try {
+    el2 = svg && SVG_TAGS.has(tag) && typeof doc.createElementNS === "function" ? doc.createElementNS(SVG_NS, tag) : doc.createElement(tag);
+  } catch {
+    return null;
+  }
+  const cls = cleanClasses(face.c).slice(0, CLASS_MAX);
+  if (cls.length) el2.setAttribute("class", cls.join(" "));
+  if (face.a && typeof face.a === "object") {
+    for (const [name, raw] of Object.entries(face.a)) {
+      const value = String(raw ?? "");
+      if (/^on/i.test(name) || value.length > 400 || UNSAFE_VALUE.test(value)) continue;
+      if (DATA_RE.test(name) || name === "aria-hidden" || name === "hidden" || svg && SVG_ATTRS.has(name) || tag === "img" && (name === "width" || name === "height" || name === "alt")) {
+        try {
+          el2.setAttribute(name, value);
+        } catch {
+        }
+      }
+    }
+  }
+  if (tag === "img") {
+    const src = resolveSrc(face.s, thumbs);
+    if (!src) return null;
+    el2.setAttribute("src", src);
+    el2.setAttribute("draggable", "false");
+    el2.setAttribute("alt", el2.getAttribute?.("alt") || "");
+  }
+  if (tag === "button") {
+    el2.setAttribute("type", "button");
+    el2.setAttribute("tabindex", "-1");
+  }
+  if (face.y && typeof face.y === "object" && el2.style) {
+    for (const [name, raw] of Object.entries(face.y)) {
+      const value = String(raw ?? "");
+      if (name === "--pxd-cover") {
+        const data = resolveSrc(value, thumbs);
+        if (data.startsWith("data:image/")) setStyle(el2, name, `url("${data}")`);
+        continue;
+      }
+      if (!STYLE_PROPS.includes(name) || value.length > 120 || UNSAFE_VALUE.test(value)) continue;
+      setStyle(el2, name, value);
+    }
+  }
+  for (const kid of Array.isArray(face.k) ? face.k : []) {
+    const node2 = buildFace(doc, kid, { thumbs, inSvg: svg });
+    if (node2) el2.append(node2);
+  }
+  return el2;
+}
+function setStyle(el2, name, value) {
+  try {
+    if (typeof el2.style.setProperty === "function") el2.style.setProperty(name, value);
+    else el2.style[name] = value;
+  } catch {
+  }
+}
+function resolveSrc(value, thumbs) {
+  const s = String(value || "");
+  if (s.startsWith("@")) {
+    const data = thumbs?.get?.(s.slice(1));
+    return typeof data === "string" && /^data:image\/(png|jpeg|jpg|webp|gif);base64,/.test(data) ? data : "";
+  }
+  return /^https:\/\//i.test(s) && !/["'<>\s]/.test(s) ? s : "";
+}
+function faceThumbKeys(face, out = /* @__PURE__ */ new Set()) {
+  if (!face || typeof face !== "object") return out;
+  if (typeof face.s === "string" && face.s.startsWith("@")) out.add(face.s.slice(1));
+  const cover = face.y?.["--pxd-cover"];
+  if (typeof cover === "string" && cover.startsWith("@")) out.add(cover.slice(1));
+  for (const kid of Array.isArray(face.k) ? face.k : []) faceThumbKeys(kid, out);
+  return out;
+}
+function snapThumbKeys(snap) {
+  const out = /* @__PURE__ */ new Set();
+  for (const item of snap?.items || []) {
+    faceThumbKeys(item.face, out);
+    if (item.thumb) out.add(item.thumb);
+  }
+  for (const layer of [snap?.edges, snap?.labels, ...snap?.chrome || []]) faceThumbKeys(layer, out);
+  return out;
+}
+var finite3 = (n3) => typeof n3 === "number" && Number.isFinite(n3);
+function isSnapViewport(vp) {
+  return Boolean(vp) && finite3(vp.x) && finite3(vp.y) && finite3(vp.zoom) && vp.zoom > 0;
+}
+function cleanItem(item) {
+  if (!item || typeof item.uid !== "string" || !item.uid || item.uid.length > 64) return null;
+  if (!finite3(item.x) || !finite3(item.y) || !finite3(item.w) || !finite3(item.h)) return null;
+  const out = {
+    uid: item.uid,
+    section: item.section === true,
+    x: item.x,
+    y: item.y,
+    w: item.w,
+    h: item.h,
+    cls: cleanClasses(item.cls).join(" "),
+    sig: typeof item.sig === "string" ? item.sig.slice(0, 16) : ""
+  };
+  if (typeof item.parent === "string" && item.parent.length <= 64) out.parent = item.parent;
+  if (typeof item.thumb === "string" && item.thumb.length <= 200) out.thumb = item.thumb;
+  if (item.face && typeof item.face === "object") out.face = item.face;
+  if (item.badges && typeof item.badges === "object") out.badges = cleanBadges(item.badges);
+  return out;
+}
+function cleanBadges(b) {
+  const out = {};
+  for (const key of ["refs", "boards", "open", "done"]) if (finite3(b[key])) out[key] = b[key];
+  return out;
+}
+function cleanRootStyle(style) {
+  const out = {};
+  for (const [name, raw] of Object.entries(style || {})) {
+    const value = String(raw ?? "");
+    if (!/^--pxd-[a-z0-9-]{1,40}$/.test(name) || value.length > 120 || UNSAFE_VALUE.test(value)) continue;
+    out[name] = value;
+  }
+  return out;
+}
+function cleanSnapshot(value) {
+  if (!value || typeof value !== "object" || value.v !== SNAP_VERSION || !Array.isArray(value.items)) return null;
+  if (value.items.length > SNAP_MAX_BOXES) return null;
+  const items = [];
+  for (const item of value.items) {
+    const clean2 = cleanItem(item);
+    if (clean2) items.push(clean2);
+  }
+  const height = finite3(value.height) && value.height >= 40 && value.height <= 4e3 ? value.height : 0;
+  return {
+    v: SNAP_VERSION,
+    uid: typeof value.uid === "string" ? value.uid : "",
+    stamp: typeof value.stamp === "string" ? value.stamp.slice(0, 16) : "",
+    savedAt: finite3(value.savedAt) ? value.savedAt : 0,
+    height,
+    width: finite3(value.width) && value.width > 0 ? value.width : 0,
+    vp: isSnapViewport(value.vp) ? { x: value.vp.x, y: value.vp.y, zoom: value.vp.zoom } : null,
+    rootCls: cleanClasses(value.rootCls, ROOT_TRANSIENT).join(" "),
+    rootStyle: cleanRootStyle(value.rootStyle),
+    grid: value.grid && typeof value.grid === "object" ? value.grid : null,
+    edges: value.edges && typeof value.edges === "object" ? value.edges : null,
+    labels: value.labels && typeof value.labels === "object" ? value.labels : null,
+    chrome: Array.isArray(value.chrome) ? value.chrome.filter((face) => face && typeof face === "object").slice(0, 16) : [],
+    threshold: finite3(value.threshold) && value.threshold > 0 && value.threshold < 4 ? value.threshold : 0.45,
+    items
+  };
+}
+function packSnapshot(snap) {
+  const clean2 = cleanSnapshot(snap);
+  if (!clean2) return null;
+  const cap4 = snapByteCap(clean2.items.length);
+  const fit3 = (value) => {
+    const text5 = JSON.stringify(value);
+    return text5.length <= cap4 ? text5 : null;
+  };
+  let text4 = fit3(clean2);
+  if (text4) return text4;
+  const lean = { ...clean2, labels: null, chrome: [] };
+  text4 = fit3(lean);
+  if (text4) return text4;
+  lean.edges = null;
+  text4 = fit3(lean);
+  if (text4) return text4;
+  const items = lean.items.map((item) => ({ ...item }));
+  let over = JSON.stringify({ ...lean, items }).length - cap4;
+  for (let i = items.length - 1; i >= 0 && over > 0; i -= 1) {
+    if (!items[i].face) continue;
+    over -= JSON.stringify(items[i].face).length + 8;
+    delete items[i].face;
+  }
+  text4 = fit3({ ...lean, items });
+  if (text4) return text4;
+  let faced = items.filter((item) => item.face).length;
+  while (faced > 0) {
+    let drop = Math.max(1, Math.ceil(faced / 2));
+    for (let i = items.length - 1; i >= 0 && drop > 0; i -= 1) {
+      if (!items[i].face) continue;
+      delete items[i].face;
+      drop -= 1;
+      faced -= 1;
+    }
+    text4 = fit3({ ...lean, items });
+    if (text4) return text4;
+  }
+  return null;
+}
+function parseSnapshot2(raw) {
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    return cleanSnapshot(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+// src/host/boardsnap-store.js
+var SNAP_DB = "plexus-diagram-snapshots";
+var SNAP_DB_VERSION = 1;
+var SNAP_STORE_BOARDS = "boards";
+var SNAP_STORE_THUMBS = "thumbs";
+var SNAP_STORE_META = "meta";
+var SNAP_LRU = 20;
+var SNAP_KEEP = 40;
+var SNAP_DEBOUNCE_MS = 1e3;
+var THUMB_CAP = 300;
+var STORES2 = [SNAP_STORE_BOARDS, SNAP_STORE_THUMBS, SNAP_STORE_META];
+function request(req) {
+  return new Promise((resolve) => {
+    if (!req) {
+      resolve(null);
+      return;
+    }
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = (event) => {
+      try {
+        event?.preventDefault?.();
+      } catch {
+      }
+      resolve(null);
+    };
+  });
+}
+function done(tx) {
+  return new Promise((resolve) => {
+    if (!tx) {
+      resolve(false);
+      return;
+    }
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => resolve(false);
+    tx.onabort = () => resolve(false);
+  });
+}
+var boardKey = (graph, uid) => `${graph}\0${uid}`;
+var metaKey = (graph) => `recent\0${graph}`;
+function defaultIdle(fn) {
+  const ric = globalThis.requestIdleCallback;
+  if (typeof ric === "function") return ric(() => fn(), { timeout: 2e3 });
+  const t = setTimeout(fn, 50);
+  t?.unref?.();
+  return t;
+}
+function createBoardSnapStore({
+  indexedDB = globalThis.indexedDB,
+  graph = "",
+  now: now4 = Date.now,
+  idle = defaultIdle,
+  lruSize = SNAP_LRU,
+  keep = SNAP_KEEP,
+  debounceMs = SNAP_DEBOUNCE_MS,
+  enabled = () => true
+} = {}) {
+  const graphOf = typeof graph === "function" ? graph : () => graph;
+  const lru = /* @__PURE__ */ new Map();
+  const thumbs = /* @__PURE__ */ new Map();
+  const pendingThumbs = /* @__PURE__ */ new Set();
+  const pending = /* @__PURE__ */ new Map();
+  const timers = /* @__PURE__ */ new Map();
+  let recent = null;
+  let dbPromise = null;
+  let disposed = false;
+  let writing = Promise.resolve();
+  const allow = () => {
+    if (disposed) return false;
+    try {
+      return enabled() !== false;
+    } catch {
+      return true;
+    }
+  };
+  const db = () => {
+    if (!dbPromise) {
+      dbPromise = openDb(indexedDB, { name: SNAP_DB, version: SNAP_DB_VERSION, stores: STORES2 }).catch(() => null);
+    }
+    return dbPromise;
+  };
+  const touch = (uid, entry) => {
+    lru.delete(uid);
+    lru.set(uid, entry);
+    while (lru.size > lruSize) {
+      const oldest = lru.keys().next().value;
+      lru.delete(oldest);
+    }
+  };
+  const capThumbs = () => {
+    if (thumbs.size <= THUMB_CAP) return;
+    const used = /* @__PURE__ */ new Set();
+    for (const { snap } of lru.values()) for (const key of snapThumbKeys(snap)) used.add(key);
+    for (const key of [...thumbs.keys()]) {
+      if (thumbs.size <= THUMB_CAP) break;
+      if (!used.has(key)) thumbs.delete(key);
+    }
+  };
+  async function loadThumbs(handle, keys) {
+    const missing2 = [...keys].filter((key) => !thumbs.has(key));
+    if (!missing2.length || !handle) return;
+    let tx;
+    try {
+      tx = handle.transaction([SNAP_STORE_THUMBS], "readonly");
+    } catch {
+      return;
+    }
+    const store = tx.objectStore(SNAP_STORE_THUMBS);
+    const rows = await Promise.all(missing2.map((key) => request(store.get(key))));
+    rows.forEach((value, i) => {
+      if (typeof value === "string" && value.startsWith("data:image/")) thumbs.set(missing2[i], value);
+    });
+    capThumbs();
+  }
+  async function loadBoards(handle, uids) {
+    if (!handle || !uids.length) return [];
+    const g = graphOf();
+    let tx;
+    try {
+      tx = handle.transaction([SNAP_STORE_BOARDS], "readonly");
+    } catch {
+      return [];
+    }
+    const store = tx.objectStore(SNAP_STORE_BOARDS);
+    const rows = await Promise.all(uids.map((uid) => request(store.get(boardKey(g, uid)))));
+    const out = [];
+    rows.forEach((row4, i) => {
+      const snap = parseSnapshot2(row4?.text);
+      if (snap) out.push({ uid: uids[i], snap, text: row4.text });
+    });
+    return out;
+  }
+  async function readRecent(handle) {
+    if (recent) return recent;
+    if (!handle) return [];
+    let tx;
+    try {
+      tx = handle.transaction([SNAP_STORE_META], "readonly");
+    } catch {
+      return [];
+    }
+    const list = await request(tx.objectStore(SNAP_STORE_META).get(metaKey(graphOf())));
+    recent = Array.isArray(list) ? list.filter((row4) => row4 && typeof row4.uid === "string").slice(0, keep * 2) : [];
+    return recent;
+  }
+  async function warm() {
+    if (!allow()) return 0;
+    const handle = await db();
+    if (!handle || disposed) return 0;
+    const list = await readRecent(handle);
+    const uids = list.slice(0, lruSize).map((row4) => row4.uid).filter((uid) => !lru.has(uid));
+    const loaded = await loadBoards(handle, uids);
+    if (disposed) return 0;
+    for (const entry of loaded.reverse()) {
+      if (!lru.has(entry.uid)) {
+        lru.set(entry.uid, { snap: entry.snap, text: entry.text });
+        while (lru.size > lruSize) lru.delete(lru.keys().next().value);
+      }
+    }
+    const keys = /* @__PURE__ */ new Set();
+    for (const { snap } of lru.values()) for (const key of snapThumbKeys(snap)) keys.add(key);
+    thumbsReady = loadThumbs(handle, keys).catch(() => {
+    });
+    return loaded.length;
+  }
+  let thumbsReady = Promise.resolve();
+  async function load(uid) {
+    if (!allow() || !uid) return null;
+    if (lru.has(uid)) return lru.get(uid).snap;
+    const handle = await db();
+    if (!handle || disposed) return null;
+    const [entry] = await loadBoards(handle, [uid]);
+    if (!entry || disposed) return null;
+    if (!lru.has(uid)) touch(uid, { snap: entry.snap, text: entry.text });
+    await loadThumbs(handle, snapThumbKeys(entry.snap));
+    return lru.get(uid)?.snap ?? null;
+  }
+  async function writeNow(uids) {
+    const handle = await db();
+    if (!handle) return false;
+    const g = graphOf();
+    const rows = [];
+    for (const uid of uids) {
+      if (!pending.has(uid)) continue;
+      rows.push({ uid, text: pending.get(uid) });
+      pending.delete(uid);
+    }
+    const thumbRows = [];
+    for (const key of [...pendingThumbs]) {
+      if (thumbs.has(key)) thumbRows.push([key, thumbs.get(key)]);
+      pendingThumbs.delete(key);
+    }
+    if (!rows.length && !thumbRows.length) return true;
+    const list = (await readRecent(handle)).slice();
+    const at = now4();
+    for (const row4 of rows) {
+      const index = list.findIndex((entry) => entry.uid === row4.uid);
+      if (index >= 0) list.splice(index, 1);
+      list.unshift({ uid: row4.uid, savedAt: at });
+    }
+    const dropped = list.splice(keep);
+    recent = list;
+    let tx;
+    try {
+      tx = handle.transaction(STORES2, "readwrite");
+    } catch {
+      return false;
+    }
+    try {
+      const boards = tx.objectStore(SNAP_STORE_BOARDS);
+      for (const row4 of rows) boards.put({ uid: row4.uid, savedAt: at, text: row4.text }, boardKey(g, row4.uid));
+      for (const row4 of dropped) boards.delete(boardKey(g, row4.uid));
+      const thumbStore = tx.objectStore(SNAP_STORE_THUMBS);
+      for (const [key, value] of thumbRows) thumbStore.put(value, key);
+      tx.objectStore(SNAP_STORE_META).put(list, metaKey(g));
+    } catch {
+      try {
+        tx.abort();
+      } catch {
+      }
+      return false;
+    }
+    return done(tx);
+  }
+  const schedule = (uid) => {
+    if (timers.has(uid)) return;
+    const timer = setTimeout(() => {
+      timers.delete(uid);
+      if (disposed) return;
+      idle(() => {
+        if (disposed) return;
+        writing = writing.then(() => writeNow([uid])).catch(() => false);
+      });
+    }, debounceMs);
+    timer?.unref?.();
+    timers.set(uid, timer);
+  };
+  const ready = allow() ? warm().catch(() => 0) : Promise.resolve(0);
+  return {
+    ready,
+    get thumbsReady() {
+      return thumbsReady;
+    },
+    warm,
+    load,
+    // Synchronous: the LRU only. A miss means "paint the old way".
+    get(uid) {
+      if (!allow() || !uid) return null;
+      const hit = lru.get(uid);
+      if (!hit) return null;
+      touch(uid, hit);
+      return hit.snap;
+    },
+    has(uid) {
+      return lru.has(uid);
+    },
+    thumb(key) {
+      return thumbs.get(key) ?? null;
+    },
+    thumbs: { get: (key) => thumbs.get(key) ?? null, has: (key) => thumbs.has(key) },
+    putThumb(key, dataUrl) {
+      if (!allow() || typeof key !== "string" || typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) return false;
+      if (thumbs.get(key) === dataUrl) return true;
+      thumbs.set(key, dataUrl);
+      pendingThumbs.add(key);
+      capThumbs();
+      return true;
+    },
+    // snap is a raw snapshot object; thumbData is the key -> data URL map captured with it.
+    // Returns false when the board is too large or the JSON is over the cap.
+    set(uid, snap, thumbData = null) {
+      if (!allow() || !uid || !snap) return false;
+      const text4 = packSnapshot(snap);
+      if (!text4) return false;
+      const parsed = parseSnapshot2(text4);
+      if (!parsed) return false;
+      const used = snapThumbKeys(parsed);
+      if (thumbData) {
+        for (const key of used) {
+          const value = thumbData.get?.(key);
+          if (typeof value === "string" && value.startsWith("data:image/") && thumbs.get(key) !== value) {
+            thumbs.set(key, value);
+            pendingThumbs.add(key);
+          }
+        }
+      }
+      const prev = lru.get(uid);
+      touch(uid, { snap: parsed, text: text4 });
+      capThumbs();
+      if (prev?.text === text4 && !pendingThumbs.size) return true;
+      pending.set(uid, text4);
+      schedule(uid);
+      return true;
+    },
+    // Unmount and unload: skip the debounce, keep the idle-free async write.
+    flush() {
+      const uids = [...timers.keys()];
+      for (const uid of uids) clearTimeout(timers.get(uid));
+      timers.clear();
+      if (!pending.size && !pendingThumbs.size) return writing;
+      const all = [.../* @__PURE__ */ new Set([...uids, ...pending.keys()])];
+      writing = writing.then(() => writeNow(all)).catch(() => false);
+      return writing;
+    },
+    forget(uid) {
+      lru.delete(uid);
+      pending.delete(uid);
+      const timer = timers.get(uid);
+      if (timer) clearTimeout(timer);
+      timers.delete(uid);
+    },
+    size() {
+      return lru.size;
+    },
+    // Pending writes still land, then the connection closes.
+    dispose() {
+      if (disposed) return writing;
+      const uids = [...timers.keys()];
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+      const all = [.../* @__PURE__ */ new Set([...uids, ...pending.keys()])];
+      const tail = (all.length || pendingThumbs.size) && dbPromise ? writing.then(() => writeNow(all)).catch(() => false) : writing;
+      disposed = true;
+      lru.clear();
+      const close = () => {
+        pending.clear();
+        thumbs.clear();
+        void dbPromise?.then((handle) => {
+          try {
+            handle?.close?.();
+          } catch {
+          }
+        });
+      };
+      return Promise.resolve(tail).then(close, close);
+    }
+  };
+}
+
+// src/host/model-store.js
+var MODEL_VERSION = 1;
+var MODEL_PART_ROWS = 1500;
+var MODEL_KEEP = 6;
+var MODEL_BUDGET = 4e7;
+var UID2 = ":block/uid";
+var KIDS2 = ":block/children";
+var FIELDS = [":block/string", ":block/order", ":block/heading", ":block/open", ":block/props"];
+var own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+var perfNow2 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
+function createTreeEncoder(tree, { partRows = MODEL_PART_ROWS } = {}) {
+  const stack = tree?.[UID2] ? [tree] : [];
+  const parts = [];
+  let rows = [];
+  let n3 = 0;
+  let size = 0;
+  let failed = !stack.length;
+  const flush = () => {
+    if (!rows.length) return;
+    const text4 = JSON.stringify(rows);
+    parts.push(text4);
+    size += text4.length;
+    rows = [];
+  };
+  return {
+    step(ms = Infinity, clock = perfNow2) {
+      if (failed) return true;
+      const t0 = clock();
+      while (stack.length) {
+        const node2 = stack.pop();
+        if (!node2 || typeof node2[UID2] !== "string") {
+          failed = true;
+          return true;
+        }
+        const kids = Array.isArray(node2[KIDS2]) && node2[KIDS2].length ? node2[KIDS2] : null;
+        const row4 = [0, kids ? kids.length : 0, node2[UID2]];
+        let mask = 0;
+        for (let i = 0; i < FIELDS.length; i += 1) {
+          if (own(node2, FIELDS[i])) {
+            mask |= 1 << i;
+            row4.push(node2[FIELDS[i]]);
+          }
+        }
+        row4[0] = mask;
+        rows.push(row4);
+        n3 += 1;
+        if (kids) for (let i = kids.length - 1; i >= 0; i -= 1) stack.push(kids[i]);
+        if (rows.length >= partRows) {
+          flush();
+          if (stack.length && clock() - t0 >= ms) return false;
+        }
+      }
+      flush();
+      return true;
+    },
+    result() {
+      return failed || stack.length ? null : { v: MODEL_VERSION, n: n3, size, parts };
+    }
+  };
+}
+function createTreeDecoder(model) {
+  const parts = Array.isArray(model?.parts) ? model.parts : null;
+  let failed = !parts || model.v !== MODEL_VERSION || !(model.n > 0);
+  let pi = 0;
+  let root = null;
+  let count = 0;
+  const stack = [];
+  const add = (row4) => {
+    if (!Array.isArray(row4) || typeof row4[2] !== "string") return false;
+    const node2 = { [UID2]: row4[2] };
+    let at = 3;
+    for (let i = 0; i < FIELDS.length; i += 1) if (row4[0] & 1 << i) node2[FIELDS[i]] = row4[at++];
+    if (stack.length) {
+      const top = stack[stack.length - 1];
+      top.node[KIDS2].push(node2);
+      top.left -= 1;
+      while (stack.length && stack[stack.length - 1].left === 0) stack.pop();
+    } else if (root) return false;
+    else root = node2;
+    count += 1;
+    if (row4[1] > 0) {
+      node2[KIDS2] = [];
+      stack.push({ node: node2, left: row4[1] });
+    }
+    return true;
+  };
+  return {
+    step(ms = Infinity, clock = perfNow2) {
+      if (failed) return true;
+      const t0 = clock();
+      while (pi < parts.length) {
+        let rows = null;
+        try {
+          rows = JSON.parse(parts[pi]);
+        } catch {
+          rows = null;
+        }
+        pi += 1;
+        if (!Array.isArray(rows)) {
+          failed = true;
+          return true;
+        }
+        for (const row4 of rows) if (!add(row4)) {
+          failed = true;
+          return true;
+        }
+        if (pi < parts.length && clock() - t0 >= ms) return false;
+      }
+      if (count !== model.n || stack.length) failed = true;
+      return true;
+    },
+    result() {
+      return failed || pi < (parts?.length ?? 0) ? null : root;
+    }
+  };
+}
+function request2(req) {
+  return new Promise((resolve) => {
+    if (!req) {
+      resolve(null);
+      return;
+    }
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = (event) => {
+      try {
+        event?.preventDefault?.();
+      } catch {
+      }
+      resolve(null);
+    };
+  });
+}
+function done2(tx) {
+  return new Promise((resolve) => {
+    if (!tx) {
+      resolve(false);
+      return;
+    }
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => resolve(false);
+    tx.onabort = () => resolve(false);
+  });
+}
+function createModelStore({ indexedDB = globalThis.indexedDB, graph = "", now: now4 = Date.now, enabled = () => true, keep = MODEL_KEEP, budget = MODEL_BUDGET } = {}) {
+  const graphOf = typeof graph === "function" ? graph : () => graph;
+  const modelKey2 = (uid) => `model\0${graphOf()}\0${uid}`;
+  const metaKey2 = () => `models\0${graphOf()}`;
+  let dbPromise = null;
+  let list = null;
+  let disposed = false;
+  let writing = Promise.resolve();
+  const allow = () => {
+    if (disposed) return false;
+    try {
+      return enabled() !== false;
+    } catch {
+      return true;
+    }
+  };
+  const db = () => {
+    dbPromise ?? (dbPromise = openDb(indexedDB, { name: SNAP_DB, version: SNAP_DB_VERSION, stores: [SNAP_STORE_BOARDS, SNAP_STORE_THUMBS, SNAP_STORE_META] }).catch(() => null));
+    return dbPromise;
+  };
+  const readList = async () => {
+    if (list) return list;
+    const handle = await db();
+    if (!handle) return [];
+    let tx;
+    try {
+      tx = handle.transaction([SNAP_STORE_META], "readonly");
+    } catch {
+      return [];
+    }
+    const got = await request2(tx.objectStore(SNAP_STORE_META).get(metaKey2()));
+    list ?? (list = Array.isArray(got) ? got.filter((row4) => row4 && typeof row4.uid === "string" && typeof row4.stamp === "string") : []);
+    return list;
+  };
+  const ready = allow() ? readList().catch(() => []) : Promise.resolve([]);
+  return {
+    ready,
+    // Synchronous: the stamp the stored model was read at, or null (none, or the list is not loaded yet).
+    stampOf(uid) {
+      if (!allow() || !list) return null;
+      return list.find((row4) => row4.uid === uid)?.stamp ?? null;
+    },
+    // { v, n, size, parts, stamp } or null. A model whose stamp is not the listed one is not returned.
+    async load(uid) {
+      if (!allow() || !uid) return null;
+      const handle = await db();
+      if (!handle || disposed) return null;
+      const want = (await readList()).find((row4) => row4.uid === uid);
+      if (!want) return null;
+      let tx;
+      try {
+        tx = handle.transaction([SNAP_STORE_BOARDS], "readonly");
+      } catch {
+        return null;
+      }
+      const got = await request2(tx.objectStore(SNAP_STORE_BOARDS).get(modelKey2(uid)));
+      if (!got || got.v !== MODEL_VERSION || got.stamp !== want.stamp || !Array.isArray(got.parts)) return null;
+      return got;
+    },
+    // model: an encoder result. Kept within `keep` boards and `budget` characters; a model over the budget alone is
+    // not stored (and drops an older one of the same board).
+    put(uid, stamp2, model) {
+      if (!allow() || !uid || typeof stamp2 !== "string" || !model?.parts) return Promise.resolve(false);
+      const job = async () => {
+        const handle = await db();
+        if (!handle) return false;
+        const rows = (await readList()).filter((row4) => row4.uid !== uid);
+        const fits = model.size <= budget;
+        if (fits) rows.unshift({ uid, stamp: stamp2, savedAt: now4(), size: model.size });
+        const dropped = [];
+        let total = 0;
+        const keepRows = [];
+        for (const row4 of rows) {
+          if (keepRows.length < keep && total + (row4.size || 0) <= budget) {
+            keepRows.push(row4);
+            total += row4.size || 0;
+          } else dropped.push(row4);
+        }
+        let tx;
+        try {
+          tx = handle.transaction([SNAP_STORE_BOARDS, SNAP_STORE_META], "readwrite");
+        } catch {
+          return false;
+        }
+        try {
+          const boards = tx.objectStore(SNAP_STORE_BOARDS);
+          if (fits) boards.put({ v: MODEL_VERSION, uid, stamp: stamp2, n: model.n, size: model.size, parts: model.parts }, modelKey2(uid));
+          else boards.delete(modelKey2(uid));
+          for (const row4 of dropped) boards.delete(modelKey2(row4.uid));
+          tx.objectStore(SNAP_STORE_META).put(keepRows, metaKey2());
+        } catch {
+          try {
+            tx.abort();
+          } catch {
+          }
+          return false;
+        }
+        list = keepRows;
+        return await done2(tx) && fits;
+      };
+      writing = writing.then(job, job).catch(() => false);
+      return writing;
+    },
+    forget(uid) {
+      if (!list?.some((row4) => row4.uid === uid)) return Promise.resolve(true);
+      const job = async () => {
+        const handle = await db();
+        if (!handle) return false;
+        const rows = (await readList()).filter((row4) => row4.uid !== uid);
+        let tx;
+        try {
+          tx = handle.transaction([SNAP_STORE_BOARDS, SNAP_STORE_META], "readwrite");
+        } catch {
+          return false;
+        }
+        try {
+          tx.objectStore(SNAP_STORE_BOARDS).delete(modelKey2(uid));
+          tx.objectStore(SNAP_STORE_META).put(rows, metaKey2());
+        } catch {
+          return false;
+        }
+        list = rows;
+        return done2(tx);
+      };
+      writing = writing.then(job, job).catch(() => false);
+      return writing;
+    },
+    list: () => list ? list.map((row4) => ({ ...row4 })) : [],
+    dispose() {
+      if (disposed) return writing;
+      const tail = writing;
+      disposed = true;
+      const close = () => {
+        void dbPromise?.then((handle) => {
+          try {
+            handle?.close?.();
+          } catch {
+          }
+        });
+      };
+      return Promise.resolve(tail).then(close, close);
+    }
+  };
+}
+
+// src/part-sizer.js
+function createPartSizer({ max = 30, start = 4 } = {}) {
+  let per = 0;
+  return {
+    size(leftMs) {
+      if (!(per > 0)) return Math.max(1, Math.min(max, start));
+      return Math.max(1, Math.min(max, Math.floor(Math.max(0, leftMs) / per)));
+    },
+    note(n3, ms) {
+      if (!(n3 > 0) || !(ms >= 0)) return;
+      const last = ms / n3;
+      per = per > 0 ? Math.max(last, (per + last) / 2) : last;
+    }
+  };
+}
+
+// src/bg-budget.js
+var BG_SLICE_MS = 30;
+var BG_QUIET_MS = 300;
+var BG_DUTY = 0.25;
+var BG_GAP_MIN_MS = 5;
+var INPUT_EVENTS = ["wheel", "pointerdown", "pointermove", "keydown", "touchstart", "touchmove"];
+function createBgBudget({
+  win: win2 = globalThis,
+  now: now4 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now(),
+  ric = (fn, opts) => typeof win2.requestIdleCallback === "function" ? win2.requestIdleCallback(fn, opts) : setTimeout(() => fn({ timeRemaining: () => 12, didTimeout: true }), 0),
+  cic = (id) => {
+    try {
+      if (typeof win2.cancelIdleCallback === "function") win2.cancelIdleCallback(id);
+      else clearTimeout(id);
+    } catch {
+    }
+  },
+  setTimer = (fn, ms) => setTimeout(fn, ms),
+  clearTimer = (id) => clearTimeout(id),
+  sliceMs = BG_SLICE_MS,
+  quietMs = BG_QUIET_MS,
+  duty = BG_DUTY,
+  enabled = () => true
+} = {}) {
+  let lastInput = -Infinity;
+  let listening = false;
+  const onInput = (ev) => {
+    if (ev?.type === "pointermove" && !ev.buttons) return;
+    lastInput = now4();
+  };
+  const listen = () => {
+    if (listening || typeof win2?.addEventListener !== "function") return;
+    listening = true;
+    for (const type of INPUT_EVENTS) {
+      try {
+        win2.addEventListener(type, onInput, { capture: true, passive: true });
+      } catch {
+      }
+    }
+  };
+  const quietFor = () => now4() - lastInput;
+  let nextAt = -Infinity;
+  const overruns = [];
+  listen();
+  function idle(fn, { timeout = 1500, quiet = quietMs, since = -Infinity, delay: delay2 = 0, label = "", urgent = false } = {}) {
+    if (!enabled()) {
+      let id = null;
+      try {
+        id = ric((d) => fn(d), { timeout });
+      } catch {
+        id = null;
+      }
+      return () => {
+        if (id != null) cic(id);
+      };
+    }
+    listen();
+    let idleId = null;
+    let timerId = null;
+    let cancelled = false;
+    const arm4 = () => {
+      if (cancelled) return;
+      idleId = ric(run2, { timeout });
+    };
+    const run2 = (d) => {
+      idleId = null;
+      if (cancelled) return;
+      const wait2 = Math.max(quiet - Math.min(quietFor(), now4() - since), urgent ? 0 : nextAt - now4());
+      if (wait2 > 0) {
+        timerId = setTimer(() => {
+          timerId = null;
+          arm4();
+        }, Math.ceil(wait2));
+        try {
+          timerId?.unref?.();
+        } catch {
+        }
+        return;
+      }
+      const t0 = now4();
+      const real = typeof d?.timeRemaining === "function" ? d : null;
+      const deadline = {
+        didTimeout: false,
+        timeRemaining: () => {
+          if (quietFor() < quietMs) return 0;
+          const left = sliceMs - (now4() - t0);
+          const idleLeft = real ? d.didTimeout ? 0 : real.timeRemaining() : left;
+          return Math.max(0, Math.min(left, idleLeft));
+        }
+      };
+      try {
+        fn(deadline);
+      } finally {
+        const spent = now4() - t0;
+        if (spent > 2 * sliceMs) {
+          overruns.push({ label: label || "?", ms: Math.round(spent) });
+          if (overruns.length > 40) overruns.shift();
+        }
+        if (duty > 0 && duty < 1 && spent >= BG_GAP_MIN_MS) nextAt = now4() + spent * (1 - duty) / duty;
+      }
+    };
+    if (delay2 > 0) {
+      timerId = setTimer(() => {
+        timerId = null;
+        arm4();
+      }, Math.ceil(delay2));
+      try {
+        timerId?.unref?.();
+      } catch {
+      }
+    } else arm4();
+    return () => {
+      cancelled = true;
+      if (idleId != null) cic(idleId);
+      if (timerId != null) clearTimer(timerId);
+      idleId = null;
+      timerId = null;
+    };
+  }
+  function run(part, { timeout = 1500, quiet = quietMs, firstQuiet = quiet, partMs = 0, label = "", urgent = false } = {}) {
+    let cancel = null;
+    let stopped = false;
+    const need2 = () => Math.max(1e-3, typeof partMs === "function" ? Number(partMs()) || 0 : partMs);
+    const slice = (deadline) => {
+      if (stopped) return;
+      let done3 = false;
+      do {
+        try {
+          done3 = part(deadline) === true;
+        } catch (err) {
+          done3 = true;
+          console.error("[plexus-diagram] background job", err);
+        }
+      } while (!done3 && !stopped && deadline.timeRemaining() >= need2());
+      if (!done3 && !stopped) cancel = idle(slice, { timeout, quiet, label, urgent });
+    };
+    cancel = idle(slice, { timeout, quiet: firstQuiet, since: firstQuiet > quiet ? now4() : -Infinity, label, urgent });
+    return () => {
+      stopped = true;
+      cancel?.();
+    };
+  }
+  return {
+    idle,
+    run,
+    noteInput: () => {
+      lastInput = now4();
+    },
+    quietFor,
+    overruns,
+    dispose() {
+      if (!listening) return;
+      listening = false;
+      for (const type of INPUT_EVENTS) {
+        try {
+          win2.removeEventListener(type, onInput, { capture: true });
+        } catch {
+        }
+      }
+    }
+  };
+}
+var shared = null;
+var flagOn = () => true;
+function bindBgBudgetFlag(fn) {
+  flagOn = typeof fn === "function" ? fn : () => true;
+}
+function sharedBgBudget() {
+  if (!shared) shared = createBgBudget({ enabled: () => flagOn() });
+  return shared;
+}
+function resetSharedBgBudget() {
+  shared?.dispose();
+  shared = null;
+}
+
+// src/host/roam.js
 var READER_STATE = ":pdf-settings";
 function sameButReaderState(a, b) {
   if (a === b) return true;
@@ -38690,6 +40600,61 @@ var REF_BODY = `[:db/id :block/uid :block/string :node/title :block/order :block
  {:block/page [:node/title :block/uid :pdf/url]}
  ${NATIVE_PULL}
  {(limit :block/children nil) ${REF_CHILD}}]`;
+var LEVEL_ROOT = `[:db/id :block/uid :block/string :node/title :block/order :block/heading :block/open :block/props :pdf/url
+ {:block/page [:node/title :block/uid :pdf/url]}
+ ${NATIVE_PULL}
+ {(limit :block/children nil) [:block/uid :block/order]}]`;
+var LEVEL_KID = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
+ {(limit :block/children nil) [:block/uid :block/order]}]`;
+var OUTLINE_BATCH = 20;
+function createOutlineAssembler({ pullMany, batch = OUTLINE_BATCH } = {}) {
+  const queue = [];
+  const roots = [];
+  const take = (n3) => {
+    if (!queue.length) return true;
+    const limit = Number.isFinite(n3) ? Math.max(1, Math.floor(n3)) : batch;
+    const root = queue[0].root === true;
+    const part = [];
+    while (part.length < limit && queue.length && queue[0].root === root) part.push(queue.shift());
+    let nodes = [];
+    try {
+      nodes = pullMany?.(root ? LEVEL_ROOT : LEVEL_KID, part.map((slot2) => slot2.entity)) || [];
+    } catch {
+      nodes = [];
+    }
+    if (!Array.isArray(nodes)) nodes = [];
+    part.forEach((slot2, i) => {
+      const raw = nodes[i];
+      const node2 = raw && typeof raw === "object" ? raw : {};
+      let current3 = node2;
+      if (slot2.root) roots.push(node2);
+      else if (slot2.parent && slot2.stub) {
+        const list = slot2.parent[":block/children"];
+        const at = Array.isArray(list) ? list.indexOf(slot2.stub) : -1;
+        current3 = at >= 0 ? { ...slot2.stub, ...node2 } : node2;
+        if (at >= 0) list[at] = current3;
+      }
+      const kids = Array.isArray(current3[":block/children"]) ? current3[":block/children"] : [];
+      if (!Array.isArray(current3[":block/children"])) current3[":block/children"] = kids;
+      for (const kid of kids) {
+        const id = kid?.[":block/uid"];
+        if (typeof id !== "string" || !id) continue;
+        queue.push({ entity: [":block/uid", id], root: false, parent: current3, stub: kid });
+      }
+    });
+    return queue.length === 0;
+  };
+  return {
+    addRoots(uids, titles) {
+      for (const id of uids || []) if (typeof id === "string" && id) queue.push({ entity: [":block/uid", id], root: true });
+      for (const title of titles || []) if (typeof title === "string" && title) queue.push({ entity: [":node/title", title], root: true });
+    },
+    pending: () => queue.length,
+    entities: () => roots,
+    start: (n3) => take(n3),
+    step: (n3) => take(n3)
+  };
+}
 var OPEN_PATTERN = `[:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/page [:block/uid :pdf/url]}
  {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}
@@ -38801,6 +40766,46 @@ function collectTargets(node2) {
   walk3(node2, true);
   return { titles: uniqueStrings(titles), uids: uniqueStrings(uids), stats };
 }
+function createTargetsWalk(node2) {
+  const titles = [];
+  const uids = [];
+  const stats = [];
+  const stack = node2 && typeof node2 === "object" ? [[node2, true]] : [];
+  let out = null;
+  return {
+    step(budgetMs = Infinity, clock = () => 0) {
+      const t0 = clock();
+      let n3 = 0;
+      while (stack.length) {
+        const [cur, isRoot] = stack.pop();
+        if (cur && typeof cur === "object") {
+          if (!isRoot) {
+            const uid = cur[":block/uid"];
+            if (typeof uid === "string" && uid) stats.push({ kind: "block", uid });
+            const cls = classifyString(cur[":block/string"] ?? "");
+            if (cls.kind === "page" && cls.title) {
+              titles.push(cls.title);
+              stats.push({ kind: "page", title: cls.title });
+            } else if (cls.kind === "block" && cls.refUid) {
+              uids.push(cls.refUid);
+              stats.push({ kind: "block", uid: cls.refUid });
+            }
+          }
+          const kids = childNodes(cur);
+          for (let i = kids.length - 1; i >= 0; i -= 1) stack.push([kids[i], false]);
+        }
+        n3 += 1;
+        if ((n3 & 255) === 0 && clock() - t0 >= budgetMs) return false;
+      }
+      return true;
+    },
+    result() {
+      if (stack.length) return null;
+      if (!out) out = { titles: uniqueStrings(titles), uids: uniqueStrings(uids), stats };
+      return out;
+    }
+  };
+}
 function unpackPulls(rows) {
   const out = [];
   for (const row4 of rows || []) {
@@ -38813,7 +40818,7 @@ var ciPattern = (text4) => `(?i)${String(text4).replace(/[.*+?^${}()|[\]\\]/g, "
 var NATIVE_PATTERN = `[:block/props
  {:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
-var DIAGRAM_RE2 = "^\\{\\{(\\[\\[)?diagram";
+var DIAGRAM_RE3 = "^\\{\\{(\\[\\[)?diagram";
 var BLOCK_KIND_PATTERNS = {
   pdf: "\\{\\{(\\[\\[)?pdf(\\]\\])?:",
   image: "!\\[[^\\]]*\\]\\(",
@@ -38822,7 +40827,7 @@ var BLOCK_KIND_PATTERNS = {
   pin: "plexus-pin\\]\\]:"
 };
 var DIAGRAM_STRING = /^\s*\{\{(?:\[\[)?diagram/i;
-var DIAGRAM_FIND = new RegExp(DIAGRAM_RE2);
+var DIAGRAM_FIND = new RegExp(DIAGRAM_RE3);
 var STATS_PULL = `[:db/id {(limit :block/_refs nil) [:db/id {:block/parents [:db/id :block/string]}]} {(limit :block/_parents nil) [:db/id {:block/refs [:db/id]}]} {:block/_page [:db/id {:block/refs [:db/id]}]}]`;
 function listOf(value) {
   if (value == null) return [];
@@ -38862,13 +40867,17 @@ var USER_EID_QUERIES = Object.freeze([
 ]);
 var PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?uid] [?b :block/page ?p] [?b :block/props ?props]]`;
 var PDF_PAGES_ALL_QUERY = `[:find ?url ?u ?t :where [?p :pdf/url ?url] [?p :block/uid ?u] [?p :node/title ?t]]`;
-var PDF_PAGE_PROPS_ALL_QUERY = `[:find ?u ?b ?props :where [?p :pdf/url _] [?p :block/uid ?u] [?b :block/page ?p] [?b :block/props ?props]]`;
+var PDF_PAGE_COUNTS_ALL_QUERY = `[:find ?u (count-distinct ?b) :where [?p :pdf/url _] [?p :block/uid ?u] [?b :block/page ?p] [?b :block/props ?props]
+ (or [(contains? ?props :pdf-highlight)] [(contains? ?props "pdf-highlight")])]`;
 var COVER_INDEX_URLS = 15;
 var COVER_INDEX_MIN_MS = 2e3;
 var PDF_BLOCK_OUT_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?p :block/refs ?b] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
 var PDF_BLOCK_IN_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?b :block/refs ?p] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
 var PDF_KIDS_PATTERN = `[:block/uid {(limit :block/children nil) [:block/uid :block/string :block/order :block/props
  {(limit :block/children nil) [:block/uid :block/string :block/order :block/props]}]}]`;
+var LINK_REFS_QUERY = "[:find ?b ?src :in $ [?b ...] :where [?src :block/refs ?b]]";
+var LINK_SRC_PATTERN = "[:db/id :block/uid :block/string {:block/page [:db/id]} {:block/parents [:db/id]} {:block/_children [:block/string]}]";
+var OUTLINE_KIDS_PATTERN = "[:block/uid {(limit :block/children nil) [:block/uid :block/string :block/open :block/order]}]";
 var PDF_PAGE_PATTERN = "[:block/uid :node/title {(limit :block/children nil) [:block/uid :block/string :block/order]}]";
 var PDF_HASH_PAGE_QUERY = `[:find ?u ?t :in $ ?h :where [?p :pdf/content-hash ?h] [?p :block/uid ?u] [?p :node/title ?t]]`;
 var PDF_TOP_BLOCK_QUERY = `[:find ?u ?t :in $ ?url :where [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/page ?p] [?p :block/children ?b] [?p :block/uid ?u] [?p :node/title ?t]]`;
@@ -39402,9 +41411,9 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     redoLog.length = 0;
     if (openGroup) {
       if (openGroup.n >= MAX_GROUP_WRITES && !openGroup.custom) {
-        const done2 = openGroup;
-        openGroup = { n: 0, kinds: [], label: done2.label || "" };
-        closeChunk(done2);
+        const done3 = openGroup;
+        openGroup = { n: 0, kinds: [], label: done3.label || "" };
+        closeChunk(done3);
       }
       openGroup.n++;
       if (kind && !openGroup.kinds.includes(kind)) openGroup.kinds.push(kind);
@@ -39415,6 +41424,284 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const groupSpan = (entry) => (entry.n || 0) + (entry.created?.length || 0);
   const cache = createCardCache();
   const warm = /* @__PURE__ */ new Set();
+  const OFFER_TTL_MS = 2e3;
+  const offeredTrees = /* @__PURE__ */ new Map();
+  const primedProps = /* @__PURE__ */ new Map();
+  const PRIMED_PROPS_MS = 3e3;
+  const PRIME_PROPS_BATCH = 400;
+  const primePropsPart = (uids, at, n3) => {
+    const ids = uids.slice(at, at + n3);
+    if (!ids.length || typeof data.pull_many !== "function") return uids.length;
+    const res = data.pull_many(BLOCK_PROPS_PATTERN, ids.map((u) => [":block/uid", u]));
+    if (!Array.isArray(res) || res.length !== ids.length) return uids.length;
+    const now4 = Date.now();
+    if (at === 0) primedProps.clear();
+    for (let i = 0; i < ids.length; i += 1) primedProps.set(ids[i], { at: now4, res: res[i] ?? null });
+    return at + ids.length;
+  };
+  const adoptedTrees = /* @__PURE__ */ new Map();
+  const adoptOffer = (uid) => {
+    const offered = offeredTrees.get(uid);
+    if (!offered || !splitWatchOn() || splitWatches.has(uid)) return false;
+    if (!trustOn()) return false;
+    if (Date.now() - offered.at > OFFER_TTL_MS || pageStampOf(uid) !== offered.stamp) {
+      offeredTrees.delete(uid);
+      return false;
+    }
+    if (treeSize(offered.tree, SPLIT_WATCH_MIN) < SPLIT_WATCH_MIN) return false;
+    if (offered.trusted && !trustOn()) {
+      offeredTrees.delete(uid);
+      return false;
+    }
+    offeredTrees.delete(uid);
+    const tree = offered.tree;
+    absorb(uid, tree, false);
+    bigBoards.set(uid, tree);
+    boardCovers.set(uid, false);
+    let split = null;
+    try {
+      split = splitFor(uid);
+    } catch {
+      split = null;
+    }
+    if (!split) return false;
+    holdSplit(uid, split);
+    if (offered.trusted) unverified.set(uid, offered.stamp);
+    else if (modelStore && trustOn() && modelStore.stampOf(uid) !== offered.stamp) keepModel(uid, tree, offered.stamp);
+    adoptedTrees.set(uid, { node: tree, found: offered.found, stamp: offered.stamp, at: Date.now(), split, trusted: offered.trusted === true });
+    return true;
+  };
+  const pageStampOf = (uid) => {
+    let pageUid2 = "";
+    try {
+      pageUid2 = String(host.blockPageUid?.(uid) || "");
+    } catch {
+      pageUid2 = "";
+    }
+    if (!pageUid2) return null;
+    let p = null;
+    try {
+      p = rawPull("[:page/edit-time :page/edit-nonce]", eidKey(pageUid2));
+    } catch {
+      p = null;
+    }
+    const t = p?.[":page/edit-time"];
+    const n3 = p?.[":page/edit-nonce"];
+    if (t == null && n3 == null) return null;
+    return `${t ?? ""}|${n3 ?? ""}`;
+  };
+  const trustOn = () => {
+    try {
+      return notedSpeedFlags().trustSnapshot !== false;
+    } catch {
+      return true;
+    }
+  };
+  let modelStore = null;
+  const unverified = /* @__PURE__ */ new Map();
+  const verifyListeners = /* @__PURE__ */ new Map();
+  const checks = /* @__PURE__ */ new Map();
+  const checkOwed = /* @__PURE__ */ new Set();
+  const checkTimers = /* @__PURE__ */ new Map();
+  const checkDelay = /* @__PURE__ */ new Map();
+  const keeps = /* @__PURE__ */ new Map();
+  const refreshes = /* @__PURE__ */ new Map();
+  const CHECK_QUIET_MS = 1500;
+  const CHECK_SLICE_MS = 20;
+  const CHECK_BATCH = 250;
+  const markVerified = (uid) => {
+    if (!unverified.delete(uid)) return;
+    checkOwed.delete(uid);
+    const fns = verifyListeners.get(uid);
+    verifyListeners.delete(uid);
+    for (const fn of fns || []) {
+      try {
+        fn();
+      } catch (error) {
+        console.warn("[plexus-diagram] verified listener failed", error);
+      }
+    }
+  };
+  const keepModel = (uid, tree, stamp2) => {
+    if (!modelStore || !trustOn() || !tree?.[":block/uid"] || typeof stamp2 !== "string") return;
+    keeps.get(uid)?.();
+    const enc = createTreeEncoder(tree);
+    const clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
+    const cancel = sharedBgBudget().run((deadline) => {
+      if (!enc.step(Math.max(1, deadline.timeRemaining() - 2), clock)) return false;
+      if (keeps.get(uid) === cancel) keeps.delete(uid);
+      const model = enc.result();
+      if (model) void modelStore.put(uid, stamp2, model);
+      stats.modelsKept = (stats.modelsKept || 0) + 1;
+      return true;
+    }, { label: "model-keep", partMs: 4, firstQuiet: 1e3 });
+    keeps.set(uid, cancel);
+  };
+  const backgroundRead = (uid, label, done3, { stopIf = () => false, prepare = null } = {}) => {
+    let reader = null;
+    let tries = 0;
+    let cancel = null;
+    let got = null;
+    const whole2 = () => {
+      reader = null;
+      got = null;
+      const stamp2 = pageStampOf(uid);
+      let tree = null;
+      try {
+        tree = rawPull(BOARD_PATTERN, eidKey(uid));
+      } catch {
+        tree = null;
+      }
+      if (tree?.[":block/uid"] && prepare) prepare(tree);
+      done3(tree?.[":block/uid"] ? tree : null, stamp2);
+      return true;
+    };
+    const mismatch = () => {
+      reader = null;
+      got = null;
+      tries += 1;
+      stats[`${label}Retries`] = (stats[`${label}Retries`] || 0) + 1;
+      return tries >= 2 ? whole2() : false;
+    };
+    const part = () => {
+      if (stopIf()) return true;
+      if (got) {
+        if (!got.prepared && prepare) {
+          got.prepared = true;
+          prepare(got.tree);
+          return false;
+        }
+        if (!got.checked) {
+          let openOk = false;
+          try {
+            openOk = pageStampOf(uid) === got.stamp && reader.verifyOpen();
+          } catch {
+            openOk = false;
+          }
+          if (!openOk) return mismatch();
+          got.checked = true;
+        }
+        let fields = "bad";
+        try {
+          fields = reader.verifyFieldsPart();
+        } catch {
+          fields = "bad";
+        }
+        if (fields === "more") return false;
+        if (fields !== "ok") return mismatch();
+        const { tree: tree2, stamp: stamp3 } = got;
+        reader = null;
+        got = null;
+        done3(tree2, stamp3);
+        return true;
+      }
+      if (!reader) {
+        let rootEid = null;
+        try {
+          rootEid = rawPull("[:db/id]", eidKey(uid))?.[":db/id"] ?? null;
+        } catch {
+          rootEid = null;
+        }
+        if (rootEid == null || typeof data.pull_many !== "function") return whole2();
+        reader = createSlicedRead({
+          rootEid,
+          pullMany: (pattern, eids) => data.pull_many(pattern, eids),
+          stamp: () => pageStampOf(uid),
+          clock: () => globalThis.performance?.now ? globalThis.performance.now() : Date.now(),
+          sliceMs: CHECK_SLICE_MS,
+          batch: CHECK_BATCH
+        });
+      }
+      if (!reader.step()) return false;
+      const stamp2 = reader.stamp;
+      const tree = reader.take();
+      if (tree?.[":block/uid"] === uid) {
+        got = { tree, stamp: stamp2, prepared: false, checked: false };
+        return false;
+      }
+      return mismatch();
+    };
+    cancel = sharedBgBudget().run(part, { label, partMs: 4, firstQuiet: CHECK_QUIET_MS });
+    return () => cancel?.();
+  };
+  const clearCheckTimer = (uid) => {
+    const timer = checkTimers.get(uid);
+    if (timer == null) return;
+    clearTimeout(timer);
+    checkTimers.delete(uid);
+  };
+  const retryCheck = (uid) => {
+    if (checkTimers.has(uid) || checks.has(uid) || !unverified.has(uid)) return;
+    const split = splitWatches.get(uid);
+    if (!split || split.disposed) return;
+    if (split.held) {
+      checkOwed.add(uid);
+      return;
+    }
+    const delay2 = checkDelay.get(uid) || CHECK_QUIET_MS;
+    checkDelay.set(uid, Math.min(delay2 * 2, 8e3));
+    const timer = setTimeout(() => {
+      checkTimers.delete(uid);
+      if (!unverified.has(uid)) return;
+      const live2 = splitWatches.get(uid);
+      if (!live2 || live2.disposed) return;
+      if (live2.held) {
+        checkOwed.add(uid);
+        return;
+      }
+      scheduleCheck(uid);
+    }, delay2);
+    try {
+      timer.unref?.();
+    } catch {
+    }
+    checkTimers.set(uid, timer);
+  };
+  const scheduleCheck = (uid) => {
+    clearCheckTimer(uid);
+    if (checks.has(uid) || !unverified.has(uid)) return;
+    let stopped = false;
+    const cancel = backgroundRead(uid, "check", (tree, stamp2) => {
+      checks.delete(uid);
+      if (!unverified.has(uid)) return;
+      if (!tree) {
+        stats.checkFails = (stats.checkFails || 0) + 1;
+        retryCheck(uid);
+        return;
+      }
+      checkDelay.delete(uid);
+      bigBoards.set(uid, tree);
+      const split = splitWatches.get(uid);
+      let changed2 = true;
+      if (split && !split.disposed) changed2 = split.reseed(tree, { contents: true }) !== false;
+      stats.checks = (stats.checks || 0) + 1;
+      if (changed2) stats.checkChanges = (stats.checkChanges || 0) + 1;
+      markVerified(uid);
+      if (changed2 || modelStore?.stampOf(uid) !== stamp2) keepModel(uid, tree, stamp2);
+    }, {
+      prepare: (tree) => absorb(uid, tree, false),
+      stopIf: () => {
+        if (stopped || !unverified.has(uid)) {
+          checks.delete(uid);
+          return true;
+        }
+        if (splitWatches.get(uid)?.held) {
+          checks.delete(uid);
+          checkOwed.add(uid);
+          return true;
+        }
+        return false;
+      }
+    });
+    checks.set(uid, () => {
+      stopped = true;
+      cancel();
+    });
+  };
+  const resumeCheck = (uid) => {
+    if (!checkOwed.delete(uid)) return;
+    scheduleCheck(uid);
+  };
   const boardKeys = /* @__PURE__ */ new Map();
   const boardPageOf = /* @__PURE__ */ new Map();
   const pdfUrls = /* @__PURE__ */ new Map();
@@ -39467,7 +41754,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       idleHandles.delete(key);
       fn(deadline);
     };
-    if (typeof idle === "function") idleHandles.set(key, { idle: idle(run, { timeout: 1500 }) });
+    if (typeof idle === "function" && notedSpeedFlags().bgBudget !== false) idleHandles.set(key, { cancel: sharedBgBudget().idle(run, { timeout: 1500, label: "prime" }) });
+    else if (typeof idle === "function") idleHandles.set(key, { idle: idle(run, { timeout: 1500 }) });
     else idleHandles.set(key, { timer: setTimeout(run, 250) });
   };
   const unwatchedAt = /* @__PURE__ */ new Map();
@@ -39480,9 +41768,9 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const STATS_CHUNK = 80;
   const STATS_PART = 20;
   const STATS_TTL_MS = 12e4;
-  const IDLE_SLICE_MS = 40;
-  const IDLE_RESERVE_MS = 8;
-  const IDLE_REF_PART = 60;
+  const IDLE_SLICE_MS = 30;
+  const IDLE_RESERVE_MS = 6;
+  const IDLE_REF_PART = 30;
   const MISS = /* @__PURE__ */ Symbol("pull-miss");
   const rawPull = typeof data.pull === "function" ? data.pull.bind(data) : () => null;
   const parseEntity = (entity) => {
@@ -39753,12 +42041,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     unwatchedAt.delete(uid);
     const sub = { fn: guardCallback("watchBoard", (tree) => cb(tree), { stats }), paused: false, missed: false, split: null };
     const attach3 = () => {
-      const own = splitFor(uid);
-      sub.split = own;
-      own.subs.add(sub);
-      unhold(own);
-      if (own.held) own.release();
-      return own;
+      const own2 = splitFor(uid);
+      sub.split = own2;
+      own2.subs.add(sub);
+      unhold(own2);
+      if (own2.held) own2.release();
+      resumeCheck(uid);
+      return own2;
     };
     attach3();
     stats.watches++;
@@ -39766,9 +42055,9 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     const off = () => {
       if (!active2) return;
       active2 = false;
-      const own = sub.split;
-      own.subs.delete(sub);
-      if (!own.disposed && !own.held && splitWatches.get(uid) === own && [...own.subs].every((x) => x.paused)) holdSplit(uid, own);
+      const own2 = sub.split;
+      own2.subs.delete(sub);
+      if (!own2.disposed && !own2.held && splitWatches.get(uid) === own2 && [...own2.subs].every((x) => x.paused)) holdSplit(uid, own2);
       stats.watches--;
       if (!sub.paused) slot2.n = Math.max(0, slot2.n - 1);
       if (slot2.n === 0 && slot2.pages.size === 0) watchedBoards.delete(uid);
@@ -39779,8 +42068,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       sub.paused = true;
       slot2.n = Math.max(0, slot2.n - 1);
       if (slot2.n === 0) unwatchedAt.set(uid, pullSeq);
-      const own = sub.split;
-      if (!own.disposed && [...own.subs].every((x) => x.paused)) holdSplit(uid, own);
+      const own2 = sub.split;
+      if (!own2.disposed && [...own2.subs].every((x) => x.paused)) holdSplit(uid, own2);
     };
     off.resume = () => {
       if (!active2 || !sub.paused) return;
@@ -39790,8 +42079,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         unwatchedAt.delete(uid);
         if (watchedBoards.get(uid) !== slot2 && !watchedBoards.has(uid)) watchedBoards.set(uid, slot2);
       };
-      let own = sub.split;
-      if (own.disposed || splitWatches.get(uid) !== own) {
+      let own2 = sub.split;
+      if (own2.disposed || splitWatches.get(uid) !== own2) {
         let fresh = null;
         try {
           fresh = rawPull(BOARD_PATTERN, eidKey(uid));
@@ -39799,7 +42088,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           fresh = null;
         }
         if (!fresh?.[":block/uid"]) {
-          own.subs.delete(sub);
+          own2.subs.delete(sub);
           sub.missed = false;
           live2();
           queueMicrotask(() => {
@@ -39809,47 +42098,49 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         }
         absorb(uid, fresh, false);
         bigBoards.set(uid, fresh);
-        own.subs.delete(sub);
-        own = attach3();
+        markVerified(uid);
+        own2.subs.delete(sub);
+        own2 = attach3();
         sub.missed = false;
         live2();
         queueMicrotask(() => {
-          if (!active2 || sub.paused || sub.split !== own || own.tree) return;
-          const tree = own.current();
+          if (!active2 || sub.paused || sub.split !== own2 || own2.tree) return;
+          const tree = own2.current();
           if (tree?.[":block/uid"]) absorb(uid, tree, false);
           sub.fn(tree);
         });
         return;
       }
       live2();
-      unhold(own);
-      if (own.release()) sub.missed = false;
+      unhold(own2);
+      if (own2.release()) sub.missed = false;
+      resumeCheck(uid);
       if (!sub.missed) return;
       sub.missed = false;
       queueMicrotask(() => {
-        if (active2 && !sub.paused && own.tree) sub.fn(own.tree);
+        if (active2 && !sub.paused && own2.tree) sub.fn(own2.tree);
       });
     };
     return off;
   };
-  const unhold = (own) => {
-    if (own.holdTimer != null) {
-      clearTimeout(own.holdTimer);
-      own.holdTimer = null;
+  const unhold = (own2) => {
+    if (own2.holdTimer != null) {
+      clearTimeout(own2.holdTimer);
+      own2.holdTimer = null;
     }
   };
-  const holdSplit = (uid, own) => {
-    own.hold();
-    unhold(own);
-    own.holdTimer = setTimeout(() => {
-      own.holdTimer = null;
-      if (!own.held || splitWatches.get(uid) !== own) return;
-      own.dispose();
+  const holdSplit = (uid, own2) => {
+    own2.hold();
+    unhold(own2);
+    own2.holdTimer = setTimeout(() => {
+      own2.holdTimer = null;
+      if (!own2.held || splitWatches.get(uid) !== own2) return;
+      own2.dispose();
       splitWatches.delete(uid);
-      for (const want of contentWants.values()) want.offs.delete(own);
+      for (const want of contentWants.values()) want.offs.delete(own2);
     }, SPLIT_HOLD_MS);
     try {
-      own.holdTimer.unref?.();
+      own2.holdTimer.unref?.();
     } catch {
     }
   };
@@ -39895,13 +42186,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?b :block/parents ?d] [?d :block/string ?s]
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
         blockUids,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ));
       const via = timed("orphan-refs", () => host.q(
         `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?card :block/refs ?b] [?card :block/parents ?d]
  [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
         blockUids,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ));
       for (const rec of [...direct, ...via]) if (rec?.[0]) onUid.add(rec[0]);
     }
@@ -39910,7 +42201,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         `[:find ?t :in $ [?t ...] ?pat :where [?p :node/title ?t] [?card :block/refs ?p] [?card :block/parents ?d]
  [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
         pageTitles2,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ));
       for (const rec of via) if (rec?.[0]) onTitle.add(rec[0]);
     }
@@ -39935,11 +42226,63 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       pages.get(row4[0]).push({ uid: row4[1], title: typeof row4[2] === "string" ? row4[2] : "", url: row4[0] });
     }
     const counts = /* @__PURE__ */ new Map();
-    for (const row4 of queryRows(host, PDF_PAGE_PROPS_ALL_QUERY)) {
-      if (Array.isArray(row4) && hasPdfHighlight(row4[2])) counts.set(row4[0], (counts.get(row4[0]) || 0) + 1);
+    for (const row4 of queryRows(host, PDF_PAGE_COUNTS_ALL_QUERY)) {
+      if (Array.isArray(row4) && typeof row4[0] === "string" && Number(row4[1]) > 0) counts.set(row4[0], Number(row4[1]));
     }
     coverIndex = { at: now4, ttl: Math.max(COVER_INDEX_MIN_MS, (Date.now() - t0) * 40), pages, counts };
+    noteCoverBoards();
     return coverIndex;
+  };
+  const coverBoardsKey = () => `plexus-diagram:cover-boards:${graph ?? graphName()}`;
+  let coverBoards = null;
+  const coverBoardList = () => {
+    if (coverBoards) return coverBoards;
+    try {
+      coverBoards = JSON.parse(storage?.getItem?.(coverBoardsKey()) || "[]");
+    } catch {
+      coverBoards = [];
+    }
+    if (!Array.isArray(coverBoards)) coverBoards = [];
+    return coverBoards;
+  };
+  const noteCoverBoards = () => {
+    const list = coverBoardList();
+    let changed2 = false;
+    for (const uid of watchedBoards.keys()) {
+      if (!bigBoards.has(uid) || list.includes(uid)) continue;
+      list.unshift(uid);
+      changed2 = true;
+    }
+    if (!changed2) return;
+    list.length = Math.min(list.length, 20);
+    try {
+      storage?.setItem?.(coverBoardsKey(), JSON.stringify(list));
+    } catch {
+    }
+  };
+  let coverWarm = null;
+  const coverIndexPart = (i) => {
+    const now4 = Date.now();
+    if (coverIndex && now4 - coverIndex.at < coverIndex.ttl) return true;
+    if (i === 0 || !coverWarm) {
+      const t02 = Date.now();
+      const pages = /* @__PURE__ */ new Map();
+      for (const row4 of queryRows(host, PDF_PAGES_ALL_QUERY)) {
+        if (!Array.isArray(row4) || typeof row4[0] !== "string" || typeof row4[1] !== "string" || row4[1] === "") continue;
+        if (!pages.has(row4[0])) pages.set(row4[0], []);
+        pages.get(row4[0]).push({ uid: row4[1], title: typeof row4[2] === "string" ? row4[2] : "", url: row4[0] });
+      }
+      coverWarm = { at: now4, pages, ms: Date.now() - t02 };
+      return false;
+    }
+    const t0 = Date.now();
+    const counts = /* @__PURE__ */ new Map();
+    for (const row4 of queryRows(host, PDF_PAGE_COUNTS_ALL_QUERY)) {
+      if (Array.isArray(row4) && typeof row4[0] === "string" && Number(row4[1]) > 0) counts.set(row4[0], Number(row4[1]));
+    }
+    coverIndex = { at: coverWarm.at, ttl: Math.max(COVER_INDEX_MIN_MS, (coverWarm.ms + Date.now() - t0) * 40), pages: coverWarm.pages, counts };
+    coverWarm = null;
+    return true;
   };
   const useCoverIndex = (url) => {
     const now4 = Date.now();
@@ -40064,69 +42407,174 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     tabs: createTabStore({ storage, graph: gname }),
     // One wide pull fills the session cache, so later card, page, and badge reads do not call Roam again.
     pullBoard(uid, { light = false, deferRefs = false, prime: doPrime = true } = {}) {
-      const split = light ? splitWatches.get(uid) : null;
-      if (split) {
-        const tree = split.refresh();
-        if (tree?.[":block/uid"]) {
-          absorb(uid, tree, false);
-          bigBoards.set(uid, tree);
-          return tree;
-        }
-      }
-      if (warm.has(uid)) {
-        const own = splitWatches.get(uid);
-        if (own && !own.disposed && own.tree?.[":block/uid"]) return own.tree;
-        const cached = cache.blockOf(uid);
-        if (cached?.[":block/uid"]) {
-          if (treeSize(cached, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN && !(own && !own.disposed)) bigBoards.set(uid, cached);
-          return cached;
-        }
-      }
-      warm.delete(uid);
-      const boardEntity = eidKey(uid);
-      let plain2 = null;
-      try {
-        plain2 = rawPull(BOARD_PATTERN, boardEntity);
-      } catch {
-        plain2 = null;
-      }
+      if (unverified.has(uid) && !checks.has(uid)) queueMicrotask(() => scheduleCheck(uid));
       let node2 = null;
-      const big = Boolean(plain2?.[":block/uid"]) && treeSize(plain2, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN;
-      const refBlocks = plain2?.[":block/uid"] && !big ? refBlocksOf(plain2, OPEN_PULL_MAX_REFS) : 0;
-      if (!plain2?.[":block/uid"] || refBlocks > 0 && refBlocks <= OPEN_PULL_MAX_REFS) {
-        try {
-          node2 = rawPull(OPEN_PATTERN, boardEntity);
-        } catch {
-          node2 = null;
+      let honored = false;
+      let big = false;
+      let found = null;
+      let adopted = adoptedTrees.get(uid) || null;
+      if (adopted) adoptedTrees.delete(uid);
+      if (adopted && !adopted.trusted && pageStampOf(uid) !== adopted.stamp) {
+        const stale = adopted.split;
+        if (stale && splitWatches.get(uid) === stale) {
+          unhold(stale);
+          try {
+            stale.dispose();
+          } catch {
+          }
+          splitWatches.delete(uid);
         }
+        adopted = null;
       }
-      let honored = Boolean(node2?.[":block/uid"] && hasRefs(node2));
-      if (!node2?.[":block/uid"]) {
-        node2 = plain2;
-        honored = false;
+      if (adopted && Date.now() - adopted.at <= OFFER_TTL_MS && splitWatches.get(uid) === adopted.split && !adopted.split.disposed) {
+        node2 = adopted.node;
+        found = adopted.found || collectTargets(node2);
+        big = true;
+        warm.delete(uid);
+        if (adopted.trusted) {
+          stats.trustedOpens = (stats.trustedOpens || 0) + 1;
+          scheduleCheck(uid);
+        } else stats.slicedReads = (stats.slicedReads || 0) + 1;
+      } else {
+        if (adopted && unverified.has(uid)) scheduleCheck(uid);
+        const split = light ? splitWatches.get(uid) : null;
+        if (split) {
+          const tree = split.refresh();
+          if (tree?.[":block/uid"]) {
+            absorb(uid, tree, false);
+            bigBoards.set(uid, tree);
+            return tree;
+          }
+        }
+        if (warm.has(uid)) {
+          const own2 = splitWatches.get(uid);
+          if (own2 && !own2.disposed && own2.tree?.[":block/uid"]) return own2.tree;
+          const cached = cache.blockOf(uid);
+          if (cached?.[":block/uid"]) {
+            if (treeSize(cached, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN && !(own2 && !own2.disposed)) bigBoards.set(uid, cached);
+            return cached;
+          }
+        }
+        warm.delete(uid);
+        const boardEntity = eidKey(uid);
+        let plain2 = null;
+        const offered = offeredTrees.get(uid);
+        offeredTrees.delete(uid);
+        let offeredFound = null;
+        let readStamp = null;
+        let trustedOpen = false;
+        if (offered && offered.stamp != null && Date.now() - offered.at <= OFFER_TTL_MS && pageStampOf(uid) === offered.stamp && (!offered.trusted || trustOn() && splitWatchOn() && treeSize(offered.tree, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN)) {
+          plain2 = offered.tree;
+          offeredFound = offered.found || null;
+          readStamp = offered.stamp;
+          trustedOpen = offered.trusted === true;
+          if (trustedOpen) stats.trustedOpens = (stats.trustedOpens || 0) + 1;
+          else stats.slicedReads = (stats.slicedReads || 0) + 1;
+        }
+        if (!plain2) {
+          try {
+            plain2 = rawPull(BOARD_PATTERN, boardEntity);
+          } catch {
+            plain2 = null;
+          }
+          if (plain2?.[":block/uid"]) markVerified(uid);
+        }
+        node2 = null;
+        big = Boolean(plain2?.[":block/uid"]) && treeSize(plain2, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN;
+        const refBlocks = plain2?.[":block/uid"] && !big ? refBlocksOf(plain2, OPEN_PULL_MAX_REFS) : 0;
+        if (!plain2?.[":block/uid"] || refBlocks > 0 && refBlocks <= OPEN_PULL_MAX_REFS) {
+          try {
+            node2 = rawPull(OPEN_PATTERN, boardEntity);
+          } catch {
+            node2 = null;
+          }
+        }
+        honored = Boolean(node2?.[":block/uid"] && hasRefs(node2));
+        if (!node2?.[":block/uid"]) {
+          node2 = plain2;
+          honored = false;
+        }
+        if (!node2?.[":block/uid"]) return null;
+        absorb(uid, node2, honored);
+        if (big) {
+          bigBoards.set(uid, node2);
+          splitWatches.get(uid)?.reseed(node2);
+          if (trustedOpen) {
+            unverified.set(uid, readStamp);
+            scheduleCheck(uid);
+          } else if (node2 === plain2 && modelStore && trustOn()) {
+            readStamp ?? (readStamp = pageStampOf(uid));
+            if (readStamp && modelStore.stampOf(uid) !== readStamp) keepModel(uid, plain2, readStamp);
+          }
+        } else bigBoards.delete(uid);
+        found = offeredFound && node2 === plain2 ? offeredFound : collectTargets(node2);
       }
-      if (!node2?.[":block/uid"]) return null;
-      absorb(uid, node2, honored);
-      if (big) {
-        bigBoards.set(uid, node2);
-        splitWatches.get(uid)?.reseed(node2);
-      } else bigBoards.delete(uid);
-      const found = collectTargets(node2);
       const pullRefs = () => {
         if (!honored && (found.uids.length || found.titles.length)) {
           for (const entity of pullMany(found.uids, found.titles)) addEntity(uid, entity);
         }
       };
-      let refAt = 0;
+      let refAsm = null;
+      const pullLevel = (pattern, entities) => {
+        if (typeof data.pull_many === "function") {
+          try {
+            const many = data.pull_many(pattern, entities);
+            if (Array.isArray(many)) return many;
+          } catch {
+          }
+        }
+        const uids = [];
+        const titles = [];
+        for (const entity of entities || []) {
+          if (!Array.isArray(entity)) continue;
+          if (entity[0] === ":node/title") titles.push(entity[1]);
+          else if (entity[0] === ":block/uid") uids.push(entity[1]);
+        }
+        let rows = [];
+        try {
+          if (uids.length && titles.length) {
+            rows = unpackPulls(host.q(
+              `[:find (pull ?e ${pattern}) :in $ [?uid ...] [?title ...] :where (or [?e :block/uid ?uid] [?e :node/title ?title])]`,
+              uids,
+              titles
+            ));
+          } else if (uids.length) {
+            rows = unpackPulls(host.q(
+              `[:find (pull ?e ${pattern}) :in $ [?uid ...] :where [?e :block/uid ?uid]]`,
+              uids
+            ));
+          } else if (titles.length) {
+            rows = unpackPulls(host.q(
+              `[:find (pull ?e ${pattern}) :in $ [?title ...] :where [?e :node/title ?title]]`,
+              titles
+            ));
+          }
+        } catch {
+          rows = [];
+        }
+        const byUid = /* @__PURE__ */ new Map();
+        const byTitle = /* @__PURE__ */ new Map();
+        for (const node3 of rows) {
+          if (typeof node3?.[":block/uid"] === "string") byUid.set(node3[":block/uid"], node3);
+          if (typeof node3?.[":node/title"] === "string") byTitle.set(node3[":node/title"], node3);
+        }
+        return entities.map((entity) => {
+          if (!Array.isArray(entity)) return null;
+          return entity[0] === ":node/title" ? byTitle.get(entity[1]) || null : byUid.get(entity[1]) || null;
+        });
+      };
       const pullRefsPart = (n3) => {
         if (honored) return true;
-        const total = found.uids.length + found.titles.length;
-        const end = Math.min(total, refAt + n3);
-        const uids = found.uids.slice(Math.min(refAt, found.uids.length), Math.min(end, found.uids.length));
-        const titles = found.titles.slice(Math.max(0, refAt - found.uids.length), Math.max(0, end - found.uids.length));
-        refAt = end;
-        if (uids.length || titles.length) for (const entity of pullMany(uids, titles)) addEntity(uid, entity);
-        return refAt >= total;
+        if (!found.uids.length && !found.titles.length) return true;
+        const asked = n3 == null ? OUTLINE_BATCH : Math.max(1, Math.floor(Number(n3)) || 1);
+        if (!refAsm) {
+          refAsm = createOutlineAssembler({ pullMany: pullLevel, batch: OUTLINE_BATCH });
+          refAsm.addRoots(found.uids, found.titles);
+          if (refAsm.pending() === 0) return true;
+          if (refAsm.start(asked) !== true) return false;
+        } else if (refAsm.step(asked) !== true) return false;
+        for (const entity of refAsm.entities()) addEntity(uid, entity);
+        return true;
       };
       const refsLater = light && (deferRefs || big);
       if (!refsLater) pullRefs();
@@ -40177,6 +42625,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         let statsDone = false;
         let refsDone = !refsLater;
         let dropped = false;
+        const refSizer = createPartSizer({ max: IDLE_REF_PART, start: 4 });
         const clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
         const step = (deadline) => {
           if (unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt) return;
@@ -40184,11 +42633,14 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           const left = () => Math.min(IDLE_SLICE_MS - (clock() - t0), typeof deadline?.timeRemaining === "function" && !deadline.didTimeout ? deadline.timeRemaining() : Infinity);
           do {
             if (!refsDone) {
+              const n3 = refSizer.size(left() - IDLE_RESERVE_MS);
+              const r0 = clock();
               try {
-                refsDone = pullRefsPart(IDLE_REF_PART);
+                refsDone = pullRefsPart(n3);
               } catch {
                 refsDone = true;
               }
+              refSizer.note(n3, clock() - r0);
               continue;
             }
             if (!dropped) {
@@ -40218,6 +42670,212 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         later(step);
       }
       return node2;
+    },
+    // P8 U3. A cold open's board read in short tasks: null when pullBoard would not read Roam whole (warm cache, a
+    // split already holds the board), when pull_many or the page stamp is missing. reader.step() does one task's
+    // worth and is true when finished; a consistent result is offered to the next pullBoard of this board.
+    // P9: with a stored model read at the page's current stamp (speed flag trustSnapshot, big boards with the split
+    // watch), the reader loads and decodes that model instead (reader.waiting: a promise while IndexedDB answers) and
+    // offers it as trusted; any miss on the way falls back to the sliced read.
+    prereadBoard(uid, opts = {}) {
+      const id = String(uid ?? "");
+      if (!id || typeof data.pull_many !== "function") return null;
+      if (warm.has(id) || splitWatches.has(id)) return null;
+      const stored = opts.trust !== false && modelStore && trustOn() && splitWatchOn() ? modelStore.stampOf(id) : null;
+      const reader = stored && pageStampOf(id) === stored ? host.trustedReader(id, stored, opts) : host.slicedReader(id, opts);
+      if (!reader) return null;
+      const covers2 = Number(opts.covers) >= COVER_INDEX_URLS || coverBoardList().includes(id);
+      let stage = "read";
+      let propAt = 0;
+      let coverPart = 0;
+      return new Proxy(reader, {
+        get(target, key) {
+          if (key === "phase") return stage === "read" ? target.phase : stage;
+          if (key === "waiting") return stage === "read" ? target.waiting : null;
+          if (key !== "step") return typeof target[key] === "function" ? target[key].bind(target) : target[key];
+          return () => {
+            if (stage === "read") {
+              if (!target.step()) return false;
+              stage = "props";
+            }
+            if (stage === "props") {
+              const uids = adoptedTrees.get(id)?.found?.uids || [];
+              if (propAt < uids.length) {
+                try {
+                  propAt = primePropsPart(uids, propAt, PRIME_PROPS_BATCH);
+                } catch {
+                  propAt = uids.length;
+                }
+                return false;
+              }
+              stage = "covers";
+              if (!covers2) return true;
+            }
+            let done3 = true;
+            try {
+              done3 = coverIndexPart(coverPart);
+            } catch {
+              done3 = true;
+            }
+            coverPart += 1;
+            return done3 || coverPart > 1;
+          };
+        }
+      });
+    },
+    trustedReader(id, stamp2, opts = {}) {
+      const clock = opts.clock || (() => globalThis.performance?.now ? globalThis.performance.now() : Date.now());
+      const sliceMs = Number(opts.sliceMs) > 0 ? Number(opts.sliceMs) : SLICED_SLICE_MS;
+      let phase = "load";
+      let inner = null;
+      let decoder = null;
+      let tree = null;
+      let walk3 = null;
+      let cancelled = false;
+      let ms = 0;
+      const fallback = () => {
+        stats.trustMisses = (stats.trustMisses || 0) + 1;
+        inner = host.slicedReader(id, opts);
+        phase = inner ? "sliced" : "failed";
+      };
+      let waiting = modelStore.load(id).then((model) => {
+        waiting = null;
+        if (cancelled) return;
+        if (!model || model.stamp !== stamp2) {
+          fallback();
+          return;
+        }
+        decoder = createTreeDecoder(model);
+        phase = "decode";
+      }, () => {
+        waiting = null;
+        if (!cancelled) fallback();
+      });
+      return {
+        get phase() {
+          return inner ? inner.phase : phase;
+        },
+        get trusted() {
+          return !inner;
+        },
+        get waiting() {
+          return inner ? null : waiting;
+        },
+        get calls() {
+          return inner ? inner.calls : 0;
+        },
+        get ms() {
+          return inner ? inner.ms : ms;
+        },
+        step() {
+          if (cancelled || phase === "failed" || phase === "done") return true;
+          if (inner) return inner.step();
+          if (waiting) return false;
+          if (phase === "adopt") {
+            phase = "done";
+            if (opts.adopt !== false) adoptOffer(id);
+            return true;
+          }
+          const t0 = clock();
+          try {
+            if (phase === "decode") {
+              if (!decoder.step(sliceMs, clock)) return false;
+              tree = decoder.result();
+              decoder = null;
+              if (tree?.[":block/uid"] !== id) {
+                tree = null;
+                fallback();
+                return false;
+              }
+              walk3 = createTargetsWalk(tree);
+              phase = "targets";
+              if (clock() - t0 >= sliceMs) return false;
+            }
+            if (!walk3.step(Math.max(1, sliceMs - (clock() - t0)), clock)) return false;
+            if (pageStampOf(id) !== stamp2) {
+              tree = null;
+              fallback();
+              return false;
+            }
+            offeredTrees.set(id, { tree, found: walk3.result(), stamp: stamp2, at: Date.now(), trusted: true });
+            tree = null;
+            walk3 = null;
+            phase = "adopt";
+            return false;
+          } finally {
+            ms += clock() - t0;
+          }
+        },
+        cancel() {
+          cancelled = true;
+          inner?.cancel();
+          offeredTrees.delete(id);
+          adoptedTrees.delete(id);
+        }
+      };
+    },
+    slicedReader(id, opts = {}) {
+      let rootEid = null;
+      try {
+        rootEid = rawPull("[:db/id]", eidKey(id))?.[":db/id"] ?? null;
+      } catch {
+        rootEid = null;
+      }
+      if (rootEid == null || pageStampOf(id) == null) return null;
+      const reader = createSlicedRead({
+        rootEid,
+        pullMany: (pattern, eids) => data.pull_many(pattern, eids),
+        stamp: () => pageStampOf(id),
+        clock: () => globalThis.performance?.now ? globalThis.performance.now() : Date.now(),
+        ...opts
+      });
+      const step = reader.step;
+      const clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
+      const sliceMs = Number(opts.sliceMs) > 0 ? Number(opts.sliceMs) : SLICED_SLICE_MS;
+      let tree = null;
+      let walk3 = null;
+      let offered = false;
+      return {
+        get phase() {
+          return offered ? "adopt" : walk3 ? "targets" : reader.phase;
+        },
+        get calls() {
+          return reader.calls;
+        },
+        get ms() {
+          return reader.ms;
+        },
+        step() {
+          if (offered) {
+            offered = false;
+            walk3 = null;
+            if (opts.adopt !== false) adoptOffer(id);
+            return true;
+          }
+          if (!walk3) {
+            const done3 = step();
+            if (!done3) return false;
+            tree = reader.take();
+            if (tree?.[":block/uid"] !== id) return true;
+            walk3 = createTargetsWalk(tree);
+            return false;
+          }
+          if (!walk3.step(sliceMs, opts.clock || clock)) return false;
+          if (!reader.verifyOpen()) {
+            tree = null;
+            return true;
+          }
+          offeredTrees.set(id, { tree, found: walk3.result(), stamp: reader.stamp, at: Date.now() });
+          tree = null;
+          offered = true;
+          return false;
+        },
+        cancel() {
+          reader.cancel();
+          offeredTrees.delete(id);
+          adoptedTrees.delete(id);
+        }
+      };
     },
     // Hover warm of the session cache. No pull watch. A uid already in blockOf is not read again:
     // pullBoard drops the board root from its warm set, and a hover must not spend that read.
@@ -40301,6 +42959,51 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         }
       };
     },
+    // P9. The stored models (src/host/model-store.js) this host reads trusted opens from and keeps fresh reads in.
+    useModelStore(store) {
+      modelStore = store || null;
+    },
+    // True while a board that went live from a stored model has not been read again: nothing destructive may act on
+    // what it shows. onBoardVerified(uid, fn) calls fn once when that read lands (at once when already verified).
+    boardUnverified(uid) {
+      return unverified.has(String(uid ?? ""));
+    },
+    onBoardVerified(uid, fn) {
+      const id = String(uid ?? "");
+      if (!unverified.has(id)) {
+        try {
+          fn();
+        } catch {
+        }
+        return () => {
+        };
+      }
+      let set = verifyListeners.get(id);
+      if (!set) {
+        set = /* @__PURE__ */ new Set();
+        verifyListeners.set(id, set);
+      }
+      set.add(fn);
+      return () => {
+        set.delete(fn);
+      };
+    },
+    // After a change settled (the snapshot capture): a big board whose stored model is older than its page is read
+    // again in background slices and stored. Not while it is unverified or parked.
+    refreshModel(uid) {
+      const id = String(uid ?? "");
+      if (!modelStore || !trustOn() || !id || refreshes.has(id) || unverified.has(id) || !bigBoards.has(id)) return false;
+      const split = splitWatches.get(id);
+      if (!split || split.held || split.disposed) return false;
+      const now4 = pageStampOf(id);
+      if (!now4 || modelStore.stampOf(id) === now4) return false;
+      const cancel = backgroundRead(id, "refresh", (tree, stamp2) => {
+        refreshes.delete(id);
+        if (tree && stamp2) keepModel(id, tree, stamp2);
+      }, { stopIf: () => splitWatches.get(id)?.held || !splitWatches.has(id) ? (refreshes.delete(id), true) : false });
+      refreshes.set(id, cancel);
+      return true;
+    },
     // Unload / teardown: every pull watch this host registered goes now, with every hold, arm and sweep timer.
     // Held splits would otherwise keep Roam re-pulling them on every transaction for SPLIT_HOLD_MS after unload.
     dispose() {
@@ -40308,17 +43011,31 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         clearTimeout(armTimer);
         armTimer = null;
       }
+      for (const timer of checkTimers.values()) clearTimeout(timer);
+      checkTimers.clear();
+      checkDelay.clear();
+      for (const jobs of [checks, keeps, refreshes]) {
+        for (const cancel of jobs.values()) {
+          try {
+            cancel();
+          } catch {
+          }
+        }
+        jobs.clear();
+      }
+      verifyListeners.clear();
       for (const h of idleHandles.values()) {
         if (h.timer != null) clearTimeout(h.timer);
+        else if (h.cancel) h.cancel();
         else try {
           globalThis.cancelIdleCallback?.(h.idle);
         } catch {
         }
       }
       idleHandles.clear();
-      for (const own of splitWatches.values()) {
-        unhold(own);
-        own.dispose();
+      for (const own2 of splitWatches.values()) {
+        unhold(own2);
+        own2.dispose();
       }
       splitWatches.clear();
       for (const want of contentWants.values()) want.offs.clear();
@@ -40392,6 +43109,32 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const res = pull("[:block/props]", eidKey(uid));
       const props = res?.[":block/props"];
       return props && typeof props === "object" ? plainKeys(props) : {};
+    },
+    // One outline level per parent (page or block): Map(parentUid -> [{ uid, string, open, order }]). One pull_many
+    // for the whole level; "Fold queries on this page" walks only the open part of a page with it.
+    outlineKids(parentUids) {
+      const out = /* @__PURE__ */ new Map();
+      const ids = [...new Set((parentUids || []).filter((id) => typeof id === "string" && id))];
+      if (!ids.length) return out;
+      let res = null;
+      try {
+        res = typeof data.pull_many === "function" ? data.pull_many(OUTLINE_KIDS_PATTERN, ids.map(eidKey)) : ids.map((id) => rawPull(OUTLINE_KIDS_PATTERN, eidKey(id)));
+      } catch {
+        res = null;
+      }
+      if (!Array.isArray(res)) return out;
+      for (const node2 of res) {
+        const id = node2?.[":block/uid"];
+        if (typeof id !== "string") continue;
+        const kids = Array.isArray(node2[":block/children"]) ? node2[":block/children"] : [];
+        out.set(id, kids.map((k) => ({
+          uid: k?.[":block/uid"],
+          string: typeof k?.[":block/string"] === "string" ? k[":block/string"] : "",
+          open: k?.[":block/open"] !== false,
+          order: Number.isFinite(k?.[":block/order"]) ? k[":block/order"] : 0
+        })).filter((k) => typeof k.uid === "string" && k.uid));
+      }
+      return out;
     },
     pullTree(uid, depth = 2, limit = 12) {
       const id = String(uid ?? "");
@@ -40608,8 +43351,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const live2 = liveCached(id);
       if (live2) {
         if (":block/page" in live2) {
-          const own = pageNodeOf(live2)?.[":block/uid"];
-          if (typeof own === "string" && own) return own;
+          const own2 = pageNodeOf(live2)?.[":block/uid"];
+          if (typeof own2 === "string" && own2) return own2;
         } else if (!cache.isRef(id)) {
           const boardPage = pageOfCoveringBoard(id);
           if (boardPage) return boardPage;
@@ -40620,8 +43363,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       let value = "";
       try {
         const res = rawPull("[{:block/page [:block/uid]}]", eidKey(uid));
-        const own = pageNodeOf(res)?.[":block/uid"];
-        value = typeof own === "string" ? own : "";
+        const own2 = pageNodeOf(res)?.[":block/uid"];
+        value = typeof own2 === "string" ? own2 : "";
       } catch {
         value = "";
       }
@@ -40639,10 +43382,17 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // Highlight read: props, string, and the owning page title. No url query.
     blockProps(uid) {
       let res = null;
-      try {
-        res = pull(BLOCK_PROPS_PATTERN, eidKey(uid));
-      } catch {
-        return null;
+      const primed = primedProps.get(uid);
+      if (primed) primedProps.delete(uid);
+      if (primed && Date.now() - primed.at <= PRIMED_PROPS_MS) {
+        res = primed.res;
+        stats.primedProps = (stats.primedProps || 0) + 1;
+      } else {
+        try {
+          res = pull(BLOCK_PROPS_PATTERN, eidKey(uid));
+        } catch {
+          return null;
+        }
       }
       if (!res || typeof res !== "object" || Array.isArray(res)) return null;
       const page = res[":block/page"];
@@ -40863,13 +43613,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // wait between batches (the sync hold) is outside any undo group: another session's writes made meanwhile are
     // their own steps, and invalidateUndo works. No-op with no group open.
     suspendGroup() {
-      const done2 = openGroup;
-      if (!done2) return () => {
+      const done3 = openGroup;
+      if (!done3) return () => {
       };
       openGroup = null;
-      closeChunk(done2);
+      closeChunk(done3);
       return () => {
-        if (!openGroup) openGroup = { n: 0, kinds: [], label: done2.label || "" };
+        if (!openGroup) openGroup = { n: 0, kinds: [], label: done3.label || "" };
       };
     },
     // The open group becomes ONE entry that undoes and redoes through its own callbacks ({ undo, redo }, async),
@@ -40922,16 +43672,16 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         return;
       }
       const span = entry ? groupSpan(entry) : 1;
-      let done2 = 0;
+      let done3 = 0;
       try {
-        for (; done2 < span; done2++) await data.undo();
+        for (; done3 < span; done3++) await data.undo();
       } finally {
         lastWriteAt = Date.now();
         if (entry) {
-          if (done2 >= span) redoLog.push(entry);
+          if (done3 >= span) redoLog.push(entry);
           else {
-            if (done2 > 0) redoLog.push({ n: done2 });
-            undoLog.push({ n: span - done2 });
+            if (done3 > 0) redoLog.push({ n: done3 });
+            undoLog.push({ n: span - done3 });
           }
         }
       }
@@ -40958,14 +43708,14 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         return;
       }
       const span = entry ? groupSpan(entry) : 1;
-      let done2 = 0;
+      let done3 = 0;
       try {
-        for (; done2 < span; done2++) await data.redo();
+        for (; done3 < span; done3++) await data.redo();
       } finally {
         lastWriteAt = Date.now();
         if (entry) {
-          if (done2 > 0) undoLog.push(done2 >= span ? entry : { n: done2 });
-          if (done2 < span) redoLog.push({ n: span - done2 });
+          if (done3 > 0) undoLog.push(done3 >= span ? entry : { n: done3 });
+          if (done3 < span) redoLog.push({ n: span - done3 });
         }
       }
     },
@@ -41006,6 +43756,40 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     },
     q(query, ...inputs) {
       return data.fast?.q ? data.fast.q(query, ...inputs) : data.q(query, ...inputs);
+    },
+    // The derived-link rows of linksQuery() for `targets`, without its join: the sources that ref a target come from
+    // the refs index, then one pull_many of their page and parents, filtered here. Same rows as the datalog (live MAIN:
+    // 34-61 ms per 120 targets instead of 762-1,294 ms). `eids` is a Set of the board's card eids. Each row carries the
+    // source's parent string fifth (null at the top of a page), so the caller needs no parentString read.
+    linkRows(boardEid, eids, targets) {
+      if (typeof data.pull_many !== "function") return host.q(linksQuery(), boardEid, [...eids], targets) || [];
+      const pairs = host.q(LINK_REFS_QUERY, targets) || [];
+      if (!pairs.length) return [];
+      const srcs = [...new Set(pairs.map((p) => p[1]))];
+      const info = /* @__PURE__ */ new Map();
+      for (const n3 of data.pull_many(LINK_SRC_PATTERN, srcs) || []) if (n3?.[":db/id"] != null) info.set(n3[":db/id"], n3);
+      const seen = /* @__PURE__ */ new Set();
+      const rows = [];
+      for (const [b, src] of pairs) {
+        const n3 = info.get(src);
+        if (!n3 || src === boardEid) continue;
+        const su = n3[":block/uid"];
+        const ss = n3[":block/string"];
+        if (typeof su !== "string" || typeof ss !== "string") continue;
+        const parents = Array.isArray(n3[":block/parents"]) ? n3[":block/parents"].map((p) => p?.[":db/id"]) : [];
+        if (parents.includes(boardEid)) continue;
+        const up = n3[":block/_children"];
+        const first = Array.isArray(up) ? up[0] : up;
+        const ps = typeof first?.[":block/string"] === "string" ? first[":block/string"] : null;
+        for (const a of [n3[":block/page"]?.[":db/id"], ...parents, src]) {
+          if (a == null || a === b || !eids.has(a)) continue;
+          const key = `${a}|${b}|${su}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          rows.push([a, b, su, ss, ps]);
+        }
+      }
+      return rows;
     },
     // Page children for the highlight picker, four levels. No url query.
     pdfHighlightTree(pageUid2) {
@@ -41168,7 +43952,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const rows = host.q(
         `[:find ?u ?s ?pt ?pu :in $ ?pat :where [?b :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
  [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt] [?p :block/uid ?pu]]`,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ) || [];
       const out = [];
       for (const [uid, string, pageTitle, pageUid2] of rows) {
@@ -41205,7 +43989,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const rows = host.q(
         `[:find ?eu ?bu :in $ ?pat :where [?c :block/string "Connections"] [?b :block/children ?c] [?b :block/string ?s]
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?b :block/uid ?bu] [?c :block/children ?e] [?e :block/uid ?eu]]`,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ) || [];
       return rows.slice(0, limit).map(([edgeUid, boardUid]) => [edgeUid, boardUid]);
     },
@@ -41215,7 +43999,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const rows = host.q(
         `[:find ?eu ?bu ?es ?bs :in $ ?pat :where [?c :block/string "Connections"] [?b :block/children ?c] [?b :block/string ?bs]
  [(re-pattern ?pat) ?re] [(re-find ?re ?bs)] [?b :block/uid ?bu] [?c :block/children ?e] [?e :block/uid ?eu] [?e :block/string ?es]]`,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ) || [];
       return rows.slice(0, limit).map(([edgeUid, boardUid, edgeString2, boardString2]) => [
         edgeUid,
@@ -41226,7 +44010,16 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     },
     // Card footer stats. One reverse-attribute pull for the resolved targets.
     // The four collection-bound queries run only when that pull throws or is unusable.
-    cardStats(targets, { boardUid } = {}) {
+    // cardStats runs the whole job. cardStatsJob is one step per call: the pull (or the cache) is a
+    // single step, and a query fallback is one of refs, boards, open, done. The cache is written
+    // only when the job finishes, so a stopped job cannot answer the next read.
+    cardStats(targets, opts) {
+      const job = host.cardStatsJob(targets, opts);
+      let guard = 0;
+      while (guard < 8 && job.step() !== true) guard += 1;
+      return job.result();
+    },
+    cardStatsJob(targets, { boardUid } = {}) {
       const keySet = /* @__PURE__ */ new Set();
       for (const t of targets || []) {
         if (!t) continue;
@@ -41238,7 +44031,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (keys.length && keys.every((key) => freshStat(boardUid, key))) {
         const result2 = /* @__PURE__ */ new Map();
         for (const key of keys) result2.set(key, { ...freshStat(boardUid, key) });
-        return result2;
+        return { step: () => true, result: () => result2 };
       }
       const remember2 = (result2) => {
         const at = Date.now();
@@ -41259,7 +44052,19 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         if (!byEid.has(eid)) byEid.set(eid, []);
         byEid.get(eid).push(key);
       }
-      if (!byEid.size) return remember2(result);
+      if (!byEid.size) {
+        let ran = false;
+        return {
+          result: () => result,
+          step() {
+            if (!ran) {
+              ran = true;
+              remember2(result);
+            }
+            return true;
+          }
+        };
+      }
       const eids = [...byEid.keys()];
       const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
       const todoEid = host.resolveEid({ title: "TODO" });
@@ -41272,27 +44077,11 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         }
         for (const [t, set] of seen) for (const key of byEid.get(t) ?? []) result.get(key)[field] = set.size;
       };
-      const fromQueries = () => {
-        tally(host.q(
-          `[:find ?t ?b :in $ [?t ...] ?board :where [?b :block/refs ?t] (not [?b :block/parents ?board]) [(not= ?b ?board)]]`,
-          eids,
-          boardEid
-        ), "refs");
-        tally(host.q(
-          `[:find ?t ?d :in $ [?t ...] ?board ?pat :where [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/string ?s]
- [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [(not= ?d ?board)]]`,
-          eids,
-          boardEid,
-          DIAGRAM_RE2
-        ), "boards");
-        const listFor = (statusEid) => host.q(
-          `[:find ?t ?x :in $ [?t ...] ?status :where [?x :block/refs ?status] (or [?x :block/parents ?t] [?x :block/page ?t])]`,
-          eids,
-          statusEid
-        );
-        if (todoEid != null) tally(listFor(todoEid), "open");
-        if (doneEid != null) tally(listFor(doneEid), "done");
-      };
+      const listFor = (statusEid) => host.q(
+        `[:find ?t ?x :in $ [?t ...] ?status :where [?x :block/refs ?status] (or [?x :block/parents ?t] [?x :block/page ?t])]`,
+        eids,
+        statusEid
+      );
       const applyPulled = (node2, keyList) => {
         const refs = /* @__PURE__ */ new Set();
         const boards = /* @__PURE__ */ new Set();
@@ -41364,8 +44153,51 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         for (const [eid, keyList] of byEid) applyPulled(byId2.get(eid), keyList);
         return true;
       };
-      if (!fromPull()) fromQueries();
-      return remember2(result);
+      let phase = 0;
+      let remembered = false;
+      const finish = () => {
+        if (!remembered) {
+          remembered = true;
+          remember2(result);
+        }
+        phase = 5;
+        return true;
+      };
+      return {
+        result: () => result,
+        step() {
+          if (phase >= 5) return true;
+          if (phase === 0) {
+            phase = 1;
+            if (fromPull()) return finish();
+            tally(host.q(
+              `[:find ?t ?b :in $ [?t ...] ?board :where [?b :block/refs ?t] (not [?b :block/parents ?board]) [(not= ?b ?board)]]`,
+              eids,
+              boardEid
+            ), "refs");
+            return false;
+          }
+          if (phase === 1) {
+            phase = 2;
+            tally(host.q(
+              `[:find ?t ?d :in $ [?t ...] ?board ?pat :where [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [(not= ?d ?board)]]`,
+              eids,
+              boardEid,
+              DIAGRAM_RE3
+            ), "boards");
+            return false;
+          }
+          if (phase === 2) {
+            phase = 3;
+            if (todoEid != null) tally(listFor(todoEid), "open");
+            return false;
+          }
+          phase = 4;
+          if (doneEid != null) tally(listFor(doneEid), "done");
+          return finish();
+        }
+      };
     },
     // True when the graph is end-to-end encrypted: its files are .enc and no outside service can read them.
     graphEncrypted() {
@@ -41633,13 +44465,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
  [?child :block/parents ?d] [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
  [?d :block/uid ?u] [?d :block/page ?p] [?p :node/title ?pt]]`,
             f.tag,
-            DIAGRAM_RE2
+            DIAGRAM_RE3
           ));
         } else {
           found = timed("boards", () => host.q(
             `[:find ?u ?s ?pt :in $ ?pat :where [?b :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
  [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt]]`,
-            DIAGRAM_RE2
+            DIAGRAM_RE3
           ));
         }
         for (const rec of found) {
@@ -41841,7 +44673,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         const users = {};
         if (spec.createdBy) users.created = userIdsFor(spec.createdBy);
         if (spec.editedBy) users.edited = userIdsFor(spec.editedBy);
-        const plan = browseQuery(spec, { patterns: { ...BLOCK_KIND_PATTERNS, board: DIAGRAM_RE2 }, users, sort });
+        const plan = browseQuery(spec, { patterns: { ...BLOCK_KIND_PATTERNS, board: DIAGRAM_RE3 }, users, sort });
         const found = plan ? timed("browse", () => host.q(plan.query, ...plan.args)) : [];
         let counts = null;
         const countBy = browseCountBy(spec, sort);
@@ -42169,14 +45001,14 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         `[:find ?u ?s ?pt :in $ ?uid ?pat :where [?c :block/uid ?uid] [?c :block/parents ?d] [?d :block/uid ?u] [?d :block/string ?s]
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?d :block/page ?p] [?p :node/title ?pt]]`,
         cardUid,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ) || [] : [];
       const viaRows = pageTitle || targetUid ? host.q(
         pageTitle ? `[:find ?u ?s ?pt :in $ ?title ?pat :where [?t :node/title ?title] [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/uid ?u] [?d :block/string ?s]
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?d :block/page ?p] [?p :node/title ?pt]]` : `[:find ?u ?s ?pt :in $ ?uid ?pat :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/parents ?d] [?d :block/uid ?u] [?d :block/string ?s]
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?d :block/page ?p] [?p :node/title ?pt]]`,
         pageTitle || targetUid,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ) || [] : [];
       const refRows = pageTitle || targetUid ? host.q(
         pageTitle ? `[:find ?u ?ss ?pt :in $ ?title :where [?p :node/title ?title] [?b :block/refs ?p] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]` : `[:find ?u ?ss ?pt :in $ ?uid :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`,
@@ -42234,8 +45066,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       let direct = [];
       let via = [];
       try {
-        direct = host.q(SHOW_DIRECT_QUERY, id, DIAGRAM_RE2) || [];
-        via = host.q(SHOW_REF_QUERY, id, DIAGRAM_RE2) || [];
+        direct = host.q(SHOW_DIRECT_QUERY, id, DIAGRAM_RE3) || [];
+        via = host.q(SHOW_REF_QUERY, id, DIAGRAM_RE3) || [];
       } catch {
         return null;
       }
@@ -42269,6 +45101,9 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   installCommentHost(host, { api: api3, data });
   return host;
 }
+
+// src/session.js
+init_settings();
 
 // src/host/migrate.js
 init_schema();
@@ -42396,7 +45231,7 @@ function parseData(raw) {
   }
   return raw && typeof raw === "object" ? plainKeys(raw) : {};
 }
-var finite3 = (v) => typeof v === "number" && Number.isFinite(v) ? v : void 0;
+var finite4 = (v) => typeof v === "number" && Number.isFinite(v) ? v : void 0;
 var asMap = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : {};
 var NATIVE_STYLE = {
   block: {
@@ -42522,16 +45357,16 @@ function readNative(host, boardUid) {
     const key = blockUid2 ?? `n${id}`;
     keyById.set(id, key);
     const data = parseData(n3[":diagram.node/data"]);
-    const abs = data.positionAbsolute && finite3(data.positionAbsolute.x) !== void 0 ? data.positionAbsolute : null;
+    const abs = data.positionAbsolute && finite4(data.positionAbsolute.x) !== void 0 ? data.positionAbsolute : null;
     const pos = abs ?? data.position ?? {};
     const type = data.type === "group" ? "group" : "node";
     return {
       key,
       blockUid: blockUid2,
-      x: finite3(pos.x) ?? 0,
-      y: finite3(pos.y) ?? 0,
-      w: finite3(data.width) ?? finite3(data.measured?.width),
-      h: finite3(data.height) ?? finite3(data.measured?.height),
+      x: finite4(pos.x) ?? 0,
+      y: finite4(pos.y) ?? 0,
+      w: finite4(data.width) ?? finite4(data.measured?.width),
+      h: finite4(data.height) ?? finite4(data.measured?.height),
       absolute: Boolean(abs),
       parentId: n3[":diagram.node/parent-node"]?.[":db/id"],
       type,
@@ -42789,10 +45624,10 @@ async function executeImport(plan, host, board2) {
 }
 
 // src/session.js
-var UID2 = ":block/uid";
+var UID3 = ":block/uid";
 var STR = ":block/string";
 var ORD = ":block/order";
-var KIDS2 = ":block/children";
+var KIDS3 = ":block/children";
 var PROPS = ":block/props";
 var OPEN = ":block/open";
 var LINK_MODES = ["off", "attributes", "all"];
@@ -42802,6 +45637,8 @@ var MAX_PARENT_STRINGS = 200;
 var RESUME_RETRY_MS = 1e3;
 var HIGHLIGHT_HOLD_MS = 6e4;
 var LINK_CHUNK = 120;
+var LINK_QUIET_MS = 1500;
+var LINK_PART = 100;
 var DAILY_GAP = 20;
 var HIGHLIGHT_WATCH_CAP = 60;
 var registry = /* @__PURE__ */ new Map();
@@ -42947,15 +45784,15 @@ function sortKeys(v) {
   return v;
 }
 var stable = (v) => v == null ? "null" : JSON.stringify(sortKeys(v));
-function kidsOf3(node2) {
-  const kids = Array.isArray(node2?.[KIDS2]) ? node2[KIDS2] : [];
+function kidsOf4(node2) {
+  const kids = Array.isArray(node2?.[KIDS3]) ? node2[KIDS3] : [];
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[ORD] ?? a.i) - (b.c[ORD] ?? b.i) || a.i - b.i).map(({ c }) => c);
 }
 function indexTree(root) {
   const map = /* @__PURE__ */ new Map();
   const walk3 = (node2, parent) => {
-    map.set(node2[UID2], { node: node2, parent });
-    for (const c of node2[KIDS2] ?? []) walk3(c, node2);
+    map.set(node2[UID3], { node: node2, parent });
+    for (const c of node2[KIDS3] ?? []) walk3(c, node2);
   };
   if (root) walk3(root, null);
   return map;
@@ -42963,28 +45800,28 @@ function indexTree(root) {
 function detach(idx, uid) {
   const hit = idx.get(uid);
   if (!hit?.parent) return null;
-  const kids = hit.parent[KIDS2] ?? [];
+  const kids = hit.parent[KIDS3] ?? [];
   const at = kids.indexOf(hit.node);
   if (at >= 0) kids.splice(at, 1);
   return hit;
 }
 function attach(parentNode, node2, order) {
-  const kids = kidsOf3(parentNode);
+  const kids = kidsOf4(parentNode);
   if (order === "first") kids.unshift(node2);
   else if (order === "last" || typeof order !== "number") kids.push(node2);
   else kids.splice(Math.max(0, Math.min(order, kids.length)), 0, node2);
   kids.forEach((k, i) => {
     k[ORD] = i;
   });
-  parentNode[KIDS2] = kids;
+  parentNode[KIDS3] = kids;
 }
 function findChild(root, uid) {
   const stack = [root];
   while (stack.length) {
     const node2 = stack.pop();
     if (!node2 || typeof node2 !== "object") continue;
-    if (node2[UID2] === uid) return node2;
-    const kids = node2[KIDS2];
+    if (node2[UID3] === uid) return node2;
+    const kids = node2[KIDS3];
     if (Array.isArray(kids)) for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]);
   }
   return null;
@@ -42993,13 +45830,13 @@ function refList(node2) {
   const refs = node2?.[":block/refs"];
   if (!refs) return [];
   const list = Array.isArray(refs) ? refs : [refs];
-  return list.filter((ref) => ref && typeof ref === "object" && !Array.isArray(ref)).slice().sort((a, b) => String(a[UID2] ?? "").localeCompare(String(b[UID2] ?? "")));
+  return list.filter((ref) => ref && typeof ref === "object" && !Array.isArray(ref)).slice().sort((a, b) => String(a[UID3] ?? "").localeCompare(String(b[UID3] ?? "")));
 }
 function sameTree(a, b, allowed, state, stack) {
   if (a === b) return true;
   if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
-  const id = a[UID2] ?? null;
-  if (id !== (b[UID2] ?? null)) return false;
+  const id = a[UID3] ?? null;
+  if (id !== (b[UID3] ?? null)) return false;
   if (id && stack.has(id)) return true;
   if (id) stack.add(id);
   try {
@@ -43014,8 +45851,8 @@ function sameTree(a, b, allowed, state, stack) {
     if ((a[":block/heading"] || 0) !== (b[":block/heading"] || 0)) return false;
     if (a[OPEN] !== false !== (b[OPEN] !== false)) return false;
     if (stable(a[PROPS] ?? null) !== stable(b[PROPS] ?? null)) return false;
-    const ak = kidsOf3(a);
-    const bk = kidsOf3(b);
+    const ak = kidsOf4(a);
+    const bk = kidsOf4(b);
     if (ak.length !== bk.length) return false;
     for (let i = 0; i < ak.length; i++) if (!sameTree(ak[i], bk[i], allowed, state, stack)) return false;
     const ar = refList(a);
@@ -43031,8 +45868,8 @@ function contentSig(nodes) {
   const out = [];
   const walk3 = (list) => {
     for (const node2 of list || []) {
-      out.push(node2?.[UID2] ?? "", node2?.[STR] ?? "");
-      const kids = node2?.[KIDS2];
+      out.push(node2?.[UID3] ?? "", node2?.[STR] ?? "");
+      const kids = node2?.[KIDS3];
       if (Array.isArray(kids) && kids.length) walk3(kids);
     }
   };
@@ -43212,7 +46049,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   const insertOrder = (parentUid) => {
     const node2 = raw ? rawNode(parentUid) : null;
     if (!node2) return "last";
-    const at = kidsOf3(node2).findIndex((k) => {
+    const at = kidsOf4(node2).findIndex((k) => {
       const type = readPlexus(k[PROPS])?.type;
       if (type === "edges" || type === "snapshots" || type === "regions" || type === "trails") return true;
       return isContainerString(k[":block/string"] ?? k.string ?? "");
@@ -43246,11 +46083,30 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const node2 = rawNode(id);
     if (node2) node2[STR] = string;
   };
+  let heldGone = null;
   function queueDependentDrops(prev, next) {
-    if (dropQueued || !prev?.edges || !next?.edges) return;
+    if (!prev?.edges || !next?.edges) return;
     const gone2 = [];
     for (const id of prev.edges.keys()) if (!next.edges.has(id)) gone2.push(id);
     if (!gone2.length) return;
+    if (host.boardUnverified?.(uid) === true) {
+      if (!heldGone) {
+        heldGone = /* @__PURE__ */ new Set();
+        host.onBoardVerified?.(uid, () => {
+          const ids = heldGone ? [...heldGone] : [];
+          heldGone = null;
+          if (destroyed || !board2 || !ids.length) return;
+          dropDependentsOf(ids.filter((id) => !board2.edges.has(id)));
+        });
+      }
+      for (const id of gone2) heldGone.add(id);
+      return;
+    }
+    dropDependentsOf(gone2);
+  }
+  function dropDependentsOf(gone2) {
+    if (dropQueued || !board2?.edges || !gone2.length) return;
+    const next = board2;
     const victims = [];
     for (const edge of next.edges.values()) {
       if (gone2.includes(edge.from) || gone2.includes(edge.to)) victims.push(edge.uid);
@@ -43321,13 +46177,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (!tracked.length) return incoming;
     const ours = ix();
     const inc = indexTree(incoming);
-    const incUid = incoming[UID2];
+    const incUid = incoming[UID3];
     for (const [id, field] of tracked) {
       if (field === "parent") {
         const mine = ours.get(id);
         const theirs = inc.get(id);
-        const myParent = mine?.parent?.[UID2] ?? "";
-        const theirParent = theirs?.parent?.[UID2] ?? "";
+        const myParent = mine?.parent?.[UID3] ?? "";
+        const theirParent = theirs?.parent?.[UID3] ?? "";
         if (ledger.accept(id, "parent", theirParent)) continue;
         if (myParent === theirParent) continue;
         if (!mine) {
@@ -43336,15 +46192,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         } else if (!theirs) {
           const target = myParent === incUid ? incoming : inc.get(myParent)?.node;
           if (!target) continue;
-          const node2 = { ...mine.node, [KIDS2]: [] };
-          target[KIDS2] = [...target[KIDS2] ?? [], node2];
+          const node2 = { ...mine.node, [KIDS3]: [] };
+          target[KIDS3] = [...target[KIDS3] ?? [], node2];
           inc.set(id, { node: node2, parent: target });
         } else {
           const target = myParent === incUid ? incoming : inc.get(myParent)?.node;
           if (!target) continue;
           detach(inc, id);
           theirs.node[ORD] = mine.node[ORD];
-          target[KIDS2] = [...target[KIDS2] ?? [], theirs.node];
+          target[KIDS3] = [...target[KIDS3] ?? [], theirs.node];
           inc.set(id, { node: theirs.node, parent: target });
         }
       } else if (field === "props") {
@@ -43373,9 +46229,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const node2 = findChild(root, id);
     if (node2) {
       const walk3 = (n3) => {
-        const nid = n3?.[UID2];
+        const nid = n3?.[UID3];
         if (nid) allowed.add(nid);
-        for (const child of kidsOf3(n3)) walk3(child);
+        for (const child of kidsOf4(n3)) walk3(child);
       };
       walk3(node2);
     }
@@ -43386,13 +46242,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     let found = null;
     const walk3 = (node2, itemUid) => {
       if (!node2 || found) return;
-      const nid = node2[UID2];
+      const nid = node2[UID3];
       const next = nid && board2?.items.has(nid) ? nid : itemUid;
       if (nid === id) {
         found = next;
         return;
       }
-      for (const child of kidsOf3(node2)) walk3(child, next);
+      for (const child of kidsOf4(node2)) walk3(child, next);
     };
     walk3(root, null);
     return found;
@@ -43412,12 +46268,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       if (other && (other[STR] ?? "") !== it.string) return null;
     }
     const nextString = node2[STR] ?? "";
-    const own = nextString !== item.string;
-    if (own && !canPatchString(item, nextString)) return null;
-    if (own) writeItemString(item, nextString);
-    let dirty = own;
+    const own2 = nextString !== item.string;
+    if (own2 && !canPatchString(item, nextString)) return null;
+    if (own2) writeItemString(item, nextString);
+    let dirty = own2;
     if (item.type !== "section") {
-      const kids = kidsOf3(node2);
+      const kids = kidsOf4(node2);
       if (contentSig(item.content) !== contentSig(kids)) dirty = true;
       item.content = kids;
     }
@@ -43448,7 +46304,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   };
   const onBoard = (after) => {
     if (destroyed || pausedHolds >= holders) return;
-    if (!after || !after[UID2]) {
+    if (!after || !after[UID3]) {
       if (!host.pullBoard(uid, { light: true })) markGone();
       return;
     }
@@ -43490,7 +46346,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     } catch {
       return;
     }
-    if (!fresh || !fresh[UID2]) {
+    if (!fresh || !fresh[UID3]) {
       markGone();
       return;
     }
@@ -43862,7 +46718,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       create({ parent, uid: id, string = "", plexus, open, order }) {
         const newUid = id ?? host.generateUid();
         const ord = order ?? insertOrder(parent);
-        const node2 = { [UID2]: newUid, [STR]: string, [ORD]: 0, [KIDS2]: [] };
+        const node2 = { [UID3]: newUid, [STR]: string, [ORD]: 0, [KIDS3]: [] };
         if (plexus) node2[PROPS] = { plexus: plainKeys(plexus) };
         if (open !== void 0) node2[OPEN] = open;
         rawInsert(parent, node2, ord);
@@ -43922,16 +46778,16 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   });
   const sectionFloor = (id, size) => {
     const item = board2.items.get(id);
-    const own = rects.get(id);
-    if (item?.type !== "section" || !own || !item.members.length) return size;
+    const own2 = rects.get(id);
+    if (item?.type !== "section" || !own2 || !item.members.length) return size;
     const b = boundsOf(item.members.map((m) => rects.get(m)).filter(Boolean));
     if (!b) return size;
-    return { w: Math.max(size.w, b.x + b.w + FIT_PAD - own.x), h: Math.max(size.h, b.y + b.h + FIT_PAD - own.y) };
+    return { w: Math.max(size.w, b.x + b.w + FIT_PAD - own2.x), h: Math.max(size.h, b.y + b.h + FIT_PAD - own2.y) };
   };
   function ensureContainer(t) {
     if (board2.containerUid) return board2.containerUid;
-    const existing = kidsOf3(raw).find((k) => readPlexus(k[PROPS])?.type === "edges");
-    if (existing) return existing[UID2];
+    const existing = kidsOf4(raw).find((k) => readPlexus(k[PROPS])?.type === "edges");
+    if (existing) return existing[UID3];
     return t.create({ parent: uid, order: "last", string: "Connections", plexus: { type: "edges" }, open: false });
   }
   function writeImageRegion(t, item, frac, label, regionUid, poly) {
@@ -44081,8 +46937,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   }
   function ensureTrails(t) {
     if (board2.trailsUid) return board2.trailsUid;
-    const existing = kidsOf3(raw).find((k) => readPlexus(k[PROPS])?.type === "trails");
-    if (existing) return existing[UID2];
+    const existing = kidsOf4(raw).find((k) => readPlexus(k[PROPS])?.type === "trails");
+    if (existing) return existing[UID3];
     return t.create({ parent: uid, order: "last", string: "Trails", plexus: { type: "trails" }, open: false });
   }
   function trailByUid(id) {
@@ -44239,9 +47095,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
     const eids = [...eidToItems.keys()];
     if (!eids.length || boardEid == null) return null;
-    return { boardEid, eidToItems, eids };
+    return { boardEid, eidToItems, eids, eidSet: new Set(eids) };
   }
   function linkRows(inputs, targets) {
+    if (typeof host.linkRows === "function") return host.linkRows(inputs.boardEid, inputs.eidSet, targets) || [];
     return host.q(linksQuery(), inputs.boardEid, inputs.eids, targets) || [];
   }
   function finishLinkRows(inputs, rows) {
@@ -44250,7 +47107,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     for (const row4 of rows) {
       const su = row4[2];
       const ss = row4[3];
-      if (budget <= 0) break;
+      if (row4.length > 4) {
+        if (row4[4] != null && attrNameOf(ss) == null) parentStrings.set(su, row4[4]);
+        continue;
+      }
+      if (budget <= 0) continue;
       if (attrNameOf(ss) == null && !parentStrings.has(su)) {
         budget--;
         const ps = host.parentString?.(su);
@@ -44265,10 +47126,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   let linkPromise = null;
   let linkResolve = null;
   function finishLinks() {
-    const done2 = linkResolve;
+    const done3 = linkResolve;
     linkPromise = null;
     linkResolve = null;
-    done2?.();
+    done3?.();
   }
   function runLinks() {
     linkTimer = null;
@@ -44281,6 +47142,35 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         console.error("[plexus session] links", err);
       }
       const ric = globalThis.requestIdleCallback;
+      if (inputs && inputs.eids.length > LINK_CHUNK && typeof ric === "function" && !idle && notedSpeedFlags().bgBudget !== false) {
+        const epoch = linkEpoch;
+        const rows = [];
+        let i = 0;
+        let partMs = 25;
+        const clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
+        linkJob = sharedBgBudget().run(() => {
+          if (destroyed || epoch !== linkEpoch) {
+            linkJob = null;
+            finishLinks();
+            return true;
+          }
+          try {
+            const t0 = clock();
+            rows.push(...linkRows(inputs, inputs.eids.slice(i, i + LINK_PART)));
+            partMs = (partMs + (clock() - t0)) / 2;
+            i += LINK_PART;
+            if (i < inputs.eids.length) return false;
+            finishLinkRows(inputs, rows);
+            recomputeLinks(false);
+          } catch (err) {
+            console.error("[plexus session] links", err);
+          }
+          linkJob = null;
+          finishLinks();
+          return true;
+        }, { timeout: 1e3, firstQuiet: LINK_QUIET_MS, partMs: () => partMs, label: "links" });
+        return;
+      }
       if (inputs && inputs.eids.length > LINK_CHUNK && typeof ric === "function" && !idle) {
         const epoch = linkEpoch;
         const rows = [];
@@ -44319,8 +47209,26 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     finishLinks();
   }
   let linkChain = null;
+  let linkJob = null;
+  let linksOwed = false;
+  const linksParked = () => holders > 0 && pausedHolds >= holders;
+  function parkLinks() {
+    if (!linkJob && !linkChain && linkTimer == null && linkIdleId == null) return;
+    cancelScheduledLinks();
+    linksOwed = true;
+  }
+  function unparkLinks() {
+    if (!linksOwed || linksParked() || destroyed) return;
+    linksOwed = false;
+    scheduleLinks();
+  }
   function cancelScheduledLinks(keepChain = false) {
     linkEpoch += 1;
+    if (linkJob) {
+      const stop3 = linkJob;
+      linkJob = null;
+      stop3();
+    }
     if (!keepChain) linkChain = null;
     if (linkTimer) clearTimeout(linkTimer);
     linkTimer = null;
@@ -44334,6 +47242,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   }
   function scheduleLinks() {
     cancelScheduledLinks(true);
+    if (linksParked()) {
+      linksOwed = true;
+      linkChain = null;
+      return;
+    }
     const ric = globalThis.requestIdleCallback;
     const raf3 = globalThis.requestAnimationFrame;
     if (linkDelay !== 0 && !idle && typeof ric === "function" && typeof raf3 === "function") {
@@ -44990,7 +47903,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       for (const id of top) for (const d of descendantsOf(board2, id)) moved.add(d);
       const undoItems = top.map((id) => {
         const hit = ix().get(id);
-        return { uid: id, parentUid: hit.parent[UID2], order: kidsOf3(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])) };
+        return { uid: id, parentUid: hit.parent[UID3], order: kidsOf4(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])) };
       }).sort((a, b) => a.order - b.order);
       const undoEdges = [];
       const info = { createdContainer: null };
@@ -45115,8 +48028,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return txn((t) => {
         for (const m of moves) {
           const parent = rawNode(m.parentUid) ? m.parentUid : board2.items.get(m.pdfUid).parentUid;
-          const kids = kidsOf3(rawNode(parent));
-          const at = Math.max(0, kids.findIndex((k) => k[UID2] === m.pdfUid));
+          const kids = kidsOf4(rawNode(parent));
+          const at = Math.max(0, kids.findIndex((k) => k[UID3] === m.pdfUid));
           const pdfString = rawNode(m.pdfUid)?.[STR] || `{{[[pdf]]: ${m.url}}}`;
           const originalProps = clone(rawPlexus(m.pdfUid));
           const pageUid2 = m.page.uid || t.page({ uid: m.page.newUid || void 0, title: m.page.title });
@@ -45171,8 +48084,22 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           for (const r of back) {
             let out = false;
             for (let tries = 0; tries < 15 && !out; tries += 1) {
-              const loc = host.blockLocation?.(r.tableUid);
-              out = !loc || loc.parentUid !== r.captionUid;
+              let loc = null;
+              try {
+                loc = host.blockLocation?.(r.tableUid) || null;
+              } catch {
+                loc = null;
+              }
+              if (loc) out = loc.parentUid !== r.captionUid;
+              else {
+                let kids;
+                try {
+                  kids = host.outlineKids?.([r.captionUid])?.get(r.captionUid);
+                } catch {
+                  kids = void 0;
+                }
+                out = Array.isArray(kids) && !kids.some((k) => k.uid === r.tableUid);
+              }
               if (!out) await new Promise((resolve) => setTimeout(resolve, 200));
             }
             if (out) await execute([{ op: "delete", uid: r.captionUid }]);
@@ -45185,8 +48112,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return txn((t) => {
         for (const f of folds) {
           const parent = board2.items.get(f.tableUid).parentUid;
-          const kids = kidsOf3(rawNode(parent));
-          const at = Math.max(0, kids.findIndex((k) => k[UID2] === f.tableUid));
+          const kids = kidsOf4(rawNode(parent));
+          const at = Math.max(0, kids.findIndex((k) => k[UID3] === f.tableUid));
           const props = clone(rawPlexus(f.tableUid));
           records.push({ tableUid: f.tableUid, captionUid: f.captionUid, parentUid: parent, order: at, props });
           t.create({ parent, uid: f.captionUid, string: f.caption, plexus: f.layout, open: false, order: at });
@@ -45207,6 +48134,110 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         }
         return { folded: folds.length, edges };
       }, custom);
+    },
+    // "Fold queries on this page": the plan for the page that holds this board (queries outside every board).
+    queryFoldPlan({ limit } = {}) {
+      let pageUid2 = "";
+      try {
+        pageUid2 = String(host.blockPageUid?.(uid) || "");
+      } catch {
+        pageUid2 = "";
+      }
+      let graph = "";
+      try {
+        graph = String(host.graphName?.() || "");
+      } catch {
+        graph = "";
+      }
+      return planQueryFolds({
+        pageUid: pageUid2,
+        boardUid: uid,
+        graph,
+        limit,
+        kidsOfMany: (ids) => typeof host.outlineKids === "function" ? host.outlineKids(ids) : /* @__PURE__ */ new Map(),
+        newUid: () => host.generateUid?.() || ""
+      });
+    },
+    // Applies a queryFoldPlan: each query that is still where the plan saw it gets a folded caption in its place and
+    // moves under it. The blocks are outside the board, so this writes straight through the queue (no board model
+    // change). One custom undo entry with recorded inverse writes; a second run plans nothing.
+    foldPageQueries(plan) {
+      if (!plan || plan.boardUid !== uid || destroyed || gone) return Promise.resolve({ folded: 0, refused: "board" });
+      let graphNow = "";
+      try {
+        graphNow = String(host.graphName?.() || "");
+      } catch {
+        graphNow = "";
+      }
+      if (plan.graph && graphNow && plan.graph !== graphNow) return Promise.resolve({ folded: 0, refused: "graph" });
+      const folds = [];
+      for (const f of plan.folds || []) {
+        if (!f?.queryUid || !f.captionUid) continue;
+        let loc = null;
+        try {
+          loc = host.blockLocation?.(f.queryUid) || null;
+        } catch {
+          loc = null;
+        }
+        if (!loc || loc.parentUid !== f.parentUid) continue;
+        const now5 = host.pullEntity?.("[:block/string]", f.queryUid)?.[":block/string"];
+        if (!hasQueryMacro(now5)) continue;
+        folds.push({ ...f, order: loc.order });
+      }
+      if (!folds.length) return Promise.resolve({ folded: 0 });
+      const list = [];
+      for (const f of folds) {
+        list.push({ op: "create", uid: f.captionUid, parent: f.parentUid, order: f.order, string: f.caption, open: false });
+        list.push({ op: "move", uid: f.queryUid, parent: f.captionUid, order: 0 });
+      }
+      if (!bulkAllowed(list.length)) return Promise.resolve({ folded: 0, refused: "bulk" });
+      const custom = {
+        forward: list,
+        async undo() {
+          const back = folds.slice().sort((a, b) => a.parentUid < b.parentUid ? -1 : a.parentUid > b.parentUid ? 1 : b.order - a.order);
+          await execute(back.map((f) => ({ op: "move", uid: f.queryUid, parent: f.parentUid, order: f.order })));
+          for (const f of back) {
+            let out = false;
+            for (let tries = 0; tries < 15 && !out; tries += 1) {
+              let loc = null;
+              try {
+                loc = host.blockLocation?.(f.queryUid) || null;
+              } catch {
+                loc = null;
+              }
+              if (loc) out = loc.parentUid !== f.captionUid;
+              else {
+                let kids;
+                try {
+                  kids = host.outlineKids?.([f.captionUid])?.get(f.captionUid);
+                } catch {
+                  kids = void 0;
+                }
+                out = Array.isArray(kids) && !kids.some((k) => k.uid === f.queryUid);
+              }
+              if (!out) await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+            if (out) await execute([{ op: "delete", uid: f.captionUid }]);
+          }
+        },
+        async redo() {
+          await execute(custom.forward);
+        }
+      };
+      return queue.run(() => grouped(async () => {
+        host.setCustomUndo?.(custom);
+        try {
+          await execute(list, { hold: true });
+        } catch (err) {
+          host.setCustomUndo?.(null);
+          throw err;
+        }
+      })).then(() => ({ folded: folds.length }), (err) => {
+        console.error("[plexus session] fold queries failed", err);
+        setSyncState("failed");
+        emit2("toast", { message: "Couldn't fold every query. Check the page in Roam." });
+        return { folded: 0, failed: true };
+      });
     },
     // One ref card, centered on the board's content (the origin when nothing is placed yet).
     addBlockRef(blockUid2) {
@@ -45472,10 +48503,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return txn((t) => {
         const item = board2.items.get(id);
         if (!item || item.type !== "section" || !item.members.length) return false;
-        const own = rects.get(id);
+        const own2 = rects.get(id);
         const bounds = boundsOf(item.members.map((m) => rects.get(m)));
         let next = inflate(bounds, FIT_PAD);
-        if (!shrink) next = unionRect(own, next);
+        if (!shrink) next = unionRect(own2, next);
         const size = clampSize("section", next.w, next.h);
         next = { x: round14(next.x), y: round14(next.y), w: round14(size.w), h: round14(size.h) };
         const origin = item.parentUid === uid ? { x: 0, y: 0 } : rects.get(item.parentUid) ?? { x: 0, y: 0 };
@@ -45659,8 +48690,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         let moves = 0;
         for (const group of readingOrder(board2, rects)) {
           group.uids.forEach((id, index) => {
-            const kids = kidsOf3(rawNode(group.parent));
-            const at = kids.findIndex((k) => k[UID2] === id);
+            const kids = kidsOf4(rawNode(group.parent));
+            const at = kids.findIndex((k) => k[UID3] === id);
             if (at < 0 || at === index) return;
             t.move(id, group.parent, index);
             moves += 1;
@@ -45815,7 +48846,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     },
     createTrail(name, cardUids) {
       return txn((t) => {
-        const had = Boolean(board2.trailsUid) || kidsOf3(raw).some((k) => readPlexus(k[PROPS])?.type === "trails");
+        const had = Boolean(board2.trailsUid) || kidsOf4(raw).some((k) => readPlexus(k[PROPS])?.type === "trails");
         const parent = ensureTrails(t);
         const id = t.create({ parent, order: "last", string: trailString(name), plexus: { type: "trail" }, open: true });
         const ids = [];
@@ -46028,12 +49059,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         if (src.kind === "page") {
           const page = host.pullPage(src.target.title);
           if (!page) return { ok: false, reason: "no-page" };
-          const attr = kidsOf3(page).find((k) => String(k[STR] ?? "").trim() === `${label}::`);
+          const attr = kidsOf4(page).find((k) => String(k[STR] ?? "").trim() === `${label}::`);
           if (attr) {
-            await write(() => host.createBlock({ parentUid: attr[UID2], order: "last", string: dstRef }));
+            await write(() => host.createBlock({ parentUid: attr[UID3], order: "last", string: dstRef }));
             return { ok: true, reason: "appended" };
           }
-          await write(() => host.createBlock({ parentUid: page[UID2], order: "last", string: `${label}:: ${dstRef}` }));
+          await write(() => host.createBlock({ parentUid: page[UID3], order: "last", string: `${label}:: ${dstRef}` }));
           return { ok: true, reason: "created" };
         }
         const srcUid = src.kind === "block" ? src.target.uid : src.uid;
@@ -46095,9 +49126,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       try {
         counts = await queue.run(() => grouped(async () => {
           ledger.clear();
-          const done2 = await executeImport(plan, host, board2);
+          const done3 = await executeImport(plan, host, board2);
           if (collapse) await host.setOpen(uid, false);
-          return done2;
+          return done3;
         }));
       } catch (err) {
         handleFailure(err);
@@ -46126,12 +49157,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       if (destroyed) return;
       holders += 1;
       syncBoardWatch(true);
+      unparkLinks();
     },
     // Drop this holder's pull watch without destroying the session.
     pauseWatches() {
       if (destroyed || pausedHolds >= holders) return;
       pausedHolds += 1;
       syncBoardWatch(false);
+      if (linksParked()) parkLinks();
     },
     // Put the watch back. One pullBoard applies edits that landed while paused.
     resumeWatches() {
@@ -46140,6 +49173,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       const wasOn = boardWatchOn && !boardWatchHeld;
       syncBoardWatch(!boardWatchOn);
       if (wasOn) catchUpBoard();
+      unparkLinks();
     },
     // A ref is leaving. A paused ref already dropped its watch hold.
     forget(opts) {
@@ -46148,6 +49182,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       holders -= 1;
       if (holders === 0) return;
       syncBoardWatch(false);
+      unparkLinks();
     },
     release() {
     },
@@ -46202,9 +49237,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     let childContainer = null;
     const childEdges = () => {
       if (childContainer) return childContainer;
-      const existing = kidsOf3(rawNode(boardUid)).find((k) => readPlexus(k[PROPS])?.type === "edges");
+      const existing = kidsOf4(rawNode(boardUid)).find((k) => readPlexus(k[PROPS])?.type === "edges");
       if (existing) {
-        childContainer = existing[UID2];
+        childContainer = existing[UID3];
         return childContainer;
       }
       childContainer = t.create({ parent: boardUid, order: "last", string: "Connections", plexus: { type: "edges" }, open: false });
@@ -46217,7 +49252,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     for (const e2 of touched) {
       const hit = ix().get(e2.uid);
       if (hit?.parent) {
-        snapshots.set(e2.uid, { uid: e2.uid, parent: hit.parent[UID2], order: kidsOf3(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])), string: hit.node[STR] ?? "" });
+        snapshots.set(e2.uid, { uid: e2.uid, parent: hit.parent[UID3], order: kidsOf4(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])), string: hit.node[STR] ?? "" });
       }
     }
     for (const e2 of touched) {
@@ -46276,7 +49311,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     bulkAllowed,
     rawNode,
     ix,
-    kidsOf: kidsOf3,
+    kidsOf: kidsOf4,
     rawPlexus,
     itemPlexus,
     edgePlexus,
@@ -46331,11 +49366,15 @@ function acquireSession(boardUid, options = {}) {
   };
   return session;
 }
+function hasSession(boardUid, host) {
+  const entry = registry.get(boardUid);
+  return Boolean(entry && entry.host === host);
+}
 
 // src/session-clip.js
-var UID3 = ":block/uid";
+var UID4 = ":block/uid";
 var STR2 = ":block/string";
-var KIDS3 = ":block/children";
+var KIDS4 = ":block/children";
 var PROPS2 = ":block/props";
 var STACK_GAP = 24;
 var OUTLINE_CARD = { w: 240, h: 72 };
@@ -46344,8 +49383,8 @@ var SPREAD_CAP = 22;
 var SPREAD_GAP = 40;
 function findNode2(node2, uid) {
   if (!node2) return null;
-  if (node2[UID3] === uid) return node2;
-  for (const c of node2[KIDS3] ?? []) {
+  if (node2[UID4] === uid) return node2;
+  for (const c of node2[KIDS4] ?? []) {
     const hit = findNode2(c, uid);
     if (hit) return hit;
   }
@@ -46371,11 +49410,11 @@ extendSession((session, api3) => {
     return t.create({ parent, string, plexus: serializeItemLayout(layout) });
   }
   function cloneRegions(t, node2, oldUid, freshUid) {
-    for (const kid of node2[KIDS3] ?? []) {
+    for (const kid of node2[KIDS4] ?? []) {
       const isBox = isContainerString(kid[STR2] ?? "") || readPlexus(kid[PROPS2])?.type === "regions";
       if (!isBox) continue;
       const box2 = t.create({ parent: freshUid, uid: gen(), string: kid[STR2] ?? "", plexus: { type: "regions" }, open: false, order: "last" });
-      for (const region of kid[KIDS3] ?? []) {
+      for (const region of kid[KIDS4] ?? []) {
         const text4 = region[STR2] ?? "";
         const parsed = parseRegion(text4);
         const string = parsed && parsed.drawingUid === oldUid ? text4.replace(`d=${oldUid}`, `d=${freshUid}`) : text4;
@@ -46488,8 +49527,8 @@ extendSession((session, api3) => {
       const nodes = top.map(copy).filter(Boolean);
       if (!nodes.length) return null;
       const edgeNodes = [...board2.edges.values()].filter((e2) => e2.valid && set.has(e2.from) && set.has(e2.to)).map((e2) => copy(e2.uid)).filter(Boolean);
-      if (edgeNodes.length) nodes.push({ [UID3]: "plexus-cut-edges", [STR2]: "Connections", [PROPS2]: { [PLEXUS_KEY]: { type: "edges" } }, [KIDS3]: edgeNodes });
-      return { [UID3]: session.uid, [STR2]: "", [KIDS3]: nodes };
+      if (edgeNodes.length) nodes.push({ [UID4]: "plexus-cut-edges", [STR2]: "Connections", [PROPS2]: { [PLEXUS_KEY]: { type: "edges" } }, [KIDS4]: edgeNodes });
+      return { [UID4]: session.uid, [STR2]: "", [KIDS4]: nodes };
     },
     // data comes from parseClipboard (the `plexus` payload or its `.data`). mode 'refs' makes ref cards,
     // 'clone' clones the copied items (from this board or, for another board, from its pulled tree). A payload
@@ -46542,7 +49581,7 @@ extendSession((session, api3) => {
       const node2 = api3.rawNode(targetUid);
       if (node2) {
         if (!isEnhancedBoardNode(node2)) return Promise.resolve(null);
-        const origin2 = outlineOrigin(boardPreview({ uid: targetUid, string: node2[STR2], content: node2[KIDS3] ?? [] }));
+        const origin2 = outlineOrigin(boardPreview({ uid: targetUid, string: node2[STR2], content: node2[KIDS4] ?? [] }));
         const title = parseBoardTitle(node2[STR2]) || UNTITLED_BOARD;
         return api3.txn((t) => {
           for (const c of stackAt(top.map((id) => api3.refOf(id)), origin2.x, origin2.y)) {
@@ -46554,7 +49593,7 @@ extendSession((session, api3) => {
       const pulled = host.pullBoard(targetUid);
       if (!isEnhancedBoardNode(pulled)) return Promise.resolve(null);
       const target = buildBoard(pulled);
-      const origin = outlineOrigin(boardPreview({ uid: targetUid, string: pulled[STR2], content: pulled[KIDS3] ?? [] }));
+      const origin = outlineOrigin(boardPreview({ uid: targetUid, string: pulled[STR2], content: pulled[KIDS4] ?? [] }));
       const cards = stackAt(top.map((id) => api3.refOf(id)), origin.x, origin.y);
       return api3.queue.run(async () => {
         for (let i = 0; i < cards.length; i++) {
@@ -46580,8 +49619,8 @@ extendSession((session, api3) => {
       const item = board2?.items.get(cardUid);
       if (!item || item.type !== "card") return Promise.resolve(none);
       let kids;
-      if (item.kind === "note") kids = (item.content ?? []).map((n3) => ({ uid: n3[UID3] ?? n3.uid, string: n3[STR2] ?? n3.string ?? "" }));
-      else if (item.kind === "block") kids = (host.pullTree(item.target.uid, 1, 60) ?? []).map((n3) => ({ uid: n3[UID3] ?? n3.uid, string: n3[STR2] ?? n3.string ?? "" }));
+      if (item.kind === "note") kids = (item.content ?? []).map((n3) => ({ uid: n3[UID4] ?? n3.uid, string: n3[STR2] ?? n3.string ?? "" }));
+      else if (item.kind === "block") kids = (host.pullTree(item.target.uid, 1, 60) ?? []).map((n3) => ({ uid: n3[UID4] ?? n3.uid, string: n3[STR2] ?? n3.string ?? "" }));
       else return Promise.resolve(none);
       const onBoard = /* @__PURE__ */ new Set();
       for (const it of board2.items.values()) if (it.target?.kind === "block" && it.target.uid) onBoard.add(it.target.uid);
@@ -46601,14 +49640,14 @@ extendSession((session, api3) => {
       if (!fresh.length) return Promise.resolve({ added: 0, skipped });
       const list = fresh.length > SPREAD_CAP ? fresh.slice(0, SPREAD_CAP) : fresh;
       if (fresh.length > SPREAD_CAP) api3.emit("toast", { message: `Added ${SPREAD_CAP} of ${fresh.length} (Roam undo holds 50 changes)` });
-      const own = api3.rects().get(cardUid);
-      if (!own) return Promise.resolve(none);
-      const x = own.x + own.w + SPREAD_GAP;
+      const own2 = api3.rects().get(cardUid);
+      if (!own2) return Promise.resolve(none);
+      const x = own2.x + own2.w + SPREAD_GAP;
       return api3.txn((t) => {
         const refOfCard = api3.refOf(cardUid);
         const container = api3.ensureContainer(t);
         const made = [];
-        let y = own.y;
+        let y = own2.y;
         for (const k of list) {
           const id = placeCard(t, `((${k.uid}))`, x, y);
           made.push(id);
@@ -46647,13 +49686,13 @@ extendSession((session, api3) => {
         string: n3.string ?? "",
         children: plain2(n3.children ?? [])
       }));
-      const rawTree = (list) => list.filter((n3) => n3?.[UID3]).map((n3) => ({
-        uid: n3[UID3],
+      const rawTree = (list) => list.filter((n3) => n3?.[UID4]).map((n3) => ({
+        uid: n3[UID4],
         string: n3[STR2] ?? "",
         children: rawTree(api3.kidsOf(n3))
       }));
       let tree;
-      if (item.kind === "note") tree = rawTree(api3.kidsOf({ [KIDS3]: item.content }));
+      if (item.kind === "note") tree = rawTree(api3.kidsOf({ [KIDS4]: item.content }));
       else if (item.kind === "block") tree = plain2(host.pullTree(item.target.uid, preset.depth, max) ?? []);
       else if (item.kind === "page") tree = plain2(host.pagePreview(item.target.title, preset.depth, max)?.blocks ?? []);
       else return Promise.resolve(none);
@@ -46672,7 +49711,7 @@ extendSession((session, api3) => {
       const picked = flat3.filter((f) => chosen.has(f.uid));
       if (!picked.length) return Promise.resolve(none);
       const rects = api3.rects();
-      const own = rects.get(cardUid);
+      const own2 = rects.get(cardUid);
       const onBoard = /* @__PURE__ */ new Map();
       for (const it of board2.items.values()) {
         if (it.uid !== cardUid && it.target?.kind === "block" && !onBoard.has(it.target.uid)) onBoard.set(it.target.uid, it.uid);
@@ -46682,7 +49721,7 @@ extendSession((session, api3) => {
         const r = have ? rects.get(have) : null;
         return [f.uid, { uid: f.uid, w: r?.w ?? OUTLINE_CARD.w, h: r?.h ?? OUTLINE_CARD.h, children: [] }];
       }));
-      const root = { uid: cardUid, w: own.w, h: own.h, children: [] };
+      const root = { uid: cardUid, w: own2.w, h: own2.h, children: [] };
       for (const f of picked) (f.parent && nodes.has(f.parent) ? nodes.get(f.parent) : root).children.push(nodes.get(f.uid));
       const layout = mindMapLayout(root, { direction: preset.direction, hGap: gaps.hGap, vGap: gaps.vGap });
       const colorOf3 = /* @__PURE__ */ new Map();
@@ -46703,14 +49742,14 @@ extendSession((session, api3) => {
           const have = onBoard.get(f.uid);
           if (have) {
             const r = rects.get(have);
-            shift.set(f.uid, r ? { dx: r.x - (own.x + p.x), dy: r.y - (own.y + p.y) } : { dx: 0, dy: 0 });
+            shift.set(f.uid, r ? { dx: r.x - (own2.x + p.x), dy: r.y - (own2.y + p.y) } : { dx: 0, dy: 0 });
             cardOf.set(f.uid, have);
             refOfCard.set(have, api3.refOf(have));
             continue;
           }
           const inherited = shift.get(f.parent) ?? { dx: 0, dy: 0 };
           const spec = colorOf3.has(f.uid) ? { ...OUTLINE_CARD, color: colorOf3.get(f.uid) } : OUTLINE_CARD;
-          const id = placeCard(t, `((${f.uid}))`, own.x + p.x + inherited.dx, own.y + p.y + inherited.dy, spec);
+          const id = placeCard(t, `((${f.uid}))`, own2.x + p.x + inherited.dx, own2.y + p.y + inherited.dy, spec);
           cardOf.set(f.uid, id);
           refOfCard.set(id, `((${f.uid}))`);
           created.push(id);
@@ -47029,7 +50068,7 @@ function captionForView(sections, point, fallbackTitle) {
 }
 
 // src/views.js
-var UID4 = ":block/uid";
+var UID5 = ":block/uid";
 var STR3 = ":block/string";
 var CONTAINER = "{{[[plexus-regions]]}}";
 function regionsParent(api3, board2) {
@@ -47037,7 +50076,7 @@ function regionsParent(api3, board2) {
   const root = api3.rawNode(api3.uid);
   for (const child of api3.kidsOf(root)) {
     const text4 = child[STR3] ?? child.string ?? "";
-    if (isContainerString(text4)) return child[UID4] || child.uid;
+    if (isContainerString(text4)) return child[UID5] || child.uid;
   }
   return null;
 }
@@ -47052,7 +50091,7 @@ function imageCardContainer(api3, cardUid) {
   const card2 = api3.rawNode(cardUid);
   if (!card2) return null;
   for (const child of api3.kidsOf(card2)) {
-    const id = child[UID4] || child.uid;
+    const id = child[UID5] || child.uid;
     if (!id) continue;
     const text4 = child[STR3] ?? child.string ?? "";
     if (isContainerString(text4) || api3.rawPlexus(id)?.type === "regions") return id;
@@ -47305,7 +50344,7 @@ function createLifecycle() {
 // package.json
 var package_default = {
   name: "plexus-diagram",
-  version: "3.28.0",
+  version: "3.31.0",
   private: true,
   description: "Heptabase-style whiteboard for Roam {{[[diagram]]}} blocks: cards, colored sections, and connections that are real Roam blocks and links",
   type: "module",
@@ -47462,7 +50501,9 @@ var MAX_SIDE = 2048;
 function createGestureUnderlay({ doc, world, root, before = null } = {}) {
   let canvas = null;
   let shown = false;
+  let colorCache = null;
   const colors = () => {
+    if (colorCache) return colorCache;
     const read2 = (name, fallback) => {
       let v = "";
       try {
@@ -47479,7 +50520,8 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       }
       return String(v).trim() || fallback;
     };
-    return { card: read2("--pxd-card", "rgba(128,128,128,0.35)"), line: read2("--pxd-muted", "rgba(128,128,128,0.6)") };
+    colorCache = { card: read2("--pxd-card", "rgba(128,128,128,0.35)"), line: read2("--pxd-muted", "rgba(128,128,128,0.6)") };
+    return colorCache;
   };
   const hide = () => {
     shown = false;
@@ -47505,6 +50547,7 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     }
     const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
     const scale = Math.max(0.01, Math.min(zoom * Math.min(dpr, 1.25), MAX_SIDE / w, MAX_SIDE / h));
+    const c = colors();
     if (!canvas) {
       canvas = doc.createElement("canvas");
       canvas.className = "pxd-underlay";
@@ -47525,7 +50568,6 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       hide();
       return 0;
     }
-    const c = colors();
     try {
       paint2(ctx, { items, edges, c, scale, x0, y0, bw, bh });
     } catch {
@@ -47563,7 +50605,10 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     canvas = null;
     shown = false;
   };
-  return { draw, hide, dispose, isShown: () => shown, element: () => canvas };
+  const dropColors = () => {
+    colorCache = null;
+  };
+  return { draw, hide, dispose, dropColors, isShown: () => shown, element: () => canvas };
 }
 
 // src/view/board-view.js
@@ -48079,8 +51124,8 @@ function warmPlan(input) {
     if (src.hasLive || src.hasPane || src.saveData || src.inFlight || src.moving) return null;
     const since = Number(src.sinceOpenMs);
     if (!Number.isFinite(since) || since < WARM_AFTER_MS) return null;
-    const done2 = Number(src.done);
-    if (!Number.isFinite(done2) || done2 < 0 || done2 >= WARM_MAX) return null;
+    const done3 = Number(src.done);
+    if (!Number.isFinite(done3) || done3 < 0 || done3 >= WARM_MAX) return null;
     const cards = Array.isArray(src.cards) ? src.cards : [];
     for (const card2 of cards) {
       if (!card2 || typeof card2 !== "object") continue;
@@ -48178,7 +51223,7 @@ function isBlankCanvas(canvas, { threshold = 235 } = {}) {
 
 // src/model/pdf-drag.js
 var PDF_MARK = ".TextHighlight__part, .AreaHighlight__part, .AreaHighlight";
-var UID5 = /^[A-Za-z0-9_-]{9}$/;
+var UID6 = /^[A-Za-z0-9_-]{9}$/;
 var FIBER_LIMIT = 10;
 var CHIP_LEN = 60;
 function fiberOf(node2) {
@@ -48206,7 +51251,7 @@ function highlightFromFiber(fiber) {
   return null;
 }
 function acceptId(id, exists) {
-  if (typeof id !== "string" || !UID5.test(id)) return null;
+  if (typeof id !== "string" || !UID6.test(id)) return null;
   if (typeof exists !== "function") return id;
   try {
     if (exists(id) !== true) return null;
@@ -48308,7 +51353,7 @@ function withCap(work, ms) {
   return new Promise((resolve) => {
     let settled = false;
     let timer = null;
-    const done2 = (value) => {
+    const done3 = (value) => {
       if (settled) return;
       settled = true;
       if (timer != null) {
@@ -48319,20 +51364,20 @@ function withCap(work, ms) {
       }
       resolve(value);
     };
-    timer = arm2(ms, () => done2(null));
-    Promise.resolve().then(work).then((value) => done2(value), () => done2(null));
+    timer = arm2(ms, () => done3(null));
+    Promise.resolve().then(work).then((value) => done3(value), () => done3(null));
   });
 }
 function requestResult2(req) {
   return new Promise((resolve) => {
     let settled = false;
-    const done2 = (value) => {
+    const done3 = (value) => {
       if (settled) return;
       settled = true;
       resolve(value);
     };
     try {
-      req.onsuccess = () => done2({ ok: true, result: req.result });
+      req.onsuccess = () => done3({ ok: true, result: req.result });
       req.onerror = (event) => {
         try {
           event?.preventDefault?.();
@@ -48342,10 +51387,10 @@ function requestResult2(req) {
           req.preventDefault?.();
         } catch {
         }
-        done2({ ok: false, result: null });
+        done3({ ok: false, result: null });
       };
     } catch {
-      done2({ ok: false, result: null });
+      done3({ ok: false, result: null });
     }
   });
 }
@@ -48755,7 +51800,7 @@ function haloRefs(q2, uid, cap4 = HALO_REF_CAP) {
   } catch {
     return none;
   }
-  const total = finite4(span?.[0]) ?? 0;
+  const total = finite5(span?.[0]) ?? 0;
   if (total <= 0) return none;
   let rows = [];
   try {
@@ -48765,18 +51810,18 @@ function haloRefs(q2, uid, cap4 = HALO_REF_CAP) {
   }
   const stamps = [];
   for (const row4 of rows) {
-    const stamp2 = finite4(Array.isArray(row4) ? row4[1] : null);
+    const stamp2 = finite5(Array.isArray(row4) ? row4[1] : null);
     if (stamp2 != null) stamps.push(stamp2);
   }
   stamps.sort((a, b) => b - a);
   const times = stamps.slice(0, Math.max(0, cap4));
-  const lo = finite4(span?.[1]);
-  const hi = finite4(span?.[2]);
+  const lo = finite5(span?.[1]);
+  const hi = finite5(span?.[2]);
   if (lo != null) times.push(lo);
   if (hi != null) times.push(hi);
   return { total, times };
 }
-function finite4(value) {
+function finite5(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 function ordinal(day) {
@@ -48794,7 +51839,7 @@ function ordinal(day) {
   }
 }
 function formatMade(ms) {
-  const n3 = finite4(ms);
+  const n3 = finite5(ms);
   if (n3 == null) return "";
   const date = new Date(n3);
   return `${MONTHS7[date.getMonth()]} ${ordinal(date.getDate())}, ${date.getFullYear()}`;
@@ -48812,12 +51857,12 @@ function headerText({ created, board: board2, section: section2, userName: userN
 function company(rows, uid) {
   const list = Array.isArray(rows) ? rows : [];
   const self = list.find((row4) => row4 && row4.uid === uid);
-  const created = finite4(self?.created);
+  const created = finite5(self?.created);
   if (!self || created == null) return [];
   const out = [];
   for (const row4 of list) {
     if (!row4 || row4.uid === uid) continue;
-    const stamp2 = finite4(row4.created);
+    const stamp2 = finite5(row4.created);
     if (stamp2 == null || Math.abs(stamp2 - created) > DAY_MS4) continue;
     out.push(row4.uid);
     if (out.length >= 6) break;
@@ -48828,7 +51873,7 @@ function buckets(times) {
   const counts = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   const list = [];
   for (const value of times || []) {
-    const n3 = finite4(value);
+    const n3 = finite5(value);
     if (n3 != null) list.push(n3);
   }
   if (!list.length) return counts;
@@ -48850,7 +51895,7 @@ function buckets(times) {
 function refsLine(times, total) {
   const list = [];
   for (const value of times || []) {
-    const n3 = finite4(value);
+    const n3 = finite5(value);
     if (n3 != null) list.push(n3);
   }
   if (!list.length) return "Referenced 0 times";
@@ -48871,12 +51916,12 @@ function readHaloPull(pulled) {
   const refs = Array.isArray(raw) ? raw : raw ? [raw] : [];
   const refTimes = [];
   for (const ref of refs) {
-    const stamp2 = finite4(ref?.[":create/time"]);
+    const stamp2 = finite5(ref?.[":create/time"]);
     if (stamp2 != null) refTimes.push(stamp2);
   }
   return {
-    created: finite4(pulled?.[":create/time"]),
-    edited: finite4(pulled?.[":edit/time"]),
+    created: finite5(pulled?.[":create/time"]),
+    edited: finite5(pulled?.[":edit/time"]),
     userName: name,
     refTimes
   };
@@ -49122,11 +52167,11 @@ function recencyNorm(editTime, now4) {
 }
 function strengthScore(components = {}, { trackOpens = false, now: now4 = components?.now ?? Date.now() } = {}) {
   const refs = normCount(components?.refs, REFS_CAP);
-  const shared3 = normCount(components?.shared, SHARED_CAP);
+  const shared4 = normCount(components?.shared, SHARED_CAP);
   const recency = recencyNorm(components?.editTime ?? components?.edit, now4);
-  if (trackOpens !== true) return clamp014(0.6 * refs + 0.25 * shared3 + 0.15 * recency);
+  if (trackOpens !== true) return clamp014(0.6 * refs + 0.25 * shared4 + 0.15 * recency);
   const opens = normCount(components?.opens, OPENS_CAP);
-  return clamp014(0.5 * refs + 0.2 * shared3 + 0.15 * recency + 0.15 * opens);
+  return clamp014(0.5 * refs + 0.2 * shared4 + 0.15 * recency + 0.15 * opens);
 }
 function strokeFor(score) {
   const s = clamp014(score);
@@ -49180,7 +52225,7 @@ function countPhrase(value, one, many) {
 }
 function explain(components = {}) {
   const refs = countPhrase(components?.refs, "ref", "refs");
-  const shared3 = countPhrase(components?.shared, "shared board", "shared boards");
+  const shared4 = countPhrase(components?.shared, "shared board", "shared boards");
   const edit = components?.editTime ?? components?.edit;
   const now4 = Number.isFinite(components?.now) ? components.now : Date.now();
   let when = "not edited";
@@ -49188,7 +52233,7 @@ function explain(components = {}) {
     const part = ageParts(Math.max(0, now4 - edit));
     when = part.unit === "today" ? "edited today" : `edited ${part.n} ${part.n === 1 ? part.unit : `${part.unit}s`} ago`;
   }
-  return `${refs}, ${shared3}, ${when}`;
+  return `${refs}, ${shared4}, ${when}`;
 }
 function edgeOpens(store, from, to) {
   if (typeof store?.get !== "function") return 0;
@@ -50049,8 +53094,8 @@ function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win
       if (!input) return { ok: false, reason: "no checkbox rendered" };
       fire2(input, "pointerdown");
       input.click();
-      const done2 = await until(() => taskState(host.blockString?.(uid)) === "DONE", DONE_MS);
-      if (!done2) return { ok: false, reason: "the block did not turn DONE" };
+      const done3 = await until(() => taskState(host.blockString?.(uid)) === "DONE", DONE_MS);
+      if (!done3) return { ok: false, reason: "the block did not turn DONE" };
       await wait2(GRACE_MS);
       return { ok: true };
     } finally {
@@ -50074,552 +53119,6 @@ function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win
 init_avoid();
 init_query();
 init_geometry();
-
-// src/model/boardsnap.js
-var SNAP_VERSION = 1;
-var SNAP_MAX_BYTES = 300 * 1024;
-var SNAP_MAX_ITEMS = 500;
-var SNAP_MAX_BOXES = 4e3;
-var BOX_BYTES = 256;
-var snapByteCap = (items) => SNAP_MAX_BYTES + BOX_BYTES * Math.max(0, (Number(items) || 0) - SNAP_MAX_ITEMS);
-var FACE_MAX_NODES = 400;
-var FACE_MAX_CHARS = 16 * 1024;
-var LAYER_MAX_NODES = 1500;
-var TEXT_MAX = 2e3;
-var CLASS_MAX = 8;
-var DEPTH_MAX = 16;
-var THUMB_DATA_MAX = 160 * 1024;
-var TAGS = /* @__PURE__ */ new Set([
-  "div",
-  "span",
-  "p",
-  "ul",
-  "ol",
-  "li",
-  "strong",
-  "b",
-  "em",
-  "i",
-  "u",
-  "s",
-  "del",
-  "ins",
-  "code",
-  "pre",
-  "h1",
-  "h2",
-  "h3",
-  "h4",
-  "h5",
-  "h6",
-  "blockquote",
-  "table",
-  "thead",
-  "tbody",
-  "tfoot",
-  "tr",
-  "td",
-  "th",
-  "colgroup",
-  "col",
-  "br",
-  "hr",
-  "img",
-  "label",
-  "sup",
-  "sub",
-  "mark",
-  "small",
-  "button",
-  "svg",
-  "g",
-  "path",
-  "circle",
-  "rect",
-  "line",
-  "polyline",
-  "polygon",
-  "ellipse",
-  "text",
-  "tspan",
-  "defs",
-  "marker"
-]);
-var SVG_TAGS = /* @__PURE__ */ new Set(["svg", "g", "path", "circle", "rect", "line", "polyline", "polygon", "ellipse", "text", "tspan", "defs", "marker"]);
-var RENAME = { a: "span" };
-var SKIP2 = /* @__PURE__ */ new Set(["script", "style", "iframe", "object", "embed", "textarea", "input", "select", "video", "audio", "canvas", "noscript", "template", "link", "meta", "foreignobject"]);
-var SVG_ATTRS = /* @__PURE__ */ new Set([
-  "viewBox",
-  "d",
-  "fill",
-  "stroke",
-  "stroke-width",
-  "stroke-linejoin",
-  "stroke-linecap",
-  "stroke-dasharray",
-  "opacity",
-  "fill-opacity",
-  "stroke-opacity",
-  "width",
-  "height",
-  "cx",
-  "cy",
-  "r",
-  "rx",
-  "ry",
-  "x",
-  "y",
-  "x1",
-  "y1",
-  "x2",
-  "y2",
-  "points",
-  "transform",
-  "marker-end",
-  "marker-start",
-  "markerWidth",
-  "markerHeight",
-  "refX",
-  "refY",
-  "orient",
-  "text-anchor",
-  "dominant-baseline",
-  "font-size",
-  "id",
-  "preserveAspectRatio"
-]);
-var STYLE_PROPS = [
-  "width",
-  "height",
-  "max-width",
-  "min-height",
-  "transform",
-  "background",
-  "background-color",
-  "color",
-  "border-color",
-  "background-size",
-  "background-position",
-  "display",
-  "left",
-  "top"
-];
-var CLASS_RE = /^[A-Za-z0-9_-]{1,64}$/;
-var DATA_RE = /^data-[a-z0-9-]{1,32}$/;
-var UNSAFE_VALUE = /(javascript:|expression\(|url\(|@import|<)/i;
-var TRANSIENT = /* @__PURE__ */ new Set([
-  "pxd-item--selected",
-  "pxd-section--selected",
-  "pxd-item--drop",
-  "pxd-item--editing",
-  "pxd-item--typing",
-  "pxd-item--pulse",
-  "pxd-item--flash",
-  "pxd-item--hit",
-  "pxd-item--dim",
-  "pxd-item--offscreen",
-  "pxd-item--future",
-  "pxd-item--fresh",
-  "pxd-pdf-live",
-  "pxd-item--lift",
-  "pxd-item--snap"
-]);
-var ROOT_TRANSIENT = /* @__PURE__ */ new Set(["pxd-root--gesturing", "pxd-root--editing", "pxd-root--searching", "pxd-root--focus", "pxd-root--present"]);
-function fnv(text4) {
-  let h = 2166136261;
-  const s = String(text4 ?? "");
-  for (let i = 0; i < s.length; i += 1) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(36);
-}
-var strOf = (node2) => String(node2?.[":block/string"] ?? node2?.string ?? "");
-var kidsOf4 = (node2) => {
-  const kids = node2?.[":block/children"] ?? node2?.children;
-  if (!Array.isArray(kids)) return [];
-  return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c?.[":block/order"] ?? a.i) - (b.c?.[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
-};
-function contentText(nodes, depth = 0, out = []) {
-  if (!Array.isArray(nodes) || depth > 4 || out.length > 400) return out;
-  for (const node2 of nodes) {
-    out.push(`${depth}:${strOf(node2)}`);
-    contentText(kidsOf4(node2), depth + 1, out);
-  }
-  return out;
-}
-function itemSig(item) {
-  if (!item) return "";
-  return fnv(JSON.stringify([
-    item.type,
-    item.kind,
-    item.string ?? "",
-    item.title ?? "",
-    Boolean(item.collapsed),
-    item.color ?? "",
-    item.fill ?? "",
-    item.target?.uid ?? "",
-    item.target?.title ?? "",
-    contentText(item.content)
-  ]));
-}
-function boardStamp(board2, rects = null) {
-  if (!board2?.items) return "";
-  const parts = [];
-  for (const uid of board2.order || board2.items.keys()) {
-    const item = board2.items.get(uid);
-    if (!item) continue;
-    const r = rects?.get?.(uid) || item;
-    parts.push(`${uid}|${r.x},${r.y},${r.w},${r.h}|${item.parentUid ?? ""}|${itemSig(item)}`);
-  }
-  for (const edge of board2.edges?.values?.() || []) parts.push(`e:${edge.uid}|${edge.from}|${edge.to}|${edge.label ?? ""}`);
-  return fnv(parts.join("\n"));
-}
-function tableGrid2(item, { rows: maxRows = 30, cols: maxCols = 10 } = {}) {
-  const rows = [];
-  for (const row4 of kidsOf4({ ":block/children": item?.content })) {
-    if (rows.length >= maxRows) break;
-    const cells = [];
-    let cell = row4;
-    while (cell && cells.length < maxCols) {
-      cells.push(plainCell(strOf(cell)));
-      cell = kidsOf4(cell)[0];
-    }
-    rows.push(cells);
-  }
-  return rows;
-}
-function plainCell(text4) {
-  return String(text4 || "").replace(/\[\[([^\]]*)\]\]/g, "$1").replace(/\(\(([^)]*)\)\)/g, "…").replace(/\*\*|__|\^\^|~~/g, "").replace(/\s+/g, " ").trim().slice(0, 80);
-}
-function cleanClasses(value, drop = TRANSIENT) {
-  const out = [];
-  for (const name of String(value || "").split(/\s+/)) {
-    if (!name || !CLASS_RE.test(name) || drop.has(name)) continue;
-    out.push(name);
-  }
-  return out;
-}
-function classOf(el2) {
-  const raw = typeof el2.getAttribute === "function" ? el2.getAttribute("class") : el2.className;
-  return typeof raw === "string" ? raw : raw?.baseVal ?? "";
-}
-function readStyle(el2, thumbs) {
-  const style = el2.style;
-  if (!style) return null;
-  const out = {};
-  let n3 = 0;
-  const get = (name) => (typeof style.getPropertyValue === "function" ? style.getPropertyValue(name) : style[name]) || "";
-  for (const name of STYLE_PROPS) {
-    const value = String(get(name) || "").trim();
-    if (!value || value.length > 120 || UNSAFE_VALUE.test(value)) continue;
-    out[name] = value;
-    n3 += 1;
-  }
-  const cover = String(get("--pxd-cover") || "");
-  const m = /url\(\s*["']?(data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+)["']?\s*\)/.exec(cover);
-  if (m && thumbs && m[1].length <= THUMB_DATA_MAX) {
-    const key = `d:${fnv(m[1])}:${m[1].length}`;
-    thumbs.set(key, m[1]);
-    out["--pxd-cover"] = `@${key}`;
-    n3 += 1;
-  }
-  return n3 ? out : null;
-}
-function imageSrc(src, thumbs) {
-  const value = String(src || "");
-  if (/^https:\/\//i.test(value) && value.length <= 2e3 && !/["'<>\s]/.test(value)) return value;
-  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(value) && value.length <= THUMB_DATA_MAX && thumbs) {
-    const key = `d:${fnv(value)}:${value.length}`;
-    thumbs.set(key, value);
-    return `@${key}`;
-  }
-  return "";
-}
-function captureFace(el2, { thumbs = null, skip = null, maxNodes = FACE_MAX_NODES, maxChars = FACE_MAX_CHARS, canvases = false } = {}) {
-  const budget = { nodes: 0, chars: 0, maxNodes, maxChars, canvases };
-  return walk2(el2, budget, thumbs, skip, 0, false);
-}
-function canvasFace(el2, thumbs) {
-  if (!thumbs || typeof el2.toDataURL !== "function") return null;
-  const w = Number(el2.width) || 0;
-  const h = Number(el2.height) || 0;
-  if (!w || !h || w * h > 400 * 400) return null;
-  let url = "";
-  try {
-    url = el2.toDataURL("image/png");
-  } catch {
-    return null;
-  }
-  const src = imageSrc(url, thumbs);
-  if (!src) return null;
-  const node2 = { t: "img", s: src, a: { width: String(w), height: String(h) } };
-  const cls = cleanClasses(classOf(el2)).slice(0, CLASS_MAX);
-  if (cls.length) node2.c = cls.join(" ");
-  return node2;
-}
-function walk2(el2, budget, thumbs, skip, depth, inSvg) {
-  if (!el2 || budget.nodes >= budget.maxNodes || budget.chars >= budget.maxChars) return null;
-  if (el2.nodeType === 3) {
-    const text4 = String(el2.nodeValue ?? el2.textContent ?? "");
-    if (!text4) return null;
-    const cut = text4.slice(0, Math.min(TEXT_MAX, budget.maxChars - budget.chars));
-    budget.chars += cut.length;
-    return cut;
-  }
-  if (el2.nodeType !== 1) return null;
-  const raw = String(el2.localName || el2.tagName || "").toLowerCase();
-  if (raw === "canvas" && budget.canvases) {
-    budget.nodes += 1;
-    return canvasFace(el2, thumbs);
-  }
-  if (!raw || SKIP2.has(raw)) return null;
-  const tag = RENAME[raw] || raw;
-  if (!TAGS.has(tag)) return null;
-  if (skip && skip(el2)) return null;
-  if (depth > DEPTH_MAX) return null;
-  budget.nodes += 1;
-  const svg = inSvg || tag === "svg";
-  const node2 = { t: tag };
-  const cls = cleanClasses(classOf(el2)).slice(0, CLASS_MAX);
-  if (cls.length) node2.c = cls.join(" ");
-  const attrs = {};
-  let hasAttr = false;
-  for (const attr of [...el2.attributes || []]) {
-    const name = attr.name;
-    const value = String(attr.value ?? "");
-    if (!name || name === "class" || name === "style" || /^on/i.test(name)) continue;
-    if (value.length > 400 || UNSAFE_VALUE.test(value)) continue;
-    if (DATA_RE.test(name) || name === "aria-hidden" || name === "hidden" || svg && SVG_ATTRS.has(name) || tag === "img" && (name === "width" || name === "height" || name === "alt")) {
-      attrs[name] = value.slice(0, 200);
-      hasAttr = true;
-    }
-  }
-  if (tag === "img") {
-    const src = imageSrc(el2.getAttribute?.("src") ?? el2.src, thumbs);
-    if (!src) {
-      budget.nodes -= 1;
-      return null;
-    }
-    node2.s = src;
-  }
-  if (hasAttr) node2.a = attrs;
-  const style = readStyle(el2, thumbs);
-  if (style) node2.y = style;
-  const kids = [];
-  const childNodes2 = [...el2.childNodes || el2.children || []];
-  for (const child of childNodes2) {
-    const face = walk2(child, budget, thumbs, skip, depth + 1, svg);
-    if (face != null) kids.push(face);
-  }
-  if (!childNodes2.length && typeof el2.textContent === "string" && el2.textContent) {
-    const cut = el2.textContent.slice(0, Math.min(TEXT_MAX, budget.maxChars - budget.chars));
-    budget.chars += cut.length;
-    if (cut) kids.push(cut);
-  }
-  if (kids.length) node2.k = kids;
-  return node2;
-}
-var SVG_NS = "http://www.w3.org/2000/svg";
-function buildFace(doc, face, { thumbs = null, inSvg = false } = {}) {
-  if (face == null) return null;
-  if (typeof face === "string") return typeof doc.createTextNode === "function" ? doc.createTextNode(face.slice(0, TEXT_MAX)) : null;
-  if (typeof face !== "object") return null;
-  const tag = String(face.t || "");
-  if (!TAGS.has(tag)) return null;
-  const svg = inSvg || tag === "svg";
-  let el2;
-  try {
-    el2 = svg && SVG_TAGS.has(tag) && typeof doc.createElementNS === "function" ? doc.createElementNS(SVG_NS, tag) : doc.createElement(tag);
-  } catch {
-    return null;
-  }
-  const cls = cleanClasses(face.c).slice(0, CLASS_MAX);
-  if (cls.length) el2.setAttribute("class", cls.join(" "));
-  if (face.a && typeof face.a === "object") {
-    for (const [name, raw] of Object.entries(face.a)) {
-      const value = String(raw ?? "");
-      if (/^on/i.test(name) || value.length > 400 || UNSAFE_VALUE.test(value)) continue;
-      if (DATA_RE.test(name) || name === "aria-hidden" || name === "hidden" || svg && SVG_ATTRS.has(name) || tag === "img" && (name === "width" || name === "height" || name === "alt")) {
-        try {
-          el2.setAttribute(name, value);
-        } catch {
-        }
-      }
-    }
-  }
-  if (tag === "img") {
-    const src = resolveSrc(face.s, thumbs);
-    if (!src) return null;
-    el2.setAttribute("src", src);
-    el2.setAttribute("draggable", "false");
-    el2.setAttribute("alt", el2.getAttribute?.("alt") || "");
-  }
-  if (tag === "button") {
-    el2.setAttribute("type", "button");
-    el2.setAttribute("tabindex", "-1");
-  }
-  if (face.y && typeof face.y === "object" && el2.style) {
-    for (const [name, raw] of Object.entries(face.y)) {
-      const value = String(raw ?? "");
-      if (name === "--pxd-cover") {
-        const data = resolveSrc(value, thumbs);
-        if (data.startsWith("data:image/")) setStyle(el2, name, `url("${data}")`);
-        continue;
-      }
-      if (!STYLE_PROPS.includes(name) || value.length > 120 || UNSAFE_VALUE.test(value)) continue;
-      setStyle(el2, name, value);
-    }
-  }
-  for (const kid of Array.isArray(face.k) ? face.k : []) {
-    const node2 = buildFace(doc, kid, { thumbs, inSvg: svg });
-    if (node2) el2.append(node2);
-  }
-  return el2;
-}
-function setStyle(el2, name, value) {
-  try {
-    if (typeof el2.style.setProperty === "function") el2.style.setProperty(name, value);
-    else el2.style[name] = value;
-  } catch {
-  }
-}
-function resolveSrc(value, thumbs) {
-  const s = String(value || "");
-  if (s.startsWith("@")) {
-    const data = thumbs?.get?.(s.slice(1));
-    return typeof data === "string" && /^data:image\/(png|jpeg|jpg|webp|gif);base64,/.test(data) ? data : "";
-  }
-  return /^https:\/\//i.test(s) && !/["'<>\s]/.test(s) ? s : "";
-}
-function faceThumbKeys(face, out = /* @__PURE__ */ new Set()) {
-  if (!face || typeof face !== "object") return out;
-  if (typeof face.s === "string" && face.s.startsWith("@")) out.add(face.s.slice(1));
-  const cover = face.y?.["--pxd-cover"];
-  if (typeof cover === "string" && cover.startsWith("@")) out.add(cover.slice(1));
-  for (const kid of Array.isArray(face.k) ? face.k : []) faceThumbKeys(kid, out);
-  return out;
-}
-function snapThumbKeys(snap) {
-  const out = /* @__PURE__ */ new Set();
-  for (const item of snap?.items || []) {
-    faceThumbKeys(item.face, out);
-    if (item.thumb) out.add(item.thumb);
-  }
-  for (const layer of [snap?.edges, snap?.labels, ...snap?.chrome || []]) faceThumbKeys(layer, out);
-  return out;
-}
-var finite5 = (n3) => typeof n3 === "number" && Number.isFinite(n3);
-function isSnapViewport(vp) {
-  return Boolean(vp) && finite5(vp.x) && finite5(vp.y) && finite5(vp.zoom) && vp.zoom > 0;
-}
-function cleanItem(item) {
-  if (!item || typeof item.uid !== "string" || !item.uid || item.uid.length > 64) return null;
-  if (!finite5(item.x) || !finite5(item.y) || !finite5(item.w) || !finite5(item.h)) return null;
-  const out = {
-    uid: item.uid,
-    section: item.section === true,
-    x: item.x,
-    y: item.y,
-    w: item.w,
-    h: item.h,
-    cls: cleanClasses(item.cls).join(" "),
-    sig: typeof item.sig === "string" ? item.sig.slice(0, 16) : ""
-  };
-  if (typeof item.parent === "string" && item.parent.length <= 64) out.parent = item.parent;
-  if (typeof item.thumb === "string" && item.thumb.length <= 200) out.thumb = item.thumb;
-  if (item.face && typeof item.face === "object") out.face = item.face;
-  if (item.badges && typeof item.badges === "object") out.badges = cleanBadges(item.badges);
-  return out;
-}
-function cleanBadges(b) {
-  const out = {};
-  for (const key of ["refs", "boards", "open", "done"]) if (finite5(b[key])) out[key] = b[key];
-  return out;
-}
-function cleanRootStyle(style) {
-  const out = {};
-  for (const [name, raw] of Object.entries(style || {})) {
-    const value = String(raw ?? "");
-    if (!/^--pxd-[a-z0-9-]{1,40}$/.test(name) || value.length > 120 || UNSAFE_VALUE.test(value)) continue;
-    out[name] = value;
-  }
-  return out;
-}
-function cleanSnapshot(value) {
-  if (!value || typeof value !== "object" || value.v !== SNAP_VERSION || !Array.isArray(value.items)) return null;
-  if (value.items.length > SNAP_MAX_BOXES) return null;
-  const items = [];
-  for (const item of value.items) {
-    const clean2 = cleanItem(item);
-    if (clean2) items.push(clean2);
-  }
-  const height = finite5(value.height) && value.height >= 40 && value.height <= 4e3 ? value.height : 0;
-  return {
-    v: SNAP_VERSION,
-    uid: typeof value.uid === "string" ? value.uid : "",
-    stamp: typeof value.stamp === "string" ? value.stamp.slice(0, 16) : "",
-    savedAt: finite5(value.savedAt) ? value.savedAt : 0,
-    height,
-    width: finite5(value.width) && value.width > 0 ? value.width : 0,
-    vp: isSnapViewport(value.vp) ? { x: value.vp.x, y: value.vp.y, zoom: value.vp.zoom } : null,
-    rootCls: cleanClasses(value.rootCls, ROOT_TRANSIENT).join(" "),
-    rootStyle: cleanRootStyle(value.rootStyle),
-    grid: value.grid && typeof value.grid === "object" ? value.grid : null,
-    edges: value.edges && typeof value.edges === "object" ? value.edges : null,
-    labels: value.labels && typeof value.labels === "object" ? value.labels : null,
-    chrome: Array.isArray(value.chrome) ? value.chrome.filter((face) => face && typeof face === "object").slice(0, 16) : [],
-    threshold: finite5(value.threshold) && value.threshold > 0 && value.threshold < 4 ? value.threshold : 0.45,
-    items
-  };
-}
-function packSnapshot(snap) {
-  const clean2 = cleanSnapshot(snap);
-  if (!clean2) return null;
-  const cap4 = snapByteCap(clean2.items.length);
-  const fit3 = (value) => {
-    const text5 = JSON.stringify(value);
-    return text5.length <= cap4 ? text5 : null;
-  };
-  let text4 = fit3(clean2);
-  if (text4) return text4;
-  const lean = { ...clean2, labels: null, chrome: [] };
-  text4 = fit3(lean);
-  if (text4) return text4;
-  lean.edges = null;
-  text4 = fit3(lean);
-  if (text4) return text4;
-  const items = lean.items.map((item) => ({ ...item }));
-  let over = JSON.stringify({ ...lean, items }).length - cap4;
-  for (let i = items.length - 1; i >= 0 && over > 0; i -= 1) {
-    if (!items[i].face) continue;
-    over -= JSON.stringify(items[i].face).length + 8;
-    delete items[i].face;
-  }
-  text4 = fit3({ ...lean, items });
-  if (text4) return text4;
-  let faced = items.filter((item) => item.face).length;
-  while (faced > 0) {
-    let drop = Math.max(1, Math.ceil(faced / 2));
-    for (let i = items.length - 1; i >= 0 && drop > 0; i -= 1) {
-      if (!items[i].face) continue;
-      delete items[i].face;
-      drop -= 1;
-      faced -= 1;
-    }
-    text4 = fit3({ ...lean, items });
-    if (text4) return text4;
-  }
-  return null;
-}
-function parseSnapshot2(raw) {
-  if (typeof raw !== "string" || !raw) return null;
-  try {
-    return cleanSnapshot(JSON.parse(raw));
-  } catch {
-    return null;
-  }
-}
 
 // src/model/export.js
 init_geometry();
@@ -52028,8 +54527,8 @@ function createInteractions({ actions, settings } = {}) {
     if (kept.length) call("toast", { message: "Pinned items were not deleted. Unpin first." });
     if (!uids.length) return true;
     selectItems(kept);
-    Promise.resolve(call("deleteItems", uids, { withContents: Boolean(withContents) })).then((done2) => {
-      if (done2 === null) return;
+    Promise.resolve(call("deleteItems", uids, { withContents: Boolean(withContents) })).then((done3) => {
+      if (done3 === null) return;
       call("toast", { message: "Deleted", action: { label: "Undo", run: () => call("undo") } });
     }, () => {
     });
@@ -53103,8 +55602,8 @@ async function readSSE(response, { onProgress, onPage }) {
     return event;
   };
   for (; ; ) {
-    const { done: done2, value } = await reader.read();
-    if (done2) break;
+    const { done: done3, value } = await reader.read();
+    if (done3) break;
     buf += decoder.decode(value, { stream: true });
     buf = buf.replace(/\r\n/g, "\n");
     const frames = buf.split("\n\n");
@@ -53157,15 +55656,15 @@ function planVlmBatches(pages, regions) {
     cur = { pages: [], regions: [] };
   };
   for (const page of list) {
-    const own = byPage.get(page) || [];
-    if (own.length > VLM_REGION_CAP) {
+    const own2 = byPage.get(page) || [];
+    if (own2.length > VLM_REGION_CAP) {
       flush();
-      for (const slice of groups(own, VLM_REGION_CAP)) batches.push({ pages: [page], regions: slice });
+      for (const slice of groups(own2, VLM_REGION_CAP)) batches.push({ pages: [page], regions: slice });
       continue;
     }
-    if (cur.pages.length >= VLM_PAGE_CAP || cur.regions.length + own.length > VLM_REGION_CAP) flush();
+    if (cur.pages.length >= VLM_PAGE_CAP || cur.regions.length + own2.length > VLM_REGION_CAP) flush();
     cur.pages.push(page);
-    cur.regions.push(...own);
+    cur.regions.push(...own2);
   }
   flush();
   return batches;
@@ -53346,12 +55845,12 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     if (h.state === "models-missing") {
       const report = await models();
       const bytes = Number(report?.bytes) || 0;
-      const done2 = Number(report?.done) || 0;
-      const fraction = Number.isFinite(report?.fraction) ? report.fraction : bytes ? done2 / bytes : 0;
+      const done3 = Number(report?.done) || 0;
+      const fraction = Number.isFinite(report?.fraction) ? report.fraction : bytes ? done3 / bytes : 0;
       if (report?.state === "downloading") {
-        return { ...h, state: "downloading", paired: true, progress: { bytes, done: done2, fraction } };
+        return { ...h, state: "downloading", paired: true, progress: { bytes, done: done3, fraction } };
       }
-      return { ...h, paired: true, progress: { bytes, done: done2, fraction } };
+      return { ...h, paired: true, progress: { bytes, done: done3, fraction } };
     }
     return { ...h, paired: true };
   }
@@ -55611,7 +58110,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
   const order = [...doc.order || []];
   const applied = [];
   const used = /* @__PURE__ */ new Set();
-  const shared3 = sharedHosts(doc, structures);
+  const shared4 = sharedHosts(doc, structures);
   let seq = 0;
   for (const structure of structures) {
     if (!structure?.cells?.length || !structure.bbox) continue;
@@ -55622,7 +58121,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
       const trimmed = dropCaptionRow(built, pageWords);
       if (trimmed !== built) Object.assign(built, { cells: trimmed.cells, rows: trimmed.rows, headerRows: trimmed.headerRows });
     }
-    const sharedHost = shared3.get(structure);
+    const sharedHost = shared4.get(structure);
     if (sharedHost) {
       const hostBlock = blocks[sharedHost.id];
       if (hostBlock) {
@@ -56198,9 +58697,9 @@ var CAPTION_LABEL_RE = /^\s*(?:fig(?:ure)?|abb(?:ildung)?|plate|tafel|table|tab)
 function labelKey(text4) {
   return String(text4 || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
-function captionReading(own, slice) {
+function captionReading(own2, slice) {
   const words = String(slice || "").split(/\s+/).filter(Boolean);
-  const mine = String(own || "");
+  const mine = String(own2 || "");
   if (!words.length) return { text: mine };
   const label = mine.match(CAPTION_LABEL_RE);
   if (label) {
@@ -58391,14 +60890,14 @@ function intersects3(a, b) {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 }
 function spanRect(span, pageEl) {
-  const own = span?.getBoundingClientRect?.();
+  const own2 = span?.getBoundingClientRect?.();
   const page = pageEl?.getBoundingClientRect?.();
-  if (!own || !page) return null;
+  if (!own2 || !page) return null;
   return {
-    left: own.left - page.left,
-    top: own.top - page.top,
-    right: own.right - page.left,
-    bottom: own.bottom - page.top
+    left: own2.left - page.left,
+    top: own2.top - page.top,
+    right: own2.right - page.left,
+    bottom: own2.bottom - page.top
   };
 }
 function spansInBbox(pageEl, bbox, page) {
@@ -58915,7 +61414,7 @@ function startPlacement({
     root?.classList?.add?.("pxd-root--placing");
   } catch {
   }
-  let done2 = false;
+  let done3 = false;
   let swallowUntil = 0;
   const clock = () => typeof now4 === "function" ? now4() : globalThis.performance?.now?.() ?? Date.now();
   const bound = [];
@@ -58930,7 +61429,7 @@ function startPlacement({
     }
   };
   const finish = () => {
-    done2 = true;
+    done3 = true;
     swallowUntil = clock() + SWALLOW_MS;
     try {
       root?.classList?.remove?.("pxd-root--placing");
@@ -58944,7 +61443,7 @@ function startPlacement({
     }
   };
   const cancel = (reason = "cancel") => {
-    if (done2) return;
+    if (done3) return;
     ghost.cancel();
     finish();
     try {
@@ -58953,7 +61452,7 @@ function startPlacement({
     }
   };
   const place3 = () => {
-    if (done2) return;
+    if (done3) return;
     const at = ghost.dropPoint();
     ghost.land();
     finish();
@@ -58968,10 +61467,10 @@ function startPlacement({
     event.stopImmediatePropagation?.();
   };
   on("pointermove", (event) => {
-    if (!done2) ghost.move(event.clientX, event.clientY);
+    if (!done3) ghost.move(event.clientX, event.clientY);
   });
   on("pointerdown", (event) => {
-    if (done2) {
+    if (done3) {
       if (clock() <= swallowUntil) eat(event);
       return;
     }
@@ -58986,27 +61485,27 @@ function startPlacement({
     else cancel("outside");
   });
   on("mousedown", (event) => {
-    if (!done2 || clock() <= swallowUntil) eat(event);
+    if (!done3 || clock() <= swallowUntil) eat(event);
   });
   on("click", (event) => {
-    if (!done2 || clock() <= swallowUntil) eat(event);
+    if (!done3 || clock() <= swallowUntil) eat(event);
   });
   on("contextmenu", (event) => {
-    if (done2 && clock() > swallowUntil) return;
+    if (done3 && clock() > swallowUntil) return;
     eat(event);
     cancel("button");
   });
   on("keydown", (event) => {
-    if (done2 || event.key !== "Escape") return;
+    if (done3 || event.key !== "Escape") return;
     eat(event);
     cancel("escape");
   });
   return {
-    active: () => !done2,
+    active: () => !done3,
     cancel: () => cancel("api"),
     ghost,
     dispose() {
-      if (!done2) cancel("dispose");
+      if (!done3) cancel("dispose");
       release();
     }
   };
@@ -60861,8 +63360,8 @@ async function readSSE2(response, onEvent) {
     onEvent(event, payload);
   };
   for (; ; ) {
-    const { done: done2, value } = await reader.read();
-    if (done2) break;
+    const { done: done3, value } = await reader.read();
+    if (done3) break;
     buf += decoder.decode(value, { stream: true });
     buf = buf.replace(/\r\n/g, "\n");
     const frames = buf.split("\n\n");
@@ -61009,12 +63508,12 @@ async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tie
   }
   if (status === "CANCELLED") throw fail2("cancelled", "cancelled", 499);
   if (status !== "COMPLETED") throw fail2("failed", "LlamaParse failed the job", 502);
-  const done2 = await fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}?${LLAMA_EXPAND}`, {
+  const done3 = await fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}?${LLAMA_EXPAND}`, {
     headers,
     signal
   });
-  const provider = await done2.json().catch(() => null);
-  if (done2.status < 200 || done2.status >= 300) throw statusError(done2.status, provider);
+  const provider = await done3.json().catch(() => null);
+  if (done3.status < 200 || done3.status >= 300) throw statusError(done3.status, provider);
   return provider;
 }
 async function parseCloud({
@@ -61194,7 +63693,7 @@ function openCloudConfirm({
 } = {}) {
   let chosenTier = tier;
   let chosenScope = scope;
-  let done2 = false;
+  let done3 = false;
   let resolvePromise = () => {
   };
   const promise = new Promise((resolve) => {
@@ -61393,7 +63892,7 @@ function openCloudConfirm({
   }
   const win2 = doc.defaultView;
   function onKey(event) {
-    if (done2) return;
+    if (done3) return;
     event.stopPropagation?.();
     event.stopImmediatePropagation?.();
     if (event.key === "Escape") {
@@ -61411,8 +63910,8 @@ function openCloudConfirm({
     }
   }
   function finish(value) {
-    if (done2) return;
-    done2 = true;
+    if (done3) return;
+    done3 = true;
     try {
       win2?.removeEventListener?.("keydown", onKey, true);
     } catch {
@@ -63354,12 +65853,12 @@ function noteFor(reason) {
   if (reason === "off") return "";
   return UPLOAD_FAILED_NOTE;
 }
-var shared = null;
+var shared2 = null;
 function setFigureImages(service) {
-  shared = service || null;
+  shared2 = service || null;
 }
 function getFigureImages() {
-  return shared;
+  return shared2;
 }
 
 // src/host/roam-lookup.js
@@ -63419,8 +65918,8 @@ async function currentPageTitle(w) {
     uid = "";
   }
   if (!uid) return "";
-  const own = q(w, "[:find ?t :in $ ?u :where [?p :block/uid ?u] [?p :node/title ?t]]", uid)[0];
-  if (own?.[0]) return own[0];
+  const own2 = q(w, "[:find ?t :in $ ?u :where [?p :block/uid ?u] [?p :node/title ?t]]", uid)[0];
+  if (own2?.[0]) return own2[0];
   const page = q(w, "[:find ?t :in $ ?u :where [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?t]]", uid)[0];
   return page?.[0] || "";
 }
@@ -66170,9 +68669,9 @@ async function runChartToTable({ doc, blockId, image = null, imageService = null
     return { ok: false, reason: got?.reason || "no-image" };
   }
   const { caption, nearby } = nearbyOf(doc, blockId);
-  const request2 = { context: chartContext({ url: got.url, caption, nearby }), prompt: CHART_PROMPT, systemPrompt: CHART_SYSTEM_PROMPT, model: model.id, window: w };
-  let res = await api3.ask({ ...request2, json: true });
-  if (!res.ok) res = await api3.ask(request2);
+  const request3 = { context: chartContext({ url: got.url, caption, nearby }), prompt: CHART_PROMPT, systemPrompt: CHART_SYSTEM_PROMPT, model: model.id, window: w };
+  let res = await api3.ask({ ...request3, json: true });
+  if (!res.ok) res = await api3.ask(request3);
   if (!res.ok) {
     say(res.error || "Live AI Assistant could not read the chart.");
     return { ok: false, reason: res.code || "error" };
@@ -68769,12 +71268,12 @@ ${sourceAttrString(source)}` : markdown;
     if (motionLive && motionFinished) {
       motionLive = false;
       motionOwnProgress = false;
-      const done2 = parsed;
+      const done3 = parsed;
       motion({
         type: "done",
-        counts: docCounts(done2),
-        ms: Number(done2?.stats?.ms) || 0,
-        boxesOf: (n3) => partBoxes(blocksOnPage(done2, n3), pageInfo(n3))
+        counts: docCounts(done3),
+        ms: Number(done3?.stats?.ms) || 0,
+        boxesOf: (n3) => partBoxes(blocksOnPage(done3, n3), pageInfo(n3))
       });
     }
   }
@@ -68979,11 +71478,11 @@ ${sourceAttrString(source)}` : markdown;
         },
         onPhase: (info) => {
           if (info?.phase === "check") {
-            const done2 = Number(info.done) || 0;
+            const done3 = Number(info.done) || 0;
             const total = Number(info.total) || pages.length;
-            progress = { page: done2, pageCount: total, engine: "builtin", step: "check" };
+            progress = { page: done3, pageCount: total, engine: "builtin", step: "check" };
             paintChip();
-            onProgress?.({ page: done2, pageCount: total, fraction: 0.3 + 0.55 * (done2 / Math.max(1, total)) });
+            onProgress?.({ page: done3, pageCount: total, fraction: 0.3 + 0.55 * (done3 / Math.max(1, total)) });
             return;
           }
           const step = info?.phase === "ocr" ? "" : "finish";
@@ -70962,20 +73461,20 @@ function createTextLayer({ doc = globalThis.document, readerEl = null, measure =
       if (!ours && !needsTextLayer(layer)) continue;
       plan.push({ layer, record, widthPx, key });
     }
-    const done2 = [];
+    const done3 = [];
     for (const job of plan) {
       const res = mountWords(job.layer, job.record, { doc, widthPx: job.widthPx, measure: width, key: job.key, now: now4 });
       stats.mounts += 1;
       stats.words += res.count;
       stats.lastMs = res.ms;
       stats.maxMs = Math.max(stats.maxMs, res.ms);
-      done2.push(Number(job.key.split(":")[0]));
+      done3.push(Number(job.key.split(":")[0]));
     }
     try {
       observer?.takeRecords?.();
     } catch {
     }
-    return done2;
+    return done3;
   }
   return {
     setPages(input) {
@@ -74442,11 +76941,11 @@ function timersOf(timers) {
 }
 function blobFrom(canvas, timers) {
   return new Promise((resolve) => {
-    let done2 = false;
+    let done3 = false;
     let timer = null;
     const finish = (blob) => {
-      if (done2) return;
-      done2 = true;
+      if (done3) return;
+      done3 = true;
       if (timer != null) {
         try {
           timers.clear(timer);
@@ -75187,8 +77686,8 @@ function createPdfWarm({ doc, root, host, store, timers, now: now4, renderFirst 
         const gen = generation;
         let resolve = () => {
         };
-        const promise = new Promise((done2) => {
-          resolve = done2;
+        const promise = new Promise((done3) => {
+          resolve = done3;
         });
         const job = {
           uid,
@@ -75956,18 +78455,18 @@ init_region_menu();
 init_offscreen();
 
 // src/view/editor-keys.js
-var UID6 = /^[A-Za-z0-9_-]{9,15}$/;
+var UID7 = /^[A-Za-z0-9_-]{9,15}$/;
 function blockUidFromNode(node2) {
   let el2 = node2;
   while (el2 && el2.nodeType === 1) {
     const id = String(el2.id || el2.getAttribute?.("id") || "");
     if (id.startsWith("block-input-")) {
       const rest = id.slice("block-input-".length);
-      if (UID6.test(rest)) return rest;
+      if (UID7.test(rest)) return rest;
     }
-    if (UID6.test(id)) return id;
+    if (UID7.test(id)) return id;
     const data = el2.dataset?.uid || el2.getAttribute?.("data-uid") || "";
-    if (UID6.test(data)) return data;
+    if (UID7.test(data)) return data;
     el2 = el2.parentElement;
   }
   return null;
@@ -76670,6 +79169,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
           continue;
         }
       }
+      if (!rec && dirty && !dirty.has(edge.uid)) continue;
       const fresh = !rec;
       if (!rec) rec = buildEdge(edge);
       else if (rec.parked) unparkEdge(rec);
@@ -77061,7 +79561,7 @@ function changelogEntry(markdown, version) {
 }
 
 // src/changelog-text.js
-var CHANGELOG_TEXT = '# Changelog\n\n## 3.28.0 — 2026-10-13\n\nBig boards. Plexus was stress-tested on a board with 1,560 cards, 2,114 connections, 24 nested boards and about 23,000 blocks, and every slow or unstable spot that turned up was fixed. Normal boards are as fast as 3.27.0 or faster.\n\n- **Smooth on big boards.** Panning the 1,560-card board at fit zoom takes one frame (about 20 ms, was about 240 ms), and zooming is 5–7× smoother. Only the cards near the view are kept on the page, and nothing is added in the middle of a gesture.\n- **Fast back and forth.** Going back to a big board from a nested board is live in about a third of a second; 3.27.0 could freeze for half a minute. Nested boards open from a snapshot.\n- **Edits on big boards** reach the board in about a quarter of a second instead of a second. Each section and the Connections block are watched on their own, and a board you leave keeps its watches for a minute, so moving between boards no longer runs into Roam\'s API limit.\n- **Memory stays flat.** A 20-minute session no longer grows memory. Leaving a page no longer keeps its board, card chips or PDF documents alive.\n- **Safer bulk writes.** Plexus asks before a change that writes 600 or more blocks and refuses one that writes 3,000 or more. Large writes wait while Roam is still saving (the sync dot says "Waiting for Roam"). Holding an arrow key writes one move, not one per repeat.\n- **Fold sections in the outline** (Commands): the board\'s outline then opens in about a second instead of rendering thousands of blocks. One undo unfolds.\n- **Search "Show more"** pages through every PDF and every filter result when the search box is empty.\n- **Fixes.** Boards with more than 1,000 connections show all of them (Roam\'s read stopped at 1,000). Export as PNG works on big boards. SVG export stays valid when card text holds control characters copied from PDFs. After an undo of Fold sections, Move PDFs to their own pages or Fold tables, the next undo no longer reaches into Roam\'s own undo history.\n- **Kill switches.** Every new big-board path can be turned off in the hidden speed flags: `splitWatch`, `virtualShells`, `virtualEdges`, `deferReveal`, `hitShield`, `parkInPlace`. The experimental `edgeFingerprint` watch ships off.\n\n## 3.27.0 — 2026-10-12\n\nThe rest of the bug hunt: every item on its Later list is fixed.\n\n- **A paid read wins its pages.** When you have a LlamaParse or Mistral read of some pages and a fuller free parse, the paid read is used for its pages and the free parse fills the rest. Saving never writes free pages over the paid record.\n- **Smoother reader scrolling.** Plexus\'s share of a reader scroll went from about 90 ms to about 15 ms over 40 steps: the outline follows the page once per frame instead of inside the scroll, and a page turn no longer makes the board refresh itself.\n- **Resizing the reader keeps your place.** Going full screen and back never changes the reading mode, and the page you were on is put back if the new width moved it.\n- **PDF names stay current.** A card or chat chip picks up a PDF\'s real name as soon as it is known, without redrawing the whole board; boards open in the main view and the sidebar no longer overwrite each other\'s names.\n- **Search.** A failing semantic search keeps the results you had and retries in 30 seconds; "Not on any board" refreshes as soon as a card is added; a closed panel no longer searches in the background.\n- **Chat.** Unloading Plexus closes the chat and stops a running answer; focus returns to the question after picking a style or thinking level; the More menu keeps keyboard focus; an input-method Enter no longer picks a suggestion; Stop stops the answer you meant; "Open in Live AI" only closes this chat once Live AI has opened.\n- **Parse motion** always follows the card that started the parse.\n- **Rust helper:** one-click Pair from Roam, with the same Allow dialog as the Python helper.\n\n## 3.26.0 — 2026-10-12\n\nFilters that browse your graph on their own, PDF filters on meaning results, chat tips, and eight bug fixes from a scored bug hunt.\n\n- **Filters work with an empty search box.** Days (created or edited), created or edited by, under a page, has linked references, has children, parsed PDFs, PDFs with highlights, on or not on this board now list matching pages and blocks straight from the graph, sorted as you choose. A filter with no natural limit shows the last 30 days and says so.\n- **PDF filters on Meaning results.** "Parsed PDFs" and "PDFs with highlights" apply to semantic results too; a hit on a PDF\'s Roam page counts as that PDF.\n- **Chat tips.** An empty chat shows "@ a part · [[ or # a page · (( a block · / a command"; click one to start typing it.\n- **Fixes.** PDF names no longer give up for a week when Roam\'s PDF viewer has not loaded yet, and stop reading when you leave the board. Ask AI from the reader names the paper, not the file. Switching PDFs in Read + Outline no longer shows the previous PDF\'s outline or saves a running parse under the wrong PDF, and cancelling a Docling run no longer resets the parse that replaced it. A failed send gives your question back; a chat closed while collapsed reopens whole; the first question is selected so typing replaces it.\n\n## 3.25.0 — 2026-10-11\n\nPoint at a part with @ in the chat, sort and filter search with what Roam knows, and PDF cards that resize and read sharp.\n\n- **@ parts in the chat.** Type `@` to pick a part, a figure, a whole PDF or a mentioned page (`@3`, `@fig`, `@spore` filter the list); clicking a chip inserts it too. The model is told exactly which part each `@Part N` means, and a removed part is flagged instead of sent as a dangling reference. Chips name the PDF by its real title.\n- **Sort search.** Best match, recently edited, recently created, oldest, most linked, most children, longest or A–Z, with the sort key on each row ("edited 2 h ago", "12 refs").\n- **Filter with Roam\'s data.** Created or edited by, created or edited within N days, under a page, has linked references, has children, parsed PDFs, PDFs with highlights, on this board.\n- **PDF cards resize** again, and the cover is redrawn sharp at the new size once you let go. **Image cards** scale their picture with the card.\n- **Real PDF names everywhere.** Letter-spaced banners such as "M A J O R  A R T I C L E" are no longer taken as a title; cards, the reader and chat chips use the paper\'s title.\n- **Roam\'s highlight toolbar** shows whenever a PDF is open in the reader, not only after opening the engine settings.\n- **Faster.** The first sorted search of a query is about twice as fast (one batched read instead of eight queries), browsing with an empty box is about ten times faster, and the "Under page" box waits for a pause before searching.\n\n## 3.24.0 — 2026-10-11\n\nFind a PDF by what it is, search your graph by meaning with Roam\'s semantic search, and talk to Live AI with its full composer.\n\n- **PDFs have names.** A PDF that only lives as a link on a daily page now shows its real title, authors\' journal and page count in search ("A Cumulative Spore Killing Approach… · Open Forum Infectious Diseases · 7 pages · on October 6th, 2026"). Plexus reads the first page once, in the background, only for PDFs the panel lists, and remembers it. Searching its title words, authors or journal finds it.\n- **Search by meaning.** With Roam\'s semantic search on (Settings → Graph), the panel\'s "Meaning" toggle adds results that match what you mean, not only the words, under "By meaning" a moment after the word matches. "Find related" on a card lists notes related to it, ready to drag onto the board.\n- **Live AI\'s composer in the chat.** Mention pages with `[[` or `#` and blocks with `((`; `/` opens Live AI\'s commands and your own `#liveai/prompt` prompts and `#liveai/style` styles; pick the context (this part, the page, linked references, sidebar, daily notes), a style and the thinking level. Tools and agents open Live AI\'s own chat with your conversation.\n- **Dark mode for the chat.** Proper light and dark colours (AA contrast), quiet icon buttons, and your question no longer scrolls under the context bar.\n- **Copy ▾ is back** on parsed parts: every copy format, plus Ask AI and Add to question. The copy menu closes on Esc and outside clicks.\n\n## 3.23.0 — 2026-10-11\n\nParsing shows what it finds as it reads, local engines just run (and say they are free), and Ask AI is a floating chat that looks like Live AI\'s own.\n\n- **Watch the parse.** While a PDF parses, a soft beam sweeps each page and every table, paragraph and figure outlines itself as it is found, on the reader and on the card. A live count ("15 tables · 371 paragraphs · 88 figures") turns into a summary with the time when it is done. With Reduce motion on, only the ring and the count show.\n- **Ask AI on any part.** Hover a parsed part: a small Ask button (a new speech-bubble icon, now used everywhere for Ask AI) sends it to Live AI with the rest of the PDF as context; Copy copies it, tables as a Roam table. Shift-click Ask adds the part to a multi-part question.\n- **A floating Live AI chat.** Ask AI opens a chat window styled after Live AI\'s: the parts you ask about as chips, message bubbles, follow-up questions with page citations, a model picker. Drag it, resize it, and it stays above a full-screen board without the board reacting to it. "Open in Live AI" hands the conversation to Live AI\'s own chat.\n- **Local is free, and it just runs.** Parse uses Docling first when the helper is paired, reads scanned pages in the same run, never asks to confirm, and has no page limits: long scans and long documents are read in batches. Engines are labelled "Free · on this Mac", "Free · in Roam" or "Cloud · uses your credits", and the chip after a run reads like "Docling · free · 110 pages".\n- **Faster scan reads.** The in-browser second reading only checks pages with doubtful words, so a 110-page scanned record reads in about 8 minutes instead of 22. "Read the scan" can be run again on a PDF already read.\n- **PDF fixes.** A PDF dropped on a board is no longer stored as a doubled `{{[[pdf]]: {{[[pdf]]: …}}}}` block (Roam could not show it and Docling got an empty file); blocks already doubled are repaired. An empty file or a rejected job now says so instead of "Nothing matches". A PDF on its own page is titled by its page, and reopening it brings back its fullest read.\n- Parse menus close on Esc and on a click outside; a full-screen board widens again after Live AI\'s docked chat closes.\n\n## 3.22.1 — 2026-10-11\n\n- **Open on board is instant again.** "Open on board" in a connection preview, "Show on board" in a block\'s menu and region links now open the page through Roam. Roam put back the page link these used when it came from a click, so the board waited about six seconds and then opened zoomed in, without the connection selected. It now opens in about 0.2 s with the connection selected.\n- **Pairing survives a reinstall.** The helper token is also kept on this device, so removing and re-adding Plexus in Roam Depot no longer leaves the helper "Running, not paired".\n- **Pair from Roam.** With helper 0.1.1, Pair shows an Allow dialog on the Mac, so there is no Terminal step. The Engines sheet now says what happened.\n\n## 3.22.0 — 2026-10-11\n\nBoards respond at once to zoom, hover, click, drag, edit and undo, and unfolding a board in the outline no longer draws every table.\n\n- **Smooth zoom and hover.** Zooming with the wheel or trackpad no longer stutters: a zoom burst is one gesture, and the board settles once at the end. Moving the mouse over cards no longer makes the page catch.\n- **Faster clicks.** Selecting, deselecting, dropping a dragged card, leaving a card\'s editor and opening or closing the Add panel each paint in about 25–100 ms, down from about 200–300 ms. Board state no longer changes classes on the whole board, which some other extensions\' styles (zotero-roam) turned into a full restyle, and the board ignores Reference Path\'s highlight colours on its own block.\n- **Tables fold under captions.** A table card is now a one-line caption ("Table · 7 rows") with the table folded under it, so unfolding a board in the outline shows one line per table instead of drawing every row (Parse Lab: 3.6 s → 0.24 s). New tables are made this way. "Fold tables under captions" in the board ⋯ menu converts the tables already on a board, with a preview first and one undo for the whole change.\n- **Lighter after zooming out.** Large tables swap back to their picture as soon as you zoom out to the map, instead of staying live for ten seconds.\n- **Faster undo.** Undo and redo repaint at once; badge counts refresh just after.\n- Comment counts on cards load with one small query whatever the size of the board.\n\n## 3.21.0 — 2026-10-11\n\nBoards open instantly, PDFs live on their own pages the way Roam keeps them, Ask AI reads charts and compares parts across PDFs, and images are searchable by colour and by the text inside them.\n\n- **Instant open.** A board paints from a saved snapshot in its first frame, then the live board takes over the same cards without flicker. Cold open in the right sidebar shows real content in about 66 ms (was about 760 ms) and in the main view about 100 ms (was about 850 ms), with no grey placeholder cards. Badges and graph links load right after. Large tables show a picture of their cells instead of a grey "Table · N rows" box.\n- **PDFs on their own pages.** A PDF card can now be a link to the PDF\'s page: the PDF and its highlights live together on that page, as in Roam\'s own PDF annotator, and unfolding a board in the outline no longer opens a PDF viewer for every PDF. New PDFs dropped on a board are placed this way. "Move PDFs to their own pages" (board ⋯ menu) moves the PDFs already on a board, with a preview first and one undo for the whole move.\n- **Ask AI across several parts.** "Add to question" on a table, paragraph, figure, highlight, image or whole PDF, then ask once about all of them from the "N parts · Ask" pill. Answers cite [Part N, p. M], tables come back as real tables, and an answer added to the board links to the cards it used.\n- **Ask AI sees figures.** Asking about a figure sends its picture to a model that can read images (the crop is uploaded to your graph once). **Chart → table** turns a chart into a table card, with the values marked as read from the chart.\n- **Whole-PDF answers find the right pages.** Asking about a whole PDF now picks the parts that match the question from every page, not just the opening pages.\n- **Default model.** Ask AI uses Claude Sonnet (or Gemini) by default and remembers the model you pick. A model that returns an empty answer says so and offers the next one.\n- **Search inside images.** Images and PDF figures can be found by colour ("red", "blue", a #hex value, or the colour swatches) and, with "Read text in images" turned on, by the words in them. "More like this" finds images with similar colours.\n- **Comments on cards.** "Comment…" on a card adds a Roam comment; cards with comments show a count that opens the thread in the sidebar.\n- **Changed since last visit.** Board ⋯ menu: outlines the cards edited since you last opened the board on this device and lists who changed them.\n- **Query cards.** A card holding a Roam query shows its results as a live list; drag a result onto the board as a card.\n- **Daily-note inbox.** Blocks on daily pages that mention a board appear in its "Inbox (N)" pill, ready to place.\n- **Board rule for your own queries.** `window.__plexusDiagram.rules.boardMember` finds the cards of a board in a Datalog query.\n- Newly parsed PDFs show up in search right away.\n\n## 3.20.0 — 2026-10-11\n\nFilter the search panel by type, search inside your parsed PDFs, and ask AI about one table or paragraph with the rest of the PDF as context.\n\n- **Type filter.** The Search tab\'s type list is now a Type button with toggles in two groups: Documents (Page, Block, Board, Daily, PDF, Image, Web link) and Inside PDFs (Paragraph, Table, Figure, Caption, Heading, Formula, Region, Pin), with Show all / Hide all. Your choice is kept per graph. PDF, image and web-link rows show a title, file name or thumbnail instead of the raw macro.\n- **Search inside parsed PDFs.** Tables, paragraphs, figures, captions, headings and formulas of every parsed PDF in the graph are searchable, with a page range ("p. 3-8"). Every word must match, in any order; "quotes" keep a phrase. Results show the part type, page and PDF title. Click opens the reader at that page when the PDF is on the board, otherwise adds the part as a card.\n- **Ask AI.** Ask about one part of a PDF from the reader\'s selection bar, a part\'s menu in the parsed view, a part in search results, or a whole PDF from its card menu. Plexus sends the part, its caption and section heading, the text around it and an outline of the PDF, and asks the model to answer about that part only. Answers stream, cite pages as [p. N] links that open the reader, and can be copied or added to the board as a card with a Source link back to the part. Uses the Live AI Assistant extension: turn on its "Enable Public API" setting. Plexus calls no AI service of its own.\n- The search panel sits above the tool palette, and long result lists keep each row readable.\n\n## 3.19.0 — 2026-10-10\n\nHigh accuracy reads every scanned page with the page model, a finished read follows you to your other computers, and old tables, photographed pages and figures read much closer to the page.\n\n- **Every scanned page through the page model.** High accuracy now reads each scanned page with Qwen3-VL by default (setting "High accuracy page reader": All, or Doubtful for the old behaviour). It is slower, about ten times per scanned page, and much better on photographed, handwritten and old printed pages: a photographed 1881 title page now matches the page 100% (was 3%), and a handwritten 1925 note 100% (was 36%).\n- **Reads are kept in the graph.** After a High accuracy, helper or LlamaParse read, Plexus uploads the read as one file to the graph and notes it on the PDF block, so your other computers load it instead of reading the PDF again. Setting "Keep reads in the graph" (on by default).\n- **Old tables.** Lists with leader dots and page numbers are read as whole tables, pages set in small capitals are no longer tilted before reading, side-by-side and stacked tables are kept apart, and printed leading zeros stay. An 1850 roster now scores 0.84 on cell content (was 0.08), a 1921 hydraulic table 0.94 (was 0.19).\n- **Figures.** The layout model\'s picture boxes are combined with the ink detector\'s: two photographs on one plate are two figures, a shadow over a photographed page is not a picture, and a drawing with one caption stays one figure.\n- **Tested on pages Plexus was not tuned on.** On 35 pages from libraries never used in development, High accuracy now scores 0.80 against LlamaParse\'s 0.82 (3.18.0 scored 0.73), and leads on handwritten pages (0.88 against 0.77).\n- **Rust helper 0.2.0.** The light helper\'s deskew check changed; re-run the helper install to get it.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.18.0 — 2026-10-10\n\nHandwritten letters read closer to the page, a wide old table reads whole, and High accuracy installs on a clean Mac.\n\n- **Handwritten letters.** The page reading now fills every text block on the page, including a stamp, a word in the margin and the signature, and the page is read at its full scan size. Three handwritten 1859–1914 letters now match the page 79–97% (were 64–90%). A handwritten letter takes about 30 seconds in High accuracy.\n- **Photographed lists.** When two readers see a photographed page at slightly different tilts, their words are lined up before they are compared, so a confident name is no longer swapped for a dictionary word. A photographed 1924 roster now matches the page 90% (was 83%).\n- **Wide tables.** A caption row that spans many columns no longer stops the High accuracy table reader early. A 1916 thirteen-column table now scores 0.95 on cell content (was 0.77).\n- **Install.** The High accuracy table reader now verifies against the files Hugging Face serves, so a clean install works (it failed its own checksum before). An existing install downloads the reader once more (about 1.9 GB).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.17.0 — 2026-10-10\n\nHandwritten letters, ledgers and photographed pages read much closer to the page in High accuracy.\n\n- **Handwriting and photos.** When Apple Vision is unsure of a page, High accuracy now reads that page\'s text with Qwen3-VL-8B (Apache-2.0) instead of PaddleOCR-VL, which still reads the tables. Pages of a handwritten dye-recipe book now match the page 92–96% (were 53–71%), and a photographed 1867 letter 89% (was 58%). A handwritten page takes about 15–30 seconds.\n- **Text in the right place.** The page reading is lined up word by word with what Vision saw in each region, so a date, a greeting, a paragraph and a signature each keep their own text, and table cells and figure labels are kept out of the paragraphs.\n- The first such read downloads the model once (about 5.8 GB, checked against pinned SHA-256 hashes). To get it, re-run the High accuracy helper install.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.16.0 — 2026-10-10\n\nLong rosters and old tables printed in pieces read as one table.\n\n- **Rosters and registers.** A roster printed as several pieces down the page, with a section line between them ("Harbor Commissioners for the Port of San Jose, 1913-1924."), is read as one table with that line as a row. Leader dots, a date split across two cells and a lone "Deceased." beside a name no longer become columns of their own. Three 1924 California Blue Book roster pages now score 0.96–0.99 on cell content (were 0.26–0.78).\n- **Old numeric tables.** Totals are matched to their rows after the table\'s shape is repaired, a lone "o" in a column of numbers is read as 0, and a numbered column with one unreadable number is filled from the run. A 1929 NACA viscosity table now scores 0.98 on cell content (was 0.78), and a 1916 Bureau of Mines gas table 1.00 (was 0.91).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.15.0 — 2026-10-10\n\nMore figures found in photographed pages and menus, and more old tables read exactly.\n\n- **Figures and captions.** Small labelled diagrams (a sketch with "G(s)" or "(k)" labels), pictures on a letter, hatched menu illustrations and plates split across two columns are found, and a caption is joined only from text inside the picture, so the next column\'s text no longer leaks in.\n- **Tables.** A section banner split across the width stays one table row, a scientific factor such as "9.806 65 E+00" stays one value, a footnote printed under the bottom rule stays a paragraph, and number formatting is tidied after High accuracy picks its reading. A 1932 NACA table now scores 0.95 on cell content (was 0.67), and NIST unit tables 0.94–1.00.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.14.0 — 2026-10-10\n\nOld printed text and old tables read closer to the page.\n\n- **Printed text on old scans.** Words that Vision reads glued together stay whole, plurals are not shortened to the dictionary singular, and the "Digitized by Google" / HathiTrust stamps are treated as page furniture, not text. On our 1916 Bureau of Mines pages the text now matches the page 97–100% (was 82–92%). A caption line under a wide plate is read and kept.\n- **Tables.** Unit lines under a header, blank leader cells, labels fused to the next word and fragments printed beside a row are put back in the right cells. A 1922 viscometer table now scores 0.96 on cell content (was 0.78), and a born-digital regression table 0.96 (was 0.63).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.13.0 — 2026-10-10\n\nHandwriting and photographed pages read much better in High accuracy, more old tables come out exactly, and every figure on our old-scan test pages is found.\n\n- **Handwriting and photos.** When Apple Vision is unsure of a page (handwriting, a photographed letter or menu), High accuracy keeps Vision\'s reading and also asks the page reader (PaddleOCR-VL) for that page\'s text. Letters, recipe books and field notes now read as prose; name lists and menus stay text instead of becoming tables. A handwritten letter takes about 10–20 seconds.\n- **Tables on old scans.** Rotated column heads sit in their own columns, brackets inside a formula cell are not grid lines, and subscripts, thousands marks, degree signs, group heads and totals are tidied. A 1960 typewritten NASA table now scores 0.98 on cell content (was 0.51).\n- **Figures and captions.** Apparatus drawings with labels, rotated plates with their title along the edge, and pages with two figures are found, and captions printed side by side are split by column. On our 27-page set of 1890–1920 scans every figure is now found with no extras, and 82% of captions are linked (was 55%).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.12.0 — 2026-10-10\n\nPhotographed and scanned pages: figures found inside the page, no invented tables, and more tables read right on old scans.\n\n- **Figures inside photos and scans.** A photographed or scanned page is one picture, so Plexus now finds the charts, plates, sketches and maps inside it from the ink, and links their captions, including chart titles without "Fig." and German "Abb." plates. On our set of 57 newer pages (photos, handwriting, modern documents, mixed layouts) figures are found at F1 0.85 (was 0.39) and half of the captions are linked (was 7%).\n- **No invented tables.** Letters, handwritten notes, photographed title pages, contents lists and the labels inside a chart are no longer turned into tables; a table needs real tabular content (a value column or a header over body rows).\n- **Tables on old scans.** Columns split by partial rules or a short right edge are kept, unit lines and lab-id rows are header rows, and when two readings disagree the one the page text supports wins. On our 27-page set of 1890–1920 scans, High accuracy now reads 74% of table cells exactly (was 39% in 3.11.0).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.11.0 — 2026-10-10\n\nScanned and born-digital PDFs read more accurately: fewer false figures, captions found, more tables right, and a High accuracy read that gives the same answer every time.\n\n- **Figures and captions on scans.** Library stamps, page-edge stripes, rules and text blocks are no longer taken for figures; a real drawing is never dropped, even when its caption runs across it. Captions that start with Fig., Figure, Plate, Abb. or Tafel are linked to their figure, including a caption set sideways beside a plate. On our set of 62 scanned technical pages (1900–1950), High accuracy now finds figures at F1 0.98 (was 0.92) and links 89% of captions (was 77%).\n- **Tables on old scans.** Narrow numeric columns that a spanning header had glued together are split again; contents lists under a plate stay lists; a numbered index or an equation is not turned into a table.\n- **Tables in born-digital PDFs.** Booktabs-style rows, leader-dot columns and regression tables stay tables. High accuracy also asks the layout model about tables on pages with a text layer, and keeps a table only when its words are on the page.\n- **High accuracy.** The same PDF gives the same reading every time (fixed decoding; the model weights are pinned and checked by SHA-256 on first use). The layout model and the reader run only on pages where they can change the result.\n- **Fixes:** a blank High accuracy cell no longer erases text the page shows; a running head is not taken for a plate title.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.10.0 — 2026-10-09\n\nDraw a region freehand, delete an arrow cleanly, read PDFs with LlamaParse, and read old scans far better on your own Mac.\n\n- **Image regions.** Regions sit exactly on the picture, even on a tall card with empty space below the image, and stay there after a redraw, resize or zoom. Draw around a part of an image with the pen (press P while marking, or pick Pen): the outline follows your hand and is saved in the freehand format Roam Plexus also reads. An arrow to a region enters the picture and stops on the region\'s edge, and hovering or selecting that arrow outlines its region in blue.\n- **Deleting an arrow cleans up.** Deleting an arrow (Delete, Backspace in its empty label, the toolbar trash, the right-click menu or Cut) also deletes the region it made, when nothing else uses that region. One ⌘Z brings both back.\n- **Arrow toolbar.** The toolbar for a selected arrow is about 290 px wide instead of 800: direction, colour, label and delete stay on the bar; style, width and the rest open from small menus. It sits clear of both cards the arrow connects.\n- **LlamaParse (cloud).** Read with LlamaParse sends a PDF to LlamaParse with your own key, after a confirm that shows the tier, the page count and the cost (Agentic is 10 credits, about $0.0125, a page; re-reading within 48 hours is free). Without a local helper it goes through a relay that stores nothing. Plexus keeps LlamaParse\'s tables and text and uses its own figure boxes where it has read the page, which scored better than LlamaParse alone in our tests. Mistral OCR is there as a second, no-install choice.\n- **Local helper.** The default helper is now a 15 MB program (was 1.1 GB) that reads scans with Apple Vision as well as the old one did. Docling stays available as an add-on (`install.sh --docling`). A beta High accuracy read (`install.sh --docling --vlm`, about 2 GB of models) adds a layout model and PaddleOCR-VL for tables.\n- **Old scans.** Typewritten and hand-ruled tables, hand-drawn plates and their captions, two-column pages, small-caps titles, patent drawing sheets and faded typewriting all read much better: on our set of 1900–1950 technical scans, figures found went from 0.49 to 0.98 and text errors from 6% to about 2%.\n- **Fixes:** the High accuracy read never replaces a table with a worse one; sideways margin titles are not headings; titles never fall back to "PDF" after a cloud read.\n\n## 3.9.0 — 2026-10-08\n\nLink back to the PDF, copy the way you mean it, and point arrows at anything: a cell, a row, a region of an image, a PDF pin, or another arrow.\n\n- **Source pins.** Turn on "With source" in a chip\'s ▾ menu (or hold ⌥ for one drag or click) and the card gets a pin to the exact spot in the PDF: a `{{[[plexus-pin]]}}` block under the PDF that shows the page crop wherever Roam renders it, plus `Source:: ((pin))` on the card. Click a pin for a larger crop, the surrounding paragraph, Open in reader (jumps and flashes the spot), Sidebar and the boards that cite it. One ⌘Z removes the whole gesture.\n- **Copy menu.** The copy button beside a parsed box now opens a menu (▾, right-click or long-press): Copy, Copy as plain text (⇧⌘C), Copy as card (⌥⌘C, pastes onto a board as a real card), Copy with source (⌥⇧⌘C, writes the pin), Copy crop as image, Copy link (opens the reader at the pin). Figures copy as an image with their caption.\n- **Arrows to anything.** Start an arrow on a Roam Grid or table cell (Connect) or a page-card row (⌥-drag). Point at part of an image: hold ⌥ when you release over it and drag a box, or ⌥-drag on the picture to start from a new region — a plain drop on an image still points at the card. Arrows can end on a PDF pin or on another arrow\'s label. Each end is a real block, so the connection reads `((cell)) → label → ((region))` in Roam, and the block shows a "⇢ N on <board>" chip elsewhere in Roam that opens the board centred on that arrow.\n- **Figures from complex PDFs.** Multi-panel figures become one figure with their caption; patent drawing sheets are found; a text page is never one giant figure; boxes stay on the page and inside their column; contents lines are not captions. Dragging a figure makes an image card sized to the crop, with the caption as alt text.\n- **Fixes:** cards move when dragged at high zoom (including table and grid cards); arrows start from grid-table cards; the arrow label editor is one field and no longer makes table cards flicker; paragraph copy works and says so when it cannot; the reader keeps your zoom when it jumps and fits the width again on current Roam.\n- **Docs:** a "Which engine" table compares the built-in parser, in-browser reading, the local helper and the coming cloud engine.\n\n## 3.8.0 — 2026-10-08\n\nPDFs on the board feel finished: clean cards with real titles, a proper Quick Look, a reader that opens where you expect, and scanned pages read in the browser without freezing Roam.\n\n- **PDF cards.** A small highlighter button with the highlight count replaces Roam\'s big white "Add highlights…" button; the title gets the room. Hover shows solid Open / Parse pills that stay readable over any cover and move above the dock and toolbar. "1 ref", not "1 refs"; one-page PDFs show no page arrows.\n- **Real titles.** Cards, the reader, the PDF switcher and Quick Look show the paper\'s title from the largest type on page 1 — not the journal banner ("Science of the Total Environment"), not a running date ("22.12.2005"), not a table note. Titles appear at rest, read in the background one PDF at a time, and saved titles show at once. Run-together words in a title are split when the word list is on this device ("Summaryofreportedcasesper" → "Summary of reported cases per").\n- **Quick Look (Q)** shows the card\'s title, opens at the card\'s page (page 1 by default), turns pages with a pill and the arrow keys, and falls back to Roam\'s reader when a PDF will not load.\n- **Open and Parse.** The reader keeps the board at least 360 px wide, centres the card in what is left, and themes its PDF switcher. Parse opens at the card\'s page with the parsed boxes; on a narrow reader the outline is a tab, starts at the top, and rows are one line. Copy buttons on parsed boxes show on hover beside the box (never under its chip) and confirm with "Copied"; a figure copies as an image with its caption; tiny marks get no box; and the dock and card toolbar fit a narrow board (extra tools behind "…") without covering the minimap.\n- **Reading order.** A sidebar column next to an abstract no longer interleaves with it line by line (the column gap is measured beside the column, and full-width rules separate bands).\n- **Superscripts.** Footnote marks land between the right words ("Kleshchev¹, Boyd¹˒²", "whole zone³" linked to its note); unit superscripts like cm² stay inline.\n- **Scans in the browser.** In-browser reading now runs in a background worker: a scan read no longer freezes Roam (longest pause 23 s → 0.3 s on a dense table page). Doubtful text lines are re-read up close and checked against a word list (the CDC 1980 title now reads exactly), centred cells in wrapped rows stay in their row, and the page is rendered the same way the reader shows it.\n- **Fixes:** covers never go blank after heavy zooming; a reopened scan keeps its read; PDFs parsed by an older version are re-parsed quietly on open (scans you read are kept); left/right docks keep their tools; the header highlight count updates; no repaint loop or per-frame layout work while panning with a selection.\n\n## 3.7.0 — 2026-10-08\n\nParsed text you can see and copy, scans read without installing anything, arrows to table cells, PDF footnotes that work in Roam, and typing that never drops a key.\n\n- **Parsed text shows on the page.** Every block the parser found gets a soft gray box with a copy button (tables copy as Markdown). Boxes now fit sideways tables exactly (the old outline was drawn in the wrong frame on rotated pages). "Show parsed" in the reader\'s mode bar turns them off.\n- **Read scans with nothing installed (beta).** Without the local helper, Read text reads a scanned page in the browser: 39 MB of models downloaded once from this site and cached, then about 20 s for a dense table page. Shaded table rows and slightly tilted scans are handled; doubtful cells are re-read up close. On a 1980 CDC table scan: cell F1 0.922 (the helper: 0.957). The helper stays first when it runs. A read scan reopens with its boxes, table chips and title.\n- **Click to place.** Insert from a chip (Roam Grid, Native, Flat, Card, Figure, Section) now attaches a preview to the pointer; click the board to place it, Esc to cancel. "Insert beside PDF" keeps the old behaviour. The preview stays readable when the board is zoomed far out, with a dashed outline showing the real size.\n- **Arrows to a table cell.** Point an arrow at one cell of a Roam table or a Roam Grid table, the way arrows already point at a block: the cell lights up while you connect, the end follows the cell through scroll and zoom, and clamps with a marker when the cell leaves view.\n- **PDF footnotes in the Footnotes extension\'s format.** Marks like ¹, ** or (3) become `#sup^^[(N)](((note)))^^` aliases with the notes under the page\'s `#footnotes` block, numbered after the ones already there — in paragraphs and in table cells (Roam Grid and native). Setting "PDF footnotes": Footnotes extension / plain / off.\n- **Roam Grid import.** With Roam Grid 0.18.5, "Roam Grid: Import from a PDF on this page…" turns a PDF table (born-digital or scanned) into a grid, through `PlexusDiagram.tablesFromPdf`.\n- **Fixes:** keys typed right after making a card are kept and land in order (they were lost for up to a second); the right-click menu opens at the pointer; the board never scrolls under the reader; the board bar and the card toolbar stay one row in a narrow board (extra tools move to "…"); folded cards are header-high and a folded table says "Table · N rows"; PDF titles skip junk metadata ("I", "Untitled") and fill the PDF switcher as they are found; copy buttons never stack.\n\n## 3.6.0 — 2026-10-07\n\nThe PDF page is the workspace: select, copy, highlight and drag text straight off the page — scans included — plus structure chips, a smoother drag, setup without dead ends, and office files on the board.\n\n- **Text on every page, scans too.** A scanned page gets an invisible text layer from the local helper\'s OCR. Select across the page image, copy it, or press a colour in Roam\'s own highlight tip: the highlight is a real Roam block, also on scans. A read scan reopens with its text in about a second, no new read.\n- **Selection bar**: Copy · Card · Quote · drag handle, placed beside Roam\'s tip, never over it.\n- **Card-shaped drag.** Dragging a selection, a highlight or an outline row shows a ghost of the card that will land, and drops exactly where the ghost is.\n- **Structure chips on the page.** Hover a table: "Table 7×7 · Roam Grid ▾" (Native, Flat, Copy as Markdown, Card). Figures, sections, lists and formulas get their own chip. Hold Shift to see the reading order.\n- **Read / Read + Outline.** The Parsed tab became an Outline: an index of headings, tables and figures with page numbers, filters and bulk actions. Every PDF is parsed quietly when it opens (no writes, no network), so chips and the title are there in Read mode.\n- **No dead ends.** A one-line strip under the reader says what is happening and always has a button. The Engines panel (pane ⚙) shows each reading engine with one action. The local helper installs with one copied command and pairs with one click — no token to paste.\n- **Word, Excel, PowerPoint, OpenDocument, EPUB and CSV on the board** (anydoc, WebAssembly, loaded from this site only when you convert, then cached): a document becomes section cards, a deck one card per slide, a sheet a Roam Grid table.\n- Roam Grid table cards grow with the card; the reader pill hides in the outline; titles come from the parse when the PDF has none.\n\n## 3.5.0 — 2026-10-07\n\nParse a PDF into clean blocks and real tables, on the board, with merged cells, and better than Heptabase on tables.\n\n- **Parse / Parsed / Both** in the reading pane. The built-in parser needs no install and reads a 30-page paper in under a second: headings with their levels, paragraphs in two-column reading order, lists, footnotes linked to their marks, figures and formulas as page crops, and tables, ruled or borderless, with merged cells and header rows. Running headers, footers and page numbers are removed and listed, never silently dropped. Results are cached on this device; nothing is written to your graph until you insert.\n- Hover a parsed block and its region lights up on the page; click to jump there. Each table shows the grid it found over the PDF with a confidence chip, and you can drag a column boundary to fix it.\n- **Insert, send, or drag.** Insert below the PDF, send sections to the board as cards, or drag any block or table onto the board. A table becomes a table card: with Roam Grid 0.18.3+ it keeps merged cells, header rows, alignment and column widths (one Roam write, one undo); without it, a native Roam table. Make highlight turns a parsed passage into a Roam PDF highlight.\n- **Optional local helper** (`tools/parse-helper`, Docling on your Mac): formulas as LaTeX, OCR, and **Read the scan** for scanned pages — Apple Vision word boxes and the scan\'s own ruling lines go through the same table engine, numbers misread by OCR are repaired and re-read cell by cell.\n- Measured on the ICDAR 2013 table benchmark (67 government PDFs): built-in table structure F1 0.979 and exact-cell F1 0.932, against Docling\'s 0.865 and 0.795, in 2.5 s for all 67 against 5 minutes. On a 1980 CDC table scanned as an image only: structure 1.000 and cell F1 0.957, against Docling\'s 0.082. Small scanned type can still misread words (e.g. disease names in 6 pt print); numbers are checked against their column.\n- Roam Grid tables in cards scale with the board and get the whole card (no Roam row spacer, no break-out padding); columns are sized from the text.\n- The reading pane title falls back to the parsed title; the tool dock stays left of the pane.\n\n## 3.4.0 — 2026-10-06\n\nBoards that wear your Roam theme, edits that hold still, wider PDFs, and Roam tables on the board.\n\n- Plexus follows the theme your graph is using: the canvas, cards, text, borders and links take Roam\'s own colours, light or dark, and change when the theme does. Setting **Theme**: Follow Roam (default) or Plexus. Pastel sections are stronger in light mode.\n- Editing in place holds still. In page cards the bullet and fold arrow stay in the gutter and nested rows keep their indent; note, block and task editors keep the resting line height; a sticky no longer shows a blue box while you type. Links keep the same colour at rest and in edit.\n- Roam tables on the board. A card holding a `{{[[table]]}}` shows Roam\'s table, scrolls sideways when it is wider than the card and is never clipped. Enter or a double-click edits a cell with Roam\'s editor; Tab, arrows, typing, the wheel and right-click stay with the table while you work in it. New **Table** tool (B) and a **Table** item in the canvas menu add a 3×3 table in one undo. With Roam Grid installed, an enhanced table works inside the card, and **Open grid** shows it at full size.\n- PDF cards can be as wide as you like (up to 4000 px), and a large card redraws page 1 sharp instead of stretching a small cover. The pane title uses the PDF\'s own title, never a storage path; a zero highlight count is hidden; the format bar no longer covers the pane; a slow PDF shows its cover until the first page paints.\n\n## 3.3.0 — 2026-10-06\n\nEdit in place without the card changing, PDFs you flip through on the board, PDF dark mode, and three Heptabase looks.\n\n- Editing a note, block, task or page card no longer changes how it looks: the text stays in the same place, at the same size, with the same line breaks, at every zoom. Roam\'s bullet, its spacer and the reference-count slot no longer squeeze the text into a narrow column, the editor grows with its text, and the card keeps its size. Double-click a word and the cursor lands on it. With Roam Caret installed, its caret follows the board\'s zoom inside the card.\n- Clicking a PDF card selects it, as in Heptabase: the card becomes a small reader you flip through with the wheel, ← and →, or the `‹ 3 / 9 ›` bar. The side pane opens only from **Open**, a double-click, Enter, the card menu, or a highlight.\n- PDF pages in dark mode (setting **PDF pages in dark mode**): Dim (default) softens white pages on a dark board, Invert turns them dark, Off keeps white paper. Highlights stay readable.\n- Three Heptabase looks, all off by default: **Canvas** flat grey instead of dots, **Section fill** pastel, **Highlight cards** tinted instead of a colour bar. In dark mode they show as coloured borders.\n\n## 3.2.0 — 2026-10-06\n\nPDF round 2: covers at every zoom, page 1 without opening the PDF, pages at reading width, one open per click.\n\n- Zoomed out, a PDF card is still its page. Map and overview paint the saved cover on the card itself, as in Heptabase at 11-17 %, with no image element, title or strip at those tiers.\n- A PDF you have never opened gets a cover in the background: a quiet board (1.5 s after first paint, idle, one at a time, at most three per visit, never while you move or read) draws page 1 with Roam\'s own PDF engine, so nothing is opened or written. A capture that comes out blank is thrown away. Setting **Prepare PDF covers in the background** (on).\n- The reading pane fills its width: Roam\'s reader no longer stops short of the pane\'s right edge (its block row kept a separator and a reference-count slot beside the PDF). After the first page paints, the page is set to page width (through the viewer when it is reachable, otherwise by stepping Roam\'s own zoom buttons until the page fills the pane). Your own zoom is kept; resizing the pane refits.\n- One click on a highlight card does one thing. A plain click opens it in the reader (setting **Highlight click opens**: Reader or Sidebar). Shift-click opens Roam\'s sidebar. The chip\'s **▾** lists Open in reader, Open in sidebar and Open page in main. Nothing opens twice.\n- Selecting a PDF card never mounts Roam\'s reader inside the card. **Read inside the card** in the card menu is the one way to the inline reader; **Show the cover** takes it back, and opening the pane does too.\n- The fullscreen tab strip shows only from two tabs up, is 28 px tall, and reserves nothing while hidden. Tabs, their persistence and Cmd+1..9 are unchanged.\n- The reader\'s pages float on a soft grey bed in light mode; dark keeps the chrome colour.\n\n## 3.1.0 — 2026-10-06\n\nPDFs that read like Heptabase, page cards that hold still while you edit, and tools that do what your hand expects.\n\n- PDF cards show the page itself: white paper, no text on the face. Hover for the title, highlight count and page chips, and an **Open** pill; double-click or Enter opens it too. A thin strip on the edge marks where the highlights are; click a mark to open that page. The cover is saved on this device the first time you read the PDF (nothing is written to your graph); until page 1 has been on screen, the card shows the last page you read. Setting **PDF card cover**: first page or last page read.\n- The PDF opens in a pane beside the board with one slim header (title, other PDFs on the board, highlights, Roam\'s tools, close) and the pages at reading width. A floating pill drives Roam\'s own zoom out, zoom in, fit width and search, and shows `3 / 9`. Roam\'s toolbar is still there behind the tools button. The card you are reading gets an outline until you close the pane.\n- Highlights moved into a drawer at the bottom of the pane: colour and page chips, search, and Note, Place and Locate on hover. A new highlight pulses in the list and offers **Place on board** for a few seconds. Hovering a highlight card flashes its mark in the reader, and hovering a row pulses its card.\n- Highlight cards are quote cards with a colour bar and a source chip (`title · p. 3`).\n- Editing a page card keeps the card exactly as it looked: same rows, same spacing, nothing rewraps or moves, and the cursor lands where you clicked. One click on an already selected page card starts editing there.\n- Hand tool: drag a card to move it, drag empty board to pan. In Select and Connect, dragging empty board pans too; Shift-drag draws the selection box and Alt-drag the lasso. Setting **Drag on empty canvas** brings the old box-select back.\n- With Roam Caret 0.6.6 installed, its caret now shows inside cards at every zoom (Plexus tells it when the board moves).\n- The board bar, tab strip, legend and Properties are solid, and an empty tab strip no longer shows.\n- New PDF cards are 240 × 320.\n\n## 3.0.0 — 2026-10-06\n\nPlexus 3.0: the 3.x roadmap is complete. This release makes large boards open fast, makes every new surface usable from the keyboard, caps every bulk gesture at what one Roam undo can take back, and documents the data model and module contracts as built.\n\n- Large boards open fast. A board with 300 cards, 20 sections and 150 connections shows its cards in about 360 ms and is idle by about 450 ms (it was about 1.3 s, with long pauses after the first paint). Card reference and board counts now come from one indexed read instead of four searches across the whole graph, and fullscreen no longer forces a page layout in the middle of opening.\n- Keyboard: trail stops in the panel take focus; Alt+↑ and Alt+↓ move a stop and Enter walks the trail from it. The region overlay nudges with the arrow keys (Shift for 10 px), Enter confirms and Esc cancels. The status, halo, why and task popovers take focus when they open, move with the arrow keys and give focus back on Esc. Trail strips, crops, PDF chips, timeline rows and the resurface panel open with Enter. Every button has a name, and focus rings show in light and dark even when another extension hides outlines. The `?` sheet lists the new keys.\n- Undo: every bulk gesture stops at 45 changes so one Roam undo takes it back, with a toast that says how many were added: adding cards to a trail, a new trail from a selection, landmarks on a selection, and Lay out by date. README, Limits has a table of writes and undo steps per gesture.\n- Fixed: moving a trail stop down (by keyboard or by dragging) did nothing.\n- Docs: `docs/spec-plexus-3.0.md` (every block kind and prop key, what is stored where, decorated macros, the public API, interop) and `docs/api-plexus-3.0.md` (module contracts). The README follows the 3.0 order and has an integrations table. `tools/spec-keys.mjs` and `tools/doc-check.mjs` fail when code and docs drift.\n\n## 2.21.0 — 2026-10-06\n\nTrails, landmarks, a timeline, strength and dust lenses, source chips, and an Integrations section in settings.\n\n- Trails: a named path through cards with a note at each stop. Add a card to a trail from its menu; Walk trail plays it stop by stop in present mode. A trail is a block under the board\'s collapsed `Trails` child, so `((trail))` pasted anywhere in Roam shows as a strip of stops you can click. The panel has a Trails tab.\n- Landmarks: make a card, sticky or section a landmark and it keeps a large glyph at every zoom, including the overview, and shows on the minimap. Walk the board tours landmarks left to right, then down, or along a trail.\n- Timeline in the Info tab: the daily pages that mention any card on the board, with a count per day; click a day to open it. Lay out by date can now place cards by the day they were first or last mentioned, not only by a date attribute.\n- Strength and Dust lenses (More menu). Strength draws a connection thicker when its two ends are referenced a lot, share other boards, and were edited recently; hover a line to see why. Dust dims cards untouched for 6 months, 1 year or 2 years. Both are views: nothing is written, and turning them off puts every line and card back.\n- Source chip: a highlight dragged from an `Articles/` or `Media Captures/` page shows the page title, and the author when the page has an `Author::` line. Click the chip to open the page in the sidebar. Renaming the author updates the chip.\n- Settings has an Integrations section: Better Tasks, Task Status Tags, Roam Plexus, Compass and the colour highlighter, each shown as detected (with its version) or not installed. It updates when one of them loads or unloads. Switches turn each integration off; with "Roam Plexus and Compass" off, Open in Compass is hidden and drawing cards stop asking Roam Plexus for thumbnails.\n- Kanban card titles no longer show the status tag, and lane counts have a space before them.\n- Fullscreen tabs drop boards that were deleted.\n\n## 2.20.0 — 2026-10-06\n\nStatuses, journal, fullscreen tabs, touch, and a round of reliability work.\n\n- Task statuses (with Roam Task Status Tags 0.9.0 or later loaded). A task card shows its status as the same glyph Task Status Tags draws on the checkbox (Active, Waiting, In Review, Holding, Incubating, Alert, Cancelled) and as a chip. A small ring left of the checkbox opens a status chooser; Shift-click removes the status. The card menu and a multi-selection have Status ▸ (up to 45 cards at a time). Every status change is written by Task Status Tags, not by Plexus. Without it, the glyphs still show from a built-in table and the ring is not there.\n- Kanban "Lanes: Status": one column per status, plus No status and Done. Dropping a card on a column sets that status; dropping on Done completes it the same way the checkbox does. `[` and `]` move a focused card one column.\n- Journal tab in the panel: the day\'s top-level blocks with a day stepper. Drag a row onto the board for a card. Looking and stepping write nothing.\n- Fullscreen board tabs: boards you open while fullscreen collect as tabs above the board bar (up to 9). Cmd+1 to Cmd+9 switch. The tabs come back the next time you go fullscreen in this graph.\n- Touch and tablet: pinch to zoom, two fingers to pan, long-press for the menu, larger resize grips under a coarse pointer.\n- PDF highlights: a Note button on a highlight card opens its note the way Roam\'s own note button does (in the sidebar, focused), creating the note block only when there is none; one undo removes it. The pane\'s PDF switcher names a PDF without highlights by its page, and the arrow keys and Enter move through the list.\n- New drawing (Roam Plexus) is one undo step with its card.\n- Fixed: Plexus no longer replaces Roam\'s global `pull` function. Since 2.14.0 it answered other extensions\' reads from its own cache. After updating, reload Roam once to clear the old copy\'s replacement.\n- Fixed: a board shown in its own linked references, or in the right sidebar, no longer goes fullscreen a second time on top of the main board (clicks and drops went to the hidden copy).\n- Developers: `node tools/live/smoke.mjs "Readwisenotes - "` runs a ten-step live check and cleans up only its own blocks; callback errors are counted and a callback that keeps failing is paused for a minute (Settings shows "N errors" when there are any); `npm run size` prints the bundle report.\n\n## 2.19.0 — 2026-10-06\n\n- Clicking into a page card no longer changes how it looks. The editor keeps the card\'s own text size, row spacing, indent and line wrapping. Roam\'s bullets, guide lines and extra scrollbar stay hidden, and the row you clicked stays where it was.\n- Drag a highlight straight out of the PDF onto the board, as in Heptabase. Hover a highlight in the reading pane (the cursor becomes a hand), then drag it onto the board: a card lands where you drop it. A highlight that is already on the board pulses instead of being added twice. A plain click on a highlight still opens Roam\'s highlight menu, and selecting text to make a new highlight works as before.\n- Clicking a highlight in the pane\'s list, or the page footer on a highlight card, scrolls the PDF to that highlight and flashes it, not just to the top of its page.\n- The PDF reader fills its part of the pane. There is no longer a second scrollbar around it, and Roam\'s toolbar (highlight tools, zoom, page number) stays in view.\n- The link legend (the chips that turn link types on and off) sits under the board bar, beside Properties, instead of on top of the bar\'s buttons.\n- While you edit a page card, hovering a row shows a faint bullet in the margin; drag it to move the block, click it for Roam\'s block menu.\n- A board that is open in the right sidebar while the main window is zoomed into the same board stays in the sidebar. Before, both copies went fullscreen and the sidebar copy covered the main board, so clicks and drops on the board did nothing.\n\n## 2.18.0 — 2026-10-06\n\nPDF highlights closer to Heptabase (roadmap P27), page cards you can edit in place, and two speed and freshness fixes:\n\n- Open reader on a PDF card opens a reading pane beside the board instead of inside the card. The card stays a cover. Drag the pane\'s edge to resize it; on a narrow board it sits below.\n- The pane lists every highlight in that PDF with its colour, page, and note. Filter by colour, page, or text. Place puts one card on the board; a highlight already on the board pulses instead of being added twice. Drag a row onto the board for a card at that spot.\n- A highlight card\'s footer opens the pane at that highlight\'s page and flashes the card. The page holds after Roam restores the last page it showed.\n- A note under a highlight (a child block) shows on its card and follows edits.\n- Clicking into a page card edits it in place. The card keeps its size and look; the row you clicked gets the cursor; Escape returns to the same view.\n- A `((ref))` card follows edits to its source, including edits made while the card was off screen or the board was closed.\n- Graph links are drawn after the board\'s first paint, so opening a board feels faster.\n- The colour tooltip on a highlight now says what changes: the card and the list follow the tag, the mark inside the PDF keeps the colour Roam painted.\n\n## 2.17.0 — 2026-10-06\n\nFeel instant (roadmap P26), after the claude.ai speed work:\n\n- Going back to a board you just left is instant: the last two boards stay ready (paused, nothing running) and come back as they were, fullscreen included, with no rebuild.\n- A board opens with a quick sketch of its last layout while the real board loads.\n- Hovering a board chip, a board card, a breadcrumb, or a link to a board quietly reads that board ahead of the click.\n- Cards load in small batches nearest the middle of the screen first, so a big board never freezes the page.\n- Selecting a card no longer touches every other card (the same cost on a 300-card board as on a 40-card one).\n- Faster text checks on every card (tags, regions, attributes, diagram detection).\n- Cards and page rows keep their size while their content loads, so nothing jumps.\n- Optional speed log in settings (off by default): open time, click time, pan smoothness, Plexus long tasks.\n- Developers: `npm run perf:ratchet` keeps measured counts from getting worse; a hidden `speed-flags` setting turns each speed feature off without a release.\n\n## 2.14.1 — 2026-10-06\n\n- Typing stays light while a board sits in an open right sidebar. Plexus read Roam\'s whole sidebar window list every 400 ms (about 6 ms each time with 140 windows); it now reads the window\'s own open/closed arrow instead.\n\n## 2.14.0 — 2026-10-06\n\n- PDFs, videos, tweets and other heavy embeds on a card, a page row or an outline row show a poster until you open them. Only one stays live per board.\n- A board you scroll away from, a collapsed sidebar window, or a board under a closed block stops working in the background and comes back where you left it.\n- Opening a board reads Roam about six times less (about 24 calls instead of 155 on a 39-card board), so other extensions keep their share of Roam\'s limit.\n- Typing in a card updates that card only. Typing on a page that is a page card updates the changed row only.\n- Typing outside a board keeps the board open instead of closing and reopening it.\n- Panning no longer measures every arrow handle on each mouse move.\n- Board chips at the top of a page are placed once per frame instead of scanning the whole page for every change.\n- A live speed check for developers: `node tools/live/perf-gate.mjs`.\n\n## 2.13.2 — 2026-10-05\n\n- A board in the right sidebar opens as the board. Outline is still in the mode bar, and the last choice is remembered on this device.\n- Outline rows render when they scroll near the window. A row that scrolls far away unmounts and keeps its height, so a PDF lower down does not stay open.\n- Clicking and panning a board stays fast in a window that has been open for days. Old copies of a board no longer keep listening after they close, and loading Plexus again cleans up an earlier copy that never unloaded. One click had been waking thousands of leftover copies.\n- A board that fails to open waits before trying again, instead of retrying every 400 ms.\n\n## 2.13.1 — 2026-10-05\n\n- An image card keeps its picture at map zoom. A collapsed or empty card still shows its title.\n- A card that cites part of an image shows that crop. A region inside the card still uses its own block.\n\n## 2.13.0 — 2026-10-05\n\n- Every diagram opens as a Plexus board by default. Nothing is saved until you change the board. Your first edit writes the board marker in the same undo step, and folds the outline when Collapse the outline is on.\n- A diagram that already has native shapes stays Roam\'s own. An Open as Plexus board button over it imports the shapes and arrows.\n- Settings has Every diagram is a Plexus board. Turn it off to open only diagrams you enhance or create with New whiteboard here. Turning it off gives the native diagram back to boards you have not changed.\n- Plexus: Restore native diagram now sticks, even with the setting on. Plexus: Enhance clears it.\n- Fixes from a review of 2.8 to 2.12:\n  - A page that is a card on a board no longer throws or loops when it opens. Its board chip sits under the page title.\n  - The references drawer lists top-level blocks again.\n  - Cutting or duplicating an image card keeps its regions. Deleting one asks first and shows how many regions it has.\n  - Clearing a connection\'s why no longer deletes a note that has children.\n  - An open PDF reader stays mounted while it is in view, and arrows meet its edge. Page chips refresh when highlight cards change.\n  - Encrypted-graph PDFs (`.enc`) show their highlights.\n  - Each image highlight reuses one regions block.\n  - Fewer reads on large boards: highlight watches are capped, block props are read only for highlights, and the Info panel counts references without pulling them all.\n  - Memory lane arrows follow the cards. Suggested lines follow a dragged card, and their menu sits at the line.\n  - Escape works on a full-screen board. Annotate is one undo step.\n  - Popovers close when the pointer leaves. Unload no longer removes Roam\'s own nodes.\n- The command palette stays two entries.\n\n## 2.12.1 — 2026-10-05\n\n- Double-click a connection label to edit the label and a why note. Enter saves both. The outline chip adds "because …". An empty why writes no child.\n- Shift+T opens a memory lane. Play fades cards that did not exist yet. A snapshot tick restores that layout and writes nothing.\n- The references button on a block card lists blocks that mention it, grouped by year.\n- The links menu can draw dotted lines for shared page references. Connect makes the connection. Link text wraps the mention.\n- Plexus Commands has Resurface here. It inserts a button that lists cards from a week, a month, or a year ago. The command palette stays two entries.\n\n## 2.12.0 — 2026-10-05\n\n- Hover the info button on a card or a connection to see when it was made, the board, the section, cards from the same day, and how often it is referenced. A block on a board shows one chip per board. Hover the chip for a map. Click the chip to open that card. Nothing here writes. The command palette stays two entries.\n\n## 2.11.4 — 2026-10-05\n\n- A PDF card shows one chip per page that has a highlight on the board. The badge is the count. A click pulses those cards. A double-click opens that page in the card reader. An arrow into a highlight shows the page at the tip. A highlight in the outline says On board when that highlight is a card. None of these write. The command palette stays two entries.\n\n## 2.11.3 — 2026-10-05\n\n- Open in reader on a highlight card opens that page in the PDF card on the same board. The mark stays in view. If that PDF card is not on the board, Roam opens the highlight and a note says to click it. The click does not write. The command palette stays two entries.\n\n## 2.11.2 — 2026-10-05\n\n- Add highlights on a PDF card places the ones you pick, as a grid or a column. One undo removes them. Dragging a highlight bullet onto the board makes one card. Dropping a date asks before adding only the highlights under that date.\n- An area highlight keeps the picture\'s shape. Mark region on that card stores a region under the highlight. The page mark keeps the colour Roam painted.\n- The tag lens can show one highlight colour. The command palette stays two entries.\n\n## 2.11.1 — 2026-10-05\n\n- A block ref of a PDF highlight is a card. It shows a colour bar, the passage or the area picture, and the page. Changing the colour tag updates the bar. A block that is not a highlight stays a normal ref. The command palette stays two entries.\n\n## 2.11.0 — 2026-10-05\n\n- A pdf block on the board is a card. The cover shows the file name and the highlight count. Open reader mounts Roam\'s own reader. Interact lets you use that reader. Escape or a board click puts the shield back. A second reader closes the first. Moving the card does not change the PDF settings. The command palette stays two entries.\n\n## 2.10.3 — 2026-10-05\n\n- With Compass loaded, a card menu can open Compass on that page. Compass can open the board that holds the card, and asks which board when there are two.\n- An image card can start an empty drawing beside it. The connection reads annotates. A note says to drop the image into the drawing, and it stays up after the drawing opens. The outline chip names the drawing. Without Roam Plexus that row stays hidden. The command palette stays two entries.\n\n## 2.10.2 — 2026-10-05\n\n- A block ref of a Roam drawing shows the drawing. Regions lists that drawing\'s regions, and picking one adds a reference on the board. New drawing here creates the drawing and a reference card. The drawing block is not rewritten. Without Roam Plexus the new drawing is still an ordinary drawing. The command palette stays two entries.\n\n## 2.10.1 — 2026-10-04\n\n- window.PlexusDiagram lists boards on a page, boards that show a block, and the cards and views on a board. It can open a card or a saved view, add one card, and return a small PNG of a board. Opening and the picture do not write. Adding a card writes that one block.\n- A block ref of a Roam Plexus region shows the caption, a crop, Open drawing, and Open in sidebar. Open drawing uses Roam Plexus. If Roam Plexus is missing, the card is an ordinary block ref. The command palette stays two entries.\n\n## 2.9.6 — 2026-10-04\n\n- An image card shows a small region count when it has regions. The card menu lists them: Go, Copy ref, Rename, and Delete. Rename changes only the caption. Delete asks when another block still references the region, and can open those mentions. Badges off hides the count. The command palette stays two entries.\n\n## 2.9.5 — 2026-10-04\n\n- Hover an image crop for a larger preview, the picture dimmed and the region lit. Click opens that image on its board, zoomed to the region, or scrolls the outline to the image and pulses the region. Shift-click opens the board in the sidebar. An inline view draws a small map. Hover enlarges it. Click opens the board at that view and pulses the highlighted cards. Shift-click opens the board in the sidebar. Neither click writes to the graph.\n\n## 2.9.4 — 2026-10-04\n\n- On an image block, the block menu item Plexus: Mark image region lets you drag a rectangle. Confirm stores the region under the image, copies a block ref, and toasts. Escape writes nothing. A plexus-region image button in the outline, a block ref, an embed, the sidebar, and linked references draws the crop at most 160px tall, with a 1px border and no shadow, and hides that button. A Roam Plexus region such as a rectangle is left alone. The command palette does not gain an entry.\n\n## 2.9.3 — 2026-10-04\n\n- On an image card, Mark region lets you drag a rectangle on the picture and add a short caption. Confirm stores that region under the image, copies a block ref, and toasts that it copied. The first undo removes the region. The next undo removes the empty container. The card stays put, and the image viewer does not open. The command palette stays two entries.\n\n## 2.9.2 — 2026-10-04\n\n- Save view, in More or with Shift+V, writes the current camera as one view block at the end of the board. A selection can save its own view from the context bar. The Boards tab lists those views, each with a 96px outline map. Go puts the camera back and writes nothing. Delete removes the view block, and undo puts that row back. The command palette stays two entries.\n\n## 2.9.1 — 2026-10-04\n\n- A new card is placed before the Connections list, snapshots, and a region container, so those stay at the end of the block. The library card count skips a region container the same way it skips Connections. Leaving a new empty card that only holds a region container no longer deletes that card.\n\n## 2.9.0 — 2026-10-04\n\n- A region container `{{[[plexus-regions]]}}` and its `{{[[plexus-region]]}}` children stay off the board. They are not cards. A card\'s child badge does not count them. Image regions and saved views can be stored in that shape. A Roam Plexus region is recognized and left as theirs. Nothing is drawn yet.\n\n## 2.8.0 — 2026-10-04\n\n- Better Tasks and the Task tool start off. Settings, Integrations, has four controls: Better Tasks integration, Task tool, Task chips, and Default project for new tasks. With both switches off, the dock has no Task button, K does nothing, and the ? sheet does not list K. A Task tool you already saved stays on. Turning Better Tasks on draws the light checkbox and the chips, and asks Better Tasks for attributes once. Turning it off puts Roam\'s own checkbox back. Opening, panning, and clicking a board does not call Better Tasks while the integration is off.\n- A card whose text has #bg-blue or #[[bg-blue]] takes that colour on the board when the colour highlighter\'s variables are on the page, in light and in dark. #c:red still colours bold text inside the card, and Plexus does not paint over it. A fill you set in the picker wins; clearing that fill brings the tag colour back. With no highlighter variables, named colours use a fixed palette and the tag stays visible in the card.\n- The colour picker\'s gear, Write as highlighter tag, is saved on that board. In that mode a named colour writes one #[[bg-name]] into the block and clears the card\'s fill. One undo restores the text and the fill together. Hex, darker, and lighter still change only the fill.\n- A key pressed outside the board no longer switches the tool or adds a card, while nothing on the board is selected. A selected card still receives the board\'s keys.\n- A card more than one screen outside the view keeps its size and skips layout. The card you are editing stays fully drawn. A card that stays outside the view for 10 seconds drops its live Roam body and draws it again when it comes back.\n\n\n## 2.7.1 — 2026-10-04\n\n- Dropping a repeating task on Done in the Kanban view now makes the next occurrence, the same as ticking its checkbox. Before, only a real checkbox click did, because Better Tasks starts the next occurrence from its own checkbox. The task is now finished through that same checkbox, out of sight, so you get the completed date and the next task together.\n- Popovers stay clear of the board\'s own controls. The task chip popovers, the children peek, the Background and tag popovers, the card colour picker and the right-click menu move aside or flip instead of opening under the dock, the top bar, the rail, the minimap or the Properties panel. When there is no room, they shrink and scroll.\n- Task cards are readable when you zoom out. At the map zoom the check box is at least 20 pixels on screen, with the due date under the title (teal today, red overdue). Zoomed far out, a task is one clear box: empty, checked or crossed, in the same colours.\n- The pill that shows a scrolled-out block arrow ("↓ the block\'s first words") stays inside its card. It is cut to the card\'s width less 16 pixels with an ellipsis and keeps the same size on screen at any zoom.\n- A board with many tasks no longer uses up Better Tasks\' limit of 100 decorated checkboxes. A task card now draws a light checkbox of its own instead of a real Roam block, so a 40-task board added 40 real checkboxes before and adds none now, and Better Tasks keeps decorating the rest of the page. Clicking the box still completes the task through Better Tasks.\n- Checked for a freeze when the bench is run back to back with a task board open: five runs and five load-and-unload cycles did not reproduce it.\n\n## 2.7.0 — 2026-10-03\n\n- Task cards. A card whose block is a Roam TODO now looks like a task: Roam\'s own checkbox, the title, and a row of chips under it for the due date, project, priority, repeat, status, waiting-for and GTD. Today\'s due date has a teal border, an overdue task a red one, a done task is dimmed and struck through, and a cancelled one is struck through. Better Tasks\' own pills are hidden inside the card so the chips are not doubled. At map zoom a task shows a check box, its title and its due date; zoomed far out it is a single check box.\n- New Task tool. Press K, or pick it in the dock or the canvas menu, then click the board: a TODO card appears and opens for typing. A task left with no text disappears when you click away, like an empty card. Cmd+Z right after makes one undo step. The card menu has Make task for a plain note.\n- Change a task from its chips. Click the due date, project, priority or repeat chip and pick from a small popover (today, tomorrow, next week or any date; a project from Better Tasks\' list; low, medium or high; a repeat rule). The change is made by Better Tasks itself, so the attribute blocks keep their uid and Plexus still never writes a `BT_attr` block. Cmd+Z after a chip change is Roam\'s undo, not the board\'s. Without Better Tasks the tool makes a plain TODO card and the chips are read-only.\n- Finishing a task works the way it does in Roam. Tick the checkbox on the card and Better Tasks writes the completed date and, for a repeating task, the next occurrence on its daily or project page. A toast tells you the date and offers Add to board. Dropping a card on Done in the Kanban view does the same through Better Tasks.\n- Drag a task card onto a daily-page card (or a section named for a day) and its due date becomes that day, in the same attribute block. Hold Shift to move the card without changing the date.\n- Better Tasks\' attribute blocks and its Activity log no longer count as children: they are never rows, never in the outline or the peek, and never a "▸ N" badge. Renamed attributes are read from Better Tasks.\n- Three new settings: Task tool (show it in the dock), Task chips (full, due only or none) and Default project for new tasks.\n\n## 2.6.0 — 2026-10-03\n\n- Editing a card no longer shrinks it. Opening a card or a sticky for editing used to let it collapse toward the height of one line, and its arrows came loose. The card now keeps its size for the whole edit, the editor fills it, and the text is no longer cut to one line when you start typing. Edges stay attached.\n- Sticky notes are rebuilt to work like the RoamJS sticky notes, and they stay saved. Each one has a coloured header bar you drag, with a short title, a colour dot and a minimize button. The body is the live Roam block: click once and type, with tags, images, links and the slash menu. Drag a corner or edge to resize. Minimize folds a note to its header and remembers it. There is no close button; Delete or the menu removes a sticky and Cmd+Z brings it back.\n- Page cards open faster. A card now shows all its rows as plain text at once, then turns the rows you can see into live Roam blocks a few at a time. Rows scrolled out of view, and heavy rows such as charts, embeds and images, wait until they are on screen. A page you pulled once is reused while the card is open. A 146-row page card used to block for about 150 ms while it drew; now it paints in about 20 ms.\n- Arrows to blocks now stay on their block. When a chart or an image above the target row loads late, or a row turns live, the card re-measures its rows and the arrow follows. Each linked row shows a small dot in its own arrow\'s colour, so two arrows into one card stay apart, and hovering one arrow lights only its row.\n- New tooltips for the sticky header: drag, minimize or expand, and the colour dot.\n\n## 2.5.0 — 2026-10-03\n\n- The connection preview is cleaner. The target block is now a highlighted bar inside its page card, at the block\'s real place in the page, with its text cut to the card\'s width, and the arrow runs into the bar with a head like the one on the board. Nothing spills over a neighbouring card any more.\n- The preview opens where it never covers the chip or the block line it belongs to: under it, else above, else beside it, shrinking and scrolling inside when the window is small. It follows the chip while you scroll or resize and closes when the chip leaves the screen.\n- Roam\'s breadcrumb above a connection block (in linked references and when you zoom into the block) now opens the same preview on a plain click, because Roam\'s own link there only led to "Board › Connections". A small ▦ marks it. Shift-click, Cmd-click and Ctrl-click still do what Roam does. Unloading removes the marks and the listeners.\n- Resize grips, connection dots and arrow-end handles keep the same size on screen at every zoom, so they are easy to grab on a zoomed-out board and no longer huge when zoomed in.\n- Light mode was checked on every new surface. Fixed: the connection chip could run past the edge of its block, and its teal was too pale on white.\n\n## 2.4.0 — 2026-10-03\n\n- The Add and Info panel now opens to the left of the control rail instead of covering it. The minimap steps left of an open panel. The rail keeps one fixed width, so the version badge no longer pushes it wider.\n- An arrow that ends on a block now visibly points at it. The line continues into the page card and its head stops beside the row\'s text. The row keeps a mark in the arrow\'s color (a left rule and a light tint; in the dark theme a border only, no fill). Hover the arrow and the row lights up; hover the row and the arrow thickens and a tooltip names the other card and the label. When the row has scrolled out of view, the arrow ends in a pill at the card edge with an arrow and the block\'s first words; click it to scroll the row back.\n- Connections now show up where Roam draws them. Under every connection block in the outline, the sidebar or a block\'s linked references, a small chip reads "A —label→ B · on Board" and names the block when the arrow ends on one. Click the chip to see a preview: a map of the two cards with the arrow and the target row, plus Open on board and Open in sidebar. Open on board opens the page, enters a nested board if needed, and selects the connection. Nothing is written, and unloading removes every chip.\n- The card\'s hover toolbar no longer disappears on the way to it. It waits 400 ms after the pointer leaves the card, so you can reach it and open its color picker. Moving to a different card switches the toolbar at once with no flicker. Escape, panning and zooming hide it immediately.\n- With the Hand tool you can now resize: a press on a resize grip resizes, anything else pans, and Space-drag still pans over grips. Page cards have a wider grip band on the right and bottom edges and a larger corner that sits above the scrollbar. The grips show when you hover a card in hand mode.\n\n## 2.3.0 — 2026-10-03\n\n- Board rows in page cards. A page card for a page that holds a board shows that board as a small map with its title and item count, not a grey box. After four maps on one card, the rest are one-line chips. The row for the board you are looking at says "this board". Click opens the board; Shift-click opens it in the right sidebar.\n- A row that Roam cannot render inside a card, such as an empty `{{[[roam/render]]}}`, now shows its raw text, muted, instead of "Failed to render". This also ends the Roam console errors the old page-card row caused.\n- Hover tooltips. Every control on the board bar, the dock, the rail, the card toolbar and the Properties panel shows its name, its shortcut and a one-line description after a short hover. Keyboard focus shows it at once. The tip sits below the board bar, above the dock, left of the rail, and stays inside the board. Settings, Hover tooltips, turns them off and hands the text back to the browser. Tooltip delay is instant, 350 ms or 800 ms.\n- A tooltip no longer stays on screen after the control it described is removed.\n- Ref cards and image cards show readable titles everywhere: Table, Kanban, Graph, Timeline, Gallery and Find use the first line of the referenced block or the image\'s alt text, never `((uid))` or a blank. Find matches the text a ref card shows.\n- Graph view draws a line for every connection, fits all cards inside its window and no longer scrolls them out of sight.\n- The end handles of a short arrow with a label can be grabbed. The label steps aside while the arrow is selected.\n- Gallery captions show the image\'s alt text, or nothing. They never show raw markdown.\n- The Escape that closes Search, a menu, or Gallery, Timeline and Graph no longer also leaves fullscreen.\n- Present mode hides the board bar, dock, Properties, rail, minimap and side panel, and brings them back on exit.\n- Shift-click only extends the selection. It no longer opens the Info panel.\n- Gallery, Timeline and Graph, the board bar and the Properties pill are opaque now, so nothing shows through. A collapsed Properties pill is only as wide as its label.\n- Section titles in the zoomed-out overview may run wider than a small frame before they are cut off.\n- Gallery, Timeline and Graph are also under More, Views, and under Views in the canvas menu. The template entry is now "Timeline template". An empty Timeline says that a date attribute or a daily-page reference makes a card dated.\n- The thin dotted curves that run across a board between cards are graph links, drawn for every shared page reference or attribute. They are not a stray line. Links, in the board bar or the L key, switches them off or to attributes only.\n\n## 2.2.0 — 2026-10-03\n\n- Board bar and tool dock. The top bar is now the board bar: breadcrumbs, Add, Info, links, views, background, present and More. The nine tools moved into a floating dock along the bottom. Settings, Toolbar layout, brings back the 2.1 look (Classic) or hides the top bar until the pointer nears the top edge (Dock only).\n- Dock settings: position (bottom, left or top), shape (pill or strip), tool names under the icons, and button size. A board can set its own dock position from the More menu, Dock position for this board; opening a board still writes nothing.\n- The active tool slides a highlight behind it. A locked tool (double-click) shows a padlock. In dark mode the active tool is a border and a dot, so it stays visible without a fill.\n- Dock options. With Card, Sticky, Section or Shape active, the dock shows that tool\'s colors, the block or card look, or the shape kinds. With nothing selected, a pick styles the next item you create with that tool and is forgotten when the board closes; with cards selected, it restyles them as before. One undo reverses it.\n- The last breadcrumb carries the board\'s own color, and the bar\'s bottom edge takes the same tone.\n- Overview zoom keeps Select, Hand and Board in the dock. A board narrower than 560 px gets smaller buttons and no options. A left dock no longer sits on the Properties panel.\n- The active and locked tool styles in the top bar lost to Roam\'s own button rules in dark mode. They hold now.\n\n## 2.1.0 — 2026-10-03\n\n- Enter in a card adds a line to the card\'s block, like a node in a native Roam diagram. Settings, Cards, "Enter in a card" set to Child brings back the old behavior of making a child block.\n- An empty white panel with a Close button no longer covers boards.\n- Pasting one image into a card inserted it twice. It now inserts once.\n- Dragging an image onto a card that is being edited works. Dropping an image on a card adds it after the card\'s text instead of replacing the text.\n- Whole-page cards: a page card shows the page title as a header and the whole outline, scrolls inside the card, and edits where you click. Add page… in the canvas menu adds a page by search. Dropping a page from the left sidebar makes a page card.\n- Arrows to a single block. Drag an arrow end over a page card and the row under the pointer lights up; dropping there connects to that block with a real `((ref))`, so it shows in Roam\'s backlinks. Dropping on the title connects to the page. Ends follow their row as the card scrolls and clamp to the edge with a marker when the row is out of view. A selected arrow has end handles to re-aim it, and the arrow menu has Connect to the page instead.\n- Card children. A note, block or ref card shows only its own block. A ▸ N badge opens the children as an editable outline inside the card, remembered per card, and hovering the badge peeks at them. Spread children as cards makes one card per child with an arrow back.\n- Note: note and ref cards now show only their own block until the badge is opened.\n- A selected arrow\'s end handle could only be grabbed on the half outside the card it ends on. The whole handle now grabs.\n\n## 2.0.0 — 2026-10-03\n\n- Card editing, outline navigation, templates, the table, snapshots, and the graph tools that landed after 1.3.0.\n- Gallery, timeline, and a read-only graph of the board. A section can lay cards out by date. Connections can bend or route around cards. Present shows a section\'s first child as notes, plus a laser and a pen that are dropped on exit.\n- A diagram in the right sidebar stays a gap until that window is on screen. Opening the sidebar parks the boards on the page.\n- A 300-card board shows its first shells in about 1 second and finishes the rest over the following frames. Detail and overview pan hold 60 fps. Zooming across the detail threshold is about 57 to 59 fps, and that switch no longer produces a long task.\n- The same board in two Roam windows kept the same 6 cards and 4 connections across 30 moves.\n\n## 1.3.0 — 2026-10-01\n\n- Native parity on an enhanced board: plain block cards, a node hover toolbar, a right-hand control rail, a properties panel, PNG export, outline in the sidebar, boards in the sidebar, edge styles, native embeds, style import on Enhance, per-card expand, minimap drag, keyboard parity, and Edit Block.\n\n## 1.2.0 — 2026-09-29\n\nFixes from the second round of testing on 1.1.0:\n\n- **Zoomed-out cards stay inside their box.** Map view is a clean title-only tile: three-line clamp, font capped by the tile height, nothing spills below the card. Ref titles are cut at 120 characters and header text at 160. The level of detail now switches while you zoom (with hysteresis, one class toggle), not only when the gesture ends. A third tier below 20% shows section titles only.\n- **Nested board thumbnails are real thumbnails.** A padded frame with mini cards (border, fill, title), sections as tinted frames, connections, and an "Empty board" state, instead of one white box.\n- **Sections auto-fit.** A card moved, resized, created, or pasted past a section edge grows the section to contain it (24 px padding), live during the drag and saved as one undo step. It cascades through nested sections, never shrinks by itself, and can be turned off per section or with the `auto-fit-sections` setting.\n- **Board backgrounds.** Dots, lines, grid, and plain patterns and paper or ten palette tones, chosen per board from the Background button (stored in the board block\'s props) with a default in Settings.\n\nAdded:\n\n- **Right-click menus** for the board, cards, sections, text, connections, multi-selection, and the More menu.\n- **Duplicate and clipboard.** Alt+drag and Cmd+D duplicate (Alt+Shift makes `((ref))` cards); copy and paste as refs or as copies, across boards; pasted text and images become cards. Send to board, Boards tab (every board in the graph), Outline tab.\n- **Keyboard.** Tab and Shift+Tab step through the outline, F focus mode, Q quick look, P presentation, M mind map from a card\'s child blocks, Cmd/Ctrl+Alt+Enter fold, double-click a bottom or corner grip to fit or reset height. Arrow keys nudge the selection 1 px (Shift for 10 px); Alt+Arrow selects the nearest card in that direction (Alt+Shift adds), as in Heptabase.\n- **Layout tools.** Tidy (row, column, grid, outline order), same size, fit height, reset size, fit section, fold all, optional space-out after a move, "Back to content" button.\n- **Pin.** Pinned items do not move, resize, or delete.\n- **Card badges.** References, boards, and open and done TODO counts, read from Roam (never written); a `((ref))` to a board renders its thumbnail; journal cards for today and this week.\n- **Export.** Export board as SVG and Copy board as text (commands and board menu).\n- **Review fixes.** Cut and paste now moves a note, text or section (the clipboard carries a snapshot; before, the paste was a dead `((ref))`). The Open button, double-click and Enter open a whiteboard-shortcut card. Settings changes reach open boards\' sessions live. A pinned section is never grown by auto-fit. Fit height can shrink a card. Fit / Reset size / Same size never leave a card outside its section. A pinned card no longer pushes other cards in space-out. Escape closes the Background popover first. Right-clicking a ref, tag, link or image inside a card keeps Roam\'s or the browser\'s menu. Tab is only taken while the board itself has focus. A tall menu scrolls inside a small board. Thumbnails title `((ref))` and image cards. The section grows live while you type in a card at its edge. Card badge queries run in idle slots and are cached for two minutes.\n- New settings: default board tone, map view threshold, auto-fit sections, space out cards, show card badges; grid accepts `grid`. API and build: see `docs/api-plexus-1.0.md` ("1.2 additions") and `docs/spec-plexus-1.2.md`; `src/css/*.css` is appended to the bundle.\n\nFixed after live testing in Roam Desktop:\n\n- **One Cmd+Z per operation.** Duplicate, Alt+drag, mind map, Tidy, and a drag that grows a section each took one Cmd+Z per block written; the Undo toast button undid one block. Writes of a transaction are now grouped, and Undo and Redo step over the whole group.\n- Map-view cards clamp to exactly three lines (no fourth-line sliver, no ellipsis in the middle of a tall card); section titles show an ellipsis; far zoom-out no longer paints a dot moire; colored cards read at overview zoom; whiteboard-shortcut cards keep their thumbnail at map zoom.\n- Ctrl-wheel zoom and paste use the board\'s current position after the Roam page scrolls (they were off by the scroll distance).\n- Pasted images are `![](url)`, not `![](![](url))`.\n- The section preview no longer snaps back while you type in a card at its edge.\n- Fit keeps content below the toolbar and left of an open panel (Outline click fits the visible area); the context bar no longer covers the toolbar or the panel; double-click on the middle of a card\'s bottom edge fits its height.\n- Mind map from a card that already has child cards on the board lays the rest out around them, and says when the 24-branch cap left nodes out. Add this week no longer stacks a card on an existing one. Duplicating a section says "section".\n- The OS dark-mode hint no longer darkens a board on a light Roam theme.\n- **Typing in a card: Enter no longer drops you out of the card.** Root cause: the card editor stopped the mouseup that Roam uses to end its block drag-select, so a new block created under the resting pointer turned the edit into a block selection. Mouseup now passes through.\n- **Undo limits.** Roam keeps only the last 50 changes, so one Cmd+Z sequence can undo an operation only if it fits. Mind maps cap at 24 branches ("Mind map: 24 of 45 branches (cap)") and bulk adds (large pastes, multi-drops, Add all) at 45 cards ("Added 45 of N (Roam undo holds 50 changes)").\n\n## 1.1.0 — 2026-09-29\n\nFrom the first round of testing on 1.0.0:\n\n- **Cards show their content.** Note and block-reference cards render the whole block (and its children) instead of a truncated first line over an empty body. A long single-line `((ref))` card is readable again.\n- **Drag blocks in from Roam.** Dragging a bullet from the outline or the right sidebar onto a board adds it as a `((ref))` card (a page becomes a `[[page]]` card). Multi-block drags stack. The source block is never moved.\n- **Typing in a card.** Enter adds lines inside the card and keeps the caret there; if Roam drops focus while it moves between blocks, the editor takes it back. The card header no longer repeats and lags behind what you type, and text items keep their heading size while editing.\n- **Nested boards (Heptabase sub-whiteboards).** New Board tool (W): click or drag to add a board card, or select cards and choose **Move into new board**. Board cards show a mini map, item count, and a name field. Double-click or Open goes into the board in place with a `Parent › Child` breadcrumb; click a crumb or press Esc to go back up. Drag a card onto a board card to move it inside (with Undo). Boards opened from their own page get crumbs for their parent boards.\n- **Collapsed board blocks.** The board block is collapsed once so Roam does not list its cards as bullets under an inline board; expand the bullet to see them. Turn it off with **Collapse board blocks in the outline**. A nested board no longer opens a second overlay from an expanded outline.\n- Import and Restore keep a nested board\'s marker; a board deleted while open closes cleanly (a nested one pops to its parent).\n\n## 1.0.0 — 2026-09-28\n\nRewrite. The 0.6 canvas (one 2,200-line closure) is replaced by a model / host / session / view split with 204 unit tests and a live CDP gate on Roam Desktop.\n\n- **Everything is a Roam object.** Card layout lives in each block\'s `:block/props` (`plexus` key), not on `[[plexus-diagram/metadata]]`. Sections are parent blocks of their cards. Connections are blocks under a collapsed **Connections** child that read `[[A]] → label → [[B]]`, so both ends get a backlink and notes live as children.\n- **Graph links.** References and attributes that already exist between cards are drawn as dashed arrows colored by relation (`causes`, `Detected by`, `mentions`). **Write to graph** turns a labelled connection into `label:: [[B]]` on the source.\n- **Heptabase features.** 10 colors for cards, sections, text, and connections; sections drawn by drag or Cmd+G around a selection, with titles above the frame; ports on every edge; curve / straight / elbow routes, direction, dash, weight; selection box, alignment guides, align / distribute; text headings; minimap; board search; Add panel with Search and Related; card editing with Roam\'s own editor (page cards open the whole page); zoomed-out map view with readable titles.\n- **Fast by construction.** Pan and zoom move one transform (p95 frame 4.5 ms on a 120-card board, no renders, no writes). Only on-screen cards render content; zoomed out, cards show titles only. Opening a board writes nothing; the viewport is per device.\n- **Fixed from 0.6.4:** Section tool made two frames per drag and one per click; sections did not hold cards and had no color; the connection inspector covered the connection; text typed into a new card was lost; the sync indicator went pending on pan and zoom; diagrams on normal (non-daily) pages were never discovered; `[[links]]` inside cards did not open; keyboard shortcuts were swallowed by the diagram block.\n- **Migration.** Boards enhanced with 0.6 upgrade once on first open (positions, colors, sections with their cards, connections with labels and styles). Native diagrams import on **Enhance** (positions, groups as sections, edges as connections). Diagrams you never enhance are never written.\n- Commands: Enhance this diagram, New whiteboard here, Restore native diagram, Fullscreen this diagram.\n\n## 0.6.4 — 2026-09-05\n\n- **Inspector Comment** — converts the edge label to native Roam comments (one-way → target, two-way → both) then clears the pill.\n\n## 0.6.3 — 2026-09-05\n\n- **Idle card children** — after click-away, idle cards `renderBlock` the card uid so child bullets stay visible; deep pull includes nested `:block/children`; empty placeholder only when string is blank and there are no children.\n- **Board background** — toolbar cycles Dots / Lines / Solid (`grid-style` persisted).\n\n## 0.6.2 — 2026-09-05\n\n- **Connect hit-test** — targets resolve from the painted card rects (`getBoundingClientRect`, 12px handle inflate) before `elementsFromPoint` and world-rect math, and the card hovered on the last pointermove is the fallback for a captured pointerup.\n- **Rubber-band** — the edge and temp-wire SVGs cover content ∪ viewport (2000px pad) so the dashed wire paints across a panned board.\n- **No junk cards** — a click-click that misses a card cancels the arm; only a real drag onto empty board creates a linked card.\n- **Version badge** — the toolbar stamps the package version, not Roam\'s `DEV` developer-extension version.\n\n## 0.6.1 — 2026-09-05\n\n- **Connect hit-test** — when Electron\'s `elementsFromPoint` misses cards under `.pxd-world`, resolve targets from world-space node rects (12px handle inflate). Click-click arms and drag-to-card both work.\n- **Delete cards** — Delete/Backspace on a selected card removes it from the diagram (adapter + metadata), not just edges.\n- **Scratch children** — `blankScratch` deletes scratch-host children so a new card editor never inherits the previous card\'s bullet tree.\n\n## 0.6.0 — 2026-09-05\n\n- **Visible arrows** — connector stroke and marker fill are resolved colors, not `var()` in SVG attributes. Marker ids are unique per canvas. Heads scale with zoom (`clamp(10 / zoom, 6, 24)`).\n- **Ports** — drag from a card handle stores `from::` / `to::` (`auto|top|right|bottom|left`). Click-click and connect-to-empty still work.\n- **Per-edge direction** — `direction::` `oneWay|twoWay|none` on `edge A->B`. Global Arrowheads is the default for new edges only.\n- **Inspector** — click a line for a floating cluster: direction, Flip (disabled if the reverse exists), Route, Label, color, Delete. Mutations `await flushLayout()`.\n- **Schema** — optional `from::` `to::` `direction::` `color::` children under the existing edge row. `[[plexus-diagram/metadata]]` only. No `:diagram/*` / `:harc/*`.\n\n## 0.5.0 — 2026-08-29\n\n- **Connect two-click + temp wire** — Connect stays on after an edge. Click-click or drag; the rubber-band lives on `.pxd-edges-temp` above the cards and follows the cursor immediately. Handles are a 12px disc with a larger hit target.\n- **In-place nested boards** — opening a nested diagram does not call `openBlock` / change the hash. The parent session stays loaded; crumbs sit on the toolbar and Esc pops one level.\n- **Section and card color** — toolbar swatches (eight Blueprint-ish ids plus default) write `color::` on nodes and sections. Dark mode uses the border as the signal.\n- **Section click-rename** — a single click on the section title starts rename; pointerdown on the label does not drag the frame.\n- **Review pack** — session swap flushes the outgoing board then cancels persist timers; unused parent pull-watches stop; Esc nest-pop only when the overlay owns the pointer; connect-to-empty rolls back a failed edge persist.\n\n## 0.4.2 — 2026-08-28\n\n- **Svy Beam caret** — overlay inputs use native `caret-color` and `cursor: text` (higher specificity than Beam\'s custom hotspot cursor). `focus({ preventScroll: true })` plus a capture-phase guard stop Roam from scrolling the outline copy of an editing card into view.\n- **Right sidebar inset** — fullscreen also ResizeObserves the right sidebar and re-places on the next two animation frames after the article class changes. When the article\'s right edge is within 8px of the viewport, the overlay `right` inset is 0.\n- **Library portal** — the drawer mounts on `document.body` (fixed, 320px, 14px) so it is not scaled by `.pxd-world`. Items are opaque `#f5f8fa` / `#182026`. Empty search hides `roam/js/` and `roam/css` pages.\n- **Nested crumbs** — opening a nested board pushes the parent onto a crumb stack (`Parent › Current`). Clicking a crumb opens that block (or page). Nested cards show the parsed name; unnamed boards get an inline "Name this board…" field.\n- **Connect to empty** — dragging a handle onto empty board creates a card at the drop point, links it, and enters edit (Heptabase pull-from-port). Handles are 14px. An existing edge is kept if you connect the same pair again.\n- **Review pack** — nested open passes parent uid explicitly; nest stack truncates on multi-level back; drop parsing no longer treats incidental 9-char tokens as block refs; connect failures do not leave dangling edges; nested name timers clear on repaint and dispose.\n\n## 0.4.1 — 2026-08-28\n\n- **Pending-changes patch** — layout persist no longer delete-all/recreates the metadata tree. Existing diagram blocks are patched in place: only changed `pos::` / `size::` / `color::` / edge / section rows are written, identical strings are skipped, and gone ids are the only deletes. Viewport persist is still the one-line `setViewport` path.\n- **Article-pane fullscreen** — fullscreen follows `.rm-article-wrapper` (below the topbar, inset with the left sidebar) instead of `sidebar.right`. ResizeObserver on the article and sidebar plus a class MutationObserver re-place the overlay when the sidebar opens or closes. Drop `[[page]]` / block uid from the sidebar onto the board to add a card.\n- **Visible sections** — sections use a 2px solid border, a light blue fill, `pointer-events: auto`, a default "Section" label, drag, corner resize, and double-click rename.\n- **Opaque library** — the drawer sets its own `#ffffff` / `#1c2127` background so it stays readable when mounted outside `.pxd-root`. Blank titles and `roam/js/` pages are hidden until you search.\n- **Nested overlay** — adding or opening a nested `{{[[diagram]]}}` card registers it as enhanced and opens our overlay fullscreen, not native Empty Roam Diagram. Nested cards show "Nested diagram" instead of the raw macro. Nested open no longer waits on the parent canvas.\n- **Connect hit-testing** — `cardFromPoint` walks `elementsFromPoint` and ignores edge-hit strokes; temp edges are `pointer-events: none`; connect-tool handles stay visible.\n\n## 0.4.0 — 2026-08-28\n\n- **Fullscreen vs breadcrumbs** — fullscreen hides `#roam-breadcrumbs-panel` / `.breadcrumbs-content` only while `body.pxd-has-fullscreen`. The overlay sits below the remaining topbar and to the right of the left sidebar (article fill, not the whole window). Resize recomputes the inset. Inline boards leave breadcrumbs alone.\n- **Scratch-host card editor** — double-click no longer `renderBlock`s the card uid (the hidden native diagram still owns it). Edit mounts on a `pxd:scratch` child of `[[plexus-diagram/metadata]]`, hydrates until MutationObserver-quiet, then a trusted mousedown/mouseup/click. Commit pulls the scratch string onto the card; empty pulls never overwrite known text.\n- **Connection notes** — labels live on the connector (`label::` under `edge A->B`), not as extra cards. Double-click the line or click the midpoint pill. `show-edge-labels` defaults on.\n- **Commands** — palette and slash keep Enhance, Restore, and Fullscreen only. Toolbar is a single nowrap row. `V` / `C` / `N` / `F` when the overlay owns the pointer.\n- **Sync silence on open** — remounting an already-enhanced diagram no longer rewrites `[[plexus-diagram/metadata]]` or `:rf-diagram` viewport props when the stored snapshot already matches.\n- **Viewport-only persist** — pan/zoom/fit writes only the `viewport::` metadata line; node/edge/section children are left intact.\n- **Dirty flags** — initial fit, fullscreen resize, and dispose no longer schedule Roam writes; persist runs only after real user gestures (pan, zoom, drag, Fit, etc.).\n\n## 0.3.2 — 2026-08-28\n\nDouble-clicking a card no longer blanks its text: `setBlockFocusAndSelection` was focusing the outline copy of the same uid (Roam then cleared the overlay mount), and a same-tick `focusout` committed an empty pull. Overlay editors now keep a text fallback until `renderBlock` hydrates, ignore focusout for 1s, and refuse to commit an empty pull over known text. Fullscreen sits below `.rm-topbar` so RoamJS breadcrumbs stay clickable and the Plexus toolbar is not hidden under it.\n\n## 0.3.1 — 2026-08-28\n\nHouse / daily-tab navigation left a `position:fixed` overlay covering the daily notes. Native Maximize unmounts on route change; our mount often survives because the diagram block is still in the outline. `hashchange` / `popstate` now exit fullscreen, drop `--zoomed`, and restore the inline height whenever the open page uid is no longer the diagram. The 250ms reconcile does not do this, so a Fullscreen click on an inline embed is not immediately undone.\n\n## 0.3.0 — 2026-08-28\n\nCanvas rewrite: the board is usable. Imported native React Flow nodes (165×83 on the live graph) are floored to real cards (min 240×140, default 280×160), and a viewport that paints any card under 140px, has zoom below 0.7, or shows no card at all is rejected and replaced by a fit once the root has a size (single card fits at zoom 1.5, centred; fitted viewport persisted once). Pan, wheel zoom, card drag and corner resize touch only CSS (`.pxd-world` transform, one card\'s box, the edges hanging off it) — no `innerHTML` rebuild, no Roam write per pixel; viewport/layout persist on pointer-up and wheel-end with a 150 ms debounce, serialized through one queue per session. Cards render with `renderString`; double-click swaps in the native block editor (`renderBlock`) and blur/Esc commits it back, so Roam chrome no longer paints into every card. `render()` reconciles card elements by uid, so a pull during editing never tears down the caret. Drag from a card\'s connect dots (or any card with the Connect tool) onto another card to link. Double-click empty board adds a card at that point; Card/Nested tool clicks still add. A hint pill explains pan/add/fullscreen on boards with ≤1 card until the first pointer down. Zoomed diagram pages open in fullscreen (`fullscreen-on-zoom`, default on; inline embeds stay inline). Grid lives outside the world and tracks pan/zoom; a live minimap replaces the empty box; toolbar buttons are grouped, high-contrast, with a zoom readout. Dark mode: card and toolbar backgrounds from `--bc-main` / `--bc-menu`, 1px visible borders, 2px `--cl-blue` ring for selection — no tinted fills. `applyPull` keeps in-memory positions, sizes, edges, sections, and viewport (a pull only refreshes content), so a debounced persist can no longer be undone by a concurrent add.\n\n## 0.2.1 — 2026-08-27\n\nFix dead board on zoomed block pages. Navigating to `#/app/<graph>/page/<uid>` destroys the overlay DOM and the MutationObserver never remounted it. A reconcile pass (hashchange/popstate + 250ms interval) now prunes detached views, finds the native canvas — via the dated `block-input-…-body-outline-MM-DD-YYYY-<uid>` suffix or the location hash when ancestors carry no `data-uid` — and remounts the overlay. The pre-paint guard uses `display: none` (React Flow nodes punch through `visibility: hidden` by re-setting `visibility: visible` on themselves) and also hides the native `.rm-diagram-title-panel` and `.react-flow` chrome. Zoomed mounts fill the article (`pxd-mount--zoomed`). Every mount is stamped `data-diagram-uid` and remounts are idempotent per uid.\n\n## 0.2.0 — 2026-08-27\n\nHeptabase-usable overlay: full-bleed board sizing from native diagram (min 560px), horizontal labeled toolbar with zoom/fit/**Fullscreen** (Esc exits; covers the window like native Maximize), empty-canvas pan and cursor-anchored wheel zoom, Roam bullet/ref-count chrome hidden on cards, searchable library drawer that toggles without covering the board, and card titles off by default.\n\n## 0.1.4 — 2026-08-27\n\nSlash/command Enhance was a no-op: typing `/enh` puts the diagram block in edit mode, which unmounts `.rm-diagram`. The command now remembers the uid and waits for the native canvas to remount before overlaying.\n\n## 0.1.3 — 2026-08-27\n\nSlash commands use the same labels as the command palette (Roam Grid pattern), so `/enh` lists **Plexus Diagram: Enhance this diagram**.\n\n## 0.1.2 — 2026-08-27\n\nMetadata writes now generate UIDs before `block.create` / `page.create`. Live roamAlphaAPI returns `undefined` from those calls, so the first enhance was dropping `schema-version::`, `enhanced::`, and node/edge lines. Nested-diagram open uses `roamAlphaAPI.ui.mainWindow.openBlock`.\n\n## 0.1.1 — 2026-08-27\n\nLive-wire fixes against roamAlphaAPI (CDP, Svy graph):\n\n- Fix native hide inversion: `.pxd-native-hidden` now sets `display: none`; pending state uses visibility\n- Use EDN string pull pattern for `data.pull`; strip keyword colons from pull results\n- Generate child block UIDs via `util.generateUID()`; default create order `"last"`\n- Viewport writes try `roamAlphaAPI.updateBlock` before `data.block.update`\n- Register slash/context commands via `addCommand`/`removeCommand` with live callback shapes\n- Auto-enhance and focus checks pull `[:block/string]` via `roamAlphaAPI.data.pull`\n- Find native diagram hosts via `diagramElForUid` (id suffix, data-uid, block-ref)\n- Library mounts as overlay drawer; queries `roamAlphaAPI.data.q`; filters daily pages by UID\n- Card/Section toolbar tools place items at click position; library uses viewport center\n- Default `restore-native-on-unload` to false; unload disposes sessions without deleting metadata\n\n## 0.1.0 — 2026-08-27\n\nInitial release of Plexus Diagram.\n\n- Hide native `.rm-diagram` React Flow renderer for enhanced diagrams and mount a vanilla DOM/SVG canvas overlay\n- Keep Roam diagram children as the canonical card store; persist layout on `[[plexus-diagram/metadata]]`\n- Writable viewport via native `:rf-diagram` props; import native node positions when metadata is absent\n- Heptabase-like toolbar, cards, connectors, sections, library sidebar, and fat settings panel\n- Command palette, slash command, and block context menu integration\n- GitHub Pages developer extension at https://svyk.github.io/plexus-diagram\n';
+var CHANGELOG_TEXT = '# Changelog\n\n## 3.31.0 — 2026-10-14\n\nBig boards open fast at any zoom.\n\n- **Zoomed-out boards are ready in about 0.6 s.** A big board opened at overview zoom used to wait until every card was built (about 2 s on the 1,560-card stress board, with a half-second stutter). Now it is usable as soon as the nearest cards are in; the rest show as simple boxes and fill in while you work. Clicking, searching for or editing a card that is not built yet builds it at once.\n- **Smoother first seconds.** The first frame keeps the saved picture until the board has drawn, connections are drawn in parts, and background work (PDF covers, card badges, linked references) runs in smaller slices. The longest pause after opening the stress board zoomed out went from about 0.45 s to about 0.15 s.\n- **Fixes.** Leaving a board while it is still building stops the building. A failed card-badge read is retried instead of showing zeros.\n- **Kill switch.** The hidden speed flag `overviewFast` turns the new overview opening off.\n\n## 3.30.0 — 2026-10-14\n\nBig boards are ready in about half a second when nothing changed.\n\n- **Instant reopen.** Plexus keeps a copy of each big board\'s layout with Roam\'s page stamp. When you open the board again and the page has not changed, the board is ready from that copy without reading every block first: on the 1,560-card stress board it responds in about 0.6 s instead of about 1.7 s.\n- **Checks itself.** Right after opening, Plexus re-reads the board in small background steps (pausing while you pan or zoom) and updates anything that changed while you were away, including folds and edits from other devices. Nothing is deleted or cleaned up until that check is done.\n- **Fewer pauses** after opening and when entering a nested board.\n- **Kill switch.** The hidden speed flag `trustSnapshot` turns the instant reopen off and opens boards exactly as 3.29.0 did.\n\n## 3.29.0 — 2026-10-13\n\nBig boards open fast. On the 1,560-card stress board the board now shows in about a third of a second, and the\nseconds of stutter after it opened are gone.\n\n- **Fold queries on this page** (Commands). Roam draws every open `{{query}}` on a page before anything else shows; on\n  the stress page 12 queries held the board back for 8–10 s. The command puts each query under a folded caption, like\n  Fold tables, so Roam only runs it when you open the caption. A preview lists the queries, and one undo puts them back.\n  When a page\'s queries slow a board down, Plexus offers this once for that page.\n- **The board shows at once.** A big board\'s saved picture appears in about 0.3 s (was about 1.2 s) and you can pan\n  while the board loads behind it. The load runs in short steps instead of one long freeze.\n- **No stutter after opening.** Background work after a board opens (links between cards, PDF titles and covers, card\n  badges, the saved picture) runs in small slices, stops while you pan or zoom, and pauses on boards you have left. The\n  longest pause after opening the stress board went from about 1.3 s to about 0.2 s.\n- **Links between cards** are worked out about 20× faster on big boards.\n- **Fixes.** Undo of Fold queries and Fold tables never deletes the query or table when Roam is slow to report where a\n  block is. A card folded or unfolded while a big board is loading shows the right way.\n- **Kill switch.** The step-by-step load can be turned off with the hidden speed flag `slicedMount`.\n\n## 3.28.0 — 2026-10-13\n\nBig boards. Plexus was stress-tested on a board with 1,560 cards, 2,114 connections, 24 nested boards and about 23,000 blocks, and every slow or unstable spot that turned up was fixed. Normal boards are as fast as 3.27.0 or faster.\n\n- **Smooth on big boards.** Panning the 1,560-card board at fit zoom takes one frame (about 20 ms, was about 240 ms), and zooming is 5–7× smoother. Only the cards near the view are kept on the page, and nothing is added in the middle of a gesture.\n- **Fast back and forth.** Going back to a big board from a nested board is live in about a third of a second; 3.27.0 could freeze for half a minute. Nested boards open from a snapshot.\n- **Edits on big boards** reach the board in about a quarter of a second instead of a second. Each section and the Connections block are watched on their own, and a board you leave keeps its watches for a minute, so moving between boards no longer runs into Roam\'s API limit.\n- **Memory stays flat.** A 20-minute session no longer grows memory. Leaving a page no longer keeps its board, card chips or PDF documents alive.\n- **Safer bulk writes.** Plexus asks before a change that writes 600 or more blocks and refuses one that writes 3,000 or more. Large writes wait while Roam is still saving (the sync dot says "Waiting for Roam"). Holding an arrow key writes one move, not one per repeat.\n- **Fold sections in the outline** (Commands): the board\'s outline then opens in about a second instead of rendering thousands of blocks. One undo unfolds.\n- **Search "Show more"** pages through every PDF and every filter result when the search box is empty.\n- **Fixes.** Boards with more than 1,000 connections show all of them (Roam\'s read stopped at 1,000). Export as PNG works on big boards. SVG export stays valid when card text holds control characters copied from PDFs. After an undo of Fold sections, Move PDFs to their own pages or Fold tables, the next undo no longer reaches into Roam\'s own undo history.\n- **Kill switches.** Every new big-board path can be turned off in the hidden speed flags: `splitWatch`, `virtualShells`, `virtualEdges`, `deferReveal`, `hitShield`, `parkInPlace`. The experimental `edgeFingerprint` watch ships off.\n\n## 3.27.0 — 2026-10-12\n\nThe rest of the bug hunt: every item on its Later list is fixed.\n\n- **A paid read wins its pages.** When you have a LlamaParse or Mistral read of some pages and a fuller free parse, the paid read is used for its pages and the free parse fills the rest. Saving never writes free pages over the paid record.\n- **Smoother reader scrolling.** Plexus\'s share of a reader scroll went from about 90 ms to about 15 ms over 40 steps: the outline follows the page once per frame instead of inside the scroll, and a page turn no longer makes the board refresh itself.\n- **Resizing the reader keeps your place.** Going full screen and back never changes the reading mode, and the page you were on is put back if the new width moved it.\n- **PDF names stay current.** A card or chat chip picks up a PDF\'s real name as soon as it is known, without redrawing the whole board; boards open in the main view and the sidebar no longer overwrite each other\'s names.\n- **Search.** A failing semantic search keeps the results you had and retries in 30 seconds; "Not on any board" refreshes as soon as a card is added; a closed panel no longer searches in the background.\n- **Chat.** Unloading Plexus closes the chat and stops a running answer; focus returns to the question after picking a style or thinking level; the More menu keeps keyboard focus; an input-method Enter no longer picks a suggestion; Stop stops the answer you meant; "Open in Live AI" only closes this chat once Live AI has opened.\n- **Parse motion** always follows the card that started the parse.\n- **Rust helper:** one-click Pair from Roam, with the same Allow dialog as the Python helper.\n\n## 3.26.0 — 2026-10-12\n\nFilters that browse your graph on their own, PDF filters on meaning results, chat tips, and eight bug fixes from a scored bug hunt.\n\n- **Filters work with an empty search box.** Days (created or edited), created or edited by, under a page, has linked references, has children, parsed PDFs, PDFs with highlights, on or not on this board now list matching pages and blocks straight from the graph, sorted as you choose. A filter with no natural limit shows the last 30 days and says so.\n- **PDF filters on Meaning results.** "Parsed PDFs" and "PDFs with highlights" apply to semantic results too; a hit on a PDF\'s Roam page counts as that PDF.\n- **Chat tips.** An empty chat shows "@ a part · [[ or # a page · (( a block · / a command"; click one to start typing it.\n- **Fixes.** PDF names no longer give up for a week when Roam\'s PDF viewer has not loaded yet, and stop reading when you leave the board. Ask AI from the reader names the paper, not the file. Switching PDFs in Read + Outline no longer shows the previous PDF\'s outline or saves a running parse under the wrong PDF, and cancelling a Docling run no longer resets the parse that replaced it. A failed send gives your question back; a chat closed while collapsed reopens whole; the first question is selected so typing replaces it.\n\n## 3.25.0 — 2026-10-11\n\nPoint at a part with @ in the chat, sort and filter search with what Roam knows, and PDF cards that resize and read sharp.\n\n- **@ parts in the chat.** Type `@` to pick a part, a figure, a whole PDF or a mentioned page (`@3`, `@fig`, `@spore` filter the list); clicking a chip inserts it too. The model is told exactly which part each `@Part N` means, and a removed part is flagged instead of sent as a dangling reference. Chips name the PDF by its real title.\n- **Sort search.** Best match, recently edited, recently created, oldest, most linked, most children, longest or A–Z, with the sort key on each row ("edited 2 h ago", "12 refs").\n- **Filter with Roam\'s data.** Created or edited by, created or edited within N days, under a page, has linked references, has children, parsed PDFs, PDFs with highlights, on this board.\n- **PDF cards resize** again, and the cover is redrawn sharp at the new size once you let go. **Image cards** scale their picture with the card.\n- **Real PDF names everywhere.** Letter-spaced banners such as "M A J O R  A R T I C L E" are no longer taken as a title; cards, the reader and chat chips use the paper\'s title.\n- **Roam\'s highlight toolbar** shows whenever a PDF is open in the reader, not only after opening the engine settings.\n- **Faster.** The first sorted search of a query is about twice as fast (one batched read instead of eight queries), browsing with an empty box is about ten times faster, and the "Under page" box waits for a pause before searching.\n\n## 3.24.0 — 2026-10-11\n\nFind a PDF by what it is, search your graph by meaning with Roam\'s semantic search, and talk to Live AI with its full composer.\n\n- **PDFs have names.** A PDF that only lives as a link on a daily page now shows its real title, authors\' journal and page count in search ("A Cumulative Spore Killing Approach… · Open Forum Infectious Diseases · 7 pages · on October 6th, 2026"). Plexus reads the first page once, in the background, only for PDFs the panel lists, and remembers it. Searching its title words, authors or journal finds it.\n- **Search by meaning.** With Roam\'s semantic search on (Settings → Graph), the panel\'s "Meaning" toggle adds results that match what you mean, not only the words, under "By meaning" a moment after the word matches. "Find related" on a card lists notes related to it, ready to drag onto the board.\n- **Live AI\'s composer in the chat.** Mention pages with `[[` or `#` and blocks with `((`; `/` opens Live AI\'s commands and your own `#liveai/prompt` prompts and `#liveai/style` styles; pick the context (this part, the page, linked references, sidebar, daily notes), a style and the thinking level. Tools and agents open Live AI\'s own chat with your conversation.\n- **Dark mode for the chat.** Proper light and dark colours (AA contrast), quiet icon buttons, and your question no longer scrolls under the context bar.\n- **Copy ▾ is back** on parsed parts: every copy format, plus Ask AI and Add to question. The copy menu closes on Esc and outside clicks.\n\n## 3.23.0 — 2026-10-11\n\nParsing shows what it finds as it reads, local engines just run (and say they are free), and Ask AI is a floating chat that looks like Live AI\'s own.\n\n- **Watch the parse.** While a PDF parses, a soft beam sweeps each page and every table, paragraph and figure outlines itself as it is found, on the reader and on the card. A live count ("15 tables · 371 paragraphs · 88 figures") turns into a summary with the time when it is done. With Reduce motion on, only the ring and the count show.\n- **Ask AI on any part.** Hover a parsed part: a small Ask button (a new speech-bubble icon, now used everywhere for Ask AI) sends it to Live AI with the rest of the PDF as context; Copy copies it, tables as a Roam table. Shift-click Ask adds the part to a multi-part question.\n- **A floating Live AI chat.** Ask AI opens a chat window styled after Live AI\'s: the parts you ask about as chips, message bubbles, follow-up questions with page citations, a model picker. Drag it, resize it, and it stays above a full-screen board without the board reacting to it. "Open in Live AI" hands the conversation to Live AI\'s own chat.\n- **Local is free, and it just runs.** Parse uses Docling first when the helper is paired, reads scanned pages in the same run, never asks to confirm, and has no page limits: long scans and long documents are read in batches. Engines are labelled "Free · on this Mac", "Free · in Roam" or "Cloud · uses your credits", and the chip after a run reads like "Docling · free · 110 pages".\n- **Faster scan reads.** The in-browser second reading only checks pages with doubtful words, so a 110-page scanned record reads in about 8 minutes instead of 22. "Read the scan" can be run again on a PDF already read.\n- **PDF fixes.** A PDF dropped on a board is no longer stored as a doubled `{{[[pdf]]: {{[[pdf]]: …}}}}` block (Roam could not show it and Docling got an empty file); blocks already doubled are repaired. An empty file or a rejected job now says so instead of "Nothing matches". A PDF on its own page is titled by its page, and reopening it brings back its fullest read.\n- Parse menus close on Esc and on a click outside; a full-screen board widens again after Live AI\'s docked chat closes.\n\n## 3.22.1 — 2026-10-11\n\n- **Open on board is instant again.** "Open on board" in a connection preview, "Show on board" in a block\'s menu and region links now open the page through Roam. Roam put back the page link these used when it came from a click, so the board waited about six seconds and then opened zoomed in, without the connection selected. It now opens in about 0.2 s with the connection selected.\n- **Pairing survives a reinstall.** The helper token is also kept on this device, so removing and re-adding Plexus in Roam Depot no longer leaves the helper "Running, not paired".\n- **Pair from Roam.** With helper 0.1.1, Pair shows an Allow dialog on the Mac, so there is no Terminal step. The Engines sheet now says what happened.\n\n## 3.22.0 — 2026-10-11\n\nBoards respond at once to zoom, hover, click, drag, edit and undo, and unfolding a board in the outline no longer draws every table.\n\n- **Smooth zoom and hover.** Zooming with the wheel or trackpad no longer stutters: a zoom burst is one gesture, and the board settles once at the end. Moving the mouse over cards no longer makes the page catch.\n- **Faster clicks.** Selecting, deselecting, dropping a dragged card, leaving a card\'s editor and opening or closing the Add panel each paint in about 25–100 ms, down from about 200–300 ms. Board state no longer changes classes on the whole board, which some other extensions\' styles (zotero-roam) turned into a full restyle, and the board ignores Reference Path\'s highlight colours on its own block.\n- **Tables fold under captions.** A table card is now a one-line caption ("Table · 7 rows") with the table folded under it, so unfolding a board in the outline shows one line per table instead of drawing every row (Parse Lab: 3.6 s → 0.24 s). New tables are made this way. "Fold tables under captions" in the board ⋯ menu converts the tables already on a board, with a preview first and one undo for the whole change.\n- **Lighter after zooming out.** Large tables swap back to their picture as soon as you zoom out to the map, instead of staying live for ten seconds.\n- **Faster undo.** Undo and redo repaint at once; badge counts refresh just after.\n- Comment counts on cards load with one small query whatever the size of the board.\n\n## 3.21.0 — 2026-10-11\n\nBoards open instantly, PDFs live on their own pages the way Roam keeps them, Ask AI reads charts and compares parts across PDFs, and images are searchable by colour and by the text inside them.\n\n- **Instant open.** A board paints from a saved snapshot in its first frame, then the live board takes over the same cards without flicker. Cold open in the right sidebar shows real content in about 66 ms (was about 760 ms) and in the main view about 100 ms (was about 850 ms), with no grey placeholder cards. Badges and graph links load right after. Large tables show a picture of their cells instead of a grey "Table · N rows" box.\n- **PDFs on their own pages.** A PDF card can now be a link to the PDF\'s page: the PDF and its highlights live together on that page, as in Roam\'s own PDF annotator, and unfolding a board in the outline no longer opens a PDF viewer for every PDF. New PDFs dropped on a board are placed this way. "Move PDFs to their own pages" (board ⋯ menu) moves the PDFs already on a board, with a preview first and one undo for the whole move.\n- **Ask AI across several parts.** "Add to question" on a table, paragraph, figure, highlight, image or whole PDF, then ask once about all of them from the "N parts · Ask" pill. Answers cite [Part N, p. M], tables come back as real tables, and an answer added to the board links to the cards it used.\n- **Ask AI sees figures.** Asking about a figure sends its picture to a model that can read images (the crop is uploaded to your graph once). **Chart → table** turns a chart into a table card, with the values marked as read from the chart.\n- **Whole-PDF answers find the right pages.** Asking about a whole PDF now picks the parts that match the question from every page, not just the opening pages.\n- **Default model.** Ask AI uses Claude Sonnet (or Gemini) by default and remembers the model you pick. A model that returns an empty answer says so and offers the next one.\n- **Search inside images.** Images and PDF figures can be found by colour ("red", "blue", a #hex value, or the colour swatches) and, with "Read text in images" turned on, by the words in them. "More like this" finds images with similar colours.\n- **Comments on cards.** "Comment…" on a card adds a Roam comment; cards with comments show a count that opens the thread in the sidebar.\n- **Changed since last visit.** Board ⋯ menu: outlines the cards edited since you last opened the board on this device and lists who changed them.\n- **Query cards.** A card holding a Roam query shows its results as a live list; drag a result onto the board as a card.\n- **Daily-note inbox.** Blocks on daily pages that mention a board appear in its "Inbox (N)" pill, ready to place.\n- **Board rule for your own queries.** `window.__plexusDiagram.rules.boardMember` finds the cards of a board in a Datalog query.\n- Newly parsed PDFs show up in search right away.\n\n## 3.20.0 — 2026-10-11\n\nFilter the search panel by type, search inside your parsed PDFs, and ask AI about one table or paragraph with the rest of the PDF as context.\n\n- **Type filter.** The Search tab\'s type list is now a Type button with toggles in two groups: Documents (Page, Block, Board, Daily, PDF, Image, Web link) and Inside PDFs (Paragraph, Table, Figure, Caption, Heading, Formula, Region, Pin), with Show all / Hide all. Your choice is kept per graph. PDF, image and web-link rows show a title, file name or thumbnail instead of the raw macro.\n- **Search inside parsed PDFs.** Tables, paragraphs, figures, captions, headings and formulas of every parsed PDF in the graph are searchable, with a page range ("p. 3-8"). Every word must match, in any order; "quotes" keep a phrase. Results show the part type, page and PDF title. Click opens the reader at that page when the PDF is on the board, otherwise adds the part as a card.\n- **Ask AI.** Ask about one part of a PDF from the reader\'s selection bar, a part\'s menu in the parsed view, a part in search results, or a whole PDF from its card menu. Plexus sends the part, its caption and section heading, the text around it and an outline of the PDF, and asks the model to answer about that part only. Answers stream, cite pages as [p. N] links that open the reader, and can be copied or added to the board as a card with a Source link back to the part. Uses the Live AI Assistant extension: turn on its "Enable Public API" setting. Plexus calls no AI service of its own.\n- The search panel sits above the tool palette, and long result lists keep each row readable.\n\n## 3.19.0 — 2026-10-10\n\nHigh accuracy reads every scanned page with the page model, a finished read follows you to your other computers, and old tables, photographed pages and figures read much closer to the page.\n\n- **Every scanned page through the page model.** High accuracy now reads each scanned page with Qwen3-VL by default (setting "High accuracy page reader": All, or Doubtful for the old behaviour). It is slower, about ten times per scanned page, and much better on photographed, handwritten and old printed pages: a photographed 1881 title page now matches the page 100% (was 3%), and a handwritten 1925 note 100% (was 36%).\n- **Reads are kept in the graph.** After a High accuracy, helper or LlamaParse read, Plexus uploads the read as one file to the graph and notes it on the PDF block, so your other computers load it instead of reading the PDF again. Setting "Keep reads in the graph" (on by default).\n- **Old tables.** Lists with leader dots and page numbers are read as whole tables, pages set in small capitals are no longer tilted before reading, side-by-side and stacked tables are kept apart, and printed leading zeros stay. An 1850 roster now scores 0.84 on cell content (was 0.08), a 1921 hydraulic table 0.94 (was 0.19).\n- **Figures.** The layout model\'s picture boxes are combined with the ink detector\'s: two photographs on one plate are two figures, a shadow over a photographed page is not a picture, and a drawing with one caption stays one figure.\n- **Tested on pages Plexus was not tuned on.** On 35 pages from libraries never used in development, High accuracy now scores 0.80 against LlamaParse\'s 0.82 (3.18.0 scored 0.73), and leads on handwritten pages (0.88 against 0.77).\n- **Rust helper 0.2.0.** The light helper\'s deskew check changed; re-run the helper install to get it.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.18.0 — 2026-10-10\n\nHandwritten letters read closer to the page, a wide old table reads whole, and High accuracy installs on a clean Mac.\n\n- **Handwritten letters.** The page reading now fills every text block on the page, including a stamp, a word in the margin and the signature, and the page is read at its full scan size. Three handwritten 1859–1914 letters now match the page 79–97% (were 64–90%). A handwritten letter takes about 30 seconds in High accuracy.\n- **Photographed lists.** When two readers see a photographed page at slightly different tilts, their words are lined up before they are compared, so a confident name is no longer swapped for a dictionary word. A photographed 1924 roster now matches the page 90% (was 83%).\n- **Wide tables.** A caption row that spans many columns no longer stops the High accuracy table reader early. A 1916 thirteen-column table now scores 0.95 on cell content (was 0.77).\n- **Install.** The High accuracy table reader now verifies against the files Hugging Face serves, so a clean install works (it failed its own checksum before). An existing install downloads the reader once more (about 1.9 GB).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.17.0 — 2026-10-10\n\nHandwritten letters, ledgers and photographed pages read much closer to the page in High accuracy.\n\n- **Handwriting and photos.** When Apple Vision is unsure of a page, High accuracy now reads that page\'s text with Qwen3-VL-8B (Apache-2.0) instead of PaddleOCR-VL, which still reads the tables. Pages of a handwritten dye-recipe book now match the page 92–96% (were 53–71%), and a photographed 1867 letter 89% (was 58%). A handwritten page takes about 15–30 seconds.\n- **Text in the right place.** The page reading is lined up word by word with what Vision saw in each region, so a date, a greeting, a paragraph and a signature each keep their own text, and table cells and figure labels are kept out of the paragraphs.\n- The first such read downloads the model once (about 5.8 GB, checked against pinned SHA-256 hashes). To get it, re-run the High accuracy helper install.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.16.0 — 2026-10-10\n\nLong rosters and old tables printed in pieces read as one table.\n\n- **Rosters and registers.** A roster printed as several pieces down the page, with a section line between them ("Harbor Commissioners for the Port of San Jose, 1913-1924."), is read as one table with that line as a row. Leader dots, a date split across two cells and a lone "Deceased." beside a name no longer become columns of their own. Three 1924 California Blue Book roster pages now score 0.96–0.99 on cell content (were 0.26–0.78).\n- **Old numeric tables.** Totals are matched to their rows after the table\'s shape is repaired, a lone "o" in a column of numbers is read as 0, and a numbered column with one unreadable number is filled from the run. A 1929 NACA viscosity table now scores 0.98 on cell content (was 0.78), and a 1916 Bureau of Mines gas table 1.00 (was 0.91).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.15.0 — 2026-10-10\n\nMore figures found in photographed pages and menus, and more old tables read exactly.\n\n- **Figures and captions.** Small labelled diagrams (a sketch with "G(s)" or "(k)" labels), pictures on a letter, hatched menu illustrations and plates split across two columns are found, and a caption is joined only from text inside the picture, so the next column\'s text no longer leaks in.\n- **Tables.** A section banner split across the width stays one table row, a scientific factor such as "9.806 65 E+00" stays one value, a footnote printed under the bottom rule stays a paragraph, and number formatting is tidied after High accuracy picks its reading. A 1932 NACA table now scores 0.95 on cell content (was 0.67), and NIST unit tables 0.94–1.00.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.14.0 — 2026-10-10\n\nOld printed text and old tables read closer to the page.\n\n- **Printed text on old scans.** Words that Vision reads glued together stay whole, plurals are not shortened to the dictionary singular, and the "Digitized by Google" / HathiTrust stamps are treated as page furniture, not text. On our 1916 Bureau of Mines pages the text now matches the page 97–100% (was 82–92%). A caption line under a wide plate is read and kept.\n- **Tables.** Unit lines under a header, blank leader cells, labels fused to the next word and fragments printed beside a row are put back in the right cells. A 1922 viscometer table now scores 0.96 on cell content (was 0.78), and a born-digital regression table 0.96 (was 0.63).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.13.0 — 2026-10-10\n\nHandwriting and photographed pages read much better in High accuracy, more old tables come out exactly, and every figure on our old-scan test pages is found.\n\n- **Handwriting and photos.** When Apple Vision is unsure of a page (handwriting, a photographed letter or menu), High accuracy keeps Vision\'s reading and also asks the page reader (PaddleOCR-VL) for that page\'s text. Letters, recipe books and field notes now read as prose; name lists and menus stay text instead of becoming tables. A handwritten letter takes about 10–20 seconds.\n- **Tables on old scans.** Rotated column heads sit in their own columns, brackets inside a formula cell are not grid lines, and subscripts, thousands marks, degree signs, group heads and totals are tidied. A 1960 typewritten NASA table now scores 0.98 on cell content (was 0.51).\n- **Figures and captions.** Apparatus drawings with labels, rotated plates with their title along the edge, and pages with two figures are found, and captions printed side by side are split by column. On our 27-page set of 1890–1920 scans every figure is now found with no extras, and 82% of captions are linked (was 55%).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.12.0 — 2026-10-10\n\nPhotographed and scanned pages: figures found inside the page, no invented tables, and more tables read right on old scans.\n\n- **Figures inside photos and scans.** A photographed or scanned page is one picture, so Plexus now finds the charts, plates, sketches and maps inside it from the ink, and links their captions, including chart titles without "Fig." and German "Abb." plates. On our set of 57 newer pages (photos, handwriting, modern documents, mixed layouts) figures are found at F1 0.85 (was 0.39) and half of the captions are linked (was 7%).\n- **No invented tables.** Letters, handwritten notes, photographed title pages, contents lists and the labels inside a chart are no longer turned into tables; a table needs real tabular content (a value column or a header over body rows).\n- **Tables on old scans.** Columns split by partial rules or a short right edge are kept, unit lines and lab-id rows are header rows, and when two readings disagree the one the page text supports wins. On our 27-page set of 1890–1920 scans, High accuracy now reads 74% of table cells exactly (was 39% in 3.11.0).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.11.0 — 2026-10-10\n\nScanned and born-digital PDFs read more accurately: fewer false figures, captions found, more tables right, and a High accuracy read that gives the same answer every time.\n\n- **Figures and captions on scans.** Library stamps, page-edge stripes, rules and text blocks are no longer taken for figures; a real drawing is never dropped, even when its caption runs across it. Captions that start with Fig., Figure, Plate, Abb. or Tafel are linked to their figure, including a caption set sideways beside a plate. On our set of 62 scanned technical pages (1900–1950), High accuracy now finds figures at F1 0.98 (was 0.92) and links 89% of captions (was 77%).\n- **Tables on old scans.** Narrow numeric columns that a spanning header had glued together are split again; contents lists under a plate stay lists; a numbered index or an equation is not turned into a table.\n- **Tables in born-digital PDFs.** Booktabs-style rows, leader-dot columns and regression tables stay tables. High accuracy also asks the layout model about tables on pages with a text layer, and keeps a table only when its words are on the page.\n- **High accuracy.** The same PDF gives the same reading every time (fixed decoding; the model weights are pinned and checked by SHA-256 on first use). The layout model and the reader run only on pages where they can change the result.\n- **Fixes:** a blank High accuracy cell no longer erases text the page shows; a running head is not taken for a plate title.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.10.0 — 2026-10-09\n\nDraw a region freehand, delete an arrow cleanly, read PDFs with LlamaParse, and read old scans far better on your own Mac.\n\n- **Image regions.** Regions sit exactly on the picture, even on a tall card with empty space below the image, and stay there after a redraw, resize or zoom. Draw around a part of an image with the pen (press P while marking, or pick Pen): the outline follows your hand and is saved in the freehand format Roam Plexus also reads. An arrow to a region enters the picture and stops on the region\'s edge, and hovering or selecting that arrow outlines its region in blue.\n- **Deleting an arrow cleans up.** Deleting an arrow (Delete, Backspace in its empty label, the toolbar trash, the right-click menu or Cut) also deletes the region it made, when nothing else uses that region. One ⌘Z brings both back.\n- **Arrow toolbar.** The toolbar for a selected arrow is about 290 px wide instead of 800: direction, colour, label and delete stay on the bar; style, width and the rest open from small menus. It sits clear of both cards the arrow connects.\n- **LlamaParse (cloud).** Read with LlamaParse sends a PDF to LlamaParse with your own key, after a confirm that shows the tier, the page count and the cost (Agentic is 10 credits, about $0.0125, a page; re-reading within 48 hours is free). Without a local helper it goes through a relay that stores nothing. Plexus keeps LlamaParse\'s tables and text and uses its own figure boxes where it has read the page, which scored better than LlamaParse alone in our tests. Mistral OCR is there as a second, no-install choice.\n- **Local helper.** The default helper is now a 15 MB program (was 1.1 GB) that reads scans with Apple Vision as well as the old one did. Docling stays available as an add-on (`install.sh --docling`). A beta High accuracy read (`install.sh --docling --vlm`, about 2 GB of models) adds a layout model and PaddleOCR-VL for tables.\n- **Old scans.** Typewritten and hand-ruled tables, hand-drawn plates and their captions, two-column pages, small-caps titles, patent drawing sheets and faded typewriting all read much better: on our set of 1900–1950 technical scans, figures found went from 0.49 to 0.98 and text errors from 6% to about 2%.\n- **Fixes:** the High accuracy read never replaces a table with a worse one; sideways margin titles are not headings; titles never fall back to "PDF" after a cloud read.\n\n## 3.9.0 — 2026-10-08\n\nLink back to the PDF, copy the way you mean it, and point arrows at anything: a cell, a row, a region of an image, a PDF pin, or another arrow.\n\n- **Source pins.** Turn on "With source" in a chip\'s ▾ menu (or hold ⌥ for one drag or click) and the card gets a pin to the exact spot in the PDF: a `{{[[plexus-pin]]}}` block under the PDF that shows the page crop wherever Roam renders it, plus `Source:: ((pin))` on the card. Click a pin for a larger crop, the surrounding paragraph, Open in reader (jumps and flashes the spot), Sidebar and the boards that cite it. One ⌘Z removes the whole gesture.\n- **Copy menu.** The copy button beside a parsed box now opens a menu (▾, right-click or long-press): Copy, Copy as plain text (⇧⌘C), Copy as card (⌥⌘C, pastes onto a board as a real card), Copy with source (⌥⇧⌘C, writes the pin), Copy crop as image, Copy link (opens the reader at the pin). Figures copy as an image with their caption.\n- **Arrows to anything.** Start an arrow on a Roam Grid or table cell (Connect) or a page-card row (⌥-drag). Point at part of an image: hold ⌥ when you release over it and drag a box, or ⌥-drag on the picture to start from a new region — a plain drop on an image still points at the card. Arrows can end on a PDF pin or on another arrow\'s label. Each end is a real block, so the connection reads `((cell)) → label → ((region))` in Roam, and the block shows a "⇢ N on <board>" chip elsewhere in Roam that opens the board centred on that arrow.\n- **Figures from complex PDFs.** Multi-panel figures become one figure with their caption; patent drawing sheets are found; a text page is never one giant figure; boxes stay on the page and inside their column; contents lines are not captions. Dragging a figure makes an image card sized to the crop, with the caption as alt text.\n- **Fixes:** cards move when dragged at high zoom (including table and grid cards); arrows start from grid-table cards; the arrow label editor is one field and no longer makes table cards flicker; paragraph copy works and says so when it cannot; the reader keeps your zoom when it jumps and fits the width again on current Roam.\n- **Docs:** a "Which engine" table compares the built-in parser, in-browser reading, the local helper and the coming cloud engine.\n\n## 3.8.0 — 2026-10-08\n\nPDFs on the board feel finished: clean cards with real titles, a proper Quick Look, a reader that opens where you expect, and scanned pages read in the browser without freezing Roam.\n\n- **PDF cards.** A small highlighter button with the highlight count replaces Roam\'s big white "Add highlights…" button; the title gets the room. Hover shows solid Open / Parse pills that stay readable over any cover and move above the dock and toolbar. "1 ref", not "1 refs"; one-page PDFs show no page arrows.\n- **Real titles.** Cards, the reader, the PDF switcher and Quick Look show the paper\'s title from the largest type on page 1 — not the journal banner ("Science of the Total Environment"), not a running date ("22.12.2005"), not a table note. Titles appear at rest, read in the background one PDF at a time, and saved titles show at once. Run-together words in a title are split when the word list is on this device ("Summaryofreportedcasesper" → "Summary of reported cases per").\n- **Quick Look (Q)** shows the card\'s title, opens at the card\'s page (page 1 by default), turns pages with a pill and the arrow keys, and falls back to Roam\'s reader when a PDF will not load.\n- **Open and Parse.** The reader keeps the board at least 360 px wide, centres the card in what is left, and themes its PDF switcher. Parse opens at the card\'s page with the parsed boxes; on a narrow reader the outline is a tab, starts at the top, and rows are one line. Copy buttons on parsed boxes show on hover beside the box (never under its chip) and confirm with "Copied"; a figure copies as an image with its caption; tiny marks get no box; and the dock and card toolbar fit a narrow board (extra tools behind "…") without covering the minimap.\n- **Reading order.** A sidebar column next to an abstract no longer interleaves with it line by line (the column gap is measured beside the column, and full-width rules separate bands).\n- **Superscripts.** Footnote marks land between the right words ("Kleshchev¹, Boyd¹˒²", "whole zone³" linked to its note); unit superscripts like cm² stay inline.\n- **Scans in the browser.** In-browser reading now runs in a background worker: a scan read no longer freezes Roam (longest pause 23 s → 0.3 s on a dense table page). Doubtful text lines are re-read up close and checked against a word list (the CDC 1980 title now reads exactly), centred cells in wrapped rows stay in their row, and the page is rendered the same way the reader shows it.\n- **Fixes:** covers never go blank after heavy zooming; a reopened scan keeps its read; PDFs parsed by an older version are re-parsed quietly on open (scans you read are kept); left/right docks keep their tools; the header highlight count updates; no repaint loop or per-frame layout work while panning with a selection.\n\n## 3.7.0 — 2026-10-08\n\nParsed text you can see and copy, scans read without installing anything, arrows to table cells, PDF footnotes that work in Roam, and typing that never drops a key.\n\n- **Parsed text shows on the page.** Every block the parser found gets a soft gray box with a copy button (tables copy as Markdown). Boxes now fit sideways tables exactly (the old outline was drawn in the wrong frame on rotated pages). "Show parsed" in the reader\'s mode bar turns them off.\n- **Read scans with nothing installed (beta).** Without the local helper, Read text reads a scanned page in the browser: 39 MB of models downloaded once from this site and cached, then about 20 s for a dense table page. Shaded table rows and slightly tilted scans are handled; doubtful cells are re-read up close. On a 1980 CDC table scan: cell F1 0.922 (the helper: 0.957). The helper stays first when it runs. A read scan reopens with its boxes, table chips and title.\n- **Click to place.** Insert from a chip (Roam Grid, Native, Flat, Card, Figure, Section) now attaches a preview to the pointer; click the board to place it, Esc to cancel. "Insert beside PDF" keeps the old behaviour. The preview stays readable when the board is zoomed far out, with a dashed outline showing the real size.\n- **Arrows to a table cell.** Point an arrow at one cell of a Roam table or a Roam Grid table, the way arrows already point at a block: the cell lights up while you connect, the end follows the cell through scroll and zoom, and clamps with a marker when the cell leaves view.\n- **PDF footnotes in the Footnotes extension\'s format.** Marks like ¹, ** or (3) become `#sup^^[(N)](((note)))^^` aliases with the notes under the page\'s `#footnotes` block, numbered after the ones already there — in paragraphs and in table cells (Roam Grid and native). Setting "PDF footnotes": Footnotes extension / plain / off.\n- **Roam Grid import.** With Roam Grid 0.18.5, "Roam Grid: Import from a PDF on this page…" turns a PDF table (born-digital or scanned) into a grid, through `PlexusDiagram.tablesFromPdf`.\n- **Fixes:** keys typed right after making a card are kept and land in order (they were lost for up to a second); the right-click menu opens at the pointer; the board never scrolls under the reader; the board bar and the card toolbar stay one row in a narrow board (extra tools move to "…"); folded cards are header-high and a folded table says "Table · N rows"; PDF titles skip junk metadata ("I", "Untitled") and fill the PDF switcher as they are found; copy buttons never stack.\n\n## 3.6.0 — 2026-10-07\n\nThe PDF page is the workspace: select, copy, highlight and drag text straight off the page — scans included — plus structure chips, a smoother drag, setup without dead ends, and office files on the board.\n\n- **Text on every page, scans too.** A scanned page gets an invisible text layer from the local helper\'s OCR. Select across the page image, copy it, or press a colour in Roam\'s own highlight tip: the highlight is a real Roam block, also on scans. A read scan reopens with its text in about a second, no new read.\n- **Selection bar**: Copy · Card · Quote · drag handle, placed beside Roam\'s tip, never over it.\n- **Card-shaped drag.** Dragging a selection, a highlight or an outline row shows a ghost of the card that will land, and drops exactly where the ghost is.\n- **Structure chips on the page.** Hover a table: "Table 7×7 · Roam Grid ▾" (Native, Flat, Copy as Markdown, Card). Figures, sections, lists and formulas get their own chip. Hold Shift to see the reading order.\n- **Read / Read + Outline.** The Parsed tab became an Outline: an index of headings, tables and figures with page numbers, filters and bulk actions. Every PDF is parsed quietly when it opens (no writes, no network), so chips and the title are there in Read mode.\n- **No dead ends.** A one-line strip under the reader says what is happening and always has a button. The Engines panel (pane ⚙) shows each reading engine with one action. The local helper installs with one copied command and pairs with one click — no token to paste.\n- **Word, Excel, PowerPoint, OpenDocument, EPUB and CSV on the board** (anydoc, WebAssembly, loaded from this site only when you convert, then cached): a document becomes section cards, a deck one card per slide, a sheet a Roam Grid table.\n- Roam Grid table cards grow with the card; the reader pill hides in the outline; titles come from the parse when the PDF has none.\n\n## 3.5.0 — 2026-10-07\n\nParse a PDF into clean blocks and real tables, on the board, with merged cells, and better than Heptabase on tables.\n\n- **Parse / Parsed / Both** in the reading pane. The built-in parser needs no install and reads a 30-page paper in under a second: headings with their levels, paragraphs in two-column reading order, lists, footnotes linked to their marks, figures and formulas as page crops, and tables, ruled or borderless, with merged cells and header rows. Running headers, footers and page numbers are removed and listed, never silently dropped. Results are cached on this device; nothing is written to your graph until you insert.\n- Hover a parsed block and its region lights up on the page; click to jump there. Each table shows the grid it found over the PDF with a confidence chip, and you can drag a column boundary to fix it.\n- **Insert, send, or drag.** Insert below the PDF, send sections to the board as cards, or drag any block or table onto the board. A table becomes a table card: with Roam Grid 0.18.3+ it keeps merged cells, header rows, alignment and column widths (one Roam write, one undo); without it, a native Roam table. Make highlight turns a parsed passage into a Roam PDF highlight.\n- **Optional local helper** (`tools/parse-helper`, Docling on your Mac): formulas as LaTeX, OCR, and **Read the scan** for scanned pages — Apple Vision word boxes and the scan\'s own ruling lines go through the same table engine, numbers misread by OCR are repaired and re-read cell by cell.\n- Measured on the ICDAR 2013 table benchmark (67 government PDFs): built-in table structure F1 0.979 and exact-cell F1 0.932, against Docling\'s 0.865 and 0.795, in 2.5 s for all 67 against 5 minutes. On a 1980 CDC table scanned as an image only: structure 1.000 and cell F1 0.957, against Docling\'s 0.082. Small scanned type can still misread words (e.g. disease names in 6 pt print); numbers are checked against their column.\n- Roam Grid tables in cards scale with the board and get the whole card (no Roam row spacer, no break-out padding); columns are sized from the text.\n- The reading pane title falls back to the parsed title; the tool dock stays left of the pane.\n\n## 3.4.0 — 2026-10-06\n\nBoards that wear your Roam theme, edits that hold still, wider PDFs, and Roam tables on the board.\n\n- Plexus follows the theme your graph is using: the canvas, cards, text, borders and links take Roam\'s own colours, light or dark, and change when the theme does. Setting **Theme**: Follow Roam (default) or Plexus. Pastel sections are stronger in light mode.\n- Editing in place holds still. In page cards the bullet and fold arrow stay in the gutter and nested rows keep their indent; note, block and task editors keep the resting line height; a sticky no longer shows a blue box while you type. Links keep the same colour at rest and in edit.\n- Roam tables on the board. A card holding a `{{[[table]]}}` shows Roam\'s table, scrolls sideways when it is wider than the card and is never clipped. Enter or a double-click edits a cell with Roam\'s editor; Tab, arrows, typing, the wheel and right-click stay with the table while you work in it. New **Table** tool (B) and a **Table** item in the canvas menu add a 3×3 table in one undo. With Roam Grid installed, an enhanced table works inside the card, and **Open grid** shows it at full size.\n- PDF cards can be as wide as you like (up to 4000 px), and a large card redraws page 1 sharp instead of stretching a small cover. The pane title uses the PDF\'s own title, never a storage path; a zero highlight count is hidden; the format bar no longer covers the pane; a slow PDF shows its cover until the first page paints.\n\n## 3.3.0 — 2026-10-06\n\nEdit in place without the card changing, PDFs you flip through on the board, PDF dark mode, and three Heptabase looks.\n\n- Editing a note, block, task or page card no longer changes how it looks: the text stays in the same place, at the same size, with the same line breaks, at every zoom. Roam\'s bullet, its spacer and the reference-count slot no longer squeeze the text into a narrow column, the editor grows with its text, and the card keeps its size. Double-click a word and the cursor lands on it. With Roam Caret installed, its caret follows the board\'s zoom inside the card.\n- Clicking a PDF card selects it, as in Heptabase: the card becomes a small reader you flip through with the wheel, ← and →, or the `‹ 3 / 9 ›` bar. The side pane opens only from **Open**, a double-click, Enter, the card menu, or a highlight.\n- PDF pages in dark mode (setting **PDF pages in dark mode**): Dim (default) softens white pages on a dark board, Invert turns them dark, Off keeps white paper. Highlights stay readable.\n- Three Heptabase looks, all off by default: **Canvas** flat grey instead of dots, **Section fill** pastel, **Highlight cards** tinted instead of a colour bar. In dark mode they show as coloured borders.\n\n## 3.2.0 — 2026-10-06\n\nPDF round 2: covers at every zoom, page 1 without opening the PDF, pages at reading width, one open per click.\n\n- Zoomed out, a PDF card is still its page. Map and overview paint the saved cover on the card itself, as in Heptabase at 11-17 %, with no image element, title or strip at those tiers.\n- A PDF you have never opened gets a cover in the background: a quiet board (1.5 s after first paint, idle, one at a time, at most three per visit, never while you move or read) draws page 1 with Roam\'s own PDF engine, so nothing is opened or written. A capture that comes out blank is thrown away. Setting **Prepare PDF covers in the background** (on).\n- The reading pane fills its width: Roam\'s reader no longer stops short of the pane\'s right edge (its block row kept a separator and a reference-count slot beside the PDF). After the first page paints, the page is set to page width (through the viewer when it is reachable, otherwise by stepping Roam\'s own zoom buttons until the page fills the pane). Your own zoom is kept; resizing the pane refits.\n- One click on a highlight card does one thing. A plain click opens it in the reader (setting **Highlight click opens**: Reader or Sidebar). Shift-click opens Roam\'s sidebar. The chip\'s **▾** lists Open in reader, Open in sidebar and Open page in main. Nothing opens twice.\n- Selecting a PDF card never mounts Roam\'s reader inside the card. **Read inside the card** in the card menu is the one way to the inline reader; **Show the cover** takes it back, and opening the pane does too.\n- The fullscreen tab strip shows only from two tabs up, is 28 px tall, and reserves nothing while hidden. Tabs, their persistence and Cmd+1..9 are unchanged.\n- The reader\'s pages float on a soft grey bed in light mode; dark keeps the chrome colour.\n\n## 3.1.0 — 2026-10-06\n\nPDFs that read like Heptabase, page cards that hold still while you edit, and tools that do what your hand expects.\n\n- PDF cards show the page itself: white paper, no text on the face. Hover for the title, highlight count and page chips, and an **Open** pill; double-click or Enter opens it too. A thin strip on the edge marks where the highlights are; click a mark to open that page. The cover is saved on this device the first time you read the PDF (nothing is written to your graph); until page 1 has been on screen, the card shows the last page you read. Setting **PDF card cover**: first page or last page read.\n- The PDF opens in a pane beside the board with one slim header (title, other PDFs on the board, highlights, Roam\'s tools, close) and the pages at reading width. A floating pill drives Roam\'s own zoom out, zoom in, fit width and search, and shows `3 / 9`. Roam\'s toolbar is still there behind the tools button. The card you are reading gets an outline until you close the pane.\n- Highlights moved into a drawer at the bottom of the pane: colour and page chips, search, and Note, Place and Locate on hover. A new highlight pulses in the list and offers **Place on board** for a few seconds. Hovering a highlight card flashes its mark in the reader, and hovering a row pulses its card.\n- Highlight cards are quote cards with a colour bar and a source chip (`title · p. 3`).\n- Editing a page card keeps the card exactly as it looked: same rows, same spacing, nothing rewraps or moves, and the cursor lands where you clicked. One click on an already selected page card starts editing there.\n- Hand tool: drag a card to move it, drag empty board to pan. In Select and Connect, dragging empty board pans too; Shift-drag draws the selection box and Alt-drag the lasso. Setting **Drag on empty canvas** brings the old box-select back.\n- With Roam Caret 0.6.6 installed, its caret now shows inside cards at every zoom (Plexus tells it when the board moves).\n- The board bar, tab strip, legend and Properties are solid, and an empty tab strip no longer shows.\n- New PDF cards are 240 × 320.\n\n## 3.0.0 — 2026-10-06\n\nPlexus 3.0: the 3.x roadmap is complete. This release makes large boards open fast, makes every new surface usable from the keyboard, caps every bulk gesture at what one Roam undo can take back, and documents the data model and module contracts as built.\n\n- Large boards open fast. A board with 300 cards, 20 sections and 150 connections shows its cards in about 360 ms and is idle by about 450 ms (it was about 1.3 s, with long pauses after the first paint). Card reference and board counts now come from one indexed read instead of four searches across the whole graph, and fullscreen no longer forces a page layout in the middle of opening.\n- Keyboard: trail stops in the panel take focus; Alt+↑ and Alt+↓ move a stop and Enter walks the trail from it. The region overlay nudges with the arrow keys (Shift for 10 px), Enter confirms and Esc cancels. The status, halo, why and task popovers take focus when they open, move with the arrow keys and give focus back on Esc. Trail strips, crops, PDF chips, timeline rows and the resurface panel open with Enter. Every button has a name, and focus rings show in light and dark even when another extension hides outlines. The `?` sheet lists the new keys.\n- Undo: every bulk gesture stops at 45 changes so one Roam undo takes it back, with a toast that says how many were added: adding cards to a trail, a new trail from a selection, landmarks on a selection, and Lay out by date. README, Limits has a table of writes and undo steps per gesture.\n- Fixed: moving a trail stop down (by keyboard or by dragging) did nothing.\n- Docs: `docs/spec-plexus-3.0.md` (every block kind and prop key, what is stored where, decorated macros, the public API, interop) and `docs/api-plexus-3.0.md` (module contracts). The README follows the 3.0 order and has an integrations table. `tools/spec-keys.mjs` and `tools/doc-check.mjs` fail when code and docs drift.\n\n## 2.21.0 — 2026-10-06\n\nTrails, landmarks, a timeline, strength and dust lenses, source chips, and an Integrations section in settings.\n\n- Trails: a named path through cards with a note at each stop. Add a card to a trail from its menu; Walk trail plays it stop by stop in present mode. A trail is a block under the board\'s collapsed `Trails` child, so `((trail))` pasted anywhere in Roam shows as a strip of stops you can click. The panel has a Trails tab.\n- Landmarks: make a card, sticky or section a landmark and it keeps a large glyph at every zoom, including the overview, and shows on the minimap. Walk the board tours landmarks left to right, then down, or along a trail.\n- Timeline in the Info tab: the daily pages that mention any card on the board, with a count per day; click a day to open it. Lay out by date can now place cards by the day they were first or last mentioned, not only by a date attribute.\n- Strength and Dust lenses (More menu). Strength draws a connection thicker when its two ends are referenced a lot, share other boards, and were edited recently; hover a line to see why. Dust dims cards untouched for 6 months, 1 year or 2 years. Both are views: nothing is written, and turning them off puts every line and card back.\n- Source chip: a highlight dragged from an `Articles/` or `Media Captures/` page shows the page title, and the author when the page has an `Author::` line. Click the chip to open the page in the sidebar. Renaming the author updates the chip.\n- Settings has an Integrations section: Better Tasks, Task Status Tags, Roam Plexus, Compass and the colour highlighter, each shown as detected (with its version) or not installed. It updates when one of them loads or unloads. Switches turn each integration off; with "Roam Plexus and Compass" off, Open in Compass is hidden and drawing cards stop asking Roam Plexus for thumbnails.\n- Kanban card titles no longer show the status tag, and lane counts have a space before them.\n- Fullscreen tabs drop boards that were deleted.\n\n## 2.20.0 — 2026-10-06\n\nStatuses, journal, fullscreen tabs, touch, and a round of reliability work.\n\n- Task statuses (with Roam Task Status Tags 0.9.0 or later loaded). A task card shows its status as the same glyph Task Status Tags draws on the checkbox (Active, Waiting, In Review, Holding, Incubating, Alert, Cancelled) and as a chip. A small ring left of the checkbox opens a status chooser; Shift-click removes the status. The card menu and a multi-selection have Status ▸ (up to 45 cards at a time). Every status change is written by Task Status Tags, not by Plexus. Without it, the glyphs still show from a built-in table and the ring is not there.\n- Kanban "Lanes: Status": one column per status, plus No status and Done. Dropping a card on a column sets that status; dropping on Done completes it the same way the checkbox does. `[` and `]` move a focused card one column.\n- Journal tab in the panel: the day\'s top-level blocks with a day stepper. Drag a row onto the board for a card. Looking and stepping write nothing.\n- Fullscreen board tabs: boards you open while fullscreen collect as tabs above the board bar (up to 9). Cmd+1 to Cmd+9 switch. The tabs come back the next time you go fullscreen in this graph.\n- Touch and tablet: pinch to zoom, two fingers to pan, long-press for the menu, larger resize grips under a coarse pointer.\n- PDF highlights: a Note button on a highlight card opens its note the way Roam\'s own note button does (in the sidebar, focused), creating the note block only when there is none; one undo removes it. The pane\'s PDF switcher names a PDF without highlights by its page, and the arrow keys and Enter move through the list.\n- New drawing (Roam Plexus) is one undo step with its card.\n- Fixed: Plexus no longer replaces Roam\'s global `pull` function. Since 2.14.0 it answered other extensions\' reads from its own cache. After updating, reload Roam once to clear the old copy\'s replacement.\n- Fixed: a board shown in its own linked references, or in the right sidebar, no longer goes fullscreen a second time on top of the main board (clicks and drops went to the hidden copy).\n- Developers: `node tools/live/smoke.mjs "Readwisenotes - "` runs a ten-step live check and cleans up only its own blocks; callback errors are counted and a callback that keeps failing is paused for a minute (Settings shows "N errors" when there are any); `npm run size` prints the bundle report.\n\n## 2.19.0 — 2026-10-06\n\n- Clicking into a page card no longer changes how it looks. The editor keeps the card\'s own text size, row spacing, indent and line wrapping. Roam\'s bullets, guide lines and extra scrollbar stay hidden, and the row you clicked stays where it was.\n- Drag a highlight straight out of the PDF onto the board, as in Heptabase. Hover a highlight in the reading pane (the cursor becomes a hand), then drag it onto the board: a card lands where you drop it. A highlight that is already on the board pulses instead of being added twice. A plain click on a highlight still opens Roam\'s highlight menu, and selecting text to make a new highlight works as before.\n- Clicking a highlight in the pane\'s list, or the page footer on a highlight card, scrolls the PDF to that highlight and flashes it, not just to the top of its page.\n- The PDF reader fills its part of the pane. There is no longer a second scrollbar around it, and Roam\'s toolbar (highlight tools, zoom, page number) stays in view.\n- The link legend (the chips that turn link types on and off) sits under the board bar, beside Properties, instead of on top of the bar\'s buttons.\n- While you edit a page card, hovering a row shows a faint bullet in the margin; drag it to move the block, click it for Roam\'s block menu.\n- A board that is open in the right sidebar while the main window is zoomed into the same board stays in the sidebar. Before, both copies went fullscreen and the sidebar copy covered the main board, so clicks and drops on the board did nothing.\n\n## 2.18.0 — 2026-10-06\n\nPDF highlights closer to Heptabase (roadmap P27), page cards you can edit in place, and two speed and freshness fixes:\n\n- Open reader on a PDF card opens a reading pane beside the board instead of inside the card. The card stays a cover. Drag the pane\'s edge to resize it; on a narrow board it sits below.\n- The pane lists every highlight in that PDF with its colour, page, and note. Filter by colour, page, or text. Place puts one card on the board; a highlight already on the board pulses instead of being added twice. Drag a row onto the board for a card at that spot.\n- A highlight card\'s footer opens the pane at that highlight\'s page and flashes the card. The page holds after Roam restores the last page it showed.\n- A note under a highlight (a child block) shows on its card and follows edits.\n- Clicking into a page card edits it in place. The card keeps its size and look; the row you clicked gets the cursor; Escape returns to the same view.\n- A `((ref))` card follows edits to its source, including edits made while the card was off screen or the board was closed.\n- Graph links are drawn after the board\'s first paint, so opening a board feels faster.\n- The colour tooltip on a highlight now says what changes: the card and the list follow the tag, the mark inside the PDF keeps the colour Roam painted.\n\n## 2.17.0 — 2026-10-06\n\nFeel instant (roadmap P26), after the claude.ai speed work:\n\n- Going back to a board you just left is instant: the last two boards stay ready (paused, nothing running) and come back as they were, fullscreen included, with no rebuild.\n- A board opens with a quick sketch of its last layout while the real board loads.\n- Hovering a board chip, a board card, a breadcrumb, or a link to a board quietly reads that board ahead of the click.\n- Cards load in small batches nearest the middle of the screen first, so a big board never freezes the page.\n- Selecting a card no longer touches every other card (the same cost on a 300-card board as on a 40-card one).\n- Faster text checks on every card (tags, regions, attributes, diagram detection).\n- Cards and page rows keep their size while their content loads, so nothing jumps.\n- Optional speed log in settings (off by default): open time, click time, pan smoothness, Plexus long tasks.\n- Developers: `npm run perf:ratchet` keeps measured counts from getting worse; a hidden `speed-flags` setting turns each speed feature off without a release.\n\n## 2.14.1 — 2026-10-06\n\n- Typing stays light while a board sits in an open right sidebar. Plexus read Roam\'s whole sidebar window list every 400 ms (about 6 ms each time with 140 windows); it now reads the window\'s own open/closed arrow instead.\n\n## 2.14.0 — 2026-10-06\n\n- PDFs, videos, tweets and other heavy embeds on a card, a page row or an outline row show a poster until you open them. Only one stays live per board.\n- A board you scroll away from, a collapsed sidebar window, or a board under a closed block stops working in the background and comes back where you left it.\n- Opening a board reads Roam about six times less (about 24 calls instead of 155 on a 39-card board), so other extensions keep their share of Roam\'s limit.\n- Typing in a card updates that card only. Typing on a page that is a page card updates the changed row only.\n- Typing outside a board keeps the board open instead of closing and reopening it.\n- Panning no longer measures every arrow handle on each mouse move.\n- Board chips at the top of a page are placed once per frame instead of scanning the whole page for every change.\n- A live speed check for developers: `node tools/live/perf-gate.mjs`.\n\n## 2.13.2 — 2026-10-05\n\n- A board in the right sidebar opens as the board. Outline is still in the mode bar, and the last choice is remembered on this device.\n- Outline rows render when they scroll near the window. A row that scrolls far away unmounts and keeps its height, so a PDF lower down does not stay open.\n- Clicking and panning a board stays fast in a window that has been open for days. Old copies of a board no longer keep listening after they close, and loading Plexus again cleans up an earlier copy that never unloaded. One click had been waking thousands of leftover copies.\n- A board that fails to open waits before trying again, instead of retrying every 400 ms.\n\n## 2.13.1 — 2026-10-05\n\n- An image card keeps its picture at map zoom. A collapsed or empty card still shows its title.\n- A card that cites part of an image shows that crop. A region inside the card still uses its own block.\n\n## 2.13.0 — 2026-10-05\n\n- Every diagram opens as a Plexus board by default. Nothing is saved until you change the board. Your first edit writes the board marker in the same undo step, and folds the outline when Collapse the outline is on.\n- A diagram that already has native shapes stays Roam\'s own. An Open as Plexus board button over it imports the shapes and arrows.\n- Settings has Every diagram is a Plexus board. Turn it off to open only diagrams you enhance or create with New whiteboard here. Turning it off gives the native diagram back to boards you have not changed.\n- Plexus: Restore native diagram now sticks, even with the setting on. Plexus: Enhance clears it.\n- Fixes from a review of 2.8 to 2.12:\n  - A page that is a card on a board no longer throws or loops when it opens. Its board chip sits under the page title.\n  - The references drawer lists top-level blocks again.\n  - Cutting or duplicating an image card keeps its regions. Deleting one asks first and shows how many regions it has.\n  - Clearing a connection\'s why no longer deletes a note that has children.\n  - An open PDF reader stays mounted while it is in view, and arrows meet its edge. Page chips refresh when highlight cards change.\n  - Encrypted-graph PDFs (`.enc`) show their highlights.\n  - Each image highlight reuses one regions block.\n  - Fewer reads on large boards: highlight watches are capped, block props are read only for highlights, and the Info panel counts references without pulling them all.\n  - Memory lane arrows follow the cards. Suggested lines follow a dragged card, and their menu sits at the line.\n  - Escape works on a full-screen board. Annotate is one undo step.\n  - Popovers close when the pointer leaves. Unload no longer removes Roam\'s own nodes.\n- The command palette stays two entries.\n\n## 2.12.1 — 2026-10-05\n\n- Double-click a connection label to edit the label and a why note. Enter saves both. The outline chip adds "because …". An empty why writes no child.\n- Shift+T opens a memory lane. Play fades cards that did not exist yet. A snapshot tick restores that layout and writes nothing.\n- The references button on a block card lists blocks that mention it, grouped by year.\n- The links menu can draw dotted lines for shared page references. Connect makes the connection. Link text wraps the mention.\n- Plexus Commands has Resurface here. It inserts a button that lists cards from a week, a month, or a year ago. The command palette stays two entries.\n\n## 2.12.0 — 2026-10-05\n\n- Hover the info button on a card or a connection to see when it was made, the board, the section, cards from the same day, and how often it is referenced. A block on a board shows one chip per board. Hover the chip for a map. Click the chip to open that card. Nothing here writes. The command palette stays two entries.\n\n## 2.11.4 — 2026-10-05\n\n- A PDF card shows one chip per page that has a highlight on the board. The badge is the count. A click pulses those cards. A double-click opens that page in the card reader. An arrow into a highlight shows the page at the tip. A highlight in the outline says On board when that highlight is a card. None of these write. The command palette stays two entries.\n\n## 2.11.3 — 2026-10-05\n\n- Open in reader on a highlight card opens that page in the PDF card on the same board. The mark stays in view. If that PDF card is not on the board, Roam opens the highlight and a note says to click it. The click does not write. The command palette stays two entries.\n\n## 2.11.2 — 2026-10-05\n\n- Add highlights on a PDF card places the ones you pick, as a grid or a column. One undo removes them. Dragging a highlight bullet onto the board makes one card. Dropping a date asks before adding only the highlights under that date.\n- An area highlight keeps the picture\'s shape. Mark region on that card stores a region under the highlight. The page mark keeps the colour Roam painted.\n- The tag lens can show one highlight colour. The command palette stays two entries.\n\n## 2.11.1 — 2026-10-05\n\n- A block ref of a PDF highlight is a card. It shows a colour bar, the passage or the area picture, and the page. Changing the colour tag updates the bar. A block that is not a highlight stays a normal ref. The command palette stays two entries.\n\n## 2.11.0 — 2026-10-05\n\n- A pdf block on the board is a card. The cover shows the file name and the highlight count. Open reader mounts Roam\'s own reader. Interact lets you use that reader. Escape or a board click puts the shield back. A second reader closes the first. Moving the card does not change the PDF settings. The command palette stays two entries.\n\n## 2.10.3 — 2026-10-05\n\n- With Compass loaded, a card menu can open Compass on that page. Compass can open the board that holds the card, and asks which board when there are two.\n- An image card can start an empty drawing beside it. The connection reads annotates. A note says to drop the image into the drawing, and it stays up after the drawing opens. The outline chip names the drawing. Without Roam Plexus that row stays hidden. The command palette stays two entries.\n\n## 2.10.2 — 2026-10-05\n\n- A block ref of a Roam drawing shows the drawing. Regions lists that drawing\'s regions, and picking one adds a reference on the board. New drawing here creates the drawing and a reference card. The drawing block is not rewritten. Without Roam Plexus the new drawing is still an ordinary drawing. The command palette stays two entries.\n\n## 2.10.1 — 2026-10-04\n\n- window.PlexusDiagram lists boards on a page, boards that show a block, and the cards and views on a board. It can open a card or a saved view, add one card, and return a small PNG of a board. Opening and the picture do not write. Adding a card writes that one block.\n- A block ref of a Roam Plexus region shows the caption, a crop, Open drawing, and Open in sidebar. Open drawing uses Roam Plexus. If Roam Plexus is missing, the card is an ordinary block ref. The command palette stays two entries.\n\n## 2.9.6 — 2026-10-04\n\n- An image card shows a small region count when it has regions. The card menu lists them: Go, Copy ref, Rename, and Delete. Rename changes only the caption. Delete asks when another block still references the region, and can open those mentions. Badges off hides the count. The command palette stays two entries.\n\n## 2.9.5 — 2026-10-04\n\n- Hover an image crop for a larger preview, the picture dimmed and the region lit. Click opens that image on its board, zoomed to the region, or scrolls the outline to the image and pulses the region. Shift-click opens the board in the sidebar. An inline view draws a small map. Hover enlarges it. Click opens the board at that view and pulses the highlighted cards. Shift-click opens the board in the sidebar. Neither click writes to the graph.\n\n## 2.9.4 — 2026-10-04\n\n- On an image block, the block menu item Plexus: Mark image region lets you drag a rectangle. Confirm stores the region under the image, copies a block ref, and toasts. Escape writes nothing. A plexus-region image button in the outline, a block ref, an embed, the sidebar, and linked references draws the crop at most 160px tall, with a 1px border and no shadow, and hides that button. A Roam Plexus region such as a rectangle is left alone. The command palette does not gain an entry.\n\n## 2.9.3 — 2026-10-04\n\n- On an image card, Mark region lets you drag a rectangle on the picture and add a short caption. Confirm stores that region under the image, copies a block ref, and toasts that it copied. The first undo removes the region. The next undo removes the empty container. The card stays put, and the image viewer does not open. The command palette stays two entries.\n\n## 2.9.2 — 2026-10-04\n\n- Save view, in More or with Shift+V, writes the current camera as one view block at the end of the board. A selection can save its own view from the context bar. The Boards tab lists those views, each with a 96px outline map. Go puts the camera back and writes nothing. Delete removes the view block, and undo puts that row back. The command palette stays two entries.\n\n## 2.9.1 — 2026-10-04\n\n- A new card is placed before the Connections list, snapshots, and a region container, so those stay at the end of the block. The library card count skips a region container the same way it skips Connections. Leaving a new empty card that only holds a region container no longer deletes that card.\n\n## 2.9.0 — 2026-10-04\n\n- A region container `{{[[plexus-regions]]}}` and its `{{[[plexus-region]]}}` children stay off the board. They are not cards. A card\'s child badge does not count them. Image regions and saved views can be stored in that shape. A Roam Plexus region is recognized and left as theirs. Nothing is drawn yet.\n\n## 2.8.0 — 2026-10-04\n\n- Better Tasks and the Task tool start off. Settings, Integrations, has four controls: Better Tasks integration, Task tool, Task chips, and Default project for new tasks. With both switches off, the dock has no Task button, K does nothing, and the ? sheet does not list K. A Task tool you already saved stays on. Turning Better Tasks on draws the light checkbox and the chips, and asks Better Tasks for attributes once. Turning it off puts Roam\'s own checkbox back. Opening, panning, and clicking a board does not call Better Tasks while the integration is off.\n- A card whose text has #bg-blue or #[[bg-blue]] takes that colour on the board when the colour highlighter\'s variables are on the page, in light and in dark. #c:red still colours bold text inside the card, and Plexus does not paint over it. A fill you set in the picker wins; clearing that fill brings the tag colour back. With no highlighter variables, named colours use a fixed palette and the tag stays visible in the card.\n- The colour picker\'s gear, Write as highlighter tag, is saved on that board. In that mode a named colour writes one #[[bg-name]] into the block and clears the card\'s fill. One undo restores the text and the fill together. Hex, darker, and lighter still change only the fill.\n- A key pressed outside the board no longer switches the tool or adds a card, while nothing on the board is selected. A selected card still receives the board\'s keys.\n- A card more than one screen outside the view keeps its size and skips layout. The card you are editing stays fully drawn. A card that stays outside the view for 10 seconds drops its live Roam body and draws it again when it comes back.\n\n\n## 2.7.1 — 2026-10-04\n\n- Dropping a repeating task on Done in the Kanban view now makes the next occurrence, the same as ticking its checkbox. Before, only a real checkbox click did, because Better Tasks starts the next occurrence from its own checkbox. The task is now finished through that same checkbox, out of sight, so you get the completed date and the next task together.\n- Popovers stay clear of the board\'s own controls. The task chip popovers, the children peek, the Background and tag popovers, the card colour picker and the right-click menu move aside or flip instead of opening under the dock, the top bar, the rail, the minimap or the Properties panel. When there is no room, they shrink and scroll.\n- Task cards are readable when you zoom out. At the map zoom the check box is at least 20 pixels on screen, with the due date under the title (teal today, red overdue). Zoomed far out, a task is one clear box: empty, checked or crossed, in the same colours.\n- The pill that shows a scrolled-out block arrow ("↓ the block\'s first words") stays inside its card. It is cut to the card\'s width less 16 pixels with an ellipsis and keeps the same size on screen at any zoom.\n- A board with many tasks no longer uses up Better Tasks\' limit of 100 decorated checkboxes. A task card now draws a light checkbox of its own instead of a real Roam block, so a 40-task board added 40 real checkboxes before and adds none now, and Better Tasks keeps decorating the rest of the page. Clicking the box still completes the task through Better Tasks.\n- Checked for a freeze when the bench is run back to back with a task board open: five runs and five load-and-unload cycles did not reproduce it.\n\n## 2.7.0 — 2026-10-03\n\n- Task cards. A card whose block is a Roam TODO now looks like a task: Roam\'s own checkbox, the title, and a row of chips under it for the due date, project, priority, repeat, status, waiting-for and GTD. Today\'s due date has a teal border, an overdue task a red one, a done task is dimmed and struck through, and a cancelled one is struck through. Better Tasks\' own pills are hidden inside the card so the chips are not doubled. At map zoom a task shows a check box, its title and its due date; zoomed far out it is a single check box.\n- New Task tool. Press K, or pick it in the dock or the canvas menu, then click the board: a TODO card appears and opens for typing. A task left with no text disappears when you click away, like an empty card. Cmd+Z right after makes one undo step. The card menu has Make task for a plain note.\n- Change a task from its chips. Click the due date, project, priority or repeat chip and pick from a small popover (today, tomorrow, next week or any date; a project from Better Tasks\' list; low, medium or high; a repeat rule). The change is made by Better Tasks itself, so the attribute blocks keep their uid and Plexus still never writes a `BT_attr` block. Cmd+Z after a chip change is Roam\'s undo, not the board\'s. Without Better Tasks the tool makes a plain TODO card and the chips are read-only.\n- Finishing a task works the way it does in Roam. Tick the checkbox on the card and Better Tasks writes the completed date and, for a repeating task, the next occurrence on its daily or project page. A toast tells you the date and offers Add to board. Dropping a card on Done in the Kanban view does the same through Better Tasks.\n- Drag a task card onto a daily-page card (or a section named for a day) and its due date becomes that day, in the same attribute block. Hold Shift to move the card without changing the date.\n- Better Tasks\' attribute blocks and its Activity log no longer count as children: they are never rows, never in the outline or the peek, and never a "▸ N" badge. Renamed attributes are read from Better Tasks.\n- Three new settings: Task tool (show it in the dock), Task chips (full, due only or none) and Default project for new tasks.\n\n## 2.6.0 — 2026-10-03\n\n- Editing a card no longer shrinks it. Opening a card or a sticky for editing used to let it collapse toward the height of one line, and its arrows came loose. The card now keeps its size for the whole edit, the editor fills it, and the text is no longer cut to one line when you start typing. Edges stay attached.\n- Sticky notes are rebuilt to work like the RoamJS sticky notes, and they stay saved. Each one has a coloured header bar you drag, with a short title, a colour dot and a minimize button. The body is the live Roam block: click once and type, with tags, images, links and the slash menu. Drag a corner or edge to resize. Minimize folds a note to its header and remembers it. There is no close button; Delete or the menu removes a sticky and Cmd+Z brings it back.\n- Page cards open faster. A card now shows all its rows as plain text at once, then turns the rows you can see into live Roam blocks a few at a time. Rows scrolled out of view, and heavy rows such as charts, embeds and images, wait until they are on screen. A page you pulled once is reused while the card is open. A 146-row page card used to block for about 150 ms while it drew; now it paints in about 20 ms.\n- Arrows to blocks now stay on their block. When a chart or an image above the target row loads late, or a row turns live, the card re-measures its rows and the arrow follows. Each linked row shows a small dot in its own arrow\'s colour, so two arrows into one card stay apart, and hovering one arrow lights only its row.\n- New tooltips for the sticky header: drag, minimize or expand, and the colour dot.\n\n## 2.5.0 — 2026-10-03\n\n- The connection preview is cleaner. The target block is now a highlighted bar inside its page card, at the block\'s real place in the page, with its text cut to the card\'s width, and the arrow runs into the bar with a head like the one on the board. Nothing spills over a neighbouring card any more.\n- The preview opens where it never covers the chip or the block line it belongs to: under it, else above, else beside it, shrinking and scrolling inside when the window is small. It follows the chip while you scroll or resize and closes when the chip leaves the screen.\n- Roam\'s breadcrumb above a connection block (in linked references and when you zoom into the block) now opens the same preview on a plain click, because Roam\'s own link there only led to "Board › Connections". A small ▦ marks it. Shift-click, Cmd-click and Ctrl-click still do what Roam does. Unloading removes the marks and the listeners.\n- Resize grips, connection dots and arrow-end handles keep the same size on screen at every zoom, so they are easy to grab on a zoomed-out board and no longer huge when zoomed in.\n- Light mode was checked on every new surface. Fixed: the connection chip could run past the edge of its block, and its teal was too pale on white.\n\n## 2.4.0 — 2026-10-03\n\n- The Add and Info panel now opens to the left of the control rail instead of covering it. The minimap steps left of an open panel. The rail keeps one fixed width, so the version badge no longer pushes it wider.\n- An arrow that ends on a block now visibly points at it. The line continues into the page card and its head stops beside the row\'s text. The row keeps a mark in the arrow\'s color (a left rule and a light tint; in the dark theme a border only, no fill). Hover the arrow and the row lights up; hover the row and the arrow thickens and a tooltip names the other card and the label. When the row has scrolled out of view, the arrow ends in a pill at the card edge with an arrow and the block\'s first words; click it to scroll the row back.\n- Connections now show up where Roam draws them. Under every connection block in the outline, the sidebar or a block\'s linked references, a small chip reads "A —label→ B · on Board" and names the block when the arrow ends on one. Click the chip to see a preview: a map of the two cards with the arrow and the target row, plus Open on board and Open in sidebar. Open on board opens the page, enters a nested board if needed, and selects the connection. Nothing is written, and unloading removes every chip.\n- The card\'s hover toolbar no longer disappears on the way to it. It waits 400 ms after the pointer leaves the card, so you can reach it and open its color picker. Moving to a different card switches the toolbar at once with no flicker. Escape, panning and zooming hide it immediately.\n- With the Hand tool you can now resize: a press on a resize grip resizes, anything else pans, and Space-drag still pans over grips. Page cards have a wider grip band on the right and bottom edges and a larger corner that sits above the scrollbar. The grips show when you hover a card in hand mode.\n\n## 2.3.0 — 2026-10-03\n\n- Board rows in page cards. A page card for a page that holds a board shows that board as a small map with its title and item count, not a grey box. After four maps on one card, the rest are one-line chips. The row for the board you are looking at says "this board". Click opens the board; Shift-click opens it in the right sidebar.\n- A row that Roam cannot render inside a card, such as an empty `{{[[roam/render]]}}`, now shows its raw text, muted, instead of "Failed to render". This also ends the Roam console errors the old page-card row caused.\n- Hover tooltips. Every control on the board bar, the dock, the rail, the card toolbar and the Properties panel shows its name, its shortcut and a one-line description after a short hover. Keyboard focus shows it at once. The tip sits below the board bar, above the dock, left of the rail, and stays inside the board. Settings, Hover tooltips, turns them off and hands the text back to the browser. Tooltip delay is instant, 350 ms or 800 ms.\n- A tooltip no longer stays on screen after the control it described is removed.\n- Ref cards and image cards show readable titles everywhere: Table, Kanban, Graph, Timeline, Gallery and Find use the first line of the referenced block or the image\'s alt text, never `((uid))` or a blank. Find matches the text a ref card shows.\n- Graph view draws a line for every connection, fits all cards inside its window and no longer scrolls them out of sight.\n- The end handles of a short arrow with a label can be grabbed. The label steps aside while the arrow is selected.\n- Gallery captions show the image\'s alt text, or nothing. They never show raw markdown.\n- The Escape that closes Search, a menu, or Gallery, Timeline and Graph no longer also leaves fullscreen.\n- Present mode hides the board bar, dock, Properties, rail, minimap and side panel, and brings them back on exit.\n- Shift-click only extends the selection. It no longer opens the Info panel.\n- Gallery, Timeline and Graph, the board bar and the Properties pill are opaque now, so nothing shows through. A collapsed Properties pill is only as wide as its label.\n- Section titles in the zoomed-out overview may run wider than a small frame before they are cut off.\n- Gallery, Timeline and Graph are also under More, Views, and under Views in the canvas menu. The template entry is now "Timeline template". An empty Timeline says that a date attribute or a daily-page reference makes a card dated.\n- The thin dotted curves that run across a board between cards are graph links, drawn for every shared page reference or attribute. They are not a stray line. Links, in the board bar or the L key, switches them off or to attributes only.\n\n## 2.2.0 — 2026-10-03\n\n- Board bar and tool dock. The top bar is now the board bar: breadcrumbs, Add, Info, links, views, background, present and More. The nine tools moved into a floating dock along the bottom. Settings, Toolbar layout, brings back the 2.1 look (Classic) or hides the top bar until the pointer nears the top edge (Dock only).\n- Dock settings: position (bottom, left or top), shape (pill or strip), tool names under the icons, and button size. A board can set its own dock position from the More menu, Dock position for this board; opening a board still writes nothing.\n- The active tool slides a highlight behind it. A locked tool (double-click) shows a padlock. In dark mode the active tool is a border and a dot, so it stays visible without a fill.\n- Dock options. With Card, Sticky, Section or Shape active, the dock shows that tool\'s colors, the block or card look, or the shape kinds. With nothing selected, a pick styles the next item you create with that tool and is forgotten when the board closes; with cards selected, it restyles them as before. One undo reverses it.\n- The last breadcrumb carries the board\'s own color, and the bar\'s bottom edge takes the same tone.\n- Overview zoom keeps Select, Hand and Board in the dock. A board narrower than 560 px gets smaller buttons and no options. A left dock no longer sits on the Properties panel.\n- The active and locked tool styles in the top bar lost to Roam\'s own button rules in dark mode. They hold now.\n\n## 2.1.0 — 2026-10-03\n\n- Enter in a card adds a line to the card\'s block, like a node in a native Roam diagram. Settings, Cards, "Enter in a card" set to Child brings back the old behavior of making a child block.\n- An empty white panel with a Close button no longer covers boards.\n- Pasting one image into a card inserted it twice. It now inserts once.\n- Dragging an image onto a card that is being edited works. Dropping an image on a card adds it after the card\'s text instead of replacing the text.\n- Whole-page cards: a page card shows the page title as a header and the whole outline, scrolls inside the card, and edits where you click. Add page… in the canvas menu adds a page by search. Dropping a page from the left sidebar makes a page card.\n- Arrows to a single block. Drag an arrow end over a page card and the row under the pointer lights up; dropping there connects to that block with a real `((ref))`, so it shows in Roam\'s backlinks. Dropping on the title connects to the page. Ends follow their row as the card scrolls and clamp to the edge with a marker when the row is out of view. A selected arrow has end handles to re-aim it, and the arrow menu has Connect to the page instead.\n- Card children. A note, block or ref card shows only its own block. A ▸ N badge opens the children as an editable outline inside the card, remembered per card, and hovering the badge peeks at them. Spread children as cards makes one card per child with an arrow back.\n- Note: note and ref cards now show only their own block until the badge is opened.\n- A selected arrow\'s end handle could only be grabbed on the half outside the card it ends on. The whole handle now grabs.\n\n## 2.0.0 — 2026-10-03\n\n- Card editing, outline navigation, templates, the table, snapshots, and the graph tools that landed after 1.3.0.\n- Gallery, timeline, and a read-only graph of the board. A section can lay cards out by date. Connections can bend or route around cards. Present shows a section\'s first child as notes, plus a laser and a pen that are dropped on exit.\n- A diagram in the right sidebar stays a gap until that window is on screen. Opening the sidebar parks the boards on the page.\n- A 300-card board shows its first shells in about 1 second and finishes the rest over the following frames. Detail and overview pan hold 60 fps. Zooming across the detail threshold is about 57 to 59 fps, and that switch no longer produces a long task.\n- The same board in two Roam windows kept the same 6 cards and 4 connections across 30 moves.\n\n## 1.3.0 — 2026-10-01\n\n- Native parity on an enhanced board: plain block cards, a node hover toolbar, a right-hand control rail, a properties panel, PNG export, outline in the sidebar, boards in the sidebar, edge styles, native embeds, style import on Enhance, per-card expand, minimap drag, keyboard parity, and Edit Block.\n\n## 1.2.0 — 2026-09-29\n\nFixes from the second round of testing on 1.1.0:\n\n- **Zoomed-out cards stay inside their box.** Map view is a clean title-only tile: three-line clamp, font capped by the tile height, nothing spills below the card. Ref titles are cut at 120 characters and header text at 160. The level of detail now switches while you zoom (with hysteresis, one class toggle), not only when the gesture ends. A third tier below 20% shows section titles only.\n- **Nested board thumbnails are real thumbnails.** A padded frame with mini cards (border, fill, title), sections as tinted frames, connections, and an "Empty board" state, instead of one white box.\n- **Sections auto-fit.** A card moved, resized, created, or pasted past a section edge grows the section to contain it (24 px padding), live during the drag and saved as one undo step. It cascades through nested sections, never shrinks by itself, and can be turned off per section or with the `auto-fit-sections` setting.\n- **Board backgrounds.** Dots, lines, grid, and plain patterns and paper or ten palette tones, chosen per board from the Background button (stored in the board block\'s props) with a default in Settings.\n\nAdded:\n\n- **Right-click menus** for the board, cards, sections, text, connections, multi-selection, and the More menu.\n- **Duplicate and clipboard.** Alt+drag and Cmd+D duplicate (Alt+Shift makes `((ref))` cards); copy and paste as refs or as copies, across boards; pasted text and images become cards. Send to board, Boards tab (every board in the graph), Outline tab.\n- **Keyboard.** Tab and Shift+Tab step through the outline, F focus mode, Q quick look, P presentation, M mind map from a card\'s child blocks, Cmd/Ctrl+Alt+Enter fold, double-click a bottom or corner grip to fit or reset height. Arrow keys nudge the selection 1 px (Shift for 10 px); Alt+Arrow selects the nearest card in that direction (Alt+Shift adds), as in Heptabase.\n- **Layout tools.** Tidy (row, column, grid, outline order), same size, fit height, reset size, fit section, fold all, optional space-out after a move, "Back to content" button.\n- **Pin.** Pinned items do not move, resize, or delete.\n- **Card badges.** References, boards, and open and done TODO counts, read from Roam (never written); a `((ref))` to a board renders its thumbnail; journal cards for today and this week.\n- **Export.** Export board as SVG and Copy board as text (commands and board menu).\n- **Review fixes.** Cut and paste now moves a note, text or section (the clipboard carries a snapshot; before, the paste was a dead `((ref))`). The Open button, double-click and Enter open a whiteboard-shortcut card. Settings changes reach open boards\' sessions live. A pinned section is never grown by auto-fit. Fit height can shrink a card. Fit / Reset size / Same size never leave a card outside its section. A pinned card no longer pushes other cards in space-out. Escape closes the Background popover first. Right-clicking a ref, tag, link or image inside a card keeps Roam\'s or the browser\'s menu. Tab is only taken while the board itself has focus. A tall menu scrolls inside a small board. Thumbnails title `((ref))` and image cards. The section grows live while you type in a card at its edge. Card badge queries run in idle slots and are cached for two minutes.\n- New settings: default board tone, map view threshold, auto-fit sections, space out cards, show card badges; grid accepts `grid`. API and build: see `docs/api-plexus-1.0.md` ("1.2 additions") and `docs/spec-plexus-1.2.md`; `src/css/*.css` is appended to the bundle.\n\nFixed after live testing in Roam Desktop:\n\n- **One Cmd+Z per operation.** Duplicate, Alt+drag, mind map, Tidy, and a drag that grows a section each took one Cmd+Z per block written; the Undo toast button undid one block. Writes of a transaction are now grouped, and Undo and Redo step over the whole group.\n- Map-view cards clamp to exactly three lines (no fourth-line sliver, no ellipsis in the middle of a tall card); section titles show an ellipsis; far zoom-out no longer paints a dot moire; colored cards read at overview zoom; whiteboard-shortcut cards keep their thumbnail at map zoom.\n- Ctrl-wheel zoom and paste use the board\'s current position after the Roam page scrolls (they were off by the scroll distance).\n- Pasted images are `![](url)`, not `![](![](url))`.\n- The section preview no longer snaps back while you type in a card at its edge.\n- Fit keeps content below the toolbar and left of an open panel (Outline click fits the visible area); the context bar no longer covers the toolbar or the panel; double-click on the middle of a card\'s bottom edge fits its height.\n- Mind map from a card that already has child cards on the board lays the rest out around them, and says when the 24-branch cap left nodes out. Add this week no longer stacks a card on an existing one. Duplicating a section says "section".\n- The OS dark-mode hint no longer darkens a board on a light Roam theme.\n- **Typing in a card: Enter no longer drops you out of the card.** Root cause: the card editor stopped the mouseup that Roam uses to end its block drag-select, so a new block created under the resting pointer turned the edit into a block selection. Mouseup now passes through.\n- **Undo limits.** Roam keeps only the last 50 changes, so one Cmd+Z sequence can undo an operation only if it fits. Mind maps cap at 24 branches ("Mind map: 24 of 45 branches (cap)") and bulk adds (large pastes, multi-drops, Add all) at 45 cards ("Added 45 of N (Roam undo holds 50 changes)").\n\n## 1.1.0 — 2026-09-29\n\nFrom the first round of testing on 1.0.0:\n\n- **Cards show their content.** Note and block-reference cards render the whole block (and its children) instead of a truncated first line over an empty body. A long single-line `((ref))` card is readable again.\n- **Drag blocks in from Roam.** Dragging a bullet from the outline or the right sidebar onto a board adds it as a `((ref))` card (a page becomes a `[[page]]` card). Multi-block drags stack. The source block is never moved.\n- **Typing in a card.** Enter adds lines inside the card and keeps the caret there; if Roam drops focus while it moves between blocks, the editor takes it back. The card header no longer repeats and lags behind what you type, and text items keep their heading size while editing.\n- **Nested boards (Heptabase sub-whiteboards).** New Board tool (W): click or drag to add a board card, or select cards and choose **Move into new board**. Board cards show a mini map, item count, and a name field. Double-click or Open goes into the board in place with a `Parent › Child` breadcrumb; click a crumb or press Esc to go back up. Drag a card onto a board card to move it inside (with Undo). Boards opened from their own page get crumbs for their parent boards.\n- **Collapsed board blocks.** The board block is collapsed once so Roam does not list its cards as bullets under an inline board; expand the bullet to see them. Turn it off with **Collapse board blocks in the outline**. A nested board no longer opens a second overlay from an expanded outline.\n- Import and Restore keep a nested board\'s marker; a board deleted while open closes cleanly (a nested one pops to its parent).\n\n## 1.0.0 — 2026-09-28\n\nRewrite. The 0.6 canvas (one 2,200-line closure) is replaced by a model / host / session / view split with 204 unit tests and a live CDP gate on Roam Desktop.\n\n- **Everything is a Roam object.** Card layout lives in each block\'s `:block/props` (`plexus` key), not on `[[plexus-diagram/metadata]]`. Sections are parent blocks of their cards. Connections are blocks under a collapsed **Connections** child that read `[[A]] → label → [[B]]`, so both ends get a backlink and notes live as children.\n- **Graph links.** References and attributes that already exist between cards are drawn as dashed arrows colored by relation (`causes`, `Detected by`, `mentions`). **Write to graph** turns a labelled connection into `label:: [[B]]` on the source.\n- **Heptabase features.** 10 colors for cards, sections, text, and connections; sections drawn by drag or Cmd+G around a selection, with titles above the frame; ports on every edge; curve / straight / elbow routes, direction, dash, weight; selection box, alignment guides, align / distribute; text headings; minimap; board search; Add panel with Search and Related; card editing with Roam\'s own editor (page cards open the whole page); zoomed-out map view with readable titles.\n- **Fast by construction.** Pan and zoom move one transform (p95 frame 4.5 ms on a 120-card board, no renders, no writes). Only on-screen cards render content; zoomed out, cards show titles only. Opening a board writes nothing; the viewport is per device.\n- **Fixed from 0.6.4:** Section tool made two frames per drag and one per click; sections did not hold cards and had no color; the connection inspector covered the connection; text typed into a new card was lost; the sync indicator went pending on pan and zoom; diagrams on normal (non-daily) pages were never discovered; `[[links]]` inside cards did not open; keyboard shortcuts were swallowed by the diagram block.\n- **Migration.** Boards enhanced with 0.6 upgrade once on first open (positions, colors, sections with their cards, connections with labels and styles). Native diagrams import on **Enhance** (positions, groups as sections, edges as connections). Diagrams you never enhance are never written.\n- Commands: Enhance this diagram, New whiteboard here, Restore native diagram, Fullscreen this diagram.\n\n## 0.6.4 — 2026-09-05\n\n- **Inspector Comment** — converts the edge label to native Roam comments (one-way → target, two-way → both) then clears the pill.\n\n## 0.6.3 — 2026-09-05\n\n- **Idle card children** — after click-away, idle cards `renderBlock` the card uid so child bullets stay visible; deep pull includes nested `:block/children`; empty placeholder only when string is blank and there are no children.\n- **Board background** — toolbar cycles Dots / Lines / Solid (`grid-style` persisted).\n\n## 0.6.2 — 2026-09-05\n\n- **Connect hit-test** — targets resolve from the painted card rects (`getBoundingClientRect`, 12px handle inflate) before `elementsFromPoint` and world-rect math, and the card hovered on the last pointermove is the fallback for a captured pointerup.\n- **Rubber-band** — the edge and temp-wire SVGs cover content ∪ viewport (2000px pad) so the dashed wire paints across a panned board.\n- **No junk cards** — a click-click that misses a card cancels the arm; only a real drag onto empty board creates a linked card.\n- **Version badge** — the toolbar stamps the package version, not Roam\'s `DEV` developer-extension version.\n\n## 0.6.1 — 2026-09-05\n\n- **Connect hit-test** — when Electron\'s `elementsFromPoint` misses cards under `.pxd-world`, resolve targets from world-space node rects (12px handle inflate). Click-click arms and drag-to-card both work.\n- **Delete cards** — Delete/Backspace on a selected card removes it from the diagram (adapter + metadata), not just edges.\n- **Scratch children** — `blankScratch` deletes scratch-host children so a new card editor never inherits the previous card\'s bullet tree.\n\n## 0.6.0 — 2026-09-05\n\n- **Visible arrows** — connector stroke and marker fill are resolved colors, not `var()` in SVG attributes. Marker ids are unique per canvas. Heads scale with zoom (`clamp(10 / zoom, 6, 24)`).\n- **Ports** — drag from a card handle stores `from::` / `to::` (`auto|top|right|bottom|left`). Click-click and connect-to-empty still work.\n- **Per-edge direction** — `direction::` `oneWay|twoWay|none` on `edge A->B`. Global Arrowheads is the default for new edges only.\n- **Inspector** — click a line for a floating cluster: direction, Flip (disabled if the reverse exists), Route, Label, color, Delete. Mutations `await flushLayout()`.\n- **Schema** — optional `from::` `to::` `direction::` `color::` children under the existing edge row. `[[plexus-diagram/metadata]]` only. No `:diagram/*` / `:harc/*`.\n\n## 0.5.0 — 2026-08-29\n\n- **Connect two-click + temp wire** — Connect stays on after an edge. Click-click or drag; the rubber-band lives on `.pxd-edges-temp` above the cards and follows the cursor immediately. Handles are a 12px disc with a larger hit target.\n- **In-place nested boards** — opening a nested diagram does not call `openBlock` / change the hash. The parent session stays loaded; crumbs sit on the toolbar and Esc pops one level.\n- **Section and card color** — toolbar swatches (eight Blueprint-ish ids plus default) write `color::` on nodes and sections. Dark mode uses the border as the signal.\n- **Section click-rename** — a single click on the section title starts rename; pointerdown on the label does not drag the frame.\n- **Review pack** — session swap flushes the outgoing board then cancels persist timers; unused parent pull-watches stop; Esc nest-pop only when the overlay owns the pointer; connect-to-empty rolls back a failed edge persist.\n\n## 0.4.2 — 2026-08-28\n\n- **Svy Beam caret** — overlay inputs use native `caret-color` and `cursor: text` (higher specificity than Beam\'s custom hotspot cursor). `focus({ preventScroll: true })` plus a capture-phase guard stop Roam from scrolling the outline copy of an editing card into view.\n- **Right sidebar inset** — fullscreen also ResizeObserves the right sidebar and re-places on the next two animation frames after the article class changes. When the article\'s right edge is within 8px of the viewport, the overlay `right` inset is 0.\n- **Library portal** — the drawer mounts on `document.body` (fixed, 320px, 14px) so it is not scaled by `.pxd-world`. Items are opaque `#f5f8fa` / `#182026`. Empty search hides `roam/js/` and `roam/css` pages.\n- **Nested crumbs** — opening a nested board pushes the parent onto a crumb stack (`Parent › Current`). Clicking a crumb opens that block (or page). Nested cards show the parsed name; unnamed boards get an inline "Name this board…" field.\n- **Connect to empty** — dragging a handle onto empty board creates a card at the drop point, links it, and enters edit (Heptabase pull-from-port). Handles are 14px. An existing edge is kept if you connect the same pair again.\n- **Review pack** — nested open passes parent uid explicitly; nest stack truncates on multi-level back; drop parsing no longer treats incidental 9-char tokens as block refs; connect failures do not leave dangling edges; nested name timers clear on repaint and dispose.\n\n## 0.4.1 — 2026-08-28\n\n- **Pending-changes patch** — layout persist no longer delete-all/recreates the metadata tree. Existing diagram blocks are patched in place: only changed `pos::` / `size::` / `color::` / edge / section rows are written, identical strings are skipped, and gone ids are the only deletes. Viewport persist is still the one-line `setViewport` path.\n- **Article-pane fullscreen** — fullscreen follows `.rm-article-wrapper` (below the topbar, inset with the left sidebar) instead of `sidebar.right`. ResizeObserver on the article and sidebar plus a class MutationObserver re-place the overlay when the sidebar opens or closes. Drop `[[page]]` / block uid from the sidebar onto the board to add a card.\n- **Visible sections** — sections use a 2px solid border, a light blue fill, `pointer-events: auto`, a default "Section" label, drag, corner resize, and double-click rename.\n- **Opaque library** — the drawer sets its own `#ffffff` / `#1c2127` background so it stays readable when mounted outside `.pxd-root`. Blank titles and `roam/js/` pages are hidden until you search.\n- **Nested overlay** — adding or opening a nested `{{[[diagram]]}}` card registers it as enhanced and opens our overlay fullscreen, not native Empty Roam Diagram. Nested cards show "Nested diagram" instead of the raw macro. Nested open no longer waits on the parent canvas.\n- **Connect hit-testing** — `cardFromPoint` walks `elementsFromPoint` and ignores edge-hit strokes; temp edges are `pointer-events: none`; connect-tool handles stay visible.\n\n## 0.4.0 — 2026-08-28\n\n- **Fullscreen vs breadcrumbs** — fullscreen hides `#roam-breadcrumbs-panel` / `.breadcrumbs-content` only while `body.pxd-has-fullscreen`. The overlay sits below the remaining topbar and to the right of the left sidebar (article fill, not the whole window). Resize recomputes the inset. Inline boards leave breadcrumbs alone.\n- **Scratch-host card editor** — double-click no longer `renderBlock`s the card uid (the hidden native diagram still owns it). Edit mounts on a `pxd:scratch` child of `[[plexus-diagram/metadata]]`, hydrates until MutationObserver-quiet, then a trusted mousedown/mouseup/click. Commit pulls the scratch string onto the card; empty pulls never overwrite known text.\n- **Connection notes** — labels live on the connector (`label::` under `edge A->B`), not as extra cards. Double-click the line or click the midpoint pill. `show-edge-labels` defaults on.\n- **Commands** — palette and slash keep Enhance, Restore, and Fullscreen only. Toolbar is a single nowrap row. `V` / `C` / `N` / `F` when the overlay owns the pointer.\n- **Sync silence on open** — remounting an already-enhanced diagram no longer rewrites `[[plexus-diagram/metadata]]` or `:rf-diagram` viewport props when the stored snapshot already matches.\n- **Viewport-only persist** — pan/zoom/fit writes only the `viewport::` metadata line; node/edge/section children are left intact.\n- **Dirty flags** — initial fit, fullscreen resize, and dispose no longer schedule Roam writes; persist runs only after real user gestures (pan, zoom, drag, Fit, etc.).\n\n## 0.3.2 — 2026-08-28\n\nDouble-clicking a card no longer blanks its text: `setBlockFocusAndSelection` was focusing the outline copy of the same uid (Roam then cleared the overlay mount), and a same-tick `focusout` committed an empty pull. Overlay editors now keep a text fallback until `renderBlock` hydrates, ignore focusout for 1s, and refuse to commit an empty pull over known text. Fullscreen sits below `.rm-topbar` so RoamJS breadcrumbs stay clickable and the Plexus toolbar is not hidden under it.\n\n## 0.3.1 — 2026-08-28\n\nHouse / daily-tab navigation left a `position:fixed` overlay covering the daily notes. Native Maximize unmounts on route change; our mount often survives because the diagram block is still in the outline. `hashchange` / `popstate` now exit fullscreen, drop `--zoomed`, and restore the inline height whenever the open page uid is no longer the diagram. The 250ms reconcile does not do this, so a Fullscreen click on an inline embed is not immediately undone.\n\n## 0.3.0 — 2026-08-28\n\nCanvas rewrite: the board is usable. Imported native React Flow nodes (165×83 on the live graph) are floored to real cards (min 240×140, default 280×160), and a viewport that paints any card under 140px, has zoom below 0.7, or shows no card at all is rejected and replaced by a fit once the root has a size (single card fits at zoom 1.5, centred; fitted viewport persisted once). Pan, wheel zoom, card drag and corner resize touch only CSS (`.pxd-world` transform, one card\'s box, the edges hanging off it) — no `innerHTML` rebuild, no Roam write per pixel; viewport/layout persist on pointer-up and wheel-end with a 150 ms debounce, serialized through one queue per session. Cards render with `renderString`; double-click swaps in the native block editor (`renderBlock`) and blur/Esc commits it back, so Roam chrome no longer paints into every card. `render()` reconciles card elements by uid, so a pull during editing never tears down the caret. Drag from a card\'s connect dots (or any card with the Connect tool) onto another card to link. Double-click empty board adds a card at that point; Card/Nested tool clicks still add. A hint pill explains pan/add/fullscreen on boards with ≤1 card until the first pointer down. Zoomed diagram pages open in fullscreen (`fullscreen-on-zoom`, default on; inline embeds stay inline). Grid lives outside the world and tracks pan/zoom; a live minimap replaces the empty box; toolbar buttons are grouped, high-contrast, with a zoom readout. Dark mode: card and toolbar backgrounds from `--bc-main` / `--bc-menu`, 1px visible borders, 2px `--cl-blue` ring for selection — no tinted fills. `applyPull` keeps in-memory positions, sizes, edges, sections, and viewport (a pull only refreshes content), so a debounced persist can no longer be undone by a concurrent add.\n\n## 0.2.1 — 2026-08-27\n\nFix dead board on zoomed block pages. Navigating to `#/app/<graph>/page/<uid>` destroys the overlay DOM and the MutationObserver never remounted it. A reconcile pass (hashchange/popstate + 250ms interval) now prunes detached views, finds the native canvas — via the dated `block-input-…-body-outline-MM-DD-YYYY-<uid>` suffix or the location hash when ancestors carry no `data-uid` — and remounts the overlay. The pre-paint guard uses `display: none` (React Flow nodes punch through `visibility: hidden` by re-setting `visibility: visible` on themselves) and also hides the native `.rm-diagram-title-panel` and `.react-flow` chrome. Zoomed mounts fill the article (`pxd-mount--zoomed`). Every mount is stamped `data-diagram-uid` and remounts are idempotent per uid.\n\n## 0.2.0 — 2026-08-27\n\nHeptabase-usable overlay: full-bleed board sizing from native diagram (min 560px), horizontal labeled toolbar with zoom/fit/**Fullscreen** (Esc exits; covers the window like native Maximize), empty-canvas pan and cursor-anchored wheel zoom, Roam bullet/ref-count chrome hidden on cards, searchable library drawer that toggles without covering the board, and card titles off by default.\n\n## 0.1.4 — 2026-08-27\n\nSlash/command Enhance was a no-op: typing `/enh` puts the diagram block in edit mode, which unmounts `.rm-diagram`. The command now remembers the uid and waits for the native canvas to remount before overlaying.\n\n## 0.1.3 — 2026-08-27\n\nSlash commands use the same labels as the command palette (Roam Grid pattern), so `/enh` lists **Plexus Diagram: Enhance this diagram**.\n\n## 0.1.2 — 2026-08-27\n\nMetadata writes now generate UIDs before `block.create` / `page.create`. Live roamAlphaAPI returns `undefined` from those calls, so the first enhance was dropping `schema-version::`, `enhanced::`, and node/edge lines. Nested-diagram open uses `roamAlphaAPI.ui.mainWindow.openBlock`.\n\n## 0.1.1 — 2026-08-27\n\nLive-wire fixes against roamAlphaAPI (CDP, Svy graph):\n\n- Fix native hide inversion: `.pxd-native-hidden` now sets `display: none`; pending state uses visibility\n- Use EDN string pull pattern for `data.pull`; strip keyword colons from pull results\n- Generate child block UIDs via `util.generateUID()`; default create order `"last"`\n- Viewport writes try `roamAlphaAPI.updateBlock` before `data.block.update`\n- Register slash/context commands via `addCommand`/`removeCommand` with live callback shapes\n- Auto-enhance and focus checks pull `[:block/string]` via `roamAlphaAPI.data.pull`\n- Find native diagram hosts via `diagramElForUid` (id suffix, data-uid, block-ref)\n- Library mounts as overlay drawer; queries `roamAlphaAPI.data.q`; filters daily pages by UID\n- Card/Section toolbar tools place items at click position; library uses viewport center\n- Default `restore-native-on-unload` to false; unload disposes sessions without deleting metadata\n\n## 0.1.0 — 2026-08-27\n\nInitial release of Plexus Diagram.\n\n- Hide native `.rm-diagram` React Flow renderer for enhanced diagrams and mount a vanilla DOM/SVG canvas overlay\n- Keep Roam diagram children as the canonical card store; persist layout on `[[plexus-diagram/metadata]]`\n- Writable viewport via native `:rf-diagram` props; import native node positions when metadata is absent\n- Heptabase-like toolbar, cards, connectors, sections, library sidebar, and fat settings panel\n- Command palette, slash command, and block context menu integration\n- GitHub Pages developer extension at https://svyk.github.io/plexus-diagram\n';
 
 // src/view/color-picker.js
 init_highlight();
@@ -77601,14 +80101,15 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const layoutDock = () => {
     fitDock();
     const b = paletteButtons.get(activeTool);
-    const visible2 = Boolean(b) && px(b.offsetWidth) > 0;
+    const box2 = b ? { x: px(b.offsetLeft), y: px(b.offsetTop), w: px(b.offsetWidth), h: px(b.offsetHeight) } : null;
+    const visible2 = Boolean(box2) && box2.w > 0;
     dockIndicator.classList.toggle("pxd-dock__indicator--locked", activeLocked);
     dockIndicator.classList.toggle("pxd-dock__indicator--idle", !visible2);
     if (!visible2) return;
-    dockIndicator.style.setProperty("--pxd-ind-x", `${px(b.offsetLeft)}px`);
-    dockIndicator.style.setProperty("--pxd-ind-y", `${px(b.offsetTop)}px`);
-    dockIndicator.style.setProperty("--pxd-ind-w", `${px(b.offsetWidth)}px`);
-    dockIndicator.style.setProperty("--pxd-ind-h", `${px(b.offsetHeight)}px`);
+    dockIndicator.style.setProperty("--pxd-ind-x", `${box2.x}px`);
+    dockIndicator.style.setProperty("--pxd-ind-y", `${box2.y}px`);
+    dockIndicator.style.setProperty("--pxd-ind-w", `${box2.w}px`);
+    dockIndicator.style.setProperty("--pxd-ind-h", `${box2.h}px`);
   };
   const DOCK_PAD = 14;
   const DOCK_GAP = 4;
@@ -77670,10 +80171,13 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   let dockFrame = null;
   const scheduleDock = () => {
     if (dockFrame) return;
-    dockFrame = timers.frame(() => {
+    let ran = false;
+    const handle = timers.frame(() => {
+      ran = true;
       dockFrame = null;
       layoutDock();
     });
+    dockFrame = ran ? null : handle;
   };
   listen(palette, "pointerenter", () => layoutDock());
   let pendingMap = {};
@@ -77762,8 +80266,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     root.classList.toggle("pxd-root--docked", docked);
     toolGroup.style.display = docked ? "none" : "";
     const dockSetting = setting("dock-position");
-    const own = DOCK_POSITIONS.includes(boardDock) ? boardDock : null;
-    const side2 = own ?? (DOCK_POSITIONS.includes(dockSetting) ? dockSetting : "bottom");
+    const own2 = DOCK_POSITIONS.includes(boardDock) ? boardDock : null;
+    const side2 = own2 ?? (DOCK_POSITIONS.includes(dockSetting) ? dockSetting : "bottom");
     for (const name of DOCK_POSITIONS) root.classList.toggle(`pxd-root--dock-${name}`, docked && name === side2);
     const styleSetting = setting("dock-style");
     const shape = DOCK_STYLES.includes(styleSetting) ? styleSetting : "pill";
@@ -77773,7 +80277,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     watchReveal(layout === "dock-only");
     paintBar();
     applyDockOptions();
-    layoutDock();
+    scheduleDock();
   };
   const toolbarApi = {
     el: toolbar,
@@ -77792,7 +80296,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         b.classList.toggle("pxd-dock__btn--locked", id === tool && Boolean(locked));
       }
       applyDockOptions();
-      layoutDock();
+      scheduleDock();
     },
     setPending(map) {
       pendingMap = map || {};
@@ -79546,11 +82050,11 @@ function groupByStatus(items, palette) {
     count: 0
   }));
   const none = { name: NO_STATUS, key: "", glyph: "diamond", cards: [], count: 0 };
-  const done2 = { name: DONE_COLUMN, key: "done", glyph: "", cards: [], count: 0 };
+  const done3 = { name: DONE_COLUMN, key: "done", glyph: "", cards: [], count: 0 };
   const byName = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
   for (const item of items || []) {
     if (isDoneItem(item)) {
-      done2.cards.push(item);
+      done3.cards.push(item);
       continue;
     }
     const name = taskStatusOf(item?.string ?? "", palette);
@@ -79559,8 +82063,8 @@ function groupByStatus(items, palette) {
   }
   for (const column of columns) column.count = column.cards.length;
   none.count = none.cards.length;
-  done2.count = done2.cards.length;
-  return [...columns, none, done2];
+  done3.count = done3.cards.length;
+  return [...columns, none, done3];
 }
 
 // src/view/kanban-view.js
@@ -79998,7 +82502,6 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     if (observed !== tb) {
       resize?.disconnect();
       observed = tb;
-      toolbarH = tb.offsetHeight || 0;
       resize = new RO(() => {
         const next = observed?.offsetHeight || 0;
         if (next === toolbarH) return;
@@ -80548,10 +83051,10 @@ var RETRY_NO_LIB_MS = 6e4;
 var COVER_CHARS = 200;
 function raceAbort(promise, signal, ms, timers) {
   return new Promise((resolve, reject) => {
-    let done2 = false;
+    let done3 = false;
     const finish = (fn, v) => {
-      if (done2) return;
-      done2 = true;
+      if (done3) return;
+      done3 = true;
       try {
         timers.clear(id);
       } catch {
@@ -82071,7 +84574,7 @@ function flatParts(mask, w, h) {
   const parts = [];
   for (let s = 0; s < mask.length; s++) {
     if (!mask[s] || seen[s]) continue;
-    const own = new Uint8Array(w * h);
+    const own2 = new Uint8Array(w * h);
     let head = 0;
     let tail = 0;
     queue[tail++] = s;
@@ -82082,7 +84585,7 @@ function flatParts(mask, w, h) {
     let y1 = -1;
     while (head < tail) {
       const i = queue[head++];
-      own[i] = 1;
+      own2[i] = 1;
       const x = i % w;
       const y = (i - x) / w;
       if (x < x0) x0 = x;
@@ -82095,7 +84598,7 @@ function flatParts(mask, w, h) {
         queue[tail++] = j;
       }
     }
-    parts.push({ x0, y0, x1, y1, area: tail, mask: own });
+    parts.push({ x0, y0, x1, y1, area: tail, mask: own2 });
   }
   return parts;
 }
@@ -82805,8 +85308,8 @@ async function readSegments(image, w, h, boxes, mask, scaleX, scaleY, runRec, di
       if (!word.text) continue;
       let box2 = boxPt;
       if (ink) {
-        const own = inkRows(mask, w, crop.proj, Math.max(0, word.x0 - crop.proj.x0), Math.min(crop.proj.w, word.x1 - crop.proj.x0));
-        const base = (own ? own.base : ink.base) / scaleY;
+        const own2 = inkRows(mask, w, crop.proj, Math.max(0, word.x0 - crop.proj.x0), Math.min(crop.proj.w, word.x1 - crop.proj.x0));
+        const base = (own2 ? own2.base : ink.base) / scaleY;
         box2 = { ...boxPt, y1: base + 0.2 * size, y0: base - 0.8 * size };
       }
       items.push(wordItem(word.text, word.x0 / scaleX, word.x1 / scaleX, box2, word.conf));
@@ -83121,8 +85624,8 @@ async function readBody(res, onBytes, signal) {
   let size = 0;
   for (; ; ) {
     throwIfAborted2(signal);
-    const { done: done2, value } = await reader.read();
-    if (done2) break;
+    const { done: done3, value } = await reader.read();
+    if (done3) break;
     parts.push(value);
     size += value.byteLength;
     onBytes(size);
@@ -83284,9 +85787,9 @@ function createOcrWeb({
     return buf;
   }
   async function loadModel(spec, signal, onBytes = null) {
-    const own = joinUrl(assetBase, `assets/ocr/${spec.file}`);
+    const own2 = joinUrl(assetBase, `assets/ocr/${spec.file}`);
     try {
-      return await loadVerified(own, spec, signal, onBytes);
+      return await loadVerified(own2, spec, signal, onBytes);
     } catch (error) {
       if (error?.name === "AbortError" || !spec.url) throw error;
       return loadVerified(spec.url, spec, signal, onBytes);
@@ -83320,13 +85823,13 @@ function createOcrWeb({
   async function prefetch({ signal = null, onProgress = null } = {}) {
     const list = assetList();
     const total = list.reduce((n3, a) => n3 + a.spec.bytes, 0);
-    let done2 = 0;
+    let done3 = 0;
     for (const { spec, model, urls: urls2 } of list) {
-      const onBytes = (n3) => onProgress?.(done2 + Math.min(spec.bytes, n3), total);
+      const onBytes = (n3) => onProgress?.(done3 + Math.min(spec.bytes, n3), total);
       if (model) await loadModel(spec, signal, onBytes);
       else await loadVerified(urls2[0], spec, signal, onBytes);
-      done2 += spec.bytes;
-      onProgress?.(done2, total);
+      done3 += spec.bytes;
+      onProgress?.(done3, total);
     }
     try {
       await lexicon({ signal });
@@ -83459,11 +85962,11 @@ function createOcrWeb({
           }
           reject(abortError());
         };
-        const done2 = (fn) => (value) => {
+        const done3 = (fn) => (value) => {
           signal2?.removeEventListener?.("abort", onAbort);
           fn(value);
         };
-        pending.set(id, { resolve: done2(resolve), reject: done2(reject) });
+        pending.set(id, { resolve: done3(resolve), reject: done3(reject) });
         signal2?.addEventListener?.("abort", onAbort, { once: true });
         try {
           worker.postMessage({ ...msg, id }, transfers || []);
@@ -83671,7 +86174,7 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
     if (downloading) return downloading.done;
     const ctl = new AbortController();
     progress = 0;
-    const done2 = (async () => {
+    const done3 = (async () => {
       try {
         await web().prefetch({ signal: ctl.signal, onProgress: (got, total) => {
           progress = total ? got / total : 0;
@@ -83685,8 +86188,8 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
         downloading = null;
       }
     })();
-    downloading = { ctl, done: done2 };
-    return done2;
+    downloading = { ctl, done: done3 };
+    return done3;
   }
   function cancel() {
     try {
@@ -83801,13 +86304,13 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
   }
   return { status, download, cancel, read: read2, readCells, readBandTitle, readImageText, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };
 }
-var shared2 = null;
+var shared3 = null;
 function sharedDeviceOcr() {
-  if (!shared2) {
-    shared2 = createDeviceOcr();
-    if (supported(globalThis)) shared2.warmTitleLexicon();
+  if (!shared3) {
+    shared3 = createDeviceOcr();
+    if (supported(globalThis)) shared3.warmTitleLexicon();
   }
-  return shared2;
+  return shared3;
 }
 
 // src/view/title-lexicon-warm.js
@@ -84399,15 +86902,15 @@ function createTypeAhead({ doc, isTarget, later, armMs = ARM_MS } = {}) {
       } catch {
       }
     }
-    let done2 = false;
+    let done3 = false;
     if (doc?.activeElement === target && typeof doc.execCommand === "function") {
       try {
-        done2 = doc.execCommand("insertText", false, text4) === true;
+        done3 = doc.execCommand("insertText", false, text4) === true;
       } catch {
-        done2 = false;
+        done3 = false;
       }
     }
-    if (done2) return true;
+    if (done3) return true;
     if (typeof target.setRangeText !== "function") return false;
     const value = String(target.value ?? "");
     const start = Number.isFinite(target.selectionStart) ? target.selectionStart : value.length;
@@ -86056,6 +88559,42 @@ function edgeEndNearWorld(centers, world, radius = 10, zoom = 1) {
   if (!best) return null;
   return { kind: "edge-end", uid: best.uid, end: best.end };
 }
+var COVER_PART = 6;
+function createCoverRepaintJob({ takeUrls, repaint, count, partSize = COVER_PART } = {}) {
+  let uids = null;
+  let at = 0;
+  let counting = false;
+  return () => {
+    if (counting) {
+      counting = false;
+      uids = null;
+      at = 0;
+      try {
+        count?.();
+      } catch {
+      }
+      return true;
+    }
+    if (!uids) {
+      uids = [...takeUrls?.() || []];
+      at = 0;
+      if (!uids.length) {
+        try {
+          count?.();
+        } catch {
+        }
+        uids = null;
+        return true;
+      }
+    }
+    const part = uids.slice(at, at + partSize);
+    at += part.length;
+    if (part.length) repaint?.(part);
+    if (at < uids.length) return false;
+    counting = true;
+    return false;
+  };
+}
 function toggleTodoAt(string, index = 0) {
   if (typeof string !== "string") return null;
   const marks = [...string.matchAll(/\{\{\[\[(?:TODO|DONE)\]\]\}\}/g)];
@@ -86130,9 +88669,80 @@ function createTimers() {
     active2.add(entry);
     return entry;
   };
-  return { later, frame: frame2, idle, count: () => active2.size, cancelAll: () => {
+  let bgPaused = false;
+  const bgArmed = /* @__PURE__ */ new Map();
+  const bgIdle = (fn, label = "view") => {
+    if (typeof globalThis.requestIdleCallback !== "function" || notedSpeedFlags().bgBudget === false) return idle(fn);
+    let entry;
+    let cancel = null;
+    const arm4 = () => {
+      cancel = sharedBgBudget().idle((d) => {
+        active2.delete(entry);
+        bgArmed.delete(entry);
+        fn(d);
+      }, { label });
+    };
+    entry = () => {
+      cancel?.();
+      cancel = null;
+      active2.delete(entry);
+      bgArmed.delete(entry);
+    };
+    bgArmed.set(entry, { arm: arm4, off: () => {
+      cancel?.();
+      cancel = null;
+    } });
+    if (!bgPaused) arm4();
+    active2.add(entry);
+    return entry;
+  };
+  const bgRun = (part, opts) => {
+    let entry;
+    let stop3 = null;
+    const arm4 = () => {
+      stop3 = sharedBgBudget().run((d) => {
+        let done3 = true;
+        try {
+          done3 = part(d) === true;
+        } finally {
+          if (done3) {
+            active2.delete(entry);
+            bgArmed.delete(entry);
+          }
+        }
+        return done3;
+      }, opts);
+    };
+    entry = () => {
+      const s = stop3;
+      stop3 = null;
+      active2.delete(entry);
+      bgArmed.delete(entry);
+      s?.();
+    };
+    bgArmed.set(entry, { arm: arm4, off: () => {
+      const s = stop3;
+      stop3 = null;
+      s?.();
+    } });
+    if (!bgPaused) arm4();
+    active2.add(entry);
+    return entry;
+  };
+  const pauseBg = () => {
+    if (bgPaused) return;
+    bgPaused = true;
+    for (const b of bgArmed.values()) b.off();
+  };
+  const resumeBg = () => {
+    if (!bgPaused) return;
+    bgPaused = false;
+    for (const b of [...bgArmed.values()]) b.arm();
+  };
+  return { later, frame: frame2, idle, bgIdle, bgRun, pauseBg, resumeBg, count: () => active2.size, cancelAll: () => {
     for (const c of [...active2]) c();
     active2.clear();
+    bgArmed.clear();
   } };
 }
 var ANNOTATE_TOAST = "Drop the image into the drawing";
@@ -86754,7 +89364,7 @@ function buildBoardView(onFail, {
       panel.refreshChanged?.();
       return;
     }
-    timers.idle(() => {
+    timers.bgIdle(() => {
       if (disposed || gen !== changedGen) return;
       const b = board2();
       if (!b || typeof host?.editTimes !== "function") return;
@@ -86880,6 +89490,7 @@ function buildBoardView(onFail, {
   };
   let themeKey = null;
   let themeFollow = null;
+  let themeReady = false;
   try {
     themeFollow = createThemeFollow({
       doc,
@@ -86904,9 +89515,20 @@ function buildBoardView(onFail, {
       themeFollow?.apply?.();
     } catch {
     }
+    themeReady = true;
     const key = `${dark}|${hl}`;
     const flipped = themeKey !== null && key !== themeKey;
     themeKey = key;
+    if (!disposed) {
+      try {
+        underlay.dropColors?.();
+      } catch {
+      }
+      try {
+        paintOverviewCover();
+      } catch {
+      }
+    }
     if (!flipped || disposed) return;
     try {
       askThemeChanged();
@@ -86915,7 +89537,6 @@ function buildBoardView(onFail, {
     repaintItemStyles();
     scheduleContent();
   };
-  applyTheme();
   const readBlock = (id) => {
     try {
       return host?.blockString?.(id);
@@ -86989,6 +89610,7 @@ function buildBoardView(onFail, {
   let settleTimer = null;
   let searchMatches = [];
   let searchIndex = -1;
+  let searchQuery = "";
   let frameHandle = null;
   let fsDispose = () => {
   };
@@ -87151,11 +89773,11 @@ function buildBoardView(onFail, {
     const uid = row4.dataset?.uid || "";
     const heavies = uid ? outlineHeavies(uid) : [];
     if (heavies.length) {
-      const own = outlineRead(uid);
-      const ownSplit = embedSplit(own, { read: outlineRead, cover: outlineCover, uid });
-      if (!ownSplit.posters.length && own.trim()) {
+      const own2 = outlineRead(uid);
+      const ownSplit = embedSplit(own2, { read: outlineRead, cover: outlineCover, uid });
+      if (!ownSplit.posters.length && own2.trim()) {
         const text4 = el2("div", "pxd-outline-rest", row4);
-        text4.textContent = plainText(own);
+        text4.textContent = plainText(own2);
       }
       for (const poster of heavies) {
         const mount = poster.uid || uid;
@@ -87409,9 +90031,9 @@ function buildBoardView(onFail, {
     let out = shown;
     for (const item of b.items.values()) {
       if (item.kind !== "pdf") continue;
-      const own = shown.get(item.uid);
-      const drawn = own ? itemsR.drawnRect?.(item.uid, own) : null;
-      if (!drawn || !own || drawn.w === own.w && drawn.h === own.h) continue;
+      const own2 = shown.get(item.uid);
+      const drawn = own2 ? itemsR.drawnRect?.(item.uid, own2) : null;
+      if (!drawn || !own2 || drawn.w === own2.w && drawn.h === own2.h) continue;
       if (out === shown) out = new Map(shown);
       out.set(item.uid, drawn);
     }
@@ -87446,11 +90068,24 @@ function buildBoardView(onFail, {
   };
   const measure = () => {
     const r = root.getBoundingClientRect();
+    let box2 = null;
+    let bar = null;
+    try {
+      box2 = viewport2.getBoundingClientRect?.();
+    } catch {
+      box2 = null;
+    }
+    try {
+      bar = root.querySelector?.(".pxd-toolbar")?.getBoundingClientRect?.() || null;
+    } catch {
+      bar = null;
+    }
     rootRect = { left: r.left || 0, top: r.top || 0, width: r.width || 0, height: r.height || 0 };
     size = { width: rootRect.width, height: rootRect.height };
     root.classList.toggle("pxd-root--narrow", size.width > 0 && size.width < 560);
     readPane?.layout?.(size.width);
-    syncCramped();
+    const want = boardCramped(freeBoardArea(box2, bar));
+    if (root.classList.contains("pxd-root--cramped") !== want) root.classList.toggle("pxd-root--cramped", want);
   };
   onFail.push(
     () => {
@@ -87516,6 +90151,8 @@ function buildBoardView(onFail, {
     }
     return node2;
   } : null;
+  let paintOverviewCover = () => {
+  };
   itemsR = createItemRenderer({
     doc,
     host,
@@ -87524,6 +90161,7 @@ function buildBoardView(onFail, {
     sectionsLayer,
     timers,
     adoptShell,
+    onOverviewQueue: () => paintOverviewCover(),
     tableThumb,
     onTableShown,
     onEditChange: (uid) => {
@@ -87900,6 +90538,77 @@ function buildBoardView(onFail, {
   repaintItemStyles = () => {
     if (!disposed) itemsR.repaintStyles();
   };
+  let pdfTitleJob = null;
+  let pdfTitleAgain = false;
+  const repaintPdfTitlesSoon = () => {
+    if (disposed) return;
+    if (notedSpeedFlags().bgBudget === false) {
+      try {
+        itemsR?.repaintStyles?.();
+      } catch {
+      }
+      try {
+        readPane?.refreshCards?.();
+      } catch {
+      }
+      return;
+    }
+    if (pdfTitleJob) {
+      pdfTitleAgain = true;
+      return;
+    }
+    let uids = null;
+    let at = 0;
+    let tail = 0;
+    const sizer = createPartSizer({ max: 20, start: 5 });
+    const clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
+    pdfTitleJob = timers.bgRun((deadline) => {
+      if (disposed) {
+        pdfTitleJob = null;
+        return true;
+      }
+      if (tail === 1) {
+        tail = 2;
+        try {
+          refreshPdfHighlightCounts();
+        } catch {
+        }
+        return false;
+      }
+      if (tail === 2) {
+        pdfTitleJob = null;
+        try {
+          readPane?.refreshCards?.();
+        } catch {
+        }
+        return true;
+      }
+      if (!uids) {
+        uids = [];
+        for (const it of board2()?.items.values() || []) if (it?.kind === "pdf") uids.push(it.uid);
+        at = 0;
+      }
+      const n3 = sizer.size((deadline?.timeRemaining?.() ?? 20) - 2);
+      const part = uids.slice(at, at + n3);
+      at += part.length;
+      const t0 = clock();
+      if (part.length) {
+        try {
+          itemsR.repaintItems(part);
+        } catch {
+        }
+      }
+      sizer.note(part.length, clock() - t0);
+      if (at < uids.length) return false;
+      if (pdfTitleAgain) {
+        pdfTitleAgain = false;
+        uids = null;
+        return false;
+      }
+      tail = 1;
+      return false;
+    }, { label: "pdfTitles", partMs: 4 });
+  };
   const coverWarmOn = () => {
     const v = readSetting2("pdf-cover-warm");
     return v === true || v === "true";
@@ -87948,14 +90657,7 @@ function buildBoardView(onFail, {
       if (disposed || !title || parsedTitles.get(key)) return;
       parsedTitles.set(key, title);
       parsedEvidence.set(key, { pageTitle: title, lines: found.lines || [] });
-      try {
-        itemsR?.repaintStyles?.();
-      } catch {
-      }
-      try {
-        readPane?.refreshCards?.();
-      } catch {
-      }
+      repaintPdfTitlesSoon();
     }).catch(() => {
     });
   };
@@ -88309,6 +91011,84 @@ function buildBoardView(onFail, {
       pdfPagesDialog.focus?.();
     });
   };
+  const foldPageQueries = async (plan = null) => {
+    if (disposed) return null;
+    closePdfPagesDialog();
+    if (typeof session.queryFoldPlan !== "function" || typeof session.foldPageQueries !== "function") {
+      toast("Folding queries is not available here");
+      return null;
+    }
+    const p = plan || session.queryFoldPlan();
+    if (!p.folds.length) {
+      toast("No open query on this page");
+      return { folded: 0 };
+    }
+    const n3 = p.folds.length;
+    const noun = n3 === 1 ? "query" : "queries";
+    return new Promise((resolve) => {
+      pdfPagesPending = resolve;
+      pdfPagesDialog = openPdfPagesDialog(doc, {
+        count: n3,
+        lines: queryFoldLines(p),
+        label: "Fold queries on this page",
+        headText: `Fold ${n3} ${noun} on this page under ${n3 === 1 ? "a caption" : "captions"}? Roam draws every open query before the page shows; a folded one runs when you open its caption.`,
+        applyText: "Fold",
+        onApply: () => {
+          pdfPagesPending = null;
+          closePdfPagesDialog();
+          Promise.resolve(session.foldPageQueries(p)).then((res) => {
+            if (disposed) return resolve(res);
+            if (res?.refused === "bulk") {
+            } else if (res?.refused) toast("This page changed. Run the command again");
+            else if (res?.folded) toast(`Folded ${res.folded} ${res.folded === 1 ? "query" : "queries"} under ${res.folded === 1 ? "a caption" : "captions"}`, true);
+            resolve(res);
+          }, () => {
+            if (!disposed) toast("Couldn't fold the queries");
+            resolve(null);
+          });
+        },
+        onCancel: () => {
+          closePdfPagesDialog();
+          resolve(null);
+        }
+      });
+      root.append(pdfPagesDialog.el);
+      pdfPagesDialog.focus?.();
+    });
+  };
+  const queryNudge = (entry) => {
+    if (disposed || typeof session.queryFoldPlan !== "function") return false;
+    let pageUid2 = "";
+    try {
+      pageUid2 = String(host?.blockPageUid?.(boardUid) || "");
+    } catch {
+      pageUid2 = "";
+    }
+    if (!pageUid2) return false;
+    const key = queryNudgeKey(graph, pageUid2);
+    let seen = false;
+    try {
+      seen = storage?.getItem?.(key) != null;
+    } catch {
+      seen = false;
+    }
+    if (!shouldNudgeQueries({ entry, seen })) return false;
+    const plan = session.queryFoldPlan({ limit: 5e3 });
+    if (disposed || !plan.folds.length) return false;
+    try {
+      storage?.setItem?.(key, String(Date.now()));
+    } catch {
+    }
+    const k = plan.folds.length;
+    const secs = Math.max(1, Math.round((Number(entry.firstPaintMs) - Number(entry.paintTaskMs)) / 100) / 10);
+    chrome.toast.show({
+      message: `Roam took ${secs} s to draw ${k} ${k === 1 ? "query" : "queries"} on this page before the board could show.`,
+      action: { label: "Fold them", run: () => {
+        void foldPageQueries();
+      } }
+    });
+    return true;
+  };
   const foldSections = async (fold = true) => {
     if (disposed) return null;
     closePdfPagesDialog();
@@ -88513,10 +91293,7 @@ function buildBoardView(onFail, {
       });
       job.then((got) => {
         if (disposed || !got) return;
-        try {
-          itemsR?.repaintStyles?.();
-        } catch {
-        }
+        repaintPdfTitlesSoon();
         try {
           if (readPane?.isOpen?.() !== true) return;
           const card2 = board2()?.items.get(readPane.cardUid?.() || "");
@@ -88693,8 +91470,44 @@ function buildBoardView(onFail, {
     return typeof data === "string" && data.startsWith("data:") ? data : "";
   };
   let coverRepaint = null;
+  let coverJob = null;
   const repaintForCover = (url) => {
     if (disposed) return;
+    if (notedSpeedFlags().bgBudget !== false) {
+      if (!coverRepaint) {
+        coverRepaint = /* @__PURE__ */ new Set();
+        const step = createCoverRepaintJob({
+          takeUrls: () => {
+            const urls2 = coverRepaint;
+            coverRepaint = null;
+            const uids = [];
+            for (const item of board2()?.items.values() || []) {
+              if (item?.kind === "pdf" && urls2?.has(coverUrlOf(item))) uids.push(item.uid);
+            }
+            return uids;
+          },
+          repaint: (part) => itemsR.repaintItems(part),
+          count: () => {
+            try {
+              refreshPdfHighlightCounts();
+            } catch {
+            }
+          }
+        });
+        coverJob = timers.bgRun(() => {
+          if (disposed) {
+            coverJob = null;
+            coverRepaint = null;
+            return true;
+          }
+          const done3 = step() === true;
+          if (done3) coverJob = null;
+          return done3;
+        }, { label: "covers", partMs: 20 });
+      }
+      coverRepaint.add(url);
+      return;
+    }
     if (!coverRepaint) {
       coverRepaint = /* @__PURE__ */ new Set();
       const run = () => {
@@ -89707,8 +92520,9 @@ function buildBoardView(onFail, {
   };
   const fitAll = () => fitTo(boundsOf([...rects().values()]));
   const fitSelection = (uids) => {
+    for (const uid of uids || []) itemsR.ensureShell?.(uid);
     const r = rects();
-    const b = boundsOf(uids.map((u) => r.get(u)).filter(Boolean));
+    const b = boundsOf((uids || []).map((u) => r.get(u)).filter(Boolean));
     if (b) fitTo(b, { maxZoom: 1 });
   };
   const centerOn = (worldPoint) => {
@@ -89745,6 +92559,7 @@ function buildBoardView(onFail, {
     if (tier !== was) {
       pdfFlip?.setLod?.(tier);
       chrome.toolbar.scheduleDock?.();
+      if (was !== "detail" && tier === "detail" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0));
     }
   };
   const scheduleContent = () => {
@@ -89815,6 +92630,35 @@ function buildBoardView(onFail, {
       return;
     }
     for (const m of misses) badgePending.add(m.key);
+    if (typeof host.cardStatsJob === "function") {
+      const job = host.cardStatsJob(misses.map((m) => m.target), { boardUid });
+      const pump = () => {
+        if (disposed) return;
+        let done3 = false;
+        try {
+          done3 = job.step() === true;
+        } catch {
+          for (const m of misses) badgePending.delete(m.key);
+          return;
+        }
+        if (!done3) {
+          timers.bgIdle(pump, "badges");
+          return;
+        }
+        const res = job.result();
+        const at = Date.now();
+        for (const m of misses) {
+          badgePending.delete(m.key);
+          const stats = res instanceof Map ? res.get(m.key) : res?.[m.key];
+          badgeCache.set(m.key, { at, stats: stats || { refs: 0, boards: 0, open: 0, done: 0 } });
+        }
+        timers.bgIdle(() => {
+          if (!disposed) applyBadges();
+        }, "badges-paint");
+      };
+      timers.bgIdle(pump, "badges");
+      return;
+    }
     const runChunk = (list) => {
       if (disposed) return;
       const chunk = list.slice(0, BADGE_CHUNK);
@@ -89832,10 +92676,13 @@ function buildBoardView(onFail, {
         const stats = res instanceof Map ? res.get(m.key) : res?.[m.key];
         badgeCache.set(m.key, { at, stats: stats || { refs: 0, boards: 0, open: 0, done: 0 } });
       }
-      applyBadges();
-      if (rest.length) timers.idle(() => runChunk(rest));
+      timers.bgIdle(() => {
+        if (disposed) return;
+        applyBadges();
+        if (rest.length) timers.bgIdle(() => runChunk(rest), "badges");
+      }, "badges-paint");
     };
-    timers.idle(() => runChunk(misses));
+    timers.bgIdle(() => runChunk(misses), "badges");
   };
   const seedSnapshotBadges = () => {
     const b = board2();
@@ -89875,7 +92722,7 @@ function buildBoardView(onFail, {
   let wheelLayer = false;
   let minimapAt = -Infinity;
   const MINIMAP_WHEEL_MS = 150;
-  const perfNow2 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
+  const perfNow3 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
   const edgeZoomKey = (z) => !(z > 0) ? "" : `${z >= 0.6 ? "hi" : Math.round(Math.log(z) / Math.log(1.25))}:${z < 0.3}`;
   const underlay = createGestureUnderlay({ doc, world, root, before: () => edgesSvg });
   let underlayDrawn = false;
@@ -89893,6 +92740,12 @@ function buildBoardView(onFail, {
       if (kind && kind !== "pan" && kind !== "pinch") return false;
     }
     return deferOn() && Boolean(itemsR.isVirtual?.());
+  };
+  const syncShellHold = () => {
+    try {
+      itemsR.holdShells?.(deferReveal());
+    } catch {
+    }
   };
   const showUnderlay = () => {
     if (underlayDrawn) return;
@@ -89918,6 +92771,29 @@ function buildBoardView(onFail, {
   };
   const endUnderlay = () => {
     underlayDrawn = false;
+  };
+  paintOverviewCover = () => {
+    if (disposed || underlayDrawn) return;
+    try {
+      if (notedSpeedFlags().overviewFast === false) return;
+    } catch {
+      return;
+    }
+    if (tier === "detail" && itemsR.coverHeld?.() !== true) {
+      const pending = itemsR.pendingBoxes?.() || [];
+      if (!pending.length) underlay.hide();
+      return;
+    }
+    const items = itemsR.pendingBoxes?.() || [];
+    if (!items.length) {
+      underlay.hide();
+      return;
+    }
+    underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1 });
+  };
+  const releaseUnderlay = () => {
+    underlay.hide();
+    paintOverviewCover();
   };
   const revealNear = () => {
     if (!size.width) return;
@@ -89955,8 +92831,8 @@ function buildBoardView(onFail, {
     settleTimer = timers.later(() => {
       settleTimer = null;
       if (inputPending()) {
-        if (!settleWaitAt) settleWaitAt = perfNow2();
-        if (perfNow2() - settleWaitAt < SETTLE_WAIT_MS) {
+        if (!settleWaitAt) settleWaitAt = perfNow3();
+        if (perfNow3() - settleWaitAt < SETTLE_WAIT_MS) {
           armSettle();
           return;
         }
@@ -89972,6 +92848,7 @@ function buildBoardView(onFail, {
         world.style.willChange = "";
         propsPanel.place();
       }
+      syncShellHold();
       applyLod();
       scheduleContent();
       vpStore.set(vpId, vp);
@@ -89986,7 +92863,7 @@ function buildBoardView(onFail, {
         }
       }
       if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
-      underlay.hide();
+      releaseUnderlay();
       dirty.minimap = true;
       schedule();
       updateBackToContent();
@@ -90440,8 +93317,8 @@ function buildBoardView(onFail, {
     if (!lanePreviewLayout) return base;
     const merged = new Map(base);
     for (const [uid, rect] of lanePreviewLayout) {
-      const own = base.get(uid);
-      merged.set(uid, { x: rect.x, y: rect.y, w: Number.isFinite(rect.w) ? rect.w : own?.w, h: Number.isFinite(rect.h) ? rect.h : own?.h });
+      const own2 = base.get(uid);
+      merged.set(uid, { x: rect.x, y: rect.y, w: Number.isFinite(rect.w) ? rect.w : own2?.w, h: Number.isFinite(rect.h) ? rect.h : own2?.h });
     }
     return merged;
   };
@@ -90619,17 +93496,17 @@ function buildBoardView(onFail, {
   };
   const applyBackground = () => {
     const b = board2();
-    const own = b?.plexus;
-    chrome.toolbar.setBoardColor?.(own?.bgColor);
-    chrome.toolbar.setBoardDock?.(own?.dock);
-    const ownPattern = BOARD_PATTERNS.includes(own?.bg) ? own.bg : null;
-    const ownHex = hexColor(own?.bgColor) || null;
-    const ownTone = ownHex ? null : BOARD_TONES.includes(own?.bgColor) ? own.bgColor : null;
+    const own2 = b?.plexus;
+    chrome.toolbar.setBoardColor?.(own2?.bgColor);
+    chrome.toolbar.setBoardDock?.(own2?.dock);
+    const ownPattern = BOARD_PATTERNS.includes(own2?.bg) ? own2.bg : null;
+    const ownHex = hexColor(own2?.bgColor) || null;
+    const ownTone = ownHex ? null : BOARD_TONES.includes(own2?.bgColor) ? own2.bgColor : null;
     const defPattern = setting("grid", "dots");
     const defTone = setting("board-tone", "none");
     const pattern = ownPattern ?? (BOARD_PATTERNS.includes(defPattern) ? defPattern : "dots");
     const tone = ownHex ? null : ownTone ?? (BOARD_TONES.includes(defTone) ? defTone : null);
-    const image = backgroundImage(own?.bgImage);
+    const image = backgroundImage(own2?.bgImage);
     const override = ownPattern !== null || ownTone !== null || ownHex !== null || Boolean(image);
     if (pattern === bgPattern && tone === bgTone && ownHex === bgHex && image === bgImage && override === bgOverride) return;
     if (pattern !== bgPattern) {
@@ -90667,6 +93544,7 @@ function buildBoardView(onFail, {
     root.classList.toggle("pxd-look--flat", setting("look-canvas", "dots") === "flat-grey");
     root.classList.toggle("pxd-look--pastel", setting("look-sections", "none") === "pastel");
     root.classList.toggle("pxd-look--tint", setting("look-highlights", "bar") === "tint");
+    if (!themeReady) return;
     try {
       themeFollow?.apply?.();
     } catch {
@@ -92985,14 +95863,7 @@ function buildBoardView(onFail, {
           }
         }
         if (!named2) return;
-        try {
-          itemsR?.repaintStyles?.();
-        } catch {
-        }
-        try {
-          readPane?.refreshCards?.();
-        } catch {
-        }
+        repaintPdfTitlesSoon();
       }).catch(() => {
       });
     }
@@ -93630,6 +96501,7 @@ ${url}`;
   const searchFilter = (text4) => {
     const b = board2();
     const q2 = String(text4 || "").trim().toLowerCase();
+    searchQuery = q2;
     searchIndex = -1;
     setRootFlag("searching", Boolean(q2));
     searchMatches = b && q2 ? findOnBoard(b, q2, nestedBoards(b), (uid) => host?.blockString?.(uid)) : [];
@@ -93644,11 +96516,13 @@ ${url}`;
       ctl.select([hit.focus]);
       fitSelection([hit.focus]);
     }
+    paintSearch(board2(), searchMatches, searchQuery);
     const countEl = root.querySelector(".pxd-search__count");
     if (countEl) countEl.textContent = `${searchIndex + 1}/${searchMatches.length}`;
   };
   const enterEdit = async (uid, opts) => {
     ctl.select([uid]);
+    itemsR.ensureShell?.(uid);
     if (tier !== "detail") {
       fitSelection([uid]);
       applyLod();
@@ -93789,6 +96663,7 @@ ${url}`;
     }
     paintTabStrip(next?.tabs || [], entry.uid);
   };
+  let refitWhenMeasured = false;
   const applyFullscreen = (on) => {
     isFullscreen = Boolean(on);
     fsDispose();
@@ -93801,7 +96676,18 @@ ${url}`;
     } else applyInlineHeight();
     syncFullscreenTabs();
     timers.frame(() => {
+      if (disposed || suspended) return;
+      applyTheme();
       measure();
+      if (refitWhenMeasured) {
+        refitWhenMeasured = false;
+        if (size.width && size.height) {
+          const live2 = board2();
+          const rs = live2 ? rects() : /* @__PURE__ */ new Map();
+          vp = fitViewport(boundsOf([...rs.values()]), size, { padding: 64, maxZoom: 1 });
+          applyLod();
+        }
+      }
       markViewport();
     });
   };
@@ -93964,7 +96850,8 @@ ${url}`;
         endUnderlay();
       }
       setRootFlag("gesturing", gesturing);
-      world.style.willChange = gesturing ? "transform" : "";
+      world.style.willChange = gesturing || wheelLayer ? "transform" : "";
+      syncShellHold();
       if (gesturing) {
         resumeTimer?.();
         resumeTimer = null;
@@ -93995,7 +96882,7 @@ ${url}`;
           chrome.toolbar.setZoom(vp.zoom);
           scheduleContent();
           if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
-          underlay.hide();
+          releaseUnderlay();
           vpStore.set(vpId, vp);
           dirty.selection = true;
           schedule();
@@ -94501,10 +97388,30 @@ ${url}`;
       { uid, end: "to", x: geo.end.x, y: geo.end.y }
     ];
   };
+  const queuedOverview = () => {
+    if (tier === "detail") return false;
+    try {
+      if (notedSpeedFlags().overviewFast === false) return false;
+    } catch {
+      return false;
+    }
+    return (itemsR.queuedCount?.() || 0) > 0;
+  };
+  const promoteQueued = (hit) => {
+    if (!hit?.uid) return null;
+    itemsR.ensureShell?.(hit.uid);
+    if (hit.part === "title") return { kind: "section-title", uid: hit.uid };
+    if (hit.part === "border") return { kind: "section-border", uid: hit.uid };
+    return { kind: "item", uid: hit.uid };
+  };
   const normalize2 = (event, type = event.type) => {
     const screen = { x: (event.clientX || 0) - rootRect.left, y: (event.clientY || 0) - rootRect.top };
     const world2 = screenToWorld(vp, screen);
     let target = targetOf2(event.target);
+    if (target.kind === "empty" && queuedOverview()) {
+      const next = promoteQueued(hitTest(board2(), world2, rects()));
+      if (next) target = next;
+    }
     if (edgeEndWanted(type, event)) {
       const near2 = edgeEndNearWorld(handleCenters(), world2, 10, vp.zoom || 1);
       if (near2) target = near2;
@@ -94928,10 +97835,16 @@ ${url}`;
   const WHEEL_MEASURE_MS = 150;
   let wheelMeasuredAt = -Infinity;
   const wheelBurst = (event) => {
-    const t = perfNow2();
+    const t = perfNow3();
     if (!wheelLayer || t - wheelMeasuredAt > WHEEL_MEASURE_MS) {
       measure();
       wheelMeasuredAt = t;
+    }
+    const openedBurst = !wheelLayer && !gesturing && deferOn() && Boolean(itemsR.isVirtual?.());
+    if (openedBurst) {
+      wheelLayer = true;
+      world.style.willChange = "transform";
+      syncShellHold();
     }
     const handled = ctl.handle(normalize2(event, "wheel"));
     if (handled) {
@@ -94941,9 +97854,14 @@ ${url}`;
         wheelLayer = true;
         world.style.willChange = "transform";
       }
+      syncShellHold();
       if (!event.ctrlKey && !event.metaKey) hitShield.raise();
       else hitShield.drop();
       settle2();
+    } else if (openedBurst) {
+      wheelLayer = false;
+      world.style.willChange = gesturing ? "transform" : "";
+      syncShellHold();
     }
     return handled;
   };
@@ -95043,7 +97961,16 @@ ${url}`;
       return;
     }
     const node2 = event.target?.closest?.(".pxd-item--card");
-    showHover(node2?.getAttribute?.("data-uid") || node2?.dataset?.uid || null);
+    let uid = node2?.getAttribute?.("data-uid") || node2?.dataset?.uid || null;
+    if (!uid && queuedOverview() && !event.target?.closest?.(".pxd-item, .pxd-section")) {
+      const screen = { x: (event.clientX || 0) - (rootRect.left || 0), y: (event.clientY || 0) - (rootRect.top || 0) };
+      const hit = hitTest(board2(), screenToWorld(vp, screen), rects());
+      if (hit?.part === "body") {
+        itemsR.ensureShell?.(hit.uid);
+        uid = hit.uid;
+      }
+    }
+    showHover(uid);
   });
   const pinScroll = (node2) => () => {
     if (node2 && (node2.scrollTop || node2.scrollLeft)) {
@@ -95807,6 +98734,7 @@ ${url}`;
     if (disposed || suspended) return;
     const b = board2();
     if (!b) return;
+    if (!size.width) measure();
     if (!coverPaintAt) {
       coverPaintAt = Date.now();
       armCoverWarm();
@@ -95815,16 +98743,7 @@ ${url}`;
         hasPdf: () => [...b.items.values()].some((it) => it?.kind === "pdf"),
         ocr: sharedDeviceOcr,
         isDisposed: () => disposed,
-        onWarm: () => {
-          try {
-            itemsR?.repaintStyles?.();
-          } catch {
-          }
-          try {
-            readPane?.refreshCards?.();
-          } catch {
-          }
-        },
+        onWarm: () => repaintPdfTitlesSoon(),
         setTimer: (fn, ms) => timers.later(fn, ms)
       });
     }
@@ -95849,7 +98768,7 @@ ${url}`;
         firstPainted = true;
         snapShells?.clear();
         if (typeof onFirstPaint === "function") {
-          const done2 = () => {
+          const fire2 = () => {
             if (!disposed) {
               try {
                 onFirstPaint();
@@ -95857,8 +98776,13 @@ ${url}`;
               }
             }
           };
-          if (typeof itemsR.whenViewBuilt === "function") itemsR.whenViewBuilt(done2);
-          else done2();
+          const done3 = () => {
+            if (disposed) return;
+            if (queuedOverview()) timers.frame(fire2);
+            else fire2();
+          };
+          if (typeof itemsR.whenViewBuilt === "function") itemsR.whenViewBuilt(done3);
+          else done3();
         }
       }
     }
@@ -95870,10 +98794,11 @@ ${url}`;
       if (edgesDue) {
         const links = paintedLinks();
         let part = dirty.all || dirty.structural || dirty.links && !dirty.edges.size ? null : dirty.edges;
-        if (part && part.size > EDGE_SLICE) {
+        const sliceSource = part || (queuedOverview() && b.edges.size > EDGE_SLICE ? b.edges.keys() : null);
+        if (sliceSource && (part ? part.size : b.edges.size) > EDGE_SLICE) {
           const slice = /* @__PURE__ */ new Set();
           edgeRest = /* @__PURE__ */ new Set();
-          for (const uid of part) (slice.size < EDGE_SLICE ? slice : edgeRest).add(uid);
+          for (const uid of sliceSource) (slice.size < EDGE_SLICE ? slice : edgeRest).add(uid);
           part = slice;
         }
         edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || /* @__PURE__ */ new Set(), selection, zoom: vp.zoom, dirty: part, view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null, skipLinks: edgeSlicing && !dirty.links });
@@ -95889,8 +98814,10 @@ ${url}`;
     }
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
-      if (size.width && !deferReveal()) revealNear();
-      else if (size.width) showUnderlay();
+      if (size.width && !deferReveal()) {
+        if (edgeRest) itemsR.reveal?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
+        else revealNear();
+      } else if (size.width) showUnderlay();
       const focused = doc.activeElement;
       if (focused?.tagName === "TEXTAREA" && root.contains(focused)) {
         try {
@@ -95902,15 +98829,22 @@ ${url}`;
       if (!gesturing) paintInvZoom();
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
       if (nextTier !== tier && !deferReveal()) {
+        const prevTier = tier;
         tier = nextTier;
         paintTier();
         pdfFlip?.setLod?.(tier);
         chrome.toolbar.scheduleDock?.();
+        if (prevTier !== "detail" && tier === "detail" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0));
       }
       if (!gesturing && !deferReveal()) paintGrid();
       if (!deferReveal()) chrome.toolbar.setZoom(vp.zoom);
       if (tooltip.isVisible()) tooltip.hide();
-      if (!gesturing && !wheelLayer) propsPanel.place();
+      if (!gesturing && !wheelLayer) {
+        if (itemsChanged) timers.frame(() => {
+          if (!disposed && !suspended && !gesturing && !wheelLayer) propsPanel.place();
+        });
+        else propsPanel.place();
+      }
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) liftBurst = true;
     if (dirty.selection || itemsChanged) {
@@ -95929,8 +98863,8 @@ ${url}`;
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLiftIdle();
     const wheelMinimap = wheelLayer && !itemsChanged && !dirty.minimap;
-    if ((itemsChanged || dirty.minimap || dirty.viewport && !gesturing) && !(wheelMinimap && perfNow2() - minimapAt < MINIMAP_WHEEL_MS)) {
-      minimapAt = perfNow2();
+    if ((itemsChanged || dirty.minimap || dirty.viewport && !gesturing) && !(wheelMinimap && perfNow3() - minimapAt < MINIMAP_WHEEL_MS)) {
+      minimapAt = perfNow3();
       const shown = paintRects();
       chrome.minimap.update({ board: b, rects: shown, vp, size });
       if (!(deferReveal() && !itemsChanged)) paintLandmarkDots(b, shown);
@@ -96256,7 +99190,6 @@ ${url}`;
     consumeDeepLink(fromEvent || void 0);
   });
   applyFullscreen(fullscreen);
-  measure();
   if (autofocus) {
     try {
       root.focus({ preventScroll: true });
@@ -96264,9 +99197,10 @@ ${url}`;
     }
   }
   if (!vp) {
+    refitWhenMeasured = true;
     const b = board2();
     const r = b ? rects() : /* @__PURE__ */ new Map();
-    vp = fitViewport(boundsOf([...r.values()]), size.width && size.height ? size : { width: 800, height: 560 }, { padding: 64, maxZoom: 1 });
+    vp = fitViewport(boundsOf([...r.values()]), { width: 800, height: 560 }, { padding: 64, maxZoom: 1 });
   }
   applyBackground();
   applyMotion();
@@ -96497,14 +99431,24 @@ ${url}`;
         clearZoomAnim();
       } catch {
       }
+      try {
+        itemsR.pauseShells?.();
+      } catch {
+      }
+      timers.pauseBg();
       suspendObservers();
     },
     resume() {
       if (disposed || !suspended) return;
       suspended = false;
       resumeObservers();
+      try {
+        itemsR.resumeShells?.();
+      } catch {
+      }
+      timers.resumeBg();
       armCoverWarm();
-      if (board2() !== suspendedBoard) {
+      if (board2() !== suspendedBoard || itemsR.queuedCount?.() > 0) {
         dirty.all = true;
         dirty.structural = true;
       } else {
@@ -96689,6 +99633,12 @@ ${url}`;
     foldTableCaptions() {
       return foldTableCaptions();
     },
+    foldPageQueries() {
+      return foldPageQueries();
+    },
+    queryNudge(entry) {
+      return queryNudge(entry);
+    },
     foldSections(fold = true) {
       return foldSections(fold);
     },
@@ -96742,6 +99692,16 @@ ${url}`;
       if (disposing) return;
       disposing = true;
       disposed = true;
+      if (pdfTitleJob) {
+        const stop3 = pdfTitleJob;
+        pdfTitleJob = null;
+        stop3();
+      }
+      if (coverJob) {
+        const stop3 = coverJob;
+        coverJob = null;
+        stop3();
+      }
       hitShield.drop();
       underlay.dispose();
       guardSelection(false);
@@ -97064,6 +100024,15 @@ function createSketchStore({ storage = globalThis.localStorage, graph = "", now:
         return null;
       }
     },
+    has(uid) {
+      if (!allow() || !uid) return false;
+      if (latest.has(uid)) return true;
+      try {
+        return storage?.getItem(key(uid)) != null;
+      } catch {
+        return false;
+      }
+    },
     set(uid, sketch) {
       if (!allow() || !uid || !sketch) return;
       const text4 = packSketch(sketch);
@@ -97269,345 +100238,6 @@ function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER } = 
 // src/feature.js
 init_cards();
 
-// src/host/boardsnap-store.js
-var SNAP_DB = "plexus-diagram-snapshots";
-var SNAP_DB_VERSION = 1;
-var SNAP_STORE_BOARDS = "boards";
-var SNAP_STORE_THUMBS = "thumbs";
-var SNAP_STORE_META = "meta";
-var SNAP_LRU = 20;
-var SNAP_KEEP = 40;
-var SNAP_DEBOUNCE_MS = 1e3;
-var THUMB_CAP = 300;
-var STORES2 = [SNAP_STORE_BOARDS, SNAP_STORE_THUMBS, SNAP_STORE_META];
-function request(req) {
-  return new Promise((resolve) => {
-    if (!req) {
-      resolve(null);
-      return;
-    }
-    req.onsuccess = () => resolve(req.result ?? null);
-    req.onerror = (event) => {
-      try {
-        event?.preventDefault?.();
-      } catch {
-      }
-      resolve(null);
-    };
-  });
-}
-function done(tx) {
-  return new Promise((resolve) => {
-    if (!tx) {
-      resolve(false);
-      return;
-    }
-    tx.oncomplete = () => resolve(true);
-    tx.onerror = () => resolve(false);
-    tx.onabort = () => resolve(false);
-  });
-}
-var boardKey = (graph, uid) => `${graph}\0${uid}`;
-var metaKey = (graph) => `recent\0${graph}`;
-function defaultIdle(fn) {
-  const ric = globalThis.requestIdleCallback;
-  if (typeof ric === "function") return ric(() => fn(), { timeout: 2e3 });
-  const t = setTimeout(fn, 50);
-  t?.unref?.();
-  return t;
-}
-function createBoardSnapStore({
-  indexedDB = globalThis.indexedDB,
-  graph = "",
-  now: now4 = Date.now,
-  idle = defaultIdle,
-  lruSize = SNAP_LRU,
-  keep = SNAP_KEEP,
-  debounceMs = SNAP_DEBOUNCE_MS,
-  enabled = () => true
-} = {}) {
-  const graphOf = typeof graph === "function" ? graph : () => graph;
-  const lru = /* @__PURE__ */ new Map();
-  const thumbs = /* @__PURE__ */ new Map();
-  const pendingThumbs = /* @__PURE__ */ new Set();
-  const pending = /* @__PURE__ */ new Map();
-  const timers = /* @__PURE__ */ new Map();
-  let recent = null;
-  let dbPromise = null;
-  let disposed = false;
-  let writing = Promise.resolve();
-  const allow = () => {
-    if (disposed) return false;
-    try {
-      return enabled() !== false;
-    } catch {
-      return true;
-    }
-  };
-  const db = () => {
-    if (!dbPromise) {
-      dbPromise = openDb(indexedDB, { name: SNAP_DB, version: SNAP_DB_VERSION, stores: STORES2 }).catch(() => null);
-    }
-    return dbPromise;
-  };
-  const touch = (uid, entry) => {
-    lru.delete(uid);
-    lru.set(uid, entry);
-    while (lru.size > lruSize) {
-      const oldest = lru.keys().next().value;
-      lru.delete(oldest);
-    }
-  };
-  const capThumbs = () => {
-    if (thumbs.size <= THUMB_CAP) return;
-    const used = /* @__PURE__ */ new Set();
-    for (const { snap } of lru.values()) for (const key of snapThumbKeys(snap)) used.add(key);
-    for (const key of [...thumbs.keys()]) {
-      if (thumbs.size <= THUMB_CAP) break;
-      if (!used.has(key)) thumbs.delete(key);
-    }
-  };
-  async function loadThumbs(handle, keys) {
-    const missing2 = [...keys].filter((key) => !thumbs.has(key));
-    if (!missing2.length || !handle) return;
-    let tx;
-    try {
-      tx = handle.transaction([SNAP_STORE_THUMBS], "readonly");
-    } catch {
-      return;
-    }
-    const store = tx.objectStore(SNAP_STORE_THUMBS);
-    const rows = await Promise.all(missing2.map((key) => request(store.get(key))));
-    rows.forEach((value, i) => {
-      if (typeof value === "string" && value.startsWith("data:image/")) thumbs.set(missing2[i], value);
-    });
-    capThumbs();
-  }
-  async function loadBoards(handle, uids) {
-    if (!handle || !uids.length) return [];
-    const g = graphOf();
-    let tx;
-    try {
-      tx = handle.transaction([SNAP_STORE_BOARDS], "readonly");
-    } catch {
-      return [];
-    }
-    const store = tx.objectStore(SNAP_STORE_BOARDS);
-    const rows = await Promise.all(uids.map((uid) => request(store.get(boardKey(g, uid)))));
-    const out = [];
-    rows.forEach((row4, i) => {
-      const snap = parseSnapshot2(row4?.text);
-      if (snap) out.push({ uid: uids[i], snap, text: row4.text });
-    });
-    return out;
-  }
-  async function readRecent(handle) {
-    if (recent) return recent;
-    if (!handle) return [];
-    let tx;
-    try {
-      tx = handle.transaction([SNAP_STORE_META], "readonly");
-    } catch {
-      return [];
-    }
-    const list = await request(tx.objectStore(SNAP_STORE_META).get(metaKey(graphOf())));
-    recent = Array.isArray(list) ? list.filter((row4) => row4 && typeof row4.uid === "string").slice(0, keep * 2) : [];
-    return recent;
-  }
-  async function warm() {
-    if (!allow()) return 0;
-    const handle = await db();
-    if (!handle || disposed) return 0;
-    const list = await readRecent(handle);
-    const uids = list.slice(0, lruSize).map((row4) => row4.uid).filter((uid) => !lru.has(uid));
-    const loaded = await loadBoards(handle, uids);
-    if (disposed) return 0;
-    for (const entry of loaded.reverse()) {
-      if (!lru.has(entry.uid)) {
-        lru.set(entry.uid, { snap: entry.snap, text: entry.text });
-        while (lru.size > lruSize) lru.delete(lru.keys().next().value);
-      }
-    }
-    const keys = /* @__PURE__ */ new Set();
-    for (const { snap } of lru.values()) for (const key of snapThumbKeys(snap)) keys.add(key);
-    thumbsReady = loadThumbs(handle, keys).catch(() => {
-    });
-    return loaded.length;
-  }
-  let thumbsReady = Promise.resolve();
-  async function load(uid) {
-    if (!allow() || !uid) return null;
-    if (lru.has(uid)) return lru.get(uid).snap;
-    const handle = await db();
-    if (!handle || disposed) return null;
-    const [entry] = await loadBoards(handle, [uid]);
-    if (!entry || disposed) return null;
-    if (!lru.has(uid)) touch(uid, { snap: entry.snap, text: entry.text });
-    await loadThumbs(handle, snapThumbKeys(entry.snap));
-    return lru.get(uid)?.snap ?? null;
-  }
-  async function writeNow(uids) {
-    const handle = await db();
-    if (!handle) return false;
-    const g = graphOf();
-    const rows = [];
-    for (const uid of uids) {
-      if (!pending.has(uid)) continue;
-      rows.push({ uid, text: pending.get(uid) });
-      pending.delete(uid);
-    }
-    const thumbRows = [];
-    for (const key of [...pendingThumbs]) {
-      if (thumbs.has(key)) thumbRows.push([key, thumbs.get(key)]);
-      pendingThumbs.delete(key);
-    }
-    if (!rows.length && !thumbRows.length) return true;
-    const list = (await readRecent(handle)).slice();
-    const at = now4();
-    for (const row4 of rows) {
-      const index = list.findIndex((entry) => entry.uid === row4.uid);
-      if (index >= 0) list.splice(index, 1);
-      list.unshift({ uid: row4.uid, savedAt: at });
-    }
-    const dropped = list.splice(keep);
-    recent = list;
-    let tx;
-    try {
-      tx = handle.transaction(STORES2, "readwrite");
-    } catch {
-      return false;
-    }
-    try {
-      const boards = tx.objectStore(SNAP_STORE_BOARDS);
-      for (const row4 of rows) boards.put({ uid: row4.uid, savedAt: at, text: row4.text }, boardKey(g, row4.uid));
-      for (const row4 of dropped) boards.delete(boardKey(g, row4.uid));
-      const thumbStore = tx.objectStore(SNAP_STORE_THUMBS);
-      for (const [key, value] of thumbRows) thumbStore.put(value, key);
-      tx.objectStore(SNAP_STORE_META).put(list, metaKey(g));
-    } catch {
-      try {
-        tx.abort();
-      } catch {
-      }
-      return false;
-    }
-    return done(tx);
-  }
-  const schedule = (uid) => {
-    if (timers.has(uid)) return;
-    const timer = setTimeout(() => {
-      timers.delete(uid);
-      if (disposed) return;
-      idle(() => {
-        if (disposed) return;
-        writing = writing.then(() => writeNow([uid])).catch(() => false);
-      });
-    }, debounceMs);
-    timer?.unref?.();
-    timers.set(uid, timer);
-  };
-  const ready = allow() ? warm().catch(() => 0) : Promise.resolve(0);
-  return {
-    ready,
-    get thumbsReady() {
-      return thumbsReady;
-    },
-    warm,
-    load,
-    // Synchronous: the LRU only. A miss means "paint the old way".
-    get(uid) {
-      if (!allow() || !uid) return null;
-      const hit = lru.get(uid);
-      if (!hit) return null;
-      touch(uid, hit);
-      return hit.snap;
-    },
-    has(uid) {
-      return lru.has(uid);
-    },
-    thumb(key) {
-      return thumbs.get(key) ?? null;
-    },
-    thumbs: { get: (key) => thumbs.get(key) ?? null, has: (key) => thumbs.has(key) },
-    putThumb(key, dataUrl) {
-      if (!allow() || typeof key !== "string" || typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) return false;
-      if (thumbs.get(key) === dataUrl) return true;
-      thumbs.set(key, dataUrl);
-      pendingThumbs.add(key);
-      capThumbs();
-      return true;
-    },
-    // snap is a raw snapshot object; thumbData is the key -> data URL map captured with it.
-    // Returns false when the board is too large or the JSON is over the cap.
-    set(uid, snap, thumbData = null) {
-      if (!allow() || !uid || !snap) return false;
-      const text4 = packSnapshot(snap);
-      if (!text4) return false;
-      const parsed = parseSnapshot2(text4);
-      if (!parsed) return false;
-      const used = snapThumbKeys(parsed);
-      if (thumbData) {
-        for (const key of used) {
-          const value = thumbData.get?.(key);
-          if (typeof value === "string" && value.startsWith("data:image/") && thumbs.get(key) !== value) {
-            thumbs.set(key, value);
-            pendingThumbs.add(key);
-          }
-        }
-      }
-      const prev = lru.get(uid);
-      touch(uid, { snap: parsed, text: text4 });
-      capThumbs();
-      if (prev?.text === text4 && !pendingThumbs.size) return true;
-      pending.set(uid, text4);
-      schedule(uid);
-      return true;
-    },
-    // Unmount and unload: skip the debounce, keep the idle-free async write.
-    flush() {
-      const uids = [...timers.keys()];
-      for (const uid of uids) clearTimeout(timers.get(uid));
-      timers.clear();
-      if (!pending.size && !pendingThumbs.size) return writing;
-      const all = [.../* @__PURE__ */ new Set([...uids, ...pending.keys()])];
-      writing = writing.then(() => writeNow(all)).catch(() => false);
-      return writing;
-    },
-    forget(uid) {
-      lru.delete(uid);
-      pending.delete(uid);
-      const timer = timers.get(uid);
-      if (timer) clearTimeout(timer);
-      timers.delete(uid);
-    },
-    size() {
-      return lru.size;
-    },
-    // Pending writes still land, then the connection closes.
-    dispose() {
-      if (disposed) return writing;
-      const uids = [...timers.keys()];
-      for (const timer of timers.values()) clearTimeout(timer);
-      timers.clear();
-      const all = [.../* @__PURE__ */ new Set([...uids, ...pending.keys()])];
-      const tail = (all.length || pendingThumbs.size) && dbPromise ? writing.then(() => writeNow(all)).catch(() => false) : writing;
-      disposed = true;
-      lru.clear();
-      const close = () => {
-        pending.clear();
-        thumbs.clear();
-        void dbPromise?.then((handle) => {
-          try {
-            handle?.close?.();
-          } catch {
-          }
-        });
-      };
-      return Promise.resolve(tail).then(close, close);
-    }
-  };
-}
-
 // src/view/boardsnap-paint.js
 init_geometry();
 init_board();
@@ -97632,7 +100262,13 @@ var skipChrome = (el2) => {
   const cls = typeof el2.getAttribute === "function" ? String(el2.getAttribute("class") || "") : "";
   return /(^|\s)(pxd-ports|pxd-grip|pxd-port|pxd-item__editor|pxd-ctx|pxd-tip|pxd-table-thumb)(\s|$)/.test(cls);
 };
-function captureBoardSnap({
+function captureBoardSnap(args = {}) {
+  const capture = createBoardSnapCapture(args);
+  while (!capture.step(Infinity)) {
+  }
+  return capture.result();
+}
+function createBoardSnapCapture({
   uid,
   root,
   board: board2,
@@ -97648,29 +100284,41 @@ function captureBoardSnap({
   thumbs = /* @__PURE__ */ new Map(),
   now: now4 = Date.now
 } = {}) {
-  if (!board2?.items || !rects || !isSnapViewport(vp) || typeof shellOf !== "function") return null;
-  if (board2.items.size > SNAP_MAX_BOXES) return null;
-  const faced = board2.items.size > SNAP_MAX_ITEMS ? nearestFaces(board2, rects, vp, width, height) : null;
-  const prevItems = new Map((prev?.items || []).map((item) => [item.uid, item]));
+  let done3 = false;
+  let out = null;
+  const finish = (value) => {
+    done3 = true;
+    out = value;
+    return true;
+  };
+  if (!board2?.items || !rects || !isSnapViewport(vp) || typeof shellOf !== "function" || board2.items.size > SNAP_MAX_BOXES) finish(null);
+  let faced = null;
+  let prevItems = null;
   const items = [];
-  const order = Array.isArray(board2.order) ? board2.order : [...board2.items.keys()];
-  for (const id of order) {
+  let order = [];
+  let at = 0;
+  if (!done3) {
+    faced = board2.items.size > SNAP_MAX_ITEMS ? nearestFaces(board2, rects, vp, width, height) : null;
+    prevItems = new Map((prev?.items || []).map((item) => [item.uid, item]));
+    order = Array.isArray(board2.order) ? board2.order : [...board2.items.keys()];
+  }
+  const one = (id) => {
     const item = board2.items.get(id);
     const rect = rects.get(id);
     const el2 = shellOf(id);
-    if (!item || !rect || !el2) continue;
+    if (!item || !rect || !el2) return;
     const section2 = item.type === "section";
     const sig = itemSig(item);
     const cls = cleanClasses(typeof el2.getAttribute === "function" ? el2.getAttribute("class") : el2.className);
     const bare = cls.includes("pxd-item--bare") || cls.includes("pxd-item--collapsed");
     if (faced && !section2 && !faced.has(id)) {
       const box3 = shellBox(el2) || rect;
-      const out2 = { uid: id, section: section2, x: box3.x, y: box3.y, w: box3.w, h: box3.h, cls: cls.join(" "), sig };
-      if (item.parentUid && item.parentUid !== board2.uid) out2.parent = item.parentUid;
+      const out3 = { uid: id, section: section2, x: box3.x, y: box3.y, w: box3.w, h: box3.h, cls: cls.join(" "), sig };
+      if (item.parentUid && item.parentUid !== board2.uid) out3.parent = item.parentUid;
       const stats2 = badges?.get?.(id);
-      if (stats2) out2.badges = stats2;
-      items.push(out2);
-      continue;
+      if (stats2) out3.badges = stats2;
+      items.push(out3);
+      return;
     }
     let face = captureFace(el2, { thumbs, skip: skipChrome });
     const old = prevItems.get(id);
@@ -97678,7 +100326,7 @@ function captureBoardSnap({
       face = mergeBareFace(face, old.face);
     }
     const box2 = shellBox(el2) || rect;
-    const out = {
+    const out2 = {
       uid: id,
       section: section2,
       x: box2.x,
@@ -97689,41 +100337,56 @@ function captureBoardSnap({
       sig,
       face
     };
-    if (item.parentUid && item.parentUid !== board2.uid) out.parent = item.parentUid;
+    if (item.parentUid && item.parentUid !== board2.uid) out2.parent = item.parentUid;
     const stats = badges?.get?.(id);
-    if (stats) out.badges = stats;
+    if (stats) out2.badges = stats;
     const thumb2 = tableThumbKey2?.(item);
-    if (thumb2) out.thumb = thumb2;
-    items.push(out);
-  }
-  const world = root?.querySelector?.(".pxd-world");
-  const edgesEl = world?.querySelector?.("svg.pxd-edges");
-  const labelsEl = world?.querySelector?.(".pxd-labels");
-  const gridEl = root?.querySelector?.(".pxd-grid");
-  const layer = (el2) => el2 ? captureFace(el2, { thumbs, maxNodes: LAYER_MAX_NODES, maxChars: 64 * 1024 }) : null;
-  const chrome = [];
-  for (const child of [...root?.children || []]) {
-    const cls = String(child.getAttribute?.("class") || "");
-    if (!CHROME_KEEP.test(cls) || child.hasAttribute?.("hidden")) continue;
-    const face = captureFace(child, { thumbs, maxNodes: 300, maxChars: 8 * 1024, canvases: true });
-    if (face) chrome.push(face);
-  }
+    if (thumb2) out2.thumb = thumb2;
+    items.push(out2);
+  };
+  const assemble = () => {
+    const world = root?.querySelector?.(".pxd-world");
+    const edgesEl = world?.querySelector?.("svg.pxd-edges");
+    const labelsEl = world?.querySelector?.(".pxd-labels");
+    const gridEl = root?.querySelector?.(".pxd-grid");
+    const layer = (el2) => el2 ? captureFace(el2, { thumbs, maxNodes: LAYER_MAX_NODES, maxChars: 64 * 1024 }) : null;
+    const chrome = [];
+    for (const child of [...root?.children || []]) {
+      const cls = String(child.getAttribute?.("class") || "");
+      if (!CHROME_KEEP.test(cls) || child.hasAttribute?.("hidden")) continue;
+      const face = captureFace(child, { thumbs, maxNodes: 300, maxChars: 8 * 1024, canvases: true });
+      if (face) chrome.push(face);
+    }
+    return {
+      v: SNAP_VERSION,
+      uid: uid || board2.uid,
+      stamp: boardStamp(board2, rects),
+      savedAt: now4(),
+      height: finite8(height) ? height : 0,
+      width: finite8(width) ? width : 0,
+      threshold: finite8(threshold) ? threshold : 0.45,
+      vp: { x: vp.x, y: vp.y, zoom: vp.zoom },
+      rootCls: typeof root?.getAttribute === "function" ? root.getAttribute("class") || "" : "",
+      rootStyle: rootVars(root),
+      grid: gridEl ? { c: cleanClasses(gridEl.getAttribute?.("class") || "").join(" ") } : null,
+      edges: layer(edgesEl),
+      labels: layer(labelsEl),
+      chrome,
+      items
+    };
+  };
   return {
-    v: SNAP_VERSION,
-    uid: uid || board2.uid,
-    stamp: boardStamp(board2, rects),
-    savedAt: now4(),
-    height: finite8(height) ? height : 0,
-    width: finite8(width) ? width : 0,
-    threshold: finite8(threshold) ? threshold : 0.45,
-    vp: { x: vp.x, y: vp.y, zoom: vp.zoom },
-    rootCls: typeof root?.getAttribute === "function" ? root.getAttribute("class") || "" : "",
-    rootStyle: rootVars(root),
-    grid: gridEl ? { c: cleanClasses(gridEl.getAttribute?.("class") || "").join(" ") } : null,
-    edges: layer(edgesEl),
-    labels: layer(labelsEl),
-    chrome,
-    items
+    step(ms = Infinity, clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now()) {
+      if (done3) return true;
+      const t0 = clock();
+      do {
+        one(order[at]);
+        at += 1;
+      } while (at < order.length && clock() - t0 < ms);
+      if (at >= order.length) finish(assemble());
+      return done3;
+    },
+    result: () => out
   };
 }
 function nearestFaces(board2, rects, vp, width, height) {
@@ -99299,7 +101962,7 @@ var DEFAULT_AT = 40;
 var DEFAULT_MAX_WIDTH = 160;
 var THUMB_STROKE = "#5c7080";
 var EMPTY_BOUNDS = { x: 0, y: 0, w: 160, h: 160 };
-var DIAGRAM_RE3 = "^\\{\\{(\\[\\[)?diagram";
+var DIAGRAM_RE4 = "^\\{\\{(\\[\\[)?diagram";
 var REF_QUERY = `[:find ?board ?page ?card :in $ ?uid ?pat :where
  [?target :block/uid ?uid] [?cardblock :block/refs ?target] [?cardblock :block/uid ?card]
  [?cardblock :block/parents ?diagram] [?diagram :block/uid ?board] [?diagram :block/string ?s]
@@ -99455,7 +102118,7 @@ function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbna
     boardsWith(targetUid) {
       let rows = [];
       try {
-        const found = host?.q?.(REF_QUERY, targetUid, DIAGRAM_RE3);
+        const found = host?.q?.(REF_QUERY, targetUid, DIAGRAM_RE4);
         rows = Array.isArray(found) ? found : [];
       } catch {
         return [];
@@ -100036,9 +102699,12 @@ async function installPlexusDiagram({
   const sketchTimers = /* @__PURE__ */ new Map();
   const sketchHandoffs = /* @__PURE__ */ new Map();
   const snapTimers = /* @__PURE__ */ new Map();
+  const snapJobs = /* @__PURE__ */ new Map();
+  const snapParts = /* @__PURE__ */ new Map();
   const SNAP_SETTLE_MS = 1e3;
   const SNAP_WARM_WAIT_MS = 50;
   const openPerf = { lastOpen: null, opens: [] };
+  const QUERY_NUDGE_DELAY_MS = 4e3;
   let settings = readSettings(extensionAPI);
   bindSpeedFlagSource(() => {
     try {
@@ -100053,7 +102719,17 @@ async function installPlexusDiagram({
     graph: graphKey,
     enabled: () => notedSpeedFlags().snapshot !== false
   });
+  const modelStore = createModelStore({
+    indexedDB: win2.indexedDB ?? globalThis.indexedDB,
+    graph: graphKey,
+    enabled: () => notedSpeedFlags().trustSnapshot !== false && notedSpeedFlags().snapshot !== false
+  });
+  try {
+    host.useModelStore?.(modelStore);
+  } catch {
+  }
   const speedFlags = () => notedSpeedFlags();
+  bindBgBudgetFlag(() => speedFlags().bgBudget !== false);
   const liveSettings = { get: (id) => settings[id] };
   let stopped = false;
   let closeAddToBoard = () => {
@@ -100185,6 +102861,7 @@ async function installPlexusDiagram({
   const editSeen = /* @__PURE__ */ new Map();
   lifecycle.add(() => previewBoards.clear());
   lifecycle.add(() => clearPinnedToast());
+  lifecycle.add(() => resetSharedBgBudget());
   let cacheLoadMs = null;
   const dropBoardCards = (uid) => {
     if (!uid) return;
@@ -100451,13 +103128,13 @@ async function installPlexusDiagram({
     try {
       const res = pullVia(host, ANCESTORS_PATTERN, [":block/uid", uid]);
       const parents = res?.[":block/parents"] ?? [];
-      const chain = parents.filter((p) => isDiagramString(pulledString(p)) && readPlexus(p[":block/props"] ?? p.props)?.v === 2).map((p) => ({ uid: p[":block/uid"], title: boardTitle2(p[":block/string"]), depth: (p[":block/parents"] ?? []).length })).sort((a, b) => a.depth - b.depth).map(({ uid: u, title }) => ({ uid: u, title }));
+      const chain = parents.filter((p) => isDiagramString2(pulledString(p)) && readPlexus(p[":block/props"] ?? p.props)?.v === 2).map((p) => ({ uid: p[":block/uid"], title: boardTitle2(p[":block/string"]), depth: (p[":block/parents"] ?? []).length })).sort((a, b) => a.depth - b.depth).map(({ uid: u, title }) => ({ uid: u, title }));
       return [...chain, self];
     } catch {
       return [self];
     }
   }
-  const isDiagramUid = (candidate) => isDiagramString(host.blockString?.(candidate));
+  const isDiagramUid = (candidate) => isDiagramString2(host.blockString?.(candidate));
   const inputUids = /* @__PURE__ */ new Map();
   isDiagramUid.many = (candidates2) => {
     const key = candidates2[candidates2.length - 1] || "";
@@ -100468,7 +103145,7 @@ async function installPlexusDiagram({
     const uid = candidates2.find((candidate) => strings.get(candidate) != null) || "";
     if (inputUids.size > 5e3) inputUids.clear();
     inputUids.set(key, uid);
-    return uid && isDiagramString(strings.get(uid)) ? uid : null;
+    return uid && isDiagramString2(strings.get(uid)) ? uid : null;
   };
   function unmountOutlineCopies(parent) {
     for (const other of [...mounts.values()]) {
@@ -100582,10 +103259,15 @@ async function installPlexusDiagram({
     sketchTimers.set(rec, timer);
   }
   function saveSketchNow(rec) {
+    const owed = sketchTimers.has(rec);
     clearSketchTimer(rec);
     saveSnapNow(rec);
     if (speedFlags().sketch === false) return;
     if (!rec?.view || !rec.session?.board || sketchGesturing(rec)) return;
+    if (!owed && sketchStore.has(currentUid(rec))) {
+      sketchStore.flushAll();
+      return;
+    }
     try {
       const sketch = captureSketch(rec.session.board);
       const uid = currentUid(rec);
@@ -100598,6 +103280,9 @@ async function installPlexusDiagram({
   const snapAllowed = () => speedFlags().snapshot !== false;
   const readsNow = () => Number(host.stats?.reads) || 0;
   const runIdle = (fn) => {
+    if (notedSpeedFlags().bgBudget !== false && typeof (win2.requestIdleCallback ?? globalThis.requestIdleCallback) === "function") {
+      return sharedBgBudget().idle(() => fn(), { timeout: 2e3, label: "snap" });
+    }
     const ric = win2.requestIdleCallback ?? globalThis.requestIdleCallback;
     if (typeof ric === "function") return ric(() => fn(), { timeout: 2e3 });
     const t = setTimeout(fn, 0);
@@ -100657,8 +103342,8 @@ async function installPlexusDiagram({
   const snapKey = (uid, kind) => kind && kind !== "main" ? `${uid}@${kind}` : uid;
   function snapFor(rec, uid) {
     const kind = snapKindOf(rec);
-    const own = snapStore.get(snapKey(uid, kind));
-    if (own || kind === "main") return own;
+    const own2 = snapStore.get(snapKey(uid, kind));
+    if (own2 || kind === "main") return own2;
     const main = snapStore.get(uid);
     return main ? { ...main, chrome: [] } : null;
   }
@@ -100666,8 +103351,15 @@ async function installPlexusDiagram({
     const timer = snapTimers.get(rec);
     if (timer) clearTimeout(timer);
     snapTimers.delete(rec);
+    const job = snapJobs.get(rec);
+    snapJobs.delete(rec);
+    snapParts.delete(rec);
+    try {
+      job?.();
+    } catch {
+    }
   }
-  function captureSnap(rec) {
+  function captureSnap(rec, parts = null) {
     if (!snapAllowed() || stopped || !rec?.view || rec.view.sketchStandIn === true) return false;
     let src = null;
     try {
@@ -100681,8 +103373,66 @@ async function installPlexusDiagram({
     if (!uid) return false;
     const key = snapKey(uid, snapKindOf(rec));
     const dark = isDarkTheme(rec);
+    const fresh = rec.snapFresh;
+    rec.snapFresh = null;
+    if (fresh && fresh.key === key && fresh.dark === dark) {
+      const prev = snapStore.get(key);
+      const vp = src.vp;
+      let same2 = false;
+      try {
+        same2 = Boolean(prev && prev === fresh.snap && vp && prev.vp && prev.vp.x === vp.x && prev.vp.y === vp.y && prev.vp.zoom === vp.zoom && prev.stamp === boardStamp(src.board, src.rects));
+      } catch {
+        same2 = false;
+      }
+      if (same2) {
+        rec.snapDirty = false;
+        if (host.stats && typeof host.stats === "object") host.stats.snapSkips = (host.stats.snapSkips || 0) + 1;
+        return true;
+      }
+    }
     const thumbs = /* @__PURE__ */ new Map();
     let snap = null;
+    if (parts) {
+      let capture = null;
+      try {
+        capture = createBoardSnapCapture({
+          ...src,
+          uid,
+          prev: snapStore.get(key) || snapStore.get(uid),
+          thumbs,
+          tableThumbKey: (item) => {
+            if (!tableUidOf(item)) return null;
+            const key2 = thumbKeyOf(item, dark);
+            return key2 && snapStore.thumb(key2) ? key2 : null;
+          }
+        });
+      } catch {
+        capture = null;
+      }
+      if (!capture) return false;
+      parts.capture = capture;
+      parts.finish = () => {
+        let now4 = null;
+        try {
+          now4 = rec.view?.snapshotSource?.() ?? null;
+        } catch {
+          now4 = null;
+        }
+        if (!now4 || now4.gesturing || now4.board !== src.board || now4.vp?.x !== src.vp?.x || now4.vp?.y !== src.vp?.y || now4.vp?.zoom !== src.vp?.zoom || currentUid(rec) !== uid || isDarkTheme(rec) !== dark) return null;
+        const out = capture.result();
+        if (!out) return false;
+        let same2 = false;
+        try {
+          same2 = out.stamp === boardStamp(now4.board, now4.rects);
+        } catch {
+          same2 = false;
+        }
+        if (!same2) return null;
+        rec.snapDirty = false;
+        return snapStore.set(key, out, thumbs);
+      };
+      return true;
+    }
     try {
       snap = captureBoardSnap({
         ...src,
@@ -100708,6 +103458,45 @@ async function installPlexusDiagram({
     clearSnapTimer(rec);
     const timer = setTimeout(() => {
       snapTimers.delete(rec);
+      if (notedSpeedFlags().bgBudget !== false && typeof (win2.requestIdleCallback ?? globalThis.requestIdleCallback) === "function") {
+        let parts = null;
+        let job = null;
+        const end = () => {
+          if (snapJobs.get(rec) === job) {
+            snapJobs.delete(rec);
+            snapParts.delete(rec);
+          }
+          return true;
+        };
+        job = sharedBgBudget().run((deadline) => {
+          if (stopped || mounts.get(rec.native) !== rec) return end();
+          if (!parts) {
+            parts = {};
+            snapParts.set(rec, parts);
+            const r = captureSnap(rec, parts);
+            if (r === null) {
+              end();
+              scheduleSnap(rec);
+              return true;
+            }
+            return parts.capture ? false : end();
+          }
+          if (!parts.captured) {
+            const left = Math.max(1, deadline.timeRemaining() - 2);
+            parts.captured = parts.capture.step(left);
+            return false;
+          }
+          end();
+          if (parts.finish() === null) scheduleSnap(rec);
+          else if (notedSpeedFlags().trustSnapshot !== false) try {
+            host.refreshModel?.(currentUid(rec));
+          } catch {
+          }
+          return true;
+        }, { timeout: 2e3, label: "snap", partMs: 4, urgent: true });
+        snapJobs.set(rec, job);
+        return;
+      }
       runIdle(() => {
         if (stopped || mounts.get(rec.native) !== rec) return;
         if (captureSnap(rec) === null) scheduleSnap(rec);
@@ -100717,8 +103506,25 @@ async function installPlexusDiagram({
     snapTimers.set(rec, timer);
   }
   function saveSnapNow(rec) {
-    const pending = snapTimers.has(rec);
+    const pending = snapTimers.has(rec) || snapJobs.has(rec);
+    const parts = snapParts.get(rec);
     clearSnapTimer(rec);
+    if (parts?.capture) {
+      let r = null;
+      try {
+        parts.capture.step(Infinity);
+        r = parts.finish();
+      } catch {
+        r = null;
+      }
+      if (r !== null) {
+        try {
+          void snapStore.flush();
+        } catch {
+        }
+        return;
+      }
+    }
     if (!rec?.snapDirty && !pending) return;
     try {
       captureSnap(rec);
@@ -100770,6 +103576,16 @@ async function installPlexusDiagram({
     };
     rec.openT0 = null;
     publishOpen(rec, entry);
+    if (shouldNudgeQueries({ entry })) {
+      const t = setTimeout(() => runIdle(() => {
+        if (stopped || mounts.get(rec.native) !== rec) return;
+        try {
+          rec.view?.queryNudge?.(entry);
+        } catch {
+        }
+      }), QUERY_NUDGE_DELAY_MS);
+      t?.unref?.();
+    }
   }
   function paintSnapFor(rec, initialViewport) {
     if (!snapAllowed() || !rec?.mountEl) return null;
@@ -100797,6 +103613,7 @@ async function installPlexusDiagram({
       if (!painted) throw new Error("snapshot paint failed");
       painted.snap = snap;
       painted.vp = vp;
+      rec.snapFresh = { key: snapKey(uid, snapKindOf(rec)), snap, dark: isDarkTheme(rec) };
       painted.fsOff = fsOff;
       painted.fullscreen = Boolean(rec.fullscreen);
       notePaint(rec, true);
@@ -100908,6 +103725,18 @@ async function installPlexusDiagram({
         return;
       }
     }
+    if (handoff.reader && !handoff.splitMount) {
+      handoff.splitMount = true;
+      nextTask(() => {
+        if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec || rec.view !== standIn) return;
+        mountSnapView(handoff, standIn, { autofocus, viewport: viewport2, onLive, logging, t0 }, fail4);
+      });
+      return;
+    }
+    mountSnapView(handoff, standIn, { autofocus, viewport: viewport2, onLive, logging, t0 }, fail4);
+  }
+  function mountSnapView(handoff, standIn, { autofocus, viewport: viewport2, onLive, logging, t0 }, fail4) {
+    const rec = handoff.rec;
     const state = handoff.painted?.state;
     const vpNow = state?.moved ? { ...state.vp } : viewport2;
     let view;
@@ -100947,7 +103776,40 @@ async function installPlexusDiagram({
     timer?.unref?.();
     handoff.holdTimer = timer;
   }
-  function beginSnapHandoff(rec, painted, { autofocus = false, viewport: viewport2 = null, acquire = null, onLive = null } = {}) {
+  const nextTask = (fn) => {
+    const MC = win2.MessageChannel ?? globalThis.MessageChannel;
+    if (typeof MC === "function") {
+      const ch = new MC();
+      ch.port1.onmessage = () => {
+        ch.port1.onmessage = null;
+        try {
+          ch.port1.close?.();
+        } catch {
+        }
+        fn();
+      };
+      ch.port2.postMessage(0);
+      return;
+    }
+    const t = setTimeout(fn, 0);
+    t?.unref?.();
+  };
+  const snapCovers = (snap) => {
+    let n3 = 0;
+    const has = (face, depth) => Boolean(face && typeof face === "object" && (typeof face.y?.["--pxd-cover"] === "string" || depth < 3 && Array.isArray(face.k) && face.k.some((kid) => has(kid, depth + 1))));
+    for (const item of snap?.items || []) if (has(item?.face, 0)) n3 += 1;
+    return n3;
+  };
+  const prereadFor = (uid, snap = null) => {
+    if (!uid || speedFlags().slicedMount === false || typeof host.prereadBoard !== "function") return null;
+    if (injectedAcquire === acquireSession && hasSession(uid, host)) return null;
+    try {
+      return host.prereadBoard(uid, { trust: speedFlags().trustSnapshot !== false, covers: snapCovers(snap) });
+    } catch {
+      return null;
+    }
+  };
+  function beginSnapHandoff(rec, painted, { autofocus = false, viewport: viewport2 = null, acquire = null, onLive = null, readUid = "" } = {}) {
     const logging = settings[SETTING_IDS.speedLog] === true;
     const handoff = {
       rec,
@@ -100980,21 +103842,53 @@ async function installPlexusDiagram({
     });
     const opts = { autofocus, viewport: viewport2, acquire, onLive, logging, t0: logging ? perfNow() : 0 };
     if (logging) shiftWatch.watchMount(rec.mountEl);
+    const live2 = () => !handoff.cancelled && !stopped && mounts.get(rec.native) === rec;
     const start = () => {
       handoff.timeoutId = null;
       runSnapMount(handoff, standIn, opts);
+    };
+    const read2 = () => {
+      handoff.timeoutId = null;
+      const reader = prereadFor(readUid, painted.snap);
+      if (!reader) {
+        start();
+        return;
+      }
+      handoff.reader = reader;
+      const slice = () => {
+        if (!live2()) {
+          reader.cancel();
+          return;
+        }
+        let done3 = true;
+        try {
+          done3 = reader.step();
+        } catch {
+          done3 = true;
+        }
+        const waiting = done3 ? null : reader.waiting;
+        if (waiting) {
+          waiting.then(() => nextTask(slice), () => nextTask(slice));
+          return;
+        }
+        nextTask(done3 ? () => {
+          if (live2()) start();
+          else reader.cancel();
+        } : slice);
+      };
+      slice();
     };
     const raf2 = globalThis.requestAnimationFrame;
     if (typeof raf2 === "function") {
       handoff.rafId = raf2(() => {
         handoff.rafId = null;
-        if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
-        const timer = setTimeout(start, 0);
+        if (!live2()) return;
+        const timer = setTimeout(read2, 0);
         timer?.unref?.();
         handoff.timeoutId = timer;
       });
     } else {
-      const timer = setTimeout(start, 0);
+      const timer = setTimeout(read2, 0);
       timer?.unref?.();
       handoff.timeoutId = timer;
     }
@@ -101040,6 +103934,10 @@ async function installPlexusDiagram({
     if (handoff) {
       handoff.cancelled = true;
       sketchHandoffs.delete(rec);
+      try {
+        handoff.reader?.cancel?.();
+      } catch {
+      }
       clearSketchHandoffTimers(handoff);
       detachSketchInput(handoff);
       try {
@@ -101491,15 +104389,15 @@ async function installPlexusDiagram({
     visit(rec, trail);
     const focus = (left) => {
       if (stopped || mounts.get(rec.native) !== rec) return;
-      let done2 = false;
+      let done3 = false;
       if (!rec.view?.sketchStandIn || rec.view.live) {
         try {
-          done2 = Boolean(rec.view?.focusUid?.(edgeUid));
+          done3 = Boolean(rec.view?.focusUid?.(edgeUid));
         } catch {
-          done2 = false;
+          done3 = false;
         }
       }
-      if (!done2 && left > 0) lifecycle.timeout(() => focus(left - 1), 100);
+      if (!done3 && left > 0) lifecycle.timeout(() => focus(left - 1), 100);
     };
     queueMicrotask(() => focus(80));
   }
@@ -101847,10 +104745,10 @@ async function installPlexusDiagram({
       fn();
       return;
     }
-    let done2 = false;
+    let done3 = false;
     const once = () => {
-      if (done2) return;
-      done2 = true;
+      if (done3) return;
+      done3 = true;
       fn();
     };
     win3.requestAnimationFrame(() => setTimeout(once, 0));
@@ -101952,6 +104850,7 @@ async function installPlexusDiagram({
             rec.view = beginSnapHandoff(rec, painted, {
               autofocus: true,
               viewport: viewport2 || null,
+              readUid: target,
               acquire: () => {
                 rec.session = acquireSession2(target, { host, settings: liveSettings, ...virtualOptions(virtual) });
                 if (!rec.session?.board) {
@@ -102077,6 +104976,7 @@ async function installPlexusDiagram({
         if (painted) {
           deferred = true;
           rec.view = beginSnapHandoff(rec, painted, {
+            readUid: currentUid(rec),
             acquire: () => {
               rec.session = acquireSession2(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
               return Boolean(rec.session);
@@ -102195,11 +105095,11 @@ async function installPlexusDiagram({
     return false;
   }
   function ancestorClosed(node2) {
-    let own = false;
+    let own2 = false;
     for (let cur = node2; cur; cur = cur.parentElement) {
       if (!cur.classList?.contains?.("roam-block-container")) continue;
-      if (!own) {
-        own = true;
+      if (!own2) {
+        own2 = true;
         continue;
       }
       if (cur.classList.contains("rm-block--closed") || lineClosed(cur)) return true;
@@ -102301,6 +105201,7 @@ async function installPlexusDiagram({
       try {
         rec.view = beginSnapHandoff(rec, painted, {
           viewport: rec.parkedVp || null,
+          readUid: currentUid(rec),
           acquire: () => {
             rec.session = acquireSession2(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(rec.virtual && virtualUids.has(currentUid(rec))) });
             if (!rec.session?.board) {
@@ -102407,8 +105308,8 @@ async function installPlexusDiagram({
       if (isBoardEnhanced(cached)) return true;
       outlineOwnerByNative.delete(native);
     }
-    const own = native.closest?.(BLOCK_CONTAINER_SELECTOR);
-    let container = own ? own.parentElement?.closest?.(BLOCK_CONTAINER_SELECTOR) : null;
+    const own2 = native.closest?.(BLOCK_CONTAINER_SELECTOR);
+    let container = own2 ? own2.parentElement?.closest?.(BLOCK_CONTAINER_SELECTOR) : null;
     while (container) {
       const uid = blockContainerUid(container, isDiagramUid);
       if (uid && isBoardEnhanced(uid)) {
@@ -103285,10 +106186,10 @@ async function installPlexusDiagram({
   }
   function diagramAncestorUid(uid) {
     if (!uid) return null;
-    if (isDiagramString(host.blockString?.(uid))) return uid;
+    if (isDiagramString2(host.blockString?.(uid))) return uid;
     try {
       const rows = host.q?.(PARENTS_QUERY, uid) || [];
-      const hits = rows.filter((row4) => isDiagramString(row4[1])).map((row4) => row4[0]);
+      const hits = rows.filter((row4) => isDiagramString2(row4[1])).map((row4) => row4[0]);
       if (hits.length < 2) return hits[0] ?? null;
       const deepest = hits.find((cand) => {
         const above = new Set((host.q?.(PARENTS_QUERY, cand) || []).map((row4) => row4[0]));
@@ -103303,7 +106204,7 @@ async function installPlexusDiagram({
     const fromFocus = diagramAncestorUid(focusedUid(context));
     if (fromFocus) return fromFocus;
     const zoomed = diagramUidFromLocation();
-    if (zoomed && isDiagramString(host.blockString?.(zoomed))) return zoomed;
+    if (zoomed && isDiagramString2(host.blockString?.(zoomed))) return zoomed;
     const uids = new Set([...mounts.values()].map((rec) => rec.uid));
     return uids.size === 1 ? [...uids][0] : null;
   }
@@ -103379,6 +106280,9 @@ async function installPlexusDiagram({
   function foldTablesCommand(context) {
     return targetView(context)?.foldTableCaptions?.();
   }
+  function foldQueriesCommand(context) {
+    return targetView(context)?.foldPageQueries?.();
+  }
   function foldSectionsCommand(context) {
     return targetView(context)?.foldSections?.(true);
   }
@@ -103414,6 +106318,7 @@ async function installPlexusDiagram({
     ["Plexus: Resurface here", resurfaceCommand],
     ["Plexus: Move PDFs to their own pages", movePdfPagesCommand],
     ["Plexus: Fold tables under captions", foldTablesCommand],
+    ["Plexus: Fold queries on this page", foldQueriesCommand],
     ["Plexus: Fold sections in the outline", foldSectionsCommand],
     ["Plexus: Unfold sections", unfoldSectionsCommand],
     ["Plexus: Find related to the selected card", findRelatedCommand]
@@ -103503,7 +106408,7 @@ async function installPlexusDiagram({
     if (extensionAPI.ui?.blockContextMenu?.addCommand) {
       await lifecycle.command(extensionAPI.ui.blockContextMenu, {
         label: "Plexus: Enhance",
-        "display-conditional": (event) => isDiagramString(event?.["block-string"]),
+        "display-conditional": (event) => isDiagramString2(event?.["block-string"]),
         callback: (event) => {
           if (!active2()) return;
           enhanceCommand(event).catch((error) => console.warn("[plexus-diagram] Enhance failed", error));
@@ -103834,13 +106739,13 @@ async function installPlexusDiagram({
     }
     return null;
   }
-  function waitOpenMount(boardUid, sidebar, left, done2) {
+  function waitOpenMount(boardUid, sidebar, left, done3) {
     const rec = findOpenMount(boardUid, sidebar);
     if (rec || left <= 0) {
-      done2(rec);
+      done3(rec);
       return;
     }
-    lifecycle.timeout(() => waitOpenMount(boardUid, sidebar, left - 1, done2), 50);
+    lifecycle.timeout(() => waitOpenMount(boardUid, sidebar, left - 1, done3), 50);
   }
   function showCard(rec, cardUid) {
     try {
@@ -103995,6 +106900,7 @@ async function installPlexusDiagram({
     },
     // INSTANT-1. Open timings: { snap, firstPaintMs, liveMs, queriesBeforePaint } per open.
     perf: openPerf,
+    bgOverruns: () => sharedBgBudget().overruns.slice(),
     snapshots: {
       size: () => snapStore.size(),
       has: (uid) => snapStore.has(uid),
@@ -104188,6 +107094,7 @@ async function installPlexusDiagram({
     for (const rec of mounts.values()) forgetSketch(rec);
     sketchStore.dispose();
     void snapStore.dispose();
+    void modelStore.dispose();
   });
   lifecycle.add(() => {
     stopped = true;
@@ -104280,7 +107187,7 @@ var extension_default = { onload, onunload };
 export {
   extension_default as default,
   enhancedUidGuardCss,
-  isDiagramString,
+  isDiagramString2 as isDiagramString,
   onload,
   onunload,
   settingsDefaults

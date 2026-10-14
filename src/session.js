@@ -31,6 +31,7 @@ import {
 import { whyPlan } from "./model/why.js";
 import { isInlinePdfCard, pageCardString } from "./model/pdf-page.js";
 import { isOldTableCard } from "./model/table-captions.js";
+import { hasQueryMacro, planQueryFolds } from "./model/query-fold.js";
 import { trailString } from "./model/trails.js";
 import {
   BOARD_PATTERNS,
@@ -79,6 +80,8 @@ import { coveredBy, filterLinks, linksQuery, reduceLinks } from "./model/links.j
 import { isQueryString } from "./model/query.js";
 import { autoEligibility, storedLayoutIn } from "./discovery.js";
 import { createEchoLedger, createWriteQueue } from "./host/roam.js";
+import { sharedBgBudget } from "./bg-budget.js";
+import { notedSpeedFlags } from "./settings.js";
 import { executeImport, planImport, readNative, readV06Entry } from "./host/migrate.js";
 
 const UID = ":block/uid";
@@ -98,6 +101,11 @@ export const RESUME_RETRY_MS = 1000;
 export const HIGHLIGHT_HOLD_MS = 60000;
 // Link-query targets per idle slice on a big board.
 const LINK_CHUNK = 120;
+// P8 U2: a big board's links start after the board sat still this long. Each refs query has a fixed cost (~9 ms on
+// the PhD main board whatever its size), so parts are LINK_PART targets (~25 ms there), one per slice unless the slice
+// still has room for another.
+const LINK_QUIET_MS = 1500;
+const LINK_PART = 100;
 const DAILY_GAP = 20;
 const HIGHLIGHT_WATCH_CAP = 60;
 
@@ -579,11 +587,32 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   // An edge that was on the board and then vanished takes the edges that used it as an
   // end with it. The first open has nothing to compare, so a dangling arrow stays put
   // until a later reconcile sees the target disappear. Ordinary missing cards are not edges.
+  // P9: while the board shows a stored model nobody has read again (host.boardUnverified), the vanished edges are only
+  // noted; once the background read lands they are judged again against the fresh board.
+  let heldGone = null;
   function queueDependentDrops(prev, next) {
-    if (dropQueued || !prev?.edges || !next?.edges) return;
+    if (!prev?.edges || !next?.edges) return;
     const gone = [];
     for (const id of prev.edges.keys()) if (!next.edges.has(id)) gone.push(id);
     if (!gone.length) return;
+    if (host.boardUnverified?.(uid) === true) {
+      if (!heldGone) {
+        heldGone = new Set();
+        host.onBoardVerified?.(uid, () => {
+          const ids = heldGone ? [...heldGone] : [];
+          heldGone = null;
+          if (destroyed || !board || !ids.length) return;
+          dropDependentsOf(ids.filter((id) => !board.edges.has(id)));
+        });
+      }
+      for (const id of gone) heldGone.add(id);
+      return;
+    }
+    dropDependentsOf(gone);
+  }
+  function dropDependentsOf(gone) {
+    if (dropQueued || !board?.edges || !gone.length) return;
+    const next = board;
     const victims = [];
     for (const edge of next.edges.values()) {
       if (gone.includes(edge.from) || gone.includes(edge.to)) victims.push(edge.uid);
@@ -1549,9 +1578,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     }
     const eids = [...eidToItems.keys()];
     if (!eids.length || boardEid == null) return null;
-    return { boardEid, eidToItems, eids };
+    return { boardEid, eidToItems, eids, eidSet: new Set(eids) };
   }
   function linkRows(inputs, targets) {
+    if (typeof host.linkRows === "function") return host.linkRows(inputs.boardEid, inputs.eidSet, targets) || [];
     return host.q(linksQuery(), inputs.boardEid, inputs.eids, targets) || [];
   }
   function finishLinkRows(inputs, rows) {
@@ -1560,7 +1590,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     for (const row of rows) {
       const su = row[2];
       const ss = row[3];
-      if (budget <= 0) break;
+      // host.linkRows brings the parent string with the row (null: none); only linksQuery() rows need the read.
+      if (row.length > 4) {
+        if (row[4] != null && attrNameOf(ss) == null) parentStrings.set(su, row[4]);
+        continue;
+      }
+      if (budget <= 0) continue;
       if (attrNameOf(ss) == null && !parentStrings.has(su)) {
         budget--;
         const ps = host.parentString?.(su);
@@ -1589,6 +1624,29 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       const ric = globalThis.requestIdleCallback;
       // A big board (PhD main board: ~1,000 card eids, one 1.7 s query) reads its link rows LINK_CHUNK targets
       // per idle slice; the links publish once, after the last slice.
+      if (inputs && inputs.eids.length > LINK_CHUNK && typeof ric === "function" && !idle && notedSpeedFlags().bgBudget !== false) {
+        const epoch = linkEpoch;
+        const rows = [];
+        let i = 0;
+        let partMs = 25;
+        const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
+        linkJob = sharedBgBudget().run(() => {
+          if (destroyed || epoch !== linkEpoch) { linkJob = null; finishLinks(); return true; }
+          try {
+            const t0 = clock();
+            rows.push(...linkRows(inputs, inputs.eids.slice(i, i + LINK_PART)));
+            partMs = (partMs + (clock() - t0)) / 2;
+            i += LINK_PART;
+            if (i < inputs.eids.length) return false;
+            finishLinkRows(inputs, rows);
+            recomputeLinks(false);
+          } catch (err) { console.error("[plexus session] links", err); }
+          linkJob = null;
+          finishLinks();
+          return true;
+        }, { timeout: 1000, firstQuiet: LINK_QUIET_MS, partMs: () => partMs, label: "links" });
+        return;
+      }
       if (inputs && inputs.eids.length > LINK_CHUNK && typeof ric === "function" && !idle) {
         const epoch = linkEpoch;
         const rows = [];
@@ -1619,8 +1677,22 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   // One rAF chain is in flight at a time. A hidden tab pauses frames, and every board change used to queue
   // another pair of closures behind the paused ones.
   let linkChain = null;
+  let linkJob = null;
+  let linksOwed = false;
+  const linksParked = () => holders > 0 && pausedHolds >= holders;
+  function parkLinks() {
+    if (!linkJob && !linkChain && linkTimer == null && linkIdleId == null) return;
+    cancelScheduledLinks();
+    linksOwed = true;
+  }
+  function unparkLinks() {
+    if (!linksOwed || linksParked() || destroyed) return;
+    linksOwed = false;
+    scheduleLinks();
+  }
   function cancelScheduledLinks(keepChain = false) {
     linkEpoch += 1;
+    if (linkJob) { const stop = linkJob; linkJob = null; stop(); }
     if (!keepChain) linkChain = null;
     if (linkTimer) clearTimeout(linkTimer);
     linkTimer = null;
@@ -1633,6 +1705,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   // .pxd-item before this query; the idle timeout is 1s so the curves still show.
   function scheduleLinks() {
     cancelScheduledLinks(true);
+    // A parked board (page left, crumb park) spends no background budget: the links run again when it resumes.
+    if (linksParked()) { linksOwed = true; linkChain = null; return; }
     const ric = globalThis.requestIdleCallback;
     const raf = globalThis.requestAnimationFrame;
     if (linkDelay !== 0 && !idle && typeof ric === "function" && typeof raf === "function") {
@@ -2485,11 +2559,19 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           }
           await execute(ops);
           for (const r of back) {
-            // Deleting a caption that still holds its table would delete the table: wait for Roam to apply the move.
+            // Deleting a caption that still holds its table would delete the table: wait until a read proves the
+            // table left it (its location under another parent, or the caption's children without it). A failed
+            // read is "not moved yet"; if no read ever proves it, the caption stays.
             let out = false;
             for (let tries = 0; tries < 15 && !out; tries += 1) {
-              const loc = host.blockLocation?.(r.tableUid);
-              out = !loc || loc.parentUid !== r.captionUid;
+              let loc = null;
+              try { loc = host.blockLocation?.(r.tableUid) || null; } catch { loc = null; }
+              if (loc) out = loc.parentUid !== r.captionUid;
+              else {
+                let kids;
+                try { kids = host.outlineKids?.([r.captionUid])?.get(r.captionUid); } catch { kids = undefined; }
+                out = Array.isArray(kids) && !kids.some((k) => k.uid === r.tableUid);
+              }
               if (!out) await new Promise((resolve) => setTimeout(resolve, 200));
             }
             if (out) await execute([{ op: "delete", uid: r.captionUid }]);
@@ -2524,6 +2606,92 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         }
         return { folded: folds.length, edges };
       }, custom);
+    },
+
+    // "Fold queries on this page": the plan for the page that holds this board (queries outside every board).
+    queryFoldPlan({ limit } = {}) {
+      let pageUid = "";
+      try { pageUid = String(host.blockPageUid?.(uid) || ""); } catch { pageUid = ""; }
+      let graph = "";
+      try { graph = String(host.graphName?.() || ""); } catch { graph = ""; }
+      return planQueryFolds({
+        pageUid,
+        boardUid: uid,
+        graph,
+        limit,
+        kidsOfMany: (ids) => (typeof host.outlineKids === "function" ? host.outlineKids(ids) : new Map()),
+        newUid: () => host.generateUid?.() || "",
+      });
+    },
+
+    // Applies a queryFoldPlan: each query that is still where the plan saw it gets a folded caption in its place and
+    // moves under it. The blocks are outside the board, so this writes straight through the queue (no board model
+    // change). One custom undo entry with recorded inverse writes; a second run plans nothing.
+    foldPageQueries(plan) {
+      if (!plan || plan.boardUid !== uid || destroyed || gone) return Promise.resolve({ folded: 0, refused: "board" });
+      let graphNow = "";
+      try { graphNow = String(host.graphName?.() || ""); } catch { graphNow = ""; }
+      if (plan.graph && graphNow && plan.graph !== graphNow) return Promise.resolve({ folded: 0, refused: "graph" });
+      const folds = [];
+      for (const f of plan.folds || []) {
+        if (!f?.queryUid || !f.captionUid) continue;
+        let loc = null;
+        try { loc = host.blockLocation?.(f.queryUid) || null; } catch { loc = null; }
+        if (!loc || loc.parentUid !== f.parentUid) continue;
+        const now = host.pullEntity?.("[:block/string]", f.queryUid)?.[":block/string"];
+        if (!hasQueryMacro(now)) continue;
+        folds.push({ ...f, order: loc.order });
+      }
+      if (!folds.length) return Promise.resolve({ folded: 0 });
+      const list = [];
+      for (const f of folds) {
+        list.push({ op: "create", uid: f.captionUid, parent: f.parentUid, order: f.order, string: f.caption, open: false });
+        list.push({ op: "move", uid: f.queryUid, parent: f.captionUid, order: 0 });
+      }
+      if (!bulkAllowed(list.length)) return Promise.resolve({ folded: 0, refused: "bulk" });
+      const custom = {
+        forward: list,
+        async undo() {
+          // Highest original order first, per parent: each query lands right before its own caption.
+          const back = folds.slice().sort((a, b) => (a.parentUid < b.parentUid ? -1 : a.parentUid > b.parentUid ? 1 : b.order - a.order));
+          await execute(back.map((f) => ({ op: "move", uid: f.queryUid, parent: f.parentUid, order: f.order })));
+          for (const f of back) {
+            // Deleting a caption that still holds its query would delete the query: wait until a read proves the
+            // query left it (its location under another parent, or the caption's children without it). A failed
+            // read is "not moved yet"; if no read ever proves it, the caption stays.
+            let out = false;
+            for (let tries = 0; tries < 15 && !out; tries += 1) {
+              let loc = null;
+              try { loc = host.blockLocation?.(f.queryUid) || null; } catch { loc = null; }
+              if (loc) out = loc.parentUid !== f.captionUid;
+              else {
+                let kids;
+                try { kids = host.outlineKids?.([f.captionUid])?.get(f.captionUid); } catch { kids = undefined; }
+                out = Array.isArray(kids) && !kids.some((k) => k.uid === f.queryUid);
+              }
+              if (!out) await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+            if (out) await execute([{ op: "delete", uid: f.captionUid }]);
+          }
+        },
+        async redo() {
+          await execute(custom.forward);
+        },
+      };
+      return queue.run(() => grouped(async () => {
+        host.setCustomUndo?.(custom);
+        try {
+          await execute(list, { hold: true });
+        } catch (err) {
+          host.setCustomUndo?.(null);
+          throw err;
+        }
+      })).then(() => ({ folded: folds.length }), (err) => {
+        console.error("[plexus session] fold queries failed", err);
+        setSyncState("failed");
+        emit("toast", { message: "Couldn't fold every query. Check the page in Roam." });
+        return { folded: 0, failed: true };
+      });
     },
 
     // One ref card, centered on the board's content (the origin when nothing is placed yet).
@@ -3472,6 +3640,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       if (destroyed) return;
       holders += 1;
       syncBoardWatch(true);
+      unparkLinks();
     },
 
     // Drop this holder's pull watch without destroying the session.
@@ -3479,6 +3648,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       if (destroyed || pausedHolds >= holders) return;
       pausedHolds += 1;
       syncBoardWatch(false);
+      if (linksParked()) parkLinks();
     },
 
     // Put the watch back. One pullBoard applies edits that landed while paused.
@@ -3488,6 +3658,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       const wasOn = boardWatchOn && !boardWatchHeld;
       syncBoardWatch(!boardWatchOn);
       if (wasOn) catchUpBoard();
+      unparkLinks();
     },
 
     // A ref is leaving. A paused ref already dropped its watch hold.
@@ -3497,6 +3668,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       holders -= 1;
       if (holders === 0) return;
       syncBoardWatch(false);
+      unparkLinks();
     },
 
     release() { /* replaced by acquireSession */ },
@@ -3672,6 +3844,12 @@ export function acquireSession(boardUid, options = {}) {
     session.forget?.(opts);
   };
   return session;
+}
+
+// True when acquireSession(boardUid) with this host would reuse a live session (no board read).
+export function hasSession(boardUid, host) {
+  const entry = registry.get(boardUid);
+  return Boolean(entry && entry.host === host);
 }
 
 export function resetSessions() {

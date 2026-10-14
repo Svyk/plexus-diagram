@@ -693,6 +693,7 @@ export function createItemRenderer({
   readingUid = null,
   onPinOpen = null,
   settings: speedSettings = null,
+  onOverviewQueue = null,
   interopOn = null,
   adoptShell = null,
   tableThumb = null,
@@ -1914,6 +1915,9 @@ export function createItemRenderer({
   // and element stay alive detached, so class and state writes still reach it.
   const VIRTUAL_MIN = 400;
   const OPEN_NOW_MAX = 150;
+  // Map zoom used to build all 150 priority shells in the go-live frame (~245 ms). One chunk is
+  // this many shells. A frozen clock never expires PUMP_MS, so the cap is what ends the chunk.
+  const OPEN_CHUNK = 30;
   const PUMP_MS = 12;
   // In-view shells still queued after the open pass, and who waits for them.
   let pendingView = null;
@@ -2051,14 +2055,47 @@ export function createItemRenderer({
     }
     for (const rec of set) if (!isAttached(rec)) layerOf(rec).append(rec.el);
   };
-  const pumpShells = () => {
-    // At most 40 shells and about PUMP_MS per frame.
+  // The cover is the map-zoom stand-in for shells still queued. Opening at detail, or with overviewFast
+  // off, does not paint it. Once an overview-fast open has painted it, a zoom into detail keeps it until
+  // the queue is empty.
+  const overviewFastOn = () => {
+    try { return lod !== "detail" && speedOf().overviewFast !== false; } catch { return false; }
+  };
+  let coverHeld = false;
+  const noteOverviewQueue = () => {
+    if (shellQueue.length && overviewFastOn()) coverHeld = true;
+    if (!overviewFastOn() && !coverHeld) return;
+    if (!shellQueue.length) coverHeld = false;
+    try { onOverviewQueue?.(); } catch { /* the view paints the cover */ }
+  };
+  // A wheel, drag-pan, or pinch burst. The view sets this for the whole burst, including the event
+  // that opens it. Building or attaching here is the long frame the burst exists to avoid.
+  let shellsHeld = false;
+  const holdShells = (on) => {
+    const next = Boolean(on);
+    if (next === shellsHeld) return;
+    shellsHeld = next;
+    if (shellsHeld) {
+      stopShellBg();
+      return;
+    }
+    if (shellsLive) armShellPump();
+  };
+  // At most `limit` shells and about PUMP_MS. A priority chunk also stops when the priority prefix is gone,
+  // so the far cards stay on the background budget. Returns true when the queue is empty.
+  // While a burst holds shells, the chunk does nothing and the queue stays for the settle.
+  const pumpChunk = ({ limit = 40, priority = false } = {}) => {
+    if (shellsHeld) return false;
+    // Cover the queue before this chunk's shells exist. The matching call after the writes only hides an empty queue.
+    if (shellQueue.length) noteOverviewQueue();
     const t0 = now();
     const built = [];
     let taken = 0;
-    while (shellQueue.length && taken < 40 && (taken === 0 || now() - t0 < PUMP_MS)) {
+    while (shellQueue.length && taken < limit && (taken === 0 || now() - t0 < PUMP_MS)) {
+      if (priority && priorityLeft <= 0) break;
       const uid = shellQueue.shift();
       taken += 1;
+      if (priority && priorityLeft > 0) priorityLeft -= 1;
       pendingView?.delete(uid);
       const item = lastBoard?.items.get(uid);
       if (!item || shells.has(uid)) continue;
@@ -2081,11 +2118,111 @@ export function createItemRenderer({
       if (taken && lastContent) paintOffscreen(lastContent.visibleRect);
     }
     if (pendingView && !pendingView.size) viewBuilt();
+    if (!shellQueue.length) noteOverviewQueue();
+    return shellQueue.length === 0;
+  };
+  const pumpShells = () => {
+    if (shellsHeld) return;
+    if (pumpChunk()) return;
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
+  };
+  // The rAF pump ran on nearly every frame from first paint until live (~1 s of main-thread time on top of
+  // the 25% budget). At map or overview, with overviewFast, priority shells finish a chunk per frame and the
+  // rest share that budget. Detail zoom and overviewFast off still use frames: live waits on them.
+  let shellBg = null;
+  let priorityFrame = null;
+  let shellsLive = true;
+  // How many leading queue entries are priority shells (nearest, plus sections) still to build.
+  let priorityLeft = 0;
+  const stopPriorityFrame = () => {
+    priorityFrame?.();
+    priorityFrame = null;
+  };
+  const stopShellBg = () => {
+    shellBg?.();
+    shellBg = null;
+    stopPriorityFrame();
+  };
+  const pumpPriorityFrame = () => {
+    priorityFrame = null;
+    if (!shellsLive || shellsHeld) return;
+    pumpChunk({ limit: OPEN_CHUNK, priority: true });
+    if (!shellsLive || shellsHeld) return;
+    if (priorityLeft > 0 && shellQueue.length && timers?.frame) {
+      priorityFrame = timers.frame(pumpPriorityFrame);
+      return;
+    }
+    armShellPump();
+  };
+  const armShellPump = () => {
+    if (!shellsLive || shellsHeld) return;
+    stopShellBg();
+    if (!shellQueue.length) return;
+    if (priorityLeft > 0 && timers?.frame) {
+      priorityFrame = timers.frame(pumpPriorityFrame);
+      return;
+    }
+    let fast = false;
+    try { fast = lod !== "detail" && speedOf().overviewFast !== false && typeof timers?.bgRun === "function"; } catch { fast = false; }
+    if (fast) {
+      shellBg = timers.bgRun(() => pumpChunk(), { label: "shells", partMs: 4 });
+      return;
+    }
+    if (timers?.frame) timers.frame(pumpShells);
+  };
+  // Park cancels the priority rAF. Resume turns the flag back on and lets the next sync arm the pump.
+  const pauseShells = () => {
+    shellsLive = false;
+    stopShellBg();
+  };
+  const resumeShells = () => { shellsLive = true; };
+  // A zoom into detail used to keep pumping open-time distance order, so the new view stayed empty
+  // behind the priority tail. Cards inside the new view go to the front of the queue.
+  const promoteQueue = (viewRect) => {
+    if (!viewRect || !shellQueue.length || !lastRects) return;
+    const inside = [];
+    const outside = [];
+    for (const uid of shellQueue) {
+      const rect = lastRects.get(uid);
+      if (rect && rectsIntersect(rect, viewRect)) inside.push(uid);
+      else outside.push(uid);
+    }
+    if (!inside.length) return;
+    shellQueue = inside.concat(outside);
+    priorityLeft = inside.length;
+    armShellPump();
+    noteOverviewQueue();
   };
   const viewBuilt = () => {
     pendingView = null;
     for (const fn of viewWaiters.splice(0)) { try { fn(); } catch { /* the owner's hook */ } }
+  };
+  // A click or hover at map zoom lands on a card whose shell is still queued. Build that one now and
+  // attach it, so input hits a real item. The rest of the queue stays for the pump.
+  const ensureShell = (uid) => {
+    const have = shells.get(uid)?.el;
+    if (have) return have;
+    // A burst hit-test (the wheel's empty-canvas promote, a hover) must not build the card under the pointer.
+    if (shellsHeld) return null;
+    const item = lastBoard?.items.get(uid);
+    if (!item || disposed) return null;
+    const at = shellQueue.indexOf(uid);
+    if (at >= 0) {
+      shellQueue.splice(at, 1);
+      if (at < priorityLeft) priorityLeft -= 1;
+    }
+    pendingView?.delete(uid);
+    if (pendingView && !pendingView.size) viewBuilt();
+    noteOverviewQueue();
+    const rec = buildShell(item);
+    const rect = lastRects?.get(uid);
+    rec.el.style.display = rect ? "" : "none";
+    noteRender(uid);
+    paintShell(rec, item);
+    if (rect) position(rec, rect);
+    if (showBadges) renderBadges(rec);
+    attachShell(rec);
+    return rec.el;
   };
   // view: a screen around the camera (which shells to build first, which bodies are offscreen). attachView: the tighter
   // rect a big board's shells attach within.
@@ -2095,6 +2232,7 @@ export function createItemRenderer({
     try { virtualOff = speedOf().virtualShells === false; } catch { virtualOff = false; }
     lastBoard = board;
     lastRects = rects;
+    coverShift = null;
     // A highlight card placed, removed or changed moves its PDF's page chips and count, though the PDF card itself did not change.
     let dirty = changed;
     if (dirty != null) {
@@ -2106,10 +2244,24 @@ export function createItemRenderer({
       }
     }
     syncBoardHighlighter(doc, boardRoot());
-    // A full sync builds every missing shell itself. A partial sync must leave the
-    // open-time queue alone, or the cards past the first chunk never appear.
-    if (dirty == null) shellQueue = [];
+    // A queue still open is the defer path again. A full sync used to clear it and build
+    // every missing shell in this frame (an edit, a drop, undo, a pull-watch reseed).
     for (const uid of [...shells.keys()]) if (!board.items.has(uid)) removeShell(uid);
+    if (shellQueue.length) {
+      const next = [];
+      let pri = 0;
+      const priLimit = priorityLeft;
+      for (let i = 0; i < shellQueue.length; i += 1) {
+        if (!board.items.has(shellQueue[i])) continue;
+        next.push(shellQueue[i]);
+        if (i < priLimit) pri += 1;
+      }
+      shellQueue = next;
+      priorityLeft = pri;
+    }
+    // Shells already exist and some are still queued: build the dirty uid only.
+    // The first open still fills `defer` below, while shells.size is 0.
+    const holdQueue = shells.size > 0 && shellQueue.length > 0;
     let orderChanged = structural;
     let defer = null;
     if (!shells.size && board.order.length > 80 && typeof timers?.frame === "function") {
@@ -2131,10 +2283,12 @@ export function createItemRenderer({
         later.sort((a, b) => dist(a) - dist(b));
       }
       if (!now.length) now.push(...later.splice(0, 24));
-      // PhD main board at map zoom: all 1,558 items were in view and built in one 1.8 s task. The OPEN_NOW_MAX nearest
-      // the centre are built now, the rest of the view first in the frame-chunked pump; the snapshot (if any) stays up
-      // until the view is complete (whenViewBuilt).
-      if (now.length > OPEN_NOW_MAX && view) {
+      // PhD main board at map zoom: all 1,558 items were in view. Detail zoom and overviewFast off build the
+      // OPEN_NOW_MAX nearest now and wait for the rest (3.30.0). Map or overview with overviewFast builds one
+      // OPEN_CHUNK now, including in-view sections, and does not wait: the next chunks are frames, then the budget.
+      let fast = false;
+      try { fast = lod !== "detail" && speedOf().overviewFast !== false; } catch { fast = false; }
+      if (view && ((fast && now.length > OPEN_CHUNK) || now.length > OPEN_NOW_MAX)) {
         const cx = view.x + view.w / 2;
         const cy = view.y + view.h / 2;
         const dist = (uid) => {
@@ -2142,17 +2296,52 @@ export function createItemRenderer({
           return r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity;
         };
         const ranked = now.slice().sort((a, b) => dist(a) - dist(b));
-        const keep = new Set(ranked.slice(0, OPEN_NOW_MAX));
-        const rest = ranked.slice(OPEN_NOW_MAX);
-        now.length = 0;
-        for (const uid of board.order) if (keep.has(uid)) now.push(uid);
-        pendingView = new Set(rest);
-        later.unshift(...rest);
+        const sections = [];
+        const cards = [];
+        for (const uid of ranked) (board.items.get(uid)?.type === "section" ? sections : cards).push(uid);
+        if (fast) {
+          const priority = [...sections, ...cards.slice(0, OPEN_NOW_MAX)];
+          const first = new Set(priority.slice(0, OPEN_CHUNK));
+          const restPriority = priority.filter((uid) => !first.has(uid));
+          const restSet = new Set(restPriority);
+          priorityLeft = restPriority.length;
+          now.length = 0;
+          for (const uid of board.order) if (first.has(uid)) now.push(uid);
+          const tail = [...restPriority, ...ranked.filter((uid) => !first.has(uid) && !restSet.has(uid))];
+          later.unshift(...tail);
+        } else {
+          // 3.30.0: the nearest OPEN_NOW_MAX, sections included only when they are that near. Live waits.
+          const keep = new Set(ranked.slice(0, OPEN_NOW_MAX));
+          const rest = ranked.slice(OPEN_NOW_MAX);
+          now.length = 0;
+          for (const uid of board.order) if (keep.has(uid)) now.push(uid);
+          pendingView = new Set(rest);
+          later.unshift(...rest);
+        }
       }
       if (now.length && later.length) defer = new Set(later);
     }
+    if (defer?.size) {
+      shellQueue = [...defer];
+      // Paint the stand-in boxes before this frame's shells. A colour read after those writes forced layout.
+      noteOverviewQueue();
+    }
+    const held = holdQueue ? new Set(shellQueue) : null;
     for (const uid of board.order) {
       if (defer?.has(uid)) continue;
+      if (held?.has(uid)) {
+        if (dirty?.has(uid)) {
+          ensureShell(uid);
+          held.delete(uid);
+        }
+        continue;
+      }
+      // A card that appeared while the queue is open joins the queue. Building it here built every missing shell.
+      if (held && !shells.has(uid) && !dirty?.has(uid)) {
+        shellQueue.push(uid);
+        held.add(uid);
+        continue;
+      }
       const item = board.items.get(uid);
       let rec = shells.get(uid);
       const fresh = !rec;
@@ -2193,17 +2382,19 @@ export function createItemRenderer({
     }
     if (orderChanged) {
       if (attachView || view) cullRect = attachView || view;
-      if (virtual()) placeVirtual();
-      else placeShells();
+      // A sync during a burst used to place every near shell in that frame. The settle cull does it.
+      if (!shellsHeld) {
+        if (virtual()) placeVirtual();
+        else placeShells();
+      }
     }
-    if (defer?.size) {
-      shellQueue = [...defer];
-      timers.frame(pumpShells);
-    }
+    if (defer?.size) armShellPump();
     if (pendingView) {
       for (const uid of [...pendingView]) if (shells.has(uid) || !board.items.has(uid)) pendingView.delete(uid);
       if (!pendingView.size) viewBuilt();
     }
+    if (shellQueue.length) noteOverviewQueue();
+    if (shellQueue.length && shellsLive && !shellBg && !priorityFrame) armShellPump();
   };
 
 
@@ -4840,9 +5031,20 @@ export function createItemRenderer({
   };
 
   // ---------------------------------------------------------------- preview during gestures
+  // Queued member cards have no shell. The cover keeps their rects until the gesture ends.
+  let coverShift = null;
   const previewMove = (uids, dx, dy, board, rects) => {
     const set = new Set(uids);
     for (const u of uids) for (const d of descendantsOf(board, u)) set.add(d);
+    if (!dx && !dy) coverShift = null;
+    else {
+      coverShift = new Map();
+      for (const uid of set) {
+        const r = rects.get(uid);
+        if (!r) continue;
+        coverShift.set(uid, { x: r.x + dx, y: r.y + dy, w: r.w, h: r.h });
+      }
+    }
     const live = new Map();
     for (const uid of set) {
       const rec = shells.get(uid);
@@ -4852,6 +5054,7 @@ export function createItemRenderer({
       rec.el.style.transform = `translate(${moved.x}px, ${moved.y}px)`;
       live.set(uid, moved);
     }
+    noteOverviewQueue();
     return live;
   };
   const previewRects = (list) => {
@@ -5890,7 +6093,9 @@ export function createItemRenderer({
     unregisterMenus = () => {};
   };
   const dispose = () => {
+    if (disposed) return;
     disposed = true;
+    stopShellBg();
     tellPane({ open: false });
     if (freshTimer) { try { freshTimer(); } catch { /* already ran */ } freshTimer = null; }
     freshPending.clear();
@@ -5980,6 +6185,23 @@ export function createItemRenderer({
     renameBoard,
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
+    ensureShell,
+    holdShells,
+    pauseShells,
+    resumeShells,
+    promoteQueue,
+    coverHeld: () => coverHeld,
+    queuedCount: () => shellQueue.length,
+    pendingBoxes() {
+      const queued = new Set(shellQueue);
+      const out = [];
+      for (const uid of lastBoard?.order || []) {
+        if (!queued.has(uid) || shells.has(uid)) continue;
+        const rect = coverShift?.get(uid) || lastRects?.get(uid);
+        if (rect) out.push({ uid, rect });
+      }
+      return out;
+    },
     // fn runs once every shell in the open view is built (at once when none is queued).
     whenViewBuilt(fn) {
       if (typeof fn !== "function") return;

@@ -30,6 +30,7 @@ import { SPLIT_WATCH_MIN, containerKind, createSplitWatch, treeSize } from "./sp
 import { notedSpeedFlags } from "../settings.js";
 import { linksQuery } from "../model/links.js";
 import { createSlicedRead } from "./sliced-read.js";
+import { createPartSizer } from "../part-sizer.js";
 import { sharedBgBudget } from "../bg-budget.js";
 
 // Pull results equal but for Roam's own reader state (:pdf-settings: page, scale). Exits at the first other change.
@@ -1704,6 +1705,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         let statsDone = false;
         let refsDone = !refsLater;
         let dropped = false;
+        const refSizer = createPartSizer({ max: IDLE_REF_PART, start: 4 });
         const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
         // Small parts until the idle slice is nearly spent (PhD main board: 80 card stats or all refs per slice were
         // 0.2-0.6 s tasks). One part always runs, so a busy window still makes progress.
@@ -1714,7 +1716,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           const left = () => Math.min(IDLE_SLICE_MS - (clock() - t0), typeof deadline?.timeRemaining === "function" && !deadline.didTimeout ? deadline.timeRemaining() : Infinity);
           do {
             if (!refsDone) {
-              try { refsDone = pullRefsPart(IDLE_REF_PART); } catch { refsDone = true; /* cards read their refs on demand */ }
+              // P8 U2: as many refs as fit the slice at their measured cost (30 at once were 60-190 ms parts).
+              const n = refSizer.size(left() - IDLE_RESERVE_MS);
+              const r0 = clock();
+              try { refsDone = pullRefsPart(n); } catch { refsDone = true; /* cards read their refs on demand */ }
+              refSizer.note(n, clock() - r0);
               continue;
             }
             if (!dropped) { dropped = true; dropStats(uid); }

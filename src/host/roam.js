@@ -1706,6 +1706,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         let refsDone = !refsLater;
         let dropped = false;
         const refSizer = createPartSizer({ max: IDLE_REF_PART, start: 4 });
+        const titleSizer = createPartSizer({ max: PRIME_CHUNK, start: 4 });
         const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
         // Small parts until the idle slice is nearly spent (PhD main board: 80 card stats or all refs per slice were
         // 0.2-0.6 s tasks). One part always runs, so a busy window still makes progress.
@@ -1725,8 +1726,12 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
             }
             if (!dropped) { dropped = true; dropStats(uid); }
             if (ti < titles.length) {
-              try { fetchLinked(titles.slice(ti, ti + PRIME_CHUNK)); } catch { /* a later linkedRefs ask reads Roam */ }
-              ti += PRIME_CHUNK;
+              // P8 U2: linked-ref titles sized from their measured cost too.
+              const n = titleSizer.size(left() - IDLE_RESERVE_MS);
+              const t1 = clock();
+              try { fetchLinked(titles.slice(ti, ti + n)); } catch { /* a later linkedRefs ask reads Roam */ }
+              titleSizer.note(n, clock() - t1);
+              ti += n;
             } else if (!statsDone) {
               // One call, as 3.27.0: a call costs four datalog queries whatever its size (titles and targets are
               // empty on a big board).

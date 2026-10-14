@@ -427,12 +427,22 @@ def _text_block(
 
 # A "picture" is a text region when the text Docling read inside its box covers
 # at least this share of the box (summed text box area over picture area).
-# Diagrams and chart labels sit well below it; text-filled boxes sit above.
+# Used when the picture has no class. Diagrams and chart labels sit well below
+# it; text-filled boxes sit above.
 PICTURE_TEXT_COVERAGE = 0.25
+# DocumentFigureClassifier-v2.5 names, plus older aliases. A top class in this
+# set keeps the text on the figure. "other", screenshots, tables, calendars
+# and full-page images are often real text, so they stay on the coverage rule.
 _NON_TEXT_PICTURE = {
-    "bar_chart", "line_chart", "pie_chart", "scatter_chart", "stacked_bar_chart",
-    "flow_chart", "heatmap", "map", "natural_image", "photograph",
-    "engineering_drawing",
+    "bar_chart", "line_chart", "pie_chart", "flow_chart", "box_plot",
+    "scatter_plot", "scatter_chart", "stacked_bar_chart", "heatmap", "other_chart",
+    "stratigraphic_chart",
+    "photograph", "natural_image", "remote_sensing",
+    "engineering_drawing", "cad_drawing", "electrical_diagram",
+    "geographical_map", "topographical_map", "map",
+    "chemistry_structure", "chemistry_markush_structure", "chemistry_molecular_structure",
+    "logo", "icon", "signature", "stamp", "qr_code", "bar_code", "music",
+    "page_thumbnail",
 }
 
 
@@ -443,6 +453,32 @@ def _box(bbox: dict | None) -> tuple[float, float, float, float]:
     return min(left, right), min(top, bottom), max(left, right), max(top, bottom)
 
 
+def _top_picture_class(node: dict) -> str | None:
+    """Top class only. Docling 2.138 writes meta.classification.predictions.
+
+    `annotations[].predicted_classes` is the deprecated copy of the same list.
+    Later entries are the other scores, not a second decision.
+    """
+    meta = node.get("meta") or {}
+    if isinstance(meta, dict):
+        classification = meta.get("classification") or {}
+        if isinstance(classification, dict):
+            preds = classification.get("predictions") or []
+            if preds and isinstance(preds[0], dict):
+                name = preds[0].get("class_name")
+                if name:
+                    return str(name)
+    for ann in node.get("annotations") or []:
+        if not isinstance(ann, dict):
+            continue
+        classes = ann.get("predicted_classes") or []
+        if classes and isinstance(classes[0], dict):
+            name = classes[0].get("class_name")
+            if name:
+                return str(name)
+    return None
+
+
 def _picture_text_split(node: dict, doc: dict) -> tuple[list[str], list[str]]:
     """Split a picture's children into (emit, keep_on_figure) refs.
 
@@ -450,7 +486,7 @@ def _picture_text_split(node: dict, doc: dict) -> tuple[list[str], list[str]]:
     footnotes, are page text that Docling parented to the picture: always emit.
     Text inside the box is emitted only when the picture is a text region:
     the classifier (when it ran) does not call it a chart or photo, and the
-    text covers a sufficient share of the box.
+    text covers a sufficient share of the box. No class: coverage alone.
     """
     prov = _prov(node) or {}
     pic = _box(prov.get("bbox"))
@@ -474,13 +510,8 @@ def _picture_text_split(node: dict, doc: dict) -> tuple[list[str], list[str]]:
             emit.append(ref)
             continue
         inside.append((ref, (box[2] - box[0]) * (box[3] - box[1]), len(item.get("text") or "")))
-    classes = set()
-    for ann in node.get("annotations") or []:
-        for cls in (ann.get("predicted_classes") or [])[:1]:
-            name = cls.get("class_name")
-            if name:
-                classes.add(str(name))
-    non_text = bool(classes & _NON_TEXT_PICTURE)
+    top = _top_picture_class(node)
+    non_text = top in _NON_TEXT_PICTURE if top else False
     covered = sum(a for _, a, _ in inside) / area
     keep: list[str] = []
     if inside and not non_text and covered >= PICTURE_TEXT_COVERAGE:

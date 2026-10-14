@@ -9,17 +9,28 @@ import threading
 from pathlib import Path
 
 # Measured 2026-10-07 on this machine (du -sh of the HF hub checkouts).
+# pictureClassifier measured 2026-10-13. Hub file sizes sum to 33,544,253
+# bytes: model.safetensors 16,378,200, model.onnx 16,940,439, and the small
+# files. The repo folder walk under-counts them; this Hub stores the weights
+# as symlinks into the shared blob store.
 MEASURED_BYTES = {
     "layout": 164 * 1024 * 1024,
     "tableformer": 342 * 1024 * 1024,
     "formula": 610 * 1024 * 1024,
+    "pictureClassifier": 32 * 1024 * 1024,
     "ocr": 0,
 }
+
+# Docling 2.138 preset document_figure_classifier_v2. `main` on 2026-10-13.
+# The converter asks for this revision, so a hub snapshot of it works offline.
+PICTURE_CLASSIFIER_REPO = "docling-project/DocumentFigureClassifier-v2.5"
+PICTURE_CLASSIFIER_REVISION = "f859dfbff5c9916cd996942d4b0db7fa25808220"
 
 _HUB_NAMES = {
     "layout": "models--docling-project--docling-layout-heron",
     "tableformer": "models--docling-project--docling-models",
     "formula": "models--docling-project--CodeFormulaV2",
+    "pictureClassifier": "models--" + PICTURE_CLASSIFIER_REPO.replace("/", "--"),
 }
 
 _download_lock = threading.Lock()
@@ -65,8 +76,39 @@ def _downloading() -> bool:
     return _download_proc is not None and _download_proc.poll() is None
 
 
+def hub_dir(hub: Path | None = None) -> Path:
+    return Path(hub) if hub else Path.home() / ".cache" / "huggingface" / "hub"
+
+
+def picture_classifier_ready(hub: Path | None = None) -> bool:
+    """True when the pinned classifier snapshot is in the HF hub cache.
+
+    Docling loads this model from that cache when no artifacts path is set.
+    A missing snapshot means classification stays off; parse still runs.
+    """
+    return _ready(hub_dir(hub), _HUB_NAMES["pictureClassifier"])
+
+
+def stage_picture_classifier() -> str:
+    """Download the pinned classifier into the HF hub if it is not there yet.
+
+    `docling-tools models download picture_classifier` writes
+    ~/.cache/docling/models, which the converter does not read. This puts the
+    same repo where `picture_classifier_ready` and the converter look.
+    """
+    if picture_classifier_ready():
+        return "cached"
+    from huggingface_hub import snapshot_download
+
+    path = snapshot_download(
+        repo_id=PICTURE_CLASSIFIER_REPO,
+        revision=PICTURE_CLASSIFIER_REVISION,
+    )
+    return str(path)
+
+
 def model_report(hub: Path | None = None) -> dict:
-    hub = Path(hub) if hub else Path.home() / ".cache" / "huggingface" / "hub"
+    hub = hub_dir(hub)
     running = _downloading()
     items = []
     health = {}
@@ -105,8 +147,26 @@ def model_report(hub: Path | None = None) -> dict:
 def download_command() -> list[str]:
     return [
         "docling-tools", "models", "download",
-        "layout", "tableformer", "code_formula", "rapidocr",
+        "layout", "tableformer", "code_formula", "picture_classifier", "rapidocr",
     ]
+
+
+def _download_script() -> str:
+    """docling-tools for the add-on set, then the classifier into the HF hub.
+
+    The tool's picture_classifier lands under ~/.cache/docling/models. The
+    converter reads the hub, so the second step is what makes a later parse
+    work offline. `set -e` keeps a failed fetch from looking finished.
+    """
+    import shlex
+    import sys
+
+    fetch = " ".join(shlex.quote(part) for part in download_command())
+    stage = " ".join(shlex.quote(part) for part in [
+        sys.executable, "-c",
+        "from plexus_parse_helper.models import stage_picture_classifier; stage_picture_classifier()",
+    ])
+    return f"set -e\n{fetch}\n{stage}\n"
 
 
 def start_download() -> dict:
@@ -115,7 +175,7 @@ def start_download() -> dict:
         if _download_proc is not None and _download_proc.poll() is None:
             return {"started": False, "running": True}
         _download_proc = subprocess.Popen(
-            download_command(),
+            ["sh", "-c", _download_script()],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,

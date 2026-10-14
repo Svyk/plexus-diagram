@@ -2636,7 +2636,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       // A read-ahead answers once (the model build's first ask), then Roam again.
       const primed = primedProps.get(uid);
       if (primed) primedProps.delete(uid);
-      if (primed && Date.now() - primed.at <= PRIMED_PROPS_MS) res = primed.res;
+      if (primed && Date.now() - primed.at <= PRIMED_PROPS_MS) { res = primed.res; stats.primedProps = (stats.primedProps || 0) + 1; }
       else {
         try { res = pull(BLOCK_PROPS_PATTERN, eidKey(uid)); } catch { return null; }
       }

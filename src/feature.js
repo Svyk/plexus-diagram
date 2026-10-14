@@ -1016,7 +1016,7 @@ export async function installPlexusDiagram({
           end();
           if (parts.finish() === null) scheduleSnap(rec);
           return true;
-        }, { timeout: 2000, label: "snap", partMs: 4 });
+        }, { timeout: 2000, label: "snap", partMs: 4, urgent: true });
         snapJobs.set(rec, job);
         return;
       }

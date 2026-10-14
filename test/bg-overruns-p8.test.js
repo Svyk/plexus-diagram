@@ -12,3 +12,18 @@ test("budget: an overrunning slice is logged with its job label, a short one is 
   while (q.length) q.shift()({ timeRemaining: () => 50, didTimeout: false });
   assert.deepEqual(b.overruns, [{ label: "snap", ms: 75 }]);
 });
+
+test("budget: an urgent job does not wait out the duty gap another job's slice left", () => {
+  let t = 0;
+  const q = [];
+  const timers = [];
+  const b = createBgBudget({ win: {}, now: () => t, ric: (fn) => { q.push(fn); return q.length; }, cic: () => {}, setTimer: (fn, ms) => { timers.push({ fn, at: t + ms }); return timers.length; }, clearTimer: () => {}, quietMs: 0 });
+  const ran = [];
+  b.idle(() => { t += 30; ran.push("big"); }, { label: "big" });
+  q.shift()({ timeRemaining: () => 50 });
+  b.idle(() => ran.push("plain"));
+  b.idle(() => ran.push("urgent"), { urgent: true });
+  while (q.length) q.shift()({ timeRemaining: () => 50 });
+  assert.deepEqual(ran, ["big", "urgent"], "the plain job waits its 90 ms gap, the urgent one runs");
+  assert.equal(timers.length, 1);
+});

@@ -2613,11 +2613,19 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           const back = folds.slice().sort((a, b) => (a.parentUid < b.parentUid ? -1 : a.parentUid > b.parentUid ? 1 : b.order - a.order));
           await execute(back.map((f) => ({ op: "move", uid: f.queryUid, parent: f.parentUid, order: f.order })));
           for (const f of back) {
-            // Deleting a caption that still holds its query would delete the query: wait for Roam to apply the move.
+            // Deleting a caption that still holds its query would delete the query: wait until a read proves the
+            // query left it (its location under another parent, or the caption's children without it). A failed
+            // read is "not moved yet"; if no read ever proves it, the caption stays.
             let out = false;
             for (let tries = 0; tries < 15 && !out; tries += 1) {
-              const loc = host.blockLocation?.(f.queryUid);
-              out = !loc || loc.parentUid !== f.captionUid;
+              let loc = null;
+              try { loc = host.blockLocation?.(f.queryUid) || null; } catch { loc = null; }
+              if (loc) out = loc.parentUid !== f.captionUid;
+              else {
+                let kids;
+                try { kids = host.outlineKids?.([f.captionUid])?.get(f.captionUid); } catch { kids = undefined; }
+                out = Array.isArray(kids) && !kids.some((k) => k.uid === f.queryUid);
+              }
               if (!out) await new Promise((resolve) => setTimeout(resolve, 200));
             }
             if (out) await execute([{ op: "delete", uid: f.captionUid }]);

@@ -174,6 +174,40 @@ test("undo: one undo restores the page exactly (captions gone, queries back in p
   assert.deepEqual(snap(), before);
 });
 
+test("undo: an unreadable query location never deletes a caption that still holds its query", { timeout: 20000 }, async () => {
+  const { fake, host, session } = seeded();
+  fake.trackUndo = true;
+  const plan = session.queryFoldPlan();
+  await session.foldPageQueries(plan);
+  const [c1] = plan.folds.map((f) => f.captionUid);
+  // The move back of q1 has not landed and its location read fails.
+  const move = fake.api.data.block.move;
+  fake.api.data.block.move = (args) => (args?.block?.uid === "q1" ? Promise.resolve() : move(args));
+  const loc = host.blockLocation;
+  host.blockLocation = (u) => (u === "q1" ? null : loc.call(host, u));
+  await session.undo();
+  fake.api.data.block.move = move;
+  host.blockLocation = loc;
+  assert.ok(fake.has("q1"), "the query survives");
+  assert.ok(fake.has(c1), "its caption is left");
+  assert.deepEqual(fake.children(c1), ["q1"]);
+  assert.equal(fake.block("q1").parent, c1);
+});
+
+test("undo: a null location read still deletes the caption once its children prove the query left", async () => {
+  const { fake, host, session } = seeded();
+  fake.trackUndo = true;
+  const before = { pg: fake.children("pg"), mid: fake.children("mid") };
+  const plan = session.queryFoldPlan();
+  await session.foldPageQueries(plan);
+  const loc = host.blockLocation;
+  host.blockLocation = () => null;
+  await session.undo();
+  host.blockLocation = loc;
+  assert.deepEqual({ pg: fake.children("pg"), mid: fake.children("mid") }, before);
+  assert.ok(plan.folds.every((f) => !fake.has(f.captionUid)));
+});
+
 test("bulk: a plan over the refuse line writes nothing", async () => {
   const { fake, session } = seeded();
   const plan = session.queryFoldPlan();

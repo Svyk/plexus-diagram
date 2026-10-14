@@ -2538,11 +2538,19 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           }
           await execute(ops);
           for (const r of back) {
-            // Deleting a caption that still holds its table would delete the table: wait for Roam to apply the move.
+            // Deleting a caption that still holds its table would delete the table: wait until a read proves the
+            // table left it (its location under another parent, or the caption's children without it). A failed
+            // read is "not moved yet"; if no read ever proves it, the caption stays.
             let out = false;
             for (let tries = 0; tries < 15 && !out; tries += 1) {
-              const loc = host.blockLocation?.(r.tableUid);
-              out = !loc || loc.parentUid !== r.captionUid;
+              let loc = null;
+              try { loc = host.blockLocation?.(r.tableUid) || null; } catch { loc = null; }
+              if (loc) out = loc.parentUid !== r.captionUid;
+              else {
+                let kids;
+                try { kids = host.outlineKids?.([r.captionUid])?.get(r.captionUid); } catch { kids = undefined; }
+                out = Array.isArray(kids) && !kids.some((k) => k.uid === r.tableUid);
+              }
               if (!out) await new Promise((resolve) => setTimeout(resolve, 200));
             }
             if (out) await execute([{ op: "delete", uid: r.captionUid }]);

@@ -282,7 +282,9 @@ test("a wheel pan attaches no shell until it settles, and the underlay stands in
       } else {
         assert.equal(during, before, "no shell joins the DOM inside the burst");
         assert.ok(underlay, "the underlay canvas is in the world");
-        await tick(150); // the settle (a real timer)
+        // The settle is a real timer; slow CI runners need more than one 150 ms wait. Bounded by time, not count.
+        const until = Date.now() + 3000;
+        do { await tick(150); m.stub.flushTimers(); await m.pump(5); } while (underlay.style.display !== "none" && Date.now() < until);
         m.stub.flushTimers();
         await m.pump(5);
         assert.ok(m.shellsIn() !== before || m.view.stats().shellsAttached !== undefined, "the settle re-culls");

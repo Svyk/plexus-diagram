@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { defaultSpeedFlags, parseSpeedFlags } from "../src/settings.js";
+import { mountBoardView } from "../src/view/board-view.js";
 import { createItemRenderer } from "../src/view/cards.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
@@ -159,6 +160,87 @@ test("overviewFast off and detail zoom still wait until every in-view shell is b
     off.done();
     detail.done();
     thaw();
+  }
+});
+
+test("ensureShell builds one queued card and leaves the rest queued", () => {
+  const h = openRenderer({ children: spreadBoard(), lod: "overview", zoom: 0.1 });
+  try {
+    assert.equal(h.live(), true);
+    assert.equal(h.r.shellOf("far000001"), null);
+    const before = h.r.shellCount();
+    const el = h.r.ensureShell("far000001");
+    assert.ok(el);
+    assert.equal(h.r.shellOf("far000001"), el);
+    assert.equal(h.r.shellCount(), before + 1);
+    assert.equal(h.r.ensureShell("far000001"), el);
+    assert.ok(h.r.shellCount() < h.board.order.length);
+  } finally {
+    h.done();
+  }
+});
+
+test("a click or hover on an unbuilt overview card builds that shell and hits it", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify({ x: 0, y: 0, zoom: 0.1 }));
+  const board = buildBoard(rawBoard(spreadBoard()));
+  const host = {
+    stats: {},
+    graph: "Svy",
+    renderString(node, string) { node.textContent = string; },
+    renderBlock(node, uid) { node.textContent = uid; },
+    unmount() {},
+    pagePreview: () => ({ exists: false, blocks: [] }),
+    pullTree: () => [],
+    blockString: () => null,
+    openBlock() {},
+    openInSidebar() {},
+    searchPages: () => [],
+    searchBlocks: () => [],
+    related: () => [],
+  };
+  const session = {
+    uid: board.uid,
+    board,
+    rects: worldRects(board),
+    links: [],
+    coveredEdges: new Set(),
+    on() { return () => {}; },
+    release() {},
+    setLinkMode() {},
+  };
+  const mountEl = stub.document.createElement("div");
+  mountEl.className = "pxd-mount";
+  stub.document.body.append(mountEl);
+  const view = mountBoardView({
+    host,
+    session,
+    mountEl,
+    settings: { get: () => undefined },
+    version: "1.0.0",
+  });
+  try {
+    stub.flushFrames();
+    assert.equal(view.state().lod, "overview");
+    assert.equal(view.snapshotSource().shellOf("far000001"), null);
+    const root = view.root;
+    stub.dispatch(root, "pointermove", { clientX: 16, clientY: 13, buttons: 0, pointerId: 1 });
+    const shell = view.snapshotSource().shellOf("far000001");
+    assert.ok(shell, "hover builds the shell under the pointer");
+    const ctx = root.querySelector(".pxd-ctx");
+    assert.ok(ctx);
+    assert.notEqual(ctx.style.display, "none");
+    stub.dispatch(root, "pointerdown", { button: 0, buttons: 1, clientX: 16, clientY: 13, pointerId: 2 });
+    assert.deepEqual(view.state().selection, ["far000001"]);
+    // A press starts a gesture. The empty click is a full click: clear-on-click runs on pointerup.
+    stub.dispatch(root, "pointerup", { button: 0, buttons: 0, clientX: 16, clientY: 13, pointerId: 2 });
+    stub.dispatch(root, "pointerdown", { button: 0, buttons: 1, clientX: 760, clientY: 20, pointerId: 3 });
+    stub.dispatch(root, "pointerup", { button: 0, buttons: 0, clientX: 760, clientY: 20, pointerId: 3 });
+    assert.deepEqual(view.state().selection, []);
+  } finally {
+    view.dispose();
+    restore();
   }
 });
 

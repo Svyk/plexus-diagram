@@ -16,7 +16,7 @@ import { TABLE_SIZE, keyGate, ownershipOf, tablePointerTarget } from "../model/r
 import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../model/drawing-card.js";
 import { annotatePlan } from "../model/annotate.js";
 import { rewriteBgTag } from "../model/highlighter.js";
-import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
+import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, hitTest, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
 import { trailBadges, trailPoints } from "../model/trails.js";
 import { landmarkDots, landmarkUids, walkStops } from "../model/landmarks.js";
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
@@ -7527,10 +7527,27 @@ function buildBoardView(onFail, {
       { uid, end: "to", x: geo.end.x, y: geo.end.y },
     ];
   };
+  // Map and overview go live before every shell exists. A press on a queued card's rect is still that card.
+  const queuedOverview = () => {
+    if (tier === "detail") return false;
+    try { if (notedSpeedFlags().overviewFast === false) return false; } catch { return false; }
+    return (itemsR.queuedCount?.() || 0) > 0;
+  };
+  const promoteQueued = (hit) => {
+    if (!hit?.uid) return null;
+    itemsR.ensureShell?.(hit.uid);
+    if (hit.part === "title") return { kind: "section-title", uid: hit.uid };
+    if (hit.part === "border") return { kind: "section-border", uid: hit.uid };
+    return { kind: "item", uid: hit.uid };
+  };
   const normalize = (event, type = event.type) => {
     const screen = { x: (event.clientX || 0) - rootRect.left, y: (event.clientY || 0) - rootRect.top };
     const world = screenToWorld(vp, screen);
     let target = targetOf(event.target);
+    if (target.kind === "empty" && queuedOverview()) {
+      const next = promoteQueued(hitTest(board(), world, rects()));
+      if (next) target = next;
+    }
     if (edgeEndWanted(type, event)) {
       const near = edgeEndNearWorld(handleCenters(), world, 10, vp.zoom || 1);
       if (near) target = near;
@@ -8044,7 +8061,16 @@ function buildBoardView(onFail, {
       return;
     }
     const node = event.target?.closest?.(".pxd-item--card");
-    showHover(node?.getAttribute?.("data-uid") || node?.dataset?.uid || null);
+    let uid = node?.getAttribute?.("data-uid") || node?.dataset?.uid || null;
+    if (!uid && queuedOverview() && !event.target?.closest?.(".pxd-item, .pxd-section")) {
+      const screen = { x: (event.clientX || 0) - (rootRect.left || 0), y: (event.clientY || 0) - (rootRect.top || 0) };
+      const hit = hitTest(board(), screenToWorld(vp, screen), rects());
+      if (hit?.part === "body") {
+        itemsR.ensureShell?.(hit.uid);
+        uid = hit.uid;
+      }
+    }
+    showHover(uid);
   });
   // The root is a clipped box, never a scroller: focus, scrollIntoView and Roam's reader can still move it, which slides the pane header under Roam's top bar.
   const pinScroll = (node) => () => {

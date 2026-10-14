@@ -2087,6 +2087,27 @@ export function createItemRenderer({
     pendingView = null;
     for (const fn of viewWaiters.splice(0)) { try { fn(); } catch { /* the owner's hook */ } }
   };
+  // A click or hover at map zoom lands on a card whose shell is still queued. Build that one now and
+  // attach it, so input hits a real item. The rest of the queue stays for the pump.
+  const ensureShell = (uid) => {
+    const have = shells.get(uid)?.el;
+    if (have) return have;
+    const item = lastBoard?.items.get(uid);
+    if (!item || disposed) return null;
+    const at = shellQueue.indexOf(uid);
+    if (at >= 0) shellQueue.splice(at, 1);
+    pendingView?.delete(uid);
+    if (pendingView && !pendingView.size) viewBuilt();
+    const rec = buildShell(item);
+    const rect = lastRects?.get(uid);
+    rec.el.style.display = rect ? "" : "none";
+    noteRender(uid);
+    paintShell(rec, item);
+    if (rect) position(rec, rect);
+    if (showBadges) renderBadges(rec);
+    attachShell(rec);
+    return rec.el;
+  };
   // view: a screen around the camera (which shells to build first, which bodies are offscreen). attachView: the tighter
   // rect a big board's shells attach within.
   const sync = ({ board, rects, dirty: changed = null, structural = false, view = null, attachView = null }) => {
@@ -5984,6 +6005,8 @@ export function createItemRenderer({
     renameBoard,
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
+    ensureShell,
+    queuedCount: () => shellQueue.length,
     // fn runs once every shell in the open view is built (at once when none is queued).
     whenViewBuilt(fn) {
       if (typeof fn !== "function") return;

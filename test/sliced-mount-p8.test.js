@@ -183,3 +183,8 @@ test("sliced read: the tree is linked in bounded parts, not in one last step", (
   const strip = (n) => { const o = {}; for (const k in n) if (!/^:edit\/time$|^:db\/id$/.test(k)) o[k] = k === ":block/children" ? n[k].map(strip) : n[k]; return o; };
   assert.deepEqual(sortTree(strip(tree)), sortTree(strip(whole)));
 });
+
+test("sliced read: 70 ms slices by default (fewer turns for Roam between parts; parts stay under ~100 ms)", async () => {
+  const { SLICED_SLICE_MS } = await import("../src/host/sliced-read.js");
+  assert.equal(SLICED_SLICE_MS, 70);
+});

@@ -29,7 +29,7 @@ import { installCommentHost } from "./comments.js";
 import { SPLIT_WATCH_MIN, containerKind, createSplitWatch, treeSize } from "./split-watch.js";
 import { notedSpeedFlags } from "../settings.js";
 import { linksQuery } from "../model/links.js";
-import { createSlicedRead } from "./sliced-read.js";
+import { createSlicedRead, SLICED_SLICE_MS } from "./sliced-read.js";
 import { createPartSizer } from "../part-sizer.js";
 import { sharedBgBudget } from "../bg-budget.js";
 
@@ -1764,7 +1764,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       });
       const step = reader.step;
       const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
-      const sliceMs = Number(opts.sliceMs) > 0 ? Number(opts.sliceMs) : 40;
+      const sliceMs = Number(opts.sliceMs) > 0 ? Number(opts.sliceMs) : SLICED_SLICE_MS;
       // After the read: the open's ref and stat targets (collectTargets) in the same slices, so the acquire skips it.
       let tree = null;
       let walk = null;

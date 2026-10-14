@@ -38759,7 +38759,7 @@ var SLICED_OPEN_PATTERN = "[:db/id :block/open]";
 var SLICED_BATCH = 500;
 var SLICED_OPEN_BATCH = 2e3;
 var SLICED_LINK_BATCH = 4e3;
-var SLICED_SLICE_MS = 40;
+var SLICED_SLICE_MS = 70;
 function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date.now(), sliceMs = SLICED_SLICE_MS, batch = SLICED_BATCH, openBatch = SLICED_OPEN_BATCH, linkBatch = SLICED_LINK_BATCH } = {}) {
   const nodes = /* @__PURE__ */ new Map();
   const outs = /* @__PURE__ */ new Map();
@@ -40751,7 +40751,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       });
       const step = reader.step;
       const clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
-      const sliceMs = Number(opts.sliceMs) > 0 ? Number(opts.sliceMs) : 40;
+      const sliceMs = Number(opts.sliceMs) > 0 ? Number(opts.sliceMs) : SLICED_SLICE_MS;
       let tree = null;
       let walk3 = null;
       return {

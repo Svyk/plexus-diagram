@@ -11,7 +11,7 @@ export const SLICED_OPEN_PATTERN = "[:db/id :block/open]";
 export const SLICED_BATCH = 500;
 export const SLICED_OPEN_BATCH = 2000;
 export const SLICED_LINK_BATCH = 4000;
-export const SLICED_SLICE_MS = 40;
+export const SLICED_SLICE_MS = 70;
 
 // deps: pullMany(pattern, eids) -> nodes (null for a missing eid), stamp() -> string|null, clock() -> ms.
 export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.now(), sliceMs = SLICED_SLICE_MS, batch = SLICED_BATCH, openBatch = SLICED_OPEN_BATCH, linkBatch = SLICED_LINK_BATCH } = {}) {

@@ -101623,9 +101623,16 @@ async function installPlexusDiagram({
         } catch {
           now4 = null;
         }
-        if (!now4 || now4.gesturing || now4.board !== src.board || now4.rects !== src.rects || now4.vp?.x !== src.vp?.x || now4.vp?.y !== src.vp?.y || now4.vp?.zoom !== src.vp?.zoom || currentUid(rec) !== uid || isDarkTheme(rec) !== dark) return null;
+        if (!now4 || now4.gesturing || now4.board !== src.board || now4.vp?.x !== src.vp?.x || now4.vp?.y !== src.vp?.y || now4.vp?.zoom !== src.vp?.zoom || currentUid(rec) !== uid || isDarkTheme(rec) !== dark) return null;
         const out = capture.result();
         if (!out) return false;
+        let same2 = false;
+        try {
+          same2 = out.stamp === boardStamp(now4.board, now4.rects);
+        } catch {
+          same2 = false;
+        }
+        if (!same2) return null;
         rec.snapDirty = false;
         return snapStore.set(key, out, thumbs);
       };
@@ -101679,8 +101686,11 @@ async function installPlexusDiagram({
             }
             return parts.capture ? false : end();
           }
-          const left = Math.max(1, deadline.timeRemaining() - 2);
-          if (!parts.capture.step(left)) return false;
+          if (!parts.captured) {
+            const left = Math.max(1, deadline.timeRemaining() - 2);
+            parts.captured = parts.capture.step(left);
+            return false;
+          }
           end();
           if (parts.finish() === null) scheduleSnap(rec);
           return true;

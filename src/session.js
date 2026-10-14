@@ -1657,6 +1657,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   // another pair of closures behind the paused ones.
   let linkChain = null;
   let linkJob = null;
+  let linksOwed = false;
+  const linksParked = () => holders > 0 && pausedHolds >= holders;
+  function parkLinks() {
+    if (!linkJob && !linkChain && linkTimer == null && linkIdleId == null) return;
+    cancelScheduledLinks();
+    linksOwed = true;
+  }
+  function unparkLinks() {
+    if (!linksOwed || linksParked() || destroyed) return;
+    linksOwed = false;
+    scheduleLinks();
+  }
   function cancelScheduledLinks(keepChain = false) {
     linkEpoch += 1;
     if (linkJob) { const stop = linkJob; linkJob = null; stop(); }
@@ -1672,6 +1684,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   // .pxd-item before this query; the idle timeout is 1s so the curves still show.
   function scheduleLinks() {
     cancelScheduledLinks(true);
+    // A parked board (page left, crumb park) spends no background budget: the links run again when it resumes.
+    if (linksParked()) { linksOwed = true; linkChain = null; return; }
     const ric = globalThis.requestIdleCallback;
     const raf = globalThis.requestAnimationFrame;
     if (linkDelay !== 0 && !idle && typeof ric === "function" && typeof raf === "function") {
@@ -3597,6 +3611,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       if (destroyed) return;
       holders += 1;
       syncBoardWatch(true);
+      unparkLinks();
     },
 
     // Drop this holder's pull watch without destroying the session.
@@ -3604,6 +3619,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       if (destroyed || pausedHolds >= holders) return;
       pausedHolds += 1;
       syncBoardWatch(false);
+      if (linksParked()) parkLinks();
     },
 
     // Put the watch back. One pullBoard applies edits that landed while paused.
@@ -3613,6 +3629,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       const wasOn = boardWatchOn && !boardWatchHeld;
       syncBoardWatch(!boardWatchOn);
       if (wasOn) catchUpBoard();
+      unparkLinks();
     },
 
     // A ref is leaving. A paused ref already dropped its watch hold.
@@ -3622,6 +3639,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       holders -= 1;
       if (holders === 0) return;
       syncBoardWatch(false);
+      unparkLinks();
     },
 
     release() { /* replaced by acquireSession */ },

@@ -1858,6 +1858,35 @@ test("badges: stats queries run in idle chunks and a failing query is retried, n
   }
 });
 
+test("badges: a suspended (parked) view runs no badge reads; resume runs them", async () => {
+  const calls = [];
+  const many = Array.from({ length: 30 }, (_, i) => ({
+    ":block/uid": `parkCard${String(i).padStart(2, "0")}`,
+    ":block/string": `Park ${i}`,
+    ":block/order": 20 + i,
+    ":block/props": { ":plexus": { ":x": 2000 + (i % 6) * 40, ":y": Math.floor(i / 6) * 30, ":w": 30, ":h": 20 } },
+    ":block/children": [],
+  }));
+  const f = mountFixture({
+    extra: many,
+    hostOverrides: { cardStats: (targets) => { calls.push(targets.length); return new Map(); } },
+    vp: { x: -1900, y: 0, zoom: 1 },
+  });
+  try {
+    await f.flush();
+    await tick(80);
+    f.view.suspend();
+    for (let i = 0; i < 5; i += 1) { f.stub.flushIdle(); await tick(); }
+    assert.equal(calls.length, 0, "no badge read while parked");
+    f.view.resume();
+    for (let i = 0; i < 5; i += 1) { f.stub.flushFrames(); f.stub.flushIdle(); await tick(); }
+    assert.ok(calls.length >= 1, "the reads run after resume");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("editing a card near a section edge grows the section live (preview only) and snaps back when the edit ends", async () => {
   const f = mountFixture({ hostOverrides: { renderBlock(el) { const t = globalThis.document.createElement("textarea"); t.className = "rm-block__input"; el.append(t); } } });
   try {

@@ -382,15 +382,49 @@ function createTimers() {
   };
   // P8 U2: background reads (badge card stats, changed rows) on the shared budget: quiet after input, 30 ms, 25%.
   // Visible card content keeps `idle`.
+  // A parked view (page left, crumb park) spends none of the shared budget: pauseBg() takes its background work off
+  // the budget and resumeBg() puts it back, where it left off.
+  let bgPaused = false;
+  const bgArmed = new Map();
   const bgIdle = (fn, label = "view") => {
     if (typeof globalThis.requestIdleCallback !== "function" || notedSpeedFlags().bgBudget === false) return idle(fn);
     let entry;
-    const cancel = sharedBgBudget().idle((d) => { active.delete(entry); fn(d); }, { label });
-    entry = () => { cancel(); active.delete(entry); };
+    let cancel = null;
+    const arm = () => { cancel = sharedBgBudget().idle((d) => { active.delete(entry); bgArmed.delete(entry); fn(d); }, { label }); };
+    entry = () => { cancel?.(); cancel = null; active.delete(entry); bgArmed.delete(entry); };
+    bgArmed.set(entry, { arm, off: () => { cancel?.(); cancel = null; } });
+    if (!bgPaused) arm();
     active.add(entry);
     return entry;
   };
-  return { later, frame, idle, bgIdle, count: () => active.size, cancelAll: () => { for (const c of [...active]) c(); active.clear(); } };
+  // A job in parts on the shared budget (sharedBgBudget().run); the returned function stops it.
+  const bgRun = (part, opts) => {
+    let entry;
+    let stop = null;
+    const arm = () => {
+      stop = sharedBgBudget().run((d) => {
+        let done = true;
+        try { done = part(d) === true; } finally { if (done) { active.delete(entry); bgArmed.delete(entry); } }
+        return done;
+      }, opts);
+    };
+    entry = () => { const s = stop; stop = null; active.delete(entry); bgArmed.delete(entry); s?.(); };
+    bgArmed.set(entry, { arm, off: () => { const s = stop; stop = null; s?.(); } });
+    if (!bgPaused) arm();
+    active.add(entry);
+    return entry;
+  };
+  const pauseBg = () => {
+    if (bgPaused) return;
+    bgPaused = true;
+    for (const b of bgArmed.values()) b.off();
+  };
+  const resumeBg = () => {
+    if (!bgPaused) return;
+    bgPaused = false;
+    for (const b of [...bgArmed.values()]) b.arm();
+  };
+  return { later, frame, idle, bgIdle, bgRun, pauseBg, resumeBg, count: () => active.size, cancelAll: () => { for (const c of [...active]) c(); active.clear(); bgArmed.clear(); } };
 }
 
 const ANNOTATE_TOAST = "Drop the image into the drawing";
@@ -1980,7 +2014,7 @@ function buildBoardView(onFail, {
     let tail = 0;
     const sizer = createPartSizer({ max: 20, start: 5 });
     const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
-    pdfTitleJob = sharedBgBudget().run((deadline) => {
+    pdfTitleJob = timers.bgRun((deadline) => {
       if (disposed) { pdfTitleJob = null; return true; }
       if (tail === 1) { tail = 2; try { refreshPdfHighlightCounts(); } catch { /* count */ } return false; }
       if (tail === 2) { pdfTitleJob = null; try { readPane?.refreshCards?.(); } catch { /* switcher */ } return true; }
@@ -2717,7 +2751,7 @@ function buildBoardView(onFail, {
         coverRepaint = new Set();
         let uids = null;
         let at = 0;
-        coverJob = sharedBgBudget().run(() => {
+        coverJob = timers.bgRun(() => {
           if (disposed) { coverJob = null; return true; }
           if (!uids) {
             const urls = coverRepaint;
@@ -9274,12 +9308,15 @@ function buildBoardView(onFail, {
       try { pdfWarm?.cancelAll?.(); } catch { /* warm */ }
       try { cancelHoverGrace(); } catch { /* none armed */ }
       try { clearZoomAnim(); } catch { /* none armed */ }
+      // The PDF title, cover and badge jobs wait on the shared budget; a parked board must not spend it.
+      timers.pauseBg();
       suspendObservers();
     },
     resume() {
       if (disposed || !suspended) return;
       suspended = false;
       resumeObservers();
+      timers.resumeBg();
       armCoverWarm();
       // The DOM was kept while parked. Only a board that changed meanwhile needs the full pass (a change that lands
       // later arrives through the session as usual); otherwise the camera, selection and minimap are enough.

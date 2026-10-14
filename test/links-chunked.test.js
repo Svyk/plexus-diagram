@@ -73,3 +73,48 @@ test("bgBudget off: the 3.28.0 parts of LINK_CHUNK targets", async () => {
     resetSessions();
   }
 });
+
+test("a parked board (pauseWatches) stops its link parts; resumeWatches finishes them", async () => {
+  const fake = createFakeRoam();
+  const children = [];
+  for (let i = 0; i < 300; i += 1) {
+    fake.seedPage({ title: `P${i}`, uid: `page${String(i).padStart(5, "0")}` });
+    children.push({ uid: `card${String(i).padStart(5, "0")}`, string: `[[P${i}]]`, props: { plexus: { x: (i % 20) * 250, y: Math.floor(i / 20) * 150, w: 200, h: 100 } } });
+  }
+  fake.seedBoard({ uid: "bigLinks3", props: { plexus: { v: 2 } }, children });
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  const sizes = [];
+  let session = null;
+  const q = host.q.bind(host);
+  host.q = (query, ...inputs) => {
+    if (String(query).includes(":in $ ?board [?a ...] [?b ...]")) {
+      sizes.push(inputs[2].length);
+      if (sizes.length === 1) session.pauseWatches();
+    }
+    return q(query, ...inputs);
+  };
+  const prevRic = globalThis.requestIdleCallback;
+  const prevRaf = globalThis.requestAnimationFrame;
+  globalThis.requestIdleCallback = (fn) => setTimeout(() => fn({ timeRemaining: () => 10 }), 0);
+  globalThis.requestAnimationFrame = (fn) => setTimeout(() => fn(0), 0);
+  const keep = setInterval(() => {}, 10);
+  try {
+    session = acquireSession("bigLinks3", { host });
+    let done = false;
+    const p = session.refreshLinks().then(() => { done = true; });
+    const t0 = Date.now();
+    while (!sizes.length && Date.now() - t0 < 5000) await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(sizes.length, 1, `no part while parked (${JSON.stringify(sizes)})`);
+    assert.equal(done, false);
+    session.resumeWatches();
+    await p;
+    assert.ok(sizes.slice(1).reduce((a, b) => a + b, 0) >= 300 - sizes[0], JSON.stringify(sizes));
+    session.release();
+  } finally {
+    clearInterval(keep);
+    globalThis.requestIdleCallback = prevRic;
+    globalThis.requestAnimationFrame = prevRaf;
+    resetSessions();
+  }
+});

@@ -100919,6 +100919,7 @@ async function installPlexusDiagram({
   const sketchHandoffs = /* @__PURE__ */ new Map();
   const snapTimers = /* @__PURE__ */ new Map();
   const snapJobs = /* @__PURE__ */ new Map();
+  const snapParts = /* @__PURE__ */ new Map();
   const SNAP_SETTLE_MS = 1e3;
   const SNAP_WARM_WAIT_MS = 50;
   const openPerf = { lastOpen: null, opens: [] };
@@ -101557,6 +101558,7 @@ async function installPlexusDiagram({
     snapTimers.delete(rec);
     const job = snapJobs.get(rec);
     snapJobs.delete(rec);
+    snapParts.delete(rec);
     try {
       job?.();
     } catch {
@@ -101658,13 +101660,17 @@ async function installPlexusDiagram({
         let parts = null;
         let job = null;
         const end = () => {
-          if (snapJobs.get(rec) === job) snapJobs.delete(rec);
+          if (snapJobs.get(rec) === job) {
+            snapJobs.delete(rec);
+            snapParts.delete(rec);
+          }
           return true;
         };
         job = sharedBgBudget().run((deadline) => {
           if (stopped || mounts.get(rec.native) !== rec) return end();
           if (!parts) {
             parts = {};
+            snapParts.set(rec, parts);
             const r = captureSnap(rec, parts);
             if (r === null) {
               end();
@@ -101692,7 +101698,24 @@ async function installPlexusDiagram({
   }
   function saveSnapNow(rec) {
     const pending = snapTimers.has(rec) || snapJobs.has(rec);
+    const parts = snapParts.get(rec);
     clearSnapTimer(rec);
+    if (parts?.capture) {
+      let r = null;
+      try {
+        parts.capture.step(Infinity);
+        r = parts.finish();
+      } catch {
+        r = null;
+      }
+      if (r !== null) {
+        try {
+          void snapStore.flush();
+        } catch {
+        }
+        return;
+      }
+    }
     if (!rec?.snapDirty && !pending) return;
     try {
       captureSnap(rec);

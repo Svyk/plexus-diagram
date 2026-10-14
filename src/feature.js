@@ -15,6 +15,7 @@ import {
 } from "./view/sketch.js";
 import { isTextEntryTarget } from "./view/cards.js";
 import { createBoardSnapStore } from "./host/boardsnap-store.js";
+import { createModelStore } from "./host/model-store.js";
 import { armSnapGestures, captureBoardSnap, createBoardSnapCapture, paintBoardSnap, removeBoardSnap, resolveSnapViewport } from "./view/boardsnap-paint.js";
 import { boardStamp, itemSig, tableGrid } from "./model/boardsnap.js";
 import { renderTableThumb, tableThumbKey, thumbBox } from "./view/table-thumb.js";
@@ -274,6 +275,13 @@ export async function installPlexusDiagram({
     graph: graphKey,
     enabled: () => notedSpeedFlags().snapshot !== false,
   });
+  // P9. Stored board models for the trusted open (same database, own keys).
+  const modelStore = createModelStore({
+    indexedDB: win.indexedDB ?? globalThis.indexedDB,
+    graph: graphKey,
+    enabled: () => notedSpeedFlags().trustSnapshot !== false && notedSpeedFlags().snapshot !== false,
+  });
+  try { host.useModelStore?.(modelStore); } catch { /* a host without stored models */ }
   const speedFlags = () => notedSpeedFlags();
   bindBgBudgetFlag(() => speedFlags().bgBudget !== false);
   // Sessions outlive a settings change (they are ref-counted and kept), so they read through this accessor.
@@ -1023,6 +1031,8 @@ export async function installPlexusDiagram({
           }
           end();
           if (parts.finish() === null) scheduleSnap(rec);
+          // P9: the stored model follows the snapshot (a big board read again in the background when its page moved).
+          else if (notedSpeedFlags().trustSnapshot !== false) try { host.refreshModel?.(currentUid(rec)); } catch { /* optional */ }
           return true;
         }, { timeout: 2000, label: "snap", partMs: 4, urgent: true });
         snapJobs.set(rec, job);
@@ -1272,7 +1282,7 @@ export async function installPlexusDiagram({
   const prereadFor = (uid) => {
     if (!uid || speedFlags().slicedMount === false || typeof host.prereadBoard !== "function") return null;
     if (injectedAcquire === acquireSessionDefault && hasSession(uid, host)) return null;
-    try { return host.prereadBoard(uid); } catch { return null; }
+    try { return host.prereadBoard(uid, { trust: speedFlags().trustSnapshot !== false }); } catch { return null; }
   };
 
   function beginSnapHandoff(rec, painted, { autofocus = false, viewport = null, acquire = null, onLive = null, readUid = "" } = {}) {
@@ -1323,6 +1333,9 @@ export async function installPlexusDiagram({
         if (!live()) { reader.cancel(); return; }
         let done = true;
         try { done = reader.step(); } catch { done = true; }
+        // P9: a stored model on its way from IndexedDB; no task until it is here.
+        const waiting = done ? null : reader.waiting;
+        if (waiting) { waiting.then(() => nextTask(slice), () => nextTask(slice)); return; }
         nextTask(done ? () => { if (live()) start(); else reader.cancel(); } : slice);
       };
       slice();
@@ -4253,6 +4266,7 @@ export async function installPlexusDiagram({
     for (const rec of mounts.values()) forgetSketch(rec);
     sketchStore.dispose();
     void snapStore.dispose();
+    void modelStore.dispose();
   });
   // Registered last so it runs first on dispose: nothing may mount while teardown is in flight.
   lifecycle.add(() => { stopped = true; viewportWatch?.disconnect(); });

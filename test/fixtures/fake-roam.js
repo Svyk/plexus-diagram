@@ -660,6 +660,9 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
     return b ? { uid: b.uid, string: b.string, order: b.order, heading: b.heading, open: b.open, props: structuredClone(b.props), parent: b.parent, children: b.children.slice() } : null;
   };
   fake.props = (uid) => structuredClone(blocks.get(uid)?.props ?? null);
+  // A change no transaction made here (a fold, which Roam does not stamp; an edit synced in from another device): no
+  // page stamp, no watch callback.
+  fake.quiet = (uid, fields) => { const b = blocks.get(uid); if (b) Object.assign(b, fields); };
   fake.children = (uid) => (containerOf(uid)?.children ?? []).slice();
   fake.has = (uid) => blocks.has(uid) || pages.has(uid);
   fake.writesLog = () => fake.log.filter((e) => e[0] !== "fail");

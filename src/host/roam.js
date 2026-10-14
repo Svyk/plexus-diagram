@@ -30,6 +30,7 @@ import { SPLIT_WATCH_MIN, containerKind, createSplitWatch, treeSize } from "./sp
 import { notedSpeedFlags } from "../settings.js";
 import { linksQuery } from "../model/links.js";
 import { createSlicedRead, SLICED_SLICE_MS } from "./sliced-read.js";
+import { createTreeDecoder, createTreeEncoder } from "./model-store.js";
 import { createPartSizer } from "../part-sizer.js";
 import { sharedBgBudget } from "../bg-budget.js";
 
@@ -920,6 +921,114 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     if (t == null && n == null) return null;
     return `${t ?? ""}|${n ?? ""}`;
   };
+  // P9. Trusted open: a big board whose page stamp is the one its stored model was read at mounts from that model
+  // with no board read. Until a background read verifies it, the board is "unverified" (boardUnverified): nothing
+  // destructive may act on it. Speed flag trustSnapshot.
+  const trustOn = () => { try { return notedSpeedFlags().trustSnapshot !== false; } catch { return true; } };
+  let modelStore = null;
+  const unverified = new Map(); // uid -> stamp the model was read at
+  const verifyListeners = new Map(); // uid -> Set(fn)
+  const checks = new Map(); // uid -> cancel of the running background check
+  const checkOwed = new Set(); // checks stopped by a park; they run again on resume
+  const keeps = new Map(); // uid -> cancel of the running model store job
+  const refreshes = new Map(); // uid -> cancel of the running model refresh read
+  const CHECK_QUIET_MS = 1500;
+  const CHECK_SLICE_MS = 20;
+  const CHECK_BATCH = 250;
+  const markVerified = (uid) => {
+    if (!unverified.delete(uid)) return;
+    checkOwed.delete(uid);
+    const fns = verifyListeners.get(uid);
+    verifyListeners.delete(uid);
+    for (const fn of fns || []) {
+      try { fn(); } catch (error) { console.warn("[plexus-diagram] verified listener failed", error); }
+    }
+  };
+  // Store a consistent tree with its stamp: encoded in parts on the background budget, then one put.
+  const keepModel = (uid, tree, stamp) => {
+    if (!modelStore || !trustOn() || !tree?.[":block/uid"] || typeof stamp !== "string") return;
+    keeps.get(uid)?.();
+    const enc = createTreeEncoder(tree);
+    const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
+    const cancel = sharedBgBudget().run((deadline) => {
+      if (!enc.step(Math.max(1, deadline.timeRemaining() - 2), clock)) return false;
+      if (keeps.get(uid) === cancel) keeps.delete(uid);
+      const model = enc.result();
+      if (model) void modelStore.put(uid, stamp, model);
+      stats.modelsKept = (stats.modelsKept || 0) + 1;
+      return true;
+    }, { label: "model-keep", partMs: 4, firstQuiet: 1000 });
+    keeps.set(uid, cancel);
+  };
+  // A board read in background slices: done(tree, stamp) with a consistent tree (one retry, then one whole pull).
+  const backgroundRead = (uid, label, done, { stopIf = () => false } = {}) => {
+    let reader = null;
+    let tries = 0;
+    let cancel = null;
+    const whole = () => {
+      const stamp = pageStampOf(uid);
+      let tree = null;
+      try { tree = rawPull(BOARD_PATTERN, eidKey(uid)); } catch { tree = null; }
+      done(tree?.[":block/uid"] ? tree : null, stamp);
+      return true;
+    };
+    const part = () => {
+      if (stopIf()) return true;
+      if (!reader) {
+        let rootEid = null;
+        try { rootEid = rawPull("[:db/id]", eidKey(uid))?.[":db/id"] ?? null; } catch { rootEid = null; }
+        if (rootEid == null || typeof data.pull_many !== "function") return whole();
+        reader = createSlicedRead({
+          rootEid,
+          pullMany: (pattern, eids) => data.pull_many(pattern, eids),
+          stamp: () => pageStampOf(uid),
+          clock: () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now()),
+          sliceMs: CHECK_SLICE_MS,
+          batch: CHECK_BATCH,
+        });
+      }
+      if (!reader.step()) return false;
+      const stamp = reader.stamp;
+      const tree = reader.take();
+      reader = null;
+      if (tree?.[":block/uid"] === uid) { done(tree, stamp); return true; }
+      tries += 1;
+      stats[`${label}Retries`] = (stats[`${label}Retries`] || 0) + 1;
+      return tries >= 2 ? whole() : false;
+    };
+    cancel = sharedBgBudget().run(part, { label, partMs: 4, firstQuiet: CHECK_QUIET_MS });
+    return () => cancel?.();
+  };
+  // The background check of a trusted open. A parked board stops it (resume runs it again).
+  const scheduleCheck = (uid) => {
+    if (checks.has(uid) || !unverified.has(uid)) return;
+    let stopped = false;
+    const cancel = backgroundRead(uid, "check", (tree, stamp) => {
+      checks.delete(uid);
+      if (!unverified.has(uid)) return;
+      if (!tree) { stats.checkFails = (stats.checkFails || 0) + 1; return; }
+      bigBoards.set(uid, tree);
+      absorb(uid, tree, false);
+      const split = splitWatches.get(uid);
+      let changed = true;
+      if (split && !split.disposed) changed = split.reseed(tree, { contents: true }) !== false;
+      stats.checks = (stats.checks || 0) + 1;
+      if (changed) stats.checkChanges = (stats.checkChanges || 0) + 1;
+      markVerified(uid);
+      if (changed || modelStore?.stampOf(uid) !== stamp) keepModel(uid, tree, stamp);
+    }, {
+      stopIf: () => {
+        if (stopped || !unverified.has(uid)) { checks.delete(uid); return true; }
+        if (splitWatches.get(uid)?.held) { checks.delete(uid); checkOwed.add(uid); return true; }
+        return false;
+      },
+    });
+    checks.set(uid, () => { stopped = true; cancel(); });
+  };
+  const resumeCheck = (uid) => {
+    if (!checkOwed.delete(uid)) return;
+    scheduleCheck(uid);
+  };
   const boardKeys = new Map();
   const boardPageOf = new Map();
   const pdfUrls = new Map();
@@ -1262,6 +1371,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       unhold(own);
       // A held split comes back: one publish if it changed meanwhile.
       if (own.held) own.release();
+      resumeCheck(uid);
       return own;
     };
     attach();
@@ -1318,6 +1428,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         }
         absorb(uid, fresh, false);
         bigBoards.set(uid, fresh);
+        // A whole fresh read: a trusted open is verified by it.
+        markVerified(uid);
         own.subs.delete(sub);
         own = attach();
         sub.missed = false;
@@ -1334,6 +1446,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       live();
       unhold(own);
       if (own.release()) sub.missed = false;
+      resumeCheck(uid);
       if (!sub.missed) return;
       sub.missed = false;
       queueMicrotask(() => { if (active && !sub.paused && own.tree) sub.fn(own.tree); });
@@ -1605,10 +1718,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const offered = offeredTrees.get(uid);
       offeredTrees.delete(uid);
       let offeredFound = null;
-      if (offered && offered.stamp != null && Date.now() - offered.at <= OFFER_TTL_MS && pageStampOf(uid) === offered.stamp) {
+      let readStamp = null;
+      let trustedOpen = false;
+      if (offered && offered.stamp != null && Date.now() - offered.at <= OFFER_TTL_MS && pageStampOf(uid) === offered.stamp
+        && (!offered.trusted || (trustOn() && splitWatchOn() && treeSize(offered.tree, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN))) {
         plain = offered.tree;
         offeredFound = offered.found || null;
-        stats.slicedReads = (stats.slicedReads || 0) + 1;
+        readStamp = offered.stamp;
+        trustedOpen = offered.trusted === true;
+        if (trustedOpen) stats.trustedOpens = (stats.trustedOpens || 0) + 1;
+        else stats.slicedReads = (stats.slicedReads || 0) + 1;
       }
       if (!plain) {
         try { plain = rawPull(BOARD_PATTERN, boardEntity); } catch { plain = null; }
@@ -1629,6 +1748,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (big) {
         bigBoards.set(uid, node);
         splitWatches.get(uid)?.reseed(node);
+        if (trustedOpen) {
+          unverified.set(uid, readStamp);
+          scheduleCheck(uid);
+        } else if (node === plain && modelStore && trustOn()) {
+          // A whole pull: same task, so the stamp read now is the one the tree was read at.
+          readStamp ??= pageStampOf(uid);
+          if (readStamp && modelStore.stampOf(uid) !== readStamp) keepModel(uid, plain, readStamp);
+        }
       } else bigBoards.delete(uid);
       const found = offeredFound && node === plain ? offeredFound : collectTargets(node);
       const pullRefs = () => {
@@ -1748,10 +1875,85 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     // P8 U3. A cold open's board read in short tasks: null when pullBoard would not read Roam whole (warm cache, a
     // split already holds the board), when pull_many or the page stamp is missing. reader.step() does one task's
     // worth and is true when finished; a consistent result is offered to the next pullBoard of this board.
+    // P9: with a stored model read at the page's current stamp (speed flag trustSnapshot, big boards with the split
+    // watch), the reader loads and decodes that model instead (reader.waiting: a promise while IndexedDB answers) and
+    // offers it as trusted; any miss on the way falls back to the sliced read.
     prereadBoard(uid, opts = {}) {
       const id = String(uid ?? "");
       if (!id || typeof data.pull_many !== "function") return null;
       if (warm.has(id) || splitWatches.has(id)) return null;
+      const stored = opts.trust !== false && modelStore && trustOn() && splitWatchOn() ? modelStore.stampOf(id) : null;
+      if (stored && pageStampOf(id) === stored) return host.trustedReader(id, stored, opts);
+      return host.slicedReader(id, opts);
+    },
+
+    trustedReader(id, stamp, opts = {}) {
+      const clock = opts.clock || (() => (globalThis.performance?.now ? globalThis.performance.now() : Date.now()));
+      const sliceMs = Number(opts.sliceMs) > 0 ? Number(opts.sliceMs) : SLICED_SLICE_MS;
+      let phase = "load";
+      let inner = null;
+      let decoder = null;
+      let tree = null;
+      let walk = null;
+      let cancelled = false;
+      let ms = 0;
+      const fallback = () => {
+        stats.trustMisses = (stats.trustMisses || 0) + 1;
+        inner = host.slicedReader(id, opts);
+        phase = inner ? "sliced" : "failed";
+      };
+      let waiting = modelStore.load(id).then((model) => {
+        waiting = null;
+        if (cancelled) return;
+        if (!model || model.stamp !== stamp) { fallback(); return; }
+        decoder = createTreeDecoder(model);
+        phase = "decode";
+      }, () => {
+        waiting = null;
+        if (!cancelled) fallback();
+      });
+      return {
+        get phase() { return inner ? inner.phase : phase; },
+        get trusted() { return !inner; },
+        get waiting() { return inner ? null : waiting; },
+        get calls() { return inner ? inner.calls : 0; },
+        get ms() { return inner ? inner.ms : ms; },
+        step() {
+          if (cancelled || phase === "failed" || phase === "done") return true;
+          if (inner) return inner.step();
+          if (waiting) return false;
+          const t0 = clock();
+          try {
+            if (phase === "decode") {
+              if (!decoder.step(sliceMs, clock)) return false;
+              tree = decoder.result();
+              decoder = null;
+              if (tree?.[":block/uid"] !== id) { tree = null; fallback(); return false; }
+              walk = createTargetsWalk(tree);
+              phase = "targets";
+              if (clock() - t0 >= sliceMs) return false;
+            }
+            if (!walk.step(Math.max(1, sliceMs - (clock() - t0)), clock)) return false;
+            // The stamp once more right before the offer (pullBoard checks it again).
+            if (pageStampOf(id) !== stamp) { tree = null; fallback(); return false; }
+            offeredTrees.set(id, { tree, found: walk.result(), stamp, at: Date.now(), trusted: true });
+            tree = null;
+            walk = null;
+            phase = "done";
+            return true;
+          } finally {
+            ms += clock() - t0;
+          }
+        },
+        cancel() {
+          cancelled = true;
+          inner?.cancel();
+          offeredTrees.delete(id);
+        },
+      };
+    },
+
+    slicedReader(id, opts = {}) {
       let rootEid = null;
       try { rootEid = rawPull("[:db/id]", eidKey(id))?.[":db/id"] ?? null; } catch { rootEid = null; }
       if (rootEid == null || pageStampOf(id) == null) return null;
@@ -1873,10 +2075,44 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         for (const off of want.offs.values()) { try { off(); } catch { /* already gone */ } }
       };
     },
+    // P9. The stored models (src/host/model-store.js) this host reads trusted opens from and keeps fresh reads in.
+    useModelStore(store) { modelStore = store || null; },
+    // True while a board that went live from a stored model has not been read again: nothing destructive may act on
+    // what it shows. onBoardVerified(uid, fn) calls fn once when that read lands (at once when already verified).
+    boardUnverified(uid) { return unverified.has(String(uid ?? "")); },
+    onBoardVerified(uid, fn) {
+      const id = String(uid ?? "");
+      if (!unverified.has(id)) { try { fn(); } catch { /* listener */ } return () => {}; }
+      let set = verifyListeners.get(id);
+      if (!set) { set = new Set(); verifyListeners.set(id, set); }
+      set.add(fn);
+      return () => { set.delete(fn); };
+    },
+    // After a change settled (the snapshot capture): a big board whose stored model is older than its page is read
+    // again in background slices and stored. Not while it is unverified or parked.
+    refreshModel(uid) {
+      const id = String(uid ?? "");
+      if (!modelStore || !trustOn() || !id || refreshes.has(id) || unverified.has(id) || !bigBoards.has(id)) return false;
+      const split = splitWatches.get(id);
+      if (!split || split.held || split.disposed) return false;
+      const now = pageStampOf(id);
+      if (!now || modelStore.stampOf(id) === now) return false;
+      const cancel = backgroundRead(id, "refresh", (tree, stamp) => {
+        refreshes.delete(id);
+        if (tree && stamp) keepModel(id, tree, stamp);
+      }, { stopIf: () => (splitWatches.get(id)?.held || !splitWatches.has(id) ? (refreshes.delete(id), true) : false) });
+      refreshes.set(id, cancel);
+      return true;
+    },
     // Unload / teardown: every pull watch this host registered goes now, with every hold, arm and sweep timer.
     // Held splits would otherwise keep Roam re-pulling them on every transaction for SPLIT_HOLD_MS after unload.
     dispose() {
       if (armTimer != null) { clearTimeout(armTimer); armTimer = null; }
+      for (const jobs of [checks, keeps, refreshes]) {
+        for (const cancel of jobs.values()) { try { cancel(); } catch { /* done */ } }
+        jobs.clear();
+      }
+      verifyListeners.clear();
       for (const h of idleHandles.values()) {
         if (h.timer != null) clearTimeout(h.timer);
         else if (h.cancel) h.cancel();

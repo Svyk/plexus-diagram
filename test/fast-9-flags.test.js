@@ -39,9 +39,10 @@ const ALL_ON = {
   edgeFingerprint: false,
   slicedMount: true,
   bgBudget: true,
+  trustSnapshot: true,
 };
 
-test("the panel has no speed-flags control, and bad JSON leaves the defaults (fifteen on, edgeFingerprint off)", () => {
+test("the panel has no speed-flags control, and bad JSON leaves the defaults (sixteen on, edgeFingerprint off)", () => {
   assert.equal(createSettingsPanel().settings.some((row) => row.id === "speed-flags"), false);
   assert.equal(Object.hasOwn(settingsDefaults(), "speed-flags"), false);
   assert.deepEqual(flagsDefault(), ALL_ON);

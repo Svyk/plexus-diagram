@@ -587,11 +587,32 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   // An edge that was on the board and then vanished takes the edges that used it as an
   // end with it. The first open has nothing to compare, so a dangling arrow stays put
   // until a later reconcile sees the target disappear. Ordinary missing cards are not edges.
+  // P9: while the board shows a stored model nobody has read again (host.boardUnverified), the vanished edges are only
+  // noted; once the background read lands they are judged again against the fresh board.
+  let heldGone = null;
   function queueDependentDrops(prev, next) {
-    if (dropQueued || !prev?.edges || !next?.edges) return;
+    if (!prev?.edges || !next?.edges) return;
     const gone = [];
     for (const id of prev.edges.keys()) if (!next.edges.has(id)) gone.push(id);
     if (!gone.length) return;
+    if (host.boardUnverified?.(uid) === true) {
+      if (!heldGone) {
+        heldGone = new Set();
+        host.onBoardVerified?.(uid, () => {
+          const ids = heldGone ? [...heldGone] : [];
+          heldGone = null;
+          if (destroyed || !board || !ids.length) return;
+          dropDependentsOf(ids.filter((id) => !board.edges.has(id)));
+        });
+      }
+      for (const id of gone) heldGone.add(id);
+      return;
+    }
+    dropDependentsOf(gone);
+  }
+  function dropDependentsOf(gone) {
+    if (dropQueued || !board?.edges || !gone.length) return;
+    const next = board;
     const victims = [];
     for (const edge of next.edges.values()) {
       if (gone.includes(edge.from) || gone.includes(edge.to)) victims.push(edge.uid);

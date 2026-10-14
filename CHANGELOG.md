@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.32.0 — 2026-10-14
+
+Scanned forms read much better, especially with the Docling add-on.
+
+- **Docling keeps the whole form.** The Docling reader used to drop header fields (document number, version, dates), signature and review lines, checkbox labels and tables nested inside form areas: only about 60% of what Docling read reached the card. Now about 98% does. On scanned quality forms the overall form score went from 0.39 to 0.60, header fields from 0.09 to 0.94.
+- **Checkboxes and circled choices.** On scanned pages read with Docling, ticked and empty boxes show as `[x]` and `[ ]`, and a circled Pass/Fail or Y/N choice is marked. Nothing is added on papers or born-digital documents.
+- **Charts stay charts.** The Docling add-on now classifies pictures, so chart and diagram labels stay on the figure while form boxes Docling mistook for pictures come through as text. The classifier downloads with the add-on; without it Docling works as before.
+- **High accuracy no longer blanks or invents text.** It kept writing empty lines where it could not place a line, and on blank pages the page model could invent text. Empty lines are gone, blank and show-through pages skip the page model (about 1.5 s instead of a long run) and emit nothing.
+- **Mostly empty ruled tables keep their words.** The built-in scan reader dropped every word of a ruled grid it decided was not a table; those words now come back as text or a table.
+- Update the helper to get the Docling and High accuracy changes: `uv tool install --force --python 3.12 git+https://github.com/Svyk/plexus-diagram#subdirectory=tools/parse-helper`.
+
 ## 3.31.0 — 2026-10-14
 
 Big boards open fast at any zoom.

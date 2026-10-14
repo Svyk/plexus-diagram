@@ -273,3 +273,29 @@ test("unverified window: no dependent drop runs before the check; afterwards a r
     assert.ok(s2.fake.block("e2"));
   } finally { s2.restore(); }
 });
+
+test("adopt step: a big board's preread takes its tree in (split held) so the acquire reads nothing; a change in between publishes on attach", async () => {
+  const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
+  seed(fake);
+  const { host, store } = hostOver(fake, createFakeIDB());
+  await store.ready;
+  const reader = host.prereadBoard("sb1", { sliceMs: 5, batch: 100 });
+  const phases = new Set();
+  while (!reader.step()) phases.add(reader.phase);
+  assert.ok(phases.has("adopt"), [...phases].join(","));
+  assert.ok(fake.watchCount() > 0, "the split watches from the adopt step on");
+  await fake.api.data.block.update({ block: { uid: "sec2", string: "Section 2 renamed in between" } });
+  await tick(150);
+  fake.pullLog = [];
+  const node = host.pullBoard("sb1", { light: true });
+  assert.equal(node[":block/uid"], "sb1");
+  assert.equal(host.stats.slicedReads, 1);
+  assert.equal(fake.pullLog.length, 0, `no read in the acquire: ${JSON.stringify(fake.pullLog.slice(0, 3))}`);
+  const trees = [];
+  const off = host.watchBoard("sb1", (tree) => trees.push(tree));
+  await until(() => trees.length > 0);
+  assert.equal(trees[0][":block/children"].find((s) => s[":block/uid"] === "sec2")[":block/string"], "Section 2 renamed in between");
+  off();
+  host.dispose();
+  await store.dispose();
+});

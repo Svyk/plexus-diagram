@@ -909,6 +909,31 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // read it: folds do not move the stamp, so an older one is never used.
   const OFFER_TTL_MS = 2000;
   const offeredTrees = new Map();
+  // P9: offers a preread already took in (absorbed, split created and held): { node, found, stamp, at, split, trusted }.
+  const adoptedTrees = new Map();
+  // The adopt step of a cold open, in its own task: what pullBoard would do with a big board's offer (absorb, the split
+  // watch, the trust mark), so the acquire task only builds the model. The split is held until the session attaches:
+  // a change meanwhile publishes on attach, and an open that never comes lets it go after SPLIT_HOLD_MS.
+  const adoptOffer = (uid) => {
+    const offered = offeredTrees.get(uid);
+    if (!offered || !splitWatchOn() || splitWatches.has(uid)) return false;
+    if (Date.now() - offered.at > OFFER_TTL_MS || pageStampOf(uid) !== offered.stamp) { offeredTrees.delete(uid); return false; }
+    if (treeSize(offered.tree, SPLIT_WATCH_MIN) < SPLIT_WATCH_MIN) return false;
+    if (offered.trusted && !trustOn()) { offeredTrees.delete(uid); return false; }
+    offeredTrees.delete(uid);
+    const tree = offered.tree;
+    absorb(uid, tree, false);
+    bigBoards.set(uid, tree);
+    boardCovers.set(uid, false);
+    let split = null;
+    try { split = splitFor(uid); } catch { split = null; }
+    if (!split) return false;
+    holdSplit(uid, split);
+    if (offered.trusted) unverified.set(uid, offered.stamp);
+    else if (modelStore && trustOn() && modelStore.stampOf(uid) !== offered.stamp) keepModel(uid, tree, offered.stamp);
+    adoptedTrees.set(uid, { node: tree, found: offered.found, stamp: offered.stamp, at: Date.now(), split, trusted: offered.trusted === true });
+    return true;
+  };
   // The board's page stamp "edit-time|edit-nonce", or null when Roam has none.
   const pageStampOf = (uid) => {
     let pageUid = "";
@@ -961,19 +986,30 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     keeps.set(uid, cancel);
   };
   // A board read in background slices: done(tree, stamp) with a consistent tree (one retry, then one whole pull).
-  const backgroundRead = (uid, label, done, { stopIf = () => false } = {}) => {
+  // prepare(tree) runs in a part of its own between the read and done; done runs only when the stamp did not move.
+  const backgroundRead = (uid, label, done, { stopIf = () => false, prepare = null } = {}) => {
     let reader = null;
     let tries = 0;
     let cancel = null;
+    let got = null;
     const whole = () => {
       const stamp = pageStampOf(uid);
       let tree = null;
       try { tree = rawPull(BOARD_PATTERN, eidKey(uid)); } catch { tree = null; }
+      if (tree?.[":block/uid"] && prepare) prepare(tree);
       done(tree?.[":block/uid"] ? tree : null, stamp);
       return true;
     };
     const part = () => {
       if (stopIf()) return true;
+      if (got) {
+        if (!got.prepared && prepare) { got.prepared = true; prepare(got.tree); return false; }
+        const { tree, stamp } = got;
+        got = null;
+        if (pageStampOf(uid) === stamp) { done(tree, stamp); return true; }
+        tries += 1;
+        return tries >= 2 ? whole() : false;
+      }
       if (!reader) {
         let rootEid = null;
         try { rootEid = rawPull("[:db/id]", eidKey(uid))?.[":db/id"] ?? null; } catch { rootEid = null; }
@@ -991,7 +1027,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const stamp = reader.stamp;
       const tree = reader.take();
       reader = null;
-      if (tree?.[":block/uid"] === uid) { done(tree, stamp); return true; }
+      if (tree?.[":block/uid"] === uid) { got = { tree, stamp, prepared: false }; return false; }
       tries += 1;
       stats[`${label}Retries`] = (stats[`${label}Retries`] || 0) + 1;
       return tries >= 2 ? whole() : false;
@@ -1008,7 +1044,6 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!unverified.has(uid)) return;
       if (!tree) { stats.checkFails = (stats.checkFails || 0) + 1; return; }
       bigBoards.set(uid, tree);
-      absorb(uid, tree, false);
       const split = splitWatches.get(uid);
       let changed = true;
       if (split && !split.disposed) changed = split.reseed(tree, { contents: true }) !== false;
@@ -1017,6 +1052,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       markVerified(uid);
       if (changed || modelStore?.stampOf(uid) !== stamp) keepModel(uid, tree, stamp);
     }, {
+      prepare: (tree) => absorb(uid, tree, false),
       stopIf: () => {
         if (stopped || !unverified.has(uid)) { checks.delete(uid); return true; }
         if (splitWatches.get(uid)?.held) { checks.delete(uid); checkOwed.add(uid); return true; }
@@ -1686,78 +1722,102 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     // One wide pull fills the session cache, so later card, page, and badge reads do not call Roam again.
     pullBoard(uid, { light = false, deferRefs = false, prime: doPrime = true } = {}) {
-      // A big board under its split watch (undo, redo, refresh): its containers again, contents as stored. The whole
-      // tree plus every ref was 1.2 s on the PhD main board.
-      const split = light ? splitWatches.get(uid) : null;
-      if (split) {
-        const tree = split.refresh();
-        if (tree?.[":block/uid"]) {
-          absorb(uid, tree, false);
-          bigBoards.set(uid, tree);
-          return tree;
-        }
-      }
-      if (warm.has(uid)) {
-        // A split is the authority for its board: the cache can hold the parent board's older copy of it, or the
-        // pre-park tree of a held split. Never reseed a split from the cache.
-        const own = splitWatches.get(uid);
-        if (own && !own.disposed && own.tree?.[":block/uid"]) return own.tree;
-        const cached = cache.blockOf(uid);
-        if (cached?.[":block/uid"]) {
-          // A nested board absorbed from its parent's pull is big by the same rule as a cold one: its watch must
-          // be the split, not one recursive pull (a 3,641-block nested board on the PhD main board).
-          if (treeSize(cached, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN && !(own && !own.disposed)) bigBoards.set(uid, cached);
-          return cached;
-        }
-      }
-      warm.delete(uid);
-      const boardEntity = eidKey(uid);
-      // The structure first; the wide pull only when few blocks carry refs. A sliced read of a cold open (P8 U3)
-      // stands in for the structure pull while the board's page stamp is still the one it was read at.
-      let plain = null;
-      const offered = offeredTrees.get(uid);
-      offeredTrees.delete(uid);
-      let offeredFound = null;
-      let readStamp = null;
-      let trustedOpen = false;
-      if (offered && offered.stamp != null && Date.now() - offered.at <= OFFER_TTL_MS && pageStampOf(uid) === offered.stamp
-        && (!offered.trusted || (trustOn() && splitWatchOn() && treeSize(offered.tree, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN))) {
-        plain = offered.tree;
-        offeredFound = offered.found || null;
-        readStamp = offered.stamp;
-        trustedOpen = offered.trusted === true;
-        if (trustedOpen) stats.trustedOpens = (stats.trustedOpens || 0) + 1;
-        else stats.slicedReads = (stats.slicedReads || 0) + 1;
-      }
-      if (!plain) {
-        try { plain = rawPull(BOARD_PATTERN, boardEntity); } catch { plain = null; }
-      }
+      // P9: a board still showing an unverified stored model (an adopted open that was dropped, a held split taken
+      // back) gets its check whatever path this pull takes.
+      if (unverified.has(uid) && !checks.has(uid)) queueMicrotask(() => scheduleCheck(uid));
+      // P9: a tree the cold open's preread already adopted (absorbed, its split watching since then): no read here.
       let node = null;
-      const big = Boolean(plain?.[":block/uid"]) && treeSize(plain, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN;
-      const refBlocks = plain?.[":block/uid"] && !big ? refBlocksOf(plain, OPEN_PULL_MAX_REFS) : 0;
-      if (!plain?.[":block/uid"] || (refBlocks > 0 && refBlocks <= OPEN_PULL_MAX_REFS)) {
-        try { node = rawPull(OPEN_PATTERN, boardEntity); } catch { node = null; }
-      }
-      let honored = Boolean(node?.[":block/uid"] && hasRefs(node));
-      if (!node?.[":block/uid"]) {
-        node = plain;
-        honored = false;
-      }
-      if (!node?.[":block/uid"]) return null;
-      absorb(uid, node, honored);
-      if (big) {
-        bigBoards.set(uid, node);
-        splitWatches.get(uid)?.reseed(node);
-        if (trustedOpen) {
-          unverified.set(uid, readStamp);
+      let honored = false;
+      let big = false;
+      let found = null;
+      const adopted = adoptedTrees.get(uid);
+      if (adopted) adoptedTrees.delete(uid);
+      if (adopted && Date.now() - adopted.at <= OFFER_TTL_MS && splitWatches.get(uid) === adopted.split && !adopted.split.disposed) {
+        node = adopted.node;
+        found = adopted.found || collectTargets(node);
+        big = true;
+        warm.delete(uid);
+        if (adopted.trusted) {
+          stats.trustedOpens = (stats.trustedOpens || 0) + 1;
           scheduleCheck(uid);
-        } else if (node === plain && modelStore && trustOn()) {
-          // A whole pull: same task, so the stamp read now is the one the tree was read at.
-          readStamp ??= pageStampOf(uid);
-          if (readStamp && modelStore.stampOf(uid) !== readStamp) keepModel(uid, plain, readStamp);
+        } else stats.slicedReads = (stats.slicedReads || 0) + 1;
+      } else {
+        if (adopted && unverified.has(uid)) scheduleCheck(uid);
+        // A big board under its split watch (undo, redo, refresh): its containers again, contents as stored. The whole
+        // tree plus every ref was 1.2 s on the PhD main board.
+        const split = light ? splitWatches.get(uid) : null;
+        if (split) {
+          const tree = split.refresh();
+          if (tree?.[":block/uid"]) {
+            absorb(uid, tree, false);
+            bigBoards.set(uid, tree);
+            return tree;
+          }
         }
-      } else bigBoards.delete(uid);
-      const found = offeredFound && node === plain ? offeredFound : collectTargets(node);
+        if (warm.has(uid)) {
+          // A split is the authority for its board: the cache can hold the parent board's older copy of it, or the
+          // pre-park tree of a held split. Never reseed a split from the cache.
+          const own = splitWatches.get(uid);
+          if (own && !own.disposed && own.tree?.[":block/uid"]) return own.tree;
+          const cached = cache.blockOf(uid);
+          if (cached?.[":block/uid"]) {
+            // A nested board absorbed from its parent's pull is big by the same rule as a cold one: its watch must
+            // be the split, not one recursive pull (a 3,641-block nested board on the PhD main board).
+            if (treeSize(cached, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN && !(own && !own.disposed)) bigBoards.set(uid, cached);
+            return cached;
+          }
+        }
+        warm.delete(uid);
+        const boardEntity = eidKey(uid);
+        // The structure first; the wide pull only when few blocks carry refs. A sliced read of a cold open (P8 U3)
+        // stands in for the structure pull while the board's page stamp is still the one it was read at.
+        let plain = null;
+        const offered = offeredTrees.get(uid);
+        offeredTrees.delete(uid);
+        let offeredFound = null;
+        let readStamp = null;
+        let trustedOpen = false;
+        if (offered && offered.stamp != null && Date.now() - offered.at <= OFFER_TTL_MS && pageStampOf(uid) === offered.stamp
+          && (!offered.trusted || (trustOn() && splitWatchOn() && treeSize(offered.tree, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN))) {
+          plain = offered.tree;
+          offeredFound = offered.found || null;
+          readStamp = offered.stamp;
+          trustedOpen = offered.trusted === true;
+          if (trustedOpen) stats.trustedOpens = (stats.trustedOpens || 0) + 1;
+          else stats.slicedReads = (stats.slicedReads || 0) + 1;
+        }
+        if (!plain) {
+          try { plain = rawPull(BOARD_PATTERN, boardEntity); } catch { plain = null; }
+          if (plain?.[":block/uid"]) markVerified(uid);
+        }
+        node = null;
+        big = Boolean(plain?.[":block/uid"]) && treeSize(plain, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN;
+        const refBlocks = plain?.[":block/uid"] && !big ? refBlocksOf(plain, OPEN_PULL_MAX_REFS) : 0;
+        if (!plain?.[":block/uid"] || (refBlocks > 0 && refBlocks <= OPEN_PULL_MAX_REFS)) {
+          try { node = rawPull(OPEN_PATTERN, boardEntity); } catch { node = null; }
+        }
+        honored = Boolean(node?.[":block/uid"] && hasRefs(node));
+        if (!node?.[":block/uid"]) {
+          node = plain;
+          honored = false;
+        }
+        if (!node?.[":block/uid"]) return null;
+        absorb(uid, node, honored);
+        if (big) {
+          bigBoards.set(uid, node);
+          splitWatches.get(uid)?.reseed(node);
+          if (trustedOpen) {
+            unverified.set(uid, readStamp);
+            scheduleCheck(uid);
+          } else if (node === plain && modelStore && trustOn()) {
+            // A whole pull: same task, so the stamp read now is the one the tree was read at.
+            readStamp ??= pageStampOf(uid);
+            if (readStamp && modelStore.stampOf(uid) !== readStamp) keepModel(uid, plain, readStamp);
+          }
+        } else bigBoards.delete(uid);
+
+        found = offeredFound && node === plain ? offeredFound : collectTargets(node);
+      }
       const pullRefs = () => {
         if (!honored && (found.uids.length || found.titles.length)) {
           for (const entity of pullMany(found.uids, found.titles)) addEntity(uid, entity);
@@ -1922,6 +1982,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           if (cancelled || phase === "failed" || phase === "done") return true;
           if (inner) return inner.step();
           if (waiting) return false;
+          if (phase === "adopt") {
+            phase = "done";
+            if (opts.adopt !== false) adoptOffer(id);
+            return true;
+          }
           const t0 = clock();
           try {
             if (phase === "decode") {
@@ -1939,8 +2004,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
             offeredTrees.set(id, { tree, found: walk.result(), stamp, at: Date.now(), trusted: true });
             tree = null;
             walk = null;
-            phase = "done";
-            return true;
+            phase = "adopt";
+            return false;
           } finally {
             ms += clock() - t0;
           }
@@ -1949,6 +2014,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           cancelled = true;
           inner?.cancel();
           offeredTrees.delete(id);
+          adoptedTrees.delete(id);
         },
       };
     },
@@ -1970,11 +2036,19 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       // After the read: the open's ref and stat targets (collectTargets) in the same slices, so the acquire skips it.
       let tree = null;
       let walk = null;
+      let offered = false;
       return {
-        get phase() { return walk ? "targets" : reader.phase; },
+        get phase() { return offered ? "adopt" : walk ? "targets" : reader.phase; },
         get calls() { return reader.calls; },
         get ms() { return reader.ms; },
         step() {
+          // P9: a big board's offer is taken in by its own task (absorb, split watch) before the acquire.
+          if (offered) {
+            offered = false;
+            walk = null;
+            if (opts.adopt !== false) adoptOffer(id);
+            return true;
+          }
           if (!walk) {
             const done = step();
             if (!done) return false;
@@ -1988,9 +2062,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           if (!reader.verifyOpen()) { tree = null; return true; }
           offeredTrees.set(id, { tree, found: walk.result(), stamp: reader.stamp, at: Date.now() });
           tree = null;
-          return true;
+          offered = true;
+          return false;
         },
-        cancel() { reader.cancel(); offeredTrees.delete(id); },
+        cancel() { reader.cancel(); offeredTrees.delete(id); adoptedTrees.delete(id); },
       };
     },
 

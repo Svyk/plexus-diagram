@@ -29927,6 +29927,7 @@ function createItemRenderer({
   };
   const VIRTUAL_MIN = 400;
   const OPEN_NOW_MAX = 150;
+  const OPEN_CHUNK = 30;
   const PUMP_MS = 12;
   let pendingView = null;
   const viewWaiters = [];
@@ -30059,19 +30060,30 @@ function createItemRenderer({
     }
     for (const rec of set) if (!isAttached(rec)) layerOf(rec).append(rec.el);
   };
+  const overviewFastOn = () => {
+    try {
+      return lod !== "detail" && speedOf().overviewFast !== false;
+    } catch {
+      return false;
+    }
+  };
   const noteOverviewQueue = () => {
+    if (!overviewFastOn()) return;
     try {
       onOverviewQueue?.();
     } catch {
     }
   };
-  const pumpChunk = () => {
+  const pumpChunk = ({ limit = 40, priority = false } = {}) => {
+    if (shellQueue.length) noteOverviewQueue();
     const t0 = now2();
     const built = [];
     let taken = 0;
-    while (shellQueue.length && taken < 40 && (taken === 0 || now2() - t0 < PUMP_MS)) {
+    while (shellQueue.length && taken < limit && (taken === 0 || now2() - t0 < PUMP_MS)) {
+      if (priority && priorityLeft <= 0) break;
       const uid = shellQueue.shift();
       taken += 1;
+      if (priority && priorityLeft > 0) priorityLeft -= 1;
       pendingView?.delete(uid);
       const item = lastBoard?.items.get(uid);
       if (!item || shells.has(uid)) continue;
@@ -30094,7 +30106,7 @@ function createItemRenderer({
       if (taken && lastContent) paintOffscreen(lastContent.visibleRect);
     }
     if (pendingView && !pendingView.size) viewBuilt();
-    noteOverviewQueue();
+    if (!shellQueue.length) noteOverviewQueue();
     return shellQueue.length === 0;
   };
   const pumpShells = () => {
@@ -30102,13 +30114,33 @@ function createItemRenderer({
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
   };
   let shellBg = null;
+  let priorityFrame = null;
+  let priorityLeft = 0;
+  const stopPriorityFrame = () => {
+    priorityFrame?.();
+    priorityFrame = null;
+  };
   const stopShellBg = () => {
     shellBg?.();
     shellBg = null;
+    stopPriorityFrame();
+  };
+  const pumpPriorityFrame = () => {
+    priorityFrame = null;
+    pumpChunk({ limit: OPEN_CHUNK, priority: true });
+    if (priorityLeft > 0 && shellQueue.length && timers?.frame) {
+      priorityFrame = timers.frame(pumpPriorityFrame);
+      return;
+    }
+    armShellPump();
   };
   const armShellPump = () => {
     stopShellBg();
     if (!shellQueue.length) return;
+    if (priorityLeft > 0 && timers?.frame) {
+      priorityFrame = timers.frame(pumpPriorityFrame);
+      return;
+    }
     let fast = false;
     try {
       fast = lod !== "detail" && speedOf().overviewFast !== false && typeof timers?.bgRun === "function";
@@ -30136,9 +30168,13 @@ function createItemRenderer({
     const item = lastBoard?.items.get(uid);
     if (!item || disposed) return null;
     const at = shellQueue.indexOf(uid);
-    if (at >= 0) shellQueue.splice(at, 1);
+    if (at >= 0) {
+      shellQueue.splice(at, 1);
+      if (at < priorityLeft) priorityLeft -= 1;
+    }
     pendingView?.delete(uid);
     if (pendingView && !pendingView.size) viewBuilt();
+    noteOverviewQueue();
     const rec = buildShell2(item);
     const rect = lastRects?.get(uid);
     rec.el.style.display = rect ? "" : "none";
@@ -30147,7 +30183,6 @@ function createItemRenderer({
     if (rect) position(rec, rect);
     if (showBadges) renderBadges(rec);
     attachShell(rec);
-    noteOverviewQueue();
     return rec.el;
   };
   const sync = ({ board: board2, rects, dirty: changed2 = null, structural = false, view = null, attachView = null }) => {
@@ -30176,8 +30211,9 @@ function createItemRenderer({
     }
     syncBoardHighlighter(doc, boardRoot());
     if (dirty == null) {
-      const hadQueue = shellQueue.length > 0 || shellBg;
+      const hadQueue = shellQueue.length > 0 || shellBg || priorityFrame;
       shellQueue = [];
+      priorityLeft = 0;
       stopShellBg();
       if (hadQueue) noteOverviewQueue();
     }
@@ -30202,7 +30238,13 @@ function createItemRenderer({
         later2.sort((a, b) => dist(a) - dist(b));
       }
       if (!now4.length) now4.push(...later2.splice(0, 24));
-      if (now4.length > OPEN_NOW_MAX && view) {
+      let fast = false;
+      try {
+        fast = lod !== "detail" && speedOf().overviewFast !== false;
+      } catch {
+        fast = false;
+      }
+      if (view && (fast && now4.length > OPEN_CHUNK || now4.length > OPEN_NOW_MAX)) {
         const cx = view.x + view.w / 2;
         const cy = view.y + view.h / 2;
         const dist = (uid) => {
@@ -30210,21 +30252,33 @@ function createItemRenderer({
           return r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity;
         };
         const ranked = now4.slice().sort((a, b) => dist(a) - dist(b));
-        const keep = new Set(ranked.slice(0, OPEN_NOW_MAX));
-        for (const uid of ranked) if (board2.items.get(uid)?.type === "section") keep.add(uid);
-        const rest = ranked.filter((uid) => !keep.has(uid));
-        now4.length = 0;
-        for (const uid of board2.order) if (keep.has(uid)) now4.push(uid);
-        let fast = false;
-        try {
-          fast = lod !== "detail" && speedOf().overviewFast !== false;
-        } catch {
-          fast = false;
+        const sections = [];
+        const cards = [];
+        for (const uid of ranked) (board2.items.get(uid)?.type === "section" ? sections : cards).push(uid);
+        if (fast) {
+          const priority = [...sections, ...cards.slice(0, OPEN_NOW_MAX)];
+          const first = new Set(priority.slice(0, OPEN_CHUNK));
+          const restPriority = priority.filter((uid) => !first.has(uid));
+          const restSet = new Set(restPriority);
+          priorityLeft = restPriority.length;
+          now4.length = 0;
+          for (const uid of board2.order) if (first.has(uid)) now4.push(uid);
+          const tail = [...restPriority, ...ranked.filter((uid) => !first.has(uid) && !restSet.has(uid))];
+          later2.unshift(...tail);
+        } else {
+          const keep = new Set(ranked.slice(0, OPEN_NOW_MAX));
+          const rest = ranked.slice(OPEN_NOW_MAX);
+          now4.length = 0;
+          for (const uid of board2.order) if (keep.has(uid)) now4.push(uid);
+          pendingView = new Set(rest);
+          later2.unshift(...rest);
         }
-        if (!fast) pendingView = new Set(rest);
-        later2.unshift(...rest);
       }
       if (now4.length && later2.length) defer = new Set(later2);
+    }
+    if (defer?.size) {
+      shellQueue = [...defer];
+      noteOverviewQueue();
     }
     for (const uid of board2.order) {
       if (defer?.has(uid)) continue;
@@ -30273,11 +30327,7 @@ function createItemRenderer({
       if (virtual()) placeVirtual();
       else placeShells();
     }
-    if (defer?.size) {
-      shellQueue = [...defer];
-      armShellPump();
-      noteOverviewQueue();
-    }
+    if (defer?.size) armShellPump();
     if (pendingView) {
       for (const uid of [...pendingView]) if (shells.has(uid) || !board2.items.has(uid)) pendingView.delete(uid);
       if (!pendingView.size) viewBuilt();
@@ -50358,7 +50408,9 @@ var MAX_SIDE = 2048;
 function createGestureUnderlay({ doc, world, root, before = null } = {}) {
   let canvas = null;
   let shown = false;
+  let colorCache = null;
   const colors = () => {
+    if (colorCache) return colorCache;
     const read2 = (name, fallback) => {
       let v = "";
       try {
@@ -50375,7 +50427,8 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       }
       return String(v).trim() || fallback;
     };
-    return { card: read2("--pxd-card", "rgba(128,128,128,0.35)"), line: read2("--pxd-muted", "rgba(128,128,128,0.6)") };
+    colorCache = { card: read2("--pxd-card", "rgba(128,128,128,0.35)"), line: read2("--pxd-muted", "rgba(128,128,128,0.6)") };
+    return colorCache;
   };
   const hide = () => {
     shown = false;
@@ -50401,6 +50454,7 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     }
     const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
     const scale = Math.max(0.01, Math.min(zoom * Math.min(dpr, 1.25), MAX_SIDE / w, MAX_SIDE / h));
+    const c = colors();
     if (!canvas) {
       canvas = doc.createElement("canvas");
       canvas.className = "pxd-underlay";
@@ -50421,7 +50475,6 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       hide();
       return 0;
     }
-    const c = colors();
     try {
       paint2(ctx, { items, edges, c, scale, x0, y0, bw, bh });
     } catch {
@@ -79844,14 +79897,15 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const layoutDock = () => {
     fitDock();
     const b = paletteButtons.get(activeTool);
-    const visible2 = Boolean(b) && px(b.offsetWidth) > 0;
+    const box2 = b ? { x: px(b.offsetLeft), y: px(b.offsetTop), w: px(b.offsetWidth), h: px(b.offsetHeight) } : null;
+    const visible2 = Boolean(box2) && box2.w > 0;
     dockIndicator.classList.toggle("pxd-dock__indicator--locked", activeLocked);
     dockIndicator.classList.toggle("pxd-dock__indicator--idle", !visible2);
     if (!visible2) return;
-    dockIndicator.style.setProperty("--pxd-ind-x", `${px(b.offsetLeft)}px`);
-    dockIndicator.style.setProperty("--pxd-ind-y", `${px(b.offsetTop)}px`);
-    dockIndicator.style.setProperty("--pxd-ind-w", `${px(b.offsetWidth)}px`);
-    dockIndicator.style.setProperty("--pxd-ind-h", `${px(b.offsetHeight)}px`);
+    dockIndicator.style.setProperty("--pxd-ind-x", `${box2.x}px`);
+    dockIndicator.style.setProperty("--pxd-ind-y", `${box2.y}px`);
+    dockIndicator.style.setProperty("--pxd-ind-w", `${box2.w}px`);
+    dockIndicator.style.setProperty("--pxd-ind-h", `${box2.h}px`);
   };
   const DOCK_PAD = 14;
   const DOCK_GAP = 4;
@@ -79913,10 +79967,13 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   let dockFrame = null;
   const scheduleDock = () => {
     if (dockFrame) return;
-    dockFrame = timers.frame(() => {
+    let ran = false;
+    const handle = timers.frame(() => {
+      ran = true;
       dockFrame = null;
       layoutDock();
     });
+    dockFrame = ran ? null : handle;
   };
   listen(palette, "pointerenter", () => layoutDock());
   let pendingMap = {};
@@ -80016,7 +80073,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     watchReveal(layout === "dock-only");
     paintBar();
     applyDockOptions();
-    layoutDock();
+    scheduleDock();
   };
   const toolbarApi = {
     el: toolbar,
@@ -80035,7 +80092,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         b.classList.toggle("pxd-dock__btn--locked", id === tool && Boolean(locked));
       }
       applyDockOptions();
-      layoutDock();
+      scheduleDock();
     },
     setPending(map) {
       pendingMap = map || {};
@@ -82241,7 +82298,6 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     if (observed !== tb) {
       resize?.disconnect();
       observed = tb;
-      toolbarH = tb.offsetHeight || 0;
       resize = new RO(() => {
         const next = observed?.offsetHeight || 0;
         if (next === toolbarH) return;
@@ -89230,6 +89286,7 @@ function buildBoardView(onFail, {
   };
   let themeKey = null;
   let themeFollow = null;
+  let themeReady = false;
   try {
     themeFollow = createThemeFollow({
       doc,
@@ -89254,6 +89311,7 @@ function buildBoardView(onFail, {
       themeFollow?.apply?.();
     } catch {
     }
+    themeReady = true;
     const key = `${dark}|${hl}`;
     const flipped = themeKey !== null && key !== themeKey;
     themeKey = key;
@@ -89265,7 +89323,6 @@ function buildBoardView(onFail, {
     repaintItemStyles();
     scheduleContent();
   };
-  applyTheme();
   const readBlock = (id) => {
     try {
       return host?.blockString?.(id);
@@ -89796,11 +89853,24 @@ function buildBoardView(onFail, {
   };
   const measure = () => {
     const r = root.getBoundingClientRect();
+    let box2 = null;
+    let bar = null;
+    try {
+      box2 = viewport2.getBoundingClientRect?.();
+    } catch {
+      box2 = null;
+    }
+    try {
+      bar = root.querySelector?.(".pxd-toolbar")?.getBoundingClientRect?.() || null;
+    } catch {
+      bar = null;
+    }
     rootRect = { left: r.left || 0, top: r.top || 0, width: r.width || 0, height: r.height || 0 };
     size = { width: rootRect.width, height: rootRect.height };
     root.classList.toggle("pxd-root--narrow", size.width > 0 && size.width < 560);
     readPane?.layout?.(size.width);
-    syncCramped();
+    const want = boardCramped(freeBoardArea(box2, bar));
+    if (root.classList.contains("pxd-root--cramped") !== want) root.classList.toggle("pxd-root--cramped", want);
   };
   onFail.push(
     () => {
@@ -92479,7 +92549,12 @@ function buildBoardView(onFail, {
     underlayDrawn = false;
   };
   paintOverviewCover = () => {
-    if (disposed || underlayDrawn) return;
+    if (disposed || underlayDrawn || tier === "detail") return;
+    try {
+      if (notedSpeedFlags().overviewFast === false) return;
+    } catch {
+      return;
+    }
     const items = itemsR.pendingBoxes?.() || [];
     if (!items.length) {
       underlay.hide();
@@ -93239,6 +93314,7 @@ function buildBoardView(onFail, {
     root.classList.toggle("pxd-look--flat", setting("look-canvas", "dots") === "flat-grey");
     root.classList.toggle("pxd-look--pastel", setting("look-sections", "none") === "pastel");
     root.classList.toggle("pxd-look--tint", setting("look-highlights", "bar") === "tint");
+    if (!themeReady) return;
     try {
       themeFollow?.apply?.();
     } catch {
@@ -96354,6 +96430,7 @@ ${url}`;
     }
     paintTabStrip(next?.tabs || [], entry.uid);
   };
+  let refitWhenMeasured = false;
   const applyFullscreen = (on) => {
     isFullscreen = Boolean(on);
     fsDispose();
@@ -96366,7 +96443,18 @@ ${url}`;
     } else applyInlineHeight();
     syncFullscreenTabs();
     timers.frame(() => {
+      if (disposed || suspended) return;
+      applyTheme();
       measure();
+      if (refitWhenMeasured) {
+        refitWhenMeasured = false;
+        if (size.width && size.height) {
+          const live2 = board2();
+          const rs = live2 ? rects() : /* @__PURE__ */ new Map();
+          vp = fitViewport(boundsOf([...rs.values()]), size, { padding: 64, maxZoom: 1 });
+          applyLod();
+        }
+      }
       markViewport();
     });
   };
@@ -98401,6 +98489,7 @@ ${url}`;
     if (disposed || suspended) return;
     const b = board2();
     if (!b) return;
+    if (!size.width) measure();
     if (!coverPaintAt) {
       coverPaintAt = Date.now();
       armCoverWarm();
@@ -98495,7 +98584,12 @@ ${url}`;
       if (!gesturing && !deferReveal()) paintGrid();
       if (!deferReveal()) chrome.toolbar.setZoom(vp.zoom);
       if (tooltip.isVisible()) tooltip.hide();
-      if (!gesturing && !wheelLayer) propsPanel.place();
+      if (!gesturing && !wheelLayer) {
+        if (itemsChanged) timers.frame(() => {
+          if (!disposed && !suspended && !gesturing && !wheelLayer) propsPanel.place();
+        });
+        else propsPanel.place();
+      }
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) liftBurst = true;
     if (dirty.selection || itemsChanged) {
@@ -98841,7 +98935,6 @@ ${url}`;
     consumeDeepLink(fromEvent || void 0);
   });
   applyFullscreen(fullscreen);
-  measure();
   if (autofocus) {
     try {
       root.focus({ preventScroll: true });
@@ -98849,9 +98942,10 @@ ${url}`;
     }
   }
   if (!vp) {
+    refitWhenMeasured = true;
     const b = board2();
     const r = b ? rects() : /* @__PURE__ */ new Map();
-    vp = fitViewport(boundsOf([...r.values()]), size.width && size.height ? size : { width: 800, height: 560 }, { padding: 64, maxZoom: 1 });
+    vp = fitViewport(boundsOf([...r.values()]), { width: 800, height: 560 }, { padding: 64, maxZoom: 1 });
   }
   applyBackground();
   applyMotion();

@@ -38955,7 +38955,7 @@ function createBgBudget({
   let nextAt = -Infinity;
   const overruns = [];
   listen();
-  function idle(fn, { timeout = 1500, quiet = quietMs, since = -Infinity, delay: delay2 = 0, label = "" } = {}) {
+  function idle(fn, { timeout = 1500, quiet = quietMs, since = -Infinity, delay: delay2 = 0, label = "", urgent = false } = {}) {
     if (!enabled()) {
       let id = null;
       try {
@@ -38978,7 +38978,7 @@ function createBgBudget({
     const run2 = (d) => {
       idleId = null;
       if (cancelled) return;
-      const wait2 = Math.max(quiet - Math.min(quietFor(), now4() - since), nextAt - now4());
+      const wait2 = Math.max(quiet - Math.min(quietFor(), now4() - since), urgent ? 0 : nextAt - now4());
       if (wait2 > 0) {
         timerId = setTimer(() => {
           timerId = null;
@@ -39030,7 +39030,7 @@ function createBgBudget({
       timerId = null;
     };
   }
-  function run(part, { timeout = 1500, quiet = quietMs, firstQuiet = quiet, partMs = 0, label = "" } = {}) {
+  function run(part, { timeout = 1500, quiet = quietMs, firstQuiet = quiet, partMs = 0, label = "", urgent = false } = {}) {
     let cancel = null;
     let stopped = false;
     const need2 = () => Math.max(1e-3, typeof partMs === "function" ? Number(partMs()) || 0 : partMs);
@@ -39045,9 +39045,9 @@ function createBgBudget({
           console.error("[plexus-diagram] background job", err);
         }
       } while (!done2 && !stopped && deadline.timeRemaining() >= need2());
-      if (!done2 && !stopped) cancel = idle(slice, { timeout, quiet, label });
+      if (!done2 && !stopped) cancel = idle(slice, { timeout, quiet, label, urgent });
     };
-    cancel = idle(slice, { timeout, quiet: firstQuiet, since: firstQuiet > quiet ? now4() : -Infinity, label });
+    cancel = idle(slice, { timeout, quiet: firstQuiet, since: firstQuiet > quiet ? now4() : -Infinity, label, urgent });
     return () => {
       stopped = true;
       cancel?.();
@@ -101684,7 +101684,7 @@ async function installPlexusDiagram({
           end();
           if (parts.finish() === null) scheduleSnap(rec);
           return true;
-        }, { timeout: 2e3, label: "snap", partMs: 4 });
+        }, { timeout: 2e3, label: "snap", partMs: 4, urgent: true });
         snapJobs.set(rec, job);
         return;
       }

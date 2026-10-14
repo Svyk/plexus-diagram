@@ -88593,9 +88593,28 @@ function buildBoardView(onFail, {
     }
     let uids = null;
     let at = 0;
-    pdfTitleJob = sharedBgBudget().run(() => {
+    let tail = 0;
+    const sizer = createPartSizer({ max: 20, start: 5 });
+    const clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
+    pdfTitleJob = sharedBgBudget().run((deadline) => {
       if (disposed) {
         pdfTitleJob = null;
+        return true;
+      }
+      if (tail === 1) {
+        tail = 2;
+        try {
+          refreshPdfHighlightCounts();
+        } catch {
+        }
+        return false;
+      }
+      if (tail === 2) {
+        pdfTitleJob = null;
+        try {
+          readPane?.refreshCards?.();
+        } catch {
+        }
         return true;
       }
       if (!uids) {
@@ -88603,31 +88622,26 @@ function buildBoardView(onFail, {
         for (const it of board2()?.items.values() || []) if (it?.kind === "pdf") uids.push(it.uid);
         at = 0;
       }
-      const part = uids.slice(at, at + 20);
+      const n3 = sizer.size((deadline?.timeRemaining?.() ?? 20) - 2);
+      const part = uids.slice(at, at + n3);
       at += part.length;
+      const t0 = clock();
       if (part.length) {
         try {
           itemsR.repaintItems(part);
         } catch {
         }
       }
+      sizer.note(part.length, clock() - t0);
       if (at < uids.length) return false;
       if (pdfTitleAgain) {
         pdfTitleAgain = false;
         uids = null;
         return false;
       }
-      pdfTitleJob = null;
-      try {
-        refreshPdfHighlightCounts();
-      } catch {
-      }
-      try {
-        readPane?.refreshCards?.();
-      } catch {
-      }
-      return true;
-    }, { label: "pdfTitles" });
+      tail = 1;
+      return false;
+    }, { label: "pdfTitles", partMs: 4 });
   };
   const coverWarmOn = () => {
     const v = readSetting2("pdf-cover-warm");

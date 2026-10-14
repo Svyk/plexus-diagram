@@ -1319,6 +1319,9 @@ test("badges: stats are fetched once per key for visible cards at detail zoom, c
     assert.equal(calls.length, 1);
     assert.deepEqual(calls[0].opts, { boardUid: "board0001" });
     assert.deepEqual(calls[0].targets.map((t) => t.kind === "page" ? t.title : t.uid).sort(), ["Beta", "cardAAAA1", "cardDDDD4"].sort());
+    assert.equal(shell(f, "cardBBBB2").querySelectorAll(".pxd-badge-chip").length, 0, "P8 U2: the repaint waits for its own slice");
+    f.stub.flushIdle();
+    f.stub.flushFrames();
     const chips = shell(f, "cardBBBB2").querySelectorAll(".pxd-badge-chip").map((c) => c.textContent);
     assert.ok(chips.includes("3 refs"), `refs chip (${chips.join(" | ")})`);
     assert.ok(chips.includes("2/1"), "task chip");

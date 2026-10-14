@@ -3729,8 +3729,12 @@ function buildBoardView(onFail, {
         const stats = res instanceof Map ? res.get(m.key) : res?.[m.key];
         badgeCache.set(m.key, { at, stats: stats || { refs: 0, boards: 0, open: 0, done: 0 } });
       }
-      applyBadges();
-      if (rest.length) timers.bgIdle(() => runChunk(rest), "badges");
+      // P8 U2: the repaint in its own slice (read + repaint in one were 130 ms slices on the PhD main board).
+      timers.bgIdle(() => {
+        if (disposed) return;
+        applyBadges();
+        if (rest.length) timers.bgIdle(() => runChunk(rest), "badges");
+      }, "badges-paint");
     };
     timers.bgIdle(() => runChunk(misses), "badges");
   };

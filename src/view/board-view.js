@@ -1704,6 +1704,7 @@ function buildBoardView(onFail, {
     }
     return node;
   } : null;
+  let paintOverviewCover = () => {};
   itemsR = createItemRenderer({
     doc,
     host,
@@ -1712,6 +1713,7 @@ function buildBoardView(onFail, {
     sectionsLayer,
     timers,
     adoptShell,
+    onOverviewQueue: () => paintOverviewCover(),
     tableThumb,
     onTableShown,
     onEditChange: (uid) => {
@@ -3857,6 +3859,19 @@ function buildBoardView(onFail, {
     underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
   };
   const endUnderlay = () => { underlayDrawn = false; };
+  // Live at map zoom drops the snapshot while shells are still queued. Those cards stay as boxes on the
+  // gesture underlay (pointer-events none) until the pump or a hit builds them. A gesture hides that canvas
+  // when it settles; draw the queue again afterwards.
+  paintOverviewCover = () => {
+    if (disposed || underlayDrawn) return;
+    const items = itemsR.pendingBoxes?.() || [];
+    if (!items.length) { underlay.hide(); return; }
+    underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
+  };
+  const releaseUnderlay = () => {
+    underlay.hide();
+    paintOverviewCover();
+  };
   const revealNear = () => {
     if (!size.width) return;
     const near = visibleWorldRect(vp, size, ATTACH_MARGIN);
@@ -3926,7 +3941,7 @@ function buildBoardView(onFail, {
       }
       if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
       // The shells and edges near the view are in the DOM again (both culls attach at once).
-      underlay.hide();
+      releaseUnderlay();
       dirty.minimap = true;
       schedule();
       updateBackToContent();
@@ -7107,7 +7122,7 @@ function buildBoardView(onFail, {
           chrome.toolbar.setZoom(vp.zoom);
           scheduleContent();
           if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
-          underlay.hide();
+          releaseUnderlay();
           vpStore.set(vpId, vp);
           dirty.selection = true;
           schedule();

@@ -41,7 +41,7 @@ function spreadBoard() {
   return children;
 }
 
-function openRenderer({ children, lod = "overview", zoom = 0.1, settings = {}, view = { x: 0, y: 0, w: 8000, h: 6000 } } = {}) {
+function openRenderer({ children, lod = "overview", zoom = 0.1, settings = {}, view = { x: 0, y: 0, w: 8000, h: 6000 }, onOverviewQueue = null } = {}) {
   const stub = createDomStub();
   const restore = stub.install();
   const doc = stub.document;
@@ -81,7 +81,7 @@ function openRenderer({ children, lod = "overview", zoom = 0.1, settings = {}, v
       };
     },
   };
-  const r = createItemRenderer({ doc, host, session: {}, itemsLayer, sectionsLayer, timers, settings });
+  const r = createItemRenderer({ doc, host, session: {}, itemsLayer, sectionsLayer, timers, settings, onOverviewQueue });
   const board = buildBoard(rawBoard(children));
   if (lod) r.setLod(lod, zoom);
   r.sync({ board, rects: worldRects(board), dirty: null, structural: true, view });
@@ -278,6 +278,75 @@ test("overview shell pump shares the background budget and detail keeps the fram
     off.done();
     fast.done();
     thaw();
+  }
+});
+
+test("pending boxes cover queued cards and clear when the queue finishes", () => {
+  let notes = 0;
+  const h = openRenderer({ children: spreadBoard(), lod: "overview", zoom: 0.1, onOverviewQueue: () => { notes += 1; } });
+  try {
+    assert.ok(notes >= 1);
+    const boxes = h.r.pendingBoxes();
+    assert.ok(boxes.some((box) => box.uid === "far000001" && box.rect));
+    assert.equal(boxes.length, h.r.queuedCount());
+    let guard = 0;
+    while (h.r.queuedCount() && h.bgParts[0] && guard < 20) {
+      guard += 1;
+      h.bgParts[0].part({ timeRemaining: () => 0 });
+    }
+    assert.equal(h.r.queuedCount(), 0);
+    assert.equal(h.r.pendingBoxes().length, 0);
+    assert.ok(notes >= 2);
+  } finally {
+    h.done();
+  }
+});
+
+test("queued overview cards stay drawn after the gesture underlay hides", async () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify({ x: 0, y: 0, zoom: 0.1 }));
+  const board = buildBoard(rawBoard(spreadBoard()));
+  const host = {
+    stats: {}, graph: "Svy",
+    renderString(node, string) { node.textContent = string; },
+    renderBlock(node, uid) { node.textContent = uid; },
+    unmount() {},
+    pagePreview: () => ({ exists: false, blocks: [] }),
+    pullTree: () => [],
+    blockString: () => null,
+    openBlock() {},
+    openInSidebar() {},
+    searchPages: () => [],
+    searchBlocks: () => [],
+    related: () => [],
+  };
+  const session = {
+    uid: board.uid, board, rects: worldRects(board), links: [], coveredEdges: new Set(),
+    on() { return () => {}; }, release() {}, setLinkMode() {},
+  };
+  const mountEl = stub.document.createElement("div");
+  mountEl.className = "pxd-mount";
+  stub.document.body.append(mountEl);
+  const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "1.0.0" });
+  try {
+    stub.flushFrames();
+    assert.equal(view.snapshotSource().shellOf("far000001"), null);
+    const canvas = view.root.querySelector(".pxd-underlay");
+    assert.ok(canvas, "queued cards have a drawn cover");
+    assert.notEqual(canvas.style.display, "none");
+    assert.match(String(canvas.style.cssText), /pointer-events:\s*none/);
+    const root = view.root;
+    stub.dispatch(root, "pointerdown", { button: 0, buttons: 1, clientX: 760, clientY: 20, pointerId: 4 });
+    stub.dispatch(root, "pointerup", { button: 0, buttons: 0, clientX: 760, clientY: 20, pointerId: 4 });
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    assert.equal(view.snapshotSource().shellOf("far000001"), null);
+    const still = view.root.querySelector(".pxd-underlay");
+    assert.ok(still);
+    assert.notEqual(still.style.display, "none");
+  } finally {
+    view.dispose();
+    restore();
   }
 });
 

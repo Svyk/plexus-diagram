@@ -693,6 +693,7 @@ export function createItemRenderer({
   readingUid = null,
   onPinOpen = null,
   settings: speedSettings = null,
+  onOverviewQueue = null,
   interopOn = null,
   adoptShell = null,
   tableThumb = null,
@@ -2051,6 +2052,7 @@ export function createItemRenderer({
     }
     for (const rec of set) if (!isAttached(rec)) layerOf(rec).append(rec.el);
   };
+  const noteOverviewQueue = () => { try { onOverviewQueue?.(); } catch { /* the view paints the cover */ } };
   // At most 40 shells and about PUMP_MS. Returns true when the queue is empty.
   const pumpChunk = () => {
     const t0 = now();
@@ -2081,6 +2083,7 @@ export function createItemRenderer({
       if (taken && lastContent) paintOffscreen(lastContent.visibleRect);
     }
     if (pendingView && !pendingView.size) viewBuilt();
+    noteOverviewQueue();
     return shellQueue.length === 0;
   };
   const pumpShells = () => {
@@ -2129,6 +2132,7 @@ export function createItemRenderer({
     if (rect) position(rec, rect);
     if (showBadges) renderBadges(rec);
     attachShell(rec);
+    noteOverviewQueue();
     return rec.el;
   };
   // view: a screen around the camera (which shells to build first, which bodies are offscreen). attachView: the tighter
@@ -2153,8 +2157,10 @@ export function createItemRenderer({
     // A full sync builds every missing shell itself. A partial sync must leave the
     // open-time queue alone, or the cards past the first chunk never appear.
     if (dirty == null) {
+      const hadQueue = shellQueue.length > 0 || shellBg;
       shellQueue = [];
       stopShellBg();
+      if (hadQueue) noteOverviewQueue();
     }
     for (const uid of [...shells.keys()]) if (!board.items.has(uid)) removeShell(uid);
     let orderChanged = structural;
@@ -2250,6 +2256,7 @@ export function createItemRenderer({
     if (defer?.size) {
       shellQueue = [...defer];
       armShellPump();
+      noteOverviewQueue();
     }
     if (pendingView) {
       for (const uid of [...pendingView]) if (shells.has(uid) || !board.items.has(uid)) pendingView.delete(uid);
@@ -6035,6 +6042,15 @@ export function createItemRenderer({
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     ensureShell,
     queuedCount: () => shellQueue.length,
+    pendingBoxes() {
+      const out = [];
+      for (const uid of shellQueue) {
+        if (shells.has(uid)) continue;
+        const rect = lastRects?.get(uid);
+        if (rect) out.push({ uid, rect });
+      }
+      return out;
+    },
     // fn runs once every shell in the open view is built (at once when none is queued).
     whenViewBuilt(fn) {
       if (typeof fn !== "function") return;

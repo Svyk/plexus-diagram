@@ -8919,11 +8919,16 @@ function buildBoardView(onFail, {
         firstPainted = true;
         // Snapshot shells the live board did not keep (deleted since) go with the snapshot root.
         snapShells?.clear();
-        // The cover and the first shells are presented in this frame. The snapshot comes off on the next one,
-        // after the view is complete (overviewFast is complete once that first chunk exists).
+        // The cover and the first shells are presented in this frame. An overview-fast open (map or
+        // overview, shells still queued) takes the snapshot off on the next frame. Detail zoom, and
+        // overviewFast off, take it off in the frame that finishes the in-view shells.
         if (typeof onFirstPaint === "function") {
           const fire = () => { if (!disposed) { try { onFirstPaint(); } catch { /* the owner's hook */ } } };
-          const done = () => { if (!disposed) timers.frame(fire); };
+          const done = () => {
+            if (disposed) return;
+            if (queuedOverview()) timers.frame(fire);
+            else fire();
+          };
           if (typeof itemsR.whenViewBuilt === "function") itemsR.whenViewBuilt(done);
           else done();
         }
@@ -8941,8 +8946,9 @@ function buildBoardView(onFail, {
         // paintEdge, so dash and color never reached the DOM until a full render.
         const links = paintedLinks();
         let part = dirty.all || dirty.structural || (dirty.links && !dirty.edges.size) ? null : dirty.edges;
-        // The first render of a big board has no dirty set. It still places one slice; the frame after takes the rest.
-        const sliceSource = part || (b.edges.size > EDGE_SLICE ? b.edges.keys() : null);
+        // A dirty set bigger than one slice still splits (a zoom settle). The first render has no dirty
+        // set. Only an overview-fast open places one slice of it. Detail zoom places every edge here.
+        const sliceSource = part || (queuedOverview() && b.edges.size > EDGE_SLICE ? b.edges.keys() : null);
         if (sliceSource && (part ? part.size : b.edges.size) > EDGE_SLICE) {
           const slice = new Set();
           edgeRest = new Set();

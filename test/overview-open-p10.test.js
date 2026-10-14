@@ -1321,3 +1321,96 @@ test("the go-live frame draws the cover and the first shells, and leaves the sna
     resetSharedBgBudget();
   }
 });
+
+// Detail zoom waits for the in-view shells, then the snapshot comes off in that same frame and every
+// edge is placed. Deferring the snapshot and slicing the first edge render belong to the overview-fast open.
+test("a detail-zoom open does not defer onFirstPaint or slice the first edges", () => {
+  const thaw = freezeClock();
+  const stub = createDomStub();
+  const restore = stub.install();
+  resetSharedBgBudget();
+  stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify({ x: 0, y: 0, zoom: 0.75 }));
+  const children = [];
+  for (let i = 0; i < 180; i += 1) {
+    const col = i % 15;
+    const row = Math.floor(i / 15);
+    children.push(blk(
+      `d${String(i).padStart(8, "0")}`,
+      `card ${i}`,
+      { ":x": 40 + col * 48, ":y": 40 + row * 36, ":w": 40, ":h": 28 },
+      i,
+    ));
+  }
+  const edges = [];
+  for (let i = 0; i < 320; i += 1) {
+    edges.push(blk(
+      `e${String(i).padStart(8, "0")}`,
+      "→",
+      { ":type": "edge", ":from": "d00000000", ":to": "d00000001" },
+      i,
+    ));
+  }
+  children.push({
+    ":block/uid": "connections1",
+    ":block/string": "Connections",
+    ":block/order": 900,
+    ":block/props": { ":plexus": { ":type": "edges" } },
+    ":block/children": edges,
+  });
+  const board = buildBoard(rawBoard(children));
+  assert.ok(board.edges.size > 250, `edges ${board.edges.size}`);
+  const host = {
+    stats: {}, graph: "Svy",
+    renderString(node, string) { node.textContent = string; },
+    renderBlock(node, uid) { node.textContent = uid; },
+    unmount() {},
+    pagePreview: () => ({ exists: false, blocks: [] }),
+    pullTree: () => [],
+    blockString: () => null,
+    openBlock() {},
+    openInSidebar() {},
+    searchPages: () => [],
+    searchBlocks: () => [],
+    related: () => [],
+  };
+  const session = {
+    uid: board.uid, board, rects: worldRects(board), links: [], coveredEdges: new Set(),
+    on() { return () => {}; }, release() {}, setLinkMode() {},
+  };
+  const mountEl = stub.document.createElement("div");
+  mountEl.className = "pxd-mount";
+  stub.document.body.append(mountEl);
+  let painted = 0;
+  const view = mountBoardView({
+    host, session, mountEl, settings: { get: () => undefined }, version: "1.0.0",
+    onFirstPaint: () => { painted += 1; },
+  });
+  try {
+    assert.equal(view.state().lod, "detail");
+    assert.equal(view.state().zoom, 0.75);
+    let guard = 0;
+    let firstEdges = 0;
+    let finished = false;
+    while (stub.frames.length && guard < 40 && !finished) {
+      guard += 1;
+      const frame = stub.frames.shift();
+      const shellsBefore = view.stats().shells;
+      const paintedBefore = painted;
+      frame.fn(16);
+      if (!firstEdges && view.stats().edgesAttached > 0) firstEdges = view.stats().edgesAttached;
+      if (shellsBefore < 180 && view.stats().shells >= 180) {
+        finished = true;
+        assert.equal(paintedBefore, 0, "the snapshot stays up until the in-view shells exist");
+        assert.equal(painted, 1, "onFirstPaint runs in the frame that finishes the detail view");
+      }
+    }
+    assert.equal(finished, true, "the detail open builds every in-view shell");
+    assert.ok(firstEdges > 250, `the first edge frame places ${firstEdges} edges`);
+    assert.equal(view.root.querySelector("canvas.pxd-underlay"), null, "a detail open does not paint the overview cover");
+  } finally {
+    view.dispose();
+    restore();
+    thaw();
+    resetSharedBgBudget();
+  }
+});

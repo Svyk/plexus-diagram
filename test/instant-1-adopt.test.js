@@ -113,8 +113,6 @@ test("snapshot shells are adopted by uid: same node, moved, retitled; a deleted 
     });
     assert.equal(firstPaints, 0, "the live board draws on the next frame");
     e.stub.flushFrames();
-    assert.equal(firstPaints, 0, "the go-live frame keeps the snapshot");
-    e.stub.flushFrames();
     assert.equal(firstPaints, 1);
     e.stub.flushFrames();
     assert.equal(firstPaints, 1, "first paint fires once");

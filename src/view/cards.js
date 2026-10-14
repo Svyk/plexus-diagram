@@ -2194,16 +2194,24 @@ export function createItemRenderer({
       }
     }
     syncBoardHighlighter(doc, boardRoot());
-    // A full sync builds every missing shell itself. A partial sync must leave the
-    // open-time queue alone, or the cards past the first chunk never appear.
-    if (dirty == null) {
-      const hadQueue = shellQueue.length > 0 || shellBg || priorityFrame;
-      shellQueue = [];
-      priorityLeft = 0;
-      stopShellBg();
-      if (hadQueue) noteOverviewQueue();
-    }
+    // A queue still open is the defer path again. A full sync used to clear it and build
+    // every missing shell in this frame (an edit, a drop, undo, a pull-watch reseed).
     for (const uid of [...shells.keys()]) if (!board.items.has(uid)) removeShell(uid);
+    if (shellQueue.length) {
+      const next = [];
+      let pri = 0;
+      const priLimit = priorityLeft;
+      for (let i = 0; i < shellQueue.length; i += 1) {
+        if (!board.items.has(shellQueue[i])) continue;
+        next.push(shellQueue[i]);
+        if (i < priLimit) pri += 1;
+      }
+      shellQueue = next;
+      priorityLeft = pri;
+    }
+    // Shells already exist and some are still queued: build the dirty uid only.
+    // The first open still fills `defer` below, while shells.size is 0.
+    const holdQueue = shells.size > 0 && shellQueue.length > 0;
     let orderChanged = structural;
     let defer = null;
     if (!shells.size && board.order.length > 80 && typeof timers?.frame === "function") {
@@ -2268,8 +2276,22 @@ export function createItemRenderer({
       // Paint the stand-in boxes before this frame's shells. A colour read after those writes forced layout.
       noteOverviewQueue();
     }
+    const held = holdQueue ? new Set(shellQueue) : null;
     for (const uid of board.order) {
       if (defer?.has(uid)) continue;
+      if (held?.has(uid)) {
+        if (dirty?.has(uid)) {
+          ensureShell(uid);
+          held.delete(uid);
+        }
+        continue;
+      }
+      // A card that appeared while the queue is open joins the queue. Building it here built every missing shell.
+      if (held && !shells.has(uid) && !dirty?.has(uid)) {
+        shellQueue.push(uid);
+        held.add(uid);
+        continue;
+      }
       const item = board.items.get(uid);
       let rec = shells.get(uid);
       const fresh = !rec;

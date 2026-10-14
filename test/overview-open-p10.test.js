@@ -480,9 +480,13 @@ test("overview shell pump shares the background budget and detail keeps the fram
     assert.ok(fast.r.shellCount() > before);
     assert.ok(fast.r.shellCount() - before <= 40);
     assert.ok(fast.r.shellCount() < fast.board.order.length);
+    const shellsBefore = fast.r.shellCount();
+    const queuedBefore = fast.r.queuedCount();
+    assert.ok(queuedBefore > 0);
     fast.r.sync({ board: fast.board, rects: worldRects(fast.board), dirty: null, structural: true, view });
-    assert.equal(fast.bgParts.length, 0);
-    assert.equal(fast.r.queuedCount(), 0);
+    assert.equal(fast.r.shellCount(), shellsBefore, "a full sync keeps the shells already built");
+    assert.equal(fast.r.queuedCount(), queuedBefore, "a full sync keeps the queue");
+    assert.equal(fast.bgParts.length, 1, "the shell pump stays armed");
     held = openRenderer({ children: spreadBoard(), lod: "overview", zoom: 0.1 });
     held.r.dispose();
     assert.equal(held.bgParts.length, 0);
@@ -495,6 +499,55 @@ test("overview shell pump shares the background budget and detail keeps the fram
     detail.done();
     off.done();
     fast.done();
+    thaw();
+  }
+});
+
+test("a later sync builds only the dirty card, drops a deleted uid, and leaves the queue", () => {
+  const thaw = freezeClock();
+  const children = spreadBoard();
+  const view = { x: 0, y: 0, w: 8000, h: 6000 };
+  const h = openRenderer({ children, lod: "overview", zoom: 0.1, view });
+  try {
+    const before = h.r.shellCount();
+    const queued = h.r.queuedCount();
+    assert.ok(before > 0 && before <= 30);
+    assert.ok(queued > 30);
+    assert.equal(h.r.shellOf("far000001"), null);
+    h.r.sync({ board: h.board, rects: worldRects(h.board), dirty: new Set(["sec000001"]), structural: false, view });
+    assert.equal(h.r.shellCount(), before, "a partial sync does not build the queue");
+    assert.equal(h.r.queuedCount(), queued);
+    h.r.sync({ board: h.board, rects: worldRects(h.board), dirty: new Set(["far000001"]), structural: false, view });
+    assert.ok(h.r.shellOf("far000001"), "the dirty queued card is built");
+    assert.equal(h.r.shellCount(), before + 1);
+    assert.equal(h.r.queuedCount(), queued - 1);
+    let gone = null;
+    for (const uid of h.board.order) {
+      if (!h.r.shellOf(uid)) { gone = uid; break; }
+    }
+    assert.ok(gone);
+    const next = buildBoard(rawBoard(children.filter((child) => child[":block/uid"] !== gone)));
+    const queuedAfter = h.r.queuedCount();
+    h.r.sync({ board: next, rects: worldRects(next), dirty: new Set([gone]), structural: true, view });
+    assert.equal(h.r.shellOf(gone), null);
+    assert.equal(h.r.queuedCount(), queuedAfter - 1, "a deleted uid leaves the queue");
+    assert.ok(h.r.shellCount() < next.order.length);
+    const addedKids = [
+      ...children.filter((child) => child[":block/uid"] !== gone),
+      blk("new000001", "added", { ":x": 120, ":y": 120, ":w": 80, ":h": 48 }, 400),
+    ];
+    const added = buildBoard(rawBoard(addedKids));
+    const shellsMid = h.r.shellCount();
+    h.r.sync({ board: added, rects: worldRects(added), dirty: null, structural: true, view });
+    assert.equal(h.r.shellOf("new000001"), null, "a full sync queues a new card instead of building the board");
+    assert.equal(h.r.shellCount(), shellsMid);
+    assert.ok(h.r.queuedCount() > 0);
+    h.r.sync({ board: added, rects: worldRects(added), dirty: new Set(["new000001"]), structural: true, view });
+    assert.ok(h.r.shellOf("new000001"));
+    assert.equal(h.r.shellCount(), shellsMid + 1);
+    assert.ok(h.r.shellCount() < added.order.length);
+  } finally {
+    h.done();
     thaw();
   }
 });

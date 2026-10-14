@@ -15,7 +15,7 @@ import {
 } from "./view/sketch.js";
 import { isTextEntryTarget } from "./view/cards.js";
 import { createBoardSnapStore } from "./host/boardsnap-store.js";
-import { armSnapGestures, captureBoardSnap, paintBoardSnap, removeBoardSnap, resolveSnapViewport } from "./view/boardsnap-paint.js";
+import { armSnapGestures, captureBoardSnap, createBoardSnapCapture, paintBoardSnap, removeBoardSnap, resolveSnapViewport } from "./view/boardsnap-paint.js";
 import { boardStamp, itemSig, tableGrid } from "./model/boardsnap.js";
 import { renderTableThumb, tableThumbKey, thumbBox } from "./view/table-thumb.js";
 import { tableUidOf } from "./model/roam-table.js";
@@ -253,6 +253,7 @@ export async function installPlexusDiagram({
   const sketchTimers = new Map();
   const sketchHandoffs = new Map();
   const snapTimers = new Map(); // rec -> settle timer
+  const snapJobs = new Map(); // rec -> cancel of a capture in parts (P8 U2)
   const SNAP_SETTLE_MS = 1000;
   const SNAP_WARM_WAIT_MS = 50;
   const openPerf = { lastOpen: null, opens: [] };
@@ -903,9 +904,14 @@ export async function installPlexusDiagram({
     const timer = snapTimers.get(rec);
     if (timer) clearTimeout(timer);
     snapTimers.delete(rec);
+    const job = snapJobs.get(rec);
+    snapJobs.delete(rec);
+    try { job?.(); } catch { /* done */ }
   }
   // Returns true when stored, false when there is nothing to store, null to try again later (mid gesture).
-  function captureSnap(rec) {
+  // parts: a createBoardSnapCapture to step on the background budget; finish(capture) stores it. Without parts the
+  // whole capture runs now. True/false/null as before (null: a gesture, ask again).
+  function captureSnap(rec, parts = null) {
     if (!snapAllowed() || stopped || !rec?.view || rec.view.sketchStandIn === true) return false;
     let src = null;
     try { src = rec.view.snapshotSource?.() ?? null; } catch { src = null; }
@@ -935,6 +941,36 @@ export async function installPlexusDiagram({
     }
     const thumbs = new Map();
     let snap = null;
+    if (parts) {
+      let capture = null;
+      try {
+        capture = createBoardSnapCapture({
+          ...src,
+          uid,
+          prev: snapStore.get(key) || snapStore.get(uid),
+          thumbs,
+          tableThumbKey: (item) => {
+            if (!tableUidOf(item)) return null;
+            const key = thumbKeyOf(item, dark);
+            return key && snapStore.thumb(key) ? key : null;
+          },
+        });
+      } catch { capture = null; }
+      if (!capture) return false;
+      parts.capture = capture;
+      // The board, camera and theme the parts were taken under; any change and the capture is dropped.
+      parts.finish = () => {
+        let now = null;
+        try { now = rec.view?.snapshotSource?.() ?? null; } catch { now = null; }
+        if (!now || now.gesturing || now.board !== src.board || now.rects !== src.rects || now.vp?.x !== src.vp?.x || now.vp?.y !== src.vp?.y
+          || now.vp?.zoom !== src.vp?.zoom || currentUid(rec) !== uid || isDarkTheme(rec) !== dark) return null;
+        const out = capture.result();
+        if (!out) return false;
+        rec.snapDirty = false;
+        return snapStore.set(key, out, thumbs);
+      };
+      return true;
+    }
     try {
       snap = captureBoardSnap({
         ...src,
@@ -959,6 +995,28 @@ export async function installPlexusDiagram({
     clearSnapTimer(rec);
     const timer = setTimeout(() => {
       snapTimers.delete(rec);
+      // P8 U2: the capture in parts on the budget (one capture was 100-230 ms on the PhD main board).
+      if (notedSpeedFlags().bgBudget !== false && typeof (win.requestIdleCallback ?? globalThis.requestIdleCallback) === "function") {
+        let parts = null;
+        let job = null;
+        const end = () => { if (snapJobs.get(rec) === job) snapJobs.delete(rec); return true; };
+        job = sharedBgBudget().run((deadline) => {
+          if (stopped || mounts.get(rec.native) !== rec) return end();
+          if (!parts) {
+            parts = {};
+            const r = captureSnap(rec, parts);
+            if (r === null) { end(); scheduleSnap(rec); return true; }
+            return parts.capture ? false : end();
+          }
+          const left = Math.max(1, deadline.timeRemaining() - 2);
+          if (!parts.capture.step(left)) return false;
+          end();
+          if (parts.finish() === null) scheduleSnap(rec);
+          return true;
+        }, { timeout: 2000, label: "snap", partMs: 4 });
+        snapJobs.set(rec, job);
+        return;
+      }
       runIdle(() => {
         if (stopped || mounts.get(rec.native) !== rec) return;
         if (captureSnap(rec) === null) scheduleSnap(rec);
@@ -969,7 +1027,7 @@ export async function installPlexusDiagram({
   }
   // Leaving the board (page change, park, nested open): the live DOM is still here.
   function saveSnapNow(rec) {
-    const pending = snapTimers.has(rec);
+    const pending = snapTimers.has(rec) || snapJobs.has(rec);
     clearSnapTimer(rec);
     if (!rec?.snapDirty && !pending) return;
     try { captureSnap(rec); } catch { /* storage is optional */ }

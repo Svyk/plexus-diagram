@@ -47,7 +47,15 @@ const skipChrome = (el) => {
 // Reads classes, inline styles, attributes and text only. No layout read, no Roam call.
 // `prev` is the last snapshot: a card whose body is unmounted now keeps its old face
 // while its sig still matches. `thumbs` collects data URLs by key.
-export function captureBoardSnap({
+export function captureBoardSnap(args = {}) {
+  const capture = createBoardSnapCapture(args);
+  while (!capture.step(Infinity)) { /* all parts now */ }
+  return capture.result();
+}
+
+// P8 U2. The same capture in parts: step(ms, clock) captures items until `ms` is spent and is true when finished;
+// result() is the snapshot (null when the board had no snapshot). One item at least per step.
+export function createBoardSnapCapture({
   uid,
   root,
   board,
@@ -63,17 +71,25 @@ export function captureBoardSnap({
   thumbs = new Map(),
   now = Date.now,
 } = {}) {
-  if (!board?.items || !rects || !isSnapViewport(vp) || typeof shellOf !== "function") return null;
-  if (board.items.size > SNAP_MAX_BOXES) return null;
-  const faced = board.items.size > SNAP_MAX_ITEMS ? nearestFaces(board, rects, vp, width, height) : null;
-  const prevItems = new Map((prev?.items || []).map((item) => [item.uid, item]));
+  let done = false;
+  let out = null;
+  const finish = (value) => { done = true; out = value; return true; };
+  if (!board?.items || !rects || !isSnapViewport(vp) || typeof shellOf !== "function" || board.items.size > SNAP_MAX_BOXES) finish(null);
+  let faced = null;
+  let prevItems = null;
   const items = [];
-  const order = Array.isArray(board.order) ? board.order : [...board.items.keys()];
-  for (const id of order) {
+  let order = [];
+  let at = 0;
+  if (!done) {
+    faced = board.items.size > SNAP_MAX_ITEMS ? nearestFaces(board, rects, vp, width, height) : null;
+    prevItems = new Map((prev?.items || []).map((item) => [item.uid, item]));
+    order = Array.isArray(board.order) ? board.order : [...board.items.keys()];
+  }
+  const one = (id) => {
     const item = board.items.get(id);
     const rect = rects.get(id);
     const el = shellOf(id);
-    if (!item || !rect || !el) continue;
+    if (!item || !rect || !el) return;
     const section = item.type === "section";
     const sig = itemSig(item);
     const cls = cleanClasses(typeof el.getAttribute === "function" ? el.getAttribute("class") : el.className);
@@ -86,7 +102,7 @@ export function captureBoardSnap({
       const stats = badges?.get?.(id);
       if (stats) out.badges = stats;
       items.push(out);
-      continue;
+      return;
     }
     let face = captureFace(el, { thumbs, skip: skipChrome });
     const old = prevItems.get(id);
@@ -112,36 +128,48 @@ export function captureBoardSnap({
     const thumb = tableThumbKey?.(item);
     if (thumb) out.thumb = thumb;
     items.push(out);
-  }
-  const world = root?.querySelector?.(".pxd-world");
-  const edgesEl = world?.querySelector?.("svg.pxd-edges");
-  const labelsEl = world?.querySelector?.(".pxd-labels");
-  const gridEl = root?.querySelector?.(".pxd-grid");
-  const layer = (el) => (el ? captureFace(el, { thumbs, maxNodes: LAYER_MAX_NODES, maxChars: 64 * 1024 }) : null);
-  // The toolbar, dock, rail, minimap and props bar, so the snapshot frame is the live frame.
-  const chrome = [];
-  for (const child of [...(root?.children || [])]) {
-    const cls = String(child.getAttribute?.("class") || "");
-    if (!CHROME_KEEP.test(cls) || child.hasAttribute?.("hidden")) continue;
-    const face = captureFace(child, { thumbs, maxNodes: 300, maxChars: 8 * 1024, canvases: true });
-    if (face) chrome.push(face);
-  }
+  };
+  const assemble = () => {
+    const world = root?.querySelector?.(".pxd-world");
+    const edgesEl = world?.querySelector?.("svg.pxd-edges");
+    const labelsEl = world?.querySelector?.(".pxd-labels");
+    const gridEl = root?.querySelector?.(".pxd-grid");
+    const layer = (el) => (el ? captureFace(el, { thumbs, maxNodes: LAYER_MAX_NODES, maxChars: 64 * 1024 }) : null);
+    // The toolbar, dock, rail, minimap and props bar, so the snapshot frame is the live frame.
+    const chrome = [];
+    for (const child of [...(root?.children || [])]) {
+      const cls = String(child.getAttribute?.("class") || "");
+      if (!CHROME_KEEP.test(cls) || child.hasAttribute?.("hidden")) continue;
+      const face = captureFace(child, { thumbs, maxNodes: 300, maxChars: 8 * 1024, canvases: true });
+      if (face) chrome.push(face);
+    }
+    return {
+      v: SNAP_VERSION,
+      uid: uid || board.uid,
+      stamp: boardStamp(board, rects),
+      savedAt: now(),
+      height: finite(height) ? height : 0,
+      width: finite(width) ? width : 0,
+      threshold: finite(threshold) ? threshold : 0.45,
+      vp: { x: vp.x, y: vp.y, zoom: vp.zoom },
+      rootCls: typeof root?.getAttribute === "function" ? root.getAttribute("class") || "" : "",
+      rootStyle: rootVars(root),
+      grid: gridEl ? { c: cleanClasses(gridEl.getAttribute?.("class") || "").join(" ") } : null,
+      edges: layer(edgesEl),
+      labels: layer(labelsEl),
+      chrome,
+      items,
+    };
+  };
   return {
-    v: SNAP_VERSION,
-    uid: uid || board.uid,
-    stamp: boardStamp(board, rects),
-    savedAt: now(),
-    height: finite(height) ? height : 0,
-    width: finite(width) ? width : 0,
-    threshold: finite(threshold) ? threshold : 0.45,
-    vp: { x: vp.x, y: vp.y, zoom: vp.zoom },
-    rootCls: typeof root?.getAttribute === "function" ? root.getAttribute("class") || "" : "",
-    rootStyle: rootVars(root),
-    grid: gridEl ? { c: cleanClasses(gridEl.getAttribute?.("class") || "").join(" ") } : null,
-    edges: layer(edgesEl),
-    labels: layer(labelsEl),
-    chrome,
-    items,
+    step(ms = Infinity, clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now())) {
+      if (done) return true;
+      const t0 = clock();
+      do { one(order[at]); at += 1; } while (at < order.length && clock() - t0 < ms);
+      if (at >= order.length) finish(assemble());
+      return done;
+    },
+    result: () => out,
   };
 }
 

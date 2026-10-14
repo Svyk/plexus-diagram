@@ -30077,7 +30077,19 @@ function createItemRenderer({
     } catch {
     }
   };
+  let shellsHeld = false;
+  const holdShells = (on) => {
+    const next = Boolean(on);
+    if (next === shellsHeld) return;
+    shellsHeld = next;
+    if (shellsHeld) {
+      stopShellBg();
+      return;
+    }
+    if (shellsLive) armShellPump();
+  };
   const pumpChunk = ({ limit = 40, priority = false } = {}) => {
+    if (shellsHeld) return false;
     if (shellQueue.length) noteOverviewQueue();
     const t0 = now2();
     const built = [];
@@ -30113,6 +30125,7 @@ function createItemRenderer({
     return shellQueue.length === 0;
   };
   const pumpShells = () => {
+    if (shellsHeld) return;
     if (pumpChunk()) return;
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
   };
@@ -30131,9 +30144,9 @@ function createItemRenderer({
   };
   const pumpPriorityFrame = () => {
     priorityFrame = null;
-    if (!shellsLive) return;
+    if (!shellsLive || shellsHeld) return;
     pumpChunk({ limit: OPEN_CHUNK, priority: true });
-    if (!shellsLive) return;
+    if (!shellsLive || shellsHeld) return;
     if (priorityLeft > 0 && shellQueue.length && timers?.frame) {
       priorityFrame = timers.frame(pumpPriorityFrame);
       return;
@@ -30141,7 +30154,7 @@ function createItemRenderer({
     armShellPump();
   };
   const armShellPump = () => {
-    if (!shellsLive) return;
+    if (!shellsLive || shellsHeld) return;
     stopShellBg();
     if (!shellQueue.length) return;
     if (priorityLeft > 0 && timers?.frame) {
@@ -30194,6 +30207,7 @@ function createItemRenderer({
   const ensureShell = (uid) => {
     const have = shells.get(uid)?.el;
     if (have) return have;
+    if (shellsHeld) return null;
     const item = lastBoard?.items.get(uid);
     if (!item || disposed) return null;
     const at = shellQueue.indexOf(uid);
@@ -30373,8 +30387,10 @@ function createItemRenderer({
     }
     if (orderChanged) {
       if (attachView || view) cullRect = attachView || view;
-      if (virtual()) placeVirtual();
-      else placeShells();
+      if (!shellsHeld) {
+        if (virtual()) placeVirtual();
+        else placeShells();
+      }
     }
     if (defer?.size) armShellPump();
     if (pendingView) {
@@ -34482,6 +34498,7 @@ function createItemRenderer({
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     ensureShell,
+    holdShells,
     pauseShells,
     resumeShells,
     promoteQueue,
@@ -92610,6 +92627,12 @@ function buildBoardView(onFail, {
     }
     return deferOn() && Boolean(itemsR.isVirtual?.());
   };
+  const syncShellHold = () => {
+    try {
+      itemsR.holdShells?.(deferReveal());
+    } catch {
+    }
+  };
   const showUnderlay = () => {
     if (underlayDrawn) return;
     underlayDrawn = true;
@@ -92711,6 +92734,7 @@ function buildBoardView(onFail, {
         world.style.willChange = "";
         propsPanel.place();
       }
+      syncShellHold();
       applyLod();
       scheduleContent();
       vpStore.set(vpId, vp);
@@ -96712,7 +96736,8 @@ ${url}`;
         endUnderlay();
       }
       setRootFlag("gesturing", gesturing);
-      world.style.willChange = gesturing ? "transform" : "";
+      world.style.willChange = gesturing || wheelLayer ? "transform" : "";
+      syncShellHold();
       if (gesturing) {
         resumeTimer?.();
         resumeTimer = null;
@@ -97701,6 +97726,12 @@ ${url}`;
       measure();
       wheelMeasuredAt = t;
     }
+    const openedBurst = !wheelLayer && !gesturing && deferOn() && Boolean(itemsR.isVirtual?.());
+    if (openedBurst) {
+      wheelLayer = true;
+      world.style.willChange = "transform";
+      syncShellHold();
+    }
     const handled = ctl.handle(normalize2(event, "wheel"));
     if (handled) {
       event.preventDefault();
@@ -97709,9 +97740,14 @@ ${url}`;
         wheelLayer = true;
         world.style.willChange = "transform";
       }
+      syncShellHold();
       if (!event.ctrlKey && !event.metaKey) hitShield.raise();
       else hitShield.drop();
       settle2();
+    } else if (openedBurst) {
+      wheelLayer = false;
+      world.style.willChange = gesturing ? "transform" : "";
+      syncShellHold();
     }
     return handled;
   };

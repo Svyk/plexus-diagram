@@ -244,6 +244,43 @@ test("a click or hover on an unbuilt overview card builds that shell and hits it
   }
 });
 
+test("overview shell pump shares the background budget and detail keeps the frame pump", () => {
+  const thaw = freezeClock();
+  const view = { x: 0, y: 0, w: 8000, h: 6000 };
+  let held = null;
+  const fast = openRenderer({ children: spreadBoard(), lod: "overview", zoom: 0.1 });
+  const off = openRenderer({ children: spreadBoard(), lod: "overview", zoom: 0.1, settings: { overviewFast: false } });
+  const detail = openRenderer({ children: spreadBoard(), lod: "detail", zoom: 0.75 });
+  try {
+    assert.equal(fast.live(), true);
+    assert.equal(fast.frameQueue.length, 0);
+    assert.equal(fast.bgParts.length, 1);
+    assert.equal(fast.bgParts[0].opts.label, "shells");
+    assert.equal(fast.bgParts[0].opts.partMs, 4);
+    const before = fast.r.shellCount();
+    assert.equal(fast.bgParts[0].part({ timeRemaining: () => 0 }), false);
+    assert.ok(fast.r.shellCount() > before);
+    assert.ok(fast.r.shellCount() - before <= 40);
+    assert.ok(fast.r.shellCount() < fast.board.order.length);
+    fast.r.sync({ board: fast.board, rects: worldRects(fast.board), dirty: null, structural: true, view });
+    assert.equal(fast.bgParts.length, 0);
+    assert.equal(fast.r.queuedCount(), 0);
+    held = openRenderer({ children: spreadBoard(), lod: "overview", zoom: 0.1 });
+    held.r.dispose();
+    assert.equal(held.bgParts.length, 0);
+    assert.equal(off.bgParts.length, 0);
+    assert.ok(off.frameQueue.length > 0);
+    assert.equal(detail.bgParts.length, 0);
+    assert.ok(detail.frameQueue.length > 0);
+  } finally {
+    held?.done();
+    detail.done();
+    off.done();
+    fast.done();
+    thaw();
+  }
+});
+
 test("a normal board builds every shell before live and does not queue a pump", () => {
   const children = [];
   for (let i = 0; i < 40; i += 1) {

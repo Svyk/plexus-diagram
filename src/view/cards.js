@@ -2051,8 +2051,8 @@ export function createItemRenderer({
     }
     for (const rec of set) if (!isAttached(rec)) layerOf(rec).append(rec.el);
   };
-  const pumpShells = () => {
-    // At most 40 shells and about PUMP_MS per frame.
+  // At most 40 shells and about PUMP_MS. Returns true when the queue is empty.
+  const pumpChunk = () => {
     const t0 = now();
     const built = [];
     let taken = 0;
@@ -2081,7 +2081,30 @@ export function createItemRenderer({
       if (taken && lastContent) paintOffscreen(lastContent.visibleRect);
     }
     if (pendingView && !pendingView.size) viewBuilt();
+    return shellQueue.length === 0;
+  };
+  const pumpShells = () => {
+    if (pumpChunk()) return;
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
+  };
+  // The rAF pump ran on nearly every frame from first paint until live (~1 s of main-thread time on top of
+  // the 25% budget). At map or overview, with overviewFast, the rest of the shells share that budget instead.
+  // Detail zoom and overviewFast off still use frames: live waits on them, and slowing that wait is the regression.
+  let shellBg = null;
+  const stopShellBg = () => {
+    shellBg?.();
+    shellBg = null;
+  };
+  const armShellPump = () => {
+    stopShellBg();
+    if (!shellQueue.length) return;
+    let fast = false;
+    try { fast = lod !== "detail" && speedOf().overviewFast !== false && typeof timers?.bgRun === "function"; } catch { fast = false; }
+    if (fast) {
+      shellBg = timers.bgRun(() => pumpChunk(), { label: "shells", partMs: 4 });
+      return;
+    }
+    if (timers?.frame) timers.frame(pumpShells);
   };
   const viewBuilt = () => {
     pendingView = null;
@@ -2129,7 +2152,10 @@ export function createItemRenderer({
     syncBoardHighlighter(doc, boardRoot());
     // A full sync builds every missing shell itself. A partial sync must leave the
     // open-time queue alone, or the cards past the first chunk never appear.
-    if (dirty == null) shellQueue = [];
+    if (dirty == null) {
+      shellQueue = [];
+      stopShellBg();
+    }
     for (const uid of [...shells.keys()]) if (!board.items.has(uid)) removeShell(uid);
     let orderChanged = structural;
     let defer = null;
@@ -2223,7 +2249,7 @@ export function createItemRenderer({
     }
     if (defer?.size) {
       shellQueue = [...defer];
-      timers.frame(pumpShells);
+      armShellPump();
     }
     if (pendingView) {
       for (const uid of [...pendingView]) if (shells.has(uid) || !board.items.has(uid)) pendingView.delete(uid);
@@ -5915,7 +5941,9 @@ export function createItemRenderer({
     unregisterMenus = () => {};
   };
   const dispose = () => {
+    if (disposed) return;
     disposed = true;
+    stopShellBg();
     tellPane({ open: false });
     if (freshTimer) { try { freshTimer(); } catch { /* already ran */ } freshTimer = null; }
     freshPending.clear();

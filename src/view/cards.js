@@ -2132,8 +2132,9 @@ export function createItemRenderer({
       }
       if (!now.length) now.push(...later.splice(0, 24));
       // PhD main board at map zoom: all 1,558 items were in view and built in one 1.8 s task. The OPEN_NOW_MAX nearest
-      // the centre are built now, the rest of the view first in the frame-chunked pump; the snapshot (if any) stays up
-      // until the view is complete (whenViewBuilt).
+      // the centre are built now, plus every section (there are few, and the view keeps them attached). The rest of
+      // the view is queued. At map or overview, with overviewFast, live does not wait for that queue. Detail zoom
+      // and overviewFast off still wait for every shell in the view.
       if (now.length > OPEN_NOW_MAX && view) {
         const cx = view.x + view.w / 2;
         const cy = view.y + view.h / 2;
@@ -2143,10 +2144,13 @@ export function createItemRenderer({
         };
         const ranked = now.slice().sort((a, b) => dist(a) - dist(b));
         const keep = new Set(ranked.slice(0, OPEN_NOW_MAX));
-        const rest = ranked.slice(OPEN_NOW_MAX);
+        for (const uid of ranked) if (board.items.get(uid)?.type === "section") keep.add(uid);
+        const rest = ranked.filter((uid) => !keep.has(uid));
         now.length = 0;
         for (const uid of board.order) if (keep.has(uid)) now.push(uid);
-        pendingView = new Set(rest);
+        let fast = false;
+        try { fast = lod !== "detail" && speedOf().overviewFast !== false; } catch { fast = false; }
+        if (!fast) pendingView = new Set(rest);
         later.unshift(...rest);
       }
       if (now.length && later.length) defer = new Set(later);

@@ -834,10 +834,14 @@ export async function installPlexusDiagram({
   }
 
   function saveSketchNow(rec) {
+    // P9: the sketch is drawn from the board model alone and every change schedules its write; with no write pending
+    // and one stored, it is current (a 56 ms capture in the nested-enter task on the PhD main board).
+    const owed = sketchTimers.has(rec);
     clearSketchTimer(rec);
     saveSnapNow(rec);
     if (speedFlags().sketch === false) return;
     if (!rec?.view || !rec.session?.board || sketchGesturing(rec)) return;
+    if (!owed && sketchStore.has(currentUid(rec))) { sketchStore.flushAll(); return; }
     try {
       const sketch = captureSketch(rec.session.board);
       const uid = currentUid(rec);

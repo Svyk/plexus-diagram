@@ -696,3 +696,22 @@ test("no sketch mounts in the same turn", async () => {
     env.restore();
   }
 });
+
+test("P9: leaving a board whose sketch is current captures no sketch again", async () => {
+  const env = installEnv({ clock: true, sketch: CACHED });
+  try {
+    await env.install();
+    env.clock.flushRaf();
+    env.clock.flushDue();
+    env.clock.flushRaf();
+    env.clock.advance(SKETCH_DEBOUNCE_MS);
+    assert.ok(env.storage.getItem(KEY), "the settled sketch is stored");
+    const realSet = env.storage.setItem.bind(env.storage);
+    let writes = 0;
+    env.storage.setItem = (k, v) => { if (k === KEY) writes += 1; return realSet(k, v); };
+    await env.lifecycle.dispose().catch(() => {});
+    assert.equal(writes, 0, "no capture on leave");
+  } finally {
+    env.restore();
+  }
+});

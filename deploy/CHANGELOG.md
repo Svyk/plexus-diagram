@@ -1,5 +1,24 @@
 # Changelog
 
+## 3.29.0 — 2026-10-13
+
+Big boards open fast. On the 1,560-card stress board the board now shows in about a third of a second, and the
+seconds of stutter after it opened are gone.
+
+- **Fold queries on this page** (Commands). Roam draws every open `{{query}}` on a page before anything else shows; on
+  the stress page 12 queries held the board back for 8–10 s. The command puts each query under a folded caption, like
+  Fold tables, so Roam only runs it when you open the caption. A preview lists the queries, and one undo puts them back.
+  When a page's queries slow a board down, Plexus offers this once for that page.
+- **The board shows at once.** A big board's saved picture appears in about 0.3 s (was about 1.2 s) and you can pan
+  while the board loads behind it. The load runs in short steps instead of one long freeze.
+- **No stutter after opening.** Background work after a board opens (links between cards, PDF titles and covers, card
+  badges, the saved picture) runs in small slices, stops while you pan or zoom, and pauses on boards you have left. The
+  longest pause after opening the stress board went from about 1.3 s to about 0.2 s.
+- **Links between cards** are worked out about 20× faster on big boards.
+- **Fixes.** Undo of Fold queries and Fold tables never deletes the query or table when Roam is slow to report where a
+  block is. A card folded or unfolded while a big board is loading shows the right way.
+- **Kill switch.** The step-by-step load can be turned off with the hidden speed flag `slicedMount`.
+
 ## 3.28.0 — 2026-10-13
 
 Big boards. Plexus was stress-tested on a board with 1,560 cards, 2,114 connections, 24 nested boards and about 23,000 blocks, and every slow or unstable spot that turned up was fixed. Normal boards are as fast as 3.27.0 or faster.

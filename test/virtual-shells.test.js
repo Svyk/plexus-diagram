@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { resetSharedBgBudget } from "../src/bg-budget.js";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { mountBoardView } from "../src/view/board-view.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
@@ -87,32 +88,50 @@ test("moving the camera brings far shells in and the settle drops the ones left 
   }
 });
 
+// Zoom 0.12 is overview. The shell pump shares the background budget; a frozen clock keeps that
+// slice from opening a duty-cycle gap, so flushing idle runs the queued shells to the end.
+function freezeBudget(run) {
+  const realNow = globalThis.performance.now;
+  globalThis.performance.now = () => 1_000_000;
+  resetSharedBgBudget();
+  return Promise.resolve()
+    .then(run)
+    .finally(() => {
+      globalThis.performance.now = realNow;
+      resetSharedBgBudget();
+    });
+}
+
 test("a fit view of the whole board still shows every card", async () => {
-  const m = mount({ x: 20, y: 20, zoom: 0.12 });
-  try {
-    await m.pump(80);
-    assert.equal(m.shellsIn(), N);
-  } finally {
-    m.view.dispose();
-    m.restore();
-  }
+  await freezeBudget(async () => {
+    const m = mount({ x: 20, y: 20, zoom: 0.12 });
+    try {
+      await m.pump(80);
+      assert.equal(m.shellsIn(), N);
+    } finally {
+      m.view.dispose();
+      m.restore();
+    }
+  });
 });
 
 test("a whole-board view builds the nearest shells first and reports first paint once the view is built", async () => {
-  let painted = 0;
-  const m = mount({ x: 20, y: 20, zoom: 0.12 }, { onFirstPaint: () => { painted += 1; } });
-  try {
-    m.stub.flushFrames();
-    const first = m.shellsIn();
-    assert.ok(first > 0 && first <= 200, `built in the open pass: ${first}`);
-    assert.equal(painted, 0, "the snapshot stays until the view is complete");
-    await m.pump(120);
-    assert.equal(m.shellsIn(), N);
-    assert.equal(painted, 1);
-  } finally {
-    m.view.dispose();
-    m.restore();
-  }
+  await freezeBudget(async () => {
+    let painted = 0;
+    const m = mount({ x: 20, y: 20, zoom: 0.12 }, { onFirstPaint: () => { painted += 1; } });
+    try {
+      m.stub.flushFrames();
+      const first = m.shellsIn();
+      assert.ok(first > 0 && first <= 200, `built in the open pass: ${first}`);
+      assert.equal(painted, 1, "overview goes live once the priority shells exist");
+      await m.pump(120);
+      assert.equal(m.shellsIn(), N);
+      assert.equal(painted, 1);
+    } finally {
+      m.view.dispose();
+      m.restore();
+    }
+  });
 });
 
 test("an edge is near the view when the segment between its ends crosses it, not when only its box does", () => {

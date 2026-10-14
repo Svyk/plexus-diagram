@@ -5890,6 +5890,7 @@ function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW = 40, 
       const table = assembleTable(grid, comp, boxes, words, ysAll, usedWords, rules);
       if (table) {
         if (chartGrid(table)) continue;
+        for (const w of table.usedWords) usedWords.add(w);
         released.push(...table.released || []);
         delete table.released;
         tables.push(table);
@@ -6353,7 +6354,7 @@ function finishTable(grid, cells, boxes, ysAll, usedWords, splitFixes, released,
   const bx1 = xs2[cols];
   const by0 = ys2[0];
   const by1 = ys2[rows];
-  for (const cell of cells) for (const w of cell.words) usedWords.add(w);
+  const cellWords2 = cells.flatMap((cell) => cell.words);
   const rowFill = [];
   for (let r = 0; r < rows; r++) {
     const rowH = ys2[r + 1] - ys2[r];
@@ -6424,6 +6425,7 @@ function finishTable(grid, cells, boxes, ysAll, usedWords, splitFixes, released,
     headerCols,
     cells,
     method: "lattice",
+    usedWords: cellWords2,
     grid: { xs: xs2.map(round), ys: ys2.map(round) },
     confidence: round(confidence),
     released
@@ -13184,7 +13186,12 @@ function parsePageGeometry(data, n3) {
   const lattice = findLatticeTables({ rules: graphics.rules, boxes: graphics.boxes, words });
   const released = new Set(lattice.released);
   for (const t of lattice.tables) {
-    if (isTitledBox(t)) continue;
+    const words2 = t.usedWords || [];
+    delete t.usedWords;
+    if (isTitledBox(t)) {
+      for (const w2 of words2) released.add(w2);
+      continue;
+    }
     t.page = n3;
     tables.push(t);
   }

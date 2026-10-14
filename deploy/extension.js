@@ -40683,6 +40683,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         let refsDone = !refsLater;
         let dropped = false;
         const refSizer = createPartSizer({ max: IDLE_REF_PART, start: 4 });
+        const titleSizer = createPartSizer({ max: PRIME_CHUNK, start: 4 });
         const clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
         const step = (deadline) => {
           if (unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt) return;
@@ -40705,11 +40706,14 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
               dropStats(uid);
             }
             if (ti < titles.length) {
+              const n3 = titleSizer.size(left() - IDLE_RESERVE_MS);
+              const t1 = clock();
               try {
-                fetchLinked(titles.slice(ti, ti + PRIME_CHUNK));
+                fetchLinked(titles.slice(ti, ti + n3));
               } catch {
               }
-              ti += PRIME_CHUNK;
+              titleSizer.note(n3, clock() - t1);
+              ti += n3;
             } else if (!statsDone) {
               const part = targets.slice(si, si + statsPart);
               si = Math.min(targets.length, si + statsPart);

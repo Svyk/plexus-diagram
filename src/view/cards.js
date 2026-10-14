@@ -2068,9 +2068,24 @@ export function createItemRenderer({
     if (!shellQueue.length) coverHeld = false;
     try { onOverviewQueue?.(); } catch { /* the view paints the cover */ }
   };
+  // A wheel, drag-pan, or pinch burst. The view sets this for the whole burst, including the event
+  // that opens it. Building or attaching here is the long frame the burst exists to avoid.
+  let shellsHeld = false;
+  const holdShells = (on) => {
+    const next = Boolean(on);
+    if (next === shellsHeld) return;
+    shellsHeld = next;
+    if (shellsHeld) {
+      stopShellBg();
+      return;
+    }
+    if (shellsLive) armShellPump();
+  };
   // At most `limit` shells and about PUMP_MS. A priority chunk also stops when the priority prefix is gone,
   // so the far cards stay on the background budget. Returns true when the queue is empty.
+  // While a burst holds shells, the chunk does nothing and the queue stays for the settle.
   const pumpChunk = ({ limit = 40, priority = false } = {}) => {
+    if (shellsHeld) return false;
     // Cover the queue before this chunk's shells exist. The matching call after the writes only hides an empty queue.
     if (shellQueue.length) noteOverviewQueue();
     const t0 = now();
@@ -2107,6 +2122,7 @@ export function createItemRenderer({
     return shellQueue.length === 0;
   };
   const pumpShells = () => {
+    if (shellsHeld) return;
     if (pumpChunk()) return;
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
   };
@@ -2129,9 +2145,9 @@ export function createItemRenderer({
   };
   const pumpPriorityFrame = () => {
     priorityFrame = null;
-    if (!shellsLive) return;
+    if (!shellsLive || shellsHeld) return;
     pumpChunk({ limit: OPEN_CHUNK, priority: true });
-    if (!shellsLive) return;
+    if (!shellsLive || shellsHeld) return;
     if (priorityLeft > 0 && shellQueue.length && timers?.frame) {
       priorityFrame = timers.frame(pumpPriorityFrame);
       return;
@@ -2139,7 +2155,7 @@ export function createItemRenderer({
     armShellPump();
   };
   const armShellPump = () => {
-    if (!shellsLive) return;
+    if (!shellsLive || shellsHeld) return;
     stopShellBg();
     if (!shellQueue.length) return;
     if (priorityLeft > 0 && timers?.frame) {
@@ -2186,6 +2202,8 @@ export function createItemRenderer({
   const ensureShell = (uid) => {
     const have = shells.get(uid)?.el;
     if (have) return have;
+    // A burst hit-test (the wheel's empty-canvas promote, a hover) must not build the card under the pointer.
+    if (shellsHeld) return null;
     const item = lastBoard?.items.get(uid);
     if (!item || disposed) return null;
     const at = shellQueue.indexOf(uid);
@@ -2364,8 +2382,11 @@ export function createItemRenderer({
     }
     if (orderChanged) {
       if (attachView || view) cullRect = attachView || view;
-      if (virtual()) placeVirtual();
-      else placeShells();
+      // A sync during a burst used to place every near shell in that frame. The settle cull does it.
+      if (!shellsHeld) {
+        if (virtual()) placeVirtual();
+        else placeShells();
+      }
     }
     if (defer?.size) armShellPump();
     if (pendingView) {
@@ -6165,6 +6186,7 @@ export function createItemRenderer({
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     ensureShell,
+    holdShells,
     pauseShells,
     resumeShells,
     promoteQueue,

@@ -3912,6 +3912,11 @@ function buildBoardView(onFail, {
     if (gesturing) { const kind = ctl.gestureKind?.(); if (kind && kind !== "pan" && kind !== "pinch") return false; }
     return deferOn() && Boolean(itemsR.isVirtual?.());
   };
+  // Shell builds follow the same burst as the reveal cull. The flag is on before the event's hit-test,
+  // and off again when the burst ends, which rearms the priority frame and the background pump.
+  const syncShellHold = () => {
+    try { itemsR.holdShells?.(deferReveal()); } catch { /* renderer */ }
+  };
   const showUnderlay = () => {
     if (underlayDrawn) return;
     underlayDrawn = true;
@@ -4006,6 +4011,7 @@ function buildBoardView(onFail, {
         world.style.willChange = "";
         propsPanel.place();
       }
+      syncShellHold();
       applyLod();
       scheduleContent();
       vpStore.set(vpId, vp);
@@ -7200,7 +7206,8 @@ function buildBoardView(onFail, {
       guardSelection(gesturing && Boolean(ctl.gestureKind?.()));
       if (!gesturing) { hitShield.drop(); endUnderlay(); }
       setRootFlag("gesturing", gesturing);
-      world.style.willChange = gesturing ? "transform" : "";
+      world.style.willChange = gesturing || wheelLayer ? "transform" : "";
+      syncShellHold();
       if (gesturing) {
         resumeTimer?.();
         resumeTimer = null;
@@ -8091,6 +8098,14 @@ function buildBoardView(onFail, {
     // wheel burst that read forced a style recalc of the whole board on every event (PhD main board: ~14 ms each).
     const t = perfNow();
     if (!wheelLayer || t - wheelMeasuredAt > WHEEL_MEASURE_MS) { measure(); wheelMeasuredAt = t; }
+    // The hit-test inside this wheel builds the queued card under the pointer unless the hold is already on.
+    // Raise the burst before normalize. A wheel the controller ignores puts the layer back.
+    const openedBurst = !wheelLayer && !gesturing && deferOn() && Boolean(itemsR.isVirtual?.());
+    if (openedBurst) {
+      wheelLayer = true;
+      world.style.willChange = "transform";
+      syncShellHold();
+    }
     const handled = ctl.handle(normalize(event, "wheel"));
     if (handled) {
       event.preventDefault();
@@ -8101,11 +8116,16 @@ function buildBoardView(onFail, {
         wheelLayer = true;
         world.style.willChange = "transform";
       }
+      syncShellHold();
       // Pan bursts only: a zoom burst re-tiers the board under the cursor, and the hover change the shield causes at
       // its start and end measured slower there (zoom-in p95 168 -> 268-300 ms on the PhD main board).
       if (!event.ctrlKey && !event.metaKey) hitShield.raise();
       else hitShield.drop();
       settle();
+    } else if (openedBurst) {
+      wheelLayer = false;
+      world.style.willChange = gesturing ? "transform" : "";
+      syncShellHold();
     }
     return handled;
   };

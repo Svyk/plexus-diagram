@@ -102,6 +102,22 @@ function freezeBudget(run) {
     });
 }
 
+// The shell pump's duty-cycle gap follows the real clock, so pump() can return with a slice still queued.
+// A frozen clock never opens that gap: the queued chunks finish, and `before` is not a frame the burst will run.
+function finishShellPump(m) {
+  const realNow = globalThis.performance.now;
+  globalThis.performance.now = () => 1_000_000;
+  try {
+    for (let i = 0; i < 6; i += 1) {
+      m.stub.flushFrames();
+      m.stub.flushIdle();
+      m.stub.flushTimers();
+    }
+  } finally {
+    globalThis.performance.now = realNow;
+  }
+}
+
 test("a fit view of the whole board still shows every card", async () => {
   await freezeBudget(async () => {
     const m = mount({ x: 20, y: 20, zoom: 0.12 });
@@ -253,6 +269,7 @@ test("a wheel pan attaches no shell until it settles, and the underlay stands in
       await m.pump(80);
       m.stub.flushTimers();
       await m.pump(5);
+      finishShellPump(m);
       const before = m.shellsIn();
       for (let i = 0; i < 6; i += 1) {
         m.view.root.dispatchEvent({ type: "wheel", deltaX: 0, deltaY: 300, deltaMode: 0, clientX: 600, clientY: 400 });

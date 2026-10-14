@@ -122,12 +122,37 @@ test("overview goes live once the priority shells exist, and a far section is on
   const h = openRenderer({ children: spreadBoard(), lod: "overview", zoom: 0.1 });
   try {
     assert.equal(h.live(), true);
-    assert.equal(h.r.shellCount(), 151);
+    assert.ok(h.r.shellCount() > 0 && h.r.shellCount() <= 30);
     assert.equal(h.r.shellOf("far000001"), null);
     assert.ok(h.r.shellOf("sec000001"));
     assert.ok(h.r.shellCount() < h.board.order.length);
   } finally {
     h.done();
+  }
+});
+
+// A frozen clock never leaves the time budget, so the chunk cap is what stops the frame.
+test("overview live is the first chunk of at most 30 shells, then one chunk per frame", () => {
+  const thaw = freezeClock();
+  const h = openRenderer({ children: spreadBoard(), lod: "overview", zoom: 0.1 });
+  try {
+    assert.equal(h.live(), true);
+    const first = h.r.shellCount();
+    assert.ok(first > 0 && first <= 30, `first chunk ${first}`);
+    assert.ok(h.r.shellOf("sec000001"), "a section is in the first chunk");
+    assert.equal(h.r.shellOf("far000001"), null);
+    assert.ok(h.r.queuedCount() > 30);
+    assert.ok(h.frameQueue.length >= 1, "the next priority chunk waits for a frame");
+    const before = h.r.shellCount();
+    const queued = h.frameQueue.length;
+    h.frameQueue.shift()();
+    const step = h.r.shellCount() - before;
+    assert.ok(step > 0 && step <= 30, `frame chunk ${step}`);
+    assert.ok(h.r.shellCount() < h.board.order.length);
+    assert.ok(h.frameQueue.length >= queued, "another chunk is scheduled while priority shells remain");
+  } finally {
+    h.done();
+    thaw();
   }
 });
 
@@ -256,7 +281,14 @@ test("overview shell pump shares the background budget and detail keeps the fram
   const detail = openRenderer({ children: spreadBoard(), lod: "detail", zoom: 0.75 });
   try {
     assert.equal(fast.live(), true);
-    assert.equal(fast.frameQueue.length, 0);
+    assert.ok(fast.r.shellCount() <= 30);
+    assert.equal(fast.bgParts.length, 0, "priority chunks take the frames; the budget starts after them");
+    let frames = 0;
+    while (fast.frameQueue.length && frames < 20) {
+      frames += 1;
+      fast.frameQueue.shift()();
+    }
+    assert.ok(frames > 1);
     assert.equal(fast.bgParts.length, 1);
     assert.equal(fast.bgParts[0].opts.label, "shells");
     assert.equal(fast.bgParts[0].opts.partMs, 4);
@@ -293,6 +325,11 @@ test("pending boxes cover queued cards and clear when the queue finishes", () =>
     assert.ok(boxes.some((box) => box.uid === "far000001" && box.rect));
     assert.equal(boxes.length, h.r.queuedCount());
     let guard = 0;
+    while (h.frameQueue.length && guard < 20) {
+      guard += 1;
+      h.frameQueue.shift()();
+    }
+    guard = 0;
     while (h.r.queuedCount() && h.bgParts[0] && guard < 20) {
       guard += 1;
       h.bgParts[0].part({ timeRemaining: () => 0 });

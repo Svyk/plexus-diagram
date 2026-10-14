@@ -1915,6 +1915,9 @@ export function createItemRenderer({
   // and element stay alive detached, so class and state writes still reach it.
   const VIRTUAL_MIN = 400;
   const OPEN_NOW_MAX = 150;
+  // Map zoom used to build all 150 priority shells in the go-live frame (~245 ms). One chunk is
+  // this many shells. A frozen clock never expires PUMP_MS, so the cap is what ends the chunk.
+  const OPEN_CHUNK = 30;
   const PUMP_MS = 12;
   // In-view shells still queued after the open pass, and who waits for them.
   let pendingView = null;
@@ -2053,14 +2056,17 @@ export function createItemRenderer({
     for (const rec of set) if (!isAttached(rec)) layerOf(rec).append(rec.el);
   };
   const noteOverviewQueue = () => { try { onOverviewQueue?.(); } catch { /* the view paints the cover */ } };
-  // At most 40 shells and about PUMP_MS. Returns true when the queue is empty.
-  const pumpChunk = () => {
+  // At most `limit` shells and about PUMP_MS. A priority chunk also stops when the priority prefix is gone,
+  // so the far cards stay on the background budget. Returns true when the queue is empty.
+  const pumpChunk = ({ limit = 40, priority = false } = {}) => {
     const t0 = now();
     const built = [];
     let taken = 0;
-    while (shellQueue.length && taken < 40 && (taken === 0 || now() - t0 < PUMP_MS)) {
+    while (shellQueue.length && taken < limit && (taken === 0 || now() - t0 < PUMP_MS)) {
+      if (priority && priorityLeft <= 0) break;
       const uid = shellQueue.shift();
       taken += 1;
+      if (priority && priorityLeft > 0) priorityLeft -= 1;
       pendingView?.delete(uid);
       const item = lastBoard?.items.get(uid);
       if (!item || shells.has(uid)) continue;
@@ -2091,16 +2097,37 @@ export function createItemRenderer({
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
   };
   // The rAF pump ran on nearly every frame from first paint until live (~1 s of main-thread time on top of
-  // the 25% budget). At map or overview, with overviewFast, the rest of the shells share that budget instead.
-  // Detail zoom and overviewFast off still use frames: live waits on them, and slowing that wait is the regression.
+  // the 25% budget). At map or overview, with overviewFast, priority shells finish a chunk per frame and the
+  // rest share that budget. Detail zoom and overviewFast off still use frames: live waits on them.
   let shellBg = null;
+  let priorityFrame = null;
+  // How many leading queue entries are priority shells (nearest, plus sections) still to build.
+  let priorityLeft = 0;
+  const stopPriorityFrame = () => {
+    priorityFrame?.();
+    priorityFrame = null;
+  };
   const stopShellBg = () => {
     shellBg?.();
     shellBg = null;
+    stopPriorityFrame();
+  };
+  const pumpPriorityFrame = () => {
+    priorityFrame = null;
+    pumpChunk({ limit: OPEN_CHUNK, priority: true });
+    if (priorityLeft > 0 && shellQueue.length && timers?.frame) {
+      priorityFrame = timers.frame(pumpPriorityFrame);
+      return;
+    }
+    armShellPump();
   };
   const armShellPump = () => {
     stopShellBg();
     if (!shellQueue.length) return;
+    if (priorityLeft > 0 && timers?.frame) {
+      priorityFrame = timers.frame(pumpPriorityFrame);
+      return;
+    }
     let fast = false;
     try { fast = lod !== "detail" && speedOf().overviewFast !== false && typeof timers?.bgRun === "function"; } catch { fast = false; }
     if (fast) {
@@ -2121,7 +2148,10 @@ export function createItemRenderer({
     const item = lastBoard?.items.get(uid);
     if (!item || disposed) return null;
     const at = shellQueue.indexOf(uid);
-    if (at >= 0) shellQueue.splice(at, 1);
+    if (at >= 0) {
+      shellQueue.splice(at, 1);
+      if (at < priorityLeft) priorityLeft -= 1;
+    }
     pendingView?.delete(uid);
     if (pendingView && !pendingView.size) viewBuilt();
     const rec = buildShell(item);
@@ -2157,8 +2187,9 @@ export function createItemRenderer({
     // A full sync builds every missing shell itself. A partial sync must leave the
     // open-time queue alone, or the cards past the first chunk never appear.
     if (dirty == null) {
-      const hadQueue = shellQueue.length > 0 || shellBg;
+      const hadQueue = shellQueue.length > 0 || shellBg || priorityFrame;
       shellQueue = [];
+      priorityLeft = 0;
       stopShellBg();
       if (hadQueue) noteOverviewQueue();
     }
@@ -2184,11 +2215,12 @@ export function createItemRenderer({
         later.sort((a, b) => dist(a) - dist(b));
       }
       if (!now.length) now.push(...later.splice(0, 24));
-      // PhD main board at map zoom: all 1,558 items were in view and built in one 1.8 s task. The OPEN_NOW_MAX nearest
-      // the centre are built now, plus every section (there are few, and the view keeps them attached). The rest of
-      // the view is queued. At map or overview, with overviewFast, live does not wait for that queue. Detail zoom
-      // and overviewFast off still wait for every shell in the view.
-      if (now.length > OPEN_NOW_MAX && view) {
+      // PhD main board at map zoom: all 1,558 items were in view. Detail zoom and overviewFast off build the
+      // OPEN_NOW_MAX nearest now and wait for the rest (3.30.0). Map or overview with overviewFast builds one
+      // OPEN_CHUNK now, including in-view sections, and does not wait: the next chunks are frames, then the budget.
+      let fast = false;
+      try { fast = lod !== "detail" && speedOf().overviewFast !== false; } catch { fast = false; }
+      if (view && ((fast && now.length > OPEN_CHUNK) || now.length > OPEN_NOW_MAX)) {
         const cx = view.x + view.w / 2;
         const cy = view.y + view.h / 2;
         const dist = (uid) => {
@@ -2196,15 +2228,28 @@ export function createItemRenderer({
           return r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity;
         };
         const ranked = now.slice().sort((a, b) => dist(a) - dist(b));
-        const keep = new Set(ranked.slice(0, OPEN_NOW_MAX));
-        for (const uid of ranked) if (board.items.get(uid)?.type === "section") keep.add(uid);
-        const rest = ranked.filter((uid) => !keep.has(uid));
-        now.length = 0;
-        for (const uid of board.order) if (keep.has(uid)) now.push(uid);
-        let fast = false;
-        try { fast = lod !== "detail" && speedOf().overviewFast !== false; } catch { fast = false; }
-        if (!fast) pendingView = new Set(rest);
-        later.unshift(...rest);
+        const sections = [];
+        const cards = [];
+        for (const uid of ranked) (board.items.get(uid)?.type === "section" ? sections : cards).push(uid);
+        if (fast) {
+          const priority = [...sections, ...cards.slice(0, OPEN_NOW_MAX)];
+          const first = new Set(priority.slice(0, OPEN_CHUNK));
+          const restPriority = priority.filter((uid) => !first.has(uid));
+          const restSet = new Set(restPriority);
+          priorityLeft = restPriority.length;
+          now.length = 0;
+          for (const uid of board.order) if (first.has(uid)) now.push(uid);
+          const tail = [...restPriority, ...ranked.filter((uid) => !first.has(uid) && !restSet.has(uid))];
+          later.unshift(...tail);
+        } else {
+          // 3.30.0: the nearest OPEN_NOW_MAX, sections included only when they are that near. Live waits.
+          const keep = new Set(ranked.slice(0, OPEN_NOW_MAX));
+          const rest = ranked.slice(OPEN_NOW_MAX);
+          now.length = 0;
+          for (const uid of board.order) if (keep.has(uid)) now.push(uid);
+          pendingView = new Set(rest);
+          later.unshift(...rest);
+        }
       }
       if (now.length && later.length) defer = new Set(later);
     }

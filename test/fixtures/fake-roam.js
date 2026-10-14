@@ -356,7 +356,7 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
     } else if (pages.has(value)) out = pullPage(value);
     else out = pullBlock(value);
     // The derived-link source pull (host.linkRows): page and every ancestor as eids, like Roam's :block/parents.
-    if (out && String(pattern).startsWith("[:db/id :block/uid :block/string {:block/page [:db/id]} {:block/parents [:db/id]}]")) {
+    if (out && String(pattern).startsWith("[:db/id :block/uid :block/string {:block/page [:db/id]} {:block/parents [:db/id]}")) {
       delete out[":block/children"];
       const chain = topUid(out[":block/uid"]).slice(1);
       out[":block/parents"] = chain.map((u) => ({ ":db/id": (blocks.get(u) || pages.get(u))?.eid })).filter((x) => x[":db/id"] != null);

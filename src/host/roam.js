@@ -284,7 +284,7 @@ const PDF_BLOCK_IN_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?pa
 const PDF_KIDS_PATTERN = `[:block/uid {(limit :block/children nil) [:block/uid :block/string :block/order :block/props
  {(limit :block/children nil) [:block/uid :block/string :block/order :block/props]}]}]`;
 const LINK_REFS_QUERY = "[:find ?b ?src :in $ [?b ...] :where [?src :block/refs ?b]]";
-const LINK_SRC_PATTERN = "[:db/id :block/uid :block/string {:block/page [:db/id]} {:block/parents [:db/id]}]";
+const LINK_SRC_PATTERN = "[:db/id :block/uid :block/string {:block/page [:db/id]} {:block/parents [:db/id]} {:block/_children [:block/string]}]";
 const OUTLINE_KIDS_PATTERN = "[:block/uid {(limit :block/children nil) [:block/uid :block/string :block/open :block/order]}]";
 const PDF_PAGE_PATTERN = "[:block/uid :node/title {(limit :block/children nil) [:block/uid :block/string :block/order]}]";
 const PDF_HASH_PAGE_QUERY = `[:find ?u ?t :in $ ?h :where [?p :pdf/content-hash ?h] [?p :block/uid ?u] [?p :node/title ?t]]`;
@@ -2442,7 +2442,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     // The derived-link rows of linksQuery() for `targets`, without its join: the sources that ref a target come from
     // the refs index, then one pull_many of their page and parents, filtered here. Same rows as the datalog (live MAIN:
-    // 34-61 ms per 120 targets instead of 762-1,294 ms). `eids` is a Set of the board's card eids.
+    // 34-61 ms per 120 targets instead of 762-1,294 ms). `eids` is a Set of the board's card eids. Each row carries the
+    // source's parent string fifth (null at the top of a page), so the caller needs no parentString read.
     linkRows(boardEid, eids, targets) {
       if (typeof data.pull_many !== "function") return host.q(linksQuery(), boardEid, [...eids], targets) || [];
       const pairs = host.q(LINK_REFS_QUERY, targets) || [];
@@ -2460,12 +2461,15 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         if (typeof su !== "string" || typeof ss !== "string") continue;
         const parents = Array.isArray(n[":block/parents"]) ? n[":block/parents"].map((p) => p?.[":db/id"]) : [];
         if (parents.includes(boardEid)) continue;
+        const up = n[":block/_children"];
+        const first = Array.isArray(up) ? up[0] : up;
+        const ps = typeof first?.[":block/string"] === "string" ? first[":block/string"] : null;
         for (const a of [n[":block/page"]?.[":db/id"], ...parents, src]) {
           if (a == null || a === b || !eids.has(a)) continue;
           const key = `${a}|${b}|${su}`;
           if (seen.has(key)) continue;
           seen.add(key);
-          rows.push([a, b, su, ss]);
+          rows.push([a, b, su, ss, ps]);
         }
       }
       return rows;

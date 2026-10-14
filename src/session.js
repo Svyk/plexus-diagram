@@ -1562,7 +1562,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     for (const row of rows) {
       const su = row[2];
       const ss = row[3];
-      if (budget <= 0) break;
+      // host.linkRows brings the parent string with the row (null: none); only linksQuery() rows need the read.
+      if (row.length > 4) {
+        if (row[4] != null && attrNameOf(ss) == null) parentStrings.set(su, row[4]);
+        continue;
+      }
+      if (budget <= 0) continue;
       if (attrNameOf(ss) == null && !parentStrings.has(su)) {
         budget--;
         const ps = host.parentString?.(su);

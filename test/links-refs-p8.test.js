@@ -11,6 +11,7 @@ function seed(fake) {
     { uid: "sA1", string: "Causes:: [[B]]" },
     { uid: "sA2", string: "outer", children: [{ uid: "sA3", string: "see [[C]] and [[B]]" }] },
     { uid: "sA4", string: "self [[A]]" },
+    { uid: "attrA", string: "Owner::", children: [{ uid: "sA5", string: "[[C]]" }] },
   ] });
   fake.seedPage({ title: "B", uid: "pageB" });
   fake.seedPage({ title: "C", uid: "pageC" });
@@ -29,7 +30,7 @@ function seed(fake) {
       { uid: "c5", string: "inside board [[B]]", props: { plexus: { x: 0, y: 300, w: 200, h: 100 } } },
     ],
   });
-  const sources = ["sA1", "sA3", "sA4", "sX1", "sD1", "c1", "c2", "c3", "c5"];
+  const sources = ["sA1", "sA3", "sA4", "sA5", "sX1", "sD1", "c1", "c2", "c3", "c5"];
   return sources;
 }
 
@@ -58,13 +59,18 @@ test("host.linkRows: refs index + one pull_many give linksQuery()'s rows (page, 
   const board = e({ uid: "brd1" });
   fake.pullLog = [];
   const rows = host.linkRows(board, new Set([A, B, C, X]), [A, B, C, X]);
-  const got = rows.map((r) => r.join("|")).sort();
+  const got = rows.map((r) => r.slice(0, 4).join("|")).sort();
   const want = [
     [A, B, "sA1", "Causes:: [[B]]"],
     [A, B, "sA3", "see [[C]] and [[B]]"],
     [A, C, "sA3", "see [[C]] and [[B]]"],
+    [A, C, "sA5", "[[C]]"],
     [X, C, "sX1", "[[C]]"],
   ].map((r) => r.join("|")).sort();
+  const parentOf = new Map(rows.map((r) => [r[2], r[4]]));
+  assert.equal(parentOf.get("sA3"), "outer");
+  assert.equal(parentOf.get("sA5"), "Owner::");
+  assert.equal(parentOf.get("sX1"), "a block card");
   assert.deepEqual(got, want);
   assert.equal(route.calls.length, 1, "one refs query");
   assert.equal(fake.pullLog.filter((p) => p.many).length, 1, "one pull_many of the sources");
@@ -90,6 +96,9 @@ test("session links go through host.linkRows and publish the derived links", asy
   const calls = [];
   const orig = host.linkRows.bind(host);
   host.linkRows = (...args) => { calls.push(args); return orig(...args); };
+  let parentReads = 0;
+  const ps = host.parentString.bind(host);
+  host.parentString = (u) => { parentReads += 1; return ps(u); };
   try {
     const session = acquireSession("brd1", { host });
     session.setLinkMode("all");
@@ -98,6 +107,9 @@ test("session links go through host.linkRows and publish the derived links", asy
     assert.ok(calls.length >= 1);
     const keys = session.links.map((l) => l.key).sort();
     assert.deepEqual(keys, ["c1->c2", "c1->c3", "c4->c3"]);
+    // The parent string came with the rows: a source under a bare attribute names the link, no parentString read.
+    assert.ok(session.links.find((l) => l.key === "c1->c3").labels.includes("Owner"));
+    assert.equal(parentReads, 0);
     session.release();
   } finally {
     resetSessions();

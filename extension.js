@@ -38895,6 +38895,22 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
   };
 }
 
+// src/part-sizer.js
+function createPartSizer({ max = 30, start = 4 } = {}) {
+  let per = 0;
+  return {
+    size(leftMs) {
+      if (!(per > 0)) return Math.max(1, Math.min(max, start));
+      return Math.max(1, Math.min(max, Math.floor(Math.max(0, leftMs) / per)));
+    },
+    note(n3, ms) {
+      if (!(n3 > 0) || !(ms >= 0)) return;
+      const last = ms / n3;
+      per = per > 0 ? Math.max(last, (per + last) / 2) : last;
+    }
+  };
+}
+
 // src/bg-budget.js
 var BG_SLICE_MS = 30;
 var BG_QUIET_MS = 300;
@@ -40666,6 +40682,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         let statsDone = false;
         let refsDone = !refsLater;
         let dropped = false;
+        const refSizer = createPartSizer({ max: IDLE_REF_PART, start: 4 });
         const clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
         const step = (deadline) => {
           if (unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt) return;
@@ -40673,11 +40690,14 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           const left = () => Math.min(IDLE_SLICE_MS - (clock() - t0), typeof deadline?.timeRemaining === "function" && !deadline.didTimeout ? deadline.timeRemaining() : Infinity);
           do {
             if (!refsDone) {
+              const n3 = refSizer.size(left() - IDLE_RESERVE_MS);
+              const r0 = clock();
               try {
-                refsDone = pullRefsPart(IDLE_REF_PART);
+                refsDone = pullRefsPart(n3);
               } catch {
                 refsDone = true;
               }
+              refSizer.note(n3, clock() - r0);
               continue;
             }
             if (!dropped) {
@@ -90644,8 +90664,11 @@ function buildBoardView(onFail, {
         const stats = res instanceof Map ? res.get(m.key) : res?.[m.key];
         badgeCache.set(m.key, { at, stats: stats || { refs: 0, boards: 0, open: 0, done: 0 } });
       }
-      applyBadges();
-      if (rest.length) timers.bgIdle(() => runChunk(rest), "badges");
+      timers.bgIdle(() => {
+        if (disposed) return;
+        applyBadges();
+        if (rest.length) timers.bgIdle(() => runChunk(rest), "badges");
+      }, "badges-paint");
     };
     timers.bgIdle(() => runChunk(misses), "badges");
   };
@@ -98444,7 +98467,13 @@ var skipChrome = (el2) => {
   const cls = typeof el2.getAttribute === "function" ? String(el2.getAttribute("class") || "") : "";
   return /(^|\s)(pxd-ports|pxd-grip|pxd-port|pxd-item__editor|pxd-ctx|pxd-tip|pxd-table-thumb)(\s|$)/.test(cls);
 };
-function captureBoardSnap({
+function captureBoardSnap(args = {}) {
+  const capture = createBoardSnapCapture(args);
+  while (!capture.step(Infinity)) {
+  }
+  return capture.result();
+}
+function createBoardSnapCapture({
   uid,
   root,
   board: board2,
@@ -98460,29 +98489,41 @@ function captureBoardSnap({
   thumbs = /* @__PURE__ */ new Map(),
   now: now4 = Date.now
 } = {}) {
-  if (!board2?.items || !rects || !isSnapViewport(vp) || typeof shellOf !== "function") return null;
-  if (board2.items.size > SNAP_MAX_BOXES) return null;
-  const faced = board2.items.size > SNAP_MAX_ITEMS ? nearestFaces(board2, rects, vp, width, height) : null;
-  const prevItems = new Map((prev?.items || []).map((item) => [item.uid, item]));
+  let done2 = false;
+  let out = null;
+  const finish = (value) => {
+    done2 = true;
+    out = value;
+    return true;
+  };
+  if (!board2?.items || !rects || !isSnapViewport(vp) || typeof shellOf !== "function" || board2.items.size > SNAP_MAX_BOXES) finish(null);
+  let faced = null;
+  let prevItems = null;
   const items = [];
-  const order = Array.isArray(board2.order) ? board2.order : [...board2.items.keys()];
-  for (const id of order) {
+  let order = [];
+  let at = 0;
+  if (!done2) {
+    faced = board2.items.size > SNAP_MAX_ITEMS ? nearestFaces(board2, rects, vp, width, height) : null;
+    prevItems = new Map((prev?.items || []).map((item) => [item.uid, item]));
+    order = Array.isArray(board2.order) ? board2.order : [...board2.items.keys()];
+  }
+  const one = (id) => {
     const item = board2.items.get(id);
     const rect = rects.get(id);
     const el2 = shellOf(id);
-    if (!item || !rect || !el2) continue;
+    if (!item || !rect || !el2) return;
     const section2 = item.type === "section";
     const sig = itemSig(item);
     const cls = cleanClasses(typeof el2.getAttribute === "function" ? el2.getAttribute("class") : el2.className);
     const bare = cls.includes("pxd-item--bare") || cls.includes("pxd-item--collapsed");
     if (faced && !section2 && !faced.has(id)) {
       const box3 = shellBox(el2) || rect;
-      const out2 = { uid: id, section: section2, x: box3.x, y: box3.y, w: box3.w, h: box3.h, cls: cls.join(" "), sig };
-      if (item.parentUid && item.parentUid !== board2.uid) out2.parent = item.parentUid;
+      const out3 = { uid: id, section: section2, x: box3.x, y: box3.y, w: box3.w, h: box3.h, cls: cls.join(" "), sig };
+      if (item.parentUid && item.parentUid !== board2.uid) out3.parent = item.parentUid;
       const stats2 = badges?.get?.(id);
-      if (stats2) out2.badges = stats2;
-      items.push(out2);
-      continue;
+      if (stats2) out3.badges = stats2;
+      items.push(out3);
+      return;
     }
     let face = captureFace(el2, { thumbs, skip: skipChrome });
     const old = prevItems.get(id);
@@ -98490,7 +98531,7 @@ function captureBoardSnap({
       face = mergeBareFace(face, old.face);
     }
     const box2 = shellBox(el2) || rect;
-    const out = {
+    const out2 = {
       uid: id,
       section: section2,
       x: box2.x,
@@ -98501,41 +98542,56 @@ function captureBoardSnap({
       sig,
       face
     };
-    if (item.parentUid && item.parentUid !== board2.uid) out.parent = item.parentUid;
+    if (item.parentUid && item.parentUid !== board2.uid) out2.parent = item.parentUid;
     const stats = badges?.get?.(id);
-    if (stats) out.badges = stats;
+    if (stats) out2.badges = stats;
     const thumb2 = tableThumbKey2?.(item);
-    if (thumb2) out.thumb = thumb2;
-    items.push(out);
-  }
-  const world = root?.querySelector?.(".pxd-world");
-  const edgesEl = world?.querySelector?.("svg.pxd-edges");
-  const labelsEl = world?.querySelector?.(".pxd-labels");
-  const gridEl = root?.querySelector?.(".pxd-grid");
-  const layer = (el2) => el2 ? captureFace(el2, { thumbs, maxNodes: LAYER_MAX_NODES, maxChars: 64 * 1024 }) : null;
-  const chrome = [];
-  for (const child of [...root?.children || []]) {
-    const cls = String(child.getAttribute?.("class") || "");
-    if (!CHROME_KEEP.test(cls) || child.hasAttribute?.("hidden")) continue;
-    const face = captureFace(child, { thumbs, maxNodes: 300, maxChars: 8 * 1024, canvases: true });
-    if (face) chrome.push(face);
-  }
+    if (thumb2) out2.thumb = thumb2;
+    items.push(out2);
+  };
+  const assemble = () => {
+    const world = root?.querySelector?.(".pxd-world");
+    const edgesEl = world?.querySelector?.("svg.pxd-edges");
+    const labelsEl = world?.querySelector?.(".pxd-labels");
+    const gridEl = root?.querySelector?.(".pxd-grid");
+    const layer = (el2) => el2 ? captureFace(el2, { thumbs, maxNodes: LAYER_MAX_NODES, maxChars: 64 * 1024 }) : null;
+    const chrome = [];
+    for (const child of [...root?.children || []]) {
+      const cls = String(child.getAttribute?.("class") || "");
+      if (!CHROME_KEEP.test(cls) || child.hasAttribute?.("hidden")) continue;
+      const face = captureFace(child, { thumbs, maxNodes: 300, maxChars: 8 * 1024, canvases: true });
+      if (face) chrome.push(face);
+    }
+    return {
+      v: SNAP_VERSION,
+      uid: uid || board2.uid,
+      stamp: boardStamp(board2, rects),
+      savedAt: now4(),
+      height: finite8(height) ? height : 0,
+      width: finite8(width) ? width : 0,
+      threshold: finite8(threshold) ? threshold : 0.45,
+      vp: { x: vp.x, y: vp.y, zoom: vp.zoom },
+      rootCls: typeof root?.getAttribute === "function" ? root.getAttribute("class") || "" : "",
+      rootStyle: rootVars(root),
+      grid: gridEl ? { c: cleanClasses(gridEl.getAttribute?.("class") || "").join(" ") } : null,
+      edges: layer(edgesEl),
+      labels: layer(labelsEl),
+      chrome,
+      items
+    };
+  };
   return {
-    v: SNAP_VERSION,
-    uid: uid || board2.uid,
-    stamp: boardStamp(board2, rects),
-    savedAt: now4(),
-    height: finite8(height) ? height : 0,
-    width: finite8(width) ? width : 0,
-    threshold: finite8(threshold) ? threshold : 0.45,
-    vp: { x: vp.x, y: vp.y, zoom: vp.zoom },
-    rootCls: typeof root?.getAttribute === "function" ? root.getAttribute("class") || "" : "",
-    rootStyle: rootVars(root),
-    grid: gridEl ? { c: cleanClasses(gridEl.getAttribute?.("class") || "").join(" ") } : null,
-    edges: layer(edgesEl),
-    labels: layer(labelsEl),
-    chrome,
-    items
+    step(ms = Infinity, clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now()) {
+      if (done2) return true;
+      const t0 = clock();
+      do {
+        one(order[at]);
+        at += 1;
+      } while (at < order.length && clock() - t0 < ms);
+      if (at >= order.length) finish(assemble());
+      return done2;
+    },
+    result: () => out
   };
 }
 function nearestFaces(board2, rects, vp, width, height) {
@@ -100848,6 +100904,7 @@ async function installPlexusDiagram({
   const sketchTimers = /* @__PURE__ */ new Map();
   const sketchHandoffs = /* @__PURE__ */ new Map();
   const snapTimers = /* @__PURE__ */ new Map();
+  const snapJobs = /* @__PURE__ */ new Map();
   const SNAP_SETTLE_MS = 1e3;
   const SNAP_WARM_WAIT_MS = 50;
   const openPerf = { lastOpen: null, opens: [] };
@@ -101484,8 +101541,14 @@ async function installPlexusDiagram({
     const timer = snapTimers.get(rec);
     if (timer) clearTimeout(timer);
     snapTimers.delete(rec);
+    const job = snapJobs.get(rec);
+    snapJobs.delete(rec);
+    try {
+      job?.();
+    } catch {
+    }
   }
-  function captureSnap(rec) {
+  function captureSnap(rec, parts = null) {
     if (!snapAllowed() || stopped || !rec?.view || rec.view.sketchStandIn === true) return false;
     let src = null;
     try {
@@ -101518,6 +101581,40 @@ async function installPlexusDiagram({
     }
     const thumbs = /* @__PURE__ */ new Map();
     let snap = null;
+    if (parts) {
+      let capture = null;
+      try {
+        capture = createBoardSnapCapture({
+          ...src,
+          uid,
+          prev: snapStore.get(key) || snapStore.get(uid),
+          thumbs,
+          tableThumbKey: (item) => {
+            if (!tableUidOf(item)) return null;
+            const key2 = thumbKeyOf(item, dark);
+            return key2 && snapStore.thumb(key2) ? key2 : null;
+          }
+        });
+      } catch {
+        capture = null;
+      }
+      if (!capture) return false;
+      parts.capture = capture;
+      parts.finish = () => {
+        let now4 = null;
+        try {
+          now4 = rec.view?.snapshotSource?.() ?? null;
+        } catch {
+          now4 = null;
+        }
+        if (!now4 || now4.gesturing || now4.board !== src.board || now4.rects !== src.rects || now4.vp?.x !== src.vp?.x || now4.vp?.y !== src.vp?.y || now4.vp?.zoom !== src.vp?.zoom || currentUid(rec) !== uid || isDarkTheme(rec) !== dark) return null;
+        const out = capture.result();
+        if (!out) return false;
+        rec.snapDirty = false;
+        return snapStore.set(key, out, thumbs);
+      };
+      return true;
+    }
     try {
       snap = captureBoardSnap({
         ...src,
@@ -101543,6 +101640,34 @@ async function installPlexusDiagram({
     clearSnapTimer(rec);
     const timer = setTimeout(() => {
       snapTimers.delete(rec);
+      if (notedSpeedFlags().bgBudget !== false && typeof (win2.requestIdleCallback ?? globalThis.requestIdleCallback) === "function") {
+        let parts = null;
+        let job = null;
+        const end = () => {
+          if (snapJobs.get(rec) === job) snapJobs.delete(rec);
+          return true;
+        };
+        job = sharedBgBudget().run((deadline) => {
+          if (stopped || mounts.get(rec.native) !== rec) return end();
+          if (!parts) {
+            parts = {};
+            const r = captureSnap(rec, parts);
+            if (r === null) {
+              end();
+              scheduleSnap(rec);
+              return true;
+            }
+            return parts.capture ? false : end();
+          }
+          const left = Math.max(1, deadline.timeRemaining() - 2);
+          if (!parts.capture.step(left)) return false;
+          end();
+          if (parts.finish() === null) scheduleSnap(rec);
+          return true;
+        }, { timeout: 2e3, label: "snap", partMs: 4 });
+        snapJobs.set(rec, job);
+        return;
+      }
       runIdle(() => {
         if (stopped || mounts.get(rec.native) !== rec) return;
         if (captureSnap(rec) === null) scheduleSnap(rec);
@@ -101552,7 +101677,7 @@ async function installPlexusDiagram({
     snapTimers.set(rec, timer);
   }
   function saveSnapNow(rec) {
-    const pending = snapTimers.has(rec);
+    const pending = snapTimers.has(rec) || snapJobs.has(rec);
     clearSnapTimer(rec);
     if (!rec?.snapDirty && !pending) return;
     try {

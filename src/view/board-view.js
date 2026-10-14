@@ -8919,9 +8919,11 @@ function buildBoardView(onFail, {
         firstPainted = true;
         // Snapshot shells the live board did not keep (deleted since) go with the snapshot root.
         snapShells?.clear();
-        // A big board builds the rest of its view over a few frames: the snapshot stays up until it is complete.
+        // The cover and the first shells are presented in this frame. The snapshot comes off on the next one,
+        // after the view is complete (overviewFast is complete once that first chunk exists).
         if (typeof onFirstPaint === "function") {
-          const done = () => { if (!disposed) { try { onFirstPaint(); } catch { /* the owner's hook */ } } };
+          const fire = () => { if (!disposed) { try { onFirstPaint(); } catch { /* the owner's hook */ } } };
+          const done = () => { if (!disposed) timers.frame(fire); };
           if (typeof itemsR.whenViewBuilt === "function") itemsR.whenViewBuilt(done);
           else done();
         }
@@ -8939,10 +8941,12 @@ function buildBoardView(onFail, {
         // paintEdge, so dash and color never reached the DOM until a full render.
         const links = paintedLinks();
         let part = dirty.all || dirty.structural || (dirty.links && !dirty.edges.size) ? null : dirty.edges;
-        if (part && part.size > EDGE_SLICE) {
+        // The first render of a big board has no dirty set. It still places one slice; the frame after takes the rest.
+        const sliceSource = part || (b.edges.size > EDGE_SLICE ? b.edges.keys() : null);
+        if (sliceSource && (part ? part.size : b.edges.size) > EDGE_SLICE) {
           const slice = new Set();
           edgeRest = new Set();
-          for (const uid of part) (slice.size < EDGE_SLICE ? slice : edgeRest).add(uid);
+          for (const uid of sliceSource) (slice.size < EDGE_SLICE ? slice : edgeRest).add(uid);
           part = slice;
         }
         edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: part, view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null, skipLinks: edgeSlicing && !dirty.links });
@@ -8959,8 +8963,11 @@ function buildBoardView(onFail, {
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
       // Big boards keep far shells and edges out of the DOM: put back what this camera brings near.
-      if (size.width && !deferReveal()) revealNear();
-      else if (size.width) showUnderlay();
+      if (size.width && !deferReveal()) {
+        // This frame already sliced the edge render. reveal() would build another batch of the same edges.
+        if (edgeRest) itemsR.reveal?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
+        else revealNear();
+      } else if (size.width) showUnderlay();
       // Roam Caret re-places its caret when a field on the board is focused and the camera moves.
       const focused = doc.activeElement;
       if (focused?.tagName === "TEXTAREA" && root.contains(focused)) {

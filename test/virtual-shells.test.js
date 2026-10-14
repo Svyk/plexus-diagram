@@ -123,7 +123,9 @@ test("a whole-board view builds the nearest shells first and reports first paint
       m.stub.flushFrames();
       const first = m.shellsIn();
       assert.ok(first > 0 && first <= 200, `built in the open pass: ${first}`);
-      assert.equal(painted, 1, "overview goes live once the priority shells exist");
+      assert.equal(painted, 0, "the snapshot stays through the go-live frame");
+      m.stub.flushFrames();
+      assert.equal(painted, 1, "the next frame reports first paint");
       await m.pump(120);
       assert.equal(m.shellsIn(), N);
       assert.equal(painted, 1);

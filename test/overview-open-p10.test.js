@@ -1227,3 +1227,97 @@ test("a normal board builds every shell before live and does not queue a pump", 
     h.done();
   }
 });
+
+test("the go-live frame draws the cover and the first shells, and leaves the snapshot and the remaining edges", () => {
+  const thaw = freezeClock();
+  const stub = createDomStub();
+  const restore = stub.install();
+  resetSharedBgBudget();
+  stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify({ x: 0, y: 0, zoom: 0.1 }));
+  const children = spreadBoard();
+  const edges = [];
+  for (let i = 0; i < 320; i += 1) {
+    edges.push(blk(
+      `e${String(i).padStart(8, "0")}`,
+      "→",
+      { ":type": "edge", ":from": "c00000000", ":to": "c00000001" },
+      i,
+    ));
+  }
+  children.push({
+    ":block/uid": "connections1",
+    ":block/string": "Connections",
+    ":block/order": 900,
+    ":block/props": { ":plexus": { ":type": "edges" } },
+    ":block/children": edges,
+  });
+  const board = buildBoard(rawBoard(children));
+  assert.ok(board.edges.size > 250, `edges ${board.edges.size}`);
+  const host = {
+    stats: {}, graph: "Svy",
+    renderString(node, string) { node.textContent = string; },
+    renderBlock(node, uid) { node.textContent = uid; },
+    unmount() {},
+    pagePreview: () => ({ exists: false, blocks: [] }),
+    pullTree: () => [],
+    blockString: () => null,
+    openBlock() {},
+    openInSidebar() {},
+    searchPages: () => [],
+    searchBlocks: () => [],
+    related: () => [],
+  };
+  const session = {
+    uid: board.uid, board, rects: worldRects(board), links: [], coveredEdges: new Set(),
+    on() { return () => {}; }, release() {}, setLinkMode() {},
+  };
+  const mountEl = stub.document.createElement("div");
+  mountEl.className = "pxd-mount";
+  stub.document.body.append(mountEl);
+  let painted = 0;
+  const view = mountBoardView({
+    host, session, mountEl, settings: { get: () => undefined }, version: "1.0.0",
+    onFirstPaint: () => { painted += 1; },
+  });
+  let rectReads = 0;
+  const watchRect = (el) => {
+    if (!el?.getBoundingClientRect || el._rectWatched) return;
+    el._rectWatched = true;
+    const orig = el.getBoundingClientRect;
+    el.getBoundingClientRect = () => { rectReads += 1; return orig.call(el); };
+  };
+  try {
+    watchRect(view.root);
+    watchRect(view.root.querySelector(".pxd-viewport"));
+    watchRect(view.root.querySelector(".pxd-toolbar"));
+    // Boot queues the measure frame ahead of the shell frame. The shell frame is the one that builds cards.
+    let guard = 0;
+    let goLive = false;
+    while (stub.frames.length && guard < 8 && !goLive) {
+      guard += 1;
+      rectReads = 0;
+      const frame = stub.frames.shift();
+      const before = view.stats().shells;
+      frame.fn(16);
+      goLive = view.stats().shells > before;
+    }
+    assert.equal(goLive, true, "a boot frame builds the first shells");
+    const attached = view.stats().edgesAttached;
+    assert.ok(attached > 0 && attached <= 250, `the go-live frame places ${attached} edges`);
+    assert.equal(painted, 0, "the snapshot stays up through the go-live frame");
+    assert.equal(rectReads, 0, "the go-live frame does not measure");
+    const shells = view.stats().shells;
+    assert.ok(shells > 0 && shells <= 30, `the go-live frame builds ${shells} shells`);
+    assert.ok(view.root.querySelector("canvas.pxd-underlay"), "the cover is drawn in the go-live frame");
+    const follow = stub.frames.splice(0, stub.frames.length);
+    assert.ok(follow.length >= 1, "first paint waits for a later frame");
+    for (const frame of follow) frame.fn(16);
+    assert.equal(painted, 1, "a later frame takes the snapshot down");
+    assert.ok(view.stats().edgesAttached > attached, "a later frame continues the edges");
+  } finally {
+    view.dispose();
+    restore();
+    thaw();
+    resetSharedBgBudget();
+  }
+});

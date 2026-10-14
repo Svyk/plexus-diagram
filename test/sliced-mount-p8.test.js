@@ -90,6 +90,46 @@ test("sliced read: a block gone mid-read fails; a fold toggled mid-read (no stam
   assert.equal(tree[":block/children"].find((k) => k[":block/uid"] === "sec1")[":block/open"], false);
 });
 
+test("sliced read: a fold toggled after the fold pass (no stamp) fails the read", () => {
+  const fake = createFakeRoam({ pullMany: true, stamps: true });
+  seed(fake);
+  let lie = false;
+  const reader = readerFor(fake, { reader: { sliceMs: 1, batch: 5, linkBatch: 1 }, wrap: (res, p) => (lie && /^\[:db\/id :block\/open\]$/.test(p) ? res.map((n) => (n?.[":block/uid"] === "sec0" || n?.[":db/id"] === sec0Eid ? { ...n, ":block/open": false } : n)) : res) });
+  const sec0Eid = fake.api.data.pull("[:db/id]", [":block/uid", "sec0"])[":db/id"];
+  while (reader.phase !== "link") assert.equal(reader.step(), false);
+  lie = true;
+  while (!reader.step()) { /* finish */ }
+  assert.equal(reader.phase, "failed");
+  assert.equal(reader.take(), null);
+
+  // A row missing from the last fold read fails too.
+  let drop = false;
+  const missing = readerFor(fake, { reader: { sliceMs: 1, batch: 5, linkBatch: 1 }, wrap: (res, p) => (drop && /^\[:db\/id :block\/open\]$/.test(p) ? res.map((n, i) => (i === 0 ? null : n)) : res) });
+  while (missing.phase !== "link") missing.step();
+  drop = true;
+  while (!missing.step()) { /* finish */ }
+  assert.equal(missing.phase, "failed");
+});
+
+test("host.prereadBoard does not offer a tree whose folds changed during the targets walk", () => {
+  const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
+  seed(fake);
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  host.blockPageUid = (u) => (String(u).length ? "bpage" : "");
+  const sec0Eid = fake.api.data.pull("[:db/id]", [":block/uid", "sec0"])[":db/id"];
+  let t = 0;
+  const reader = host.prereadBoard("sb1", { sliceMs: 3, batch: 10, clock: () => (t += 1) });
+  while (reader.phase !== "targets") assert.equal(reader.step(), false);
+  const real = fake.api.data.pull_many;
+  fake.api.data.pull_many = (p, ids) => {
+    const res = real(p, ids);
+    return /^\[:db\/id :block\/open\]$/.test(p) ? res.map((n) => (n?.[":db/id"] === sec0Eid ? { ...n, ":block/open": false } : n)) : res;
+  };
+  try { while (!reader.step()) { /* finish */ } } finally { fake.api.data.pull_many = real; }
+  host.pullBoard("sb1", { light: true });
+  assert.ok(!host.stats.slicedReads, "the stale offer is not used");
+});
+
 test("host.prereadBoard offers the tree to the next pullBoard; a moved stamp or an old offer reads Roam whole", async () => {
   const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
   seed(fake);

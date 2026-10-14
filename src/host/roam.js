@@ -1782,6 +1782,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
             return false;
           }
           if (!walk.step(sliceMs, opts.clock || clock)) return false;
+          // Folds do not move the page stamp that pullBoard checks: read them again right before the offer.
+          if (!reader.verifyOpen()) { tree = null; return true; }
           offeredTrees.set(id, { tree, found: walk.result(), stamp: reader.stamp, at: Date.now() });
           tree = null;
           return true;

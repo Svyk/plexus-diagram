@@ -4,7 +4,8 @@
 // BOARD_PATTERN pull. It is only handed over when it is consistent: the page stamp (:page/edit-time and
 // :page/edit-nonce, moved by every string, props, create, move and delete on the page) is the same before the first
 // level and after the last, every block read is still there, and the folds (:block/open, which does NOT move the stamp)
-// are read again at the end and patched in. Anything else returns null and the caller reads the board in one pull.
+// are read again after the level reads and patched in, then checked once more in the last task (and by the caller right
+// before it offers the tree). Anything else returns null and the caller reads the board in one pull.
 
 export const SLICED_LEVEL_PATTERN = "[:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props {(limit :block/children nil) [:db/id]}]";
 export const SLICED_OPEN_PATTERN = "[:db/id :block/open]";
@@ -92,7 +93,28 @@ export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.
     if (linkAt >= withKids.length) phase = "assemble";
   }
 
+  // The folds as published, checked once more against Roam in one task: true when every row is there and the same.
+  let openIds = [];
+  let openVals = [];
+  function openMatches() {
+    for (let i = 0; i < openIds.length; i += openBatch) {
+      const ids = openIds.slice(i, i + openBatch);
+      const res = pullMany(SLICED_OPEN_PATTERN, ids);
+      calls += 1;
+      if (!Array.isArray(res) || res.length !== ids.length) return false;
+      for (let j = 0; j < ids.length; j += 1) {
+        const now = res[j];
+        if (!now || now[":db/id"] !== ids[j] || now[":block/open"] !== openVals[i + j]) return false;
+      }
+    }
+    return true;
+  }
+
   function assemble() {
+    openIds = withKids;
+    openVals = withKids.map((id) => outs.get(id)[":block/open"]);
+    // A fold toggled after the fold pass does not move the stamp: read them again before the stamp compare.
+    if (!openMatches()) return fail();
     let last = null;
     try { last = stamp(); } catch { last = null; }
     if (last == null || last !== first) return fail();
@@ -133,5 +155,10 @@ export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.
       return out;
     },
     cancel() { if (phase !== "done") fail(); },
+    // Before the tree is offered (later tasks may have run since assemble): true when the folds are still the ones read.
+    verifyOpen() {
+      if (phase !== "done") return false;
+      try { return openMatches(); } catch { return false; }
+    },
   };
 }

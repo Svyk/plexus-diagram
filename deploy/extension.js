@@ -98627,7 +98627,9 @@ ${url}`;
             }
           };
           const done3 = () => {
-            if (!disposed) timers.frame(fire2);
+            if (disposed) return;
+            if (queuedOverview()) timers.frame(fire2);
+            else fire2();
           };
           if (typeof itemsR.whenViewBuilt === "function") itemsR.whenViewBuilt(done3);
           else done3();
@@ -98642,7 +98644,7 @@ ${url}`;
       if (edgesDue) {
         const links = paintedLinks();
         let part = dirty.all || dirty.structural || dirty.links && !dirty.edges.size ? null : dirty.edges;
-        const sliceSource = part || (b.edges.size > EDGE_SLICE ? b.edges.keys() : null);
+        const sliceSource = part || (queuedOverview() && b.edges.size > EDGE_SLICE ? b.edges.keys() : null);
         if (sliceSource && (part ? part.size : b.edges.size) > EDGE_SLICE) {
           const slice = /* @__PURE__ */ new Set();
           edgeRest = /* @__PURE__ */ new Set();

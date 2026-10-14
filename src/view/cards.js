@@ -2067,6 +2067,8 @@ export function createItemRenderer({
   // At most `limit` shells and about PUMP_MS. A priority chunk also stops when the priority prefix is gone,
   // so the far cards stay on the background budget. Returns true when the queue is empty.
   const pumpChunk = ({ limit = 40, priority = false } = {}) => {
+    // Cover the queue before this chunk's shells exist. The matching call after the writes only hides an empty queue.
+    if (shellQueue.length) noteOverviewQueue();
     const t0 = now();
     const built = [];
     let taken = 0;
@@ -2097,7 +2099,7 @@ export function createItemRenderer({
       if (taken && lastContent) paintOffscreen(lastContent.visibleRect);
     }
     if (pendingView && !pendingView.size) viewBuilt();
-    noteOverviewQueue();
+    if (!shellQueue.length) noteOverviewQueue();
     return shellQueue.length === 0;
   };
   const pumpShells = () => {
@@ -2162,6 +2164,7 @@ export function createItemRenderer({
     }
     pendingView?.delete(uid);
     if (pendingView && !pendingView.size) viewBuilt();
+    noteOverviewQueue();
     const rec = buildShell(item);
     const rect = lastRects?.get(uid);
     rec.el.style.display = rect ? "" : "none";
@@ -2170,7 +2173,6 @@ export function createItemRenderer({
     if (rect) position(rec, rect);
     if (showBadges) renderBadges(rec);
     attachShell(rec);
-    noteOverviewQueue();
     return rec.el;
   };
   // view: a screen around the camera (which shells to build first, which bodies are offscreen). attachView: the tighter
@@ -2261,6 +2263,11 @@ export function createItemRenderer({
       }
       if (now.length && later.length) defer = new Set(later);
     }
+    if (defer?.size) {
+      shellQueue = [...defer];
+      // Paint the stand-in boxes before this frame's shells. A colour read after those writes forced layout.
+      noteOverviewQueue();
+    }
     for (const uid of board.order) {
       if (defer?.has(uid)) continue;
       const item = board.items.get(uid);
@@ -2306,11 +2313,7 @@ export function createItemRenderer({
       if (virtual()) placeVirtual();
       else placeShells();
     }
-    if (defer?.size) {
-      shellQueue = [...defer];
-      armShellPump();
-      noteOverviewQueue();
-    }
+    if (defer?.size) armShellPump();
     if (pendingView) {
       for (const uid of [...pendingView]) if (shells.has(uid) || !board.items.has(uid)) pendingView.delete(uid);
       if (!pendingView.size) viewBuilt();

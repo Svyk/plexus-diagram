@@ -1193,6 +1193,8 @@ function buildBoardView(onFail, {
   let repaintItemStyles = () => {};
   let themeKey = null;
   let themeFollow = null;
+  // Computed-style sampling stays off the mount task. applyLooks refreshes tokens only after the first applyTheme.
+  let themeReady = false;
   try {
     themeFollow = createThemeFollow({
       doc,
@@ -1213,6 +1215,7 @@ function buildBoardView(onFail, {
     applyPdfDark();
     const hl = syncBoardHighlighter(doc, root);
     try { themeFollow?.apply?.(); } catch { /* theme */ }
+    themeReady = true;
     // Cards repaint only when the dark flag or the highlighter flips, not on every html/body class change.
     const key = `${dark}|${hl}`;
     const flipped = themeKey !== null && key !== themeKey;
@@ -1222,7 +1225,8 @@ function buildBoardView(onFail, {
     repaintItemStyles();
     scheduleContent();
   };
-  applyTheme();
+  // applyTheme reads computed style (isLightHost, theme follow). That read stays off the mount task; the first
+  // frame applies it. A dark/light class change after mount still comes through the mutation observer.
 
   // ------------------------------------------------------------ state
   // Main keeps the 1.2 key. A sidebar copy adds the window kind. An embed keeps its own key.
@@ -1686,11 +1690,16 @@ function buildBoardView(onFail, {
   };
   const measure = () => {
     const r = root.getBoundingClientRect();
+    let box = null;
+    let bar = null;
+    try { box = viewport.getBoundingClientRect?.(); } catch { box = null; }
+    try { bar = root.querySelector?.(".pxd-toolbar")?.getBoundingClientRect?.() || null; } catch { bar = null; }
     rootRect = { left: r.left || 0, top: r.top || 0, width: r.width || 0, height: r.height || 0 };
     size = { width: rootRect.width, height: rootRect.height };
     root.classList.toggle("pxd-root--narrow", size.width > 0 && size.width < 560);
     readPane?.layout?.(size.width);
-    syncCramped();
+    const want = boardCramped(freeBoardArea(box, bar));
+    if (root.classList.contains("pxd-root--cramped") !== want) root.classList.toggle("pxd-root--cramped", want);
   };
 
   // ------------------------------------------------------------ layers
@@ -4613,6 +4622,7 @@ function buildBoardView(onFail, {
     root.classList.toggle("pxd-look--flat", setting("look-canvas", "dots") === "flat-grey");
     root.classList.toggle("pxd-look--pastel", setting("look-sections", "none") === "pastel");
     root.classList.toggle("pxd-look--tint", setting("look-highlights", "bar") === "tint");
+    if (!themeReady) return;
     try { themeFollow?.apply?.(); } catch { /* theme */ }
   };
   const applyMotion = () => {
@@ -6988,6 +6998,9 @@ function buildBoardView(onFail, {
     }
     paintTabStrip(next?.tabs || [], entry.uid);
   };
+  // Boot fits against 800×560 when the camera is not stored, because measuring there would read layout in the
+  // mount task. The first frame measures and fits again when this is set.
+  let refitWhenMeasured = false;
   const applyFullscreen = (on) => {
     isFullscreen = Boolean(on);
     fsDispose();
@@ -6998,7 +7011,21 @@ function buildBoardView(onFail, {
     if (isFullscreen) { root.style.height = ""; }
     else applyInlineHeight();
     syncFullscreenTabs();
-    timers.frame(() => { measure(); markViewport(); });
+    timers.frame(() => {
+      if (disposed || suspended) return;
+      applyTheme();
+      measure();
+      if (refitWhenMeasured) {
+        refitWhenMeasured = false;
+        if (size.width && size.height) {
+          const live = board();
+          const rs = live ? rects() : new Map();
+          vp = fitViewport(boundsOf([...rs.values()]), size, { padding: 64, maxZoom: 1 });
+          applyLod();
+        }
+      }
+      markViewport();
+    });
   };
   const requestFullscreen = (on) => {
     applyFullscreen(on);
@@ -8831,6 +8858,9 @@ function buildBoardView(onFail, {
     if (disposed || suspended) return;
     const b = board();
     if (!b) return;
+    // The mount task no longer measures. The first shell frame reads the board size before it appends cards,
+    // so the open split still sees the view. A later read, after those cards, is a different frame.
+    if (!size.width) measure();
     if (!coverPaintAt) {
       coverPaintAt = Date.now();
       armCoverWarm();
@@ -8929,7 +8959,11 @@ function buildBoardView(onFail, {
       if (tooltip.isVisible()) tooltip.hide();
       // offsetHeight in place() forces layout. During a gesture or a wheel burst the toolbar height
       // does not change, and that read was the long task on a 300-card board; the settle places it.
-      if (!gesturing && !wheelLayer) propsPanel.place();
+      // The frame that just built shells must not read it either: that read lands on the next frame.
+      if (!gesturing && !wheelLayer) {
+        if (itemsChanged) timers.frame(() => { if (!disposed && !suspended && !gesturing && !wheelLayer) propsPanel.place(); });
+        else propsPanel.place();
+      }
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) liftBurst = true;
     if (dirty.selection || itemsChanged) {
@@ -9232,12 +9266,12 @@ function buildBoardView(onFail, {
 
   // ------------------------------------------------------------ boot
   applyFullscreen(fullscreen);
-  measure();
   if (autofocus) { try { root.focus({ preventScroll: true }); } catch { /* stub */ } }
   if (!vp) {
+    refitWhenMeasured = true;
     const b = board();
     const r = b ? rects() : new Map();
-    vp = fitViewport(boundsOf([...r.values()]), size.width && size.height ? size : { width: 800, height: 560 }, { padding: 64, maxZoom: 1 });
+    vp = fitViewport(boundsOf([...r.values()]), { width: 800, height: 560 }, { padding: 64, maxZoom: 1 });
   }
   applyBackground();
   applyMotion();

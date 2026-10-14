@@ -74,7 +74,8 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     if (observed !== tb) {
       resize?.disconnect();
       observed = tb;
-      toolbarH = tb.offsetHeight || 0;
+      // The first offsetHeight forced a layout of the board during mount and again in the go-live frame.
+      // Height stays 0 until the observer reports, and place() uses its 44px fallback until then.
       resize = new RO(() => {
         const next = observed?.offsetHeight || 0;
         if (next === toolbarH) return;

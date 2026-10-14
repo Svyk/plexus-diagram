@@ -8,8 +8,10 @@ const MAX_SIDE = 2048;
 export function createGestureUnderlay({ doc, world, root, before = null } = {}) {
   let canvas = null;
   let shown = false;
+  let colorCache = null;
 
   const colors = () => {
+    if (colorCache) return colorCache;
     const read = (name, fallback) => {
       let v = "";
       try { v = root?.style?.getPropertyValue?.(name) || ""; } catch { v = ""; }
@@ -18,7 +20,8 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
       }
       return String(v).trim() || fallback;
     };
-    return { card: read("--pxd-card", "rgba(128,128,128,0.35)"), line: read("--pxd-muted", "rgba(128,128,128,0.6)") };
+    colorCache = { card: read("--pxd-card", "rgba(128,128,128,0.35)"), line: read("--pxd-muted", "rgba(128,128,128,0.6)") };
+    return colorCache;
   };
 
   const hide = () => {
@@ -34,6 +37,8 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
     for (const [a, b] of edges) for (const r of [a, b]) { x0 = Math.min(x0, r.x + r.w / 2); y0 = Math.min(y0, r.y + r.h / 2); x1 = Math.max(x1, r.x + r.w / 2); y1 = Math.max(y1, r.y + r.h / 2); }
     const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
     const scale = Math.max(0.01, Math.min(zoom * Math.min(dpr, 1.25), MAX_SIDE / w, MAX_SIDE / h));
+    // Colours before the canvas exists. getComputedStyle after create/insert/size forced layout in the shell frame.
+    const c = colors();
     if (!canvas) {
       canvas = doc.createElement("canvas");
       canvas.className = "pxd-underlay";
@@ -47,7 +52,6 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
     let ctx = null;
     try { ctx = canvas.getContext?.("2d") || null; } catch { ctx = null; }
     if (!ctx) { hide(); return 0; }
-    const c = colors();
     try {
       paint(ctx, { items, edges, c, scale, x0, y0, bw, bh });
     } catch {

@@ -13,7 +13,7 @@ import { createDomStub } from "./fixtures/dom-stub.js";
 
 afterEach(() => resetSessions());
 
-const timers = { later: () => () => {}, frame: () => () => {} };
+const timers = { later: () => () => {}, frame(fn) { fn(); return () => {}; } };
 
 function setup(values = {}, on = {}) {
   const stub = createDomStub();

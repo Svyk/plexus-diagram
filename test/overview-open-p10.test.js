@@ -9,6 +9,7 @@ import { buildBoard, worldRects } from "../src/model/board.js";
 import { defaultSpeedFlags, parseSpeedFlags } from "../src/settings.js";
 import { createCoverRepaintJob, mountBoardView } from "../src/view/board-view.js";
 import { createItemRenderer } from "../src/view/cards.js";
+import { createGestureUnderlay } from "../src/view/gesture-underlay.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const blk = (uid, string, plexus, order) => ({
@@ -173,6 +174,168 @@ test("detail zoom does not paint the overview cover before it goes live", () => 
   } finally {
     detail.done();
     thaw();
+  }
+});
+
+// Layout reads during mountBoardView are the MessagePort task. A read after a card is appended is the
+// shell frame. Indicator writes must follow the offset reads, not sit between them.
+function spyLayout(stub) {
+  const counts = { mountRect: 0, mountStyle: 0, afterItem: 0 };
+  const events = [];
+  let phase = "mount";
+  let itemAppended = false;
+  const isShell = (node) => {
+    const cls = typeof node?.className === "string" ? node.className : "";
+    return cls.split(/\s+/).some((name) => name === "pxd-item" || name === "pxd-section");
+  };
+  const watch = (el) => {
+    if (!el || el._layoutSpy || typeof el.getBoundingClientRect !== "function") return el;
+    el._layoutSpy = true;
+    const rect = el.getBoundingClientRect.bind(el);
+    el.getBoundingClientRect = () => {
+      events.push("read");
+      if (phase === "mount") counts.mountRect += 1;
+      if (phase === "frame" && itemAppended) counts.afterItem += 1;
+      return rect();
+    };
+    const append = el.append.bind(el);
+    el.append = (...nodes) => {
+      if (phase === "frame") for (const node of nodes) if (isShell(node)) itemAppended = true;
+      return append(...nodes);
+    };
+    const insertBefore = el.insertBefore.bind(el);
+    el.insertBefore = (node, ref) => {
+      if (phase === "frame" && isShell(node)) itemAppended = true;
+      return insertBefore(node, ref);
+    };
+    const setProperty = el.style.setProperty.bind(el.style);
+    el.style.setProperty = (name, value) => {
+      if (String(name).startsWith("--pxd-ind-")) events.push("ind");
+      return setProperty(name, value);
+    };
+    return el;
+  };
+  const orig = stub.document.createElement.bind(stub.document);
+  stub.document.createElement = (tag) => watch(orig(tag));
+  const origNS = stub.document.createElementNS.bind(stub.document);
+  stub.document.createElementNS = (ns, tag) => watch(origNS(ns, tag));
+  watch(stub.document.body);
+  watch(stub.document.documentElement);
+  const origStyle = stub.window.getComputedStyle.bind(stub.window);
+  stub.window.getComputedStyle = (el) => {
+    events.push("style");
+    if (phase === "mount") counts.mountStyle += 1;
+    if (phase === "frame" && itemAppended) counts.afterItem += 1;
+    return origStyle(el);
+  };
+  globalThis.getComputedStyle = stub.window.getComputedStyle;
+  const flushOne = () => {
+    const frame = stub.frames.shift();
+    if (!frame) return false;
+    phase = "frame";
+    itemAppended = false;
+    frame.fn(16);
+    phase = "between";
+    return true;
+  };
+  return { counts, events, flushOne };
+}
+
+function mountSpread(stub) {
+  stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify({ x: 0, y: 0, zoom: 0.1 }));
+  const board = buildBoard(rawBoard(spreadBoard()));
+  const host = {
+    stats: {}, graph: "Svy",
+    renderString(node, string) { node.textContent = string; },
+    renderBlock(node, uid) { node.textContent = uid; },
+    unmount() {},
+    pagePreview: () => ({ exists: false, blocks: [] }),
+    pullTree: () => [],
+    blockString: () => null,
+    openBlock() {},
+    openInSidebar() {},
+    searchPages: () => [],
+    searchBlocks: () => [],
+    related: () => [],
+  };
+  const session = {
+    uid: board.uid, board, rects: worldRects(board), links: [], coveredEdges: new Set(),
+    on() { return () => {}; }, release() {}, setLinkMode() {},
+  };
+  const mountEl = stub.document.createElement("div");
+  mountEl.className = "pxd-mount";
+  stub.document.body.append(mountEl);
+  const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "1.0.0" });
+  return view;
+}
+
+test("map zoom mount reads no layout, and the shell frame does not read after a card", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  const spy = spyLayout(stub);
+  const view = mountSpread(stub);
+  try {
+    assert.equal(spy.counts.mountRect, 0);
+    assert.equal(spy.counts.mountStyle, 0);
+    const btn = view.root.querySelector(".pxd-dock__btn--on");
+    assert.ok(btn);
+    btn._rect = { left: 4, top: 8, width: 36, height: 32, right: 40, bottom: 40, x: 4, y: 8 };
+    let built = 0;
+    let guard = 0;
+    while (stub.frames.length && guard < 8 && built === 0) {
+      guard += 1;
+      const before = spy.counts.afterItem;
+      const had = view.stats().shells;
+      spy.flushOne();
+      const next = view.stats().shells;
+      if (next > had) {
+        built = next - had;
+        assert.equal(spy.counts.afterItem, before);
+      }
+    }
+    assert.ok(built > 0 && built <= 30, `first shell frame built ${built}`);
+    const inds = spy.events.map((event, index) => (event === "ind" ? index : -1)).filter((index) => index >= 0);
+    assert.ok(inds.length >= 4);
+    const between = spy.events.slice(inds[0], inds[inds.length - 1] + 1);
+    assert.equal(between.filter((event) => event === "read").length, 0);
+  } finally {
+    view.dispose();
+    restore();
+  }
+});
+
+test("overview cover reads colours before it writes the canvas", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const doc = stub.document;
+    const root = doc.createElement("div");
+    root.className = "pxd-root";
+    const world = doc.createElement("div");
+    root.append(world);
+    const order = [];
+    const origStyle = stub.window.getComputedStyle.bind(stub.window);
+    stub.window.getComputedStyle = (el) => { order.push("style"); return origStyle(el); };
+    const origCreate = doc.createElement.bind(doc);
+    doc.createElement = (tag) => {
+      if (tag === "canvas") order.push("canvas");
+      return origCreate(tag);
+    };
+    const origInsert = world.insertBefore.bind(world);
+    world.insertBefore = (node, ref) => { order.push("insert"); return origInsert(node, ref); };
+    const underlay = createGestureUnderlay({ doc, world, root });
+    const box = { x: 0, y: 0, w: 10, h: 10 };
+    underlay.draw({ items: [{ uid: "a", rect: box }], zoom: 0.1 });
+    const styleAt = order.indexOf("style");
+    assert.ok(styleAt >= 0);
+    assert.ok(styleAt < order.indexOf("canvas"));
+    assert.ok(styleAt < order.indexOf("insert"));
+    const styles = order.filter((event) => event === "style").length;
+    underlay.draw({ items: [{ uid: "b", rect: { x: 20, y: 0, w: 10, h: 10 } }], zoom: 0.1 });
+    assert.equal(order.filter((event) => event === "style").length, styles);
+    underlay.dispose();
+  } finally {
+    restore();
   }
 });
 

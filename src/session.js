@@ -80,6 +80,8 @@ import { coveredBy, filterLinks, linksQuery, reduceLinks } from "./model/links.j
 import { isQueryString } from "./model/query.js";
 import { autoEligibility, storedLayoutIn } from "./discovery.js";
 import { createEchoLedger, createWriteQueue } from "./host/roam.js";
+import { sharedBgBudget } from "./bg-budget.js";
+import { notedSpeedFlags } from "./settings.js";
 import { executeImport, planImport, readNative, readV06Entry } from "./host/migrate.js";
 
 const UID = ":block/uid";
@@ -99,6 +101,10 @@ export const RESUME_RETRY_MS = 1000;
 export const HIGHLIGHT_HOLD_MS = 60000;
 // Link-query targets per idle slice on a big board.
 const LINK_CHUNK = 120;
+// P8 U2: a big board's links start after the board sat still this long, and size each part to the slice left
+// (refs read: ~0.3-0.5 ms per target on the PhD main board).
+const LINK_QUIET_MS = 1500;
+const LINK_MS_PER_TARGET = 0.4;
 const DAILY_GAP = 20;
 const HIGHLIGHT_WATCH_CAP = 60;
 
@@ -1596,6 +1602,30 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       const ric = globalThis.requestIdleCallback;
       // A big board (PhD main board: ~1,000 card eids, one 1.7 s query) reads its link rows LINK_CHUNK targets
       // per idle slice; the links publish once, after the last slice.
+      if (inputs && inputs.eids.length > LINK_CHUNK && typeof ric === "function" && !idle && notedSpeedFlags().bgBudget !== false) {
+        const epoch = linkEpoch;
+        const rows = [];
+        let i = 0;
+        let per = LINK_MS_PER_TARGET;
+        const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
+        linkJob = sharedBgBudget().run((deadline) => {
+          if (destroyed || epoch !== linkEpoch) { linkJob = null; finishLinks(); return true; }
+          try {
+            const n = Math.max(8, Math.min(LINK_CHUNK, Math.floor(Math.max(4, deadline.timeRemaining()) / per)));
+            const t0 = clock();
+            rows.push(...linkRows(inputs, inputs.eids.slice(i, i + n)));
+            per = Math.max(0.02, (per + (clock() - t0) / n) / 2);
+            i += n;
+            if (i < inputs.eids.length) return false;
+            finishLinkRows(inputs, rows);
+            recomputeLinks(false);
+          } catch (err) { console.error("[plexus session] links", err); }
+          linkJob = null;
+          finishLinks();
+          return true;
+        }, { timeout: 1000, firstQuiet: LINK_QUIET_MS });
+        return;
+      }
       if (inputs && inputs.eids.length > LINK_CHUNK && typeof ric === "function" && !idle) {
         const epoch = linkEpoch;
         const rows = [];
@@ -1626,8 +1656,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   // One rAF chain is in flight at a time. A hidden tab pauses frames, and every board change used to queue
   // another pair of closures behind the paused ones.
   let linkChain = null;
+  let linkJob = null;
   function cancelScheduledLinks(keepChain = false) {
     linkEpoch += 1;
+    if (linkJob) { const stop = linkJob; linkJob = null; stop(); }
     if (!keepChain) linkChain = null;
     if (linkTimer) clearTimeout(linkTimer);
     linkTimer = null;

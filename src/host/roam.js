@@ -30,6 +30,7 @@ import { SPLIT_WATCH_MIN, containerKind, createSplitWatch, treeSize } from "./sp
 import { notedSpeedFlags } from "../settings.js";
 import { linksQuery } from "../model/links.js";
 import { createSlicedRead } from "./sliced-read.js";
+import { sharedBgBudget } from "../bg-budget.js";
 
 // Pull results equal but for Roam's own reader state (:pdf-settings: page, scale). Exits at the first other change.
 const READER_STATE = ":pdf-settings";
@@ -912,7 +913,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const idleLater = (idle, fn) => {
     const key = {};
     const run = (deadline) => { idleHandles.delete(key); fn(deadline); };
-    if (typeof idle === "function") idleHandles.set(key, { idle: idle(run, { timeout: 1500 }) });
+    // P8 U2: the shared background budget (quiet after input, 30 ms slices) unless the speed flag is off.
+    if (typeof idle === "function" && notedSpeedFlags().bgBudget !== false) idleHandles.set(key, { cancel: sharedBgBudget().idle(run, { timeout: 1500 }) });
+    else if (typeof idle === "function") idleHandles.set(key, { idle: idle(run, { timeout: 1500 }) });
     else idleHandles.set(key, { timer: setTimeout(run, 250) });
   };
   // uid -> pull sequence number at which its last board watch was dropped.
@@ -928,9 +931,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const STATS_PART = 20;
   const STATS_TTL_MS = 120000;
   // Idle work after an open: parts this small, until ~IDLE_SLICE_MS of a slice is used.
-  const IDLE_SLICE_MS = 40;
-  const IDLE_RESERVE_MS = 8;
-  const IDLE_REF_PART = 60;
+  // P8 U2: 30 ms slices; 60 refs were one ~42 ms part on the PhD main board.
+  const IDLE_SLICE_MS = 30;
+  const IDLE_RESERVE_MS = 6;
+  const IDLE_REF_PART = 30;
   const MISS = Symbol("pull-miss");
   const rawPull = typeof data.pull === "function" ? data.pull.bind(data) : () => null;
   const parseEntity = (entity) => {
@@ -1811,6 +1815,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (armTimer != null) { clearTimeout(armTimer); armTimer = null; }
       for (const h of idleHandles.values()) {
         if (h.timer != null) clearTimeout(h.timer);
+        else if (h.cancel) h.cancel();
         else try { globalThis.cancelIdleCallback?.(h.idle); } catch { /* already ran */ }
       }
       idleHandles.clear();

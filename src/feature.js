@@ -1,6 +1,7 @@
 import pkg from "../package.json" with { type: "json" };
 import { createHost } from "./host/roam.js";
 import { acquireSession as acquireSessionDefault, hasSession } from "./session.js";
+import { bindBgBudgetFlag, resetSharedBgBudget } from "./bg-budget.js";
 import { clearPinnedToast, mountBoardView, viewportStorageId } from "./view/board-view.js";
 import {
   captureSketch,
@@ -272,6 +273,7 @@ export async function installPlexusDiagram({
     enabled: () => notedSpeedFlags().snapshot !== false,
   });
   const speedFlags = () => notedSpeedFlags();
+  bindBgBudgetFlag(() => speedFlags().bgBudget !== false);
   // Sessions outlive a settings change (they are ref-counted and kept), so they read through this accessor.
   const liveSettings = { get: (id) => settings[id] };
   let stopped = false;
@@ -399,6 +401,7 @@ export async function installPlexusDiagram({
   const editSeen = new Map();
   lifecycle.add(() => previewBoards.clear());
   lifecycle.add(() => clearPinnedToast());
+  lifecycle.add(() => resetSharedBgBudget());
   let cacheLoadMs = null;
   // A board that left the enhanced set or was deleted takes its chips with it.
   const dropBoardCards = (uid) => {

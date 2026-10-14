@@ -407,6 +407,7 @@ export function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW
       if (table) {
         // Tick marks in a graph's grid are not cells. Leave the rules for the figure pass.
         if (chartGrid(table)) continue;
+        for (const w of table.usedWords) usedWords.add(w);
         released.push(...(table.released || []));
         delete table.released;
         tables.push(table);
@@ -847,7 +848,7 @@ function ruleUnderRow(rules, grid, r) {
 function finishTable(grid, cells, boxes, ysAll, usedWords, splitFixes, released, pageRules) {
   const { xs, ys, rows, cols } = grid;
   const bx0 = xs[0]; const bx1 = xs[cols]; const by0 = ys[0]; const by1 = ys[rows];
-  for (const cell of cells) for (const w of cell.words) usedWords.add(w);
+  const cellWords = cells.flatMap((cell) => cell.words);
   // Header rows: shaded (light box over the row) or all-bold leading rows, or a double rule below.
   // Header shading: a fill (light or dark) that covers the leading rows and no later row;
   // zebra striping recurs down the body and is not a header.
@@ -920,6 +921,7 @@ function finishTable(grid, cells, boxes, ysAll, usedWords, splitFixes, released,
     bbox: [round(bx0), round(by0), round(bx1), round(by1)],
     rows, cols, headerRows, headerCols,
     cells, method: "lattice",
+    usedWords: cellWords,
     grid: { xs: xs.map(round), ys: ys.map(round) },
     confidence: round(confidence),
     released,

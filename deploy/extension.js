@@ -37255,6 +37255,107 @@ init_timeline();
 init_board();
 init_why();
 init_pdf_page();
+
+// src/model/query-fold.js
+var QUERY_RE = /\{\{\s*(?:\[\[query\]\]|query)\s*:/i;
+var DIAGRAM_RE2 = /\{\{(?:\[\[)?diagram(?:\]\])?/;
+var QUERY_CAPTION_MAX = 120;
+var QUERY_CAPTION_PREFIX = "Query · ";
+var hasQueryMacro = (s) => QUERY_RE.test(String(s ?? ""));
+var isDiagramString = (s) => DIAGRAM_RE2.test(String(s ?? ""));
+function unwrapQuery(s) {
+  const m = QUERY_RE.exec(s);
+  if (!m) return s;
+  const start = m.index;
+  let i = start + m[0].length;
+  let depth = 2;
+  for (; i < s.length && depth > 0; i += 1) {
+    if (s[i] === "{") depth += 1;
+    else if (s[i] === "}") depth -= 1;
+  }
+  const end = depth === 0 ? i : s.length;
+  const body = s.slice(start + m[0].length, depth === 0 ? end - 2 : end);
+  return `${s.slice(0, start)} ${body} ${s.slice(end)}`;
+}
+function plainQueryText(string) {
+  let s = unwrapQuery(String(string ?? ""));
+  for (let pass = 0; pass < 8; pass += 1) {
+    const next = s.replace(/\[\[([^[\]]*)\]\]/g, "$1").replace(/\(\(([^()]*)\)\)/g, "$1");
+    if (next === s) break;
+    s = next;
+  }
+  s = s.replace(/\[\[|\]\]|\(\(|\)\)/g, "").replace(/#/g, "").replace(/::/g, ":");
+  while (/\{\{|\}\}/.test(s)) s = s.replace(/\{\{/g, "{ {").replace(/\}\}/g, "} }");
+  return s.replace(/\s+/g, " ").trim();
+}
+function queryCaption(string) {
+  const text4 = plainQueryText(string);
+  if (!text4) return QUERY_CAPTION_PREFIX.trim().replace(/\s*·$/, "");
+  const full = QUERY_CAPTION_PREFIX + text4;
+  if (full.length <= QUERY_CAPTION_MAX) return full;
+  return `${full.slice(0, QUERY_CAPTION_MAX - 1).trimEnd()}…`;
+}
+function planQueryFolds({ pageUid: pageUid2 = "", boardUid = "", graph = "", kidsOfMany, newUid, limit = 2e4 } = {}) {
+  const plan = { graph, boardUid, pageUid: pageUid2, folds: [], visited: 0, truncated: false };
+  if (!pageUid2 || typeof kidsOfMany !== "function") return plan;
+  let level = [pageUid2];
+  const seen = new Set(level);
+  while (level.length && !plan.truncated) {
+    let kids = null;
+    try {
+      kids = kidsOfMany(level);
+    } catch {
+      kids = null;
+    }
+    if (!(kids instanceof Map)) break;
+    const next = [];
+    for (const parentUid of level) {
+      const list = (kids.get(parentUid) || []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      for (let i = 0; i < list.length; i += 1) {
+        const kid = list[i];
+        if (!kid?.uid || seen.has(kid.uid)) continue;
+        seen.add(kid.uid);
+        plan.visited += 1;
+        if (plan.visited > limit) {
+          plan.truncated = true;
+          break;
+        }
+        const string = String(kid.string ?? "");
+        if (isDiagramString(string)) continue;
+        if (hasQueryMacro(string)) {
+          let captionUid = "";
+          try {
+            captionUid = String(newUid?.() || "");
+          } catch {
+            captionUid = "";
+          }
+          if (!captionUid) continue;
+          plan.folds.push({ queryUid: kid.uid, captionUid, parentUid, order: i, caption: queryCaption(string), string });
+          continue;
+        }
+        if (kid.open !== false) next.push(kid.uid);
+      }
+      if (plan.truncated) break;
+    }
+    level = next;
+  }
+  return plan;
+}
+function queryFoldLines(plan, max = 12) {
+  const folds = plan?.folds || [];
+  const lines = folds.slice(0, max).map((f) => f.caption);
+  if (folds.length > max) lines.push(`and ${folds.length - max} more`);
+  return lines;
+}
+var QUERY_NUDGE_HELD_MS = 1500;
+var queryNudgeKey = (graph, pageUid2) => `plexus-diagram:query-nudge:${graph || ""}:${pageUid2 || ""}`;
+function shouldNudgeQueries({ entry, seen = false } = {}) {
+  if (seen || !entry || entry.kind === "sidebar") return false;
+  const held = Number(entry.firstPaintMs) - Number(entry.paintTaskMs);
+  return Number.isFinite(held) && held >= QUERY_NUDGE_HELD_MS;
+}
+
+// src/session.js
 init_trails();
 init_schema();
 init_drawing_card();
@@ -37446,7 +37547,7 @@ var PREPAINT_STYLE_ID = "plexus-diagram-prepaint-guard";
 var PENDING_CLASS = "pxd-native-pending";
 var NATIVE_HIDDEN_CLASS = "pxd-native-hidden";
 var OUTLINE_NATIVE_CLASS = "pxd-outline-native";
-function isDiagramString(value) {
+function isDiagramString2(value) {
   const text4 = String(value ?? "");
   if (text4.indexOf("{") === -1) return false;
   return DIAGRAM_MARKER.test(text4);
@@ -38806,7 +38907,7 @@ var ciPattern = (text4) => `(?i)${String(text4).replace(/[.*+?^${}()|[\]\\]/g, "
 var NATIVE_PATTERN = `[:block/props
  {:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
-var DIAGRAM_RE2 = "^\\{\\{(\\[\\[)?diagram";
+var DIAGRAM_RE3 = "^\\{\\{(\\[\\[)?diagram";
 var BLOCK_KIND_PATTERNS = {
   pdf: "\\{\\{(\\[\\[)?pdf(\\]\\])?:",
   image: "!\\[[^\\]]*\\]\\(",
@@ -38815,7 +38916,7 @@ var BLOCK_KIND_PATTERNS = {
   pin: "plexus-pin\\]\\]:"
 };
 var DIAGRAM_STRING = /^\s*\{\{(?:\[\[)?diagram/i;
-var DIAGRAM_FIND = new RegExp(DIAGRAM_RE2);
+var DIAGRAM_FIND = new RegExp(DIAGRAM_RE3);
 var STATS_PULL = `[:db/id {(limit :block/_refs nil) [:db/id {:block/parents [:db/id :block/string]}]} {(limit :block/_parents nil) [:db/id {:block/refs [:db/id]}]} {:block/_page [:db/id {:block/refs [:db/id]}]}]`;
 function listOf(value) {
   if (value == null) return [];
@@ -38862,6 +38963,7 @@ var PDF_BLOCK_OUT_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?pag
 var PDF_BLOCK_IN_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?b :block/refs ?p] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
 var PDF_KIDS_PATTERN = `[:block/uid {(limit :block/children nil) [:block/uid :block/string :block/order :block/props
  {(limit :block/children nil) [:block/uid :block/string :block/order :block/props]}]}]`;
+var OUTLINE_KIDS_PATTERN = "[:block/uid {(limit :block/children nil) [:block/uid :block/string :block/open :block/order]}]";
 var PDF_PAGE_PATTERN = "[:block/uid :node/title {(limit :block/children nil) [:block/uid :block/string :block/order]}]";
 var PDF_HASH_PAGE_QUERY = `[:find ?u ?t :in $ ?h :where [?p :pdf/content-hash ?h] [?p :block/uid ?u] [?p :node/title ?t]]`;
 var PDF_TOP_BLOCK_QUERY = `[:find ?u ?t :in $ ?url :where [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/page ?p] [?p :block/children ?b] [?p :block/uid ?u] [?p :node/title ?t]]`;
@@ -39888,13 +39990,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?b :block/parents ?d] [?d :block/string ?s]
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
         blockUids,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ));
       const via = timed("orphan-refs", () => host.q(
         `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?card :block/refs ?b] [?card :block/parents ?d]
  [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
         blockUids,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ));
       for (const rec of [...direct, ...via]) if (rec?.[0]) onUid.add(rec[0]);
     }
@@ -39903,7 +40005,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         `[:find ?t :in $ [?t ...] ?pat :where [?p :node/title ?t] [?card :block/refs ?p] [?card :block/parents ?d]
  [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
         pageTitles2,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ));
       for (const rec of via) if (rec?.[0]) onTitle.add(rec[0]);
     }
@@ -40385,6 +40487,32 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const res = pull("[:block/props]", eidKey(uid));
       const props = res?.[":block/props"];
       return props && typeof props === "object" ? plainKeys(props) : {};
+    },
+    // One outline level per parent (page or block): Map(parentUid -> [{ uid, string, open, order }]). One pull_many
+    // for the whole level; "Fold queries on this page" walks only the open part of a page with it.
+    outlineKids(parentUids) {
+      const out = /* @__PURE__ */ new Map();
+      const ids = [...new Set((parentUids || []).filter((id) => typeof id === "string" && id))];
+      if (!ids.length) return out;
+      let res = null;
+      try {
+        res = typeof data.pull_many === "function" ? data.pull_many(OUTLINE_KIDS_PATTERN, ids.map(eidKey)) : ids.map((id) => rawPull(OUTLINE_KIDS_PATTERN, eidKey(id)));
+      } catch {
+        res = null;
+      }
+      if (!Array.isArray(res)) return out;
+      for (const node2 of res) {
+        const id = node2?.[":block/uid"];
+        if (typeof id !== "string") continue;
+        const kids = Array.isArray(node2[":block/children"]) ? node2[":block/children"] : [];
+        out.set(id, kids.map((k) => ({
+          uid: k?.[":block/uid"],
+          string: typeof k?.[":block/string"] === "string" ? k[":block/string"] : "",
+          open: k?.[":block/open"] !== false,
+          order: Number.isFinite(k?.[":block/order"]) ? k[":block/order"] : 0
+        })).filter((k) => typeof k.uid === "string" && k.uid));
+      }
+      return out;
     },
     pullTree(uid, depth = 2, limit = 12) {
       const id = String(uid ?? "");
@@ -41161,7 +41289,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const rows = host.q(
         `[:find ?u ?s ?pt ?pu :in $ ?pat :where [?b :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
  [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt] [?p :block/uid ?pu]]`,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ) || [];
       const out = [];
       for (const [uid, string, pageTitle, pageUid2] of rows) {
@@ -41198,7 +41326,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const rows = host.q(
         `[:find ?eu ?bu :in $ ?pat :where [?c :block/string "Connections"] [?b :block/children ?c] [?b :block/string ?s]
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?b :block/uid ?bu] [?c :block/children ?e] [?e :block/uid ?eu]]`,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ) || [];
       return rows.slice(0, limit).map(([edgeUid, boardUid]) => [edgeUid, boardUid]);
     },
@@ -41208,7 +41336,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const rows = host.q(
         `[:find ?eu ?bu ?es ?bs :in $ ?pat :where [?c :block/string "Connections"] [?b :block/children ?c] [?b :block/string ?bs]
  [(re-pattern ?pat) ?re] [(re-find ?re ?bs)] [?b :block/uid ?bu] [?c :block/children ?e] [?e :block/uid ?eu] [?e :block/string ?es]]`,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ) || [];
       return rows.slice(0, limit).map(([edgeUid, boardUid, edgeString2, boardString2]) => [
         edgeUid,
@@ -41276,7 +41404,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [(not= ?d ?board)]]`,
           eids,
           boardEid,
-          DIAGRAM_RE2
+          DIAGRAM_RE3
         ), "boards");
         const listFor = (statusEid) => host.q(
           `[:find ?t ?x :in $ [?t ...] ?status :where [?x :block/refs ?status] (or [?x :block/parents ?t] [?x :block/page ?t])]`,
@@ -41626,13 +41754,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
  [?child :block/parents ?d] [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
  [?d :block/uid ?u] [?d :block/page ?p] [?p :node/title ?pt]]`,
             f.tag,
-            DIAGRAM_RE2
+            DIAGRAM_RE3
           ));
         } else {
           found = timed("boards", () => host.q(
             `[:find ?u ?s ?pt :in $ ?pat :where [?b :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
  [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt]]`,
-            DIAGRAM_RE2
+            DIAGRAM_RE3
           ));
         }
         for (const rec of found) {
@@ -41834,7 +41962,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         const users = {};
         if (spec.createdBy) users.created = userIdsFor(spec.createdBy);
         if (spec.editedBy) users.edited = userIdsFor(spec.editedBy);
-        const plan = browseQuery(spec, { patterns: { ...BLOCK_KIND_PATTERNS, board: DIAGRAM_RE2 }, users, sort });
+        const plan = browseQuery(spec, { patterns: { ...BLOCK_KIND_PATTERNS, board: DIAGRAM_RE3 }, users, sort });
         const found = plan ? timed("browse", () => host.q(plan.query, ...plan.args)) : [];
         let counts = null;
         const countBy = browseCountBy(spec, sort);
@@ -42162,14 +42290,14 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         `[:find ?u ?s ?pt :in $ ?uid ?pat :where [?c :block/uid ?uid] [?c :block/parents ?d] [?d :block/uid ?u] [?d :block/string ?s]
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?d :block/page ?p] [?p :node/title ?pt]]`,
         cardUid,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ) || [] : [];
       const viaRows = pageTitle || targetUid ? host.q(
         pageTitle ? `[:find ?u ?s ?pt :in $ ?title ?pat :where [?t :node/title ?title] [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/uid ?u] [?d :block/string ?s]
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?d :block/page ?p] [?p :node/title ?pt]]` : `[:find ?u ?s ?pt :in $ ?uid ?pat :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/parents ?d] [?d :block/uid ?u] [?d :block/string ?s]
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?d :block/page ?p] [?p :node/title ?pt]]`,
         pageTitle || targetUid,
-        DIAGRAM_RE2
+        DIAGRAM_RE3
       ) || [] : [];
       const refRows = pageTitle || targetUid ? host.q(
         pageTitle ? `[:find ?u ?ss ?pt :in $ ?title :where [?p :node/title ?title] [?b :block/refs ?p] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]` : `[:find ?u ?ss ?pt :in $ ?uid :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`,
@@ -42227,8 +42355,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       let direct = [];
       let via = [];
       try {
-        direct = host.q(SHOW_DIRECT_QUERY, id, DIAGRAM_RE2) || [];
-        via = host.q(SHOW_REF_QUERY, id, DIAGRAM_RE2) || [];
+        direct = host.q(SHOW_DIRECT_QUERY, id, DIAGRAM_RE3) || [];
+        via = host.q(SHOW_REF_QUERY, id, DIAGRAM_RE3) || [];
       } catch {
         return null;
       }
@@ -45200,6 +45328,96 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         }
         return { folded: folds.length, edges };
       }, custom);
+    },
+    // "Fold queries on this page": the plan for the page that holds this board (queries outside every board).
+    queryFoldPlan({ limit } = {}) {
+      let pageUid2 = "";
+      try {
+        pageUid2 = String(host.blockPageUid?.(uid) || "");
+      } catch {
+        pageUid2 = "";
+      }
+      let graph = "";
+      try {
+        graph = String(host.graphName?.() || "");
+      } catch {
+        graph = "";
+      }
+      return planQueryFolds({
+        pageUid: pageUid2,
+        boardUid: uid,
+        graph,
+        limit,
+        kidsOfMany: (ids) => typeof host.outlineKids === "function" ? host.outlineKids(ids) : /* @__PURE__ */ new Map(),
+        newUid: () => host.generateUid?.() || ""
+      });
+    },
+    // Applies a queryFoldPlan: each query that is still where the plan saw it gets a folded caption in its place and
+    // moves under it. The blocks are outside the board, so this writes straight through the queue (no board model
+    // change). One custom undo entry with recorded inverse writes; a second run plans nothing.
+    foldPageQueries(plan) {
+      if (!plan || plan.boardUid !== uid || destroyed || gone) return Promise.resolve({ folded: 0, refused: "board" });
+      let graphNow = "";
+      try {
+        graphNow = String(host.graphName?.() || "");
+      } catch {
+        graphNow = "";
+      }
+      if (plan.graph && graphNow && plan.graph !== graphNow) return Promise.resolve({ folded: 0, refused: "graph" });
+      const folds = [];
+      for (const f of plan.folds || []) {
+        if (!f?.queryUid || !f.captionUid) continue;
+        let loc = null;
+        try {
+          loc = host.blockLocation?.(f.queryUid) || null;
+        } catch {
+          loc = null;
+        }
+        if (!loc || loc.parentUid !== f.parentUid) continue;
+        const now5 = host.pullEntity?.("[:block/string]", f.queryUid)?.[":block/string"];
+        if (!hasQueryMacro(now5)) continue;
+        folds.push({ ...f, order: loc.order });
+      }
+      if (!folds.length) return Promise.resolve({ folded: 0 });
+      const list = [];
+      for (const f of folds) {
+        list.push({ op: "create", uid: f.captionUid, parent: f.parentUid, order: f.order, string: f.caption, open: false });
+        list.push({ op: "move", uid: f.queryUid, parent: f.captionUid, order: 0 });
+      }
+      if (!bulkAllowed(list.length)) return Promise.resolve({ folded: 0, refused: "bulk" });
+      const custom = {
+        forward: list,
+        async undo() {
+          const back = folds.slice().sort((a, b) => a.parentUid < b.parentUid ? -1 : a.parentUid > b.parentUid ? 1 : b.order - a.order);
+          await execute(back.map((f) => ({ op: "move", uid: f.queryUid, parent: f.parentUid, order: f.order })));
+          for (const f of back) {
+            let out = false;
+            for (let tries = 0; tries < 15 && !out; tries += 1) {
+              const loc = host.blockLocation?.(f.queryUid);
+              out = !loc || loc.parentUid !== f.captionUid;
+              if (!out) await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+            if (out) await execute([{ op: "delete", uid: f.captionUid }]);
+          }
+        },
+        async redo() {
+          await execute(custom.forward);
+        }
+      };
+      return queue.run(() => grouped(async () => {
+        host.setCustomUndo?.(custom);
+        try {
+          await execute(list, { hold: true });
+        } catch (err) {
+          host.setCustomUndo?.(null);
+          throw err;
+        }
+      })).then(() => ({ folded: folds.length }), (err) => {
+        console.error("[plexus session] fold queries failed", err);
+        setSyncState("failed");
+        emit2("toast", { message: "Couldn't fold every query. Check the page in Roam." });
+        return { folded: 0, failed: true };
+      });
     },
     // One ref card, centered on the board's content (the origin when nothing is placed yet).
     addBlockRef(blockUid2) {
@@ -88195,6 +88413,84 @@ function buildBoardView(onFail, {
       pdfPagesDialog.focus?.();
     });
   };
+  const foldPageQueries = async (plan = null) => {
+    if (disposed) return null;
+    closePdfPagesDialog();
+    if (typeof session.queryFoldPlan !== "function" || typeof session.foldPageQueries !== "function") {
+      toast("Folding queries is not available here");
+      return null;
+    }
+    const p = plan || session.queryFoldPlan();
+    if (!p.folds.length) {
+      toast("No open query on this page");
+      return { folded: 0 };
+    }
+    const n3 = p.folds.length;
+    const noun = n3 === 1 ? "query" : "queries";
+    return new Promise((resolve) => {
+      pdfPagesPending = resolve;
+      pdfPagesDialog = openPdfPagesDialog(doc, {
+        count: n3,
+        lines: queryFoldLines(p),
+        label: "Fold queries on this page",
+        headText: `Fold ${n3} ${noun} on this page under ${n3 === 1 ? "a caption" : "captions"}? Roam draws every open query before the page shows; a folded one runs when you open its caption.`,
+        applyText: "Fold",
+        onApply: () => {
+          pdfPagesPending = null;
+          closePdfPagesDialog();
+          Promise.resolve(session.foldPageQueries(p)).then((res) => {
+            if (disposed) return resolve(res);
+            if (res?.refused === "bulk") {
+            } else if (res?.refused) toast("This page changed. Run the command again");
+            else if (res?.folded) toast(`Folded ${res.folded} ${res.folded === 1 ? "query" : "queries"} under ${res.folded === 1 ? "a caption" : "captions"}`, true);
+            resolve(res);
+          }, () => {
+            if (!disposed) toast("Couldn't fold the queries");
+            resolve(null);
+          });
+        },
+        onCancel: () => {
+          closePdfPagesDialog();
+          resolve(null);
+        }
+      });
+      root.append(pdfPagesDialog.el);
+      pdfPagesDialog.focus?.();
+    });
+  };
+  const queryNudge = (entry) => {
+    if (disposed || typeof session.queryFoldPlan !== "function") return false;
+    let pageUid2 = "";
+    try {
+      pageUid2 = String(host?.blockPageUid?.(boardUid) || "");
+    } catch {
+      pageUid2 = "";
+    }
+    if (!pageUid2) return false;
+    const key = queryNudgeKey(graph, pageUid2);
+    let seen = false;
+    try {
+      seen = storage?.getItem?.(key) != null;
+    } catch {
+      seen = false;
+    }
+    if (!shouldNudgeQueries({ entry, seen })) return false;
+    const plan = session.queryFoldPlan({ limit: 5e3 });
+    if (disposed || !plan.folds.length) return false;
+    try {
+      storage?.setItem?.(key, String(Date.now()));
+    } catch {
+    }
+    const k = plan.folds.length;
+    const secs = Math.max(1, Math.round((Number(entry.firstPaintMs) - Number(entry.paintTaskMs)) / 100) / 10);
+    chrome.toast.show({
+      message: `Roam took ${secs} s to draw ${k} ${k === 1 ? "query" : "queries"} on this page before the board could show.`,
+      action: { label: "Fold them", run: () => {
+        void foldPageQueries();
+      } }
+    });
+    return true;
+  };
   const foldSections = async (fold = true) => {
     if (disposed) return null;
     closePdfPagesDialog();
@@ -96575,6 +96871,12 @@ ${url}`;
     foldTableCaptions() {
       return foldTableCaptions();
     },
+    foldPageQueries() {
+      return foldPageQueries();
+    },
+    queryNudge(entry) {
+      return queryNudge(entry);
+    },
     foldSections(fold = true) {
       return foldSections(fold);
     },
@@ -99185,7 +99487,7 @@ var DEFAULT_AT = 40;
 var DEFAULT_MAX_WIDTH = 160;
 var THUMB_STROKE = "#5c7080";
 var EMPTY_BOUNDS = { x: 0, y: 0, w: 160, h: 160 };
-var DIAGRAM_RE3 = "^\\{\\{(\\[\\[)?diagram";
+var DIAGRAM_RE4 = "^\\{\\{(\\[\\[)?diagram";
 var REF_QUERY = `[:find ?board ?page ?card :in $ ?uid ?pat :where
  [?target :block/uid ?uid] [?cardblock :block/refs ?target] [?cardblock :block/uid ?card]
  [?cardblock :block/parents ?diagram] [?diagram :block/uid ?board] [?diagram :block/string ?s]
@@ -99341,7 +99643,7 @@ function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbna
     boardsWith(targetUid) {
       let rows = [];
       try {
-        const found = host?.q?.(REF_QUERY, targetUid, DIAGRAM_RE3);
+        const found = host?.q?.(REF_QUERY, targetUid, DIAGRAM_RE4);
         rows = Array.isArray(found) ? found : [];
       } catch {
         return [];
@@ -99925,6 +100227,7 @@ async function installPlexusDiagram({
   const SNAP_SETTLE_MS = 1e3;
   const SNAP_WARM_WAIT_MS = 50;
   const openPerf = { lastOpen: null, opens: [] };
+  const QUERY_NUDGE_DELAY_MS = 4e3;
   let settings = readSettings(extensionAPI);
   bindSpeedFlagSource(() => {
     try {
@@ -100337,13 +100640,13 @@ async function installPlexusDiagram({
     try {
       const res = pullVia(host, ANCESTORS_PATTERN, [":block/uid", uid]);
       const parents = res?.[":block/parents"] ?? [];
-      const chain = parents.filter((p) => isDiagramString(pulledString(p)) && readPlexus(p[":block/props"] ?? p.props)?.v === 2).map((p) => ({ uid: p[":block/uid"], title: boardTitle2(p[":block/string"]), depth: (p[":block/parents"] ?? []).length })).sort((a, b) => a.depth - b.depth).map(({ uid: u, title }) => ({ uid: u, title }));
+      const chain = parents.filter((p) => isDiagramString2(pulledString(p)) && readPlexus(p[":block/props"] ?? p.props)?.v === 2).map((p) => ({ uid: p[":block/uid"], title: boardTitle2(p[":block/string"]), depth: (p[":block/parents"] ?? []).length })).sort((a, b) => a.depth - b.depth).map(({ uid: u, title }) => ({ uid: u, title }));
       return [...chain, self];
     } catch {
       return [self];
     }
   }
-  const isDiagramUid = (candidate) => isDiagramString(host.blockString?.(candidate));
+  const isDiagramUid = (candidate) => isDiagramString2(host.blockString?.(candidate));
   const inputUids = /* @__PURE__ */ new Map();
   isDiagramUid.many = (candidates2) => {
     const key = candidates2[candidates2.length - 1] || "";
@@ -100354,7 +100657,7 @@ async function installPlexusDiagram({
     const uid = candidates2.find((candidate) => strings.get(candidate) != null) || "";
     if (inputUids.size > 5e3) inputUids.clear();
     inputUids.set(key, uid);
-    return uid && isDiagramString(strings.get(uid)) ? uid : null;
+    return uid && isDiagramString2(strings.get(uid)) ? uid : null;
   };
   function unmountOutlineCopies(parent) {
     for (const other of [...mounts.values()]) {
@@ -100656,6 +100959,16 @@ async function installPlexusDiagram({
     };
     rec.openT0 = null;
     publishOpen(rec, entry);
+    if (shouldNudgeQueries({ entry })) {
+      const t = setTimeout(() => runIdle(() => {
+        if (stopped || mounts.get(rec.native) !== rec) return;
+        try {
+          rec.view?.queryNudge?.(entry);
+        } catch {
+        }
+      }), QUERY_NUDGE_DELAY_MS);
+      t?.unref?.();
+    }
   }
   function paintSnapFor(rec, initialViewport) {
     if (!snapAllowed() || !rec?.mountEl) return null;
@@ -103171,10 +103484,10 @@ async function installPlexusDiagram({
   }
   function diagramAncestorUid(uid) {
     if (!uid) return null;
-    if (isDiagramString(host.blockString?.(uid))) return uid;
+    if (isDiagramString2(host.blockString?.(uid))) return uid;
     try {
       const rows = host.q?.(PARENTS_QUERY, uid) || [];
-      const hits = rows.filter((row4) => isDiagramString(row4[1])).map((row4) => row4[0]);
+      const hits = rows.filter((row4) => isDiagramString2(row4[1])).map((row4) => row4[0]);
       if (hits.length < 2) return hits[0] ?? null;
       const deepest = hits.find((cand) => {
         const above = new Set((host.q?.(PARENTS_QUERY, cand) || []).map((row4) => row4[0]));
@@ -103189,7 +103502,7 @@ async function installPlexusDiagram({
     const fromFocus = diagramAncestorUid(focusedUid(context));
     if (fromFocus) return fromFocus;
     const zoomed = diagramUidFromLocation();
-    if (zoomed && isDiagramString(host.blockString?.(zoomed))) return zoomed;
+    if (zoomed && isDiagramString2(host.blockString?.(zoomed))) return zoomed;
     const uids = new Set([...mounts.values()].map((rec) => rec.uid));
     return uids.size === 1 ? [...uids][0] : null;
   }
@@ -103265,6 +103578,9 @@ async function installPlexusDiagram({
   function foldTablesCommand(context) {
     return targetView(context)?.foldTableCaptions?.();
   }
+  function foldQueriesCommand(context) {
+    return targetView(context)?.foldPageQueries?.();
+  }
   function foldSectionsCommand(context) {
     return targetView(context)?.foldSections?.(true);
   }
@@ -103300,6 +103616,7 @@ async function installPlexusDiagram({
     ["Plexus: Resurface here", resurfaceCommand],
     ["Plexus: Move PDFs to their own pages", movePdfPagesCommand],
     ["Plexus: Fold tables under captions", foldTablesCommand],
+    ["Plexus: Fold queries on this page", foldQueriesCommand],
     ["Plexus: Fold sections in the outline", foldSectionsCommand],
     ["Plexus: Unfold sections", unfoldSectionsCommand],
     ["Plexus: Find related to the selected card", findRelatedCommand]
@@ -103389,7 +103706,7 @@ async function installPlexusDiagram({
     if (extensionAPI.ui?.blockContextMenu?.addCommand) {
       await lifecycle.command(extensionAPI.ui.blockContextMenu, {
         label: "Plexus: Enhance",
-        "display-conditional": (event) => isDiagramString(event?.["block-string"]),
+        "display-conditional": (event) => isDiagramString2(event?.["block-string"]),
         callback: (event) => {
           if (!active2()) return;
           enhanceCommand(event).catch((error) => console.warn("[plexus-diagram] Enhance failed", error));
@@ -104166,7 +104483,7 @@ var extension_default = { onload, onunload };
 export {
   extension_default as default,
   enhancedUidGuardCss,
-  isDiagramString,
+  isDiagramString2 as isDiagramString,
   onload,
   onunload,
   settingsDefaults

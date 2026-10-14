@@ -253,6 +253,71 @@ def test_classified_chart_keeps_dense_text_on_the_figure():
     assert _texts_of(doc) == ["figure"]
 
 
+def _dense_picture():
+    """One text box covering most of the picture. Coverage alone would emit it."""
+    raw = _synthetic(
+        [
+            ("text", "0", (60, 410, 160, 540), "#/pictures/0"),
+            ("text", "20", (170, 410, 270, 540), "#/pictures/0"),
+            ("text", "40", (280, 410, 380, 540), "#/pictures/0"),
+            ("text", "60", (390, 410, 490, 540), "#/pictures/0"),
+            ("caption", "Figure 3: Accuracy by size.", (60, 380, 500, 395), "#/pictures/0"),
+        ],
+        pictures=[_picture(0, [f"#/texts/{i}" for i in range(5)], (50, 400, 550, 750))],
+        body=["#/pictures/0"],
+    )
+    return raw
+
+
+def test_meta_classification_keeps_chart_tick_labels_on_the_figure():
+    raw = _dense_picture()
+    plain = convert_docling(raw)
+    assert "0" in _texts_of(plain) and "60" in _texts_of(plain)
+    raw["pictures"][0]["meta"] = {
+        "classification": {
+            "predictions": [
+                {"class_name": "bar_chart", "confidence": 0.93, "created_by": "DocumentPictureClassifier"},
+                {"class_name": "other", "confidence": 0.04, "created_by": "DocumentPictureClassifier"},
+            ]
+        }
+    }
+    doc = convert_docling(raw)
+    assert _texts_of(doc) == ["figure", "Figure 3: Accuracy by size."]
+    assert doc["stats"]["pictureText"] == len("0204060")
+    assert doc["stats"]["conserved"] == 0
+
+
+def test_text_region_class_emits_its_text():
+    raw = _dense_picture()
+    raw["pictures"][0]["meta"] = {
+        "classification": {
+            "predictions": [
+                {"class_name": "other", "confidence": 0.81, "created_by": "DocumentPictureClassifier"},
+                {"class_name": "bar_chart", "confidence": 0.1, "created_by": "DocumentPictureClassifier"},
+            ]
+        }
+    }
+    doc = convert_docling(raw)
+    assert _texts_of(doc) == ["figure", "Figure 3: Accuracy by size.", "0", "20", "40", "60"]
+    assert doc["stats"]["pictureText"] == 0
+
+
+def test_unclassified_picture_uses_the_coverage_fallback():
+    raw = _dense_picture()
+    assert "annotations" not in raw["pictures"][0]
+    assert "meta" not in raw["pictures"][0]
+    doc = convert_docling(raw)
+    assert _texts_of(doc) == ["figure", "Figure 3: Accuracy by size.", "0", "20", "40", "60"]
+    sparse = _synthetic(
+        [("text", "0", (60, 410, 80, 420), "#/pictures/0")],
+        pictures=[_picture(0, ["#/texts/0"], (50, 400, 550, 750))],
+        body=["#/pictures/0"],
+    )
+    kept = convert_docling(sparse)
+    assert _texts_of(kept) == ["figure"]
+    assert kept["stats"]["pictureText"] == 1
+
+
 def test_conservation_emits_unreached_text_at_its_reading_position_once():
     raw = _synthetic(
         [

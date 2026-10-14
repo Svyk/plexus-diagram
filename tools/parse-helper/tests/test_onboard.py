@@ -134,7 +134,11 @@ def test_model_report_counts_partial_download_bytes(tmp_path, monkeypatch):
     assert by["tableformer"]["done"] == 1000
     assert by["tableformer"]["bytes"] == models.MEASURED_BYTES["tableformer"]
     assert report["health"]["tableformer"] == "missing"
-    want = models.MEASURED_BYTES["tableformer"] + models.MEASURED_BYTES["formula"]
+    want = (
+        models.MEASURED_BYTES["tableformer"]
+        + models.MEASURED_BYTES["formula"]
+        + models.MEASURED_BYTES["pictureClassifier"]
+    )
     assert report["bytes"] == want
     assert report["done"] == 1000
     assert report["fraction"] == round(1000 / want, 4)
@@ -147,9 +151,58 @@ def test_model_report_idle_and_ready(tmp_path, monkeypatch):
     idle = models.model_report(hub)
     assert idle["state"] == "missing" and idle["fraction"] == 0.0
     assert {i["state"] for i in idle["items"] if i["name"] != "ocr"} == {"missing"}
-    full = _fake_hub(tmp_path / "b", ready=["layout", "tableformer", "formula"])
+    full = _fake_hub(tmp_path / "b", ready=["layout", "tableformer", "formula", "pictureClassifier"])
     done = models.model_report(full)
     assert done["state"] == "ready" and done["fraction"] == 1.0 and done["bytes"] == 0
+    # The classifier is not required for a Docling parse. Layout, TableFormer
+    # and OCR ready, classifier absent: still ready, coverage fallback.
+    partial = _fake_hub(tmp_path / "c", ready=["layout", "tableformer", "formula"])
+    held = models.model_report(partial)
+    by = {i["name"]: i for i in held["items"]}
+    assert held["state"] == "ready"
+    assert by["pictureClassifier"]["state"] == "missing"
+    assert held["bytes"] == models.MEASURED_BYTES["pictureClassifier"]
+
+
+def test_download_command_includes_the_picture_classifier():
+    cmd = models.download_command()
+    assert cmd[:3] == ["docling-tools", "models", "download"]
+    assert "picture_classifier" in cmd
+    assert "layout" in cmd and "tableformer" in cmd
+
+
+def test_picture_classifier_hub_folder_matches_the_repo():
+    assert models._HUB_NAMES["pictureClassifier"] == "models--" + models.PICTURE_CLASSIFIER_REPO.replace("/", "--")
+
+
+def test_stage_skips_the_network_when_the_snapshot_is_present(tmp_path, monkeypatch):
+    _fake_hub(tmp_path, ready=["pictureClassifier"])
+    monkeypatch.setattr(models, "hub_dir", lambda hub=None: Path(hub) if hub else tmp_path / "hub")
+
+    def boom(*_a, **_k):
+        raise AssertionError("snapshot_download should not run")
+
+    import huggingface_hub
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", boom)
+    assert models.picture_classifier_ready() is True
+    assert models.stage_picture_classifier() == "cached"
+
+
+def test_stage_downloads_the_pinned_revision_when_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(models, "picture_classifier_ready", lambda hub=None: False)
+    calls = {}
+
+    def fake_snapshot(**kw):
+        calls.update(kw)
+        return "/tmp/picture-classifier"
+
+    import huggingface_hub
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", fake_snapshot)
+    assert models.stage_picture_classifier() == "/tmp/picture-classifier"
+    assert calls == {
+        "repo_id": models.PICTURE_CLASSIFIER_REPO,
+        "revision": models.PICTURE_CLASSIFIER_REVISION,
+    }
 
 
 def test_models_route_exposes_progress_and_download_can_be_stopped(tmp_path, monkeypatch):

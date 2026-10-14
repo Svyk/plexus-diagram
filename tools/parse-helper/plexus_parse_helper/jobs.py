@@ -7,6 +7,7 @@ flight is held by Docling, and the exported chunk dicts are merged at the end.
 
 from __future__ import annotations
 
+import logging
 import multiprocessing as mp
 import queue
 import threading
@@ -74,6 +75,18 @@ def _ocr_options(do_full: bool):
     return opts
 
 
+def _picture_options():
+    """Classifier preset pinned to the revision staged into the HF hub."""
+    from docling.datamodel.picture_classification_options import (
+        DocumentPictureClassifierOptions,
+    )
+    from plexus_parse_helper.models import PICTURE_CLASSIFIER_REVISION
+
+    opts = DocumentPictureClassifierOptions.from_preset("document_figure_classifier_v2")
+    spec = opts.model_spec.model_copy(update={"revision": PICTURE_CLASSIFIER_REVISION})
+    return opts.model_copy(update={"model_spec": spec})
+
+
 def make_converter(options: dict):
     from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
     from docling.datamodel.base_models import InputFormat
@@ -83,28 +96,49 @@ def make_converter(options: dict):
         TableStructureOptions,
     )
     from docling.document_converter import DocumentConverter, PdfFormatOption
+    from plexus_parse_helper.models import picture_classifier_ready
 
     norm = normalize_options(options)
     ocr_on = norm["ocr"] != "off"
     mode = TableFormerMode.FAST if norm["tables"] == "fast" else TableFormerMode.ACCURATE
-    pipeline = PdfPipelineOptions(
-        do_table_structure=True,
-        do_ocr=ocr_on,
-        do_formula_enrichment=bool(norm["formula"]),
-        generate_picture_images=bool(norm["pictures"]),
-        images_scale=2.0,
-        table_structure_options=TableStructureOptions(do_cell_matching=True, mode=mode),
-        ocr_options=_ocr_options(norm["ocr"] == "on"),
-        accelerator_options=AcceleratorOptions(device=AcceleratorDevice.AUTO),
-    )
-    return DocumentConverter(
-        format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline)}
-    )
+    # Missing weights: leave classification off and use the coverage fallback.
+    # A present snapshot that fails to load does the same, so parse still runs.
+    classify = picture_classifier_ready()
+
+    def build(enabled: bool):
+        pipeline = PdfPipelineOptions(
+            do_table_structure=True,
+            do_ocr=ocr_on,
+            do_formula_enrichment=bool(norm["formula"]),
+            do_picture_classification=enabled,
+            picture_classification_options=_picture_options(),
+            generate_picture_images=bool(norm["pictures"]),
+            images_scale=2.0,
+            table_structure_options=TableStructureOptions(do_cell_matching=True, mode=mode),
+            ocr_options=_ocr_options(norm["ocr"] == "on"),
+            accelerator_options=AcceleratorOptions(device=AcceleratorDevice.AUTO),
+        )
+        return DocumentConverter(
+            format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline)}
+        )
+
+    try:
+        return build(classify)
+    except Exception as exc:
+        if not classify:
+            raise
+        logging.getLogger(__name__).warning(
+            "picture classification unavailable (%s); continuing without it", exc
+        )
+        return build(False)
 
 
 def converter_for(options: dict):
+    from plexus_parse_helper.models import picture_classifier_ready
+
     norm = normalize_options(options)
-    key = (norm["ocr"], bool(norm["formula"]), norm["tables"], bool(norm["pictures"]))
+    classify = picture_classifier_ready()
+    key = (norm["ocr"], bool(norm["formula"]), norm["tables"], bool(norm["pictures"]), classify)
     conv = _CONVERTERS.get(key)
     if conv is None:
         conv = make_converter(norm)

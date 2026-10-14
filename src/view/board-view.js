@@ -3915,7 +3915,8 @@ function buildBoardView(onFail, {
   // gesture underlay (pointer-events none) until the pump or a hit builds them. A gesture hides that canvas
   // when it settles; draw the queue again afterwards.
   paintOverviewCover = () => {
-    if (disposed || underlayDrawn) return;
+    if (disposed || underlayDrawn || tier === "detail") return;
+    try { if (notedSpeedFlags().overviewFast === false) return; } catch { return; }
     const items = itemsR.pendingBoxes?.() || [];
     if (!items.length) { underlay.hide(); return; }
     underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });

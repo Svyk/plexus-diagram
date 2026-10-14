@@ -156,6 +156,26 @@ test("overview live is the first chunk of at most 30 shells, then one chunk per 
   }
 });
 
+test("detail zoom does not paint the overview cover before it goes live", () => {
+  const thaw = freezeClock();
+  let notes = 0;
+  const detail = openRenderer({
+    children: spreadBoard(),
+    lod: "detail",
+    zoom: 0.75,
+    onOverviewQueue: () => { notes += 1; },
+  });
+  try {
+    assert.equal(notes, 0);
+    assert.equal(detail.live(), false);
+    assert.equal(detail.bgParts.length, 0);
+    assert.ok(detail.frameQueue.length > 0);
+  } finally {
+    detail.done();
+    thaw();
+  }
+});
+
 test("map zoom goes live the same way", () => {
   const h = openRenderer({ children: spreadBoard(), lod: "map", zoom: 0.3 });
   try {

@@ -2055,7 +2055,15 @@ export function createItemRenderer({
     }
     for (const rec of set) if (!isAttached(rec)) layerOf(rec).append(rec.el);
   };
-  const noteOverviewQueue = () => { try { onOverviewQueue?.(); } catch { /* the view paints the cover */ } };
+  // The cover is the map-zoom stand-in for shells still queued. At detail zoom it walked every off-view
+  // card in the go-live frame (the +70 ms). Detail and overviewFast off do not paint it.
+  const overviewFastOn = () => {
+    try { return lod !== "detail" && speedOf().overviewFast !== false; } catch { return false; }
+  };
+  const noteOverviewQueue = () => {
+    if (!overviewFastOn()) return;
+    try { onOverviewQueue?.(); } catch { /* the view paints the cover */ }
+  };
   // At most `limit` shells and about PUMP_MS. A priority chunk also stops when the priority prefix is gone,
   // so the far cards stay on the background budget. Returns true when the queue is empty.
   const pumpChunk = ({ limit = 40, priority = false } = {}) => {

@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.31.0 — 2026-10-14
+
+Big boards open fast at any zoom.
+
+- **Zoomed-out boards are ready in about 0.6 s.** A big board opened at overview zoom used to wait until every card was built (about 2 s on the 1,560-card stress board, with a half-second stutter). Now it is usable as soon as the nearest cards are in; the rest show as simple boxes and fill in while you work. Clicking, searching for or editing a card that is not built yet builds it at once.
+- **Smoother first seconds.** The first frame keeps the saved picture until the board has drawn, connections are drawn in parts, and background work (PDF covers, card badges, linked references) runs in smaller slices. The longest pause after opening the stress board zoomed out went from about 0.45 s to about 0.15 s.
+- **Fixes.** Leaving a board while it is still building stops the building. A failed card-badge read is retried instead of showing zeros.
+- **Kill switch.** The hidden speed flag `overviewFast` turns the new overview opening off.
+
 ## 3.30.0 — 2026-10-14
 
 Big boards are ready in about half a second when nothing changed.

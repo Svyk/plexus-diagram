@@ -1122,6 +1122,96 @@ test("a costly outline level shrinks the next idle ref batch below 20", () => {
   }
 });
 
+test("a thrown badge step is not cached, and the next change asks again", () => {
+  const thawPerf = freezeClock();
+  const realNow = Date.now;
+  Date.now = () => 1700000000000;
+  const stub = createDomStub();
+  const restore = stub.install();
+  const realSet = globalThis.setTimeout;
+  const realClear = globalThis.clearTimeout;
+  globalThis.setTimeout = stub.window.setTimeout.bind(stub.window);
+  globalThis.clearTimeout = stub.window.clearTimeout.bind(stub.window);
+  resetSharedBgBudget();
+  stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify({ x: 0, y: 0, zoom: 1 }));
+  const board = buildBoard(rawBoard([
+    blk("ref000001", "((note1))", { ":x": 40, ":y": 40, ":w": 200, ":h": 120 }, 0),
+  ]));
+  const card = board.items.get("ref000001");
+  assert.equal(card.kind, "block");
+  assert.equal(card.target.uid, "note1");
+  let fail = true;
+  let steps = 0;
+  const zeros = { refs: 0, boards: 0, open: 0, done: 0 };
+  const ready = { refs: 4, boards: 1, open: 2, done: 1 };
+  const host = {
+    stats: {}, graph: "Svy",
+    renderString(node, string) { node.textContent = string; },
+    renderBlock(node, uid) { node.textContent = uid; },
+    unmount() {},
+    pagePreview: () => ({ exists: false, blocks: [] }),
+    pullTree: () => [],
+    blockString: () => null,
+    openBlock() {},
+    openInSidebar() {},
+    searchPages: () => [],
+    searchBlocks: () => [],
+    related: () => [],
+    cardStats: () => new Map([["uid:note1", ready]]),
+    cardStatsJob: () => ({
+      step() {
+        steps += 1;
+        if (fail) throw new Error("refs");
+        return true;
+      },
+      result() { return new Map([["uid:note1", fail ? zeros : ready]]); },
+    }),
+  };
+  const listeners = {};
+  const session = {
+    uid: board.uid, board, rects: worldRects(board), links: [], coveredEdges: new Set(),
+    on(name, fn) {
+      (listeners[name] ||= []).push(fn);
+      return () => {};
+    },
+    release() {},
+    setLinkMode() {},
+  };
+  const mountEl = stub.document.createElement("div");
+  mountEl.className = "pxd-mount";
+  stub.document.body.append(mountEl);
+  const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "1.0.0" });
+  const pumpBg = () => {
+    for (let i = 0; i < 8; i += 1) {
+      const timers = stub.flushTimers();
+      const idle = stub.flushIdle();
+      if (!timers && !idle) break;
+    }
+  };
+  try {
+    assert.equal(view.state().lod, "detail");
+    stub.flushFrames();
+    stub.flushFrames();
+    pumpBg();
+    assert.equal(steps, 1, "the thrown step ran once");
+    assert.equal(view.snapshotSource().badges.size, 0, "a thrown badge step is not stored");
+    fail = false;
+    for (const fn of listeners.change) fn({});
+    stub.flushFrames();
+    pumpBg();
+    assert.equal(steps, 2, "the next change asks again");
+    assert.equal(view.snapshotSource().badges.get("ref000001")?.refs, 4);
+  } finally {
+    view.dispose();
+    restore();
+    Date.now = realNow;
+    globalThis.setTimeout = realSet;
+    globalThis.clearTimeout = realClear;
+    thawPerf();
+    resetSharedBgBudget();
+  }
+});
+
 test("a normal board builds every shell before live and does not queue a pump", () => {
   const children = [];
   for (let i = 0; i < 40; i += 1) {

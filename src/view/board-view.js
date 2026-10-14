@@ -3817,8 +3817,12 @@ function buildBoardView(onFail, {
       const job = host.cardStatsJob(misses.map((m) => m.target), { boardUid });
       const pump = () => {
         if (disposed) return;
-        let done = true;
-        try { done = job.step() === true; } catch { done = true; }
+        let done = false;
+        try { done = job.step() === true; } catch {
+          // A throw is not a finished read. Drop the pending keys and leave the cache empty so the next change asks again.
+          for (const m of misses) badgePending.delete(m.key);
+          return;
+        }
         if (!done) { timers.bgIdle(pump, "badges"); return; }
         const res = job.result();
         const at = Date.now();

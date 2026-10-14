@@ -38840,7 +38840,25 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
     }
     if (linkAt >= withKids.length) phase = "assemble";
   }
+  let openIds = [];
+  let openVals = [];
+  function openMatches() {
+    for (let i = 0; i < openIds.length; i += openBatch) {
+      const ids = openIds.slice(i, i + openBatch);
+      const res = pullMany(SLICED_OPEN_PATTERN, ids);
+      calls += 1;
+      if (!Array.isArray(res) || res.length !== ids.length) return false;
+      for (let j = 0; j < ids.length; j += 1) {
+        const now4 = res[j];
+        if (!now4 || now4[":db/id"] !== ids[j] || now4[":block/open"] !== openVals[i + j]) return false;
+      }
+    }
+    return true;
+  }
   function assemble() {
+    openIds = withKids;
+    openVals = withKids.map((id) => outs.get(id)[":block/open"]);
+    if (!openMatches()) return fail4();
     let last = null;
     try {
       last = stamp2();
@@ -38891,6 +38909,15 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
     },
     cancel() {
       if (phase !== "done") fail4();
+    },
+    // Before the tree is offered (later tasks may have run since assemble): true when the folds are still the ones read.
+    verifyOpen() {
+      if (phase !== "done") return false;
+      try {
+        return openMatches();
+      } catch {
+        return false;
+      }
     }
   };
 }
@@ -40774,6 +40801,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
             return false;
           }
           if (!walk3.step(sliceMs, opts.clock || clock)) return false;
+          if (!reader.verifyOpen()) {
+            tree = null;
+            return true;
+          }
           offeredTrees.set(id, { tree, found: walk3.result(), stamp: reader.stamp, at: Date.now() });
           tree = null;
           return true;
@@ -44985,6 +45016,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   }
   let linkChain = null;
   let linkJob = null;
+  let linksOwed = false;
+  const linksParked = () => holders > 0 && pausedHolds >= holders;
+  function parkLinks() {
+    if (!linkJob && !linkChain && linkTimer == null && linkIdleId == null) return;
+    cancelScheduledLinks();
+    linksOwed = true;
+  }
+  function unparkLinks() {
+    if (!linksOwed || linksParked() || destroyed) return;
+    linksOwed = false;
+    scheduleLinks();
+  }
   function cancelScheduledLinks(keepChain = false) {
     linkEpoch += 1;
     if (linkJob) {
@@ -45005,6 +45048,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   }
   function scheduleLinks() {
     cancelScheduledLinks(true);
+    if (linksParked()) {
+      linksOwed = true;
+      linkChain = null;
+      return;
+    }
     const ric = globalThis.requestIdleCallback;
     const raf3 = globalThis.requestAnimationFrame;
     if (linkDelay !== 0 && !idle && typeof ric === "function" && typeof raf3 === "function") {
@@ -45943,8 +45991,22 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           for (const f of back) {
             let out = false;
             for (let tries = 0; tries < 15 && !out; tries += 1) {
-              const loc = host.blockLocation?.(f.queryUid);
-              out = !loc || loc.parentUid !== f.captionUid;
+              let loc = null;
+              try {
+                loc = host.blockLocation?.(f.queryUid) || null;
+              } catch {
+                loc = null;
+              }
+              if (loc) out = loc.parentUid !== f.captionUid;
+              else {
+                let kids;
+                try {
+                  kids = host.outlineKids?.([f.captionUid])?.get(f.captionUid);
+                } catch {
+                  kids = void 0;
+                }
+                out = Array.isArray(kids) && !kids.some((k) => k.uid === f.queryUid);
+              }
               if (!out) await new Promise((resolve) => setTimeout(resolve, 200));
             }
             if (out) await execute([{ op: "delete", uid: f.captionUid }]);
@@ -46887,12 +46949,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       if (destroyed) return;
       holders += 1;
       syncBoardWatch(true);
+      unparkLinks();
     },
     // Drop this holder's pull watch without destroying the session.
     pauseWatches() {
       if (destroyed || pausedHolds >= holders) return;
       pausedHolds += 1;
       syncBoardWatch(false);
+      if (linksParked()) parkLinks();
     },
     // Put the watch back. One pullBoard applies edits that landed while paused.
     resumeWatches() {
@@ -46901,6 +46965,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       const wasOn = boardWatchOn && !boardWatchHeld;
       syncBoardWatch(!boardWatchOn);
       if (wasOn) catchUpBoard();
+      unparkLinks();
     },
     // A ref is leaving. A paused ref already dropped its watch hold.
     forget(opts) {
@@ -46909,6 +46974,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       holders -= 1;
       if (holders === 0) return;
       syncBoardWatch(false);
+      unparkLinks();
     },
     release() {
     },
@@ -86788,23 +86854,80 @@ function createTimers() {
     active2.add(entry);
     return entry;
   };
+  let bgPaused = false;
+  const bgArmed = /* @__PURE__ */ new Map();
   const bgIdle = (fn, label = "view") => {
     if (typeof globalThis.requestIdleCallback !== "function" || notedSpeedFlags().bgBudget === false) return idle(fn);
     let entry;
-    const cancel = sharedBgBudget().idle((d) => {
-      active2.delete(entry);
-      fn(d);
-    }, { label });
-    entry = () => {
-      cancel();
-      active2.delete(entry);
+    let cancel = null;
+    const arm4 = () => {
+      cancel = sharedBgBudget().idle((d) => {
+        active2.delete(entry);
+        bgArmed.delete(entry);
+        fn(d);
+      }, { label });
     };
+    entry = () => {
+      cancel?.();
+      cancel = null;
+      active2.delete(entry);
+      bgArmed.delete(entry);
+    };
+    bgArmed.set(entry, { arm: arm4, off: () => {
+      cancel?.();
+      cancel = null;
+    } });
+    if (!bgPaused) arm4();
     active2.add(entry);
     return entry;
   };
-  return { later, frame: frame2, idle, bgIdle, count: () => active2.size, cancelAll: () => {
+  const bgRun = (part, opts) => {
+    let entry;
+    let stop3 = null;
+    const arm4 = () => {
+      stop3 = sharedBgBudget().run((d) => {
+        let done2 = true;
+        try {
+          done2 = part(d) === true;
+        } finally {
+          if (done2) {
+            active2.delete(entry);
+            bgArmed.delete(entry);
+          }
+        }
+        return done2;
+      }, opts);
+    };
+    entry = () => {
+      const s = stop3;
+      stop3 = null;
+      active2.delete(entry);
+      bgArmed.delete(entry);
+      s?.();
+    };
+    bgArmed.set(entry, { arm: arm4, off: () => {
+      const s = stop3;
+      stop3 = null;
+      s?.();
+    } });
+    if (!bgPaused) arm4();
+    active2.add(entry);
+    return entry;
+  };
+  const pauseBg = () => {
+    if (bgPaused) return;
+    bgPaused = true;
+    for (const b of bgArmed.values()) b.off();
+  };
+  const resumeBg = () => {
+    if (!bgPaused) return;
+    bgPaused = false;
+    for (const b of [...bgArmed.values()]) b.arm();
+  };
+  return { later, frame: frame2, idle, bgIdle, bgRun, pauseBg, resumeBg, count: () => active2.size, cancelAll: () => {
     for (const c of [...active2]) c();
     active2.clear();
+    bgArmed.clear();
   } };
 }
 var ANNOTATE_TOAST = "Drop the image into the drawing";
@@ -88596,7 +88719,7 @@ function buildBoardView(onFail, {
     let tail = 0;
     const sizer = createPartSizer({ max: 20, start: 5 });
     const clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
-    pdfTitleJob = sharedBgBudget().run((deadline) => {
+    pdfTitleJob = timers.bgRun((deadline) => {
       if (disposed) {
         pdfTitleJob = null;
         return true;
@@ -89512,7 +89635,7 @@ function buildBoardView(onFail, {
         coverRepaint = /* @__PURE__ */ new Set();
         let uids = null;
         let at = 0;
-        coverJob = sharedBgBudget().run(() => {
+        coverJob = timers.bgRun(() => {
           if (disposed) {
             coverJob = null;
             return true;
@@ -97330,12 +97453,14 @@ ${url}`;
         clearZoomAnim();
       } catch {
       }
+      timers.pauseBg();
       suspendObservers();
     },
     resume() {
       if (disposed || !suspended) return;
       suspended = false;
       resumeObservers();
+      timers.resumeBg();
       armCoverWarm();
       if (board2() !== suspendedBoard) {
         dirty.all = true;

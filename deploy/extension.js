@@ -45890,8 +45890,22 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           for (const r of back) {
             let out = false;
             for (let tries = 0; tries < 15 && !out; tries += 1) {
-              const loc = host.blockLocation?.(r.tableUid);
-              out = !loc || loc.parentUid !== r.captionUid;
+              let loc = null;
+              try {
+                loc = host.blockLocation?.(r.tableUid) || null;
+              } catch {
+                loc = null;
+              }
+              if (loc) out = loc.parentUid !== r.captionUid;
+              else {
+                let kids;
+                try {
+                  kids = host.outlineKids?.([r.captionUid])?.get(r.captionUid);
+                } catch {
+                  kids = void 0;
+                }
+                out = Array.isArray(kids) && !kids.some((k) => k.uid === r.tableUid);
+              }
               if (!out) await new Promise((resolve) => setTimeout(resolve, 200));
             }
             if (out) await execute([{ op: "delete", uid: r.captionUid }]);

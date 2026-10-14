@@ -1220,6 +1220,11 @@ function buildBoardView(onFail, {
     const key = `${dark}|${hl}`;
     const flipped = themeKey !== null && key !== themeKey;
     themeKey = key;
+    // The cover caches --pxd-card. A theme class change that does not flip dark mode still has to redraw it.
+    if (!disposed) {
+      try { underlay.dropColors?.(); } catch { /* cover */ }
+      try { paintOverviewCover(); } catch { /* cover */ }
+    }
     if (!flipped || disposed) return;
     try { askThemeChanged(); } catch { /* chat */ }
     repaintItemStyles();

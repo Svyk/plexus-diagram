@@ -2204,6 +2204,7 @@ export function createItemRenderer({
     try { virtualOff = speedOf().virtualShells === false; } catch { virtualOff = false; }
     lastBoard = board;
     lastRects = rects;
+    coverShift = null;
     // A highlight card placed, removed or changed moves its PDF's page chips and count, though the PDF card itself did not change.
     let dirty = changed;
     if (dirty != null) {
@@ -2361,6 +2362,7 @@ export function createItemRenderer({
       for (const uid of [...pendingView]) if (shells.has(uid) || !board.items.has(uid)) pendingView.delete(uid);
       if (!pendingView.size) viewBuilt();
     }
+    if (shellQueue.length) noteOverviewQueue();
   };
 
 
@@ -4997,9 +4999,20 @@ export function createItemRenderer({
   };
 
   // ---------------------------------------------------------------- preview during gestures
+  // Queued member cards have no shell. The cover keeps their rects until the gesture ends.
+  let coverShift = null;
   const previewMove = (uids, dx, dy, board, rects) => {
     const set = new Set(uids);
     for (const u of uids) for (const d of descendantsOf(board, u)) set.add(d);
+    if (!dx && !dy) coverShift = null;
+    else {
+      coverShift = new Map();
+      for (const uid of set) {
+        const r = rects.get(uid);
+        if (!r) continue;
+        coverShift.set(uid, { x: r.x + dx, y: r.y + dy, w: r.w, h: r.h });
+      }
+    }
     const live = new Map();
     for (const uid of set) {
       const rec = shells.get(uid);
@@ -5009,6 +5022,7 @@ export function createItemRenderer({
       rec.el.style.transform = `translate(${moved.x}px, ${moved.y}px)`;
       live.set(uid, moved);
     }
+    noteOverviewQueue();
     return live;
   };
   const previewRects = (list) => {
@@ -6144,10 +6158,11 @@ export function createItemRenderer({
     coverHeld: () => coverHeld,
     queuedCount: () => shellQueue.length,
     pendingBoxes() {
+      const queued = new Set(shellQueue);
       const out = [];
-      for (const uid of shellQueue) {
-        if (shells.has(uid)) continue;
-        const rect = lastRects?.get(uid);
+      for (const uid of lastBoard?.order || []) {
+        if (!queued.has(uid) || shells.has(uid)) continue;
+        const rect = coverShift?.get(uid) || lastRects?.get(uid);
         if (rect) out.push({ uid, rect });
       }
       return out;

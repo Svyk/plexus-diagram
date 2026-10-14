@@ -729,6 +729,125 @@ test("search and Enter build the queued card, keep the cover at detail, and pump
   }
 });
 
+// The cover used to fill shellQueue order, so a nearer card later in board.order was painted underneath.
+function coverStackBoard() {
+  const children = spreadBoard();
+  const section = children.find((child) => child[":block/uid"] === "sec000001");
+  section[":block/children"] = [
+    blk("mem000001", "member card", { ":x": 4000, ":y": 4000, ":w": 36, ":h": 24 }, 0),
+  ];
+  children.push(blk("big000001", "big far", { ":x": 40, ":y": 40, ":w": 400, ":h": 400 }, 210));
+  children.push(blk("sml000001", "small top", { ":x": 300, ":y": 300, ":w": 40, ":h": 40 }, 211));
+  children.push(blk("sib000001", "sibling card", { ":x": 4200, ":y": 4200, ":w": 36, ":h": 24 }, 212));
+  return children;
+}
+
+test("the overview cover stacks like the board, follows a dragged section, and drops colours on a theme change", () => {
+  let notes = 0;
+  const h = openRenderer({
+    children: coverStackBoard(),
+    lod: "overview",
+    zoom: 0.1,
+    onOverviewQueue: () => { notes += 1; },
+  });
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const boxes = h.r.pendingBoxes();
+    const bigAt = boxes.findIndex((box) => box.uid === "big000001");
+    const smallAt = boxes.findIndex((box) => box.uid === "sml000001");
+    assert.ok(bigAt >= 0 && smallAt >= 0);
+    assert.ok(smallAt > bigAt, "the later card in board.order is painted last");
+    assert.equal(h.r.shellOf("sec000001") == null, false);
+    assert.equal(h.r.shellOf("mem000001"), null);
+    const rects = worldRects(h.board);
+    const memberBefore = boxes.find((box) => box.uid === "mem000001").rect;
+    const siblingBefore = boxes.find((box) => box.uid === "sib000001").rect;
+    h.r.previewMove(["sec000001"], 25, -15, h.board, rects);
+    const shifted = h.r.pendingBoxes();
+    const member = shifted.find((box) => box.uid === "mem000001").rect;
+    const sibling = shifted.find((box) => box.uid === "sib000001").rect;
+    assert.equal(member.x, memberBefore.x + 25);
+    assert.equal(member.y, memberBefore.y - 15);
+    assert.equal(sibling.x, siblingBefore.x);
+    assert.equal(sibling.y, siblingBefore.y);
+    h.r.previewMove(["sec000001"], 0, 0, h.board, rects);
+    const back = h.r.pendingBoxes().find((box) => box.uid === "mem000001").rect;
+    assert.equal(back.x, memberBefore.x);
+    assert.equal(back.y, memberBefore.y);
+    const noted = notes;
+    h.r.sync({ board: h.board, rects, dirty: null, structural: true, view: { x: 0, y: 0, w: 8000, h: 6000 } });
+    assert.ok(notes > noted, "a later sync repaints the queue");
+
+    stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify({ x: 0, y: 0, zoom: 0.1 }));
+    const board = buildBoard(rawBoard(spreadBoard()));
+    const host = {
+      stats: {}, graph: "Svy",
+      renderString(node, string) { node.textContent = string; },
+      renderBlock(node, uid) { node.textContent = uid; },
+      unmount() {},
+      pagePreview: () => ({ exists: false, blocks: [] }),
+      pullTree: () => [],
+      blockString: () => null,
+      openBlock() {},
+      openInSidebar() {},
+      searchPages: () => [],
+      searchBlocks: () => [],
+      related: () => [],
+    };
+    const session = {
+      uid: board.uid, board, rects: worldRects(board), links: [], coveredEdges: new Set(),
+      on() { return () => {}; }, release() {}, setLinkMode() {},
+    };
+    const mountEl = stub.document.createElement("div");
+    mountEl.className = "pxd-mount";
+    stub.document.body.append(mountEl);
+    const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "1.0.0" });
+    try {
+      stub.flushFrames();
+      const canvas = view.root.querySelector(".pxd-underlay");
+      assert.ok(canvas);
+      const fills = [];
+      canvas.getContext = () => {
+        const ctx = {
+          clearRect() {}, fillRect() {}, strokeRect() {}, beginPath() {}, rect() {}, fill() {}, stroke() {},
+          save() {}, restore() {}, scale() {}, translate() {}, setTransform() {},
+          strokeStyle: "", lineWidth: 1,
+        };
+        let fill = "";
+        Object.defineProperty(ctx, "fillStyle", {
+          get() { return fill; },
+          set(value) { fill = String(value); fills.push(fill); },
+        });
+        return ctx;
+      };
+      const origStyle = stub.window.getComputedStyle;
+      stub.window.getComputedStyle = (el) => {
+        const style = origStyle(el);
+        return {
+          getPropertyValue(name) {
+            if (name === "--pxd-card") return "rgb(9, 9, 9)";
+            return style.getPropertyValue(name);
+          },
+        };
+      };
+      globalThis.getComputedStyle = stub.window.getComputedStyle;
+      for (const obs of stub.observers) {
+        if (!obs.queue || !obs.active) continue;
+        obs.queue.push({ type: "attributes", attributeName: "class", target: stub.document.documentElement });
+      }
+      stub.flushMutations();
+      assert.equal(fills.at(-1), "rgb(9, 9, 9)");
+    } finally {
+      view.dispose();
+    }
+  } finally {
+    h.done();
+    restore();
+    resetSharedBgBudget();
+  }
+});
+
 test("cover repaint paints six cards and counts highlights in their own part", () => {
   const uids = Array.from({ length: 13 }, (_, i) => `pdf${i}`);
   const paints = [];

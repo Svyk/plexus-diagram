@@ -89,6 +89,7 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
     canvas = null;
     shown = false;
   };
+  const dropColors = () => { colorCache = null; };
 
-  return { draw, hide, dispose, isShown: () => shown, element: () => canvas };
+  return { draw, hide, dispose, dropColors, isShown: () => shown, element: () => canvas };
 }

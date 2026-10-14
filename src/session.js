@@ -3759,6 +3759,12 @@ export function acquireSession(boardUid, options = {}) {
   return session;
 }
 
+// True when acquireSession(boardUid) with this host would reuse a live session (no board read).
+export function hasSession(boardUid, host) {
+  const entry = registry.get(boardUid);
+  return Boolean(entry && entry.host === host);
+}
+
 export function resetSessions() {
   for (const record of [...registry.values()]) record.session.destroy();
   registry.clear();

@@ -1,6 +1,6 @@
 import pkg from "../package.json" with { type: "json" };
 import { createHost } from "./host/roam.js";
-import { acquireSession as acquireSessionDefault } from "./session.js";
+import { acquireSession as acquireSessionDefault, hasSession } from "./session.js";
 import { clearPinnedToast, mountBoardView, viewportStorageId } from "./view/board-view.js";
 import {
   captureSketch,
@@ -1139,7 +1139,26 @@ export async function installPlexusDiagram({
 
   // The snapshot is on screen. One frame and a macrotask later the session is read,
   // the live board mounts and adopts the snapshot shells in its first frame.
-  function beginSnapHandoff(rec, painted, { autofocus = false, viewport = null, acquire = null, onLive = null } = {}) {
+  // P8 U3. A task boundary without the nested setTimeout clamp (4 ms after five levels).
+  const nextTask = (fn) => {
+    const MC = win.MessageChannel ?? globalThis.MessageChannel;
+    if (typeof MC === "function") {
+      const ch = new MC();
+      ch.port1.onmessage = () => { ch.port1.onmessage = null; try { ch.port1.close?.(); } catch { /* closed */ } fn(); };
+      ch.port2.postMessage(0);
+      return;
+    }
+    const t = setTimeout(fn, 0);
+    t?.unref?.();
+  };
+  // The board read of the coming acquire, in tasks of ~40 ms while the snapshot shows (speed flag slicedMount).
+  const prereadFor = (uid) => {
+    if (!uid || speedFlags().slicedMount === false || typeof host.prereadBoard !== "function") return null;
+    if (injectedAcquire === acquireSessionDefault && hasSession(uid, host)) return null;
+    try { return host.prereadBoard(uid); } catch { return null; }
+  };
+
+  function beginSnapHandoff(rec, painted, { autofocus = false, viewport = null, acquire = null, onLive = null, readUid = "" } = {}) {
     const logging = settings[SETTING_IDS.speedLog] === true;
     const handoff = {
       rec,
@@ -1172,21 +1191,36 @@ export async function installPlexusDiagram({
     });
     const opts = { autofocus, viewport, acquire, onLive, logging, t0: logging ? perfNow() : 0 };
     if (logging) shiftWatch.watchMount(rec.mountEl);
+    const live = () => !handoff.cancelled && !stopped && mounts.get(rec.native) === rec;
     const start = () => {
       handoff.timeoutId = null;
       runSnapMount(handoff, standIn, opts);
+    };
+    // Read the board in slices first; the acquire's pullBoard takes the result when the page did not change.
+    const read = () => {
+      handoff.timeoutId = null;
+      const reader = prereadFor(readUid);
+      if (!reader) { start(); return; }
+      handoff.reader = reader;
+      const slice = () => {
+        if (!live()) { reader.cancel(); return; }
+        let done = true;
+        try { done = reader.step(); } catch { done = true; }
+        nextTask(done ? () => { if (live()) start(); else reader.cancel(); } : slice);
+      };
+      slice();
     };
     const raf = globalThis.requestAnimationFrame;
     if (typeof raf === "function") {
       handoff.rafId = raf(() => {
         handoff.rafId = null;
-        if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
-        const timer = setTimeout(start, 0);
+        if (!live()) return;
+        const timer = setTimeout(read, 0);
         timer?.unref?.();
         handoff.timeoutId = timer;
       });
     } else {
-      const timer = setTimeout(start, 0);
+      const timer = setTimeout(read, 0);
       timer?.unref?.();
       handoff.timeoutId = timer;
     }
@@ -1227,6 +1261,7 @@ export async function installPlexusDiagram({
     if (handoff) {
       handoff.cancelled = true;
       sketchHandoffs.delete(rec);
+      try { handoff.reader?.cancel?.(); } catch { /* already finished */ }
       clearSketchHandoffTimers(handoff);
       detachSketchInput(handoff);
       try { handoff.observer?.disconnect?.(); } catch { /* already gone */ }
@@ -2014,6 +2049,7 @@ export async function installPlexusDiagram({
             rec.view = beginSnapHandoff(rec, painted, {
               autofocus: true,
               viewport: viewport || null,
+              readUid: target,
               acquire: () => {
                 rec.session = acquireSession(target, { host, settings: liveSettings, ...virtualOptions(virtual) });
                 if (!rec.session?.board) {
@@ -2144,6 +2180,7 @@ export async function installPlexusDiagram({
         if (painted) {
           deferred = true;
           rec.view = beginSnapHandoff(rec, painted, {
+            readUid: currentUid(rec),
             acquire: () => {
               rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
               return Boolean(rec.session);
@@ -2363,6 +2400,7 @@ export async function installPlexusDiagram({
       try {
         rec.view = beginSnapHandoff(rec, painted, {
           viewport: rec.parkedVp || null,
+          readUid: currentUid(rec),
           acquire: () => {
             rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(rec.virtual && virtualUids.has(currentUid(rec))) });
             if (!rec.session?.board) {

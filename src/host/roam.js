@@ -29,6 +29,7 @@ import { installCommentHost } from "./comments.js";
 import { SPLIT_WATCH_MIN, containerKind, createSplitWatch, treeSize } from "./split-watch.js";
 import { notedSpeedFlags } from "../settings.js";
 import { linksQuery } from "../model/links.js";
+import { createSlicedRead } from "./sliced-read.js";
 
 // Pull results equal but for Roam's own reader state (:pdf-settings: page, scale). Exits at the first other change.
 const READER_STATE = ":pdf-settings";
@@ -858,6 +859,22 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const groupSpan = (entry) => (entry.n || 0) + (entry.created?.length || 0);
   const cache = createCardCache();
   const warm = new Set();
+  // P8 U3: sliced reads waiting for their pullBoard, by board uid: { tree, stamp, at }. An offer is for the open that
+  // read it: folds do not move the stamp, so an older one is never used.
+  const OFFER_TTL_MS = 2000;
+  const offeredTrees = new Map();
+  // The board's page stamp "edit-time|edit-nonce", or null when Roam has none.
+  const pageStampOf = (uid) => {
+    let pageUid = "";
+    try { pageUid = String(host.blockPageUid?.(uid) || ""); } catch { pageUid = ""; }
+    if (!pageUid) return null;
+    let p = null;
+    try { p = rawPull("[:page/edit-time :page/edit-nonce]", eidKey(pageUid)); } catch { p = null; }
+    const t = p?.[":page/edit-time"];
+    const n = p?.[":page/edit-nonce"];
+    if (t == null && n == null) return null;
+    return `${t ?? ""}|${n ?? ""}`;
+  };
   const boardKeys = new Map();
   const boardPageOf = new Map();
   const pdfUrls = new Map();
@@ -1534,9 +1551,18 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       }
       warm.delete(uid);
       const boardEntity = eidKey(uid);
-      // The structure first; the wide pull only when few blocks carry refs.
+      // The structure first; the wide pull only when few blocks carry refs. A sliced read of a cold open (P8 U3)
+      // stands in for the structure pull while the board's page stamp is still the one it was read at.
       let plain = null;
-      try { plain = rawPull(BOARD_PATTERN, boardEntity); } catch { plain = null; }
+      const offered = offeredTrees.get(uid);
+      offeredTrees.delete(uid);
+      if (offered && offered.stamp != null && Date.now() - offered.at <= OFFER_TTL_MS && pageStampOf(uid) === offered.stamp) {
+        plain = offered.tree;
+        stats.slicedReads = (stats.slicedReads || 0) + 1;
+      }
+      if (!plain) {
+        try { plain = rawPull(BOARD_PATTERN, boardEntity); } catch { plain = null; }
+      }
       let node = null;
       const big = Boolean(plain?.[":block/uid"]) && treeSize(plain, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN;
       const refBlocks = plain?.[":block/uid"] && !big ? refBlocksOf(plain, OPEN_PULL_MAX_REFS) : 0;
@@ -1662,6 +1688,40 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         later(step);
       }
       return node;
+    },
+
+    // P8 U3. A cold open's board read in short tasks: null when pullBoard would not read Roam whole (warm cache, a
+    // split already holds the board), when pull_many or the page stamp is missing. reader.step() does one task's
+    // worth and is true when finished; a consistent result is offered to the next pullBoard of this board.
+    prereadBoard(uid, opts = {}) {
+      const id = String(uid ?? "");
+      if (!id || typeof data.pull_many !== "function") return null;
+      if (warm.has(id) || splitWatches.has(id)) return null;
+      let rootEid = null;
+      try { rootEid = rawPull("[:db/id]", eidKey(id))?.[":db/id"] ?? null; } catch { rootEid = null; }
+      if (rootEid == null || pageStampOf(id) == null) return null;
+      const reader = createSlicedRead({
+        rootEid,
+        pullMany: (pattern, eids) => data.pull_many(pattern, eids),
+        stamp: () => pageStampOf(id),
+        clock: () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now()),
+        ...opts,
+      });
+      const step = reader.step;
+      return {
+        get phase() { return reader.phase; },
+        get calls() { return reader.calls; },
+        get ms() { return reader.ms; },
+        step() {
+          const done = step();
+          if (done) {
+            const tree = reader.take();
+            if (tree?.[":block/uid"] === id) offeredTrees.set(id, { tree, stamp: reader.stamp, at: Date.now() });
+          }
+          return done;
+        },
+        cancel() { reader.cancel(); offeredTrees.delete(id); },
+      };
     },
 
     // Hover warm of the session cache. No pull watch. A uid already in blockOf is not read again:

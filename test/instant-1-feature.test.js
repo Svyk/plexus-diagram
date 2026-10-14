@@ -489,3 +489,77 @@ test("the snapshot mount's onFirstPaint does not keep the first mount record and
   assert.equal(typeof held.onFirstPaint, "function", "the view still holds its callback");
   assert.equal(held.ref.deref(), undefined, "the first mount's native diagram was collected");
 });
+
+// P8 U3: the board read of the acquire runs in several tasks while the snapshot shows; acquire comes after the last.
+function slicedReader(env, steps) {
+  const log = { calls: [], cancelled: 0, turns: [] };
+  let turn = 0;
+  const bump = setInterval(() => { turn += 1; }, 0);
+  env.host.prereadBoard = (uid) => {
+    log.calls.push(uid);
+    let left = steps;
+    return {
+      step() {
+        log.turns.push({ turn, acquired: env.acquired.length });
+        left -= 1;
+        return left <= 0;
+      },
+      cancel() { log.cancelled += 1; },
+    };
+  };
+  log.stop = () => clearInterval(bump);
+  return log;
+}
+
+test("slicedMount: the snapshot open reads the board in steps on separate tasks, then acquires", async () => {
+  const idb = await seededIdb();
+  const env = installEnv({ idb });
+  const log = slicedReader(env, 4);
+  try {
+    await env.install();
+    assert.ok(env.doc.querySelector(".pxd-snap-root"));
+    await tick(40);
+    assert.deepEqual(log.calls, [UID]);
+    assert.equal(log.turns.length, 4);
+    assert.ok(log.turns.every((t) => t.acquired === 0), "every read step runs before the acquire");
+    assert.equal(env.acquired.length, 1);
+    assert.equal(env.seen.length, 1, "the live view mounts after the read");
+  } finally {
+    log.stop();
+    await env.lifecycle.dispose().catch(() => {});
+    env.restore();
+  }
+});
+
+test("slicedMount off: no sliced read; dispose during the read cancels it and never acquires", async () => {
+  const idbA = await seededIdb();
+  const off = installEnv({ idb: idbA, flags: '{"slicedMount":false}' });
+  const logA = slicedReader(off, 3);
+  try {
+    await off.install();
+    await tick(30);
+    assert.deepEqual(logA.calls, []);
+    assert.equal(off.acquired.length, 1);
+  } finally {
+    logA.stop();
+    await off.lifecycle.dispose().catch(() => {});
+    off.restore();
+  }
+  const idbB = await seededIdb();
+  const env = installEnv({ idb: idbB });
+  const log = slicedReader(env, 1000);
+  try {
+    await env.install();
+    await tick(15);
+    assert.ok(log.turns.length >= 1, "the read started");
+    await env.lifecycle.dispose();
+    const n = log.turns.length;
+    await tick(20);
+    assert.equal(log.turns.length, n, "no step after dispose");
+    assert.ok(log.cancelled >= 1);
+    assert.equal(env.acquired.length, 0);
+  } finally {
+    log.stop();
+    env.restore();
+  }
+});

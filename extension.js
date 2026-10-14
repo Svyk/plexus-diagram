@@ -38767,6 +38767,7 @@ init_settings();
 // src/host/sliced-read.js
 var SLICED_LEVEL_PATTERN = "[:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props {(limit :block/children nil) [:db/id]}]";
 var SLICED_OPEN_PATTERN = "[:db/id :block/open]";
+var SLICED_FIELD_PATTERN = "[:db/id :block/string :block/order :block/heading :block/props]";
 var SLICED_BATCH = 500;
 var SLICED_OPEN_BATCH = 2e3;
 var SLICED_LINK_BATCH = 4e3;
@@ -38798,6 +38799,9 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
     frontier = [];
     next = [];
     withKids = [];
+    fieldIds = [];
+    fieldSnap = [];
+    fieldsOk = false;
   };
   function readPart() {
     const ids = frontier.slice(at, at + batch);
@@ -38853,6 +38857,21 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
   }
   let openIds = [];
   let openVals = [];
+  let fieldIds = [];
+  let fieldSnap = [];
+  let fieldAt = 0;
+  let fieldsOk = true;
+  const fieldKey = (n3) => `${n3?.[":block/string"] ?? ""}\0${n3?.[":block/order"] ?? ""}\0${n3?.[":block/heading"] ?? ""}\0${n3?.[":block/props"] == null ? "" : JSON.stringify(n3[":block/props"])}`;
+  function snapshotFields() {
+    fieldIds = [];
+    fieldSnap = [];
+    fieldAt = 0;
+    fieldsOk = true;
+    for (const [id, n3] of outs) {
+      fieldIds.push(id);
+      fieldSnap.push(fieldKey(n3));
+    }
+  }
   function openMatches() {
     for (let i = 0; i < openIds.length; i += openBatch) {
       const ids = openIds.slice(i, i + openBatch);
@@ -38877,10 +38896,32 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
       last = null;
     }
     if (last == null || last !== first) return fail4();
+    snapshotFields();
     tree = outs.get(rootEid);
     nodes.clear();
     outs.clear();
     phase = "done";
+  }
+  function readFieldsPart() {
+    if (phase !== "done" || !fieldsOk) return "bad";
+    if (fieldAt >= fieldIds.length) return "ok";
+    const ids = fieldIds.slice(fieldAt, fieldAt + batch);
+    const base = fieldAt;
+    fieldAt += ids.length;
+    const res = pullMany(SLICED_FIELD_PATTERN, ids);
+    calls += 1;
+    if (!Array.isArray(res) || res.length !== ids.length) {
+      fieldsOk = false;
+      return "bad";
+    }
+    for (let j = 0; j < ids.length; j += 1) {
+      const now4 = res[j];
+      if (!now4 || now4[":db/id"] !== ids[j] || fieldKey(now4) !== fieldSnap[base + j]) {
+        fieldsOk = false;
+        return "bad";
+      }
+    }
+    return fieldAt >= fieldIds.length ? "ok" : "more";
   }
   function step() {
     const t0 = clock();
@@ -38928,6 +38969,15 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
         return openMatches();
       } catch {
         return false;
+      }
+    },
+    // Re-read string, order, heading and props of the blocks already copied. One batch per call.
+    verifyFieldsPart() {
+      try {
+        return readFieldsPart();
+      } catch {
+        fieldsOk = false;
+        return "bad";
       }
     }
   };
@@ -41119,6 +41169,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const adoptOffer = (uid) => {
     const offered = offeredTrees.get(uid);
     if (!offered || !splitWatchOn() || splitWatches.has(uid)) return false;
+    if (!trustOn()) return false;
     if (Date.now() - offered.at > OFFER_TTL_MS || pageStampOf(uid) !== offered.stamp) {
       offeredTrees.delete(uid);
       return false;
@@ -41177,6 +41228,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const verifyListeners = /* @__PURE__ */ new Map();
   const checks = /* @__PURE__ */ new Map();
   const checkOwed = /* @__PURE__ */ new Set();
+  const checkTimers = /* @__PURE__ */ new Map();
+  const checkDelay = /* @__PURE__ */ new Map();
   const keeps = /* @__PURE__ */ new Map();
   const refreshes = /* @__PURE__ */ new Map();
   const CHECK_QUIET_MS = 1500;
@@ -41216,6 +41269,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     let cancel = null;
     let got = null;
     const whole2 = () => {
+      reader = null;
+      got = null;
       const stamp2 = pageStampOf(uid);
       let tree = null;
       try {
@@ -41227,6 +41282,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       done3(tree?.[":block/uid"] ? tree : null, stamp2);
       return true;
     };
+    const mismatch = () => {
+      reader = null;
+      got = null;
+      tries += 1;
+      stats[`${label}Retries`] = (stats[`${label}Retries`] || 0) + 1;
+      return tries >= 2 ? whole2() : false;
+    };
     const part = () => {
       if (stopIf()) return true;
       if (got) {
@@ -41235,14 +41297,29 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           prepare(got.tree);
           return false;
         }
-        const { tree: tree2, stamp: stamp3 } = got;
-        got = null;
-        if (pageStampOf(uid) === stamp3) {
-          done3(tree2, stamp3);
-          return true;
+        if (!got.checked) {
+          let openOk = false;
+          try {
+            openOk = pageStampOf(uid) === got.stamp && reader.verifyOpen();
+          } catch {
+            openOk = false;
+          }
+          if (!openOk) return mismatch();
+          got.checked = true;
         }
-        tries += 1;
-        return tries >= 2 ? whole2() : false;
+        let fields = "bad";
+        try {
+          fields = reader.verifyFieldsPart();
+        } catch {
+          fields = "bad";
+        }
+        if (fields === "more") return false;
+        if (fields !== "ok") return mismatch();
+        const { tree: tree2, stamp: stamp3 } = got;
+        reader = null;
+        got = null;
+        done3(tree2, stamp3);
+        return true;
       }
       if (!reader) {
         let rootEid = null;
@@ -41264,19 +41341,50 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (!reader.step()) return false;
       const stamp2 = reader.stamp;
       const tree = reader.take();
-      reader = null;
       if (tree?.[":block/uid"] === uid) {
-        got = { tree, stamp: stamp2, prepared: false };
+        got = { tree, stamp: stamp2, prepared: false, checked: false };
         return false;
       }
-      tries += 1;
-      stats[`${label}Retries`] = (stats[`${label}Retries`] || 0) + 1;
-      return tries >= 2 ? whole2() : false;
+      return mismatch();
     };
     cancel = sharedBgBudget().run(part, { label, partMs: 4, firstQuiet: CHECK_QUIET_MS });
     return () => cancel?.();
   };
+  const clearCheckTimer = (uid) => {
+    const timer = checkTimers.get(uid);
+    if (timer == null) return;
+    clearTimeout(timer);
+    checkTimers.delete(uid);
+  };
+  const retryCheck = (uid) => {
+    if (checkTimers.has(uid) || checks.has(uid) || !unverified.has(uid)) return;
+    const split = splitWatches.get(uid);
+    if (!split || split.disposed) return;
+    if (split.held) {
+      checkOwed.add(uid);
+      return;
+    }
+    const delay2 = checkDelay.get(uid) || CHECK_QUIET_MS;
+    checkDelay.set(uid, Math.min(delay2 * 2, 8e3));
+    const timer = setTimeout(() => {
+      checkTimers.delete(uid);
+      if (!unverified.has(uid)) return;
+      const live2 = splitWatches.get(uid);
+      if (!live2 || live2.disposed) return;
+      if (live2.held) {
+        checkOwed.add(uid);
+        return;
+      }
+      scheduleCheck(uid);
+    }, delay2);
+    try {
+      timer.unref?.();
+    } catch {
+    }
+    checkTimers.set(uid, timer);
+  };
   const scheduleCheck = (uid) => {
+    clearCheckTimer(uid);
     if (checks.has(uid) || !unverified.has(uid)) return;
     let stopped = false;
     const cancel = backgroundRead(uid, "check", (tree, stamp2) => {
@@ -41284,8 +41392,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (!unverified.has(uid)) return;
       if (!tree) {
         stats.checkFails = (stats.checkFails || 0) + 1;
+        retryCheck(uid);
         return;
       }
+      checkDelay.delete(uid);
       bigBoards.set(uid, tree);
       const split = splitWatches.get(uid);
       let changed2 = true;
@@ -42028,8 +42138,20 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       let honored = false;
       let big = false;
       let found = null;
-      const adopted = adoptedTrees.get(uid);
+      let adopted = adoptedTrees.get(uid) || null;
       if (adopted) adoptedTrees.delete(uid);
+      if (adopted && !adopted.trusted && pageStampOf(uid) !== adopted.stamp) {
+        const stale = adopted.split;
+        if (stale && splitWatches.get(uid) === stale) {
+          unhold(stale);
+          try {
+            stale.dispose();
+          } catch {
+          }
+          splitWatches.delete(uid);
+        }
+        adopted = null;
+      }
       if (adopted && Date.now() - adopted.at <= OFFER_TTL_MS && splitWatches.get(uid) === adopted.split && !adopted.split.disposed) {
         node2 = adopted.node;
         found = adopted.found || collectTargets(node2);
@@ -42564,6 +42686,9 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         clearTimeout(armTimer);
         armTimer = null;
       }
+      for (const timer of checkTimers.values()) clearTimeout(timer);
+      checkTimers.clear();
+      checkDelay.clear();
       for (const jobs of [checks, keeps, refreshes]) {
         for (const cancel of jobs.values()) {
           try {

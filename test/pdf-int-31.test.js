@@ -304,7 +304,10 @@ test("a cover loads as a data URL and a tick carries its page", async () => {
     for (let i = 0; i < 50 && !f.root.querySelector(".pxd-pdf-cover"); i += 1) f.flush();
     const cover = f.root.querySelector(".pxd-pdf-cover");
     assert.equal(cover?.getAttribute("data-cover"), "loading");
-    await until(() => f.root.querySelector(".pxd-pdf-cover")?.getAttribute("data-cover") === "ready", "cover ready");
+    // Covers repaint their cards on the background budget (P8 U2): not in the load's own callback, in an idle slice.
+    for (let i = 0; i < 10; i += 1) await tick(0);
+    assert.equal(f.root.querySelector(".pxd-pdf-cover")?.getAttribute("data-cover"), "loading", "no repaint outside idle time");
+    await until(() => { f.stub.flushIdle(); return f.root.querySelector(".pxd-pdf-cover")?.getAttribute("data-cover") === "ready"; }, "cover ready");
     const img = f.root.querySelector(".pxd-pdf-img");
     const src = img?.getAttribute("src") || "";
     assert.equal(src.startsWith("data:"), true);
@@ -369,7 +372,7 @@ test("settle stores page 1 and close stores the open page, then the card drops i
   });
   try {
     f.flush();
-    await until(() => f.root.querySelector(".pxd-pdf-cover")?.getAttribute("data-cover") === "ready", "seed ready");
+    await until(() => { f.stub.flushIdle(); return f.root.querySelector(".pxd-pdf-cover")?.getAttribute("data-cover") === "ready"; }, "seed ready");
     f.root.querySelector(".pxd-pdf-open").click();
     const live = f.root.querySelector(".pxd-read__live");
     assert.ok(live);
@@ -381,7 +384,7 @@ test("settle stores page 1 and close stores the open page, then the card drops i
     assert.equal(settled.lastPage, 2);
     assert.equal(settled.pageCount, 9);
     const fresh = dataUrl("jpeg-100x140");
-    await until(() => (f.root.querySelector(".pxd-pdf-img")?.getAttribute("src") || "").includes(fresh.slice(fresh.indexOf(","))), "cache drop");
+    await until(() => { f.stub.flushIdle(); return (f.root.querySelector(".pxd-pdf-img")?.getAttribute("src") || "").includes(fresh.slice(fresh.indexOf(","))); }, "cache drop");
     f.root.querySelector(".pxd-read__close").click();
     await until(() => imageBytes(storedCover(f.stub.localStorage)?.last) === "jpeg-80x110", "close last");
     const closed = storedCover(f.stub.localStorage);

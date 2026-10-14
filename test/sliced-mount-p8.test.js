@@ -96,7 +96,8 @@ test("host.prereadBoard offers the tree to the next pullBoard; a moved stamp or 
   // The fake has no :block/page: name the board's page as Roam would.
   const hostOn = (h) => { h.blockPageUid = (u) => (String(u).length ? "bpage" : ""); return h; };
   const host = hostOn(createHost({ api: fake.api, storage: fake.storage, graph: "g" }));
-  const reader = host.prereadBoard("sb1", { sliceMs: 1, batch: 10 });
+  let t = 0;
+  const reader = host.prereadBoard("sb1", { sliceMs: 3, batch: 10, clock: () => (t += 1) });
   assert.ok(reader);
   let steps = 0;
   while (!reader.step()) steps += 1;

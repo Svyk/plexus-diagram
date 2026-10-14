@@ -17,5 +17,6 @@ test("the first-page name cache repaints the board only when a PDF card on it ha
   const body = view.slice(view.indexOf("identTitleOf = (url) => {"), view.indexOf("setPdfNameResolver("));
   const guard = body.indexOf("if (!named) return;");
   assert.ok(guard > 0);
-  assert.ok(guard < body.indexOf("repaintStyles"), "the guard runs before the repaint");
+  // P8 U2: the repaint is the budgeted PDF-card repaint.
+  assert.ok(guard < body.indexOf("repaintPdfTitlesSoon"), "the guard runs before the repaint");
 });

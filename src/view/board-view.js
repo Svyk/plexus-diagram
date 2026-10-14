@@ -7,6 +7,7 @@
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
 import { notedSpeedFlags } from "../settings.js";
+import { sharedBgBudget } from "../bg-budget.js";
 import { createHitShield } from "./hit-shield.js";
 import { createGestureUnderlay } from "./gesture-underlay.js";
 import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, readPlexus, semanticRef, plainText } from "../model/schema.js";
@@ -1949,6 +1950,39 @@ function buildBoardView(onFail, {
     return out;
   };
   repaintItemStyles = () => { if (!disposed) itemsR.repaintStyles(); };
+  // P8 U2. PDF titles land in the background after an open (stored parse titles, first-page names, metadata, the
+  // title lexicon), each one a whole-board repaint (PhD main board: 110-200 ms each, four of them). They now share one
+  // budgeted repaint of the PDF cards, 20 per part; a title that lands mid-run starts it again when it ends.
+  let pdfTitleJob = null;
+  let pdfTitleAgain = false;
+  const repaintPdfTitlesSoon = () => {
+    if (disposed) return;
+    if (notedSpeedFlags().bgBudget === false) {
+      try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
+      try { readPane?.refreshCards?.(); } catch { /* switcher */ }
+      return;
+    }
+    if (pdfTitleJob) { pdfTitleAgain = true; return; }
+    let uids = null;
+    let at = 0;
+    pdfTitleJob = sharedBgBudget().run(() => {
+      if (disposed) { pdfTitleJob = null; return true; }
+      if (!uids) {
+        uids = [];
+        for (const it of board()?.items.values() || []) if (it?.kind === "pdf") uids.push(it.uid);
+        at = 0;
+      }
+      const part = uids.slice(at, at + 20);
+      at += part.length;
+      if (part.length) { try { itemsR.repaintItems(part); } catch { /* paint */ } }
+      if (at < uids.length) return false;
+      if (pdfTitleAgain) { pdfTitleAgain = false; uids = null; return false; }
+      pdfTitleJob = null;
+      try { refreshPdfHighlightCounts(); } catch { /* count */ }
+      try { readPane?.refreshCards?.(); } catch { /* switcher */ }
+      return true;
+    });
+  };
 
   // PDF covers. Nothing here runs at mount: the renderer asks coverImageFor on first paint,
   // and the warm timer arms only when the setting is on.
@@ -2005,8 +2039,7 @@ function buildBoardView(onFail, {
       if (disposed || !title || parsedTitles.get(key)) return;
       parsedTitles.set(key, title);
       parsedEvidence.set(key, { pageTitle: title, lines: found.lines || [] });
-      try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
-      try { readPane?.refreshCards?.(); } catch { /* switcher */ }
+      repaintPdfTitlesSoon();
     }).catch(() => {});
   };
   const parseStoreShared = () => {
@@ -2486,7 +2519,7 @@ function buildBoardView(onFail, {
       metaTail = job.then(() => {}, () => {});
       job.then((got) => {
         if (disposed || !got) return;
-        try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
+        repaintPdfTitlesSoon();
         try {
           if (readPane?.isOpen?.() !== true) return;
           const card = board()?.items.get(readPane.cardUid?.() || "");
@@ -2656,8 +2689,39 @@ function buildBoardView(onFail, {
   // A loaded cover repaints the cards that show it; covers that land in one turn share one pass.
   // Repainting every shell per cover was 14.5 s on the PhD main board (122 PDF covers × 1,512 shells).
   let coverRepaint = null;
+  let coverJob = null;
   const repaintForCover = (url) => {
     if (disposed) return;
+    // P8 U2: covers land from IndexedDB and FileReader callbacks after an open; repaint their cards on the
+    // background budget, 20 per part, with one highlight-count pass at the end.
+    if (notedSpeedFlags().bgBudget !== false) {
+      if (!coverRepaint) {
+        coverRepaint = new Set();
+        let uids = null;
+        let at = 0;
+        coverJob = sharedBgBudget().run(() => {
+          if (disposed) { coverJob = null; return true; }
+          if (!uids) {
+            const urls = coverRepaint;
+            coverRepaint = null;
+            uids = [];
+            for (const item of board()?.items.values() || []) {
+              if (item?.kind === "pdf" && urls?.has(coverUrlOf(item))) uids.push(item.uid);
+            }
+            at = 0;
+          }
+          const part = uids.slice(at, at + 20);
+          at += part.length;
+          if (part.length) itemsR.repaintItems(part);
+          if (at < uids.length) return false;
+          coverJob = null;
+          try { refreshPdfHighlightCounts(); } catch { /* count */ }
+          return true;
+        });
+      }
+      coverRepaint.add(url);
+      return;
+    }
     if (!coverRepaint) {
       coverRepaint = new Set();
       const run = () => {
@@ -6155,8 +6219,7 @@ function buildBoardView(onFail, {
           if (it.kind === "pdf" && names.get(pdfMacroUrl(pdfSourceOfItem(it)))?.title) { named = true; break; }
         }
         if (!named) return;
-        try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
-        try { readPane?.refreshCards?.(); } catch { /* switcher */ }
+        repaintPdfTitlesSoon();
       }).catch(() => {});
     }
     const got = names.get(url);
@@ -8626,10 +8689,7 @@ function buildBoardView(onFail, {
         hasPdf: () => [...b.items.values()].some((it) => it?.kind === "pdf"),
         ocr: sharedDeviceOcr,
         isDisposed: () => disposed,
-        onWarm: () => {
-          try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
-          try { readPane?.refreshCards?.(); } catch { /* switcher */ }
-        },
+        onWarm: () => repaintPdfTitlesSoon(),
         setTimer: (fn, ms) => timers.later(fn, ms),
       });
     }
@@ -9415,6 +9475,8 @@ function buildBoardView(onFail, {
       if (disposing) return;
       disposing = true;
       disposed = true;
+      if (pdfTitleJob) { const stop = pdfTitleJob; pdfTitleJob = null; stop(); }
+      if (coverJob) { const stop = coverJob; coverJob = null; stop(); }
       hitShield.drop();
       underlay.dispose();
       guardSelection(false);

@@ -138,3 +138,33 @@ test("host.prereadBoard is null without pull_many or a page stamp", () => {
   seed(noStamp);
   assert.equal(createHost({ api: noStamp.api, storage: noStamp.storage, graph: "g" }).prereadBoard("sb1"), null);
 });
+
+test("createTargetsWalk: collectTargets in resumable steps, same result and order", async () => {
+  const { collectTargets, createTargetsWalk } = await import("../src/host/roam.js");
+  const fake = createFakeRoam({ pullMany: true });
+  seed(fake, 200);
+  const tree = fake.api.data.pull(BOARD_PATTERN, [":block/uid", "sb1"]);
+  // Some ref cards in the mix.
+  tree[":block/children"][0][":block/children"].push({ ":block/uid": "r1", ":block/string": "[[Some Page]]" }, { ":block/uid": "r2", ":block/string": "((c1_3))" }, { ":block/uid": "r3", ":block/string": "[[Some Page]]" });
+  let t = 0;
+  const walk = createTargetsWalk(tree);
+  let steps = 0;
+  while (!walk.step(5, () => (t += 1))) steps += 1;
+  assert.ok(steps >= 1, "more than one step");
+  assert.deepEqual(walk.result(), collectTargets(tree));
+});
+
+test("host.prereadBoard hands the walked targets to pullBoard (no collectTargets in the acquire)", () => {
+  const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
+  seed(fake);
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  host.blockPageUid = () => "bpage";
+  let t = 0;
+  const reader = host.prereadBoard("sb1", { sliceMs: 3, batch: 10, clock: () => (t += 1) });
+  const phases = new Set();
+  while (!reader.step()) phases.add(reader.phase);
+  assert.ok(phases.has("targets"), [...phases].join(","));
+  const node = host.pullBoard("sb1", { light: true });
+  assert.equal(node[":block/uid"], "sb1");
+  assert.equal(host.stats.slicedReads, 1);
+});

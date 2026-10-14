@@ -515,15 +515,20 @@ test("slicedMount: the snapshot open reads the board in steps on separate tasks,
   const idb = await seededIdb();
   const env = installEnv({ idb });
   const log = slicedReader(env, 4);
+  const seenAtAcquire = [];
+  const acquired = env.acquired;
+  const push = acquired.push.bind(acquired);
+  acquired.push = (...x) => { seenAtAcquire.push(env.seen.length); return push(...x); };
   try {
     await env.install();
     assert.ok(env.doc.querySelector(".pxd-snap-root"));
-    await tick(40);
+    for (let i = 0; i < 100 && env.seen.length === 0; i += 1) await tick(10);
     assert.deepEqual(log.calls, [UID]);
     assert.equal(log.turns.length, 4);
     assert.ok(log.turns.every((t) => t.acquired === 0), "every read step runs before the acquire");
     assert.equal(env.acquired.length, 1);
     assert.equal(env.seen.length, 1, "the live view mounts after the read");
+    assert.ok(seenAtAcquire.every((n) => n === 0), "the view mounts in a later task than the acquire");
   } finally {
     log.stop();
     await env.lifecycle.dispose().catch(() => {});

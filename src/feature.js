@@ -1109,6 +1109,20 @@ export async function installPlexusDiagram({
       try { ok = acquire() !== false; } catch (error) { fail(error); return; }
       if (!ok) { fail(null); return; }
     }
+    // P8 U3: after a sliced read the view mounts in the next task, so the acquire and the mount are two tasks.
+    if (handoff.reader && !handoff.splitMount) {
+      handoff.splitMount = true;
+      nextTask(() => {
+        if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec || rec.view !== standIn) return;
+        mountSnapView(handoff, standIn, { autofocus, viewport, onLive, logging, t0 }, fail);
+      });
+      return;
+    }
+    mountSnapView(handoff, standIn, { autofocus, viewport, onLive, logging, t0 }, fail);
+  }
+
+  function mountSnapView(handoff, standIn, { autofocus, viewport, onLive, logging, t0 }, fail) {
+    const rec = handoff.rec;
     const state = handoff.painted?.state;
     const vpNow = state?.moved ? { ...state.vp } : viewport;
     let view;

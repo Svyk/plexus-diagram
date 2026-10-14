@@ -177,7 +177,7 @@ function manyItems(node) {
 const statsInParts = (node, targets) => manyItems(node) || targets.length > STATS_ONE_CALL_MAX;
 
 // Page cards and block refs named by card strings. Nested outline rows are not cards.
-function collectTargets(node) {
+export function collectTargets(node) {
   const titles = [];
   const uids = [];
   const stats = [];
@@ -199,6 +199,49 @@ function collectTargets(node) {
   };
   walk(node, true);
   return { titles: uniqueStrings(titles), uids: uniqueStrings(uids), stats };
+}
+
+// collectTargets in resumable steps (P8 U3: a sliced read finishes it before the acquire). Same order: a node, then
+// its children in order, depth first. step(budgetMs, clock) is true when done; result() is collectTargets(node).
+export function createTargetsWalk(node) {
+  const titles = [];
+  const uids = [];
+  const stats = [];
+  const stack = node && typeof node === "object" ? [[node, true]] : [];
+  let out = null;
+  return {
+    step(budgetMs = Infinity, clock = () => 0) {
+      const t0 = clock();
+      let n = 0;
+      while (stack.length) {
+        const [cur, isRoot] = stack.pop();
+        if (cur && typeof cur === "object") {
+          if (!isRoot) {
+            const uid = cur[":block/uid"];
+            if (typeof uid === "string" && uid) stats.push({ kind: "block", uid });
+            const cls = classifyString(cur[":block/string"] ?? "");
+            if (cls.kind === "page" && cls.title) {
+              titles.push(cls.title);
+              stats.push({ kind: "page", title: cls.title });
+            } else if (cls.kind === "block" && cls.refUid) {
+              uids.push(cls.refUid);
+              stats.push({ kind: "block", uid: cls.refUid });
+            }
+          }
+          const kids = childNodes(cur);
+          for (let i = kids.length - 1; i >= 0; i -= 1) stack.push([kids[i], false]);
+        }
+        n += 1;
+        if ((n & 255) === 0 && clock() - t0 >= budgetMs) return false;
+      }
+      return true;
+    },
+    result() {
+      if (stack.length) return null;
+      if (!out) out = { titles: uniqueStrings(titles), uids: uniqueStrings(uids), stats };
+      return out;
+    },
+  };
 }
 
 function unpackPulls(rows) {
@@ -1560,8 +1603,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       let plain = null;
       const offered = offeredTrees.get(uid);
       offeredTrees.delete(uid);
+      let offeredFound = null;
       if (offered && offered.stamp != null && Date.now() - offered.at <= OFFER_TTL_MS && pageStampOf(uid) === offered.stamp) {
         plain = offered.tree;
+        offeredFound = offered.found || null;
         stats.slicedReads = (stats.slicedReads || 0) + 1;
       }
       if (!plain) {
@@ -1584,7 +1629,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         bigBoards.set(uid, node);
         splitWatches.get(uid)?.reseed(node);
       } else bigBoards.delete(uid);
-      const found = collectTargets(node);
+      const found = offeredFound && node === plain ? offeredFound : collectTargets(node);
       const pullRefs = () => {
         if (!honored && (found.uids.length || found.titles.length)) {
           for (const entity of pullMany(found.uids, found.titles)) addEntity(uid, entity);
@@ -1712,17 +1757,28 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         ...opts,
       });
       const step = reader.step;
+      const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
+      const sliceMs = Number(opts.sliceMs) > 0 ? Number(opts.sliceMs) : 40;
+      // After the read: the open's ref and stat targets (collectTargets) in the same slices, so the acquire skips it.
+      let tree = null;
+      let walk = null;
       return {
-        get phase() { return reader.phase; },
+        get phase() { return walk ? "targets" : reader.phase; },
         get calls() { return reader.calls; },
         get ms() { return reader.ms; },
         step() {
-          const done = step();
-          if (done) {
-            const tree = reader.take();
-            if (tree?.[":block/uid"] === id) offeredTrees.set(id, { tree, stamp: reader.stamp, at: Date.now() });
+          if (!walk) {
+            const done = step();
+            if (!done) return false;
+            tree = reader.take();
+            if (tree?.[":block/uid"] !== id) return true;
+            walk = createTargetsWalk(tree);
+            return false;
           }
-          return done;
+          if (!walk.step(sliceMs, opts.clock || clock)) return false;
+          offeredTrees.set(id, { tree, found: walk.result(), stamp: reader.stamp, at: Date.now() });
+          tree = null;
+          return true;
         },
         cancel() { reader.cancel(); offeredTrees.delete(id); },
       };

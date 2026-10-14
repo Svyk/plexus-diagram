@@ -1550,9 +1550,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     }
     const eids = [...eidToItems.keys()];
     if (!eids.length || boardEid == null) return null;
-    return { boardEid, eidToItems, eids };
+    return { boardEid, eidToItems, eids, eidSet: new Set(eids) };
   }
   function linkRows(inputs, targets) {
+    if (typeof host.linkRows === "function") return host.linkRows(inputs.boardEid, inputs.eidSet, targets) || [];
     return host.q(linksQuery(), inputs.boardEid, inputs.eids, targets) || [];
   }
   function finishLinkRows(inputs, rows) {

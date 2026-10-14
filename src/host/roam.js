@@ -28,6 +28,7 @@ import { bindGuardStats, guardCallback } from "../guard.js";
 import { installCommentHost } from "./comments.js";
 import { SPLIT_WATCH_MIN, containerKind, createSplitWatch, treeSize } from "./split-watch.js";
 import { notedSpeedFlags } from "../settings.js";
+import { linksQuery } from "../model/links.js";
 
 // Pull results equal but for Roam's own reader state (:pdf-settings: page, scale). Exits at the first other change.
 const READER_STATE = ":pdf-settings";
@@ -282,6 +283,8 @@ const PDF_BLOCK_IN_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?pa
 // The pdf block's pins container and its pins: two levels, nothing deeper.
 const PDF_KIDS_PATTERN = `[:block/uid {(limit :block/children nil) [:block/uid :block/string :block/order :block/props
  {(limit :block/children nil) [:block/uid :block/string :block/order :block/props]}]}]`;
+const LINK_REFS_QUERY = "[:find ?b ?src :in $ [?b ...] :where [?src :block/refs ?b]]";
+const LINK_SRC_PATTERN = "[:db/id :block/uid :block/string {:block/page [:db/id]} {:block/parents [:db/id]}]";
 const OUTLINE_KIDS_PATTERN = "[:block/uid {(limit :block/children nil) [:block/uid :block/string :block/open :block/order]}]";
 const PDF_PAGE_PATTERN = "[:block/uid :node/title {(limit :block/children nil) [:block/uid :block/string :block/order]}]";
 const PDF_HASH_PAGE_QUERY = `[:find ?u ?t :in $ ?h :where [?p :pdf/content-hash ?h] [?p :block/uid ?u] [?p :node/title ?t]]`;
@@ -2435,6 +2438,37 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     q(query, ...inputs) {
       return data.fast?.q ? data.fast.q(query, ...inputs) : data.q(query, ...inputs);
+    },
+
+    // The derived-link rows of linksQuery() for `targets`, without its join: the sources that ref a target come from
+    // the refs index, then one pull_many of their page and parents, filtered here. Same rows as the datalog (live MAIN:
+    // 34-61 ms per 120 targets instead of 762-1,294 ms). `eids` is a Set of the board's card eids.
+    linkRows(boardEid, eids, targets) {
+      if (typeof data.pull_many !== "function") return host.q(linksQuery(), boardEid, [...eids], targets) || [];
+      const pairs = host.q(LINK_REFS_QUERY, targets) || [];
+      if (!pairs.length) return [];
+      const srcs = [...new Set(pairs.map((p) => p[1]))];
+      const info = new Map();
+      for (const n of data.pull_many(LINK_SRC_PATTERN, srcs) || []) if (n?.[":db/id"] != null) info.set(n[":db/id"], n);
+      const seen = new Set();
+      const rows = [];
+      for (const [b, src] of pairs) {
+        const n = info.get(src);
+        if (!n || src === boardEid) continue;
+        const su = n[":block/uid"];
+        const ss = n[":block/string"];
+        if (typeof su !== "string" || typeof ss !== "string") continue;
+        const parents = Array.isArray(n[":block/parents"]) ? n[":block/parents"].map((p) => p?.[":db/id"]) : [];
+        if (parents.includes(boardEid)) continue;
+        for (const a of [n[":block/page"]?.[":db/id"], ...parents, src]) {
+          if (a == null || a === b || !eids.has(a)) continue;
+          const key = `${a}|${b}|${su}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          rows.push([a, b, su, ss]);
+        }
+      }
+      return rows;
     },
 
     // Page children for the highlight picker, four levels. No url query.

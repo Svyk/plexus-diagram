@@ -64,6 +64,9 @@ test("a big board's idle stat reads stop at the slice deadline and run one part 
   const queued = [];
   const previous = globalThis.requestIdleCallback;
   globalThis.requestIdleCallback = (fn) => { queued.push(fn); return queued.length; };
+  // The ref parts are sized from measured time; a frozen clock keeps a slow runner from changing how many parts run.
+  const realNow = globalThis.performance.now;
+  globalThis.performance.now = () => 0;
   try {
     const fake = createFakeRoam();
     seed(fake, "huge", SPLIT_WATCH_MIN + 10);
@@ -79,6 +82,7 @@ test("a big board's idle stat reads stop at the slice deadline and run one part 
     assert.equal(calls.length - first, 2, "a spent slice still runs one part");
   } finally {
     globalThis.requestIdleCallback = previous;
+    globalThis.performance.now = realNow;
   }
 });
 

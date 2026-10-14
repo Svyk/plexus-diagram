@@ -134,12 +134,13 @@ class _RepeatStop:
     with each new token id.
     """
 
-    def __init__(self, eos_token_ids, tokenizer):
+    def __init__(self, eos_token_ids, tokenizer, text_mode=False):
         from mlx_vlm.utils import StoppingCriteria
 
         ids = eos_token_ids if isinstance(eos_token_ids, list) else [eos_token_ids]
         self._inner = StoppingCriteria(ids, tokenizer, additional_eos_token_ids=_extra_eos(tokenizer))
         self.tokenizer = tokenizer
+        self.text_mode = text_mode
         self.recent: list[int] = []
         self.buf = ""
 
@@ -166,6 +167,8 @@ class _RepeatStop:
         self.buf = (self.buf + piece)[-160:]
         if any(mark in self.buf for mark in ("</doctag>", "<end_of_utterance>", "User:")):
             return True
+        if self.text_mode and short_loop(self.buf):
+            return True
         n = len(self.recent)
         if n >= 12 and len(set(self.recent[-12:])) == 1:
             # A caption spanning thirteen columns is twelve `<lcel>` tokens in
@@ -184,6 +187,58 @@ class _RepeatStop:
             if _span_has_break(self.tokenizer, span):
                 return True
         return False
+
+
+# A page transcription that ends in a short unit with a letter or a digit
+# ("1.2.", "ok\n") repeated back to back over LOOP_CHARS is a loop: a page
+# never prints that. A run of dashes or dots (a rule, a leader) is not.
+LOOP_UNIT = 12
+LOOP_CHARS = 96
+LOOP_COPIES = 8
+
+
+def short_loop(text: str) -> bool:
+    """True when `text` ends in a unit of up to LOOP_UNIT characters repeated over LOOP_CHARS."""
+    for period in range(1, LOOP_UNIT + 1):
+        copies = max(LOOP_COPIES, -(-LOOP_CHARS // period))
+        need = period * copies
+        if len(text) < need:
+            continue
+        unit = text[-period:]
+        if any(ch.isalnum() for ch in unit) and text[-need:] == unit * copies:
+            return True
+    return False
+
+
+def drop_repeats(text: str) -> str:
+    """A page transcription without its loops.
+
+    A unit of up to LOOP_UNIT characters with a letter or a digit repeated
+    over LOOP_CHARS keeps one copy, and so does a run of LOOP_COPIES or more
+    identical lines over LOOP_CHARS. A column of equal results (five lines of
+    "0.053") is the page, not a loop.
+    """
+    import re
+
+    def one(match):
+        unit = match.group(1)
+        keep = len(match.group(0)) < LOOP_CHARS or not any(ch.isalnum() for ch in unit)
+        return match.group(0) if keep else unit
+
+    text = re.sub(r"(.{1,%d}?)\1{%d,}" % (LOOP_UNIT, LOOP_COPIES - 1), one, text, flags=re.S)
+    lines = text.split("\n")
+    out = []
+    i = 0
+    while i < len(lines):
+        key = lines[i].strip()
+        j = i
+        while j < len(lines) and key and lines[j].strip() == key:
+            j += 1
+        run = max(1, j - i)
+        loop = key and any(ch.isalnum() for ch in key) and run >= LOOP_COPIES and run * (len(key) + 1) >= LOOP_CHARS
+        out.extend(lines[i:i + 1] if loop else lines[i:i + run])
+        i += run
+    return "\n".join(out)
 
 
 def _span_has_break(tokenizer, span) -> bool:

@@ -55859,10 +55859,10 @@ function hostHeight(host) {
   return b && b.length >= 4 ? Math.max(0, b[3] - b[1]) : 0;
 }
 var ANCHOR_WEIGHT = 5;
-function placePageText(text4, hosts) {
+function placeSlices(text4, hosts) {
   const words = String(text4 || "").split(/\s+/).filter(Boolean);
   const k = hosts.length;
-  if (!k) return [];
+  if (!k) return { parts: [], anchored: [], pinned: [] };
   const keys = words.map(alignKey);
   const V = [];
   const visionCount = hosts.map((host, hi) => {
@@ -55905,13 +55905,15 @@ function placePageText(text4, hosts) {
       at += shares[hi];
       to[hi] = at;
     }
-    return hosts.map((_, hi) => words.slice(from[hi], to[hi]).join(" "));
+    return { parts: hosts.map((_, hi) => words.slice(from[hi], to[hi]).join(" ")), anchored: new Array(k).fill(false), pinned: new Array(k).fill(false) };
   }
+  const pinned2 = new Array(k).fill(false);
   for (const hi of anchored) {
     from[hi] = first[hi];
     to[hi] = last[hi] + 1;
   }
   const fill = (gapFrom, gapTo, before, between, after) => {
+    if (before != null && after != null && between.length === 1) pinned2[between[0]] = true;
     const pieces2 = [];
     if (before != null) pieces2.push({ host: before, tail: true, w: vStart[before] + visionCount[before] - 1 - lastV[before], h: 0 });
     for (const hi of between) pieces2.push({ host: hi, w: visionCount[hi], h: hostHeight(hosts[hi]) });
@@ -55961,14 +55963,70 @@ function placePageText(text4, hosts) {
   }
   const tail = anchored[anchored.length - 1];
   fill(last[tail] + 1, words.length, tail, range(tail + 1, k), null);
-  return hosts.map((_, hi) => words.slice(from[hi], to[hi]).join(" "));
+  return { parts: hosts.map((_, hi) => words.slice(from[hi], to[hi]).join(" ")), anchored: hosts.map((_, hi) => first[hi] >= 0), pinned: pinned2 };
 }
+function keysOf(text4) {
+  return String(text4 || "").split(/\s+/).map(alignKey).filter((key) => key.length);
+}
+function bagOf(keys) {
+  const bag = /* @__PURE__ */ new Map();
+  for (const key of keys) bag.set(key, (bag.get(key) || 0) + 1);
+  return bag;
+}
+function takeKey(bag, key) {
+  const n3 = bag.get(key) || 0;
+  if (n3 > 0) {
+    bag.set(key, n3 - 1);
+    return true;
+  }
+  if (key.length < 5 || /\d/.test(key)) return false;
+  for (const [other, count] of bag) {
+    if (count > 0 && matchWeight(key, other) > 0) {
+      bag.set(other, count - 1);
+      return true;
+    }
+  }
+  return false;
+}
+var SUPPORT_MIN_WORDS = 20;
+var SUPPORT_MIN_SHARE = 0.2;
+function pageReadSupport(text4, visionTexts) {
+  const vision = visionTexts.flatMap(keysOf).filter((key) => key.length >= 2);
+  const read2 = keysOf(text4).filter((key) => key.length >= 2);
+  const seen = new Set(vision);
+  const long = [...seen].filter((key) => key.length >= 5);
+  let supported2 = 0;
+  for (const key of read2) {
+    if (seen.has(key) || key.length >= 5 && long.some((v) => matchWeight(key, v) > 0)) supported2 += 1;
+  }
+  const share = read2.length ? supported2 / read2.length : 1;
+  return { visionWords: vision.length, readWords: read2.length, share, keep: vision.length < SUPPORT_MIN_WORDS || share >= SUPPORT_MIN_SHARE };
+}
+function sliceFits(vision, slice) {
+  const a = keysOf(vision);
+  const b = keysOf(slice);
+  if (!a.length || !b.length) return true;
+  const mine = new Set(a);
+  if (b.some((key) => mine.has(key) && (key.length >= 2 || /\d/.test(key)))) return true;
+  const near2 = (x2, y2) => {
+    const limit2 = Math.floor(0.5 * Math.max(x2.length, y2.length));
+    return Math.min(x2.length, y2.length) >= 4 && editDistanceAtMost(x2, y2, limit2) <= limit2;
+  };
+  if (a.length * b.length <= 400 && a.some((x2) => b.some((y2) => near2(x2, y2)))) return true;
+  const x = a.join("");
+  const y = b.join("");
+  const max = Math.max(x.length, y.length);
+  const limit = Math.ceil(0.5 * max) - 1;
+  return max <= 200 && limit >= 0 && editDistanceAtMost(x, y, limit) <= limit;
+}
+var MOVED_SHARE = 1;
 function alignVlmText(doc, regions) {
-  if (!doc || !regions?.length) return { doc, applied: [], reads: [] };
+  if (!doc || !regions?.length) return { doc, applied: [], reads: [], dropped: [] };
   const blocks = { ...doc.blocks };
   let order = doc.order;
   const applied = [];
   const reads = [];
+  const dropped = [];
   const kinds = /* @__PURE__ */ new Set(["para", "heading", "caption", "footnote"]);
   const covered = /* @__PURE__ */ new Set(["table", "figure"]);
   for (const region of regions) {
@@ -56000,10 +56058,29 @@ function alignVlmText(doc, regions) {
     const hostText = inside8.map((b) => b.text).join(" ");
     if (texCommandCount(region.text) >= 2 && texCommandCount(hostText) === 0) continue;
     if (region.pageText) {
-      const tablesHere = (order || []).map((id) => blocks[id]).filter((b) => b && b.page === region.page && b.type === "table" && b.cells?.length);
-      const parts2 = placePageText(withoutTableLines(region.text, tablesHere), inside8);
+      const onPage = (order || []).map((id) => blocks[id]).filter((b) => b && b.page === region.page);
+      const support = pageReadSupport(region.text, onPage.flatMap((b) => [b.text || "", ...(b.cells || []).map((c) => c.text || "")]));
+      if (!support.keep) {
+        dropped.push({ page: region.page, visionWords: support.visionWords, readWords: support.readWords, share: support.share });
+        continue;
+      }
+      const tablesHere = onPage.filter((b) => b.type === "table" && b.cells?.length);
+      const placed = placeSlices(withoutTableLines(region.text, tablesHere), inside8);
       reads.push({ page: region.page, text: region.text, hosts: inside8.map((block) => ({ id: block.id, vision: block.text || "" })) });
-      settleHosts(inside8, parts2);
+      const anyAnchor = placed.anchored.some(Boolean);
+      const reading = bagOf(placed.parts.flatMap(keysOf));
+      const extra = inside8.map(() => "");
+      const parts2 = placed.parts.map((part, i) => {
+        const host = inside8[i];
+        if (!anyAnchor || placed.anchored[i] || placed.pinned[i] || host.type === "caption" || !part || !keysOf(host.text).length) return part;
+        if (sliceFits(host.text, part)) return part;
+        const mine = keysOf(host.text);
+        const left = new Map(reading);
+        if (mine.filter((key) => takeKey(left, key)).length >= MOVED_SHARE * mine.length) return part;
+        extra[i] = part;
+        return host.text;
+      });
+      settleHosts(inside8, parts2, extra);
       continue;
     }
     inside8.sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
@@ -56019,8 +56096,8 @@ function alignVlmText(doc, regions) {
       applied.push(id);
     }
   }
-  return { doc: { ...doc, blocks, order }, applied, reads };
-  function settleHosts(hosts, parts) {
+  return { doc: { ...doc, blocks, order }, applied, reads, dropped };
+  function settleHosts(hosts, parts, extra = []) {
     const out = hosts.map((_, i) => parts[i] || "");
     const before = hosts.map(() => []);
     const after = hosts.map(() => []);
@@ -56042,11 +56119,41 @@ function alignVlmText(doc, regions) {
       if (k < hosts.length) before[k].push(moved);
       else spare = [spare, moved].filter(Boolean).join(" ");
     });
+    const texts = hosts.map((_, i) => [...before[i], out[i], ...after[i]].filter(Boolean).join(" "));
+    const gained = bagOf([...texts, ...extra, spare].flatMap(keysOf));
     hosts.forEach((block, i) => {
-      const text4 = [...before[i], out[i], ...after[i]].filter(Boolean).join(" ");
-      if (text4 === block.text || !text4 && block.type === "caption") return;
-      blocks[block.id] = { ...block, text: text4 };
-      applied.push(block.id);
+      if (!texts[i]) return;
+      const own = bagOf(keysOf(texts[i]));
+      for (const key of keysOf(block.text)) {
+        if (takeKey(own, key)) takeKey(gained, key);
+      }
+    });
+    hosts.forEach((block, i) => {
+      const text4 = texts[i];
+      if (!text4 && block.type !== "caption") {
+        const mine = keysOf(block.text);
+        const left = new Map(gained);
+        const moved = mine.filter((key) => takeKey(left, key)).length;
+        if (mine.length && moved >= MOVED_SHARE * mine.length) {
+          for (const [key, n3] of left) gained.set(key, n3);
+          if (order === doc.order) order = [...doc.order || []];
+          order = order.filter((id) => id !== block.id);
+          delete blocks[block.id];
+          applied.push(block.id);
+        }
+      } else if (text4 !== block.text && !(!text4 && block.type === "caption")) {
+        blocks[block.id] = { ...block, text: text4 };
+        applied.push(block.id);
+      }
+      if (extra[i]) {
+        if (order === doc.order) order = [...doc.order || []];
+        const id = `vlmtext-p${block.page}-${applied.length + 1}`;
+        blocks[id] = { id, type: "para", page: block.page, bbox: block.bbox.map((v) => Math.round(v)), text: extra[i], confidence: 0.6, engine: "vlm" };
+        const at = order.indexOf(block.id);
+        if (at >= 0) order.splice(at + 1, 0, id);
+        else order.push(id);
+        applied.push(id);
+      }
     });
     return spare;
   }

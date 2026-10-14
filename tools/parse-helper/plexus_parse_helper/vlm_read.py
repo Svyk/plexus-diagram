@@ -22,6 +22,7 @@ from plexus_parse_helper.vlm_boxes import choose_table_boxes, drop_layout_inside
 from plexus_parse_helper.vlm_layout import (
     FIGURE_LABELS,
     LAYOUT_MODEL,
+    TABLE_LABELS,
     TEXT_LABELS,
     detect_layout,
 )
@@ -208,6 +209,56 @@ def mask_boxes(bitmap, boxes, scale, pad=2):
     return out
 
 
+# A page with almost no ink is not sent to the page model, which invents text
+# on blank and show-through pages (a counting list, an essay, a loop). Ink is a
+# pixel at most INK_CONTRAST as bright as the paper around it, so faint
+# show-through and an uneven scan are paper. The page is blank when ink covers
+# under INK_MIN of it and no layout region holds that much ink of its own (a
+# layout box over a blank page is not text). Set from 13 blank and 79 written
+# form pages at 200 dpi: blanks under 0.00001, written pages at least 0.017;
+# one line of 14 pt print is about 0.001. The decision on every one of those
+# pages is the same with INK_MIN at half or one and a half times this value.
+INK_CONTRAST = 0.6
+INK_MIN = 0.0005
+INK_REGION_LABELS = TEXT_LABELS | TABLE_LABELS | FIGURE_LABELS
+
+
+def ink_map(image):
+    """Boolean ink mask: pixels at most INK_CONTRAST of the local paper brightness."""
+    import cv2
+    import numpy as np
+
+    gray = np.asarray(image.convert("L"), dtype=np.uint8)
+    size = max(15, (min(gray.shape) // 60) | 1)
+    paper = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (size, size)))
+    paper = cv2.medianBlur(paper, 21).astype(np.float32)
+    return gray.astype(np.float32) < INK_CONTRAST * np.maximum(paper, 1.0)
+
+
+def _ink_share(ink, box=None, scale=1.0):
+    if box is None:
+        return float(ink.mean()) if ink.size else 0.0
+    h, w = ink.shape
+    x0, y0 = max(0, int(box[0] * scale)), max(0, int(box[1] * scale))
+    x1, y1 = min(w, int(box[2] * scale)), min(h, int(box[3] * scale))
+    if x1 <= x0 or y1 <= y0:
+        return 0.0
+    return float(ink[y0:y1, x0:x1].mean())
+
+
+def blank_page(bitmap, detected, scale, ink_min=INK_MIN):
+    """True when the page has too little ink to hold text (see INK_MIN)."""
+    ink = ink_map(bitmap)
+    if _ink_share(ink) >= ink_min:
+        return False
+    for item in detected or []:
+        if item.get("label") not in INK_REGION_LABELS or item.get("score", 0) < 0.5 or not item.get("bbox"):
+            continue
+        if _ink_share(ink, item["bbox"], scale) >= ink_min:
+            return False
+    return True
+
+
 def union_box(boxes):
     return [
         round(min(box[0] for box in boxes), 2),
@@ -285,6 +336,7 @@ def read_pages(pdf_path: str, options: dict | None = None) -> dict:
     figures_out = []
     layout_out = []
     boxes_out = []
+    blank_out = []
     text_model = None
     pdf = pdfium.PdfDocument(str(pdf_path))
     try:
@@ -359,7 +411,9 @@ def read_pages(pdf_path: str, options: dict | None = None) -> dict:
                     "label": item["label"],
                     "score": item["score"],
                 })
-            if want_text and not layout_only:
+            if want_text and not layout_only and blank_page(bitmap, detected, scale):
+                blank_out.append(page_no)
+            elif want_text and not layout_only:
                 plan = text_plan(detected, pw, ph)
                 body = plan["body"]
                 strips = plan["strips"]
@@ -389,5 +443,6 @@ def read_pages(pdf_path: str, options: dict | None = None) -> dict:
         "figures": figures_out,
         "layout": layout_out,
         "boxes": boxes_out,
+        "blankPages": blank_out,
         "decode": {"temperature": DECODE_TEMPERATURE, "seed": DECODE_SEED, "greedy": True},
     }

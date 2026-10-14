@@ -107,3 +107,78 @@ test("alignVlmText hosts a page transcription on every text block of the page, n
   assert.equal(out.doc.blocks.label.text, "fig. 2");
   assert.equal(out.doc.blocks.cap.text, "Plate one");
 });
+
+function pageDoc(lines) {
+  const order = [];
+  const blocks = {};
+  lines.forEach((text, i) => {
+    const id = `b${i}`;
+    order.push(id);
+    blocks[id] = { id, type: "para", page: 1, bbox: [40, 40 + 30 * i, 560, 60 + 30 * i], text };
+  });
+  return { order, blocks };
+}
+const words = (doc) => doc.order.map((id) => doc.blocks[id].text).join(" ").split(/\s+/).filter(Boolean);
+
+test("alignVlmText drops a line the page model merged into its neighbour instead of leaving it empty", () => {
+  const doc = pageDoc(["Cleaning record for the filling room", "Operator", "Verified by quality technician", "Shift supervisor review complete"]);
+  // The page model reads the short label at the end of the next line, out of Vision's order.
+  const out = alignVlmText(doc, [{ page: 1, bbox: [40, 40, 560, 160], pageText: true,
+    text: "Cleaning record for the filling room\nVerified by quality technician Operator\nShift supervisor review complete" }]);
+  const texts = out.doc.order.map((id) => out.doc.blocks[id].text);
+  assert.ok(texts.every((t) => t.trim()), `no empty line: ${JSON.stringify(texts)}`);
+  assert.equal(out.doc.blocks.b1, undefined);
+  assert.ok(!out.doc.order.includes("b1"));
+  const all = words(out.doc).map((w) => w.toLowerCase());
+  assert.equal(all.filter((w) => w === "operator").length, 1);
+  assert.equal(new Set(all).size, all.length);
+});
+
+test("alignVlmText keeps the Vision line the page model dropped", () => {
+  const doc = pageDoc(["Sanitation verification log", "Equipment rinsed with potable water", "Verified by quality technician"]);
+  const out = alignVlmText(doc, [{ page: 1, bbox: [40, 40, 560, 130], pageText: true,
+    text: "Sanitation verification log\nVerified by quality technician" }]);
+  assert.equal(out.doc.order.length, 3);
+  assert.equal(out.doc.blocks.b1.text, "Equipment rinsed with potable water");
+  assert.equal(out.doc.blocks.b0.text, "Sanitation verification log");
+  assert.equal(out.doc.blocks.b2.text, "Verified by quality technician");
+});
+
+test("alignVlmText leaves a page reading out when the page's own words do not support it", () => {
+  const doc = pageDoc([
+    "Receiving inspection for raw material lots",
+    "Supplier name and address on the certificate",
+    "Container seals intact and numbered",
+    "Temperature on arrival recorded by the receiver",
+    "Accepted rejected or placed on hold",
+  ]);
+  const before = JSON.stringify(doc);
+  const out = alignVlmText(doc, [{ page: 1, bbox: [40, 40, 560, 200], pageText: true,
+    text: "The quick brown fox jumps over the lazy dog.\nIn 1776 the colonies declared independence from Britain after a long war." }]);
+  assert.equal(JSON.stringify(out.doc), before);
+  assert.equal(out.applied.length, 0);
+  assert.equal(out.dropped.length, 1);
+  assert.equal(out.dropped[0].page, 1);
+  assert.ok(out.dropped[0].share < 0.2);
+  // Where Vision found little (a handwritten note), the reading stands.
+  const note = alignVlmText(pageDoc(["Ilwe aod", "rnq"]), [{ page: 1, bbox: [40, 40, 560, 100], pageText: true, text: "Line cleared at noon\nok" }]);
+  assert.equal(note.dropped.length, 0);
+  assert.notEqual(note.doc.blocks.b0.text, "Ilwe aod");
+});
+
+test("alignVlmText gives a position-only slice to a host only with shared evidence; otherwise both lines stay", () => {
+  const doc = pageDoc(["Batch release checklist", "Retain samples labelled", "Line clearance signed"]);
+  // The last host matched nothing: its slice is the tail by position, a different line.
+  const out = alignVlmText(doc, [{ page: 1, bbox: [40, 40, 560, 130], pageText: true,
+    text: "Batch release checklist\nRetain samples labelled\nPallet wrap intact" }]);
+  assert.equal(out.doc.blocks.b2.text, "Line clearance signed");
+  const extra = out.doc.order.filter((id) => !doc.blocks[id]);
+  assert.equal(extra.length, 1);
+  assert.equal(out.doc.blocks[extra[0]].text, "Pallet wrap intact");
+  assert.equal(out.doc.order.indexOf(extra[0]), out.doc.order.indexOf("b2") + 1);
+  // A near spelling is evidence: the host takes the slice.
+  const near = alignVlmText(pageDoc(["Batch release checklist", "Retain samples labelled", "Line clearence signd"]), [{ page: 1, bbox: [40, 40, 560, 130], pageText: true,
+    text: "Batch release checklist\nRetain samples labelled\nLine clearance signed" }]);
+  assert.equal(near.doc.blocks.b2.text, "Line clearance signed");
+  assert.equal(near.doc.order.length, 3);
+});

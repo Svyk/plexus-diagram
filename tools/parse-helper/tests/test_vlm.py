@@ -760,3 +760,119 @@ def test_layout_only_reads_no_table_and_no_text(monkeypatch):
     assert calls == {"page": 0, "generate": 0}
     assert out["tables"] == [] and out["lines"] == [] and out["boxes"] == []
     assert out["layout"], "the layout boxes are still returned"
+
+
+def _image_pdf(path, lines=()):
+    """A letter page at 200 dpi as a PDF: paper, plus each (text, y) line drawn large."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    page = Image.new("RGB", (1700, 2200), (250, 248, 240))
+    draw = ImageDraw.Draw(page)
+    font = ImageFont.load_default(size=40)
+    for text, y in lines:
+        draw.text((200, y), text, fill=(30, 30, 30), font=font)
+    page.save(path, "PDF", resolution=200)
+    return path
+
+
+def _whole_page_content(bitmap):
+    w, h = bitmap.size
+    return [{"label": "content", "score": 0.77, "bbox": [0, 0, w, h]}]
+
+
+def test_a_blank_page_is_not_sent_to_the_page_model(monkeypatch, tmp_path):
+    from plexus_parse_helper.vlm_read import read_pages
+
+    calls = {"page": 0, "crop": 0}
+    monkeypatch.setattr("plexus_parse_helper.vlm_read.detect_layout", _whole_page_content)
+    monkeypatch.setattr(
+        "plexus_parse_helper.vlm_read.read_page_text",
+        lambda image: calls.__setitem__("page", calls["page"] + 1) or "1. 2. 3. The quick brown fox",
+    )
+    monkeypatch.setattr(
+        "plexus_parse_helper.vlm_read._generate",
+        lambda image, prompt, tokens=None: calls.__setitem__("crop", calls["crop"] + 1) or "invented",
+    )
+    out = read_pages(str(_image_pdf(tmp_path / "blank.pdf")), {"pages": [1], "text": True})
+    assert calls == {"page": 0, "crop": 0}
+    assert out["lines"] == []
+    assert out["blankPages"] == [1]
+
+
+def test_a_one_line_page_is_still_read(monkeypatch, tmp_path):
+    from plexus_parse_helper.vlm_read import read_pages
+
+    calls = {"page": 0}
+    monkeypatch.setattr("plexus_parse_helper.vlm_read.detect_layout", _whole_page_content)
+    monkeypatch.setattr(
+        "plexus_parse_helper.vlm_read.read_page_text",
+        lambda image: calls.__setitem__("page", calls["page"] + 1) or "Received in good order",
+    )
+    pdf = _image_pdf(tmp_path / "line.pdf", [("Received in good order", 1000)])
+    out = read_pages(str(pdf), {"pages": [1], "text": True})
+    assert calls["page"] == 1
+    assert out["blankPages"] == []
+    assert [line["text"] for line in out["lines"] if line.get("pageText")] == ["Received in good order"]
+
+
+def test_blank_page_ink_ignores_faint_show_through_and_a_layout_box_without_ink():
+    from PIL import Image, ImageDraw
+
+    from plexus_parse_helper.vlm_read import INK_MIN, blank_page
+
+    page = Image.new("RGB", (1700, 2200), (250, 248, 240))
+    draw = ImageDraw.Draw(page)
+    # Show-through: a whole page of faint mirrored lines, 15% darker than the paper.
+    for y in range(200, 2000, 60):
+        draw.rectangle([200, y, 1500, y + 18], fill=(212, 210, 204))
+    box = [{"label": "content", "score": 0.77, "bbox": [0, 0, 612, 792]}]
+    assert blank_page(page, box, 200 / 72)
+    # One short dark word in the corner, with its own layout box.
+    draw.rectangle([150, 150, 330, 190], fill=(25, 25, 25))
+    word = [{"label": "text", "score": 0.8, "bbox": [50, 50, 125, 72]}]
+    for ink_min in (0.5 * INK_MIN, INK_MIN, 1.5 * INK_MIN):
+        assert not blank_page(page, word, 200 / 72, ink_min=ink_min)
+
+
+def _char_tok():
+    class Tok:
+        def decode(self, ids, skip_special_tokens=False):
+            return "".join(chr(i) for i in ids)
+
+        def convert_tokens_to_ids(self, name):
+            return -1
+
+    return Tok()
+
+
+def test_page_text_stops_a_short_loop_and_lets_a_numbered_list_run():
+    from plexus_parse_helper.vlm_tables import _RepeatStop
+
+    loop = _RepeatStop([], _char_tok(), text_mode=True)
+    loop.reset()
+    stream = "11.3.2." + "1.2." * 600
+    stopped = next((i for i, ch in enumerate(stream) if loop(ord(ch))), None)
+    assert stopped is not None and stopped < 7 + 120
+    listing = _RepeatStop([], _char_tok(), text_mode=True)
+    listing.reset()
+    numbered = "".join(f"{n}. Check the seal\n" for n in range(1, 60)) + "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -\n"
+    assert not any(listing(ord(ch)) for ch in numbered)
+    # The table reader keeps its own rules: the same loop is not stopped by the text rule there.
+    table = _RepeatStop([], _char_tok())
+    table.reset()
+    assert not any(table(ord(ch)) for ch in "1.2." * 30)
+
+
+def test_drop_repeats_trims_loops_and_keeps_lists():
+    from plexus_parse_helper.vlm_tables import drop_repeats
+
+    assert drop_repeats("11.3.2." + "1.2." * 500) == "11.3.2.1.2."
+    assert drop_repeats("Item\n" + "Line cleared\n" * 12 + "End") == "Item\nLine cleared\nEnd"
+    # A column of equal results is the page.
+    column = "Result\n" + "\n".join(["0.053"] * 5) + "\n0.05"
+    assert drop_repeats(column) == column
+    numbered = "\n".join(f"{n}. Check the seal" for n in range(1, 40))
+    assert drop_repeats(numbered) == numbered
+    leader = "Contents " + "." * 150 + " 5"
+    assert drop_repeats(leader) == leader
+    assert drop_repeats("Lot 00000000 released") == "Lot 00000000 released"

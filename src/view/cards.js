@@ -2115,6 +2115,7 @@ export function createItemRenderer({
   // rest share that budget. Detail zoom and overviewFast off still use frames: live waits on them.
   let shellBg = null;
   let priorityFrame = null;
+  let shellsLive = true;
   // How many leading queue entries are priority shells (nearest, plus sections) still to build.
   let priorityLeft = 0;
   const stopPriorityFrame = () => {
@@ -2128,7 +2129,9 @@ export function createItemRenderer({
   };
   const pumpPriorityFrame = () => {
     priorityFrame = null;
+    if (!shellsLive) return;
     pumpChunk({ limit: OPEN_CHUNK, priority: true });
+    if (!shellsLive) return;
     if (priorityLeft > 0 && shellQueue.length && timers?.frame) {
       priorityFrame = timers.frame(pumpPriorityFrame);
       return;
@@ -2136,6 +2139,7 @@ export function createItemRenderer({
     armShellPump();
   };
   const armShellPump = () => {
+    if (!shellsLive) return;
     stopShellBg();
     if (!shellQueue.length) return;
     if (priorityLeft > 0 && timers?.frame) {
@@ -2150,6 +2154,12 @@ export function createItemRenderer({
     }
     if (timers?.frame) timers.frame(pumpShells);
   };
+  // Park cancels the priority rAF. Resume turns the flag back on and lets the next sync arm the pump.
+  const pauseShells = () => {
+    shellsLive = false;
+    stopShellBg();
+  };
+  const resumeShells = () => { shellsLive = true; };
   // A zoom into detail used to keep pumping open-time distance order, so the new view stayed empty
   // behind the priority tail. Cards inside the new view go to the front of the queue.
   const promoteQueue = (viewRect) => {
@@ -2363,6 +2373,7 @@ export function createItemRenderer({
       if (!pendingView.size) viewBuilt();
     }
     if (shellQueue.length) noteOverviewQueue();
+    if (shellQueue.length && shellsLive && !shellBg && !priorityFrame) armShellPump();
   };
 
 
@@ -6154,6 +6165,8 @@ export function createItemRenderer({
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     ensureShell,
+    pauseShells,
+    resumeShells,
     promoteQueue,
     coverHeld: () => coverHeld,
     queuedCount: () => shellQueue.length,

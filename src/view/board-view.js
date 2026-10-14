@@ -9463,6 +9463,8 @@ function buildBoardView(onFail, {
       try { pdfWarm?.cancelAll?.(); } catch { /* warm */ }
       try { cancelHoverGrace(); } catch { /* none armed */ }
       try { clearZoomAnim(); } catch { /* none armed */ }
+      // The priority shell pump is its own rAF. pauseBg holds the budget job, not that frame.
+      try { itemsR.pauseShells?.(); } catch { /* shells */ }
       // The PDF title, cover and badge jobs wait on the shared budget; a parked board must not spend it.
       timers.pauseBg();
       suspendObservers();
@@ -9471,11 +9473,13 @@ function buildBoardView(onFail, {
       if (disposed || !suspended) return;
       suspended = false;
       resumeObservers();
+      try { itemsR.resumeShells?.(); } catch { /* shells */ }
       timers.resumeBg();
       armCoverWarm();
       // The DOM was kept while parked. Only a board that changed meanwhile needs the full pass (a change that lands
       // later arrives through the session as usual); otherwise the camera, selection and minimap are enough.
-      if (board() !== suspendedBoard) {
+      // A shell queue still open has to sync before the pump arms again, even when the board object is the same.
+      if (board() !== suspendedBoard || itemsR.queuedCount?.() > 0) {
         dirty.all = true;
         dirty.structural = true;
       } else {

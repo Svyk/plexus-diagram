@@ -848,6 +848,56 @@ test("the overview cover stacks like the board, follows a dragged section, and d
   }
 });
 
+test("parking the view stops the priority shell pump, and resume builds one chunk after the sync", () => {
+  const thaw = freezeClock();
+  const stub = createDomStub();
+  const restore = stub.install();
+  resetSharedBgBudget();
+  stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify({ x: 0, y: 0, zoom: 0.1 }));
+  const board = buildBoard(rawBoard(spreadBoard()));
+  const host = {
+    stats: {}, graph: "Svy",
+    renderString(node, string) { node.textContent = string; },
+    renderBlock(node, uid) { node.textContent = uid; },
+    unmount() {},
+    pagePreview: () => ({ exists: false, blocks: [] }),
+    pullTree: () => [],
+    blockString: () => null,
+    openBlock() {},
+    openInSidebar() {},
+    searchPages: () => [],
+    searchBlocks: () => [],
+    related: () => [],
+  };
+  const session = {
+    uid: board.uid, board, rects: worldRects(board), links: [], coveredEdges: new Set(),
+    on() { return () => {}; }, release() {}, setLinkMode() {},
+  };
+  const mountEl = stub.document.createElement("div");
+  mountEl.className = "pxd-mount";
+  stub.document.body.append(mountEl);
+  const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "1.0.0" });
+  try {
+    stub.flushFrames();
+    const built = view.stats().shells;
+    assert.ok(built > 0 && built <= 30, `go-live built ${built}`);
+    view.suspend();
+    stub.flushFrames();
+    assert.equal(view.stats().shells, built, "a parked view does not build the next priority chunk");
+    view.resume();
+    stub.flushFrames();
+    assert.equal(view.stats().shells, built, "resume syncs before it builds more shells");
+    stub.flushFrames();
+    const step = view.stats().shells - built;
+    assert.ok(step > 0 && step <= 30, `resume chunk ${step}`);
+  } finally {
+    view.dispose();
+    restore();
+    thaw();
+    resetSharedBgBudget();
+  }
+});
+
 test("cover repaint paints six cards and counts highlights in their own part", () => {
   const uids = Array.from({ length: 13 }, (_, i) => `pdf${i}`);
   const paints = [];

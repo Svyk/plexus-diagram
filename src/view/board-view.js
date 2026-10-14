@@ -1306,6 +1306,7 @@ function buildBoardView(onFail, {
   let settleTimer = null;
   let searchMatches = [];
   let searchIndex = -1;
+  let searchQuery = "";
   let frameHandle = null;
   let fsDispose = () => {};
   let routeOff = () => {};
@@ -3688,8 +3689,9 @@ function buildBoardView(onFail, {
   };
   const fitAll = () => fitTo(boundsOf([...rects().values()]));
   const fitSelection = (uids) => {
+    for (const uid of uids || []) itemsR.ensureShell?.(uid);
     const r = rects();
-    const b = boundsOf(uids.map((u) => r.get(u)).filter(Boolean));
+    const b = boundsOf((uids || []).map((u) => r.get(u)).filter(Boolean));
     if (b) fitTo(b, { maxZoom: 1 });
   };
   const centerOn = (worldPoint) => {
@@ -3731,7 +3733,11 @@ function buildBoardView(onFail, {
     paintTier();
     paintInvZoom();
     // A tier held through a big-board gesture flips here, with what the frame-time flip does besides painting.
-    if (tier !== was) { pdfFlip?.setLod?.(tier); chrome.toolbar.scheduleDock?.(); }
+    if (tier !== was) {
+      pdfFlip?.setLod?.(tier);
+      chrome.toolbar.scheduleDock?.();
+      if (was !== "detail" && tier === "detail" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0));
+    }
   };
   const scheduleContent = () => {
     if (disposed || suspended || gesturing || !board()) return;
@@ -3922,10 +3928,16 @@ function buildBoardView(onFail, {
   const endUnderlay = () => { underlayDrawn = false; };
   // Live at map zoom drops the snapshot while shells are still queued. Those cards stay as boxes on the
   // gesture underlay (pointer-events none) until the pump or a hit builds them. A gesture hides that canvas
-  // when it settles; draw the queue again afterwards.
+  // when it settles; draw the queue again afterwards. A zoom from that cover into detail keeps the boxes
+  // until the queue is empty. Opening already at detail does not paint them.
   paintOverviewCover = () => {
-    if (disposed || underlayDrawn || tier === "detail") return;
+    if (disposed || underlayDrawn) return;
     try { if (notedSpeedFlags().overviewFast === false) return; } catch { return; }
+    if (tier === "detail" && itemsR.coverHeld?.() !== true) {
+      const pending = itemsR.pendingBoxes?.() || [];
+      if (!pending.length) underlay.hide();
+      return;
+    }
     const items = itemsR.pendingBoxes?.() || [];
     if (!items.length) { underlay.hide(); return; }
     underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
@@ -6836,6 +6848,7 @@ function buildBoardView(onFail, {
   const searchFilter = (text) => {
     const b = board();
     const q = String(text || "").trim().toLowerCase();
+    searchQuery = q;
     searchIndex = -1;
     setRootFlag("searching", Boolean(q));
     searchMatches = b && q ? findOnBoard(b, q, nestedBoards(b), (uid) => host?.blockString?.(uid)) : [];
@@ -6850,6 +6863,7 @@ function buildBoardView(onFail, {
       ctl.select([hit.focus]);
       fitSelection([hit.focus]);
     }
+    paintSearch(board(), searchMatches, searchQuery);
     const countEl = root.querySelector(".pxd-search__count");
     if (countEl) countEl.textContent = `${searchIndex + 1}/${searchMatches.length}`;
   };
@@ -6857,6 +6871,7 @@ function buildBoardView(onFail, {
   // ------------------------------------------------------------ editing
   const enterEdit = async (uid, opts) => {
     ctl.select([uid]);
+    itemsR.ensureShell?.(uid);
     // Editing at map zoom is unreadable: bring the card to a working zoom first.
     if (tier !== "detail") { fitSelection([uid]); applyLod(); }
     const ok = await itemsR.enterEdit(uid, opts);
@@ -8948,7 +8963,14 @@ function buildBoardView(onFail, {
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
       // On a big board a mid-burst flip restyled every attached shell (PhD main board: 117-175 ms frames, twice in a
       // zoom from overview to detail); the shells scale with the world until the settle flips the tier.
-      if (nextTier !== tier && !deferReveal()) { tier = nextTier; paintTier(); pdfFlip?.setLod?.(tier); chrome.toolbar.scheduleDock?.(); }
+      if (nextTier !== tier && !deferReveal()) {
+        const prevTier = tier;
+        tier = nextTier;
+        paintTier();
+        pdfFlip?.setLod?.(tier);
+        chrome.toolbar.scheduleDock?.();
+        if (prevTier !== "detail" && tier === "detail" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0));
+      }
       // A moving grid is a repaint of the page every frame (PhD page: paint + layerize ~20 ms); with the world as
       // its own layer and nothing else written, a frame is a compositor move. The grid holds still during a drag
       // or a wheel burst on a big board and catches up when it settles.

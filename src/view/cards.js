@@ -2055,13 +2055,17 @@ export function createItemRenderer({
     }
     for (const rec of set) if (!isAttached(rec)) layerOf(rec).append(rec.el);
   };
-  // The cover is the map-zoom stand-in for shells still queued. At detail zoom it walked every off-view
-  // card in the go-live frame (the +70 ms). Detail and overviewFast off do not paint it.
+  // The cover is the map-zoom stand-in for shells still queued. Opening at detail, or with overviewFast
+  // off, does not paint it. Once an overview-fast open has painted it, a zoom into detail keeps it until
+  // the queue is empty.
   const overviewFastOn = () => {
     try { return lod !== "detail" && speedOf().overviewFast !== false; } catch { return false; }
   };
+  let coverHeld = false;
   const noteOverviewQueue = () => {
-    if (!overviewFastOn()) return;
+    if (shellQueue.length && overviewFastOn()) coverHeld = true;
+    if (!overviewFastOn() && !coverHeld) return;
+    if (!shellQueue.length) coverHeld = false;
     try { onOverviewQueue?.(); } catch { /* the view paints the cover */ }
   };
   // At most `limit` shells and about PUMP_MS. A priority chunk also stops when the priority prefix is gone,
@@ -2145,6 +2149,23 @@ export function createItemRenderer({
       return;
     }
     if (timers?.frame) timers.frame(pumpShells);
+  };
+  // A zoom into detail used to keep pumping open-time distance order, so the new view stayed empty
+  // behind the priority tail. Cards inside the new view go to the front of the queue.
+  const promoteQueue = (viewRect) => {
+    if (!viewRect || !shellQueue.length || !lastRects) return;
+    const inside = [];
+    const outside = [];
+    for (const uid of shellQueue) {
+      const rect = lastRects.get(uid);
+      if (rect && rectsIntersect(rect, viewRect)) inside.push(uid);
+      else outside.push(uid);
+    }
+    if (!inside.length) return;
+    shellQueue = inside.concat(outside);
+    priorityLeft = inside.length;
+    armShellPump();
+    noteOverviewQueue();
   };
   const viewBuilt = () => {
     pendingView = null;
@@ -6119,6 +6140,8 @@ export function createItemRenderer({
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     ensureShell,
+    promoteQueue,
+    coverHeld: () => coverHeld,
     queuedCount: () => shellQueue.length,
     pendingBoxes() {
       const out = [];

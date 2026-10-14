@@ -45,6 +45,20 @@ function spreadBoard() {
   return children;
 }
 
+// A cluster far from the open camera, still inside the zoom-0.1 view, and past the nearest 150.
+function clusterBoard() {
+  const children = spreadBoard();
+  for (let i = 0; i < 8; i += 1) {
+    children.push(blk(
+      `clu${String(i).padStart(5, "0")}`,
+      i === 0 ? "cluster target" : `cluster ${i}`,
+      { ":x": 160 + (i % 4) * 48, ":y": 440 + Math.floor(i / 4) * 36, ":w": 40, ":h": 28 },
+      300 + i,
+    ));
+  }
+  return children;
+}
+
 function openRenderer({ children, lod = "overview", zoom = 0.1, settings = {}, view = { x: 0, y: 0, w: 8000, h: 6000 }, onOverviewQueue = null } = {}) {
   const stub = createDomStub();
   const restore = stub.install();
@@ -623,6 +637,95 @@ test("queued overview cards stay drawn after the gesture underlay hides", async 
   } finally {
     view.dispose();
     restore();
+  }
+});
+
+// Search, outline, and Enter used to move the camera to detail and drop the cover while the card stayed queued.
+test("search and Enter build the queued card, keep the cover at detail, and pump the new view first", async () => {
+  const thaw = freezeClock();
+  const stub = createDomStub();
+  const restore = stub.install();
+  resetSharedBgBudget();
+  stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify({ x: 0, y: 0, zoom: 0.1 }));
+  const board = buildBoard(rawBoard(clusterBoard()));
+  const host = {
+    stats: {}, graph: "Svy",
+    renderString(node, string) { node.textContent = string; },
+    renderBlock(node) {
+      const ta = stub.document.createElement("textarea");
+      ta.className = "rm-block__input";
+      node.append(ta);
+    },
+    unmount() {},
+    pagePreview: () => ({ exists: false, blocks: [] }),
+    pullTree: () => [],
+    blockString: () => null,
+    openBlock() {},
+    openInSidebar() {},
+    searchPages: () => [],
+    searchBlocks: () => [],
+    related: () => [],
+  };
+  const session = {
+    uid: board.uid, board, rects: worldRects(board), links: [], coveredEdges: new Set(),
+    on() { return () => {}; }, release() {}, setLinkMode() {},
+  };
+  const mountEl = stub.document.createElement("div");
+  mountEl.className = "pxd-mount";
+  stub.document.body.append(mountEl);
+  const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "1.0.0" });
+  try {
+    let guard = 0;
+    while (stub.frames.length && guard < 30) {
+      guard += 1;
+      stub.flushFrames();
+    }
+    assert.equal(view.state().lod, "overview");
+    assert.equal(view.snapshotSource().shellOf("clu00000"), null);
+    assert.equal(view.snapshotSource().shellOf("clu00001"), null);
+    const parked = board.order.find((uid) => uid.startsWith("c0") && !view.snapshotSource().shellOf(uid));
+    assert.ok(parked, "a grid card past the priority prefix is still queued");
+    const cover = view.root.querySelector(".pxd-underlay");
+    assert.ok(cover, "the open paints the cover");
+    assert.notEqual(cover.style.display, "none");
+
+    view.root.focus();
+    stub.dispatch(stub.window, "keydown", { key: "f", metaKey: true });
+    const input = view.root.querySelector(".pxd-search__input");
+    assert.ok(input);
+    input.value = "cluster target";
+    stub.dispatch(input, "input", {});
+    stub.dispatch(input, "keydown", { key: "Enter" });
+
+    const hit = view.snapshotSource().shellOf("clu00000");
+    assert.ok(hit, "search builds the queued card before the next frame");
+    assert.equal(hit.classList.contains("pxd-item--hit"), true);
+
+    stub.flushFrames();
+    assert.equal(view.state().lod, "detail");
+    stub.flushTimers();
+    const held = view.root.querySelector(".pxd-underlay");
+    assert.ok(held);
+    assert.notEqual(held.style.display, "none", "the cover stays up at detail until the queue is empty");
+
+    stub.flushFrames();
+    assert.ok(view.snapshotSource().shellOf("clu00001"), "the new view is pumped before the open-time tail");
+    assert.equal(view.snapshotSource().shellOf(parked), null, "a card outside the new view stays queued");
+
+    view.controller.select([parked]);
+    view.root.focus();
+    stub.dispatch(stub.window, "keydown", { key: "Enter" });
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.ok(
+      view.snapshotSource().shellOf(parked)?.querySelector("textarea.rm-block__input"),
+      "Enter opens the editor on a card that was still queued",
+    );
+  } finally {
+    view.dispose();
+    restore();
+    thaw();
+    resetSharedBgBudget();
   }
 });
 

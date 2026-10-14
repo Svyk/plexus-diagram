@@ -379,7 +379,17 @@ function createTimers() {
     active.add(entry);
     return entry;
   };
-  return { later, frame, idle, count: () => active.size, cancelAll: () => { for (const c of [...active]) c(); active.clear(); } };
+  // P8 U2: background reads (badge card stats, changed rows) on the shared budget: quiet after input, 30 ms, 25%.
+  // Visible card content keeps `idle`.
+  const bgIdle = (fn) => {
+    if (typeof globalThis.requestIdleCallback !== "function" || notedSpeedFlags().bgBudget === false) return idle(fn);
+    let entry;
+    const cancel = sharedBgBudget().idle((d) => { active.delete(entry); fn(d); });
+    entry = () => { cancel(); active.delete(entry); };
+    active.add(entry);
+    return entry;
+  };
+  return { later, frame, idle, bgIdle, count: () => active.size, cancelAll: () => { for (const c of [...active]) c(); active.clear(); } };
 }
 
 const ANNOTATE_TOAST = "Drop the image into the drawing";
@@ -994,7 +1004,7 @@ function buildBoardView(onFail, {
       panel.refreshChanged?.();
       return;
     }
-    timers.idle(() => {
+    timers.bgIdle(() => {
       if (disposed || gen !== changedGen) return;
       const b = board();
       if (!b || typeof host?.editTimes !== "function") return;
@@ -3720,9 +3730,9 @@ function buildBoardView(onFail, {
         badgeCache.set(m.key, { at, stats: stats || { refs: 0, boards: 0, open: 0, done: 0 } });
       }
       applyBadges();
-      if (rest.length) timers.idle(() => runChunk(rest));
+      if (rest.length) timers.bgIdle(() => runChunk(rest));
     };
-    timers.idle(() => runChunk(misses));
+    timers.bgIdle(() => runChunk(misses));
   };
   // INSTANT-3. Badge counts from the snapshot paint in the first frame. They are
   // stamped stale, so the idle refresh still reads the graph once.

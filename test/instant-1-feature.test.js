@@ -8,7 +8,7 @@ import vm from "node:vm";
 import { createLifecycle } from "../src/lifecycle.js";
 import { installPlexusDiagram } from "../src/feature.js";
 import { createBoardSnapStore } from "../src/host/boardsnap-store.js";
-import { SNAP_VERSION } from "../src/model/boardsnap.js";
+import { SNAP_VERSION, boardStamp } from "../src/model/boardsnap.js";
 import { createFakeIDB } from "./fixtures/fake-idb.js";
 
 const UID = "boardAAA1";
@@ -261,7 +261,7 @@ function installEnv({ idb, flags = null, sidebar = false } = {}) {
     root.addEventListener("pointerdown", (event) => shot.replayed.push(event.type));
     root.addEventListener("pointerup", (event) => shot.replayed.push(event.type));
     args.mountEl.append(root);
-    return { root, viewport: () => ({ x: 0, y: 0, zoom: 1 }), dispose() { root.remove(); } };
+    return { root, viewport: () => ({ x: 0, y: 0, zoom: 1 }), snapshotSource: () => (typeof shot.snapSource === "function" ? shot.snapSource() : null), dispose() { root.remove(); } };
   };
   const registry = () => ({ addCommand: async () => {}, removeCommand: async () => {} });
   const extensionAPI = {
@@ -566,5 +566,33 @@ test("slicedMount off: no sliced read; dispose during the read cancels it and ne
   } finally {
     log.stop();
     env.restore();
+  }
+});
+
+// P8 U2: the first settle after an open from a snapshot skips the capture when board and camera are what it holds.
+test("the first settle after a snapshot open skips the capture when the board and camera did not change", async () => {
+  const liveBoard = {
+    uid: UID,
+    enhanced: true,
+    items: new Map([["cardAAAA1", { uid: "cardAAAA1", type: "card", parentUid: UID, x: 10, y: 20, w: 200, h: 100, title: "Live", string: "Live" }]]),
+    order: ["cardAAAA1"],
+    edges: new Map(),
+  };
+  const rects = new Map([["cardAAAA1", { x: 10, y: 20, w: 200, h: 100 }]]);
+  for (const moved of [false, true]) {
+    const idb = await seededIdb({ ...SNAP, stamp: boardStamp(liveBoard, rects) });
+    const env = installEnv({ idb });
+    try {
+      await env.install();
+      for (let i = 0; i < 100 && env.seen.length === 0; i += 1) await tick(10);
+      const shot = env.seen[0];
+      shot.snapSource = () => ({ board: liveBoard, rects, vp: moved ? { x: 50, y: 0, zoom: 1 } : { x: 0, y: 0, zoom: 1 }, shellOf: () => null, root: shot.args.mountEl, height: 480, width: 800 });
+      shot.args.onSettled();
+      await tick(1300);
+      assert.equal(env.host.stats.snapSkips || 0, moved ? 0 : 1, moved ? "a moved camera captures" : "an unchanged board skips");
+    } finally {
+      await env.lifecycle.dispose().catch(() => {});
+      env.restore();
+    }
   }
 });

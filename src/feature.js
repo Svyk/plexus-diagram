@@ -1,7 +1,7 @@
 import pkg from "../package.json" with { type: "json" };
 import { createHost } from "./host/roam.js";
 import { acquireSession as acquireSessionDefault, hasSession } from "./session.js";
-import { bindBgBudgetFlag, resetSharedBgBudget } from "./bg-budget.js";
+import { bindBgBudgetFlag, resetSharedBgBudget, sharedBgBudget } from "./bg-budget.js";
 import { clearPinnedToast, mountBoardView, viewportStorageId } from "./view/board-view.js";
 import {
   captureSketch,
@@ -16,7 +16,7 @@ import {
 import { isTextEntryTarget } from "./view/cards.js";
 import { createBoardSnapStore } from "./host/boardsnap-store.js";
 import { armSnapGestures, captureBoardSnap, paintBoardSnap, removeBoardSnap, resolveSnapViewport } from "./view/boardsnap-paint.js";
-import { itemSig, tableGrid } from "./model/boardsnap.js";
+import { boardStamp, itemSig, tableGrid } from "./model/boardsnap.js";
 import { renderTableThumb, tableThumbKey, thumbBox } from "./view/table-thumb.js";
 import { tableUidOf } from "./model/roam-table.js";
 import { shouldNudgeQueries } from "./model/query-fold.js";
@@ -842,6 +842,10 @@ export async function installPlexusDiagram({
   const snapAllowed = () => speedFlags().snapshot !== false;
   const readsNow = () => Number(host.stats?.reads) || 0;
   const runIdle = (fn) => {
+    // P8 U2: snapshot captures, table thumbnails and the query nudge wait for a quiet idle slice on the shared budget.
+    if (notedSpeedFlags().bgBudget !== false && typeof (win.requestIdleCallback ?? globalThis.requestIdleCallback) === "function") {
+      return sharedBgBudget().idle(() => fn(), { timeout: 2000 });
+    }
     const ric = win.requestIdleCallback ?? globalThis.requestIdleCallback;
     if (typeof ric === "function") return ric(() => fn(), { timeout: 2000 });
     const t = setTimeout(fn, 0);
@@ -911,6 +915,24 @@ export async function installPlexusDiagram({
     if (!uid) return false;
     const key = snapKey(uid, snapKindOf(rec));
     const dark = isDarkTheme(rec);
+    // P8 U2. The first settle after an open from a snapshot: when the board (items, boxes, sigs, edges) and the camera
+    // are what that snapshot holds, it is still the board; skip the capture (100-230 ms on the PhD main board).
+    const fresh = rec.snapFresh;
+    rec.snapFresh = null;
+    if (fresh && fresh.key === key && fresh.dark === dark) {
+      const prev = snapStore.get(key);
+      const vp = src.vp;
+      let same = false;
+      try {
+        same = Boolean(prev && prev === fresh.snap && vp && prev.vp && prev.vp.x === vp.x && prev.vp.y === vp.y && prev.vp.zoom === vp.zoom
+          && prev.stamp === boardStamp(src.board, src.rects));
+      } catch { same = false; }
+      if (same) {
+        rec.snapDirty = false;
+        if (host.stats && typeof host.stats === "object") host.stats.snapSkips = (host.stats.snapSkips || 0) + 1;
+        return true;
+      }
+    }
     const thumbs = new Map();
     let snap = null;
     try {
@@ -1033,6 +1055,7 @@ export async function installPlexusDiagram({
       if (!painted) throw new Error("snapshot paint failed");
       painted.snap = snap;
       painted.vp = vp;
+      rec.snapFresh = { key: snapKey(uid, snapKindOf(rec)), snap, dark: isDarkTheme(rec) };
       painted.fsOff = fsOff;
       painted.fullscreen = Boolean(rec.fullscreen);
       notePaint(rec, true);

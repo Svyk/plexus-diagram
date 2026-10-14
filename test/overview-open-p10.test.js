@@ -980,7 +980,7 @@ test("cardStatsJob runs one collection query per step and remembers only at the 
   assert.equal(pulled.length, 1);
 });
 
-test("an idle ref pull reads one outline level, at most 20 nodes, and a deep child stays readable", () => {
+test("an idle ref pull reads one outline level, sized to the slice, and a deep child stays readable", () => {
   const kids = Array.from({ length: 25 }, (_, i) => ({
     ":block/uid": `k${i}`,
     ":block/string": `row ${i}`,
@@ -1047,10 +1047,74 @@ test("an idle ref pull reads one outline level, at most 20 nodes, and a deep chi
     }
     const idle = calls.filter((c) => c.pattern.includes(":block/children"));
     assert.ok(idle.length >= 2, "a deep page takes more than one pull");
-    assert.ok(idle.every((c) => c.n <= 20), `a pull names at most 20 nodes ${idle.map((c) => c.n).join(",")}`);
+    assert.ok(idle.every((c) => c.n <= 4), `a frozen slice asks for at most the start size ${idle.map((c) => c.n).join(",")}`);
     assert.ok(idle.every((c) => !c.pattern.includes("...")), "idle pulls are one level");
-    assert.ok(idle.some((c) => c.n === 20), "the wide level goes out 20 at a time");
+    assert.ok(idle.some((c) => c.n === 4), "the wide level goes out at the sizer's start size");
     assert.equal(host.blockString("deepKid"), "deep line");
+  } finally {
+    globalThis.requestIdleCallback = previousIdle;
+    globalThis.performance.now = previousNow;
+    resetSharedBgBudget();
+  }
+});
+
+test("a costly outline level shrinks the next idle ref batch below 20", () => {
+  const kids = Array.from({ length: 25 }, (_, i) => ({
+    ":block/uid": `s${i}`,
+    ":block/string": `row ${i}`,
+    ":block/order": i,
+    ":block/children": [],
+  }));
+  const page = {
+    ":block/uid": "slowPage",
+    ":node/title": "Slow",
+    ":block/string": "",
+    ":block/order": 0,
+    ":block/children": kids,
+  };
+  const byId = new Map([[page[":node/title"], page], [page[":block/uid"], page]]);
+  for (const kid of kids) byId.set(kid[":block/uid"], kid);
+  const calls = [];
+  let now = 0;
+  const fake = createFakeRoam();
+  fake.seedBoard({
+    uid: "slowBoard",
+    props: { plexus: { v: 2 } },
+    children: [{ uid: "cardSlow", string: "[[Slow]]", props: { plexus: { x: 0, y: 0, w: 200, h: 100 } } }],
+  });
+  fake.api.data.pull_many = (pattern, entities) => {
+    const text = String(pattern);
+    if (!text.includes(":block/children")) return entities.map(() => null);
+    now += 20;
+    calls.push({ n: entities.length, pattern: text });
+    return entities.map((entity) => {
+      const id = Array.isArray(entity) ? entity[1] : entity;
+      const node = byId.get(id);
+      if (!node) return null;
+      return {
+        ":block/uid": node[":block/uid"],
+        ":node/title": node[":node/title"],
+        ":block/string": node[":block/string"] ?? "",
+        ":block/order": node[":block/order"] ?? 0,
+        ":block/children": (node[":block/children"] || []).map((kid) => ({ ":block/uid": kid[":block/uid"], ":block/order": kid[":block/order"] ?? 0 })),
+      };
+    });
+  };
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  const queued = [];
+  const previousIdle = globalThis.requestIdleCallback;
+  const previousNow = globalThis.performance.now;
+  globalThis.requestIdleCallback = (fn) => { queued.push(fn); return queued.length; };
+  globalThis.performance.now = () => now;
+  resetSharedBgBudget();
+  try {
+    host.pullBoard("slowBoard", { light: true, deferRefs: true });
+    assert.equal(calls.length, 0);
+    queued[0]({ timeRemaining: () => 40, didTimeout: false });
+    assert.equal(calls.length, 2, "the slice fits the root and one more level");
+    assert.equal(calls[0].n, 1, "the root is its own pull");
+    assert.equal(calls[1].n, 1, "a 20 ms pull shrinks the next batch to one node");
+    assert.ok(calls.every((c) => !c.pattern.includes("...")));
   } finally {
     globalThis.requestIdleCallback = previousIdle;
     globalThis.performance.now = previousNow;

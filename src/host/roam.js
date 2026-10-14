@@ -85,11 +85,12 @@ export const OUTLINE_BATCH = 20;
 export function createOutlineAssembler({ pullMany, batch = OUTLINE_BATCH } = {}) {
   const queue = [];
   const roots = [];
-  const take = () => {
+  const take = (n) => {
     if (!queue.length) return true;
+    const limit = Number.isFinite(n) ? Math.max(1, Math.floor(n)) : batch;
     const root = queue[0].root === true;
     const part = [];
-    while (part.length < batch && queue.length && queue[0].root === root) part.push(queue.shift());
+    while (part.length < limit && queue.length && queue[0].root === root) part.push(queue.shift());
     let nodes = [];
     try { nodes = pullMany?.(root ? LEVEL_ROOT : LEVEL_KID, part.map((slot) => slot.entity)) || []; } catch { nodes = []; }
     if (!Array.isArray(nodes)) nodes = [];
@@ -121,8 +122,8 @@ export function createOutlineAssembler({ pullMany, batch = OUTLINE_BATCH } = {})
     },
     pending: () => queue.length,
     entities: () => roots,
-    start: () => take(),
-    step: () => take(),
+    start: (n) => take(n),
+    step: (n) => take(n),
   };
 }
 const OPEN_PATTERN = `[:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props
@@ -2013,8 +2014,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         }
       };
       // The same reads in slices for idle time (PhD main board: 1,000 refs were one 0.54 s task).
-      // One level at a time, at most OUTLINE_BATCH nodes per pull. A page with a deep outline was one
-      // recursive REF_BODY (77–199 ms). The synchronous pullRefs() above stays that one pull.
+      // One level at a time. The idle sizer picks how many nodes; a missing count stays at OUTLINE_BATCH.
+      // A page with a deep outline was one recursive REF_BODY (77–199 ms). The synchronous pullRefs() above stays that one pull.
       let refAsm = null;
       const pullLevel = (pattern, entities) => {
         if (typeof data.pull_many === "function") {
@@ -2060,15 +2061,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           return entity[0] === ":node/title" ? (byTitle.get(entity[1]) || null) : (byUid.get(entity[1]) || null);
         });
       };
-      const pullRefsPart = (_n) => {
+      const pullRefsPart = (n) => {
         if (honored) return true;
         if (!found.uids.length && !found.titles.length) return true;
+        const asked = n == null ? OUTLINE_BATCH : Math.max(1, Math.floor(Number(n)) || 1);
         if (!refAsm) {
           refAsm = createOutlineAssembler({ pullMany: pullLevel, batch: OUTLINE_BATCH });
           refAsm.addRoots(found.uids, found.titles);
           if (refAsm.pending() === 0) return true;
-          if (refAsm.start() !== true) return false;
-        } else if (refAsm.step() !== true) return false;
+          if (refAsm.start(asked) !== true) return false;
+        } else if (refAsm.step(asked) !== true) return false;
         for (const entity of refAsm.entities()) addEntity(uid, entity);
         return true;
       };

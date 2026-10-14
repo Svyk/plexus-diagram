@@ -844,7 +844,7 @@ export async function installPlexusDiagram({
   const runIdle = (fn) => {
     // P8 U2: snapshot captures, table thumbnails and the query nudge wait for a quiet idle slice on the shared budget.
     if (notedSpeedFlags().bgBudget !== false && typeof (win.requestIdleCallback ?? globalThis.requestIdleCallback) === "function") {
-      return sharedBgBudget().idle(() => fn(), { timeout: 2000 });
+      return sharedBgBudget().idle(() => fn(), { timeout: 2000, label: "snap" });
     }
     const ric = win.requestIdleCallback ?? globalThis.requestIdleCallback;
     if (typeof ric === "function") return ric(() => fn(), { timeout: 2000 });
@@ -4005,6 +4005,7 @@ export async function installPlexusDiagram({
     },
     // INSTANT-1. Open timings: { snap, firstPaintMs, liveMs, queriesBeforePaint } per open.
     perf: openPerf,
+    bgOverruns: () => sharedBgBudget().overruns.slice(),
     snapshots: {
       size: () => snapStore.size(),
       has: (uid) => snapStore.has(uid),

@@ -957,7 +957,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     const key = {};
     const run = (deadline) => { idleHandles.delete(key); fn(deadline); };
     // P8 U2: the shared background budget (quiet after input, 30 ms slices) unless the speed flag is off.
-    if (typeof idle === "function" && notedSpeedFlags().bgBudget !== false) idleHandles.set(key, { cancel: sharedBgBudget().idle(run, { timeout: 1500 }) });
+    if (typeof idle === "function" && notedSpeedFlags().bgBudget !== false) idleHandles.set(key, { cancel: sharedBgBudget().idle(run, { timeout: 1500, label: "prime" }) });
     else if (typeof idle === "function") idleHandles.set(key, { idle: idle(run, { timeout: 1500 }) });
     else idleHandles.set(key, { timer: setTimeout(run, 250) });
   };

@@ -381,10 +381,10 @@ function createTimers() {
   };
   // P8 U2: background reads (badge card stats, changed rows) on the shared budget: quiet after input, 30 ms, 25%.
   // Visible card content keeps `idle`.
-  const bgIdle = (fn) => {
+  const bgIdle = (fn, label = "view") => {
     if (typeof globalThis.requestIdleCallback !== "function" || notedSpeedFlags().bgBudget === false) return idle(fn);
     let entry;
-    const cancel = sharedBgBudget().idle((d) => { active.delete(entry); fn(d); });
+    const cancel = sharedBgBudget().idle((d) => { active.delete(entry); fn(d); }, { label });
     entry = () => { cancel(); active.delete(entry); };
     active.add(entry);
     return entry;
@@ -1991,7 +1991,7 @@ function buildBoardView(onFail, {
       try { refreshPdfHighlightCounts(); } catch { /* count */ }
       try { readPane?.refreshCards?.(); } catch { /* switcher */ }
       return true;
-    });
+    }, { label: "pdfTitles" });
   };
 
   // PDF covers. Nothing here runs at mount: the renderer asks coverImageFor on first paint,
@@ -2727,7 +2727,7 @@ function buildBoardView(onFail, {
           coverJob = null;
           try { refreshPdfHighlightCounts(); } catch { /* count */ }
           return true;
-        });
+        }, { label: "covers" });
       }
       coverRepaint.add(url);
       return;
@@ -3730,9 +3730,9 @@ function buildBoardView(onFail, {
         badgeCache.set(m.key, { at, stats: stats || { refs: 0, boards: 0, open: 0, done: 0 } });
       }
       applyBadges();
-      if (rest.length) timers.bgIdle(() => runChunk(rest));
+      if (rest.length) timers.bgIdle(() => runChunk(rest), "badges");
     };
-    timers.bgIdle(() => runChunk(misses));
+    timers.bgIdle(() => runChunk(misses), "badges");
   };
   // INSTANT-3. Badge counts from the snapshot paint in the first frame. They are
   // stamped stale, so the idle refresh still reads the graph once.

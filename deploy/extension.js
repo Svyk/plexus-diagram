@@ -38758,14 +38758,17 @@ var SLICED_LEVEL_PATTERN = "[:db/id :block/uid :block/string :block/order :block
 var SLICED_OPEN_PATTERN = "[:db/id :block/open]";
 var SLICED_BATCH = 500;
 var SLICED_OPEN_BATCH = 2e3;
+var SLICED_LINK_BATCH = 4e3;
 var SLICED_SLICE_MS = 40;
-function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date.now(), sliceMs = SLICED_SLICE_MS, batch = SLICED_BATCH, openBatch = SLICED_OPEN_BATCH } = {}) {
+function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date.now(), sliceMs = SLICED_SLICE_MS, batch = SLICED_BATCH, openBatch = SLICED_OPEN_BATCH, linkBatch = SLICED_LINK_BATCH } = {}) {
   const nodes = /* @__PURE__ */ new Map();
+  const outs = /* @__PURE__ */ new Map();
   let frontier = rootEid == null ? [] : [rootEid];
   let next = [];
   let at = 0;
   let withKids = [];
   let openAt = 0;
+  let linkAt = 0;
   let phase = rootEid == null ? "failed" : "read";
   let tree = null;
   let first = null;
@@ -38780,6 +38783,7 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
   const fail4 = () => {
     phase = "failed";
     nodes.clear();
+    outs.clear();
     frontier = [];
     next = [];
     withKids = [];
@@ -38794,6 +38798,9 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
       const n3 = res[i];
       if (!n3 || n3[":db/id"] !== ids[i] || typeof n3[":block/uid"] !== "string") return fail4();
       nodes.set(ids[i], n3);
+      const out = {};
+      for (const k in n3) if (k !== ":db/id" && k !== ":block/children") out[k] = n3[k];
+      outs.set(ids[i], out);
       const kids = n3[":block/children"];
       if (Array.isArray(kids)) for (const k of kids) next.push(k?.[":db/id"]);
     }
@@ -38816,24 +38823,24 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
       calls += 1;
       if (!Array.isArray(res) || res.length !== ids.length) return fail4();
       for (let i = 0; i < ids.length; i += 1) {
-        const n3 = nodes.get(ids[i]);
+        const n3 = outs.get(ids[i]);
         const now4 = res[i];
         if (!now4) return fail4();
         if (Object.prototype.hasOwnProperty.call(now4, ":block/open")) n3[":block/open"] = now4[":block/open"];
         else delete n3[":block/open"];
       }
     }
-    if (openAt >= withKids.length) phase = "assemble";
+    if (openAt >= withKids.length) phase = "link";
+  }
+  function linkPart() {
+    const end = Math.min(withKids.length, linkAt + linkBatch);
+    for (; linkAt < end; linkAt += 1) {
+      const id = withKids[linkAt];
+      outs.get(id)[":block/children"] = nodes.get(id)[":block/children"].map((k) => outs.get(k[":db/id"]));
+    }
+    if (linkAt >= withKids.length) phase = "assemble";
   }
   function assemble() {
-    const build = (id) => {
-      const n3 = nodes.get(id);
-      const out = {};
-      for (const k in n3) if (k !== ":db/id" && k !== ":block/children") out[k] = n3[k];
-      const kids = n3[":block/children"];
-      if (Array.isArray(kids)) out[":block/children"] = kids.map((k) => build(k[":db/id"]));
-      return out;
-    };
     let last = null;
     try {
       last = stamp2();
@@ -38841,8 +38848,9 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
       last = null;
     }
     if (last == null || last !== first) return fail4();
-    tree = build(rootEid);
+    tree = outs.get(rootEid);
     nodes.clear();
+    outs.clear();
     phase = "done";
   }
   function step() {
@@ -38851,6 +38859,7 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
       do {
         if (phase === "read") readPart();
         else if (phase === "folds") foldPart();
+        else if (phase === "link") linkPart();
         else if (phase === "assemble") assemble();
         else break;
       } while (phase !== "done" && phase !== "failed" && clock() - t0 < sliceMs);
@@ -38928,8 +38937,9 @@ function createBgBudget({
   };
   const quietFor = () => now4() - lastInput;
   let nextAt = -Infinity;
+  const overruns = [];
   listen();
-  function idle(fn, { timeout = 1500, quiet = quietMs, since = -Infinity, delay: delay2 = 0 } = {}) {
+  function idle(fn, { timeout = 1500, quiet = quietMs, since = -Infinity, delay: delay2 = 0, label = "" } = {}) {
     if (!enabled()) {
       let id = null;
       try {
@@ -38979,6 +38989,10 @@ function createBgBudget({
         fn(deadline);
       } finally {
         const spent = now4() - t0;
+        if (spent > 2 * sliceMs) {
+          overruns.push({ label: label || "?", ms: Math.round(spent) });
+          if (overruns.length > 40) overruns.shift();
+        }
         if (duty > 0 && duty < 1 && spent >= BG_GAP_MIN_MS) nextAt = now4() + spent * (1 - duty) / duty;
       }
     };
@@ -39000,7 +39014,7 @@ function createBgBudget({
       timerId = null;
     };
   }
-  function run(part, { timeout = 1500, quiet = quietMs, firstQuiet = quiet, partMs = 0 } = {}) {
+  function run(part, { timeout = 1500, quiet = quietMs, firstQuiet = quiet, partMs = 0, label = "" } = {}) {
     let cancel = null;
     let stopped = false;
     const need2 = () => Math.max(1e-3, typeof partMs === "function" ? Number(partMs()) || 0 : partMs);
@@ -39015,9 +39029,9 @@ function createBgBudget({
           console.error("[plexus-diagram] background job", err);
         }
       } while (!done2 && !stopped && deadline.timeRemaining() >= need2());
-      if (!done2 && !stopped) cancel = idle(slice, { timeout, quiet });
+      if (!done2 && !stopped) cancel = idle(slice, { timeout, quiet, label });
     };
-    cancel = idle(slice, { timeout, quiet: firstQuiet, since: firstQuiet > quiet ? now4() : -Infinity });
+    cancel = idle(slice, { timeout, quiet: firstQuiet, since: firstQuiet > quiet ? now4() : -Infinity, label });
     return () => {
       stopped = true;
       cancel?.();
@@ -39030,6 +39044,7 @@ function createBgBudget({
       lastInput = now4();
     },
     quietFor,
+    overruns,
     dispose() {
       if (!listening) return;
       listening = false;
@@ -39930,7 +39945,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       idleHandles.delete(key);
       fn(deadline);
     };
-    if (typeof idle === "function" && notedSpeedFlags().bgBudget !== false) idleHandles.set(key, { cancel: sharedBgBudget().idle(run, { timeout: 1500 }) });
+    if (typeof idle === "function" && notedSpeedFlags().bgBudget !== false) idleHandles.set(key, { cancel: sharedBgBudget().idle(run, { timeout: 1500, label: "prime" }) });
     else if (typeof idle === "function") idleHandles.set(key, { idle: idle(run, { timeout: 1500 }) });
     else idleHandles.set(key, { timer: setTimeout(run, 250) });
   };
@@ -44908,7 +44923,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           linkJob = null;
           finishLinks();
           return true;
-        }, { timeout: 1e3, firstQuiet: LINK_QUIET_MS, partMs: () => partMs });
+        }, { timeout: 1e3, firstQuiet: LINK_QUIET_MS, partMs: () => partMs, label: "links" });
         return;
       }
       if (inputs && inputs.eids.length > LINK_CHUNK && typeof ric === "function" && !idle) {
@@ -86753,13 +86768,13 @@ function createTimers() {
     active2.add(entry);
     return entry;
   };
-  const bgIdle = (fn) => {
+  const bgIdle = (fn, label = "view") => {
     if (typeof globalThis.requestIdleCallback !== "function" || notedSpeedFlags().bgBudget === false) return idle(fn);
     let entry;
     const cancel = sharedBgBudget().idle((d) => {
       active2.delete(entry);
       fn(d);
-    });
+    }, { label });
     entry = () => {
       cancel();
       active2.delete(entry);
@@ -88592,7 +88607,7 @@ function buildBoardView(onFail, {
       } catch {
       }
       return true;
-    });
+    }, { label: "pdfTitles" });
   };
   const coverWarmOn = () => {
     const v = readSetting2("pdf-cover-warm");
@@ -89487,7 +89502,7 @@ function buildBoardView(onFail, {
           } catch {
           }
           return true;
-        });
+        }, { label: "covers" });
       }
       coverRepaint.add(url);
       return;
@@ -90630,9 +90645,9 @@ function buildBoardView(onFail, {
         badgeCache.set(m.key, { at, stats: stats || { refs: 0, boards: 0, open: 0, done: 0 } });
       }
       applyBadges();
-      if (rest.length) timers.bgIdle(() => runChunk(rest));
+      if (rest.length) timers.bgIdle(() => runChunk(rest), "badges");
     };
-    timers.bgIdle(() => runChunk(misses));
+    timers.bgIdle(() => runChunk(misses), "badges");
   };
   const seedSnapshotBadges = () => {
     const b = board2();
@@ -101399,7 +101414,7 @@ async function installPlexusDiagram({
   const readsNow = () => Number(host.stats?.reads) || 0;
   const runIdle = (fn) => {
     if (notedSpeedFlags().bgBudget !== false && typeof (win2.requestIdleCallback ?? globalThis.requestIdleCallback) === "function") {
-      return sharedBgBudget().idle(() => fn(), { timeout: 2e3 });
+      return sharedBgBudget().idle(() => fn(), { timeout: 2e3, label: "snap" });
     }
     const ric = win2.requestIdleCallback ?? globalThis.requestIdleCallback;
     if (typeof ric === "function") return ric(() => fn(), { timeout: 2e3 });
@@ -104903,6 +104918,7 @@ async function installPlexusDiagram({
     },
     // INSTANT-1. Open timings: { snap, firstPaintMs, liveMs, queriesBeforePaint } per open.
     perf: openPerf,
+    bgOverruns: () => sharedBgBudget().overruns.slice(),
     snapshots: {
       size: () => snapStore.size(),
       has: (uid) => snapStore.has(uid),

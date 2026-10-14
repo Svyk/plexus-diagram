@@ -1623,7 +1623,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           linkJob = null;
           finishLinks();
           return true;
-        }, { timeout: 1000, firstQuiet: LINK_QUIET_MS, partMs: () => partMs });
+        }, { timeout: 1000, firstQuiet: LINK_QUIET_MS, partMs: () => partMs, label: "links" });
         return;
       }
       if (inputs && inputs.eids.length > LINK_CHUNK && typeof ric === "function" && !idle) {

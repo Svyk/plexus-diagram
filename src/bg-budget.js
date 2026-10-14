@@ -40,6 +40,8 @@ export function createBgBudget({
   };
   const quietFor = () => now() - lastInput;
   let nextAt = -Infinity;
+  // Slices that ran past twice the slice budget, by job label (the last 40), for the live speed checks.
+  const overruns = [];
   listen();
 
   // fn(deadline) runs once, in a quiet idle slice. deadline.timeRemaining() is the smaller of the browser's idle time
@@ -47,7 +49,7 @@ export function createBgBudget({
   // busy window gets 0 ms and should do one small part at most). Returns cancel().
   // `since`: quiet also counts from this time (a job that must wait `quiet` ms after it was scheduled).
   // `delay`: wait this long before asking for the idle slice (the duty-cycle gap of a job in parts).
-  function idle(fn, { timeout = 1500, quiet = quietMs, since = -Infinity, delay = 0 } = {}) {
+  function idle(fn, { timeout = 1500, quiet = quietMs, since = -Infinity, delay = 0, label = "" } = {}) {
     if (!enabled()) {
       let id = null;
       try { id = ric((d) => fn(d), { timeout }); } catch { id = null; }
@@ -85,6 +87,7 @@ export function createBgBudget({
         fn(deadline);
       } finally {
         const spent = now() - t0;
+        if (spent > 2 * sliceMs) { overruns.push({ label: label || "?", ms: Math.round(spent) }); if (overruns.length > 40) overruns.shift(); }
         // A slice of a few ms does not move the share; only real work owes a gap.
         if (duty > 0 && duty < 1 && spent >= BG_GAP_MIN_MS) nextAt = now() + (spent * (1 - duty)) / duty;
       }
@@ -105,7 +108,7 @@ export function createBgBudget({
   // A job in parts: part(deadline) does one part and returns true when the job is finished. Parts run while the slice
   // has `partMs` left (one at least per slice; a number or a function), then the job waits out its duty-cycle gap and
   // the next quiet idle slice. Returns cancel().
-  function run(part, { timeout = 1500, quiet = quietMs, firstQuiet = quiet, partMs = 0 } = {}) {
+  function run(part, { timeout = 1500, quiet = quietMs, firstQuiet = quiet, partMs = 0, label = "" } = {}) {
     let cancel = null;
     let stopped = false;
     const need = () => Math.max(0.001, typeof partMs === "function" ? Number(partMs()) || 0 : partMs);
@@ -115,9 +118,9 @@ export function createBgBudget({
       do {
         try { done = part(deadline) === true; } catch (err) { done = true; console.error("[plexus-diagram] background job", err); }
       } while (!done && !stopped && deadline.timeRemaining() >= need());
-      if (!done && !stopped) cancel = idle(slice, { timeout, quiet });
+      if (!done && !stopped) cancel = idle(slice, { timeout, quiet, label });
     };
-    cancel = idle(slice, { timeout, quiet: firstQuiet, since: firstQuiet > quiet ? now() : -Infinity });
+    cancel = idle(slice, { timeout, quiet: firstQuiet, since: firstQuiet > quiet ? now() : -Infinity, label });
     return () => { stopped = true; cancel?.(); };
   }
 
@@ -126,6 +129,7 @@ export function createBgBudget({
     run,
     noteInput: () => { lastInput = now(); },
     quietFor,
+    overruns,
     dispose() {
       if (!listening) return;
       listening = false;

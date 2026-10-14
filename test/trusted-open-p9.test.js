@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { createHost, BOARD_PATTERN } from "../src/host/roam.js";
+import { SLICED_LEVEL_PATTERN } from "../src/host/sliced-read.js";
 import { createModelStore } from "../src/host/model-store.js";
 import { acquireSession, resetSessions } from "../src/session.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
@@ -407,6 +408,48 @@ test("background check: a change after the read, on the accept stamp pull, is no
   next.host.dispose();
   await next.store.dispose();
   await again.dispose();
+});
+
+test("background check: a failed read runs again and then verifies", { timeout: 30000 }, async () => {
+  const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
+  seed(fake);
+  const idb = await storedBoard(fake);
+  fake.quiet("sec1", { open: false });
+  let levelThrows = 2;
+  let boardThrows = 1;
+  const origPull = fake.api.data.pull;
+  fake.api.data.pull = function (pattern, entity) {
+    if (boardThrows > 0 && pattern === BOARD_PATTERN) {
+      boardThrows -= 1;
+      throw new Error("board down");
+    }
+    return origPull.call(this, pattern, entity);
+  };
+  const origMany = fake.api.data.pull_many.bind(fake.api.data);
+  fake.api.data.pull_many = (pattern, entities) => {
+    if (levelThrows > 0 && pattern === SLICED_LEVEL_PATTERN) {
+      levelThrows -= 1;
+      throw new Error("level down");
+    }
+    return origMany(pattern, entities);
+  };
+  const { host, store } = hostOver(fake, idb);
+  await store.ready;
+  await preread(host);
+  const node = host.pullBoard("sb1", { light: true });
+  assert.equal(node[":block/children"].find((s) => s[":block/uid"] === "sec1")[":block/open"], true, "stored fold until the check");
+  const trees = [];
+  const off = host.watchBoard("sb1", (tree) => trees.push(tree));
+  await until(() => (host.stats.checkFails || 0) >= 1, 8000);
+  assert.equal(host.stats.checks || 0, 0, "the failed take is not a verification");
+  await until(() => !host.boardUnverified("sb1"), 12000);
+  await until(() => trees.length > 0, 4000);
+  const last = trees[trees.length - 1];
+  assert.equal(last[":block/children"].find((s) => s[":block/uid"] === "sec1")[":block/open"], false);
+  assert.equal(host.stats.checks, 1);
+  off();
+  host.dispose();
+  await store.dispose();
 });
 
 test("background check: a torn level read is not stored; the retry publishes one tree", { timeout: 30000 }, async () => {

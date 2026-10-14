@@ -972,6 +972,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const verifyListeners = new Map(); // uid -> Set(fn)
   const checks = new Map(); // uid -> cancel of the running background check
   const checkOwed = new Set(); // checks stopped by a park; they run again on resume
+  const checkTimers = new Map(); // uid -> retry timer after a failed check
+  const checkDelay = new Map(); // uid -> backoff before the next failed-check retry
   const keeps = new Map(); // uid -> cancel of the running model store job
   const refreshes = new Map(); // uid -> cancel of the running model refresh read
   const CHECK_QUIET_MS = 1500;
@@ -1072,14 +1074,46 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     cancel = sharedBgBudget().run(part, { label, partMs: 4, firstQuiet: CHECK_QUIET_MS });
     return () => cancel?.();
   };
+  const clearCheckTimer = (uid) => {
+    const timer = checkTimers.get(uid);
+    if (timer == null) return;
+    clearTimeout(timer);
+    checkTimers.delete(uid);
+  };
+  // A failed check left the board unverified. Run it again, after a growing wait, while the split is still
+  // live and not held. A park owes the check to resume; an unmount or dispose drops it.
+  const retryCheck = (uid) => {
+    if (checkTimers.has(uid) || checks.has(uid) || !unverified.has(uid)) return;
+    const split = splitWatches.get(uid);
+    if (!split || split.disposed) return;
+    if (split.held) { checkOwed.add(uid); return; }
+    const delay = checkDelay.get(uid) || CHECK_QUIET_MS;
+    checkDelay.set(uid, Math.min(delay * 2, 8000));
+    const timer = setTimeout(() => {
+      checkTimers.delete(uid);
+      if (!unverified.has(uid)) return;
+      const live = splitWatches.get(uid);
+      if (!live || live.disposed) return;
+      if (live.held) { checkOwed.add(uid); return; }
+      scheduleCheck(uid);
+    }, delay);
+    try { timer.unref?.(); } catch { /* a fake timer has no unref */ }
+    checkTimers.set(uid, timer);
+  };
   // The background check of a trusted open. A parked board stops it (resume runs it again).
   const scheduleCheck = (uid) => {
+    clearCheckTimer(uid);
     if (checks.has(uid) || !unverified.has(uid)) return;
     let stopped = false;
     const cancel = backgroundRead(uid, "check", (tree, stamp) => {
       checks.delete(uid);
       if (!unverified.has(uid)) return;
-      if (!tree) { stats.checkFails = (stats.checkFails || 0) + 1; return; }
+      if (!tree) {
+        stats.checkFails = (stats.checkFails || 0) + 1;
+        retryCheck(uid);
+        return;
+      }
+      checkDelay.delete(uid);
       bigBoards.set(uid, tree);
       const split = splitWatches.get(uid);
       let changed = true;
@@ -2303,6 +2337,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     // Held splits would otherwise keep Roam re-pulling them on every transaction for SPLIT_HOLD_MS after unload.
     dispose() {
       if (armTimer != null) { clearTimeout(armTimer); armTimer = null; }
+      for (const timer of checkTimers.values()) clearTimeout(timer);
+      checkTimers.clear();
+      checkDelay.clear();
       for (const jobs of [checks, keeps, refreshes]) {
         for (const cancel of jobs.values()) { try { cancel(); } catch { /* done */ } }
         jobs.clear();

@@ -964,10 +964,14 @@ export async function installPlexusDiagram({
       parts.finish = () => {
         let now = null;
         try { now = rec.view?.snapshotSource?.() ?? null; } catch { now = null; }
-        if (!now || now.gesturing || now.board !== src.board || now.rects !== src.rects || now.vp?.x !== src.vp?.x || now.vp?.y !== src.vp?.y
+        // rects is a new map on every snapshotSource(): compare what it draws (the stamp), not its identity.
+        if (!now || now.gesturing || now.board !== src.board || now.vp?.x !== src.vp?.x || now.vp?.y !== src.vp?.y
           || now.vp?.zoom !== src.vp?.zoom || currentUid(rec) !== uid || isDarkTheme(rec) !== dark) return null;
         const out = capture.result();
         if (!out) return false;
+        let same = false;
+        try { same = out.stamp === boardStamp(now.board, now.rects); } catch { same = false; }
+        if (!same) return null;
         rec.snapDirty = false;
         return snapStore.set(key, out, thumbs);
       };
@@ -1011,8 +1015,12 @@ export async function installPlexusDiagram({
             if (r === null) { end(); scheduleSnap(rec); return true; }
             return parts.capture ? false : end();
           }
-          const left = Math.max(1, deadline.timeRemaining() - 2);
-          if (!parts.capture.step(left)) return false;
+          // The store (pack + parse, ~30 ms) is a part of its own.
+          if (!parts.captured) {
+            const left = Math.max(1, deadline.timeRemaining() - 2);
+            parts.captured = parts.capture.step(left);
+            return false;
+          }
           end();
           if (parts.finish() === null) scheduleSnap(rec);
           return true;

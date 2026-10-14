@@ -596,3 +596,31 @@ test("the first settle after a snapshot open skips the capture when the board an
     }
   }
 });
+
+test("P8 U2: a capture in parts is stored once though snapshotSource() makes a new rects map on every call", async () => {
+  const liveBoard = {
+    uid: UID,
+    enhanced: true,
+    items: new Map([["cardAAAA1", { uid: "cardAAAA1", type: "card", parentUid: UID, x: 10, y: 20, w: 200, h: 100, title: "Live", string: "Live" }]]),
+    order: ["cardAAAA1"],
+    edges: new Map(),
+  };
+  const savedRic = Object.getOwnPropertyDescriptor(globalThis, "requestIdleCallback");
+  Object.defineProperty(globalThis, "requestIdleCallback", { value: (fn) => setTimeout(() => fn({ timeRemaining: () => 20, didTimeout: false }), 1), configurable: true, writable: true });
+  const idb = await seededIdb({ ...SNAP, stamp: "old" });
+  const env = installEnv({ idb });
+  try {
+    await env.install();
+    for (let i = 0; i < 100 && env.seen.length === 0; i += 1) await tick(10);
+    const shot = env.seen[0];
+    let calls = 0;
+    shot.snapSource = () => { calls += 1; return { board: liveBoard, rects: new Map([["cardAAAA1", { x: 10, y: 20, w: 200, h: 100 }]]), vp: { x: 50, y: 0, zoom: 1 }, shellOf: () => null, root: shot.args.mountEl, height: 480, width: 800 }; };
+    shot.args.onSettled();
+    await tick(4500);
+    assert.ok(calls >= 2 && calls <= 3, `one capture, then quiet (${calls} snapshotSource calls)`);
+  } finally {
+    await env.lifecycle.dispose().catch(() => {});
+    env.restore();
+    if (savedRic) Object.defineProperty(globalThis, "requestIdleCallback", savedRic); else delete globalThis.requestIdleCallback;
+  }
+});

@@ -1279,10 +1279,18 @@ export async function installPlexusDiagram({
     t?.unref?.();
   };
   // The board read of the coming acquire, in tasks of ~40 ms while the snapshot shows (speed flag slicedMount).
-  const prereadFor = (uid) => {
+  // P9: the PDF covers the snapshot shows (the live board's first frame reads the cover index when there are many).
+  const snapCovers = (snap) => {
+    let n = 0;
+    const has = (face, depth) => Boolean(face && typeof face === "object" && (typeof face.y?.["--pxd-cover"] === "string"
+      || (depth < 3 && Array.isArray(face.k) && face.k.some((kid) => has(kid, depth + 1)))));
+    for (const item of snap?.items || []) if (has(item?.face, 0)) n += 1;
+    return n;
+  };
+  const prereadFor = (uid, snap = null) => {
     if (!uid || speedFlags().slicedMount === false || typeof host.prereadBoard !== "function") return null;
     if (injectedAcquire === acquireSessionDefault && hasSession(uid, host)) return null;
-    try { return host.prereadBoard(uid, { trust: speedFlags().trustSnapshot !== false }); } catch { return null; }
+    try { return host.prereadBoard(uid, { trust: speedFlags().trustSnapshot !== false, covers: snapCovers(snap) }); } catch { return null; }
   };
 
   function beginSnapHandoff(rec, painted, { autofocus = false, viewport = null, acquire = null, onLive = null, readUid = "" } = {}) {
@@ -1326,7 +1334,7 @@ export async function installPlexusDiagram({
     // Read the board in slices first; the acquire's pullBoard takes the result when the page did not change.
     const read = () => {
       handoff.timeoutId = null;
-      const reader = prereadFor(readUid);
+      const reader = prereadFor(readUid, painted.snap);
       if (!reader) { start(); return; }
       handoff.reader = reader;
       const slice = () => {

@@ -299,3 +299,46 @@ test("adopt step: a big board's preread takes its tree in (split held) so the ac
   host.dispose();
   await store.dispose();
 });
+
+test("cover warm: a preread for a board whose snapshot shows many PDF covers reads the cover index in two tasks before live", async () => {
+  const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
+  seed(fake, 10);
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  host.blockPageUid = () => "bpage";
+  const route = fake.onQuery(/:pdf\/url/, () => []);
+  const pdfQueries = route.calls;
+  const reader = host.prereadBoard("sb1", { sliceMs: 1000, batch: 1000, covers: 20 });
+  const counts = [];
+  while (!reader.step()) counts.push(pdfQueries.length);
+  assert.ok(reader.phase === "covers");
+  assert.ok(pdfQueries.length >= 2, `index read: ${pdfQueries.length}`);
+  // One query per task.
+  for (let i = 1; i < counts.length; i += 1) assert.ok(counts[i] - counts[i - 1] <= 1);
+  const plain = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  plain.blockPageUid = () => "bpage";
+  pdfQueries.length = 0;
+  const r2 = plain.prereadBoard("sb1", { sliceMs: 1000, batch: 1000, covers: 3 });
+  while (!r2.step()) { /* finish */ }
+  assert.equal(pdfQueries.length, 0, "few covers: no index read");
+});
+
+test("cover warm: a big board that needed the cover index in a first frame warms it on its next cold open (kept across reloads)", async () => {
+  const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
+  seed(fake);
+  const route = fake.onQuery(/:pdf\/url/, () => []);
+  const a = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  a.blockPageUid = () => "bpage";
+  await preread(a);
+  a.pullBoard("sb1", { light: true });
+  const off = a.watchBoard("sb1", () => {});
+  for (let i = 0; i < 16; i += 1) a.pdfCover(`{{[[pdf]]: https://example.com/f${i}.pdf}}`);
+  assert.ok(route.calls.length >= 2, "first frame read the index");
+  off();
+  a.dispose();
+  const b = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  b.blockPageUid = () => "bpage";
+  route.calls.length = 0;
+  await preread(b);
+  assert.equal(route.calls.length, 2, "read before live");
+  b.dispose();
+});

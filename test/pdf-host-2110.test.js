@@ -133,7 +133,9 @@ test("a board with many PDFs reads covers from one index, not two queries per ca
     calls.push([query, ...inputs]);
     const q = String(query);
     if (q.includes("?url ?u ?t")) return urls.map((u, i) => [u, `page${i}`, `Paper ${i}`]);
-    if (q.includes("?u ?b ?props")) return [["page0", 1, { ":pdf-highlight": {} }], ["page0", 2, { ":pdf-highlight": {} }], ["page3", 3, {}], ["page5", 4, { "pdf-highlight": {} }]];
+    // P9: counted in the query, never the props rows.
+    if (q.includes("?u ?b ?props")) throw new Error("props rows read");
+    if (q.includes("(count-distinct ?b)")) return [["page0", 2], ["page5", 1]];
     if (q.includes(":in $ ?url")) { const i = urls.indexOf(inputs[0]); return i < 0 ? [] : [[`page${i}`, `Paper ${i}`]]; }
     if (q.includes(":in $ ?uid")) return [];
     return [];

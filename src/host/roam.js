@@ -318,7 +318,10 @@ const USER_EID_QUERIES = Object.freeze([
 const PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?uid] [?b :block/page ?p] [?b :block/props ?props]]`;
 // Every Roam PDF page, and every block with props on one: one read covers all PDF cards on a big board.
 const PDF_PAGES_ALL_QUERY = `[:find ?url ?u ?t :where [?p :pdf/url ?url] [?p :block/uid ?u] [?p :node/title ?t]]`;
-const PDF_PAGE_PROPS_ALL_QUERY = `[:find ?u ?b ?props :where [?p :pdf/url _] [?p :block/uid ?u] [?b :block/page ?p] [?b :block/props ?props]]`;
+// Highlight blocks per Roam PDF page, counted in the query (P9 live: 57-64 ms, against 101-119 ms for the 3,445 props
+// rows the count used to be made from in JS; same 127 counts).
+const PDF_PAGE_COUNTS_ALL_QUERY = `[:find ?u (count-distinct ?b) :where [?p :pdf/url _] [?p :block/uid ?u] [?b :block/page ?p] [?b :block/props ?props]
+ (or [(contains? ?props :pdf-highlight)] [(contains? ?props "pdf-highlight")])]`;
 // A board that names this many PDFs reads covers from one index (PhD board: 122 PDFs asked ~8,900 times in one open,
 // 5 ms each, against 31-71 ms for the whole index). The index lives COVER_INDEX_MIN_MS, or 40× its own read time.
 // Below the break-even a board reads per url, as 3.27.0 did: at 4, Parse Lab re-read the expired index on a zoom-out
@@ -1593,11 +1596,61 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       pages.get(row[0]).push({ uid: row[1], title: typeof row[2] === "string" ? row[2] : "", url: row[0] });
     }
     const counts = new Map();
-    for (const row of queryRows(host, PDF_PAGE_PROPS_ALL_QUERY)) {
-      if (Array.isArray(row) && hasPdfHighlight(row[2])) counts.set(row[0], (counts.get(row[0]) || 0) + 1);
+    for (const row of queryRows(host, PDF_PAGE_COUNTS_ALL_QUERY)) {
+      if (Array.isArray(row) && typeof row[0] === "string" && Number(row[1]) > 0) counts.set(row[0], Number(row[1]));
     }
     coverIndex = { at: now, ttl: Math.max(COVER_INDEX_MIN_MS, (Date.now() - t0) * 40), pages, counts };
+    noteCoverBoards();
     return coverIndex;
+  };
+  // P9: big boards on screen when a first frame had to read the cover index (kept per graph across reloads): their next
+  // cold open reads it before live, one query per task.
+  const coverBoardsKey = () => `plexus-diagram:cover-boards:${graph ?? graphName()}`;
+  let coverBoards = null;
+  const coverBoardList = () => {
+    if (coverBoards) return coverBoards;
+    try { coverBoards = JSON.parse(storage?.getItem?.(coverBoardsKey()) || "[]"); } catch { coverBoards = []; }
+    if (!Array.isArray(coverBoards)) coverBoards = [];
+    return coverBoards;
+  };
+  const noteCoverBoards = () => {
+    const list = coverBoardList();
+    let changed = false;
+    for (const uid of watchedBoards.keys()) {
+      if (!bigBoards.has(uid) || list.includes(uid)) continue;
+      list.unshift(uid);
+      changed = true;
+    }
+    if (!changed) return;
+    list.length = Math.min(list.length, 20);
+    try { storage?.setItem?.(coverBoardsKey(), JSON.stringify(list)); } catch { /* quota or private mode */ }
+  };
+  // P9: the two index reads of coverIndexNow as separate tasks (live: 83 + 56 ms on Readwisenotes; together they were
+  // the first live frame's 150 ms task). part 0 reads the pages, part 1 the highlight counts and sets the index.
+  let coverWarm = null;
+  const coverIndexPart = (i) => {
+    const now = Date.now();
+    if (coverIndex && now - coverIndex.at < coverIndex.ttl) return true;
+    if (i === 0 || !coverWarm) {
+      const t0 = Date.now();
+      const pages = new Map();
+      for (const row of queryRows(host, PDF_PAGES_ALL_QUERY)) {
+        if (!Array.isArray(row) || typeof row[0] !== "string" || typeof row[1] !== "string" || row[1] === "") continue;
+        if (!pages.has(row[0])) pages.set(row[0], []);
+        pages.get(row[0]).push({ uid: row[1], title: typeof row[2] === "string" ? row[2] : "", url: row[0] });
+      }
+      coverWarm = { at: now, pages, ms: Date.now() - t0 };
+      return false;
+    }
+    const t0 = Date.now();
+    const counts = new Map();
+    for (const row of queryRows(host, PDF_PAGE_COUNTS_ALL_QUERY)) {
+      if (Array.isArray(row) && typeof row[0] === "string" && Number(row[1]) > 0) counts.set(row[0], Number(row[1]));
+    }
+    // A page change between the two reads is caught by the TTL like any other index change.
+    coverIndex = { at: coverWarm.at, ttl: Math.max(COVER_INDEX_MIN_MS, (coverWarm.ms + Date.now() - t0) * 40), pages: coverWarm.pages, counts };
+    coverWarm = null;
+    return true;
   };
   const useCoverIndex = (url) => {
     const now = Date.now();
@@ -1943,8 +1996,29 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!id || typeof data.pull_many !== "function") return null;
       if (warm.has(id) || splitWatches.has(id)) return null;
       const stored = opts.trust !== false && modelStore && trustOn() && splitWatchOn() ? modelStore.stampOf(id) : null;
-      if (stored && pageStampOf(id) === stored) return host.trustedReader(id, stored, opts);
-      return host.slicedReader(id, opts);
+      const reader = stored && pageStampOf(id) === stored ? host.trustedReader(id, stored, opts) : host.slicedReader(id, opts);
+      // A board whose snapshot shows enough PDF covers will ask for the cover index in its first live frame: read it
+      // now, one query per task.
+      if (!reader || !(Number(opts.covers) >= COVER_INDEX_URLS || coverBoardList().includes(id))) return reader;
+      let coverPart = -1;
+      return new Proxy(reader, {
+        get(target, key) {
+          if (key === "phase") return coverPart >= 0 ? "covers" : target.phase;
+          if (key === "waiting") return coverPart >= 0 ? null : target.waiting;
+          if (key !== "step") return typeof target[key] === "function" ? target[key].bind(target) : target[key];
+          return () => {
+            if (coverPart < 0) {
+              if (!target.step()) return false;
+              coverPart = 0;
+              return false;
+            }
+            let done = true;
+            try { done = coverIndexPart(coverPart); } catch { done = true; }
+            coverPart += 1;
+            return done || coverPart > 1;
+          };
+        },
+      });
     },
 
     trustedReader(id, stamp, opts = {}) {

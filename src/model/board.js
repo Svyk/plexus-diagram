@@ -36,6 +36,21 @@ const BORDER_BAND = 8;
 
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 
+// The outline caret reads :block/open, which lives on children and is stripped out of the board diff.
+// This string is fixed at build, like hitsKey, so a fold dirties the card and a child string edit does not.
+// Depth matches the outline (two levels). Parentheses keep a nested fold distinct from a sibling fold.
+const OPEN_KEY_DEPTH = 2;
+function kidsOpenKey(nodes, depth = 1) {
+  if (!Array.isArray(nodes) || !nodes.length || depth > OPEN_KEY_DEPTH) return "";
+  let out = "";
+  for (const node of nodes) {
+    const flag = node?.[":block/open"] === false ? "0" : "1";
+    const inner = kidsOpenKey(node?.[":block/children"], depth + 1);
+    out += inner ? `${flag}(${inner})` : flag;
+  }
+  return out;
+}
+
 function viewsOf(boardKids, regionsUid) {
   const container = regionsUid
     ? boardKids.find((child) => child[":block/uid"] === regionsUid)
@@ -264,6 +279,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
       else if (kind === "page") target = { kind: "page", title: cls.title };
       else if (kind === "block" || kind === "region-ref" || kind === "drawing-ref" || (kind === "pdf" && cls.refUid) || (kind === "highlight" && cls.refUid)) target = { kind: "block", uid: cls.refUid };
       else target = { kind: "self", uid: cuid };
+      const openKey = type === "card" ? kidsOpenKey(cardKids) : "";
       const item = {
         uid: cuid,
         type,
@@ -309,6 +325,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         content: type === "section" ? [] : cardKids,
         // Regions and pins sit in content, which can change in place. This string is fixed at build, so the diff sees them.
         ...(kind === "image" || kind === "pdf" ? { hitsKey: endpointHitsKey(cardKids) } : {}),
+        ...(openKey ? { openKey } : {}),
       };
       items.set(cuid, item);
       preorder.push(cuid);

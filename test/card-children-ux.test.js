@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import { buildBoard, worldRects } from "../src/model/board.js";
+import { buildBoard, diffBoards, worldRects } from "../src/model/board.js";
 import { kidsHeightPlan, peekAllowed, rememberUnfoldedSize, findBlock, childIsOpen, PEEK_HOVER_MS, PEEK_LEAVE_MS } from "../src/model/card-children.js";
 import { editorKeyAction } from "../src/view/editor-keys.js";
 import { createItemRenderer } from "../src/view/cards.js";
@@ -233,11 +233,29 @@ test("setKids restores the folded height, and a resize while open is the unfolde
 });
 
 test("setNodeOpen writes :block/open and one undo puts it back", async () => {
-  const { fake, session } = setup([card("X", "note", 10, 20, 240, 100, { kids: true }, [{ uid: "c000", string: "kid", children: [{ uid: "g000", string: "grand" }] }])]);
+  const { fake, session } = setup(
+    [card("X", "note", 10, 20, 240, 100, { kids: true }, [{ uid: "c000", string: "kid", children: [{ uid: "g000", string: "grand" }] }])],
+    { trackUndo: true },
+  );
   assert.equal(await session.setNodeOpen("c000", false), true);
   assert.equal(fake.block("c000").open, false);
   await session.undo();
   assert.equal(fake.block("c000").open, true);
+});
+
+test("folding a child keeps an earlier resize on the undo stack", async () => {
+  const { fake, session } = setup(
+    [card("X", "note", 10, 20, 240, 100, { kids: true }, [{ uid: "c000", string: "kid", children: [{ uid: "g000", string: "grand" }] }])],
+    { echoDelay: 0, raf: (fn) => fn(), trackUndo: true },
+  );
+  await session.commitRects([{ uid: "X", x: 10, y: 20, w: 240, h: 140 }]);
+  assert.equal(await session.setNodeOpen("c000", false), true);
+  assert.equal(fake.block("c000").open, false);
+  await session.undo();
+  assert.equal(fake.block("c000").open, true);
+  assert.equal(fake.props("X").plexus.h, 140);
+  await session.undo();
+  assert.equal(fake.props("X").plexus.h, 100);
 });
 
 const blk = (uid, string, plexus, order, children = [], open) => ({
@@ -318,6 +336,30 @@ const alpha = [
   blk("kidA00001", "child one", null, 0, [blk("kidA10001", "grandchild", null, 0)]),
   blk("kidB00001", "child two", null, 1),
 ];
+
+test("a child fold dirties the card and the caret follows without a local click", (t) => {
+  const openKids = [blk("kidA00001", "child one", null, 0, [blk("kidA10001", "grandchild", null, 0)])];
+  const closedKids = [blk("kidA00001", "child one", null, 0, [blk("kidA10001", "grandchild", null, 0)], false)];
+  const renamed = [blk("kidA00001", "renamed", null, 0, [blk("kidA10001", "grandchild", null, 0)])];
+  const cardOf = (kids) => blk("noteAAAA1", "alpha", { ":x": 0, ":y": 0, ":w": 240, ":h": 100, ":kids": true }, 0, kids);
+  const prev = buildBoard(rawBoard([cardOf(openKids)]));
+  const folded = buildBoard(rawBoard([cardOf(closedKids)]));
+  const edited = buildBoard(rawBoard([cardOf(renamed)]));
+  const fold = diffBoards(prev, folded);
+  assert.equal(fold.structural, false);
+  assert.equal(fold.dirty.has("noteAAAA1"), true);
+  assert.equal(diffBoards(prev, edited).dirty.has("noteAAAA1"), false, "a child string edit stays out of the layout diff");
+  const h = harness({ children: [cardOf(openKids)] });
+  t.after(h.restore);
+  h.show();
+  const cardEl = h.root.querySelector("[data-uid=noteAAAA1]");
+  assert.equal(cardEl.querySelector(".pxd-outline__caret").getAttribute("aria-expanded"), "true");
+  h.r.sync({ board: folded, rects: worldRects(folded), dirty: fold.dirty, structural: false });
+  h.show();
+  const caret = cardEl.querySelector(".pxd-outline__caret");
+  assert.equal(caret.getAttribute("aria-expanded"), "false");
+  assert.equal(cardEl.querySelectorAll(".pxd-block").length, 1);
+});
 
 test("an open card draws a Roam outline: bullet, indent, and a caret that writes :block/open", (t) => {
   const folded = [blk("kidA00001", "child one", null, 0, [blk("kidA10001", "grandchild", null, 0)], false)];

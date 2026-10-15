@@ -2865,29 +2865,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       });
     },
 
-    // :block/open on a block inside a card. One custom undo. The card renderer also toggles the row locally,
-    // because a child fold does not mark the card dirty.
+    // :block/open on a block inside a card. One native undo, so an earlier resize stays on the stack.
+    // The rebuilt card carries openKey, which dirties it; the outline caret follows that repaint.
     setNodeOpen(id, open) {
       if (!board || destroyed || gone) return Promise.resolve(false);
       const node = rawNode(id);
       if (!node || node === raw) return Promise.resolve(false);
       const next = open !== false;
-      const prev = node[OPEN] !== false;
-      if (prev === next) return Promise.resolve(false);
-      node[OPEN] = next;
-      const custom = {
-        async undo() {
-          const n = rawNode(id);
-          if (n) n[OPEN] = prev;
-          await execute([{ op: "open", uid: id, open: prev }]);
-        },
-        async redo() {
-          const n = rawNode(id);
-          if (n) n[OPEN] = next;
-          await execute([{ op: "open", uid: id, open: next }]);
-        },
-      };
-      return commit([{ op: "open", uid: id, open: next }], true, custom);
+      if ((node[OPEN] !== false) === next) return Promise.resolve(false);
+      return txn((t) => {
+        t.open(id, next);
+        return true;
+      });
     },
 
     setFontSize(id, size) {

@@ -80390,10 +80390,17 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   let lastPass = null;
   let drawnFn = null;
   const waiting = /* @__PURE__ */ new Set();
-  const endsReady = (board2, edge) => {
-    if (typeof drawnFn !== "function") return true;
-    return Boolean(drawnFn(edgeAnchor(board2, edge.from, edge.homeFrom)) && drawnFn(edgeAnchor(board2, edge.to, edge.homeTo)));
+  const boxMeets = (r, box2) => r.x < box2.x + box2.w && r.x + r.w > box2.x && r.y < box2.y + box2.h && r.y + r.h > box2.y;
+  const endHolds = (board2, uid, home) => {
+    if (typeof drawnFn !== "function") return false;
+    const anchor = edgeAnchor(board2, uid, home);
+    if (drawnFn(anchor)) return false;
+    if (!view) return true;
+    const rect = lastPass?.rects?.get(anchor);
+    if (!rect) return true;
+    return boxMeets(rect, view);
   };
+  const endsReady = (board2, edge) => !endHolds(board2, edge.from, edge.homeFrom) && !endHolds(board2, edge.to, edge.homeTo);
   const hideEdge = (rec) => {
     rec.g.setAttribute("display", "none");
     rec.label.style.display = "none";
@@ -94083,8 +94090,7 @@ function buildBoardView(onFail, {
   let coverUids = /* @__PURE__ */ new Set();
   const endpointReady = (uid) => {
     if (!uid) return false;
-    const el3 = itemsR.shellOf?.(uid);
-    if (el3?.isConnected) return true;
+    if (itemsR.shellOf?.(uid)) return true;
     return tier === "overview" && coverUids.has(uid);
   };
   paintOverviewCover = () => {

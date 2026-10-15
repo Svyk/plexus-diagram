@@ -107,6 +107,7 @@ function fakeSession(board) {
     setCollapsed: rec("setCollapsed"),
     setBlockOpen: rec("setBlockOpen"),
     setKids: rec("setKids"),
+    addCardChild: (...args) => { mutations.push(["addCardChild", ...args]); return Promise.resolve(""); },
     setFontSize: rec("setFontSize"),
     setString: rec("setString"),
     growToFit: rec("growToFit"),
@@ -2332,7 +2333,7 @@ test("ED-5: editing at 2x lays the editor out in screen pixels", async () => {
   }
 });
 
-test("Enter on a card's root adds a line to that block and writes nothing else", async () => {
+test("Enter on a card's root adds a line and writes nothing; Shift+Enter asks for a child", async () => {
   const created = [];
   const updates = [];
   const f = mountFixture({
@@ -2371,9 +2372,12 @@ test("Enter on a card's root adds a line to that block and writes nothing else",
     assert.equal(updates.length, 0, "the open editor saves the string itself");
     f.stub.dispatch(ta, "keyup", { key: "a" });
     const shifted = f.stub.dispatch(ta, "keydown", { key: "Enter", shiftKey: true });
-    assert.equal(shifted.defaultPrevented, false);
+    assert.equal(shifted.defaultPrevented, true, "Shift+Enter on the card's top block makes a child");
     f.stub.dispatch(ta, "keyup", { key: "Enter", shiftKey: true });
-    assert.deepEqual(roamSaw, ["up:a", "down:Enter", "up:Enter"], "Shift+Enter is still Roam's own newline");
+    assert.deepEqual(roamSaw, ["up:a"], "Roam never sees Shift+Enter");
+    assert.deepEqual(f.session.mutations.filter((m) => m[0] === "addCardChild"), [["addCardChild", "cardAAAA1"]]);
+    assert.equal(created.length, 0, "the view asks the session; it does not call host.createBlock");
+    assert.equal(updates.length, 0);
   } finally {
     f.view.dispose();
     f.restore();

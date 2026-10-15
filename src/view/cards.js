@@ -1885,6 +1885,27 @@ export function createItemRenderer({
     if (rec.shapeName) syncShape(rec, { type: "text", shape: rec.shapeName, w: rect.w, h: rect.h }, rect);
   };
 
+  const bindTracked = (rec, node, type, fn) => {
+    if (!node?.addEventListener || !fn) return;
+    node.addEventListener(type, fn);
+    if (!rec) return;
+    if (!rec.rowOffs) rec.rowOffs = [];
+    rec.rowOffs.push(() => node.removeEventListener(type, fn));
+  };
+  const dropRowOffs = (rec) => {
+    const offs = rec?.rowOffs;
+    if (!offs) return;
+    rec.rowOffs = null;
+    for (const off of offs) {
+      try { off(); } catch { /* already off */ }
+    }
+  };
+  const dropPeekListeners = (rec) => {
+    try { rec?.peekOff?.(); } catch { /* already off */ }
+    if (rec) rec.peekOff = null;
+    dropRowOffs(rec);
+  };
+
   const removeShell = (uid) => {
     const rec = shells.get(uid);
     if (!rec) return;
@@ -1897,6 +1918,7 @@ export function createItemRenderer({
     }
     if (selectedPrimary === uid) selectedPrimary = null;
     if (editing?.uid === uid) void exitEdit({ silent: true });
+    dropPeekListeners(rec);
     dropPeek(rec);
     try { rec.focusOff?.(); } catch { /* already off */ }
     try { rec.pageCaretOff?.(); } catch { /* already off */ }
@@ -2561,8 +2583,9 @@ export function createItemRenderer({
         caret.textContent = open ? "\u25BE" : "\u25B8";
         caret.setAttribute("aria-expanded", open ? "true" : "false");
         caret.setAttribute("aria-label", open ? "Fold" : "Unfold");
-        for (const type of ["pointerdown", "mousedown", "dblclick"]) caret.addEventListener(type, stopPress);
-        caret.addEventListener("click", (event) => {
+        const caretRec = shells.get(cardUid);
+        for (const type of ["pointerdown", "mousedown", "dblclick"]) bindTracked(caretRec, caret, type, stopPress);
+        const onCaret = (event) => {
           stopPress(event);
           const next = caret.getAttribute("aria-expanded") !== "true";
           caret.setAttribute("aria-expanded", next ? "true" : "false");
@@ -2581,17 +2604,21 @@ export function createItemRenderer({
           }
           if (wrap) setHidden(wrap, !next);
           if (!viewOnly && rowUid) void session?.setNodeOpen?.(rowUid, next);
-        });
+        };
+        bindTracked(caretRec, caret, "click", onCaret);
       }
       const bullet = el("button", "pxd-outline__bullet", line);
       bullet.type = "button";
       bullet.setAttribute("aria-label", "Focus block");
-      for (const type of ["pointerdown", "mousedown", "dblclick"]) bullet.addEventListener(type, stopPress);
-      bullet.addEventListener("click", (event) => {
+      const bulletRec = shells.get(cardUid);
+      const onBullet = (event) => {
         stopPress(event);
         if (cardUid && rowUid) focusInside(cardUid, rowUid);
-      });
-      bullet.addEventListener("pointerover", () => { if (cardUid && rowUid) hotRow = { card: cardUid, uid: rowUid }; });
+      };
+      const onBulletOver = () => { if (cardUid && rowUid) hotRow = { card: cardUid, uid: rowUid }; };
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) bindTracked(bulletRec, bullet, type, stopPress);
+      bindTracked(bulletRec, bullet, "click", onBullet);
+      bindTracked(bulletRec, bullet, "pointerover", onBulletOver);
       const posterCount = embedSplit(String(s || ""), embedOptsFor(rowUid)).posters.length;
       holdHeight(row, posterCount ? embedBoxFor(rowUid).h : KID_ROW_H);
       const node = renderRowRoot(line, s, "pxd-rs pxd-block__text", rowUid);
@@ -2612,8 +2639,8 @@ export function createItemRenderer({
       btn.type = "button";
       btn.textContent = label;
       btn.setAttribute("data-pxd-focus", focusId || "card");
-      for (const type of ["pointerdown", "mousedown", "dblclick"]) btn.addEventListener(type, stopPress);
-      btn.addEventListener("click", (event) => {
+      const crumbRec = shells.get(item.uid);
+      const onCrumb = (event) => {
         stopPress(event);
         if (!focusId) {
           cardFocus.delete(item.uid);
@@ -2623,7 +2650,9 @@ export function createItemRenderer({
           return;
         }
         focusInside(item.uid, focusId);
-      });
+      };
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) bindTracked(crumbRec, btn, type, stopPress);
+      bindTracked(crumbRec, btn, "click", onCrumb);
     };
     addBtn(cardLabelOf(item), "");
     for (const step of trail || []) {
@@ -3126,12 +3155,14 @@ export function createItemRenderer({
     const focusBullet = el("button", "pxd-outline__bullet", line);
     focusBullet.type = "button";
     focusBullet.setAttribute("aria-label", "Focus block");
-    for (const type of ["pointerdown", "mousedown", "dblclick"]) focusBullet.addEventListener(type, stopPress);
-    focusBullet.addEventListener("click", (event) => {
+    const onFocusClick = (event) => {
       stopPress(event);
       focusInside(rec.uid, uid);
-    });
-    focusBullet.addEventListener("pointerover", () => { hotRow = { card: rec.uid, uid }; });
+    };
+    const onFocusOver = () => { hotRow = { card: rec.uid, uid }; };
+    for (const type of ["pointerdown", "mousedown", "dblclick"]) bindTracked(rec, focusBullet, type, stopPress);
+    bindTracked(rec, focusBullet, "click", onFocusClick);
+    bindTracked(rec, focusBullet, "pointerover", onFocusOver);
     const posters = embedSplit(s, embedOptsFor(uid)).posters;
     if (isRoamTableString(s)) {
       const root = renderRowRoot(line, s, "pxd-rs pxd-block__text", uid);
@@ -6486,6 +6517,7 @@ export function createItemRenderer({
     for (const snap of [...snapshots]) dropSnapshot(snap);
     for (const uid of [...shells.keys()]) {
       const rec = shells.get(uid);
+      dropPeekListeners(rec);
       try { rec.focusOff?.(); } catch { /* already off */ }
       try { rec.pageCaretOff?.(); } catch { /* already off */ }
       dropEmbedPoster(rec.el);

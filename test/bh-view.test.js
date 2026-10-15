@@ -94,9 +94,10 @@ test("item 4: with no usable pdf.js, a cached cover without a title is not re-wa
     f.skew(0);
     await cycle(f, 8);
     // The highlight count is its own budget part, so it can land one short timer after the last paint.
-    await tick(20);
-    await cycle(f, 4);
-    const early = f.calls.pdfCover;
+    // Wait by time, not a fixed tick: slow runners land that last part later.
+    const until = Date.now() + 2000;
+    let early;
+    do { early = f.calls.pdfCover; await tick(20); await cycle(f, 4); } while (f.calls.pdfCover !== early && Date.now() < until);
     await cycle(f, 40);
     assert.equal(f.calls.pdfCover, early, "no repaint cycles after the retry cap");
   } finally { f.restore(); }

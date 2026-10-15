@@ -14,6 +14,7 @@ import { commentCount } from "../model/section6.js";
 import { commentBadgeCount } from "../model/comments.js";
 import { LINKED_REF_CAP, linkedRefCard, linkedRefLabel } from "../model/refs.js";
 import { boardPreview, descendantsOf, sectionNoteUid } from "../model/board.js";
+import { outsideBadgeText, outsideTip } from "../model/arrow-home.js";
 import { CARD_MIME } from "./panel.js";
 import { lodForZoom, rectsIntersect } from "../model/geometry.js";
 import { SHAPES, shapePath } from "../model/shapes.js";
@@ -1836,6 +1837,7 @@ export function createItemRenderer({
     node.setAttribute("aria-label", `${announced}, ${item.type}`);
     if (item.landmark || rec.landmarkEl) paintLandmarkMark(rec, item);
     if (trailBadgeMap.size || rec.trailBadge) paintTrailBadge(rec, item.uid);
+    if (item.type !== "section") paintOutside(rec, item.uid);
     if (item.type === "card" && (item.kind === "block" || item.kind === "page")) armLinkHover(rec, item);
   };
 
@@ -1858,6 +1860,22 @@ export function createItemRenderer({
     if (!rec.trailBadge) rec.trailBadge = el("span", "pxd-trail-badge", rec.el);
     const text = String(n);
     if (rec.trailBadge.textContent !== text) rec.trailBadge.textContent = text;
+  };
+  // Arrows that stayed on a parent board. One delegated hit on the root, no listener per card.
+  const paintOutside = (rec, uid) => {
+    const list = lastBoard?.outsides?.get(uid);
+    if (!list?.length) {
+      if (rec.outBadge) { rec.outBadge.remove(); rec.outBadge = null; }
+      return;
+    }
+    if (!rec.outBadge) {
+      rec.outBadge = el("span", "pxd-out", rec.el);
+      rec.outBadge.setAttribute("role", "button");
+    }
+    const text = outsideBadgeText(list.length);
+    if (rec.outBadge.textContent !== text) rec.outBadge.textContent = text;
+    const tip = outsideTip(list);
+    if (rec.outBadge.title !== tip) rec.outBadge.title = tip;
   };
 
   const shownRect = (uid, rect) => {

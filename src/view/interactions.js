@@ -360,7 +360,7 @@ export function createInteractions({ actions, settings } = {}) {
     const handPrimary = state.tool === "hand" && !state.space && ev.button === 0;
     const handKeeps = handPrimary && (t.kind === "grip" || movableKind);
     const specificHit = t.kind === "port" || t.kind === "grip" || t.kind === "edge-marker" || t.kind === "edge-end"
-      || t.kind === "edge" || t.kind === "label" || t.kind === "link" || movableKind;
+      || t.kind === "edge" || t.kind === "label" || t.kind === "link" || t.kind === "out-arrow" || movableKind;
     const panRequested = ev.button === 1 || state.space || (state.tool === "hand" && !handKeeps);
     if (panRequested) {
       if (handPrimary && ev.shift && !specificHit) {
@@ -385,6 +385,9 @@ export function createInteractions({ actions, settings } = {}) {
       }
       case "edge-marker":
         if (t.uid) { selectEdge(t.uid); call("revealBlockEnd", t.uid, t.end); }
+        return;
+      case "out-arrow":
+        if (t.uid) call("openOutside", t.uid);
         return;
       case "edge-end": {
         const edge = t.uid ? b?.edges.get(t.uid) : null;

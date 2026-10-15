@@ -1619,7 +1619,11 @@ export async function installPlexusDiagram({
       routeUid: rec0.uid,
       autofocus,
       initialViewport: viewport,
-      onOpenBoard: (child) => visit(owner.rec, trailFor(child, [...owner.rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }])),
+      onOpenBoard: (child, opts) => {
+        const trail = trailFor(child, [...owner.rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }]);
+        if (opts?.focus) enterNested(owner.rec, trail, opts.focus);
+        else visit(owner.rec, trail);
+      },
       onSelectTab: (uid) => {
         if (!uid) return;
         visit(owner.rec, trailFor(uid, [{ uid, title: boardTitle(host.blockString?.(uid)) }]));

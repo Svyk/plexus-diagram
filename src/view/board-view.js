@@ -4295,12 +4295,12 @@ function buildBoardView(onFail, {
     if (!ref || typeof host?.blockString !== "function") return null;
     return classifyString(host.blockString(ref)).kind === "board" ? ref : null;
   };
-  const openBoard = async (uid) => {
+  const openBoard = async (uid, opts) => {
     const target = boardTargetOf(uid);
     if (!target) return;
     if (itemsR.isEditing()) await exitEdit();
     if (disposed) return;
-    if (onOpenBoard) onOpenBoard(target);
+    if (onOpenBoard) onOpenBoard(target, opts);
     else host?.openBlock?.(target);
   };
   const openOwnPage = (item) => {
@@ -7308,6 +7308,7 @@ function buildBoardView(onFail, {
     closeQuickLook: () => quicklook.close(),
     saveView: () => saveCameraView(),
     closeOverlay: () => {
+      if (outsideMenu) { closeOutsideMenu(); noteOverlayClosed(); return true; }
       if (linksMenu) { closeLinksMenu(); noteOverlayClosed(); return true; }
       if (whyPop) { whyPop.close(); whyPop = null; noteOverlayClosed(); return true; }
       if (contextsDrawer) { contextsDrawer.close(); contextsDrawer = null; noteOverlayClosed(); return true; }
@@ -7347,6 +7348,7 @@ function buildBoardView(onFail, {
     blockTarget: (pt) => blockTargetAt(pt),
     clearBlockTarget: () => clearBlockTarget(),
     revealBlockEnd: (edgeUid, end) => revealBlockEnd(edgeUid, end),
+    openOutside: (uid) => openOutside(uid),
     updateEdge: (uid, patch) => session.updateEdge?.(uid, patch),
     commitMove: (uids, dx, dy) => session.commitMove?.(uids, dx, dy),
     commitRects: (list) => session.commitRects?.(list),
@@ -7569,11 +7571,71 @@ function buildBoardView(onFail, {
     }
     return null;
   };
+  // Arrows that stayed on another board. One row opens that board on the other card. Several rows
+  // open a list; its listeners exist only while the list is open.
+  let outsideMenu = null;
+  const closeOutsideMenu = () => {
+    if (!outsideMenu) return;
+    const menu = outsideMenu;
+    outsideMenu = null;
+    try { menu.node.remove(); } catch { /* already gone */ }
+    try { doc.removeEventListener("pointerdown", menu.onDown, true); } catch { /* stub */ }
+    try { win.removeEventListener("keydown", menu.onKey, true); } catch { /* stub */ }
+  };
+  const openOutside = (cardUid) => {
+    const list = board()?.outsides?.get(cardUid) || [];
+    if (!list.length || disposed) return;
+    if (list.length === 1) {
+      closeOutsideMenu();
+      onOpenBoard?.(list[0].boardUid, { focus: list[0].otherUid });
+      return;
+    }
+    closeOutsideMenu();
+    let shell = null;
+    for (const node of root.querySelectorAll(".pxd-item")) {
+      if ((node.dataset?.uid || node.getAttribute?.("data-uid")) === cardUid) { shell = node; break; }
+    }
+    const node = doc.createElement("div");
+    node.className = "pxd-out-menu";
+    for (const row of list) {
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.className = "pxd-out-menu__row";
+      button.textContent = `from ${row.otherTitle} on ${row.boardTitle}`;
+      button.addEventListener("pointerdown", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        closeOutsideMenu();
+        onOpenBoard?.(row.boardUid, { focus: row.otherUid });
+      });
+      node.append(button);
+    }
+    (shell || root).append(node);
+    const onDown = (ev) => {
+      if (node.contains?.(ev.target)) return;
+      closeOutsideMenu();
+    };
+    const onKey = (ev) => {
+      if (ev.key !== "Escape" || isTextEntryTarget(ev.target)) return;
+      closeOutsideMenu();
+    };
+    outsideMenu = { node, onDown, onKey };
+    doc.addEventListener("pointerdown", onDown, true);
+    win.addEventListener("keydown", onKey, true);
+  };
+
   // BA-3: a clamped marker scrolls the card body to the row and flashes it; a row that is not rendered opens the block.
+  // A housed end opens the board card and centres the moved card.
   const revealBlockEnd = (edgeUid, end) => {
     const e = board()?.edges.get(edgeUid);
     if (!e) return false;
-    const card = end === "from" ? e.from : e.to;
+    const stored = end === "from" ? e.from : e.to;
+    const home = end === "from" ? e.homeFrom : e.homeTo;
+    if (home?.cardUid && !board().items.has(stored)) {
+      onOpenBoard?.(home.cardUid, { focus: stored });
+      return true;
+    }
+    const card = stored;
     const block = end === "from" ? e.fromBlock : e.toBlock;
     if (!block) return false;
     if (itemsR.revealRow(card, block)) return true;
@@ -7588,6 +7650,11 @@ function buildBoardView(onFail, {
   const targetOf = (t) => {
     if (!t || typeof t.closest !== "function") return { kind: "empty" };
     if (t.closest(".pxd-chrome") || inReaderText(t)) return { kind: "chrome" };
+    const out = t.closest(".pxd-out");
+    if (out && !t.closest(".pxd-out-menu")) {
+      const owner = out.closest(".pxd-item, .pxd-section");
+      return { kind: "out-arrow", uid: owner?.dataset?.uid || owner?.getAttribute?.("data-uid") };
+    }
     const port = t.closest(".pxd-port");
     if (port) {
       const owner = port.closest(".pxd-item, .pxd-section");
@@ -9939,6 +10006,7 @@ function buildBoardView(onFail, {
       step(() => perfLog?.cancelPan?.());
       step(() => { dropTabStrip(); root.classList.remove("pxd-root--fstabs"); });
       step(() => closeLinksMenu());
+      step(() => closeOutsideMenu());
       step(() => { whyPop?.close(); whyPop = null; });
       step(() => { contextsDrawer?.close(); contextsDrawer = null; });
       step(() => {

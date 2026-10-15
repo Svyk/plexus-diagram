@@ -176,6 +176,92 @@ test("a missing endpoint is left in place", () => {
   session.release();
 });
 
+test("a nested card shows ↗ 1 and a click opens the other board on the other card", async () => {
+  const { mountBoardView } = await import("../src/view/board-view.js");
+  const stub = createDomStub({ width: 1400, height: 900 });
+  const restore = stub.install();
+  try {
+    const fake = createFakeRoam({ pullMany: true, echoDelay: 0 });
+    fake.seedBoard({
+      uid: "b1",
+      string: "{{[[diagram]]:Outer}}",
+      props: { plexus: { v: 2 } },
+      children: [
+        { uid: "c2", string: "[[Beta]]", props: { plexus: { x: 400, y: 40, w: 200, h: 100 } } },
+        {
+          uid: "nb",
+          string: "{{[[diagram]]:Inner}}",
+          props: { plexus: { x: 0, y: 400, w: 320, h: 220, v: 2 } },
+          children: [
+            { uid: "c1", string: "[[Alpha]]", props: { plexus: { x: 20, y: 40, w: 200, h: 100 } } },
+          ],
+        },
+        {
+          uid: "ec",
+          string: "Connections",
+          props: { plexus: { type: "edges" } },
+          children: [
+            { uid: "e12", string: "[[Alpha]] → [[Beta]]", props: { plexus: { type: "edge", from: "c1", to: "c2" } } },
+          ],
+        },
+      ],
+    });
+    const host = createHost({ api: fake.api, storage: stub.localStorage, graph: "g" });
+    const session = acquireSession("nb", { host, linkDelay: 0, raf: (fn) => fn() });
+    const mountEl = stub.document.createElement("div");
+    stub.document.body.append(mountEl);
+    const opened = [];
+    const view = mountBoardView({
+      host,
+      session,
+      mountEl,
+      settings: { get: () => undefined },
+      version: "3.32.0",
+      onOpenBoard: (uid, opts) => opened.push({ uid, opts }),
+    });
+    stub.flushFrames();
+    stub.flushIdle();
+    const badge = view.root.querySelector(".pxd-out");
+    assert.ok(badge, "the moved card shows the outside-arrow badge");
+    assert.equal(badge.textContent, "↗ 1");
+    assert.match(badge.title || "", /from Beta on Outer/);
+    stub.dispatch(badge, "pointerdown", { button: 0, clientX: 30, clientY: 30 });
+    assert.deepEqual(opened, [{ uid: "b1", opts: { focus: "c2" } }]);
+    view.dispose();
+    session.release();
+  } finally { restore(); }
+});
+
+test("clicking the outer marker opens the board centred on the moved card", async () => {
+  const { mountBoardView } = await import("../src/view/board-view.js");
+  const stub = createDomStub({ width: 1400, height: 900 });
+  const restore = stub.install();
+  try {
+    const { fake, host, session } = openDrop();
+    await session.moveIntoBoard(["c1"], "nb");
+    await fake.flush();
+    host.viewports = host.viewports || { get: () => null, set() {} };
+    const mountEl = stub.document.createElement("div");
+    stub.document.body.append(mountEl);
+    const opened = [];
+    const view = mountBoardView({
+      host,
+      session,
+      mountEl,
+      settings: { get: () => undefined },
+      version: "3.32.0",
+      onOpenBoard: (uid, opts) => opened.push({ uid, opts }),
+    });
+    stub.flushFrames?.();
+    const bend = view.root.querySelector(".pxd-edge__bend--clamped");
+    assert.ok(bend, "the outer end is the block-arrow marker");
+    stub.dispatch(bend, "pointerdown", { button: 0, clientX: 40, clientY: 40 });
+    assert.deepEqual(opened, [{ uid: "nb", opts: { focus: "c1" } }]);
+    view.dispose();
+    session.release();
+  } finally { restore(); }
+});
+
 test("an unverified board does not pull or delete the arrow", async () => {
   const fake = createFakeRoam({ pullMany: true, echoDelay: 0 });
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });

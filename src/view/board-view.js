@@ -8033,6 +8033,28 @@ function buildBoardView(onFail, {
   // pointerup and the click that follows are one gesture, so the second call is a no-op.
   let lastRefKey = "";
   let lastRefAt = 0;
+  // A ((pin)) press never reaches Roam, and the board stays on this page, so Roam's block-ref
+  // hover (a portaled .rm-zoom) never gets the leave that would close it. The article's own
+  // .rm-zoom is inline, not a portal, and is left alone.
+  const dismissRoamHoverPopups = () => {
+    const root = doc?.body || doc;
+    if (typeof root?.querySelectorAll !== "function") return;
+    const matched = [...root.querySelectorAll(".bp3-portal, .bp3-overlay")];
+    for (const node of matched) {
+      if (node.closest?.(".pxd-root")) continue;
+      if (!node.querySelector?.(".rm-zoom")) continue;
+      if (matched.some((other) => other !== node && other.contains?.(node))) continue;
+      try {
+        const Ctor = doc?.defaultView?.MouseEvent || globalThis.MouseEvent;
+        if (typeof Ctor === "function") {
+          const ev = new Ctor("mouseleave", { bubbles: true });
+          node.querySelector(".rm-zoom")?.dispatchEvent?.(ev);
+          node.dispatchEvent?.(ev);
+        }
+      } catch { /* the node is still removed */ }
+      try { node.remove?.(); } catch { /* already gone */ }
+    }
+  };
   const openRefFromClick = (event) => {
     const t = event.target;
     if (!t?.closest || !t.closest(".pxd-item") || t.closest(".pxd-item--editing")) return false;
@@ -8055,6 +8077,7 @@ function buildBoardView(onFail, {
     lastRefKey = key;
     lastRefAt = now;
     if (pinJump) {
+      dismissRoamHoverPopups();
       if (pinJump.mode === "sidebar") {
         try { host?.openInSidebar?.(pinJump.plan.pdfUid); } catch { /* host */ }
         return true;

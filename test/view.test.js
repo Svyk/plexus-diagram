@@ -2620,6 +2620,69 @@ test("a text-selection click in the reader, a PDF, or a text layer does not crea
   }
 });
 
+test("a pin jump closes Roam's hover breadcrumb and leaves the article breadcrumb", async () => {
+  const pin = "{{[[plexus-pin]]: d=pdfblock1 pg=6 f=0.12,0.41,0.76,0.09}} Osmotic water flow";
+  const f = mountFixture({
+    hostOverrides: { blockString: (uid) => (uid === "pinuid01" ? pin : null) },
+  });
+  try {
+    await f.flush();
+    f.board.items.set("pdfblock1", {
+      uid: "pdfblock1",
+      type: "card",
+      kind: "pdf",
+      string: "{{pdf: https://example.com/a.pdf}}",
+      target: { kind: "self", uid: "pdfblock1" },
+      x: 0, y: 0, w: 200, h: 120,
+    });
+    const doc = f.stub.document;
+    const hover = doc.createElement("div");
+    hover.className = "bp3-portal";
+    const overlay = doc.createElement("div");
+    overlay.className = "bp3-overlay";
+    const zoom = doc.createElement("div");
+    zoom.className = "rm-zoom";
+    const page = doc.createElement("span");
+    page.className = "rm-zoom-item";
+    page.textContent = "report";
+    const parent = doc.createElement("span");
+    parent.className = "rm-zoom-item";
+    parent.textContent = "plexus-pins";
+    zoom.append(page, parent);
+    overlay.append(zoom);
+    hover.append(overlay);
+    doc.body.append(hover);
+    const article = doc.createElement("div");
+    article.className = "rm-zoom";
+    article.textContent = "Parse Lab";
+    doc.body.append(article);
+    const body = f.view.root.querySelector("[data-uid=cardAAAA1] .pxd-item__body");
+    const ref = doc.createElement("span");
+    ref.className = "rm-block-ref";
+    ref.setAttribute("data-uid", "pinuid01");
+    body.append(ref);
+    f.stub.dispatch(ref, "pointerdown", { button: 0, clientX: 40, clientY: 40, pointerId: 7 });
+    assert.equal(hover.isConnected, false, "the portaled report > plexus-pins preview closes");
+    assert.equal(article.isConnected, true, "the article breadcrumb is Roam's own and stays");
+    const left = doc.createElement("div");
+    left.className = "bp3-portal";
+    const leftZoom = doc.createElement("div");
+    leftZoom.className = "rm-zoom";
+    leftZoom.textContent = "report";
+    left.append(leftZoom);
+    doc.body.append(left);
+    const link = doc.createElement("span");
+    link.setAttribute("data-link-uid", "pageUID01");
+    body.append(link);
+    f.stub.dispatch(link, "pointerdown", { button: 0, clientX: 48, clientY: 48, pointerId: 8 });
+    f.stub.dispatch(link, "click", { button: 0 });
+    assert.equal(left.isConnected, true, "a normal ref click does not close a hover Roam still owns");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("ED-7: a multi-line paste in the card root becomes children, not board cards", async () => {
   const created = [];
   const updates = [];

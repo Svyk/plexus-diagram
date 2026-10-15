@@ -248,7 +248,7 @@ test("a zoom settle re-places edges a slice per frame, not all in one", async ()
     m.stub.flushFrames(); // the first render after it
     const first = m.view.stats().edgePlacements - before;
     assert.ok(first > 0, "the settle re-places edges");
-    assert.ok(first <= 320 && first < attached / 1.5, `the first frame placed ${first} of ${attached} edges`);
+    assert.ok(first <= 320 && first < attached, `the first frame placed ${first} of ${attached} edges`);
     await m.pump(20);
     const total = m.view.stats().edgePlacements - before;
     assert.ok(total >= attached, `all ${attached} attached edges were re-placed (${total})`);

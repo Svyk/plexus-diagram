@@ -22,7 +22,8 @@ test("ED-6: Enter in a child, Tab, and Cmd+Enter stay with Roam", () => {
   assert.equal(at({ key: "Tab", shift: true }).type, "roam");
   assert.equal(at({ meta: true }).type, "roam");
   assert.equal(at({ ctrl: true }).type, "roam");
-  assert.equal(at({ shift: true }).type, "roam");
+  assert.equal(at({ shift: true }).type, "make-child");
+  assert.equal(at({ shift: true, isRoot: false }).type, "roam");
   assert.equal(at({ autocomplete: true }).type, "roam");
 });
 

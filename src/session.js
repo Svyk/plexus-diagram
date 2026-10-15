@@ -83,6 +83,7 @@ import { createEchoLedger, createWriteQueue } from "./host/roam.js";
 import { sharedBgBudget } from "./bg-budget.js";
 import { notedSpeedFlags } from "./settings.js";
 import { executeImport, planImport, readNative, readV06Entry } from "./host/migrate.js";
+import { CHILD_GROW_H, kidsHeightPlan, rememberUnfoldedSize } from "./model/card-children.js";
 
 const UID = ":block/uid";
 const STR = ":block/string";
@@ -481,6 +482,20 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     }
     return autoEligibility({ plexus: cplexus, nativeNodeCount: autoBoardCache.get(id), storedLayout: storedLayoutIn(kids) }) === "virtual";
   };
+  // Block-ref outlines are pullTree results, not board children. A fold there bumps the card so the
+  // next publish dirties it and the caret repaints. Note-card folds use openKey instead.
+  const outlineRev = new Map();
+  const bumpOutline = (id) => {
+    if (!id || !board?.items.has(id)) return false;
+    outlineRev.set(id, (outlineRev.get(id) || 0) + 1);
+    return true;
+  };
+  const republishOutline = () => {
+    if (!outlineRev.size) return;
+    for (const id of outlineRev.keys()) outlineRev.set(id, (outlineRev.get(id) || 0) + 1);
+    publish();
+  };
+
   const rebuild = () => {
     rix = null;
     const plexusApi = globalThis.window?.RoamPlexus ?? globalThis.RoamPlexus ?? null;
@@ -513,6 +528,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         return pending;
       },
     }) : null;
+    if (board && outlineRev.size) {
+      for (const [id, rev] of outlineRev) {
+        const item = board.items.get(id);
+        if (item && rev) item.outlineRev = rev;
+      }
+    }
     if (board && virtualAllowed && autoEnhanceOn() && !board.enhanced && !board.native) {
       board.enhanced = true;
       board.virtual = true;
@@ -1203,6 +1224,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         rawString(id, string);
         ops.push({ op: "string", uid: id, string });
       },
+      open(id, value) {
+        const node = rawNode(id);
+        if (!node) return;
+        const next = value !== false;
+        node[OPEN] = next;
+        ops.push({ op: "open", uid: id, open: next });
+      },
       // A page outside the board. Nothing in the board tree changes.
       page({ uid: id, title }) {
         const newUid = id ?? host.generateUid();
@@ -1864,6 +1892,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     await host.createBlock({ parentUid, order: "last", string });
     return made.uid;
   }
+
+  // Folded height is session memory. A resize while children are open is the unfolded size only.
+  const kidsMemory = new Map();
 
   // ---- session object ----
   const session = {
@@ -2811,18 +2842,70 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       return (stamp.length ? stampedRun(stamp, write) : queue.run(write)).catch((err) => { handleFailure(err); return false; });
     },
 
-    // CH-1: show or hide a card's children inside it. One props write. Turning it on grows the card by `extraH`
-    // (the renderer's estimate of the outline) in the same write, so one Cmd+Z undoes both.
+    // CH-1: show or hide a card's children inside it. One props write. Unfold grows from the stored
+    // folded height; refold returns to it. The live open height is captured on close, so undo and a
+    // remote edit replace a resize that this session planned.
     setKids(id, value, extraH = 0) {
       return txn((t) => {
         const item = board.items.get(id);
-        if (!item || item.type !== "card" || item.kind !== "note" && item.kind !== "block") return;
+        if (!item || item.type !== "card" || (item.kind !== "note" && item.kind !== "block")) return;
         const on = value === true;
         if (Boolean(item.kids) === on) return;
+        let memory = kidsMemory.get(id);
+        if (!on && memory?.unfoldedH != null && round1(item.h) !== round1(memory.unfoldedH)) {
+          memory = rememberUnfoldedSize(memory, round1(item.h));
+        }
+        const plan = kidsHeightPlan({ on, h: item.h, extraH, memory });
+        kidsMemory.set(id, plan.memory);
         const patch = { kids: on ? true : undefined };
-        if (on && extraH > 0) patch.h = Math.min(900, Math.ceil(item.h + extraH));
+        if (plan.h !== item.h) patch.h = plan.h;
         t.props(id, itemPlexus(id, patch));
-        if (patch.h > item.h) applyFit(t, [id]);
+        if (on && plan.h > item.h) applyFit(t, [id]);
+      });
+    },
+
+    // Shift+Enter on the card's top block. The child, the unfold, and any fit land in one native
+    // undo group, so an earlier move stays on the stack. A block card's child is created under the
+    // referenced block, which is the outline the card shows.
+    addCardChild(id) {
+      const item = board?.items.get(id);
+      if (!item || item.type !== "card" || (item.kind !== "note" && item.kind !== "block")) return Promise.resolve(null);
+      const beforeOpen = rawNode(id)?.[OPEN] !== false;
+      return txn((t) => {
+        const parent = item.kind === "block" && item.target?.uid ? item.target.uid : id;
+        const childUid = t.create({ parent, string: "" });
+        if (!item.kids) {
+          const plan = kidsHeightPlan({ on: true, h: item.h, extraH: CHILD_GROW_H, memory: kidsMemory.get(id) });
+          kidsMemory.set(id, plan.memory);
+          t.props(id, itemPlexus(id, { kids: true, h: plan.h }));
+          if (plan.h > item.h) applyFit(t, [id]);
+        }
+        if (!beforeOpen) t.open(id, true);
+        return childUid;
+      });
+    },
+
+    // :block/open on a block inside a card. One native undo, so an earlier resize stays on the stack.
+    // A child of the card is in the board tree: openKey dirties the card. A block-ref's child is not,
+    // so the write still goes out and outlineRev dirties that card after the write lands.
+    setNodeOpen(id, open, ownerUid) {
+      if (!board || destroyed || gone) return Promise.resolve(false);
+      const next = open !== false;
+      const node = rawNode(id);
+      if (node === raw) return Promise.resolve(false);
+      if (node) {
+        if ((node[OPEN] !== false) === next) return Promise.resolve(false);
+        return txn((t) => {
+          t.open(id, next);
+          return true;
+        });
+      }
+      let known = false;
+      try { known = host.blockString?.(id) != null; } catch { known = false; }
+      if (!known) return Promise.resolve(false);
+      return commit([{ op: "open", uid: id, open: next }], true).then((ok) => {
+        if (ok && bumpOutline(ownerUid)) publish();
+        return ok;
       });
     },
 
@@ -3573,6 +3656,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       try {
         await queue.run(async () => { ledger.clear(); await host.undo(); });
         repull();
+        republishOutline();
       } catch (err) { handleFailure(err); }
     },
 
@@ -3580,6 +3664,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       try {
         await queue.run(async () => { ledger.clear(); await host.redo(); });
         repull();
+        republishOutline();
       } catch (err) { handleFailure(err); }
     },
 

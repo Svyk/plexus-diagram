@@ -2844,44 +2844,25 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       });
     },
 
-    // Shift+Enter on the card's top block. One custom undo removes the child and restores the folded size.
+    // Shift+Enter on the card's top block. The child, the unfold, and any fit land in one native
+    // undo group, so an earlier move stays on the stack. A block card's child is created under the
+    // referenced block, which is the outline the card shows.
     addCardChild(id) {
       const item = board?.items.get(id);
       if (!item || item.type !== "card" || (item.kind !== "note" && item.kind !== "block")) return Promise.resolve(null);
-      const beforePlexus = clone(rawPlexus(id));
-      const beforeMem = kidsMemory.has(id) ? { ...kidsMemory.get(id) } : null;
       const beforeOpen = rawNode(id)?.[OPEN] !== false;
-      let childUid = null;
-      let afterMem = beforeMem;
-      const custom = {
-        async undo() {
-          const back = [];
-          if (childUid) back.push({ op: "delete", uid: childUid });
-          back.push({ op: "props", uid: id, plexus: beforePlexus });
-          if (!beforeOpen) back.push({ op: "open", uid: id, open: false });
-          if (beforeMem) kidsMemory.set(id, { ...beforeMem });
-          else kidsMemory.delete(id);
-          await execute(back);
-        },
-        async redo() {
-          await execute(custom.forward);
-          if (afterMem) kidsMemory.set(id, { ...afterMem });
-          else kidsMemory.delete(id);
-        },
-      };
       return txn((t) => {
         const parent = item.kind === "block" && item.target?.uid ? item.target.uid : id;
-        childUid = t.create({ parent, string: "" });
+        const childUid = t.create({ parent, string: "" });
         if (!item.kids) {
           const plan = kidsHeightPlan({ on: true, h: item.h, extraH: CHILD_GROW_H, memory: kidsMemory.get(id) });
-          afterMem = plan.memory;
           kidsMemory.set(id, plan.memory);
           t.props(id, itemPlexus(id, { kids: true, h: plan.h }));
           if (plan.h > item.h) applyFit(t, [id]);
         }
         if (!beforeOpen) t.open(id, true);
         return childUid;
-      }, custom);
+      });
     },
 
     // :block/open on a block inside a card. One custom undo. The card renderer also toggles the row locally,

@@ -99,7 +99,10 @@ function setup(children, { echoDelay = 5, raf, trackUndo = false, graceMs } = {}
 }
 
 test("Shift+Enter on a block card parents the child on the referenced block", async () => {
-  const { fake, session } = setup([card("X", "((target01))", 10, 20, 240, 100, { color: "teal" })]);
+  const { fake, session } = setup(
+    [card("X", "((target01))", 10, 20, 240, 100, { color: "teal" })],
+    { trackUndo: true },
+  );
   fake.seedPage({ title: "Target", uid: "pgtarget", children: [{ uid: "target01", string: "the block" }] });
   const child = await session.addCardChild("X");
   assert.equal(fake.block(child).parent, "target01");
@@ -110,8 +113,26 @@ test("Shift+Enter on a block card parents the child on the referenced block", as
   assert.equal(fake.props("X").plexus.h, 100);
 });
 
+test("Shift+Enter keeps an earlier move on the undo stack", async () => {
+  const { fake, session } = setup(
+    [card("X", "note", 10, 20, 240, 100)],
+    { echoDelay: 0, raf: (fn) => fn(), trackUndo: true },
+  );
+  await session.commitRects([{ uid: "X", x: 50, y: 20, w: 240, h: 100 }]);
+  const child = await session.addCardChild("X");
+  await session.undo();
+  assert.equal(fake.block(child), null);
+  assert.equal(fake.props("X").plexus.h, 100);
+  assert.equal(fake.props("X").plexus.x, 50);
+  await session.undo();
+  assert.equal(fake.props("X").plexus.x, 10);
+});
+
 test("addCardChild creates one child, unfolds, and one undo removes both", async () => {
-  const { fake, session } = setup([card("X", "note", 10, 20, 240, 100, { color: "teal" })]);
+  const { fake, session } = setup(
+    [card("X", "note", 10, 20, 240, 100, { color: "teal" })],
+    { trackUndo: true },
+  );
   const child = await session.addCardChild("X");
   assert.equal(typeof child, "string");
   assert.equal(fake.block(child).string, "");

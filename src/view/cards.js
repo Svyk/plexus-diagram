@@ -2414,6 +2414,7 @@ export function createItemRenderer({
           const key = contentKeyFor(item, rec.stickyLive);
           if (rec.contentKey !== null && rec.contentKey !== key && editing?.uid !== uid) {
             // content changed under a mounted shell → remount on the next content pass
+            dropRowOffs(rec);
             unmountRoots(rec);
             rec.body?.replaceChildren?.();
             rec.contentKey = null;
@@ -2676,6 +2677,7 @@ export function createItemRenderer({
   const remountCard = (rec) => {
     const item = lastBoard?.items.get(rec?.uid);
     if (!rec || !item || disposed || editing?.uid === rec.uid) return;
+    dropRowOffs(rec);
     unmountRoots(rec);
     rec.body?.replaceChildren?.();
     rec.contentKey = null;
@@ -2701,12 +2703,25 @@ export function createItemRenderer({
     remountCard(rec);
     return true;
   };
+  const peekLive = new Set();
+  const notePeek = (rec) => { if (rec) peekLive.add(rec); };
+  const forgetPeek = (rec) => {
+    if (!rec?.peekTimer && !rec?.peekLeave && !rec?.peekOpen && !rec?.peekBusy) peekLive.delete(rec);
+  };
   const dropPeek = (rec) => {
-    if (!rec?.peekOpen && !rec?.peekNode) return false;
+    if (!rec) return false;
+    // A pull started by the hover timer must not open after leave, pan, or shell removal.
+    rec.peekGen = (rec.peekGen || 0) + 1;
+    rec.peekBusy = false;
     rec.peekTimer?.();
     rec.peekTimer = null;
     rec.peekLeave?.();
     rec.peekLeave = null;
+    const open = Boolean(rec.peekOpen || rec.peekNode);
+    if (!open) {
+      forgetPeek(rec);
+      return false;
+    }
     for (const node of rec.peekRoots || []) {
       try { host?.unmount?.(node); } catch { /* not a roam root */ }
     }
@@ -2719,6 +2734,8 @@ export function createItemRenderer({
     rec.peekH = 0;
     rec.el?.classList?.remove("pxd-item--peek");
     if (rec.rect?.h != null) rec.el.style.height = `${rec.rect.h}px`;
+    forgetPeek(rec);
+    releaseOutsidePeek();
     return true;
   };
   const rerenderPeek = (rec) => {
@@ -2733,11 +2750,12 @@ export function createItemRenderer({
     rec.peekRoots = budget.roots;
     if (rec.roots) rec.roots.push(...budget.roots);
   };
-  const finishPeek = (rec, item, blocks) => {
-    if (disposed || !rec?.el?.isConnected || rec.peekOpen || editing?.uid === item.uid) return;
+  const finishPeek = (rec, item, blocks, gen) => {
+    if (gen !== rec.peekGen) { forgetPeek(rec); return; }
+    if (disposed || !rec?.el?.isConnected || rec.peekOpen || editing?.uid === item.uid) { forgetPeek(rec); return; }
     const showing = item.kind === "block" ? item.kids === true : item.collapsed === true || item.open === false ? false : true;
     const count = visibleKids(blocks).length;
-    if (!peekAllowed({ tier: lod, gesturing: peekBlocked, kind: item.kind, childCount: count, showing, editing: Boolean(editing) })) return;
+    if (!peekAllowed({ tier: lod, gesturing: peekBlocked, kind: item.kind, childCount: count, showing, editing: Boolean(editing) })) { forgetPeek(rec); return; }
     const node = el("div", "pxd-link-peek", rec.body || rec.el);
     const budget = { n: 0, roots: [] };
     paintCardKids(node, item, budget, blocks || [], true);
@@ -2746,6 +2764,7 @@ export function createItemRenderer({
     rec.peekRoots = budget.roots;
     rec.peekOpen = true;
     rec.peekPinned = false;
+    notePeek(rec);
     if (rec.roots) rec.roots.push(...budget.roots);
     const baseH = Number(rec.rect?.h || item.h) || 0;
     rec.peekH = Math.min(900, Math.ceil(baseH + Math.max(budget.n, 1) * KID_ROW_H + 8));
@@ -2756,22 +2775,33 @@ export function createItemRenderer({
     rec.el.style.height = `${rec.peekH}px`;
   };
   const openLinkPeek = (rec) => {
+    if (rec.peekGen == null) rec.peekGen = 0;
+    const gen = rec.peekGen;
     rec.peekTimer = null;
+    rec.peekBusy = true;
+    notePeek(rec);
     const item = lastBoard?.items.get(rec?.uid);
-    if (!item || disposed || rec.peekOpen || editing) return;
-    const take = (blocks) => finishPeek(rec, item, blocks || []);
+    const stop = () => { rec.peekBusy = false; forgetPeek(rec); };
+    if (!item || disposed || rec.peekOpen || editing || gen !== rec.peekGen) { stop(); return; }
+    const take = (blocks) => {
+      rec.peekBusy = false;
+      if (gen !== rec.peekGen) { forgetPeek(rec); return; }
+      finishPeek(rec, item, blocks || [], gen);
+    };
     if (item.kind === "block") {
       const tree = host?.pullTree?.(item.target?.uid, CONTENT_DEPTH, 200);
-      if (tree && typeof tree.then === "function") tree.then(take).catch(() => {});
+      if (tree && typeof tree.then === "function") tree.then(take).catch(stop);
       else take(tree);
       return;
     }
     if (item.kind === "page") {
       const preview = host?.pagePreview?.(item.target?.title || item.title, 64, 200);
       const apply = (page) => take(page?.blocks || []);
-      if (preview && typeof preview.then === "function") preview.then(apply).catch(() => {});
+      if (preview && typeof preview.then === "function") preview.then(apply).catch(stop);
       else apply(preview);
+      return;
     }
+    stop();
   };
   const showingKids = (item) => {
     if (!item) return true;
@@ -2789,25 +2819,21 @@ export function createItemRenderer({
       rec.peekLeave = null;
       if (rec.peekOpen || rec.peekTimer) return;
       const item = lastBoard?.items.get(rec.uid);
-      if (!item || editing || peekBlocked) return;
-      const showing = showingKids(item);
-      let count = 0;
-      if (!showing && item.kind === "block" && item.target?.uid) {
-        const tree = host?.pullTree?.(item.target.uid, 1, 40);
-        count = tree && typeof tree.then === "function" ? 1 : visibleKids(tree).length;
-      } else if (!showing && item.kind === "page") {
-        const preview = host?.pagePreview?.(item.target?.title || item.title, 8, 20);
-        count = preview && typeof preview.then !== "function" ? (visibleKids(preview.blocks).length || (preview.exists ? 1 : 0)) : 1;
-      }
-      if (!peekAllowed({ tier: lod, gesturing: peekBlocked, kind: item.kind, childCount: count, showing, editing: Boolean(editing) })) return;
+      if (!item || editing || peekBlocked) { forgetPeek(rec); return; }
+      // Gate before any pull. Overview, map, and a gesture must not fetch the linked block.
+      if (!peekAllowed({ tier: lod, gesturing: peekBlocked, kind: item.kind, childCount: 1, showing: showingKids(item), editing: Boolean(editing) })) { forgetPeek(rec); return; }
       rec.peekTimer = later(() => openLinkPeek(rec), PEEK_HOVER_MS);
+      notePeek(rec);
     };
     const onLeave = () => {
-      rec.peekTimer?.();
-      rec.peekTimer = null;
-      if (!rec.peekOpen || rec.peekPinned) return;
+      if (rec.peekOpen && rec.peekPinned) return;
+      if (!rec.peekOpen) {
+        dropPeek(rec);
+        return;
+      }
       rec.peekLeave?.();
       rec.peekLeave = later(() => dropPeek(rec), PEEK_LEAVE_MS);
+      notePeek(rec);
     };
     const onDown = () => {
       if (!rec.peekOpen) return;
@@ -2833,27 +2859,30 @@ export function createItemRenderer({
     if (pinned.some((rec) => rec.el?.contains?.(event.target))) return;
     closeCardPeek();
   };
+  const pinnedPeek = () => {
+    for (const rec of peekLive) if (rec.peekOpen && rec.peekPinned) return true;
+    return false;
+  };
+  const releaseOutsidePeek = () => {
+    if (!outsidePeekOn || pinnedPeek()) return;
+    doc.removeEventListener?.("pointerdown", onOutsidePeek, true);
+    outsidePeekOn = false;
+  };
   const armOutsidePeek = () => {
     if (outsidePeekOn) return;
     outsidePeekOn = true;
     doc.addEventListener?.("pointerdown", onOutsidePeek, true);
   };
   const cancelCardPeek = () => {
-    for (const rec of shells.values()) {
-      rec.peekTimer?.();
-      rec.peekTimer = null;
-      rec.peekLeave?.();
-      rec.peekLeave = null;
-      if (rec.peekOpen && !rec.peekPinned) dropPeek(rec);
+    for (const rec of [...peekLive]) {
+      if (rec.peekOpen && rec.peekPinned) continue;
+      dropPeek(rec);
     }
   };
   const closeCardPeek = () => {
     let closed = false;
-    for (const rec of shells.values()) {
-      rec.peekTimer?.();
-      rec.peekTimer = null;
-      if (rec.peekOpen || rec.peekNode) closed = dropPeek(rec) || closed;
-    }
+    for (const rec of [...peekLive]) closed = dropPeek(rec) || closed;
+    releaseOutsidePeek();
     return closed;
   };
   const setPeekBlocked = (on) => {
@@ -5088,6 +5117,7 @@ export function createItemRenderer({
   const unmountContent = (uid) => {
     const rec = shells.get(uid);
     if (!rec || editing?.uid === uid) return;
+    dropRowOffs(rec);
     unmountRoots(rec);
     if (rec.type === "section") {
       rec.title.replaceChildren();
@@ -6544,6 +6574,7 @@ export function createItemRenderer({
       if (item.kind !== "pdf" || rec.contentKey == null) continue;
       const key = contentKeyFor(item);
       if (key === rec.contentKey) continue;
+      dropRowOffs(rec);
       unmountRoots(rec);
       rec.body?.replaceChildren?.();
       rec.contentKey = null;
@@ -6673,6 +6704,7 @@ export function createItemRenderer({
       for (const uid of uids || []) {
         const rec = shells.get(uid);
         if (!rec || editing?.uid === uid) continue;
+        dropRowOffs(rec);
         unmountRoots(rec);
         rec.body?.replaceChildren?.();
         rec.contentKey = null;

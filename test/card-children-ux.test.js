@@ -384,3 +384,87 @@ test("hovering a block-ref card peeks its children without a write, and overview
   h.stub.dispatch(cardEl, "mouseenter", { buttons: 0 });
   assert.equal(h.laterQueue.some((x) => x.ms === PEEK_HOVER_MS), false);
 });
+
+test("overview hover does not pull the linked block", (t) => {
+  const tree = [{ uid: "rk1000001", string: "ref kid", children: [] }];
+  let pulls = 0;
+  const h = harness({
+    children: [blk("refAAAA01", "((target001))", { ":x": 0, ":y": 0, ":w": 240, ":h": 100 }, 0)],
+    hostOverrides: {
+      blockString: () => "target text",
+      pullTree: () => { pulls += 1; return tree; },
+    },
+  });
+  t.after(h.restore);
+  h.show();
+  const cardEl = h.root.querySelector("[data-uid=refAAAA01]");
+  h.r.setLod("overview", 0.2);
+  pulls = 0;
+  h.stub.dispatch(cardEl, "mouseenter", { buttons: 0 });
+  assert.equal(pulls, 0);
+  assert.equal(h.laterQueue.some((x) => x.ms === PEEK_HOVER_MS), false);
+});
+
+test("a peek promised after the pointer left does not open", async (t) => {
+  const tree = [{ uid: "rk1000001", string: "ref kid", children: [] }];
+  let resolvePull = null;
+  let pending = null;
+  const h = harness({
+    children: [blk("refAAAA01", "((target001))", { ":x": 0, ":y": 0, ":w": 240, ":h": 100 }, 0)],
+    hostOverrides: {
+      blockString: () => "target text",
+      pullTree: (_uid, depth) => {
+        if (depth > 1) {
+          pending = new Promise((resolve) => { resolvePull = resolve; });
+          return pending;
+        }
+        return tree;
+      },
+    },
+  });
+  t.after(h.restore);
+  h.show();
+  const cardEl = h.root.querySelector("[data-uid=refAAAA01]");
+  h.stub.dispatch(cardEl, "mouseenter", { buttons: 0 });
+  h.fire(PEEK_HOVER_MS);
+  assert.equal(typeof resolvePull, "function");
+  h.stub.dispatch(cardEl, "mouseleave");
+  resolvePull(tree);
+  await pending;
+  assert.equal(Boolean(cardEl.querySelector(".pxd-link-peek")), false);
+});
+
+test("removing a card cancels a hover peek that has not opened", (t) => {
+  const tree = [{ uid: "rk1000001", string: "ref kid", children: [] }];
+  const h = harness({
+    children: [blk("refAAAA01", "((target001))", { ":x": 0, ":y": 0, ":w": 240, ":h": 100 }, 0)],
+    hostOverrides: { blockString: () => "target text", pullTree: () => tree },
+  });
+  t.after(h.restore);
+  h.show();
+  const cardEl = h.root.querySelector("[data-uid=refAAAA01]");
+  h.stub.dispatch(cardEl, "mouseenter", { buttons: 0 });
+  assert.ok(h.laterQueue.some((x) => x.ms === PEEK_HOVER_MS));
+  h.load(rawBoard([]));
+  assert.equal(h.laterQueue.some((x) => x.ms === PEEK_HOVER_MS), false);
+});
+
+test("closing the last pinned peek removes the document pointer listener", (t) => {
+  const tree = [{ uid: "rk1000001", string: "ref kid", children: [] }];
+  const h = harness({
+    children: [blk("refAAAA01", "((target001))", { ":x": 0, ":y": 0, ":w": 240, ":h": 100 }, 0)],
+    hostOverrides: { blockString: () => "target text", pullTree: () => tree },
+  });
+  t.after(h.restore);
+  h.show();
+  const downs = () => h.doc.listeners.get("pointerdown")?.size || 0;
+  const before = downs();
+  const cardEl = h.root.querySelector("[data-uid=refAAAA01]");
+  h.stub.dispatch(cardEl, "mouseenter", { buttons: 0 });
+  h.fire(PEEK_HOVER_MS);
+  assert.ok(cardEl.querySelector(".pxd-link-peek"));
+  h.stub.dispatch(cardEl, "pointerdown");
+  assert.ok(downs() > before);
+  h.r.closeCardPeek();
+  assert.equal(downs(), before);
+});

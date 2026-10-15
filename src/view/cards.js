@@ -831,6 +831,7 @@ export function createItemRenderer({
     const pin = sourcePinOf(item?.content);
     if (pin) key += `\u0001pin:${pin.uid}`;
     if (item?.hitsKey) key += `\u0001hits:${item.hitsKey}`;
+    if (item?.outlineRev) key += `\u0001rev:${item.outlineRev}`;
     const focused = cardFocus.get(item?.uid);
     if (focused) key += `\u0001focus:${focused}`;
     return key;
@@ -2604,7 +2605,7 @@ export function createItemRenderer({
             if (rec?.roots) rec.roots.push(...sub.roots);
           }
           if (wrap) setHidden(wrap, !next);
-          if (!viewOnly && rowUid) void session?.setNodeOpen?.(rowUid, next);
+          if (!viewOnly && rowUid) void session?.setNodeOpen?.(rowUid, next, cardUid);
         };
         bindTracked(caretRec, caret, "click", onCaret);
       }

@@ -482,6 +482,20 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     }
     return autoEligibility({ plexus: cplexus, nativeNodeCount: autoBoardCache.get(id), storedLayout: storedLayoutIn(kids) }) === "virtual";
   };
+  // Block-ref outlines are pullTree results, not board children. A fold there bumps the card so the
+  // next publish dirties it and the caret repaints. Note-card folds use openKey instead.
+  const outlineRev = new Map();
+  const bumpOutline = (id) => {
+    if (!id || !board?.items.has(id)) return false;
+    outlineRev.set(id, (outlineRev.get(id) || 0) + 1);
+    return true;
+  };
+  const republishOutline = () => {
+    if (!outlineRev.size) return;
+    for (const id of outlineRev.keys()) outlineRev.set(id, (outlineRev.get(id) || 0) + 1);
+    publish();
+  };
+
   const rebuild = () => {
     rix = null;
     const plexusApi = globalThis.window?.RoamPlexus ?? globalThis.RoamPlexus ?? null;
@@ -514,6 +528,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         return pending;
       },
     }) : null;
+    if (board && outlineRev.size) {
+      for (const [id, rev] of outlineRev) {
+        const item = board.items.get(id);
+        if (item && rev) item.outlineRev = rev;
+      }
+    }
     if (board && virtualAllowed && autoEnhanceOn() && !board.enhanced && !board.native) {
       board.enhanced = true;
       board.virtual = true;
@@ -2866,16 +2886,26 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     },
 
     // :block/open on a block inside a card. One native undo, so an earlier resize stays on the stack.
-    // The rebuilt card carries openKey, which dirties it; the outline caret follows that repaint.
-    setNodeOpen(id, open) {
+    // A child of the card is in the board tree: openKey dirties the card. A block-ref's child is not,
+    // so the write still goes out and outlineRev dirties that card after the write lands.
+    setNodeOpen(id, open, ownerUid) {
       if (!board || destroyed || gone) return Promise.resolve(false);
-      const node = rawNode(id);
-      if (!node || node === raw) return Promise.resolve(false);
       const next = open !== false;
-      if ((node[OPEN] !== false) === next) return Promise.resolve(false);
-      return txn((t) => {
-        t.open(id, next);
-        return true;
+      const node = rawNode(id);
+      if (node === raw) return Promise.resolve(false);
+      if (node) {
+        if ((node[OPEN] !== false) === next) return Promise.resolve(false);
+        return txn((t) => {
+          t.open(id, next);
+          return true;
+        });
+      }
+      let known = false;
+      try { known = host.blockString?.(id) != null; } catch { known = false; }
+      if (!known) return Promise.resolve(false);
+      return commit([{ op: "open", uid: id, open: next }], true).then((ok) => {
+        if (ok && bumpOutline(ownerUid)) publish();
+        return ok;
       });
     },
 
@@ -3626,6 +3656,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       try {
         await queue.run(async () => { ledger.clear(); await host.undo(); });
         repull();
+        republishOutline();
       } catch (err) { handleFailure(err); }
     },
 
@@ -3633,6 +3664,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       try {
         await queue.run(async () => { ledger.clear(); await host.redo(); });
         repull();
+        republishOutline();
       } catch (err) { handleFailure(err); }
     },
 

@@ -243,6 +243,26 @@ test("setNodeOpen writes :block/open and one undo puts it back", async () => {
   assert.equal(fake.block("c000").open, true);
 });
 
+test("folding a block-ref child writes :block/open and keeps an earlier resize", async () => {
+  const { fake, session } = setup(
+    [card("X", "((target01))", 10, 20, 240, 100, { kids: true })],
+    { echoDelay: 0, raf: (fn) => fn(), trackUndo: true },
+  );
+  fake.seedPage({
+    title: "Target",
+    uid: "pgtarget",
+    children: [{ uid: "target01", string: "the block", children: [{ uid: "ck000001", string: "kid" }] }],
+  });
+  await session.commitRects([{ uid: "X", x: 10, y: 20, w: 240, h: 140 }]);
+  assert.equal(await session.setNodeOpen("ck000001", false, "X"), true);
+  assert.equal(fake.block("ck000001").open, false);
+  await session.undo();
+  assert.equal(fake.block("ck000001").open, true);
+  assert.equal(fake.props("X").plexus.h, 140);
+  await session.undo();
+  assert.equal(fake.props("X").plexus.h, 100);
+});
+
 test("folding a child keeps an earlier resize on the undo stack", async () => {
   const { fake, session } = setup(
     [card("X", "note", 10, 20, 240, 100, { kids: true }, [{ uid: "c000", string: "kid", children: [{ uid: "g000", string: "grand" }] }])],
@@ -337,6 +357,28 @@ const alpha = [
   blk("kidB00001", "child two", null, 1),
 ];
 
+test("a block-ref outline follows outlineRev after the pulled fold changes", (t) => {
+  let folded = false;
+  const h = harness({
+    children: [blk("refAAAA01", "((target01))", { ":x": 0, ":y": 0, ":w": 240, ":h": 160, ":kids": true }, 0)],
+    hostOverrides: {
+      blockString: () => "target text",
+      pullTree: () => [{ uid: "ck000001", string: "kid", open: !folded, children: [{ uid: "gk000001", string: "grand" }] }],
+    },
+  });
+  t.after(h.restore);
+  h.show();
+  const cardEl = h.root.querySelector("[data-uid=refAAAA01]");
+  assert.equal(cardEl.querySelector(".pxd-outline__caret").getAttribute("aria-expanded"), "true");
+  folded = true;
+  const next = buildBoard(rawBoard([blk("refAAAA01", "((target01))", { ":x": 0, ":y": 0, ":w": 240, ":h": 160, ":kids": true }, 0)]));
+  next.items.get("refAAAA01").outlineRev = 1;
+  h.r.sync({ board: next, rects: worldRects(next), dirty: new Set(["refAAAA01"]), structural: false });
+  h.show();
+  assert.equal(cardEl.querySelector(".pxd-outline__caret").getAttribute("aria-expanded"), "false");
+  assert.equal(cardEl.querySelectorAll(".pxd-block").length, 1);
+});
+
 test("a child fold dirties the card and the caret follows without a local click", (t) => {
   const openKids = [blk("kidA00001", "child one", null, 0, [blk("kidA10001", "grandchild", null, 0)])];
   const closedKids = [blk("kidA00001", "child one", null, 0, [blk("kidA10001", "grandchild", null, 0)], false)];
@@ -373,7 +415,7 @@ test("an open card draws a Roam outline: bullet, indent, and a caret that writes
   const caret = rows[0].querySelector(".pxd-outline__caret");
   assert.equal(caret.getAttribute("aria-expanded"), "false");
   caret.click();
-  assert.deepEqual(h.writes[0], ["setNodeOpen", "kidA00001", true]);
+  assert.deepEqual(h.writes[0], ["setNodeOpen", "kidA00001", true, "noteAAAA1"]);
   assert.equal(cardEl.querySelectorAll(".pxd-block").length, 2, "the caret opens the nested row locally");
 });
 

@@ -662,13 +662,22 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
 
   // Full or partial render. `dirty` = Set of edge uids to repaint; null = all.
   let lastPass = null;
-  // Endpoints the board has actually drawn (shell, cover box, or snapshot). Absent means every end counts.
+  // Endpoints the board has actually drawn (shell, parked shell, overview cover, or snapshot).
+  // Absent means every end counts. An unpainted end holds the edge only while its box meets `view`
+  // (the viewport plus the attach margin). An end outside that view never holds it.
   let drawnFn = null;
   const waiting = new Set();
-  const endsReady = (board, edge) => {
-    if (typeof drawnFn !== "function") return true;
-    return Boolean(drawnFn(edgeAnchor(board, edge.from, edge.homeFrom)) && drawnFn(edgeAnchor(board, edge.to, edge.homeTo)));
+  const boxMeets = (r, box) => r.x < box.x + box.w && r.x + r.w > box.x && r.y < box.y + box.h && r.y + r.h > box.y;
+  const endHolds = (board, uid, home) => {
+    if (typeof drawnFn !== "function") return false;
+    const anchor = edgeAnchor(board, uid, home);
+    if (drawnFn(anchor)) return false;
+    if (!view) return true;
+    const rect = lastPass?.rects?.get(anchor);
+    if (!rect) return true;
+    return boxMeets(rect, view);
   };
+  const endsReady = (board, edge) => !endHolds(board, edge.from, edge.homeFrom) && !endHolds(board, edge.to, edge.homeTo);
   const hideEdge = (rec) => {
     rec.g.setAttribute("display", "none");
     rec.label.style.display = "none";

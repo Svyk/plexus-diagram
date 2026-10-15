@@ -1793,7 +1793,7 @@ test("F5: dropping a card with motion off skips the fly and still toasts Moved t
   }
 });
 
-test("edges wait until both cards are drawn", async () => {
+test("an edge between off-screen cards is drawn without waiting for their shells", async () => {
   const far = [];
   for (let i = 0; i < 90; i += 1) {
     far.push(extraCard(`farCard${String(i).padStart(2, "0")}`, `Far ${i}`, 20 + i, { ":x": 6000 + i * 40, ":y": 0, ":w": 30, ":h": 24 }));
@@ -1807,13 +1807,14 @@ test("edges wait until both cards are drawn", async () => {
     const edgeOf = (uid) => f.view.root.querySelector(`[data-uid="${uid}"].pxd-edge`) || [...f.view.root.querySelectorAll(".pxd-edge")].find((node) => node.getAttribute("data-uid") === uid);
     const near = edgeOf("edgeFFFF6");
     assert.ok(near && near.getAttribute("display") !== "none", "an edge between drawn cards paints");
-    assert.equal(Boolean(edgeOf("edgeFAR001")), false, "an edge waits while its cards are not drawn");
+    const early = edgeOf("edgeFAR001");
+    assert.ok(early && early.getAttribute("display") !== "none", "ends outside the view do not hold the edge");
     for (let i = 0; i < 8; i += 1) {
       f.stub.flushFrames();
       f.stub.flushIdle();
     }
     const later = edgeOf("edgeFAR001");
-    assert.ok(later && later.getAttribute("display") !== "none", "the edge paints once both cards exist");
+    assert.ok(later && later.getAttribute("display") !== "none", "the edge stays once both cards exist");
   } finally {
     f.view.dispose();
     f.restore();
@@ -1866,6 +1867,39 @@ test("map zoom holds an edge until both cards are painted, and overview still dr
   } finally {
     overview.view.dispose();
     overview.restore();
+  }
+});
+
+test("map zoom draws a long edge from a painted card to an off-screen card", async () => {
+  const cards = [];
+  for (let i = 0; i < 90; i += 1) {
+    cards.push(extraCard(
+      `longPad${String(i).padStart(2, "0")}`,
+      `Pad ${i}`,
+      40 + i,
+      { ":x": 30000 + i * 40, ":y": 30000, ":w": 36, ":h": 24 },
+    ));
+  }
+  cards.push(extraCard("longNear01", "Near", 200, { ":x": 200, ":y": 160, ":w": 180, ":h": 90 }));
+  cards.push(extraCard("longFar001", "Far", 201, { ":x": 25000, ":y": 25000, ":w": 180, ":h": 90 }));
+  const edges = [
+    extraCard("edgeLong01", "((longNear01)) → ((longFar001))", 4, { ":type": "edge", ":from": "longNear01", ":to": "longFar001" }),
+  ];
+  const edgeOf = (root, uid) => root.querySelector(`[data-uid="${uid}"].pxd-edge`)
+    || [...root.querySelectorAll(".pxd-edge")].find((node) => node.getAttribute("data-uid") === uid);
+  const shown = (node) => Boolean(node && node.getAttribute("display") !== "none");
+  const map = mountFixture({ vp: { x: 0, y: 0, zoom: 0.23 }, extraChildren: cards, extraEdges: edges });
+  try {
+    map.stub.flushFrames();
+    const root = map.view.root;
+    const item = (uid) => [...root.querySelectorAll(".pxd-item")].find((node) => node.getAttribute("data-uid") === uid) || null;
+    assert.equal(root.getAttribute("data-pxd-lod"), "map");
+    assert.equal(item("longNear01")?.isConnected, true, "the in-view card is painted");
+    assert.equal(item("longFar001"), null, "the off-screen card has no shell");
+    assert.equal(shown(edgeOf(root, "edgeLong01")), true, "a long edge to an off-screen card is drawn at map zoom");
+  } finally {
+    map.view.dispose();
+    map.restore();
   }
 });
 

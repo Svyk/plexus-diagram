@@ -98,6 +98,18 @@ function setup(children, { echoDelay = 5, raf, trackUndo = false, graceMs } = {}
   return { fake, host, session };
 }
 
+test("Shift+Enter on a block card parents the child on the referenced block", async () => {
+  const { fake, session } = setup([card("X", "((target01))", 10, 20, 240, 100, { color: "teal" })]);
+  fake.seedPage({ title: "Target", uid: "pgtarget", children: [{ uid: "target01", string: "the block" }] });
+  const child = await session.addCardChild("X");
+  assert.equal(fake.block(child).parent, "target01");
+  assert.equal(fake.props("X").plexus.kids, true);
+  assert.ok(fake.props("X").plexus.h > 100);
+  await session.undo();
+  assert.equal(fake.block(child), null);
+  assert.equal(fake.props("X").plexus.h, 100);
+});
+
 test("addCardChild creates one child, unfolds, and one undo removes both", async () => {
   const { fake, session } = setup([card("X", "note", 10, 20, 240, 100, { color: "teal" })]);
   const child = await session.addCardChild("X");

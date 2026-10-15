@@ -2870,7 +2870,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         },
       };
       return txn((t) => {
-        childUid = t.create({ parent: id, string: "" });
+        const parent = item.kind === "block" && item.target?.uid ? item.target.uid : id;
+        childUid = t.create({ parent, string: "" });
         if (!item.kids) {
           const plan = kidsHeightPlan({ on: true, h: item.h, extraH: CHILD_GROW_H, memory: kidsMemory.get(id) });
           afterMem = plan.memory;

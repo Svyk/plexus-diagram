@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.33.0 — 2026-10-15
+
+Boards inside boards, card children and sources feel like Roam.
+
+- **Board path.** A board inside other boards always shows the full path above it (Root › … › This board), however you opened it: search, a block ref, the sidebar or a page link. Each name opens that board. It no longer disappears after using the crumb menu.
+- **Board trail is a setting.** The row of unrelated boards you opened is now Settings → Show board trail, off by default. Cmd+1–9 still switch boards.
+- **Drop a card into a board.** The card shrinks into the board card, the board card pulses, and a toast says "Moved to …" with Undo. Arrows between cards you move together go with them. An arrow to a card you leave behind stays attached: on the outer board it runs into the board card, labelled with the card's name (click the label to open the board on that card), and inside the board the card shows ↗ 1 to jump back.
+- **Card children like Roam.** Shift+Enter in a card's text makes a child. Unfolding shows the children as a Roam outline and refolding shrinks the card back. Click a child's bullet (or Cmd+.) to focus it inside the card, with a small crumb to step back out. Hover a card that links to a block or page with children for about a second to peek at them.
+- **Copy with source** pastes one card with the source under it. Clicking the source opens the PDF at that exact spot.
+- **Steadier navigation.** Arrows wait for their cards, so a board no longer shows a web of lines before its cards appear.
+- **Fixes.** Selecting text in a PDF on a board no longer creates an empty card. A source jump closes the hover popup Roam left open.
+
 ## 3.32.0 — 2026-10-14
 
 Scanned forms read much better, especially with the Docling add-on.

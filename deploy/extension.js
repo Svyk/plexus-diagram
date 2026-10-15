@@ -3729,6 +3729,16 @@ var init_pdf_page = __esm({
 });
 
 // src/model/board.js
+function kidsOpenKey(nodes, depth = 1) {
+  if (!Array.isArray(nodes) || !nodes.length || depth > OPEN_KEY_DEPTH) return "";
+  let out = "";
+  for (const node2 of nodes) {
+    const flag = node2?.[":block/open"] === false ? "0" : "1";
+    const inner = kidsOpenKey(node2?.[":block/children"], depth + 1);
+    out += inner ? `${flag}(${inner})` : flag;
+  }
+  return out;
+}
 function viewsOf(boardKids, regionsUid) {
   const container = regionsUid ? boardKids.find((child) => child[":block/uid"] === regionsUid) : boardKids.find((child) => isContainerString(child[":block/string"] ?? ""));
   if (!container) return [];
@@ -3952,6 +3962,7 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
       else if (kind === "page") target = { kind: "page", title: cls.title };
       else if (kind === "block" || kind === "region-ref" || kind === "drawing-ref" || kind === "pdf" && cls.refUid || kind === "highlight" && cls.refUid) target = { kind: "block", uid: cls.refUid };
       else target = { kind: "self", uid: cuid };
+      const openKey = type === "card" ? kidsOpenKey(cardKids) : "";
       const item = {
         uid: cuid,
         type,
@@ -3996,7 +4007,8 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         members: [],
         content: type === "section" ? [] : cardKids,
         // Regions and pins sit in content, which can change in place. This string is fixed at build, so the diff sees them.
-        ...kind === "image" || kind === "pdf" ? { hitsKey: endpointHitsKey(cardKids) } : {}
+        ...kind === "image" || kind === "pdf" ? { hitsKey: endpointHitsKey(cardKids) } : {},
+        ...openKey ? { openKey } : {}
       };
       items.set(cuid, item);
       preorder.push(cuid);
@@ -4534,7 +4546,7 @@ function diffBoards(prev, next) {
   }
   return { structural, dirty };
 }
-var AUTO_GAP, AUTO_OFFSET, AUTO_ROWS, TITLE_BAND, BORDER_BAND, isNum2, HIGHLIGHT_HINT, COLLAPSED_SECTION_H, COLLAPSED_CARD_H, STICKY_HEADER_H, clamp2, PREVIEW_MIN, PREVIEW_TITLE;
+var AUTO_GAP, AUTO_OFFSET, AUTO_ROWS, TITLE_BAND, BORDER_BAND, isNum2, OPEN_KEY_DEPTH, HIGHLIGHT_HINT, COLLAPSED_SECTION_H, COLLAPSED_CARD_H, STICKY_HEADER_H, clamp2, PREVIEW_MIN, PREVIEW_TITLE;
 var init_board = __esm({
   "src/model/board.js"() {
     init_geometry();
@@ -4556,6 +4568,7 @@ var init_board = __esm({
     TITLE_BAND = 32;
     BORDER_BAND = 8;
     isNum2 = (v) => typeof v === "number" && Number.isFinite(v);
+    OPEN_KEY_DEPTH = 2;
     HIGHLIGHT_HINT = /#h\/|!\[/;
     COLLAPSED_SECTION_H = 8;
     COLLAPSED_CARD_H = 32;
@@ -18936,9 +18949,10 @@ function kidsHeightPlan({ on, h, extraH = 0, memory, cap: cap4 = KIDS_H_CAP } = 
   };
   const base = Number.isFinite(Number(h)) ? Number(h) : 0;
   if (on) {
-    if (mem.foldedH == null) mem.foldedH = base;
-    const grown = Math.min(cap4, Math.ceil(mem.foldedH + Math.max(0, Number(extraH) || 0)));
-    const target = mem.userSized && mem.unfoldedH != null ? mem.unfoldedH : grown;
+    mem.foldedH = base;
+    const grown = Math.min(cap4, Math.ceil(base + Math.max(0, Number(extraH) || 0)));
+    const remembered = mem.userSized && Number.isFinite(Number(mem.unfoldedH)) ? Number(mem.unfoldedH) : null;
+    const target = remembered != null && remembered > base ? Math.min(cap4, remembered) : grown;
     mem.unfoldedH = target;
     return { h: target, memory: mem };
   }
@@ -28822,6 +28836,7 @@ function createItemRenderer({
     const pin2 = sourcePinOf(item?.content);
     if (pin2) key += `pin:${pin2.uid}`;
     if (item?.hitsKey) key += `hits:${item.hitsKey}`;
+    if (item?.outlineRev) key += `rev:${item.outlineRev}`;
     const focused = cardFocus.get(item?.uid);
     if (focused) key += `focus:${focused}`;
     return key;
@@ -30486,6 +30501,7 @@ function createItemRenderer({
           if (rect) position(rec, rect);
           const key = contentKeyFor(item, rec.stickyLive);
           if (rec.contentKey !== null && rec.contentKey !== key && editing?.uid !== uid) {
+            dropRowOffs(rec);
             unmountRoots(rec);
             rec.body?.replaceChildren?.();
             rec.contentKey = null;
@@ -30683,7 +30699,7 @@ function createItemRenderer({
             if (rec?.roots) rec.roots.push(...sub.roots);
           }
           if (wrap) setHidden2(wrap, !next);
-          if (!viewOnly && rowUid) void session?.setNodeOpen?.(rowUid, next);
+          if (!viewOnly && rowUid) void session?.setNodeOpen?.(rowUid, next, cardUid);
         };
         bindTracked(caretRec, caret, "click", onCaret);
       }
@@ -30758,6 +30774,7 @@ function createItemRenderer({
   const remountCard = (rec) => {
     const item = lastBoard?.items.get(rec?.uid);
     if (!rec || !item || disposed || editing?.uid === rec.uid) return;
+    dropRowOffs(rec);
     unmountRoots(rec);
     rec.body?.replaceChildren?.();
     rec.contentKey = null;
@@ -30783,12 +30800,26 @@ function createItemRenderer({
     remountCard(rec);
     return true;
   };
+  const peekLive = /* @__PURE__ */ new Set();
+  const notePeek = (rec) => {
+    if (rec) peekLive.add(rec);
+  };
+  const forgetPeek = (rec) => {
+    if (!rec?.peekTimer && !rec?.peekLeave && !rec?.peekOpen && !rec?.peekBusy) peekLive.delete(rec);
+  };
   const dropPeek = (rec) => {
-    if (!rec?.peekOpen && !rec?.peekNode) return false;
+    if (!rec) return false;
+    rec.peekGen = (rec.peekGen || 0) + 1;
+    rec.peekBusy = false;
     rec.peekTimer?.();
     rec.peekTimer = null;
     rec.peekLeave?.();
     rec.peekLeave = null;
+    const open = Boolean(rec.peekOpen || rec.peekNode);
+    if (!open) {
+      forgetPeek(rec);
+      return false;
+    }
     for (const node2 of rec.peekRoots || []) {
       try {
         host?.unmount?.(node2);
@@ -30807,6 +30838,8 @@ function createItemRenderer({
     rec.peekH = 0;
     rec.el?.classList?.remove("pxd-item--peek");
     if (rec.rect?.h != null) rec.el.style.height = `${rec.rect.h}px`;
+    forgetPeek(rec);
+    releaseOutsidePeek();
     return true;
   };
   const rerenderPeek = (rec) => {
@@ -30824,11 +30857,21 @@ function createItemRenderer({
     rec.peekRoots = budget.roots;
     if (rec.roots) rec.roots.push(...budget.roots);
   };
-  const finishPeek = (rec, item, blocks) => {
-    if (disposed || !rec?.el?.isConnected || rec.peekOpen || editing?.uid === item.uid) return;
+  const finishPeek = (rec, item, blocks, gen) => {
+    if (gen !== rec.peekGen) {
+      forgetPeek(rec);
+      return;
+    }
+    if (disposed || !rec?.el?.isConnected || rec.peekOpen || editing?.uid === item.uid) {
+      forgetPeek(rec);
+      return;
+    }
     const showing = item.kind === "block" ? item.kids === true : item.collapsed === true || item.open === false ? false : true;
     const count = visibleKids(blocks).length;
-    if (!peekAllowed({ tier: lod, gesturing: peekBlocked, kind: item.kind, childCount: count, showing, editing: Boolean(editing) })) return;
+    if (!peekAllowed({ tier: lod, gesturing: peekBlocked, kind: item.kind, childCount: count, showing, editing: Boolean(editing) })) {
+      forgetPeek(rec);
+      return;
+    }
     const node2 = el2("div", "pxd-link-peek", rec.body || rec.el);
     const budget = { n: 0, roots: [] };
     paintCardKids(node2, item, budget, blocks || [], true);
@@ -30837,6 +30880,7 @@ function createItemRenderer({
     rec.peekRoots = budget.roots;
     rec.peekOpen = true;
     rec.peekPinned = false;
+    notePeek(rec);
     if (rec.roots) rec.roots.push(...budget.roots);
     const baseH = Number(rec.rect?.h || item.h) || 0;
     rec.peekH = Math.min(900, Math.ceil(baseH + Math.max(budget.n, 1) * KID_ROW_H + 8));
@@ -30847,24 +30891,42 @@ function createItemRenderer({
     rec.el.style.height = `${rec.peekH}px`;
   };
   const openLinkPeek = (rec) => {
+    if (rec.peekGen == null) rec.peekGen = 0;
+    const gen = rec.peekGen;
     rec.peekTimer = null;
+    rec.peekBusy = true;
+    notePeek(rec);
     const item = lastBoard?.items.get(rec?.uid);
-    if (!item || disposed || rec.peekOpen || editing) return;
-    const take = (blocks) => finishPeek(rec, item, blocks || []);
+    const stop3 = () => {
+      rec.peekBusy = false;
+      forgetPeek(rec);
+    };
+    if (!item || disposed || rec.peekOpen || editing || gen !== rec.peekGen) {
+      stop3();
+      return;
+    }
+    const take = (blocks) => {
+      rec.peekBusy = false;
+      if (gen !== rec.peekGen) {
+        forgetPeek(rec);
+        return;
+      }
+      finishPeek(rec, item, blocks || [], gen);
+    };
     if (item.kind === "block") {
       const tree = host?.pullTree?.(item.target?.uid, CONTENT_DEPTH, 200);
-      if (tree && typeof tree.then === "function") tree.then(take).catch(() => {
-      });
+      if (tree && typeof tree.then === "function") tree.then(take).catch(stop3);
       else take(tree);
       return;
     }
     if (item.kind === "page") {
       const preview = host?.pagePreview?.(item.target?.title || item.title, 64, 200);
       const apply = (page) => take(page?.blocks || []);
-      if (preview && typeof preview.then === "function") preview.then(apply).catch(() => {
-      });
+      if (preview && typeof preview.then === "function") preview.then(apply).catch(stop3);
       else apply(preview);
+      return;
     }
+    stop3();
   };
   const showingKids = (item) => {
     if (!item) return true;
@@ -30882,25 +30944,26 @@ function createItemRenderer({
       rec.peekLeave = null;
       if (rec.peekOpen || rec.peekTimer) return;
       const item = lastBoard?.items.get(rec.uid);
-      if (!item || editing || peekBlocked) return;
-      const showing = showingKids(item);
-      let count = 0;
-      if (!showing && item.kind === "block" && item.target?.uid) {
-        const tree = host?.pullTree?.(item.target.uid, 1, 40);
-        count = tree && typeof tree.then === "function" ? 1 : visibleKids(tree).length;
-      } else if (!showing && item.kind === "page") {
-        const preview = host?.pagePreview?.(item.target?.title || item.title, 8, 20);
-        count = preview && typeof preview.then !== "function" ? visibleKids(preview.blocks).length || (preview.exists ? 1 : 0) : 1;
+      if (!item || editing || peekBlocked) {
+        forgetPeek(rec);
+        return;
       }
-      if (!peekAllowed({ tier: lod, gesturing: peekBlocked, kind: item.kind, childCount: count, showing, editing: Boolean(editing) })) return;
+      if (!peekAllowed({ tier: lod, gesturing: peekBlocked, kind: item.kind, childCount: 1, showing: showingKids(item), editing: Boolean(editing) })) {
+        forgetPeek(rec);
+        return;
+      }
       rec.peekTimer = later(() => openLinkPeek(rec), PEEK_HOVER_MS);
+      notePeek(rec);
     };
     const onLeave = () => {
-      rec.peekTimer?.();
-      rec.peekTimer = null;
-      if (!rec.peekOpen || rec.peekPinned) return;
+      if (rec.peekOpen && rec.peekPinned) return;
+      if (!rec.peekOpen) {
+        dropPeek(rec);
+        return;
+      }
       rec.peekLeave?.();
       rec.peekLeave = later(() => dropPeek(rec), PEEK_LEAVE_MS);
+      notePeek(rec);
     };
     const onDown = () => {
       if (!rec.peekOpen) return;
@@ -30926,27 +30989,30 @@ function createItemRenderer({
     if (pinned2.some((rec) => rec.el?.contains?.(event.target))) return;
     closeCardPeek();
   };
+  const pinnedPeek = () => {
+    for (const rec of peekLive) if (rec.peekOpen && rec.peekPinned) return true;
+    return false;
+  };
+  const releaseOutsidePeek = () => {
+    if (!outsidePeekOn || pinnedPeek()) return;
+    doc.removeEventListener?.("pointerdown", onOutsidePeek, true);
+    outsidePeekOn = false;
+  };
   const armOutsidePeek = () => {
     if (outsidePeekOn) return;
     outsidePeekOn = true;
     doc.addEventListener?.("pointerdown", onOutsidePeek, true);
   };
   const cancelCardPeek = () => {
-    for (const rec of shells.values()) {
-      rec.peekTimer?.();
-      rec.peekTimer = null;
-      rec.peekLeave?.();
-      rec.peekLeave = null;
-      if (rec.peekOpen && !rec.peekPinned) dropPeek(rec);
+    for (const rec of [...peekLive]) {
+      if (rec.peekOpen && rec.peekPinned) continue;
+      dropPeek(rec);
     }
   };
   const closeCardPeek = () => {
     let closed = false;
-    for (const rec of shells.values()) {
-      rec.peekTimer?.();
-      rec.peekTimer = null;
-      if (rec.peekOpen || rec.peekNode) closed = dropPeek(rec) || closed;
-    }
+    for (const rec of [...peekLive]) closed = dropPeek(rec) || closed;
+    releaseOutsidePeek();
     return closed;
   };
   const setPeekBlocked = (on) => {
@@ -33411,6 +33477,7 @@ function createItemRenderer({
   const unmountContent = (uid) => {
     const rec = shells.get(uid);
     if (!rec || editing?.uid === uid) return;
+    dropRowOffs(rec);
     unmountRoots(rec);
     if (rec.type === "section") {
       rec.title.replaceChildren();
@@ -34945,6 +35012,7 @@ function createItemRenderer({
       if (item.kind !== "pdf" || rec.contentKey == null) continue;
       const key = contentKeyFor(item);
       if (key === rec.contentKey) continue;
+      dropRowOffs(rec);
       unmountRoots(rec);
       rec.body?.replaceChildren?.();
       rec.contentKey = null;
@@ -35081,6 +35149,7 @@ function createItemRenderer({
       for (const uid of uids || []) {
         const rec = shells.get(uid);
         if (!rec || editing?.uid === uid) continue;
+        dropRowOffs(rec);
         unmountRoots(rec);
         rec.body?.replaceChildren?.();
         rec.contentKey = null;
@@ -46458,6 +46527,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
     return autoEligibility({ plexus: cplexus, nativeNodeCount: autoBoardCache.get(id), storedLayout: storedLayoutIn(kids) }) === "virtual";
   };
+  const outlineRev = /* @__PURE__ */ new Map();
+  const bumpOutline = (id) => {
+    if (!id || !board2?.items.has(id)) return false;
+    outlineRev.set(id, (outlineRev.get(id) || 0) + 1);
+    return true;
+  };
+  const republishOutline = () => {
+    if (!outlineRev.size) return;
+    for (const id of outlineRev.keys()) outlineRev.set(id, (outlineRev.get(id) || 0) + 1);
+    publish();
+  };
   const rebuild = () => {
     rix = null;
     const plexusApi = globalThis.window?.RoamPlexus ?? globalThis.RoamPlexus ?? null;
@@ -46498,6 +46578,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         return pending;
       }
     }) : null;
+    if (board2 && outlineRev.size) {
+      for (const [id, rev] of outlineRev) {
+        const item = board2.items.get(id);
+        if (item && rev) item.outlineRev = rev;
+      }
+    }
     if (board2 && virtualAllowed && autoEnhanceOn() && !board2.enhanced && !board2.native) {
       board2.enhanced = true;
       board2.virtual = true;
@@ -47974,9 +48060,6 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           fitTouched.push(r.uid);
           const parentRect = item.parentUid === uid ? { x: 0, y: 0 } : rects.get(item.parentUid) ?? { x: 0, y: 0 };
           const size = clampSize(item.type, r.w ?? item.w, r.h ?? item.h);
-          if (item.type === "card" && item.kids && round14(size.h) !== round14(item.h)) {
-            kidsMemory.set(r.uid, rememberUnfoldedSize(kidsMemory.get(r.uid), round14(size.h)));
-          }
           t.props(r.uid, itemPlexus(r.uid, {
             x: round14(r.x - parentRect.x),
             y: round14(r.y - parentRect.y),
@@ -48853,14 +48936,19 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       });
     },
     // CH-1: show or hide a card's children inside it. One props write. Unfold grows from the stored
-    // folded height; refold returns to it. A resize while open is remembered as the unfolded size only.
+    // folded height; refold returns to it. The live open height is captured on close, so undo and a
+    // remote edit replace a resize that this session planned.
     setKids(id, value, extraH = 0) {
       return txn((t) => {
         const item = board2.items.get(id);
         if (!item || item.type !== "card" || item.kind !== "note" && item.kind !== "block") return;
         const on = value === true;
         if (Boolean(item.kids) === on) return;
-        const plan = kidsHeightPlan({ on, h: item.h, extraH, memory: kidsMemory.get(id) });
+        let memory = kidsMemory.get(id);
+        if (!on && memory?.unfoldedH != null && round14(item.h) !== round14(memory.unfoldedH)) {
+          memory = rememberUnfoldedSize(memory, round14(item.h));
+        }
+        const plan = kidsHeightPlan({ on, h: item.h, extraH, memory });
         kidsMemory.set(id, plan.memory);
         const patch = { kids: on ? true : void 0 };
         if (plan.h !== item.h) patch.h = plan.h;
@@ -48868,67 +48956,52 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         if (on && plan.h > item.h) applyFit(t, [id]);
       });
     },
-    // Shift+Enter on the card's top block. One custom undo removes the child and restores the folded size.
+    // Shift+Enter on the card's top block. The child, the unfold, and any fit land in one native
+    // undo group, so an earlier move stays on the stack. A block card's child is created under the
+    // referenced block, which is the outline the card shows.
     addCardChild(id) {
       const item = board2?.items.get(id);
       if (!item || item.type !== "card" || item.kind !== "note" && item.kind !== "block") return Promise.resolve(null);
-      const beforePlexus = clone(rawPlexus(id));
-      const beforeMem = kidsMemory.has(id) ? { ...kidsMemory.get(id) } : null;
       const beforeOpen = rawNode(id)?.[OPEN] !== false;
-      let childUid2 = null;
-      let afterMem = beforeMem;
-      const custom = {
-        async undo() {
-          const back = [];
-          if (childUid2) back.push({ op: "delete", uid: childUid2 });
-          back.push({ op: "props", uid: id, plexus: beforePlexus });
-          if (!beforeOpen) back.push({ op: "open", uid: id, open: false });
-          if (beforeMem) kidsMemory.set(id, { ...beforeMem });
-          else kidsMemory.delete(id);
-          await execute(back);
-        },
-        async redo() {
-          await execute(custom.forward);
-          if (afterMem) kidsMemory.set(id, { ...afterMem });
-          else kidsMemory.delete(id);
-        }
-      };
       return txn((t) => {
-        childUid2 = t.create({ parent: id, string: "" });
+        const parent = item.kind === "block" && item.target?.uid ? item.target.uid : id;
+        const childUid2 = t.create({ parent, string: "" });
         if (!item.kids) {
           const plan = kidsHeightPlan({ on: true, h: item.h, extraH: CHILD_GROW_H, memory: kidsMemory.get(id) });
-          afterMem = plan.memory;
           kidsMemory.set(id, plan.memory);
           t.props(id, itemPlexus(id, { kids: true, h: plan.h }));
           if (plan.h > item.h) applyFit(t, [id]);
         }
         if (!beforeOpen) t.open(id, true);
         return childUid2;
-      }, custom);
+      });
     },
-    // :block/open on a block inside a card. One custom undo. The card renderer also toggles the row locally,
-    // because a child fold does not mark the card dirty.
-    setNodeOpen(id, open) {
+    // :block/open on a block inside a card. One native undo, so an earlier resize stays on the stack.
+    // A child of the card is in the board tree: openKey dirties the card. A block-ref's child is not,
+    // so the write still goes out and outlineRev dirties that card after the write lands.
+    setNodeOpen(id, open, ownerUid2) {
       if (!board2 || destroyed || gone) return Promise.resolve(false);
-      const node2 = rawNode(id);
-      if (!node2 || node2 === raw) return Promise.resolve(false);
       const next = open !== false;
-      const prev = node2[OPEN] !== false;
-      if (prev === next) return Promise.resolve(false);
-      node2[OPEN] = next;
-      const custom = {
-        async undo() {
-          const n3 = rawNode(id);
-          if (n3) n3[OPEN] = prev;
-          await execute([{ op: "open", uid: id, open: prev }]);
-        },
-        async redo() {
-          const n3 = rawNode(id);
-          if (n3) n3[OPEN] = next;
-          await execute([{ op: "open", uid: id, open: next }]);
-        }
-      };
-      return commit([{ op: "open", uid: id, open: next }], true, custom);
+      const node2 = rawNode(id);
+      if (node2 === raw) return Promise.resolve(false);
+      if (node2) {
+        if (node2[OPEN] !== false === next) return Promise.resolve(false);
+        return txn((t) => {
+          t.open(id, next);
+          return true;
+        });
+      }
+      let known2 = false;
+      try {
+        known2 = host.blockString?.(id) != null;
+      } catch {
+        known2 = false;
+      }
+      if (!known2) return Promise.resolve(false);
+      return commit([{ op: "open", uid: id, open: next }], true).then((ok) => {
+        if (ok && bumpOutline(ownerUid2)) publish();
+        return ok;
+      });
     },
     setFontSize(id, size) {
       return txn((t) => {
@@ -49644,6 +49717,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           await host.undo();
         });
         repull();
+        republishOutline();
       } catch (err) {
         handleFailure(err);
       }
@@ -49655,6 +49729,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           await host.redo();
         });
         repull();
+        republishOutline();
       } catch (err) {
         handleFailure(err);
       }

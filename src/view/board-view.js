@@ -25,7 +25,7 @@ import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS, highlightModel, noteActionPlan } from "../model/highlight.js";
 import { cleanPdfTitle, coverModel, embedSplit, parsedDocTitle, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
-import { answerSource, gestureSource, pasteCardPlan, pinOpenPlan, readWithSource } from "../model/pdf-pin.js";
+import { answerSource, gestureSource, notePendingPin, pasteCardPlan, pinOpenFallback, pinOpenPlan, readWithSource, refOpenPlan } from "../model/pdf-pin.js";
 import { parseRegion } from "../model/regions.js";
 import { isMetaBanner } from "../model/title-cap.js";
 import { createSharpStore } from "./sharp-store.js";
@@ -7988,6 +7988,19 @@ function buildBoardView(onFail, {
     event.stopImmediatePropagation();
     event.preventDefault();
   }, true);
+  // A ((pin)) ref navigates on mousedown, before the click handler. Steal that press and open the PDF.
+  listen(root, "mousedown", (event) => {
+    if (event.button != null && event.button !== 0) return;
+    const block = event.target?.closest?.(".rm-block-ref[data-uid]");
+    if (!block || !event.target?.closest?.(".pxd-item") || event.target?.closest?.(".pxd-item--editing")) return;
+    const uid = block.getAttribute?.("data-uid") || "";
+    let string = "";
+    try { string = host?.blockString?.(uid) || ""; } catch { string = ""; }
+    if (refOpenPlan({ uid, string, shiftKey: Boolean(event.shiftKey) }).kind !== "pin") return;
+    if (!openRefFromClick(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
   // mousedown/mouseup: inner React roots (renderString links) see them first; Roam's block handlers do not.
   for (const type of ["mousedown", "mouseup"]) {
     listen(root, type, (event) => {
@@ -8025,12 +8038,38 @@ function buildBoardView(onFail, {
     const page = t.closest("[data-link-uid]");
     const block = t.closest(".rm-block-ref[data-uid]");
     const uid = page?.getAttribute("data-link-uid") || block?.getAttribute("data-uid");
-    if (!uid || !api?.ui) return false;
-    const key = `${uid}:${event.shiftKey ? 1 : 0}`;
+    if (!uid) return false;
+    let pinJump = null;
+    if (block && !page) {
+      let string = "";
+      try { string = host?.blockString?.(uid) || ""; } catch { string = ""; }
+      const decided = refOpenPlan({ uid, string, shiftKey: Boolean(event.shiftKey) });
+      if (decided.kind === "pin") pinJump = decided;
+    }
+    if (!pinJump && !api?.ui) return false;
+    const key = `${uid}:${event.shiftKey ? 1 : 0}:${pinJump ? "pin" : "ref"}`;
     const now = Date.now();
     if (key === lastRefKey && now - lastRefAt < 500) return true;
     lastRefKey = key;
     lastRefAt = now;
+    if (pinJump) {
+      if (pinJump.mode === "sidebar") {
+        try { host?.openInSidebar?.(pinJump.plan.pdfUid); } catch { /* host */ }
+        return true;
+      }
+      // The pin block lives under plexus-pins. Open the PDF at the region, not that list.
+      const opened = openPin(pinJump.plan);
+      if (!opened) {
+        let pageUid = "";
+        try { pageUid = host?.blockPageUid?.(pinJump.plan.pdfUid) || ""; } catch { pageUid = ""; }
+        const fallback = pinOpenFallback({ opened: false, plan: pinJump.plan, pageUid, now });
+        if (fallback?.openPage) {
+          notePendingPin(fallback.pending);
+          try { host?.openPage?.(fallback.openPage); } catch { /* host */ }
+        }
+      }
+      return true;
+    }
     if (event.shiftKey) api.ui.rightSidebar?.addWindow?.({ window: { type: page ? "outline" : "block", "block-uid": uid } });
     else if (page) api.ui.mainWindow?.openPage?.({ page: { uid } });
     else api.ui.mainWindow?.openBlock?.({ block: { uid } });

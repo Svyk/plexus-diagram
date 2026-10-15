@@ -16,11 +16,13 @@ import {
   cardJsonPayload,
   commitPinWrites,
   findDuplicatePin,
+  fracScrollTop,
   fracStyle,
   gestureSource,
   pageFracFromBbox,
   parseCardJson,
   pasteCardPlan,
+  planCopiedSource,
   pinCaption,
   pinClickMode,
   pinDeepLink,
@@ -35,6 +37,7 @@ import {
   pxdPinTarget,
   readWithSource,
   rectIou,
+  refOpenPlan,
   sourceAttrString,
   sourcePinOf,
   surroundingParagraph,
@@ -331,6 +334,9 @@ test("clipboard card JSON and the pin link keep their own MIME and query key", (
   assert.equal(pxdTarget(hash), null);
   assert.equal(pxdPinTarget("#/app/Readwisenotes/page/page1?pxd=card1"), null);
   assert.equal(sourceAttrString("pinuid01"), "Source:: ((pinuid01))");
+  assert.deepEqual(planCopiedSource({ markdown: "- Hi", source: "pinuid01" }), {
+    markdown: "- Hi", sourceUid: "pinuid01", sourced: true,
+  });
   assert.equal(sourceAttrString("bad uid"), "");
   assert.equal(pinnedToast(6), "Pinned p. 6");
   assert.equal(pinClickMode({ shiftKey: true, metaKey: true }), "sidebar");
@@ -347,6 +353,67 @@ test("clipboard card JSON and the pin link keep their own MIME and query key", (
   const open = parseRegion(PIN_STRING);
   open.uid = "pinuid01";
   assert.deepEqual(pinOpenPlan(open), { pdfUid: "pdfblock1", page: 6, frac: FRAC, pinUid: "pinuid01" });
+});
+
+test("copy with source pastes as one card, and a pin ref opens that region", async () => {
+  const text = "Osmotic water flow\nSource:: ((pinuid01))";
+  const parsed = parseClipboard({
+    getData(type) { return type === "text/plain" ? text : ""; },
+    files: [],
+  });
+  assert.equal(parsed.kind, "card-json");
+  assert.equal(parsed.data.source, "pinuid01");
+  const plan = pasteCardPlan(parsed.data, { x: 10, y: 20 });
+  assert.equal(plan.sourceUid, "pinuid01");
+  assert.equal(plan.markdown, "- Osmotic water flow");
+  assert.equal((plan.markdown.match(/^- /gm) || []).length, 1);
+
+  const empty = parseClipboard({
+    getData(type) { return type === "text/plain" ? "- \n- Source:: ((pinuid01))" : ""; },
+    files: [],
+  });
+  assert.equal(empty.kind, "card-json");
+  const emptyPlan = pasteCardPlan(empty.data, { x: 0, y: 0 });
+  assert.equal((emptyPlan.markdown.match(/^- /gm) || []).length, 1);
+  assert.match(emptyPlan.markdown, /Source:: \(\(pinuid01\)\)/);
+  assert.equal(emptyPlan.sourceUid, "");
+
+  const plain = pasteCardPlan({ markdown: "Osmotic water flow", size: { w: 280, h: 160 }, kind: "card", source: "pinuid01" }, { x: 1, y: 2 });
+  assert.equal(plain.markdown, "- Osmotic water flow");
+  assert.equal(plain.sourceUid, "pinuid01");
+
+  const { fake, session } = setup();
+  const made = await session.ensurePdfPin(pin);
+  const before = fake.children("b1").length;
+  const res = await session.insertParsedCard({
+    x: 800, y: 800, markdown: "Osmotic water flow\nSource:: ((pinuid01))", sourceUid: made.uid,
+  });
+  assert.equal(res.ok, true);
+  assert.equal(fake.block(res.uid).parent, "b1");
+  assert.equal(fake.children("b1").length, before + 1);
+  assert.match(fake.block(res.uid).string, /Osmotic water flow/);
+  assert.equal(fake.children(res.uid).length, 1);
+  assert.match(fake.block(fake.children(res.uid)[0]).string, /^Source:: \(\(/);
+
+  const split = await session.insertParsedCard({
+    x: 800, y: 1100, markdown: `- \n- Source:: ((${made.uid}))`,
+  });
+  assert.equal(split.ok, true);
+  assert.equal(fake.block(split.uid).parent, "b1");
+  assert.equal(fake.children("b1").length, before + 2);
+  assert.match(fake.block(split.uid).string, /Source::/);
+  assert.equal(fake.children(split.uid).filter((id) => /Source::/.test(fake.block(id).string)).length <= 1, true);
+
+  const jump = refOpenPlan({ uid: "pinuid01", string: PIN_STRING, shiftKey: false });
+  assert.equal(jump.kind, "pin");
+  assert.equal(jump.mode, "main");
+  assert.equal(jump.plan.page, 6);
+  assert.equal(jump.plan.pdfUid, "pdfblock1");
+  assert.deepEqual(jump.plan.frac, FRAC);
+  assert.equal(refOpenPlan({ uid: "note1", string: "Just a note" }).kind, "block");
+  assert.equal(fracScrollTop({
+    frac: [0.1, 0.5, 0.2, 0.1], pageTop: 100, pageHeight: 800, viewTop: 0, viewHeight: 400, scrollTop: 0,
+  }), 380);
 });
 
 test("a text drop never pins, and a block drop pins only when withSource is set", async () => {

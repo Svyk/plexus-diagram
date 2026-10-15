@@ -2,7 +2,7 @@
 // strings, dedupe, clipboard payloads, and write counts. It does not touch the graph.
 
 import { graphFromDeepLink, pageUidFromHash } from "./deeplink.js";
-import { normalizeFrac, PIN_CONTAINER_STRING, serializeRegion } from "./regions.js";
+import { normalizeFrac, parseRegion, PIN_CONTAINER_STRING, serializeRegion } from "./regions.js";
 import { viewportBox } from "../view/parse-overlay.js";
 
 export const PIN_IOU = 0.9;
@@ -134,6 +134,106 @@ export function sourceAttrString(uid) {
   return `Source:: ((${id}))`;
 }
 
+const SOURCE_LINE_RE = /^(?:[-*]\s+)?Source::\s*\(\(([\w-]{1,32})\)\)\s*$/;
+
+function blankBullet(line) {
+  return /^[-*•]\s*$/.test(String(line ?? "").trim());
+}
+
+// One top-level bullet. A second top-level bullet becomes a child, so fromMarkdown cannot
+// leave a sibling card on the board.
+function oneBulletTree(text) {
+  const kept = [];
+  for (const line of String(text ?? "").split("\n")) {
+    if (!line.trim() || blankBullet(line)) continue;
+    kept.push(line);
+  }
+  if (!kept.length) return "";
+  const allBullets = kept.every((line) => /^\s*[-*]\s+/.test(line));
+  if (allBullets) {
+    let seen = 0;
+    return kept.map((line) => {
+      if (/^- /.test(line)) {
+        seen += 1;
+        if (seen >= 2) return `  ${line}`;
+      }
+      return line;
+    }).join("\n");
+  }
+  const first = kept[0].replace(/^\s*[-*]\s+/, "").trim();
+  const rest = kept.slice(1).map((line) => {
+    const body = line.replace(/^\s*[-*]\s+/, "").trim();
+    return body ? `  - ${body}` : "";
+  }).filter(Boolean);
+  return [`- ${first}`, ...rest].join("\n");
+}
+
+// Copy with source is one card. The citation is a child (sourceUid), never a second board card.
+// An empty body keeps the citation as the only bullet, so paste does not also make a blank card.
+export function planCopiedSource({ markdown = "", source = "" } = {}) {
+  let pin = String(source ?? "").trim();
+  if (!UID_RE.test(pin)) pin = "";
+  let found = Boolean(pin);
+  const body = [];
+  for (const line of String(markdown ?? "").replace(/\r\n/g, "\n").split("\n")) {
+    const match = SOURCE_LINE_RE.exec(line.trim());
+    if (match) {
+      found = true;
+      if (!pin) pin = match[1];
+      continue;
+    }
+    body.push(line);
+  }
+  const text = oneBulletTree(body.join("\n"));
+  if (!text && pin) return { markdown: `- ${sourceAttrString(pin)}`, sourceUid: "", sourced: true };
+  return { markdown: text, sourceUid: text ? pin : "", sourced: found && Boolean(text || pin) };
+}
+
+// A click on a card's ((pin)) ref. A pdf pin opens the reader at that region.
+// Anything else stays a normal block or page ref.
+export function refOpenPlan({ uid = "", string = "", shiftKey = false } = {}) {
+  const id = String(uid ?? "").trim();
+  const region = parseRegion(String(string ?? ""));
+  if (region && region.kind === "pdf" && region.supported !== false) {
+    region.uid = id || region.uid || "";
+    const plan = pinOpenPlan(region);
+    if (plan) return { kind: "pin", mode: shiftKey ? "sidebar" : "main", plan };
+  }
+  return { kind: shiftKey ? "sidebar" : "block", uid: id };
+}
+
+// Where the scroller must sit so the fraction's top lands at 30% of the view,
+// the same place a highlight ref uses.
+export function fracScrollTop({ frac, pageTop, pageHeight, viewTop, viewHeight, scrollTop } = {}) {
+  if (!Array.isArray(frac) || frac.length < 2) return null;
+  const yInPage = Number(frac[1]);
+  const pageH = Number(pageHeight);
+  const viewH = Number(viewHeight);
+  if (!Number.isFinite(yInPage) || !(pageH > 0) || !(viewH > 0)) return null;
+  const pageT = Number(pageTop) || 0;
+  const viewT = Number(viewTop) || 0;
+  const current = Number(scrollTop);
+  const top = Number.isFinite(current) ? current : 0;
+  const markTop = pageT + yInPage * pageH;
+  return Math.max(0, top + (markTop - viewT) - viewH * 0.3);
+}
+
+let notedPin = null;
+
+export function notePendingPin(pending) {
+  if (!pending?.pinUid) { notedPin = null; return null; }
+  notedPin = pending;
+  return pending;
+}
+
+export function takePendingPin(now = 0) {
+  const pending = notedPin;
+  if (!pending) return null;
+  notedPin = null;
+  if (Number(now) > Number(pending.until)) return null;
+  return pending;
+}
+
 export function sourcePinOf(children) {
   for (const child of children || []) {
     const text = String(child?.[":block/string"] ?? child?.string ?? "").trim();
@@ -181,13 +281,15 @@ export function parseCardJson(raw) {
 export function pasteCardPlan(data, point) {
   const parsed = data && typeof data === "object" && typeof data.markdown === "string" ? cardJsonPayload(data) : parseCardJson(data);
   if (!parsed) return null;
+  const copied = planCopiedSource({ markdown: parsed.markdown, source: parsed.source || "" });
+  if (!copied.markdown.trim()) return null;
   return {
     x: Number.isFinite(point?.x) ? point.x : 0,
     y: Number.isFinite(point?.y) ? point.y : 0,
     w: parsed.size.w,
     h: parsed.size.h,
-    markdown: parsed.markdown,
-    sourceUid: parsed.source || "",
+    markdown: copied.markdown,
+    sourceUid: copied.sourceUid || "",
   };
 }
 

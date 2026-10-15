@@ -36,7 +36,7 @@ import { imageSrc } from "./model/export.js";
 import { closeAskAI } from "./view/ask-ai.js";
 import { imageRegionFrac, polygonClipPath } from "./model/image-region.js";
 import { parseRegion } from "./model/regions.js";
-import { boardsFromRefs, PIN_BOARDS_QUERY, pinOpenFallback, pinOpenPlan, pinPdfUrl, pxdPinTarget } from "./model/pdf-pin.js";
+import { boardsFromRefs, PIN_BOARDS_QUERY, pinOpenFallback, pinOpenPlan, pinPdfUrl, pxdPinTarget, takePendingPin } from "./model/pdf-pin.js";
 import { pdfMacroUrl } from "./model/pdf.js";
 import { mountPdfPin } from "./view/pdf-pin-view.js";
 import { classifyString, firstLine, parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
@@ -3094,6 +3094,10 @@ export async function installPlexusDiagram({
     pendingPin = { pinUid: target.pinUid, until: Date.now() + 8000 };
   }
   function tryPendingPin() {
+    if (!pendingPin) {
+      const noted = takePendingPin(Date.now());
+      if (noted) pendingPin = noted;
+    }
     const pending = pendingPin;
     if (!pending) return;
     if (Date.now() > pending.until) { pendingPin = null; return; }

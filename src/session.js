@@ -5,7 +5,7 @@ import { CONTAINER_STRING, isContainerString, parseRegion, PIN_CONTAINER_STRING 
 import { imagePolyString, imageRegionString } from "./model/image-region.js";
 import { renameRegionCaption } from "./model/region-menu.js";
 import { edgeMayTarget, endpointKindOf, imageSourceOf, regionCaption } from "./model/endpoints.js";
-import { planPinWrites, sourceAttrString } from "./model/pdf-pin.js";
+import { planCopiedSource, planPinWrites, sourceAttrString } from "./model/pdf-pin.js";
 import { backgroundImage, calendarLayout, cardTemplatePlan, zoomThreshold } from "./model/section6.js";
 import { dateSource } from "./model/timeline.js";
 import {
@@ -2074,7 +2074,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     // One note card. Children stay in the block tree; kids stays off unless the layout says so.
     insertParsedCard({ x, y, w, h, markdown, pin, sourceUid, sourceUids } = {}) {
       if (!board || destroyed || gone) return Promise.resolve(undefined);
-      const nested = nestMarkdownUnderFirst(markdown);
+      const copied = planCopiedSource({ markdown, source: sourceUid });
+      const nested = nestMarkdownUnderFirst(copied.markdown);
+      sourceUid = copied.sourceUid;
       if (!String(nested).trim() || bulletCount(nested) === 0) return Promise.resolve({ ok: false, reason: "empty" });
       const width = Number.isFinite(w) ? w : DEFAULT_SIZES.card.w;
       const height = Number.isFinite(h) ? h : DEFAULT_SIZES.card.h;
@@ -2082,8 +2084,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       const { parent, rel } = placeParsed(x, y, size.w, size.h);
       const order = insertOrder(parent);
       return runParsed(async () => {
-        const fn = await settleFootnotes([markdown], { reserve: 2 });
-        const body = fn ? nestMarkdownUnderFirst(fn.apply(markdown)) : nested;
+        const fn = await settleFootnotes([copied.markdown], { reserve: 2 });
+        const body = fn ? nestMarkdownUnderFirst(fn.apply(copied.markdown)) : nested;
         if (fn && bulletCount(body) === 0) return { ok: false, reason: "empty" };
         const plexus = serializeItemLayout(withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, body));
         const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: body });

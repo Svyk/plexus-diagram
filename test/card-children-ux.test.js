@@ -155,6 +155,38 @@ test("a remote height change while folded replaces the stored folded height", as
   assert.equal(fake.props("X").plexus.h, 150);
 });
 
+test("undo of a resize while open forgets that height", async () => {
+  const { fake, session } = setup(
+    [card("X", "note", 10, 20, 240, 100, {}, [{ uid: "c000", string: "kid" }])],
+    { echoDelay: 0, raf: (fn) => fn(), trackUndo: true },
+  );
+  await session.setKids("X", true, 80);
+  await session.commitRects([{ uid: "X", x: 10, y: 20, w: 240, h: 260 }]);
+  await session.undo();
+  await fake.flush();
+  assert.equal(fake.props("X").plexus.h, 180);
+  await session.setKids("X", false);
+  assert.equal(fake.props("X").plexus.h, 100);
+  await session.setKids("X", true, 80);
+  assert.equal(fake.props("X").plexus.h, 180);
+});
+
+test("a remote height change while open is what the next unfold uses", async () => {
+  const { fake, host, session } = setup(
+    [card("X", "note", 10, 20, 240, 100, {}, [{ uid: "c000", string: "kid" }])],
+    { echoDelay: 0, raf: (fn) => fn(), graceMs: 0 },
+  );
+  await session.setKids("X", true, 80);
+  await fake.flush();
+  await host.updateProps("X", { ...fake.props("X").plexus, h: 300 });
+  await fake.flush();
+  assert.equal(session.board.items.get("X").h, 300);
+  await session.setKids("X", false);
+  assert.equal(fake.props("X").plexus.h, 100);
+  await session.setKids("X", true, 80);
+  assert.equal(fake.props("X").plexus.h, 300);
+});
+
 test("setKids restores the folded height, and a resize while open is the unfolded size only", async () => {
   const { fake, session } = setup([card("X", "note", 10, 20, 240, 100, { color: "teal" }, [{ uid: "c000", string: "kid" }])]);
   await session.setKids("X", true, 80);

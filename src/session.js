@@ -1948,9 +1948,6 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           fitTouched.push(r.uid);
           const parentRect = item.parentUid === uid ? { x: 0, y: 0 } : rects.get(item.parentUid) ?? { x: 0, y: 0 };
           const size = clampSize(item.type, r.w ?? item.w, r.h ?? item.h);
-          if (item.type === "card" && item.kids && round1(size.h) !== round1(item.h)) {
-            kidsMemory.set(r.uid, rememberUnfoldedSize(kidsMemory.get(r.uid), round1(size.h)));
-          }
           t.props(r.uid, itemPlexus(r.uid, {
             x: round1(r.x - parentRect.x),
             y: round1(r.y - parentRect.y),
@@ -2826,14 +2823,19 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     },
 
     // CH-1: show or hide a card's children inside it. One props write. Unfold grows from the stored
-    // folded height; refold returns to it. A resize while open is remembered as the unfolded size only.
+    // folded height; refold returns to it. The live open height is captured on close, so undo and a
+    // remote edit replace a resize that this session planned.
     setKids(id, value, extraH = 0) {
       return txn((t) => {
         const item = board.items.get(id);
         if (!item || item.type !== "card" || (item.kind !== "note" && item.kind !== "block")) return;
         const on = value === true;
         if (Boolean(item.kids) === on) return;
-        const plan = kidsHeightPlan({ on, h: item.h, extraH, memory: kidsMemory.get(id) });
+        let memory = kidsMemory.get(id);
+        if (!on && memory?.unfoldedH != null && round1(item.h) !== round1(memory.unfoldedH)) {
+          memory = rememberUnfoldedSize(memory, round1(item.h));
+        }
+        const plan = kidsHeightPlan({ on, h: item.h, extraH, memory });
         kidsMemory.set(id, plan.memory);
         const patch = { kids: on ? true : undefined };
         if (plan.h !== item.h) patch.h = plan.h;

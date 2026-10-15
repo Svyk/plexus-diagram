@@ -262,6 +262,42 @@ test("clicking the outer marker opens the board centred on the moved card", asyn
   } finally { restore(); }
 });
 
+test("clicking the outer arrow label opens the moved card, and a drag does not", async () => {
+  const { mountBoardView } = await import("../src/view/board-view.js");
+  const stub = createDomStub({ width: 1400, height: 900 });
+  const restore = stub.install();
+  try {
+    const { fake, host, session } = openDrop();
+    await session.moveIntoBoard(["c1"], "nb");
+    await fake.flush();
+    host.viewports = host.viewports || { get: () => null, set() {} };
+    const mountEl = stub.document.createElement("div");
+    stub.document.body.append(mountEl);
+    const opened = [];
+    const view = mountBoardView({
+      host,
+      session,
+      mountEl,
+      settings: { get: () => undefined },
+      version: "3.32.0",
+      onOpenBoard: (uid, opts) => opened.push({ uid, opts }),
+    });
+    stub.flushFrames?.();
+    const label = [...view.root.querySelectorAll(".pxd-label")].find((node) => (node.dataset?.uid || node.getAttribute?.("data-uid")) === "e12");
+    assert.ok(label, "the outer arrow has a label");
+    stub.dispatch(label, "pointerdown", { button: 0, clientX: 40, clientY: 40, pointerId: 1 });
+    stub.dispatch(label, "pointerup", { button: 0, clientX: 40, clientY: 40, pointerId: 1 });
+    assert.deepEqual(opened, [{ uid: "nb", opts: { focus: "c1" } }]);
+    opened.length = 0;
+    stub.dispatch(label, "pointerdown", { button: 0, clientX: 40, clientY: 40, pointerId: 2 });
+    stub.dispatch(stub.document, "pointermove", { clientX: 80, clientY: 40, pointerId: 2 });
+    stub.dispatch(stub.document, "pointerup", { clientX: 80, clientY: 40, pointerId: 2 });
+    assert.deepEqual(opened, [], "a drag that starts on the label does not open the board");
+    view.dispose();
+    session.release();
+  } finally { restore(); }
+});
+
 function seedLabels(fake) {
   fake.seedPage({
     title: "Scratch",

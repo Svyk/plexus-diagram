@@ -398,8 +398,14 @@ export function createInteractions({ actions, settings } = {}) {
         return;
       }
       case "edge":
-      case "label":
         if (t.uid) selectEdge(t.uid);
+        return;
+      case "label":
+        if (t.uid) {
+          selectEdge(t.uid);
+          // Open on release, and only if the pointer stayed put. A drag keeps today's select-only behaviour.
+          begin({ kind: "label", edge: t.uid, start: ev.screen });
+        }
         return;
       case "link":
         if (t.key || t.uid) selectLink(t.key || t.uid);
@@ -553,6 +559,10 @@ export function createInteractions({ actions, settings } = {}) {
     }
     const sdx = ev.screen.x - (g.start.x ?? 0);
     const sdy = ev.screen.y - (g.start.y ?? 0);
+    if (g.kind === "label") {
+      if (!g.moved && Math.hypot(sdx, sdy) >= DRAG_THRESHOLD_PX) g.moved = true;
+      return;
+    }
     if (g.kind === "pan") {
       if (!g.moved && Math.hypot(sdx, sdy) < DRAG_THRESHOLD_PX) return;
       g.moved = true;
@@ -693,6 +703,16 @@ export function createInteractions({ actions, settings } = {}) {
       case "pan":
         if (!g.moved && g.clearOnClick) clearSelection();
         break;
+      case "label": {
+        if (!g.moved && g.edge) {
+          const edge = b?.edges.get(g.edge);
+          const end = edge && edge.homeFrom?.cardUid && !b.items.has(edge.from) ? "from"
+            : edge && edge.homeTo?.cardUid && !b.items.has(edge.to) ? "to"
+            : null;
+          if (end) call("revealBlockEnd", g.edge, end);
+        }
+        break;
+      }
       case "marquee":
       case "lasso":
         if (!g.moved && !g.shift) clearSelection();

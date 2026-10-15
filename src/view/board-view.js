@@ -7712,7 +7712,7 @@ function buildBoardView(onFail, {
   // Pan, marquee and card drag never use a handle. Only an edge-end drag, a connect, or a press that
   // might start one looks at handle centres, and it uses the world points stored at render.
   const END_GESTURE = new Set(["edge-end", "connect"]);
-  const NO_END_GESTURE = new Set(["pan", "marquee", "move", "lasso", "resize", "place", "section-draw", "board-draw", "region-end", "region-start"]);
+  const NO_END_GESTURE = new Set(["pan", "marquee", "move", "lasso", "resize", "place", "section-draw", "board-draw", "region-end", "region-start", "label"]);
   const edgeEndWanted = (type, event) => {
     const kind = ctl.gestureKind();
     if (NO_END_GESTURE.has(kind)) return false;

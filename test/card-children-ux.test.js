@@ -39,6 +39,18 @@ test("kids height grows on unfold and returns to the stored folded height", () =
   assert.equal(kidsHeightPlan({ on: false, h: 240, memory: again.memory }).h, 100);
 });
 
+test("a resize while folded replaces the stored folded height", () => {
+  const opened = kidsHeightPlan({ on: true, h: 100, extraH: 80 });
+  const closed = kidsHeightPlan({ on: false, h: opened.h, memory: opened.memory });
+  const again = kidsHeightPlan({ on: true, h: 140, extraH: 80, memory: closed.memory });
+  assert.equal(again.memory.foldedH, 140);
+  assert.equal(kidsHeightPlan({ on: false, h: again.h, memory: again.memory }).h, 140);
+  const shorter = rememberUnfoldedSize(closed.memory, 80);
+  const grown = kidsHeightPlan({ on: true, h: 140, extraH: 80, memory: shorter });
+  assert.equal(grown.h, 220, "an unfolded size shorter than the new folded height does not shrink the card");
+  assert.equal(kidsHeightPlan({ on: false, h: grown.h, memory: grown.memory }).h, 140);
+});
+
 test("peek waits for detail tier and a block or page card that is not already open", () => {
   const base = { tier: "detail", kind: "block", childCount: 2, showing: false };
   assert.equal(peekAllowed(base), true);
@@ -72,11 +84,16 @@ test("findBlock walks nested children and childIsOpen reads Roam's fold", () => 
 const card = (uid, string, x, y, w = 240, h = 100, extra = {}, children = []) => ({
   uid, string, props: { plexus: { x, y, w, h, ...extra } }, children,
 });
-function setup(children) {
-  const fake = createFakeRoam();
+function setup(children, { echoDelay = 5, raf, trackUndo = false, graceMs } = {}) {
+  const fake = createFakeRoam({ echoDelay });
+  if (trackUndo) fake.trackUndo = true;
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
   fake.seedBoard({ uid: "b1", props: { plexus: { v: 2 } }, children });
-  const session = acquireSession("b1", { host, settings: null, linkDelay: 0 });
+  const session = acquireSession("b1", {
+    host, settings: null, linkDelay: 0,
+    ...(raf ? { raf } : {}),
+    ...(graceMs != null ? { graceMs } : {}),
+  });
   fake.clearLog();
   return { fake, host, session };
 }
@@ -94,6 +111,48 @@ test("addCardChild creates one child, unfolds, and one undo removes both", async
   assert.equal(fake.block(child), null);
   assert.equal("kids" in (fake.props("X").plexus || {}), false);
   assert.equal(fake.props("X").plexus.h, 100);
+});
+
+test("a folded resize, including one card of a multi-select, is what the next refold restores", async () => {
+  const { fake, session } = setup([
+    card("X", "note", 10, 20, 240, 100, {}, [{ uid: "c000", string: "kid" }]),
+    card("Y", "other", 300, 20, 240, 100, {}, [{ uid: "c001", string: "kid" }]),
+  ]);
+  await session.setKids("X", true, 80);
+  await session.setKids("X", false);
+  await session.commitRects([{ uid: "X", x: 10, y: 20, w: 240, h: 140 }]);
+  await session.setKids("X", true, 80);
+  await session.setKids("X", false);
+  assert.equal(fake.props("X").plexus.h, 140);
+
+  await session.setKids("Y", true, 80);
+  await session.setKids("Y", false);
+  await session.commitRects([
+    { uid: "X", x: 10, y: 20, w: 240, h: 140 },
+    { uid: "Y", x: 300, y: 20, w: 240, h: 160 },
+  ]);
+  await session.setKids("X", true, 80);
+  await session.setKids("Y", true, 80);
+  await session.setKids("X", false);
+  await session.setKids("Y", false);
+  assert.equal(fake.props("X").plexus.h, 140);
+  assert.equal(fake.props("Y").plexus.h, 160);
+});
+
+test("a remote height change while folded replaces the stored folded height", async () => {
+  const { fake, host, session } = setup(
+    [card("X", "note", 10, 20, 240, 100, {}, [{ uid: "c000", string: "kid" }])],
+    { echoDelay: 0, raf: (fn) => fn(), graceMs: 0 },
+  );
+  await session.setKids("X", true, 80);
+  await session.setKids("X", false);
+  await fake.flush();
+  await host.updateProps("X", { ...fake.props("X").plexus, h: 150 });
+  await fake.flush();
+  assert.equal(session.board.items.get("X").h, 150);
+  await session.setKids("X", true, 80);
+  await session.setKids("X", false);
+  assert.equal(fake.props("X").plexus.h, 150);
 });
 
 test("setKids restores the folded height, and a resize while open is the unfolded size only", async () => {

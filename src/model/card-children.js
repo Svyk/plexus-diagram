@@ -23,9 +23,11 @@ export function kidsHeightPlan({ on, h, extraH = 0, memory, cap = KIDS_H_CAP } =
   };
   const base = Number.isFinite(Number(h)) ? Number(h) : 0;
   if (on) {
-    if (mem.foldedH == null) mem.foldedH = base;
-    const grown = Math.min(cap, Math.ceil(mem.foldedH + Math.max(0, Number(extraH) || 0)));
-    const target = mem.userSized && mem.unfoldedH != null ? mem.unfoldedH : grown;
+    // setKids and addCardChild only plan while the card is closed, so h is the live folded height.
+    mem.foldedH = base;
+    const grown = Math.min(cap, Math.ceil(base + Math.max(0, Number(extraH) || 0)));
+    const remembered = mem.userSized && Number.isFinite(Number(mem.unfoldedH)) ? Number(mem.unfoldedH) : null;
+    const target = remembered != null && remembered > base ? Math.min(cap, remembered) : grown;
     mem.unfoldedH = target;
     return { h: target, memory: mem };
   }

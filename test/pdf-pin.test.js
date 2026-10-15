@@ -337,6 +337,10 @@ test("clipboard card JSON and the pin link keep their own MIME and query key", (
   assert.deepEqual(planCopiedSource({ markdown: "- Hi", source: "pinuid01" }), {
     markdown: "- Hi", sourceUid: "pinuid01", sourced: true,
   });
+  assert.equal(
+    planCopiedSource({ markdown: "- Alpha\n- Beta\n  - Gamma" }).markdown,
+    "- Alpha\n  - Beta\n    - Gamma",
+  );
   assert.equal(sourceAttrString("bad uid"), "");
   assert.equal(pinnedToast(6), "Pinned p. 6");
   assert.equal(pinClickMode({ shiftKey: true, metaKey: true }), "sidebar");

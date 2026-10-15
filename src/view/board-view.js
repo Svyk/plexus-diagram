@@ -7961,6 +7961,9 @@ function buildBoardView(onFail, {
   };
   listen(root, "pointerdown", (event) => {
     if ((event.button ?? 0) !== 0) return;
+    // A ((pin)) ref navigates on the mousedown after this press. Cancel the press here
+    // so that mousedown never starts, without a second listener on the root.
+    if (stealPinPress(event)) return;
     if (leavesBoardPointer(event.target)) return;
     const item = event.target?.closest?.(".pxd-item");
     if (!item || !root.contains(item)) return;
@@ -7997,22 +8000,11 @@ function buildBoardView(onFail, {
     event.stopImmediatePropagation();
     event.preventDefault();
   }, true);
-  // A ((pin)) ref navigates on mousedown, before the click handler. Steal that press and open the PDF.
-  listen(root, "mousedown", (event) => {
-    if (event.button != null && event.button !== 0) return;
-    const block = event.target?.closest?.(".rm-block-ref[data-uid]");
-    if (!block || !event.target?.closest?.(".pxd-item") || event.target?.closest?.(".pxd-item--editing")) return;
-    const uid = block.getAttribute?.("data-uid") || "";
-    let string = "";
-    try { string = host?.blockString?.(uid) || ""; } catch { string = ""; }
-    if (refOpenPlan({ uid, string, shiftKey: Boolean(event.shiftKey) }).kind !== "pin") return;
-    if (!openRefFromClick(event)) return;
-    event.preventDefault();
-    event.stopPropagation();
-  }, true);
   // mousedown/mouseup: inner React roots (renderString links) see them first; Roam's block handlers do not.
+  // A pin press that arrived as mousedown alone (no pointerdown) is stolen on this same listener.
   for (const type of ["mousedown", "mouseup"]) {
     listen(root, type, (event) => {
+      if (type === "mousedown" && stealPinPress(event)) return;
       if (leavesBoardPointer(event.target) || inRoamTable(event.target)) return;
       const native = nativeClickKind(event.target);
       if (native === "checkbox" || native === "image") return;
@@ -8082,6 +8074,21 @@ function buildBoardView(onFail, {
     if (event.shiftKey) api.ui.rightSidebar?.addWindow?.({ window: { type: page ? "outline" : "block", "block-uid": uid } });
     else if (page) api.ui.mainWindow?.openPage?.({ page: { uid } });
     else api.ui.mainWindow?.openBlock?.({ block: { uid } });
+    return true;
+  };
+  // Assigned after openRefFromClick. A press before that returns false and the board handles it.
+  let stealPinPress = () => false;
+  stealPinPress = (event) => {
+    if (event.button != null && event.button !== 0) return false;
+    const block = event.target?.closest?.(".rm-block-ref[data-uid]");
+    if (!block || !event.target?.closest?.(".pxd-item") || event.target?.closest?.(".pxd-item--editing")) return false;
+    const uid = block.getAttribute?.("data-uid") || "";
+    let string = "";
+    try { string = host?.blockString?.(uid) || ""; } catch { string = ""; }
+    if (refOpenPlan({ uid, string, shiftKey: Boolean(event.shiftKey) }).kind !== "pin") return false;
+    if (!openRefFromClick(event)) return false;
+    event.preventDefault();
+    event.stopPropagation();
     return true;
   };
   listen(root, "click", (event) => {

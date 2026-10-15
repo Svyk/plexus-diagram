@@ -152,13 +152,16 @@ function oneBulletTree(text) {
   const allBullets = kept.every((line) => /^\s*[-*]\s+/.test(line));
   if (allBullets) {
     let seen = 0;
-    return kept.map((line) => {
-      if (/^- /.test(line)) {
+    let start = -1;
+    for (let i = 0; i < kept.length; i += 1) {
+      if (/^- /.test(kept[i])) {
         seen += 1;
-        if (seen >= 2) return `  ${line}`;
+        if (seen === 2) { start = i; break; }
       }
-      return line;
-    }).join("\n");
+    }
+    if (start < 0) return kept.join("\n");
+    // Indent the second bullet and every line under it, so a child stays a child.
+    return kept.map((line, i) => (i >= start ? `  ${line}` : line)).join("\n");
   }
   const first = kept[0].replace(/^\s*[-*]\s+/, "").trim();
   const rest = kept.slice(1).map((line) => {

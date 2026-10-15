@@ -377,6 +377,11 @@ A pin is a `plexus-pin` block (kind `pdf`) under `{{[[plexus-pins]]}}` on the PD
 | `pinWriteSteps(opts)` | Out: `{steps, writes, oneTransaction: true}`. `writes` is `steps.length`. With `props` false, card + table + container + pin + attr is 5. `props` true adds one step per card and per table. A reused pin skips container and pin. |
 | `planPinWrites(spec)` | Out: `{uid, reused, creates, containerUid}`. A duplicate returns `reused: true` and no creates. Otherwise a container create (when `containerUid` is blank) then a pin create. The pin string is `serializeRegion`. Fail: a bad spec throws `TypeError`. |
 | `commitPinWrites(io, spec)` | Out: `{uid, writes, reused, containerUid, steps, outside: 0}`. `io.createBlock` runs each create. A reused pin writes 0 and does not call `createBlock`. `io.generateUid` fills a missing pin uid. |
+| `planCopiedSource({ markdown, source })` | Out: `{markdown, sourceUid, sourced}`. A `Source:: ((uid))` line is removed and kept as `sourceUid`. Every line from the second top-level bullet is indented, including lines already under that bullet. Fail: no body and no uid is `{markdown: "", sourceUid: "", sourced: false}`. An empty body with a uid is one bullet of `Source:: ((uid))` and `sourceUid` is `""`. |
+| `refOpenPlan({ uid, string, shiftKey })` | Out: `{kind: "pin", mode, plan}` when `string` is a supported pdf pin. `mode` is `sidebar` when Shift is down, else `main`. Anything else is `{kind: "block", uid}`, or `kind: "sidebar"` when Shift is down. |
+| `fracScrollTop({ frac, pageTop, pageHeight, viewTop, viewHeight, scrollTop })` | Out: the scroll offset that puts the fraction's top at 30% of the view. Fail: a short `frac`, or a page or view height that is not greater than 0, is null. |
+| `notePendingPin(pending)` | Out: the pending pin stored for the next board mount, or null when `pinUid` is missing. One slot. A later call replaces it. |
+| `takePendingPin(now)` | Out: the stored pending pin, once. Fail: nothing stored, or `now` past `until`, is null. The slot is cleared either way. |
 
 ## src/view/pdf-pin-view.js
 

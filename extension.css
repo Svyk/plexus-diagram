@@ -3870,6 +3870,51 @@ body.roam-body.dark .pxd-root.pxd-root .pxd-toolbar,
   pointer-events: auto;
 }
 
+/* A card inside a nested board, with arrows that stayed on the parent board. */
+.pxd-root .pxd-out {
+  position: absolute;
+  top: calc(4px * var(--pxd-inv-zoom, 1));
+  right: calc(6px * var(--pxd-inv-zoom, 1));
+  z-index: 3;
+  font-size: calc(11px * var(--pxd-inv-zoom, 1));
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--pxd-line, var(--pxd-edge));
+  background: var(--pxd-card);
+  color: var(--pxd-text-dim, var(--pxd-text));
+  opacity: 0.72;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.pxd-root .pxd-out-menu {
+  position: absolute;
+  top: calc(22px * var(--pxd-inv-zoom, 1));
+  right: calc(6px * var(--pxd-inv-zoom, 1));
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 160px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--pxd-line, var(--pxd-edge));
+  background: var(--pxd-card);
+}
+
+.pxd-root .pxd-out-menu__row {
+  text-align: left;
+  font: inherit;
+  font-size: calc(12px * var(--pxd-inv-zoom, 1));
+  color: var(--pxd-text);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
 .pxd-root .pxd-edge__bend-dot {
   fill: var(--pxd-card);
   stroke: var(--pxd-line, var(--pxd-edge));

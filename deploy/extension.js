@@ -4132,15 +4132,28 @@ function displayRects(board2, stored) {
   }
   return out;
 }
+function edgeAnchor(board2, uid, home) {
+  if (board2?.items?.has(uid)) return anchorUid(board2, uid);
+  const card2 = home?.cardUid;
+  if (card2 && board2?.items?.has(card2)) return anchorUid(board2, card2);
+  return uid;
+}
 function routedEdge(board2, edge, rects) {
   if (!board2 || !edge) return null;
-  const from = anchorUid(board2, edge.from);
-  const to = anchorUid(board2, edge.to);
+  const fromOn = board2.items.has(edge.from);
+  const toOn = board2.items.has(edge.to);
+  const fromHome = !fromOn && edge.homeFrom?.cardUid ? edge.homeFrom : null;
+  const toHome = !toOn && edge.homeTo?.cardUid ? edge.homeTo : null;
+  const from = edgeAnchor(board2, edge.from, fromHome);
+  const to = edgeAnchor(board2, edge.to, toHome);
   if (!from || !to || from === to) return null;
   const a = rects?.get(from);
   const b = rects?.get(to);
   if (!a || !b) return null;
-  return { from, to, a, b };
+  const out = { from, to, a, b };
+  if (fromHome && anchorUid(board2, fromHome.cardUid) === from) out.fromHome = fromHome;
+  if (toHome && anchorUid(board2, toHome.cardUid) === to) out.toHome = toHome;
+  return out;
 }
 function worldRects(board2) {
   const rects = /* @__PURE__ */ new Map();
@@ -16732,6 +16745,429 @@ var init_parse_to_roam_md = __esm({
       "⁸": "8",
       "⁹": "9"
     };
+  }
+});
+
+// src/discovery.js
+function isDiagramString2(value) {
+  const text4 = String(value ?? "");
+  if (text4.indexOf("{") === -1) return false;
+  return DIAGRAM_MARKER.test(text4);
+}
+function cssAttributeValue(value) {
+  return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+function graphCacheKey(locationHash = globalThis.location?.hash || "") {
+  const match = String(locationHash).match(/#\/app\/([^/]+)/);
+  return match ? `${ENHANCED_UID_CACHE_PREFIX}${match[1]}` : `${ENHANCED_UID_CACHE_PREFIX}unknown`;
+}
+function diagramUidFromLocation(hash = globalThis.location?.hash || "") {
+  const match = String(hash).match(/#\/app\/[^/]+\/page\/([^/?#]+)/);
+  return match ? match[1] : null;
+}
+function routeLeftZoomedDiagram(diagramUid, hash = globalThis.location?.hash || "") {
+  if (!diagramUid) return true;
+  return diagramUidFromLocation(hash) !== diagramUid;
+}
+function readEnhancedUidCache(storage = globalThis.localStorage, key = graphCacheKey()) {
+  try {
+    const raw = storage?.getItem?.(key);
+    if (!raw) return /* @__PURE__ */ new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return /* @__PURE__ */ new Set();
+    return new Set(parsed.map(String).filter(Boolean).sort());
+  } catch {
+    return /* @__PURE__ */ new Set();
+  }
+}
+function writeEnhancedUidCache(uids, storage = globalThis.localStorage, key = graphCacheKey()) {
+  const sorted = [...new Set([...uids].map(String).filter(Boolean))].sort();
+  storage?.setItem?.(key, JSON.stringify(sorted));
+  return sorted;
+}
+function enhancedUidGuardCss(uids) {
+  const selectors = [];
+  const unique = [...new Set([...uids].map(String).filter(Boolean))].sort();
+  if (unique.length > MAX_GUARD_UIDS) {
+    console.warn(`[plexus-diagram] Skipping the pre-paint guard: ${unique.length} cached diagram uids exceeds the ${MAX_GUARD_UIDS} cap`);
+    return "";
+  }
+  for (const uid of unique) {
+    const escaped = cssAttributeValue(uid);
+    for (const host of [
+      `[id$="${escaped}"]`,
+      `[data-uid="${escaped}"]`,
+      `.rm-block-ref[data-uid="${escaped}"]`
+    ]) {
+      selectors.push(
+        `${host} .rm-diagram:not(.${NATIVE_HIDDEN_CLASS}):not(.${OUTLINE_NATIVE_CLASS})`,
+        `${host} .rm-diagram-title-panel:not(.${OUTLINE_NATIVE_CLASS})`,
+        `${host} .react-flow:not(.${OUTLINE_NATIVE_CLASS} *)`
+      );
+    }
+  }
+  const hideRule = selectors.length ? `${selectors.join(",\n")} { display: none !important; }` : "";
+  const pendingRule = unique.length ? `.rm-diagram.${PENDING_CLASS}:not(.${NATIVE_HIDDEN_CLASS}):not(.${OUTLINE_NATIVE_CLASS}) { visibility: hidden !important; pointer-events: none !important; }` : "";
+  return [hideRule, pendingRule].filter(Boolean).join("\n");
+}
+function uidFromBlockInputId(id, isDiagramUid) {
+  const value = String(id || "");
+  const prefix = "block-input-";
+  if (!value.startsWith(prefix) || typeof isDiagramUid !== "function") return null;
+  const candidates2 = [];
+  for (let i = value.length - 1; i >= prefix.length; i -= 1) {
+    if (value[i] !== "-") continue;
+    const candidate = value.slice(i + 1);
+    if (candidate) candidates2.push(candidate);
+  }
+  if (typeof isDiagramUid.many === "function") return isDiagramUid.many(candidates2) ?? null;
+  for (const candidate of candidates2) {
+    if (isDiagramUid(candidate)) return candidate;
+  }
+  return null;
+}
+function directChildWithClass(element, className) {
+  for (const child of element?.children || []) {
+    if (child.classList?.contains(className)) return child;
+  }
+  return null;
+}
+function blockContainerUid(container, isDiagramUid) {
+  const main = directChildWithClass(container, "rm-block-main");
+  const input = main?.querySelector?.('[id^="block-input-"]');
+  return uidFromBlockInputId(input?.id, isDiagramUid);
+}
+function embedOwnerFromInputId(id, readString) {
+  const value = String(id || "");
+  if (!value.startsWith("block-input-")) return "";
+  const mark = "-body-outline-";
+  const at = value.lastIndexOf(mark);
+  if (at < 0) return "";
+  const tail = value.slice(at + mark.length);
+  if (!tail) return "";
+  const candidates2 = [];
+  for (let i = 0; i < tail.length; i += 1) {
+    if (i === 0 || tail[i - 1] === "-") candidates2.push(tail.slice(i));
+  }
+  candidates2.sort((a, b) => b.length - a.length);
+  if (typeof readString !== "function") return candidates2[candidates2.length - 1] || "";
+  for (const candidate of candidates2) {
+    let string = "";
+    try {
+      string = String(readString(candidate) ?? "");
+    } catch {
+      string = "";
+    }
+    if (EMBED_REF.test(string)) return candidate;
+  }
+  return "";
+}
+function firstBlockInputId(root) {
+  const stack = [root];
+  while (stack.length) {
+    const node2 = stack.shift();
+    if (String(node2?.id || "").startsWith("block-input-")) return node2.id;
+    const kids = node2?.children || [];
+    for (let i = 0; i < kids.length; i += 1) stack.push(kids[i]);
+  }
+  return "";
+}
+function embedWrap(native) {
+  if (!native?.closest) return null;
+  for (const sel of EMBED_WRAP_SELECTORS) {
+    const hit = native.closest(sel);
+    if (hit) return hit;
+  }
+  return null;
+}
+function embedOwnerUid(native, readString) {
+  const wrap = embedWrap(native);
+  if (wrap) {
+    let node3 = wrap.parentElement;
+    while (node3) {
+      const uid = embedOwnerFromInputId(node3.id, readString);
+      if (uid) return uid;
+      node3 = node3.parentElement;
+    }
+    return "embed";
+  }
+  if (typeof readString !== "function") return null;
+  let node2 = native?.parentElement;
+  while (node2) {
+    if (node2.matches?.(".roam-block-container")) {
+      const uid = embedOwnerFromInputId(firstBlockInputId(node2), readString);
+      if (uid) {
+        let string = "";
+        try {
+          string = String(readString(uid) ?? "");
+        } catch {
+          string = "";
+        }
+        if (EMBED_REF.test(string)) return uid;
+      }
+    }
+    node2 = node2.parentElement;
+  }
+  return null;
+}
+function embedScope(native, readString) {
+  const wrap = embedWrap(native);
+  if (wrap) return wrap;
+  const owner = embedOwnerUid(native, readString);
+  if (!owner || owner === "embed") return null;
+  let node2 = native?.parentElement;
+  while (node2) {
+    if (node2.matches?.(".roam-block-container") && embedOwnerFromInputId(firstBlockInputId(node2), readString) === owner) return node2;
+    node2 = node2.parentElement;
+  }
+  return null;
+}
+function embedBoardUid(native, readString) {
+  const owner = embedOwnerUid(native, readString);
+  if (!owner || owner === "embed" || typeof readString !== "function") return null;
+  let string = "";
+  try {
+    string = String(readString(owner) ?? "");
+  } catch {
+    return null;
+  }
+  const match = EMBED_REF.exec(string);
+  return match ? match[1] : null;
+}
+function findDiagramUidFromEl(element, isDiagramUid) {
+  if (!element) return null;
+  const ref = element.closest?.(".rm-block-ref[data-uid]");
+  if (ref?.dataset?.uid) return ref.dataset.uid;
+  const blockInput = element.closest?.('[id^="block-input-"]');
+  const resolved = uidFromBlockInputId(blockInput?.id, isDiagramUid);
+  if (resolved) return resolved;
+  if (blockInput?.id) {
+    const dated = blockInput.id.match(/block-input-.+-body-outline-\d{2}-\d{2}-\d{4}-(.+)$/);
+    if (dated) return dated[1];
+    const zoomed = blockInput.id.match(/block-input-.+-body-outline-(.+)$/);
+    if (zoomed && !/^\d{2}-\d{2}-\d{4}(-|$)/.test(zoomed[1])) return zoomed[1];
+  }
+  if (element.closest?.(".rm-zoom-block-wrapper")) {
+    const pageUid2 = diagramUidFromLocation();
+    if (pageUid2) return pageUid2;
+  }
+  const host = element.closest?.("[data-uid]");
+  if (host?.dataset?.uid) return host.dataset.uid;
+  return null;
+}
+function diagramsWithin(root) {
+  if (!root) return [];
+  const values = [];
+  if (root.matches?.(".rm-diagram")) values.push(root);
+  for (const diagram of root.querySelectorAll?.(".rm-diagram") || []) {
+    if (!values.includes(diagram)) values.push(diagram);
+  }
+  return values;
+}
+function isEnhancedProps(pulledProps) {
+  return readPlexus(pulledProps)?.v === SCHEMA_VERSION;
+}
+function readEnhanced(api3, uid) {
+  if (!uid) return false;
+  try {
+    const pulled = api3?.data?.pull?.("[:block/props]", [":block/uid", uid]);
+    return isEnhancedProps(pulled?.[":block/props"] ?? pulled?.props ?? null);
+  } catch {
+    return false;
+  }
+}
+function storedLayoutIn(children) {
+  for (const child of Array.isArray(children) ? children : []) {
+    const stored = readPlexus(child?.[":block/props"] ?? child?.props);
+    if (stored && Number.isFinite(stored.x) && Number.isFinite(stored.y)) return true;
+  }
+  return false;
+}
+function autoEligibility({ plexus, nativeNodeCount = 0, storedLayout = false } = {}) {
+  if (plexus?.v === SCHEMA_VERSION) return null;
+  if (plexus?.native === true) return null;
+  if (nativeNodeCount > 0 || storedLayout) return "convert";
+  return "virtual";
+}
+var DIAGRAM_MARKER, MAX_GUARD_UIDS, ENHANCED_UID_CACHE_PREFIX, PREPAINT_STYLE_ID, PENDING_CLASS, NATIVE_HIDDEN_CLASS, OUTLINE_NATIVE_CLASS, BLOCK_CONTAINER_SELECTOR, EMBED_WRAP_SELECTORS, EMBED_REF;
+var init_discovery = __esm({
+  "src/discovery.js"() {
+    init_schema();
+    DIAGRAM_MARKER = /\{\{\s*(\[\[)?diagram/i;
+    MAX_GUARD_UIDS = 2e3;
+    ENHANCED_UID_CACHE_PREFIX = "plexus-diagram:enhanced-uids:";
+    PREPAINT_STYLE_ID = "plexus-diagram-prepaint-guard";
+    PENDING_CLASS = "pxd-native-pending";
+    NATIVE_HIDDEN_CLASS = "pxd-native-hidden";
+    OUTLINE_NATIVE_CLASS = "pxd-outline-native";
+    BLOCK_CONTAINER_SELECTOR = ".roam-block-container";
+    EMBED_WRAP_SELECTORS = [".rm-embed-container", ".block-embed", ".rm-embed"];
+    EMBED_REF = /\{\{(?:\[\[embed\]\]|embed):\s*\(\(([A-Za-z0-9_-]+)\)\)/;
+  }
+});
+
+// src/model/arrow-home.js
+function nodeUid(node2) {
+  return node2?.[":block/uid"] ?? node2?.uid ?? "";
+}
+function nodeString(node2) {
+  return String(node2?.[":block/string"] ?? node2?.string ?? "");
+}
+function parentNodes(node2) {
+  const parents = node2?.[":block/parents"] ?? node2?.parents;
+  return Array.isArray(parents) ? parents : [];
+}
+function clipTitle(text4) {
+  const t = String(text4 || "").replace(/\s+/g, " ").trim();
+  if (!t) return "Untitled";
+  return t.length > 22 ? `${t.slice(0, 21)}…` : t;
+}
+function cardTitleOf(node2) {
+  const text4 = nodeString(node2);
+  if (isDiagramString2(text4)) return clipTitle(parseBoardTitle(text4) || firstLine(text4) || "Untitled");
+  return clipTitle(firstLine(text4) || plainText(text4, 80) || "Untitled");
+}
+function unresolvedUids(board2) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const edge of board2?.edges?.values?.() || []) {
+    for (const uid of [edge.from, edge.to]) {
+      if (!uid || seen.has(uid) || board2.items.has(uid) || board2.edges.has(uid)) continue;
+      seen.add(uid);
+      out.push(uid);
+    }
+  }
+  return out;
+}
+function homeOf(board2, node2) {
+  if (!board2?.items || !node2) return null;
+  const hits = [];
+  for (const parent of parentNodes(node2)) {
+    const uid = nodeUid(parent);
+    const item = uid ? board2.items.get(uid) : null;
+    if (!item || item.kind !== "board" || !item.enhanced) continue;
+    hits.push({ uid, depth: parentNodes(parent).length });
+  }
+  if (!hits.length) return null;
+  hits.sort((a, b) => b.depth - a.depth);
+  const shown = hits.find((hit) => anchorUid(board2, hit.uid) === hit.uid);
+  const best = shown || hits[0];
+  return { cardUid: best.uid, title: cardTitleOf(node2) };
+}
+function boardIsNested(node2) {
+  for (const parent of parentNodes(node2)) {
+    if (!isDiagramString2(nodeString(parent))) continue;
+    if (readPlexus(parent?.[":block/props"] ?? parent?.props)?.v === 2) return true;
+  }
+  return false;
+}
+function pullNodes(pullMany, pattern, uids) {
+  if (!uids.length || typeof pullMany !== "function") return [];
+  let nodes = [];
+  try {
+    nodes = pullMany(pattern, uids) || [];
+  } catch {
+    nodes = [];
+  }
+  return Array.isArray(nodes) ? nodes : [];
+}
+function byUid(nodes) {
+  const map = /* @__PURE__ */ new Map();
+  for (const node2 of nodes || []) {
+    const uid = nodeUid(node2);
+    if (uid) map.set(uid, node2);
+  }
+  return map;
+}
+function resolveArrowHomes(board2, pullMany) {
+  const uids = unresolvedUids(board2);
+  const out = /* @__PURE__ */ new Map();
+  if (!uids.length) return out;
+  const found = byUid(pullNodes(pullMany, HOME_PULL, uids));
+  for (const uid of uids) {
+    const node2 = found.get(uid);
+    out.set(uid, node2 ? homeOf(board2, node2) : null);
+  }
+  return out;
+}
+function outsidePlace(node2) {
+  let best = null;
+  let depth = -1;
+  for (const parent of parentNodes(node2)) {
+    if (!isDiagramString2(nodeString(parent))) continue;
+    if (readPlexus(parent?.[":block/props"] ?? parent?.props)?.v !== 2) continue;
+    const d = parentNodes(parent).length;
+    if (d < depth) continue;
+    depth = d;
+    best = parent;
+  }
+  if (!best) return null;
+  return { uid: nodeUid(best), title: parseBoardTitle(nodeString(best)) || UNTITLED_BOARD };
+}
+function resolveOutsideArrows(board2, pullMany) {
+  const out = /* @__PURE__ */ new Map();
+  if (!board2?.uid || !board2.items) return out;
+  const self = byUid(pullNodes(pullMany, HOME_PULL, [board2.uid])).get(board2.uid);
+  if (!self || !boardIsNested(self)) return out;
+  const cards = [];
+  for (const item of board2.items.values()) {
+    if (item.type === "section") continue;
+    cards.push(item.uid);
+  }
+  if (!cards.length) return out;
+  const pending = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const node2 of pullNodes(pullMany, REFS_PULL, cards)) {
+    const cardUid = nodeUid(node2);
+    if (!cardUid || !board2.items.has(cardUid)) continue;
+    const refs = node2?.[":block/_refs"] ?? node2?.refs;
+    if (!Array.isArray(refs)) continue;
+    for (const ref of refs) {
+      const plexus = readPlexus(ref?.[":block/props"] ?? ref?.props);
+      if (plexus?.type !== "edge") continue;
+      const edgeUid = nodeUid(ref);
+      if (!edgeUid || seen.has(edgeUid) || board2.edges.has(edgeUid)) continue;
+      const from = plexus.from;
+      const to = plexus.to;
+      if (from !== cardUid && to !== cardUid) continue;
+      const otherUid = from === cardUid ? to : from;
+      if (!otherUid || board2.items.has(otherUid)) continue;
+      seen.add(edgeUid);
+      pending.push({ cardUid, otherUid, edgeUid });
+    }
+  }
+  if (!pending.length) return out;
+  const others = byUid(pullNodes(pullMany, HOME_PULL, [...new Set(pending.map((row4) => row4.otherUid))]));
+  for (const row4 of pending) {
+    const node2 = others.get(row4.otherUid);
+    const place3 = node2 ? outsidePlace(node2) : null;
+    if (!node2 || !place3?.uid) continue;
+    const list = out.get(row4.cardUid) || [];
+    list.push({
+      edgeUid: row4.edgeUid,
+      otherUid: row4.otherUid,
+      otherTitle: cardTitleOf(node2),
+      boardUid: place3.uid,
+      boardTitle: place3.title
+    });
+    out.set(row4.cardUid, list);
+  }
+  return out;
+}
+function outsideBadgeText(n3) {
+  return `↗ ${n3}`;
+}
+function outsideTip(list) {
+  return (list || []).map((row4) => `from ${row4.otherTitle} on ${row4.boardTitle}`).join("\n");
+}
+var HOME_PULL, REFS_PULL;
+var init_arrow_home = __esm({
+  "src/model/arrow-home.js"() {
+    init_discovery();
+    init_board();
+    init_schema();
+    HOME_PULL = "[:block/uid :block/string {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]";
+    REFS_PULL = "[:block/uid {(limit :block/_refs nil) [:block/uid :block/string :block/props {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]}]";
   }
 });
 
@@ -30031,6 +30467,7 @@ function createItemRenderer({
     node2.setAttribute("aria-label", `${announced}, ${item.type}`);
     if (item.landmark || rec.landmarkEl) paintLandmarkMark(rec, item);
     if (trailBadgeMap.size || rec.trailBadge) paintTrailBadge(rec, item.uid);
+    if (item.type !== "section") paintOutside(rec, item.uid);
     if (item.type === "card" && (item.kind === "block" || item.kind === "page")) armLinkHover(rec, item);
   };
   const paintLandmarkMark = (rec, item) => {
@@ -30057,6 +30494,24 @@ function createItemRenderer({
     if (!rec.trailBadge) rec.trailBadge = el2("span", "pxd-trail-badge", rec.el);
     const text4 = String(n3);
     if (rec.trailBadge.textContent !== text4) rec.trailBadge.textContent = text4;
+  };
+  const paintOutside = (rec, uid) => {
+    const list = lastBoard?.outsides?.get(uid);
+    if (!list?.length) {
+      if (rec.outBadge) {
+        rec.outBadge.remove();
+        rec.outBadge = null;
+      }
+      return;
+    }
+    if (!rec.outBadge) {
+      rec.outBadge = el2("span", "pxd-out", rec.el);
+      rec.outBadge.setAttribute("role", "button");
+    }
+    const text4 = outsideBadgeText(list.length);
+    if (rec.outBadge.textContent !== text4) rec.outBadge.textContent = text4;
+    const tip = outsideTip(list);
+    if (rec.outBadge.title !== tip) rec.outBadge.title = tip;
   };
   const shownRect = (uid, rect) => {
     if (!rect) return rect;
@@ -31673,40 +32128,40 @@ function createItemRenderer({
     if (nextKey === rec.pageKey) return [];
     const prevState = rec.rowState;
     const { specs, more } = outlinePlan(p.blocks);
-    const byUid = /* @__PURE__ */ new Map();
+    const byUid2 = /* @__PURE__ */ new Map();
     for (const prow of holder.querySelectorAll?.(".pxd-prow") || []) {
       const uid = prow.getAttribute?.("data-uid");
-      if (uid && !byUid.has(uid)) byUid.set(uid, prow);
+      if (uid && !byUid2.has(uid)) byUid2.set(uid, prow);
     }
     const keep = new Set(specs.map((spec) => spec.uid));
-    for (const [uid, prow] of [...byUid]) {
+    for (const [uid, prow] of [...byUid2]) {
       if (keep.has(uid)) continue;
       releaseRowRoot(rec, uid, prow);
       if (prow.parentElement) prow.remove();
-      byUid.delete(uid);
+      byUid2.delete(uid);
     }
     for (const spec of specs) {
-      const prow = byUid.get(spec.uid);
+      const prow = byUid2.get(spec.uid);
       if (!prow) continue;
       const hasBtn = Boolean(childWithClass(childWithClass(prow, "pxd-row"), "pxd-row__fold"));
       if (hasBtn === spec.hasKids) continue;
       releaseRowRoot(rec, spec.uid, prow);
       if (prow.parentElement) prow.remove();
-      byUid.delete(spec.uid);
+      byUid2.delete(spec.uid);
     }
     rec.pageTitle = p.title || rec.pageTitle || "";
     rec.pageUid = p.uid || rec.pageUid || null;
     const bucket = { n: specs.length, more: 0, roots: [] };
     const created = /* @__PURE__ */ new Set();
     for (const spec of specs) {
-      if (byUid.has(spec.uid)) continue;
-      const parent = spec.parentUid ? childWithClass(byUid.get(spec.parentUid), "pxd-block__children") || holder : holder;
+      if (byUid2.has(spec.uid)) continue;
+      const parent = spec.parentUid ? childWithClass(byUid2.get(spec.parentUid), "pxd-block__children") || holder : holder;
       const row4 = buildOutlineRow(parent, spec, rec, bucket);
-      byUid.set(spec.uid, row4);
+      byUid2.set(spec.uid, row4);
       created.add(spec.uid);
     }
     for (const spec of specs) {
-      const prow = byUid.get(spec.uid);
+      const prow = byUid2.get(spec.uid);
       if (!prow || created.has(spec.uid)) continue;
       prow.__pxdKids = spec.kids;
       const prev = prevState.get(spec.uid);
@@ -31715,9 +32170,9 @@ function createItemRenderer({
     }
     const groups2 = /* @__PURE__ */ new Map();
     for (const spec of specs) {
-      const prow = byUid.get(spec.uid);
+      const prow = byUid2.get(spec.uid);
       if (!prow) continue;
-      const parent = spec.parentUid ? childWithClass(byUid.get(spec.parentUid), "pxd-block__children") || holder : holder;
+      const parent = spec.parentUid ? childWithClass(byUid2.get(spec.parentUid), "pxd-block__children") || holder : holder;
       if (!groups2.has(parent)) groups2.set(parent, []);
       groups2.get(parent).push(prow);
     }
@@ -35308,6 +35763,7 @@ var init_cards = __esm({
     init_comments();
     init_refs();
     init_board();
+    init_arrow_home();
     init_panel();
     init_geometry();
     init_shapes();
@@ -36451,11 +36907,11 @@ function tidyRects(list, mode, { gap = 24, columns = null, order = null } = {}) 
   }
   const reading = [...rects].sort((a, b) => a.y - b.y || a.x - b.x || a.i - b.i);
   if (mode === "outline") {
-    const byUid = new Map(rects.map((r) => [r.uid, r]));
+    const byUid2 = new Map(rects.map((r) => [r.uid, r]));
     const seen = /* @__PURE__ */ new Set();
     const ordered = [];
     for (const uid of order ?? []) {
-      const r = byUid.get(uid);
+      const r = byUid2.get(uid);
       if (r && !seen.has(uid)) {
         seen.add(uid);
         ordered.push(r);
@@ -38428,259 +38884,8 @@ function coveredBy(links, board2) {
 
 // src/session.js
 init_query();
-
-// src/discovery.js
-init_schema();
-var DIAGRAM_MARKER = /\{\{\s*(\[\[)?diagram/i;
-var MAX_GUARD_UIDS = 2e3;
-var ENHANCED_UID_CACHE_PREFIX = "plexus-diagram:enhanced-uids:";
-var PREPAINT_STYLE_ID = "plexus-diagram-prepaint-guard";
-var PENDING_CLASS = "pxd-native-pending";
-var NATIVE_HIDDEN_CLASS = "pxd-native-hidden";
-var OUTLINE_NATIVE_CLASS = "pxd-outline-native";
-function isDiagramString2(value) {
-  const text4 = String(value ?? "");
-  if (text4.indexOf("{") === -1) return false;
-  return DIAGRAM_MARKER.test(text4);
-}
-function cssAttributeValue(value) {
-  return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-function graphCacheKey(locationHash = globalThis.location?.hash || "") {
-  const match = String(locationHash).match(/#\/app\/([^/]+)/);
-  return match ? `${ENHANCED_UID_CACHE_PREFIX}${match[1]}` : `${ENHANCED_UID_CACHE_PREFIX}unknown`;
-}
-function diagramUidFromLocation(hash = globalThis.location?.hash || "") {
-  const match = String(hash).match(/#\/app\/[^/]+\/page\/([^/?#]+)/);
-  return match ? match[1] : null;
-}
-function routeLeftZoomedDiagram(diagramUid, hash = globalThis.location?.hash || "") {
-  if (!diagramUid) return true;
-  return diagramUidFromLocation(hash) !== diagramUid;
-}
-function readEnhancedUidCache(storage = globalThis.localStorage, key = graphCacheKey()) {
-  try {
-    const raw = storage?.getItem?.(key);
-    if (!raw) return /* @__PURE__ */ new Set();
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return /* @__PURE__ */ new Set();
-    return new Set(parsed.map(String).filter(Boolean).sort());
-  } catch {
-    return /* @__PURE__ */ new Set();
-  }
-}
-function writeEnhancedUidCache(uids, storage = globalThis.localStorage, key = graphCacheKey()) {
-  const sorted = [...new Set([...uids].map(String).filter(Boolean))].sort();
-  storage?.setItem?.(key, JSON.stringify(sorted));
-  return sorted;
-}
-function enhancedUidGuardCss(uids) {
-  const selectors = [];
-  const unique = [...new Set([...uids].map(String).filter(Boolean))].sort();
-  if (unique.length > MAX_GUARD_UIDS) {
-    console.warn(`[plexus-diagram] Skipping the pre-paint guard: ${unique.length} cached diagram uids exceeds the ${MAX_GUARD_UIDS} cap`);
-    return "";
-  }
-  for (const uid of unique) {
-    const escaped = cssAttributeValue(uid);
-    for (const host of [
-      `[id$="${escaped}"]`,
-      `[data-uid="${escaped}"]`,
-      `.rm-block-ref[data-uid="${escaped}"]`
-    ]) {
-      selectors.push(
-        `${host} .rm-diagram:not(.${NATIVE_HIDDEN_CLASS}):not(.${OUTLINE_NATIVE_CLASS})`,
-        `${host} .rm-diagram-title-panel:not(.${OUTLINE_NATIVE_CLASS})`,
-        `${host} .react-flow:not(.${OUTLINE_NATIVE_CLASS} *)`
-      );
-    }
-  }
-  const hideRule = selectors.length ? `${selectors.join(",\n")} { display: none !important; }` : "";
-  const pendingRule = unique.length ? `.rm-diagram.${PENDING_CLASS}:not(.${NATIVE_HIDDEN_CLASS}):not(.${OUTLINE_NATIVE_CLASS}) { visibility: hidden !important; pointer-events: none !important; }` : "";
-  return [hideRule, pendingRule].filter(Boolean).join("\n");
-}
-function uidFromBlockInputId(id, isDiagramUid) {
-  const value = String(id || "");
-  const prefix = "block-input-";
-  if (!value.startsWith(prefix) || typeof isDiagramUid !== "function") return null;
-  const candidates2 = [];
-  for (let i = value.length - 1; i >= prefix.length; i -= 1) {
-    if (value[i] !== "-") continue;
-    const candidate = value.slice(i + 1);
-    if (candidate) candidates2.push(candidate);
-  }
-  if (typeof isDiagramUid.many === "function") return isDiagramUid.many(candidates2) ?? null;
-  for (const candidate of candidates2) {
-    if (isDiagramUid(candidate)) return candidate;
-  }
-  return null;
-}
-var BLOCK_CONTAINER_SELECTOR = ".roam-block-container";
-function directChildWithClass(element, className) {
-  for (const child of element?.children || []) {
-    if (child.classList?.contains(className)) return child;
-  }
-  return null;
-}
-function blockContainerUid(container, isDiagramUid) {
-  const main = directChildWithClass(container, "rm-block-main");
-  const input = main?.querySelector?.('[id^="block-input-"]');
-  return uidFromBlockInputId(input?.id, isDiagramUid);
-}
-var EMBED_WRAP_SELECTORS = [".rm-embed-container", ".block-embed", ".rm-embed"];
-var EMBED_REF = /\{\{(?:\[\[embed\]\]|embed):\s*\(\(([A-Za-z0-9_-]+)\)\)/;
-function embedOwnerFromInputId(id, readString) {
-  const value = String(id || "");
-  if (!value.startsWith("block-input-")) return "";
-  const mark = "-body-outline-";
-  const at = value.lastIndexOf(mark);
-  if (at < 0) return "";
-  const tail = value.slice(at + mark.length);
-  if (!tail) return "";
-  const candidates2 = [];
-  for (let i = 0; i < tail.length; i += 1) {
-    if (i === 0 || tail[i - 1] === "-") candidates2.push(tail.slice(i));
-  }
-  candidates2.sort((a, b) => b.length - a.length);
-  if (typeof readString !== "function") return candidates2[candidates2.length - 1] || "";
-  for (const candidate of candidates2) {
-    let string = "";
-    try {
-      string = String(readString(candidate) ?? "");
-    } catch {
-      string = "";
-    }
-    if (EMBED_REF.test(string)) return candidate;
-  }
-  return "";
-}
-function firstBlockInputId(root) {
-  const stack = [root];
-  while (stack.length) {
-    const node2 = stack.shift();
-    if (String(node2?.id || "").startsWith("block-input-")) return node2.id;
-    const kids = node2?.children || [];
-    for (let i = 0; i < kids.length; i += 1) stack.push(kids[i]);
-  }
-  return "";
-}
-function embedWrap(native) {
-  if (!native?.closest) return null;
-  for (const sel of EMBED_WRAP_SELECTORS) {
-    const hit = native.closest(sel);
-    if (hit) return hit;
-  }
-  return null;
-}
-function embedOwnerUid(native, readString) {
-  const wrap = embedWrap(native);
-  if (wrap) {
-    let node3 = wrap.parentElement;
-    while (node3) {
-      const uid = embedOwnerFromInputId(node3.id, readString);
-      if (uid) return uid;
-      node3 = node3.parentElement;
-    }
-    return "embed";
-  }
-  if (typeof readString !== "function") return null;
-  let node2 = native?.parentElement;
-  while (node2) {
-    if (node2.matches?.(".roam-block-container")) {
-      const uid = embedOwnerFromInputId(firstBlockInputId(node2), readString);
-      if (uid) {
-        let string = "";
-        try {
-          string = String(readString(uid) ?? "");
-        } catch {
-          string = "";
-        }
-        if (EMBED_REF.test(string)) return uid;
-      }
-    }
-    node2 = node2.parentElement;
-  }
-  return null;
-}
-function embedScope(native, readString) {
-  const wrap = embedWrap(native);
-  if (wrap) return wrap;
-  const owner = embedOwnerUid(native, readString);
-  if (!owner || owner === "embed") return null;
-  let node2 = native?.parentElement;
-  while (node2) {
-    if (node2.matches?.(".roam-block-container") && embedOwnerFromInputId(firstBlockInputId(node2), readString) === owner) return node2;
-    node2 = node2.parentElement;
-  }
-  return null;
-}
-function embedBoardUid(native, readString) {
-  const owner = embedOwnerUid(native, readString);
-  if (!owner || owner === "embed" || typeof readString !== "function") return null;
-  let string = "";
-  try {
-    string = String(readString(owner) ?? "");
-  } catch {
-    return null;
-  }
-  const match = EMBED_REF.exec(string);
-  return match ? match[1] : null;
-}
-function findDiagramUidFromEl(element, isDiagramUid) {
-  if (!element) return null;
-  const ref = element.closest?.(".rm-block-ref[data-uid]");
-  if (ref?.dataset?.uid) return ref.dataset.uid;
-  const blockInput = element.closest?.('[id^="block-input-"]');
-  const resolved = uidFromBlockInputId(blockInput?.id, isDiagramUid);
-  if (resolved) return resolved;
-  if (blockInput?.id) {
-    const dated = blockInput.id.match(/block-input-.+-body-outline-\d{2}-\d{2}-\d{4}-(.+)$/);
-    if (dated) return dated[1];
-    const zoomed = blockInput.id.match(/block-input-.+-body-outline-(.+)$/);
-    if (zoomed && !/^\d{2}-\d{2}-\d{4}(-|$)/.test(zoomed[1])) return zoomed[1];
-  }
-  if (element.closest?.(".rm-zoom-block-wrapper")) {
-    const pageUid2 = diagramUidFromLocation();
-    if (pageUid2) return pageUid2;
-  }
-  const host = element.closest?.("[data-uid]");
-  if (host?.dataset?.uid) return host.dataset.uid;
-  return null;
-}
-function diagramsWithin(root) {
-  if (!root) return [];
-  const values = [];
-  if (root.matches?.(".rm-diagram")) values.push(root);
-  for (const diagram of root.querySelectorAll?.(".rm-diagram") || []) {
-    if (!values.includes(diagram)) values.push(diagram);
-  }
-  return values;
-}
-function isEnhancedProps(pulledProps) {
-  return readPlexus(pulledProps)?.v === SCHEMA_VERSION;
-}
-function readEnhanced(api3, uid) {
-  if (!uid) return false;
-  try {
-    const pulled = api3?.data?.pull?.("[:block/props]", [":block/uid", uid]);
-    return isEnhancedProps(pulled?.[":block/props"] ?? pulled?.props ?? null);
-  } catch {
-    return false;
-  }
-}
-function storedLayoutIn(children) {
-  for (const child of Array.isArray(children) ? children : []) {
-    const stored = readPlexus(child?.[":block/props"] ?? child?.props);
-    if (stored && Number.isFinite(stored.x) && Number.isFinite(stored.y)) return true;
-  }
-  return false;
-}
-function autoEligibility({ plexus, nativeNodeCount = 0, storedLayout = false } = {}) {
-  if (plexus?.v === SCHEMA_VERSION) return null;
-  if (plexus?.native === true) return null;
-  if (nativeNodeCount > 0 || storedLayout) return "convert";
-  return "virtual";
-}
+init_discovery();
+init_arrow_home();
 
 // src/host/roam.js
 init_deeplink();
@@ -43225,15 +43430,15 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         } catch {
           rows = [];
         }
-        const byUid = /* @__PURE__ */ new Map();
+        const byUid2 = /* @__PURE__ */ new Map();
         const byTitle = /* @__PURE__ */ new Map();
         for (const node3 of rows) {
-          if (typeof node3?.[":block/uid"] === "string") byUid.set(node3[":block/uid"], node3);
+          if (typeof node3?.[":block/uid"] === "string") byUid2.set(node3[":block/uid"], node3);
           if (typeof node3?.[":node/title"] === "string") byTitle.set(node3[":node/title"], node3);
         }
         return entities.map((entity) => {
           if (!Array.isArray(entity)) return null;
-          return entity[0] === ":node/title" ? byTitle.get(entity[1]) || null : byUid.get(entity[1]) || null;
+          return entity[0] === ":node/title" ? byTitle.get(entity[1]) || null : byUid2.get(entity[1]) || null;
         });
       };
       const pullRefsPart = (n3) => {
@@ -43569,6 +43774,19 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         return res && typeof res === "object" ? res : null;
       } catch {
         return null;
+      }
+    },
+    // One datalog pull for many entities. A missing pull_many falls back to one pull each.
+    // Used for arrow homes: never a `:in $ [?u ...]` query.
+    pullMany(pattern, uids) {
+      const ids = [...new Set((uids || []).filter((id) => typeof id === "string" && id))];
+      if (!ids.length || typeof pattern !== "string" || pattern === "") return [];
+      const entities = ids.map((id) => eidKey(id));
+      try {
+        const res = typeof data.pull_many === "function" ? data.pull_many(pattern, entities) : entities.map((entity) => rawPull(pattern, entity));
+        return Array.isArray(res) ? res.filter(Boolean) : [];
+      } catch {
+        return [];
       }
     },
     watchBoard(uid, cb) {
@@ -46714,7 +46932,127 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
     if (highlightWatchReady) syncHighlightWatches();
   };
+  let homeCache = /* @__PURE__ */ new Map();
+  let outsideCache = /* @__PURE__ */ new Map();
+  let homeJson = "[]";
+  let outsideJson = "[]";
+  let arrowReady = false;
+  let arrowHeld = false;
+  let inPublish = false;
+  const cacheJson = (map) => {
+    const rows = [];
+    for (const [id, value] of map) rows.push([id, value]);
+    rows.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+    return JSON.stringify(rows);
+  };
+  const applyArrowCache = (target) => {
+    if (!target?.edges) return;
+    for (const edge of target.edges.values()) {
+      const from = homeCache.get(edge.from);
+      const to = homeCache.get(edge.to);
+      if (from) edge.homeFrom = from;
+      else delete edge.homeFrom;
+      if (to) edge.homeTo = to;
+      else delete edge.homeTo;
+    }
+    target.outsides = outsideCache;
+  };
+  const localHomeNode = (id) => {
+    if (!id || id === uid) return null;
+    const hit = ix().get(id);
+    if (!hit?.node || hit.node === raw) return null;
+    const parents = [];
+    let cur = hit.parent;
+    while (cur?.[UID3]) {
+      const grand = [];
+      let walk3 = ix().get(cur[UID3])?.parent;
+      while (walk3?.[UID3]) {
+        grand.push({ ":db/id": grand.length + 1 });
+        walk3 = ix().get(walk3[UID3])?.parent;
+      }
+      parents.push({
+        ":block/uid": cur[UID3],
+        ":block/string": cur[STR] ?? "",
+        ":block/props": cur[PROPS],
+        ":block/parents": grand
+      });
+      cur = ix().get(cur[UID3])?.parent;
+    }
+    return { ":block/uid": id, ":block/string": hit.node[STR] ?? "", ":block/parents": parents };
+  };
+  const refreshArrowCache = (target) => {
+    const pullMany = (pattern, ids) => {
+      let remote = [];
+      try {
+        remote = host.pullMany?.(pattern, ids) || [];
+      } catch {
+        remote = [];
+      }
+      if (!Array.isArray(remote)) remote = [];
+      if (pattern !== HOME_PULL) return remote;
+      const list = ids || [];
+      if (!list.length) return remote;
+      const merged = [];
+      const used = /* @__PURE__ */ new Set();
+      for (const id of list) {
+        const local = localHomeNode(id);
+        if (local) {
+          merged.push(local);
+          used.add(id);
+          continue;
+        }
+        const far = remote.find((node2) => (node2?.[":block/uid"] ?? node2?.uid) === id);
+        if (far) {
+          merged.push(far);
+          used.add(id);
+        }
+      }
+      for (const node2 of remote) {
+        const id = node2?.[":block/uid"] ?? node2?.uid;
+        if (id && !used.has(id)) merged.push(node2);
+      }
+      return merged.length ? merged : remote;
+    };
+    const homes = resolveArrowHomes(target, pullMany);
+    const outsides = resolveOutsideArrows(target, pullMany);
+    const nextHome = cacheJson(homes);
+    const nextOut = cacheJson(outsides);
+    let changed2 = false;
+    if (nextHome !== homeJson) {
+      homeCache = homes;
+      homeJson = nextHome;
+      changed2 = true;
+    }
+    if (nextOut !== outsideJson) {
+      outsideCache = outsides;
+      outsideJson = nextOut;
+      changed2 = true;
+    }
+    return changed2;
+  };
+  const touchOutsides = (diff, prevBoard, nextBoard) => {
+    const next = nextBoard?.outsides;
+    const prevOut = prevBoard?.outsides;
+    if (!next && !prevOut) return;
+    const seen = /* @__PURE__ */ new Set();
+    if (next) {
+      for (const [id, list] of next) {
+        seen.add(id);
+        if (JSON.stringify(prevOut?.get(id) ?? null) !== JSON.stringify(list)) diff.dirty.add(id);
+      }
+    }
+    if (prevOut) {
+      for (const id of prevOut.keys()) if (!seen.has(id)) diff.dirty.add(id);
+    }
+  };
+  const primeArrows = () => {
+    if (!board2 || arrowReady || host.boardUnverified?.(uid) === true) return;
+    refreshArrowCache(board2);
+    applyArrowCache(board2);
+    arrowReady = true;
+  };
   rebuild();
+  primeArrows();
   emitted = board2;
   let allLinks = [];
   let visibleLinks = [];
@@ -46830,20 +47168,47 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     });
   }
   const publish = () => {
-    rebuild();
-    if (!board2) return null;
-    const prev = emitted;
-    const diff = diffBoards(prev, board2);
-    emitted = board2;
-    if (diff.structural || diff.dirty.size) emit2("change", diff);
-    recomputeLinks(false);
-    const nextRefs = linkRefKey(board2);
-    if (nextRefs !== linkRefs) {
-      linkRefs = nextRefs;
-      refreshLinks();
+    if (inPublish) return null;
+    inPublish = true;
+    try {
+      rebuild();
+      if (!board2) return null;
+      applyArrowCache(board2);
+      const prev = emitted;
+      let diff = diffBoards(prev, board2);
+      if (host.boardUnverified?.(uid) === true) {
+        if (!arrowHeld) {
+          arrowHeld = true;
+          try {
+            host.onBoardVerified?.(uid, () => {
+              arrowHeld = false;
+              arrowReady = false;
+              if (!destroyed) publish();
+            });
+          } catch {
+          }
+        }
+      } else if (diff.structural || !arrowReady) {
+        if (refreshArrowCache(board2)) {
+          applyArrowCache(board2);
+          diff = diffBoards(prev, board2);
+        }
+        arrowReady = true;
+      }
+      touchOutsides(diff, prev, board2);
+      emitted = board2;
+      if (diff.structural || diff.dirty.size) emit2("change", diff);
+      recomputeLinks(false);
+      const nextRefs = linkRefKey(board2);
+      if (nextRefs !== linkRefs) {
+        linkRefs = nextRefs;
+        refreshLinks();
+      }
+      queueDependentDrops(prev, board2);
+      return diff;
+    } finally {
+      inPublish = false;
     }
-    queueDependentDrops(prev, board2);
-    return diff;
   };
   let gone = false;
   const markGone = () => {
@@ -50003,37 +50368,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       if (track2.info) track2.info.createdContainer = childContainer;
       return childContainer;
     };
-    const taken = /* @__PURE__ */ new Set();
-    const touched = [...board2.edges.values()].filter((e2) => moved.has(e2.from) || moved.has(e2.to));
+    const followed = [...board2.edges.values()].filter((e2) => moved.has(e2.from) && moved.has(e2.to));
     const snapshots = /* @__PURE__ */ new Map();
-    for (const e2 of touched) {
+    for (const e2 of followed) {
       const hit = ix().get(e2.uid);
       if (hit?.parent) {
-        snapshots.set(e2.uid, { uid: e2.uid, parent: hit.parent[UID3], order: kidsOf4(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])), string: hit.node[STR] ?? "" });
+        snapshots.set(e2.uid, { uid: e2.uid, parent: hit.parent[UID3], order: kidsOf4(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])), string: hit.node[STR] ?? "", relocated: true });
       }
     }
-    for (const e2 of touched) {
+    for (const e2 of followed) {
       const snapshot = snapshots.get(e2.uid);
       if (snapshot) track2.undoEdges?.push(snapshot);
-      if (moved.has(e2.from) && moved.has(e2.to)) {
-        if (snapshot) snapshot.relocated = true;
-        t.move(e2.uid, childEdges(), "last");
-        continue;
-      }
-      const from = moved.has(e2.from) ? boardUid : e2.from;
-      const to = moved.has(e2.to) ? boardUid : e2.to;
-      const dup = findEdge(board2, from, to);
-      const key = `${from}>${to}`;
-      if (from === to || dup && dup.uid !== e2.uid || taken.has(key)) {
-        if (snapshot) snapshot.deleted = true;
-        t.del(e2.uid);
-        continue;
-      }
-      taken.add(key);
-      const fromBlock = moved.has(e2.from) ? void 0 : e2.fromBlock;
-      const toBlock = moved.has(e2.to) ? void 0 : e2.toBlock;
-      t.props(e2.uid, edgePlexus(e2.uid, { from, to, fromSide: moved.has(e2.from) ? "auto" : e2.fromSide, toSide: moved.has(e2.to) ? "auto" : e2.toSide, fromBlock, toBlock }));
-      t.string(e2.uid, edgeStringFor(from, to, e2.dir, e2.label, fromBlock, toBlock));
+      t.move(e2.uid, childEdges(), "last");
     }
   }
   function makeSection(t, rect, title, color, adopt, lane2) {
@@ -52506,7 +52852,7 @@ function tagsForCard(item, extra = "") {
 function lensCatalog(cards) {
   const tags = [];
   const seen = /* @__PURE__ */ new Set();
-  const byUid = /* @__PURE__ */ new Map();
+  const byUid2 = /* @__PURE__ */ new Map();
   for (const card2 of cards || []) {
     if (!card2?.uid) continue;
     const list = [];
@@ -52519,15 +52865,15 @@ function lensCatalog(cards) {
         tags.push(name);
       }
     }
-    byUid.set(card2.uid, list);
+    byUid2.set(card2.uid, list);
   }
-  return { tags, byUid };
+  return { tags, byUid: byUid2 };
 }
-function lensBright(byUid, tag, focusSet = null) {
+function lensBright(byUid2, tag, focusSet = null) {
   const name = String(tag || "").trim();
   if (!name) return focusSet ? new Set(focusSet) : null;
   const bright = /* @__PURE__ */ new Set();
-  for (const [uid, tags] of byUid || []) {
+  for (const [uid, tags] of byUid2 || []) {
     if ((tags || []).includes(name)) bright.add(uid);
   }
   if (!focusSet) return bright;
@@ -54556,7 +54902,7 @@ function createInteractions({ actions, settings } = {}) {
     const movableKind = t.kind === "item" || t.kind === "section-title" || t.kind === "section-border";
     const handPrimary = state.tool === "hand" && !state.space && ev.button === 0;
     const handKeeps = handPrimary && (t.kind === "grip" || movableKind);
-    const specificHit = t.kind === "port" || t.kind === "grip" || t.kind === "edge-marker" || t.kind === "edge-end" || t.kind === "edge" || t.kind === "label" || t.kind === "link" || movableKind;
+    const specificHit = t.kind === "port" || t.kind === "grip" || t.kind === "edge-marker" || t.kind === "edge-end" || t.kind === "edge" || t.kind === "label" || t.kind === "link" || t.kind === "out-arrow" || movableKind;
     const panRequested = ev.button === 1 || state.space || state.tool === "hand" && !handKeeps;
     if (panRequested) {
       if (handPrimary && ev.shift && !specificHit) {
@@ -54584,6 +54930,9 @@ function createInteractions({ actions, settings } = {}) {
           selectEdge(t.uid);
           call("revealBlockEnd", t.uid, t.end);
         }
+        return;
+      case "out-arrow":
+        if (t.uid) call("openOutside", t.uid);
         return;
       case "edge-end": {
         const edge = t.uid ? b?.edges.get(t.uid) : null;
@@ -79436,8 +79785,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   };
   const edgeNear = (board2, edge, rects) => {
     if (!view) return true;
-    const a = rects.get(anchorUid(board2, edge.from));
-    const b = rects.get(anchorUid(board2, edge.to));
+    const a = rects.get(edgeAnchor(board2, edge.from, edge.homeFrom));
+    const b = rects.get(edgeAnchor(board2, edge.to, edge.homeTo));
     if (!a || !b) return true;
     const meets = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
     if (meets(a) || meets(b)) return true;
@@ -79489,7 +79838,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       if (!targetGeo?.mid) return null;
       const stub = { x: targetGeo.mid.x, y: targetGeo.mid.y, w: 0, h: 0 };
       const itemUid = fromEdge ? edge.to : edge.from;
-      const itemRect = rects.get(anchorUid(board2, itemUid));
+      const itemHome = fromEdge ? edge.homeTo : edge.homeFrom;
+      const itemRect = rects.get(edgeAnchor(board2, itemUid, itemHome));
       if (!itemRect) return null;
       const a = fromEdge ? stub : itemRect;
       const b = toEdge ? stub : itemRect;
@@ -79580,12 +79930,16 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
         }
       }
     }
+    if (routed.fromHome && fromClamp == null) fromClamp = "top";
+    if (routed.toHome && toClamp == null) toClamp = "top";
     const geo = edgePath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset2(board2, edge), via, fromPoint, toPoint });
+    geo.fromClamp = fromClamp;
+    geo.toClamp = toClamp;
+    geo.fromW = routed.a.w;
+    geo.toW = routed.b.w;
+    geo.fromHome = routed.fromHome || null;
+    geo.toHome = routed.toHome || null;
     if (m) {
-      geo.fromClamp = fromClamp;
-      geo.toClamp = toClamp;
-      geo.fromW = routed.a.w;
-      geo.toW = routed.b.w;
       geo.fromBlockAnchored = Boolean(fromPoint) && !m.from?.region;
       geo.toBlockAnchored = Boolean(toPoint) && !m.to?.region;
       geo.fromInner = fromReady || (fromInnerSpec ? blockInner(fromInnerSpec) : null);
@@ -79778,6 +80132,16 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     placeEnds(rec, rec.geo);
   };
   const dimmed = (e2) => Boolean(focusSet) && !(focusSet.has(e2.from) && focusSet.has(e2.to));
+  const housedEnd = (board2, edge, end) => {
+    const stored = end === "from" ? edge?.from : edge?.to;
+    const home = end === "from" ? edge?.homeFrom : edge?.homeTo;
+    if (!home?.cardUid || !board2?.items || board2.items.has(stored) || !board2.items.has(home.cardUid)) return null;
+    return home;
+  };
+  const homeWords = (home) => {
+    const title = String(home?.title || "Untitled");
+    return title.length > 22 ? `${title.slice(0, 21)}…` : title;
+  };
   const paintEdge = (board2, edge, rec, { covered, selected }) => {
     const cls = ["pxd-edge"];
     const named2 = PALETTE.includes(edge.color);
@@ -79788,7 +80152,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (edge.weight > 1) cls.push(`pxd-edge--w${edge.weight}`);
     if (selected) cls.push("pxd-edge--selected");
     if (covered) cls.push("pxd-edge--covered");
-    if (!edge.valid) cls.push("pxd-edge--invalid");
+    const fromHome = housedEnd(board2, edge, "from");
+    const toHome = housedEnd(board2, edge, "to");
+    const endLive = (uid, home) => Boolean(board2?.items?.has(uid) || board2?.edges?.has(uid) || home);
+    if (!edge.valid && !(endLive(edge.from, fromHome) && endLive(edge.to, toHome))) cls.push("pxd-edge--invalid");
     rec.from = edge.from;
     rec.to = edge.to;
     const searchOn = Boolean(searchEdges?.has(edge.uid));
@@ -79812,6 +80179,13 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     rec.dir = edge.dir;
     rec.weight = edge.weight;
     for (const end of ["from", "to"]) {
+      const home = end === "from" ? fromHome : toHome;
+      if (home) {
+        const bend = bendOf(rec, end);
+        bend.words = homeWords(home);
+        bend.g.setAttribute("data-tip-extra", bend.words);
+        continue;
+      }
       const uid = end === "from" ? edge.fromBlock : edge.toBlock;
       if (!uid) {
         if (rec.bends?.[end]) dropBend(rec, end);
@@ -79881,8 +80255,16 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     rec.dot.setAttribute("cx", String(geo.mid.x));
     rec.dot.setAttribute("cy", String(geo.mid.y));
     if (edge.fromBlock || edge.toBlock || rec.inner) placeInner(rec, edge, geo, zoom);
-    if (edge.fromBlock || edge.toBlock || rec.bends) {
+    if (edge.fromBlock || edge.toBlock || geo.fromHome || geo.toHome || rec.bends) {
       for (const end of ["from", "to"]) {
+        const home = end === "from" ? geo.fromHome : geo.toHome;
+        if (home) {
+          const bend2 = bendOf(rec, end);
+          bend2.g.removeAttribute("display");
+          if (!bend2.words) bend2.words = homeWords(home);
+          placeBend(rec, end, end === "from" ? geo.start : geo.end, (end === "from" ? geo.fromClamp : geo.toClamp) || "top", zoom, end === "from" ? geo.fromSide : geo.toSide, end === "from" ? geo.fromW : geo.toW);
+          continue;
+        }
         const anchored = end === "from" ? geo.fromBlockAnchored : geo.toBlockAnchored;
         const uid = end === "from" ? edge.fromBlock : edge.toBlock;
         if (!uid || !anchored) {
@@ -79958,7 +80340,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const waiting = /* @__PURE__ */ new Set();
   const endsReady = (board2, edge) => {
     if (typeof drawnFn !== "function") return true;
-    return Boolean(drawnFn(anchorUid(board2, edge.from)) && drawnFn(anchorUid(board2, edge.to)));
+    return Boolean(drawnFn(edgeAnchor(board2, edge.from, edge.homeFrom)) && drawnFn(edgeAnchor(board2, edge.to, edge.homeTo)));
   };
   const hideEdge = (rec) => {
     rec.g.setAttribute("display", "none");
@@ -88931,6 +89313,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
 }
 
 // src/view/fullscreen.js
+init_discovery();
 var SIDEBAR_SELECTORS = [".roam-sidebar-container", ".rm-left-sidebar", "#roam-sidebar-container"];
 var RIGHT_SIDEBAR_SELECTORS = ["#right-sidebar", ".rm-right-sidebar", '[class*="right-sidebar"]'];
 var RIGHT_INSET_COLLAPSE_PX = 8;
@@ -89063,6 +89446,7 @@ function watchRouteExit({ boardUid, onExit, win: win2 = globalThis.window } = {}
 }
 
 // src/view/board-view.js
+init_discovery();
 init_section6();
 
 // src/view/later-views.js
@@ -94003,12 +94387,12 @@ function buildBoardView(onFail, {
     if (!ref || typeof host?.blockString !== "function") return null;
     return classifyString(host.blockString(ref)).kind === "board" ? ref : null;
   };
-  const openBoard = async (uid) => {
+  const openBoard = async (uid, opts) => {
     const target = boardTargetOf(uid);
     if (!target) return;
     if (itemsR.isEditing()) await exitEdit();
     if (disposed) return;
-    if (onOpenBoard) onOpenBoard(target);
+    if (onOpenBoard) onOpenBoard(target, opts);
     else host?.openBlock?.(target);
   };
   const openOwnPage = (item) => {
@@ -97824,6 +98208,11 @@ ${url}`;
     closeQuickLook: () => quicklook.close(),
     saveView: () => saveCameraView(),
     closeOverlay: () => {
+      if (outsideMenu) {
+        closeOutsideMenu();
+        noteOverlayClosed();
+        return true;
+      }
       if (linksMenu) {
         closeLinksMenu();
         noteOverlayClosed();
@@ -97898,6 +98287,7 @@ ${url}`;
     blockTarget: (pt) => blockTargetAt(pt),
     clearBlockTarget: () => clearBlockTarget(),
     revealBlockEnd: (edgeUid, end) => revealBlockEnd(edgeUid, end),
+    openOutside: (uid) => openOutside(uid),
     updateEdge: (uid, patch) => session.updateEdge?.(uid, patch),
     commitMove: (uids, dx, dy) => session.commitMove?.(uids, dx, dy),
     commitRects: (list) => session.commitRects?.(list),
@@ -98177,10 +98567,78 @@ ${url}`;
     }
     return null;
   };
+  let outsideMenu = null;
+  const closeOutsideMenu = () => {
+    if (!outsideMenu) return;
+    const menu2 = outsideMenu;
+    outsideMenu = null;
+    try {
+      menu2.node.remove();
+    } catch {
+    }
+    try {
+      doc.removeEventListener("pointerdown", menu2.onDown, true);
+    } catch {
+    }
+    try {
+      win2.removeEventListener("keydown", menu2.onKey, true);
+    } catch {
+    }
+  };
+  const openOutside = (cardUid) => {
+    const list = board2()?.outsides?.get(cardUid) || [];
+    if (!list.length || disposed) return;
+    if (list.length === 1) {
+      closeOutsideMenu();
+      onOpenBoard?.(list[0].boardUid, { focus: list[0].otherUid });
+      return;
+    }
+    closeOutsideMenu();
+    let shell = null;
+    for (const node3 of root.querySelectorAll(".pxd-item")) {
+      if ((node3.dataset?.uid || node3.getAttribute?.("data-uid")) === cardUid) {
+        shell = node3;
+        break;
+      }
+    }
+    const node2 = doc.createElement("div");
+    node2.className = "pxd-out-menu";
+    for (const row4 of list) {
+      const button3 = doc.createElement("button");
+      button3.type = "button";
+      button3.className = "pxd-out-menu__row";
+      button3.textContent = `from ${row4.otherTitle} on ${row4.boardTitle}`;
+      button3.addEventListener("pointerdown", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        closeOutsideMenu();
+        onOpenBoard?.(row4.boardUid, { focus: row4.otherUid });
+      });
+      node2.append(button3);
+    }
+    (shell || root).append(node2);
+    const onDown = (ev) => {
+      if (node2.contains?.(ev.target)) return;
+      closeOutsideMenu();
+    };
+    const onKey = (ev) => {
+      if (ev.key !== "Escape" || isTextEntryTarget(ev.target)) return;
+      closeOutsideMenu();
+    };
+    outsideMenu = { node: node2, onDown, onKey };
+    doc.addEventListener("pointerdown", onDown, true);
+    win2.addEventListener("keydown", onKey, true);
+  };
   const revealBlockEnd = (edgeUid, end) => {
     const e2 = board2()?.edges.get(edgeUid);
     if (!e2) return false;
-    const card2 = end === "from" ? e2.from : e2.to;
+    const stored = end === "from" ? e2.from : e2.to;
+    const home = end === "from" ? e2.homeFrom : e2.homeTo;
+    if (home?.cardUid && !board2().items.has(stored)) {
+      onOpenBoard?.(home.cardUid, { focus: stored });
+      return true;
+    }
+    const card2 = stored;
     const block = end === "from" ? e2.fromBlock : e2.toBlock;
     if (!block) return false;
     if (itemsR.revealRow(card2, block)) return true;
@@ -98192,6 +98650,11 @@ ${url}`;
   const targetOf2 = (t) => {
     if (!t || typeof t.closest !== "function") return { kind: "empty" };
     if (t.closest(".pxd-chrome") || inReaderText(t)) return { kind: "chrome" };
+    const out = t.closest(".pxd-out");
+    if (out && !t.closest(".pxd-out-menu")) {
+      const owner = out.closest(".pxd-item, .pxd-section");
+      return { kind: "out-arrow", uid: owner?.dataset?.uid || owner?.getAttribute?.("data-uid") };
+    }
     const port = t.closest(".pxd-port");
     if (port) {
       const owner = port.closest(".pxd-item, .pxd-section");
@@ -100797,6 +101260,7 @@ ${url}`;
         root.classList.remove("pxd-root--fstabs");
       });
       step(() => closeLinksMenu());
+      step(() => closeOutsideMenu());
       step(() => {
         whyPop?.close();
         whyPop = null;
@@ -102758,6 +103222,7 @@ init_pdf();
 init_pdf_pin_view();
 
 // src/model/board-path.js
+init_discovery();
 init_schema();
 function blockString2(node2) {
   return String(node2?.[":block/string"] ?? node2?.string ?? "");
@@ -103468,6 +103933,7 @@ function mountOutlineRegion({ doc = globalThis.document, img, onConfirm, onCance
 }
 
 // src/feature.js
+init_discovery();
 init_guard();
 init_settings();
 init_detect();
@@ -103939,10 +104405,10 @@ async function installPlexusDiagram({
     } catch {
       times = [];
     }
-    const byUid = new Map(times.map((row4) => [row4[0], row4]));
+    const byUid2 = new Map(times.map((row4) => [row4[0], row4]));
     resurfaceRows = [];
     for (const row4 of entries) {
-      const hit = byUid.get(row4.uid);
+      const hit = byUid2.get(row4.uid);
       if (!hit || !Number.isFinite(hit[1])) continue;
       const line = String(hit[2] || "Card").split("\n")[0].slice(0, 80);
       resurfaceRows.push({ ...row4, time: hit[1], title: `${line} · ${row4.title}` });
@@ -105308,7 +105774,11 @@ async function installPlexusDiagram({
       routeUid: rec0.uid,
       autofocus,
       initialViewport: viewport2,
-      onOpenBoard: (child) => visit(owner.rec, trailFor(child, [...owner.rec.crumbs, { uid: child, title: boardTitle2(host.blockString?.(child)) }])),
+      onOpenBoard: (child, opts) => {
+        const trail = trailFor(child, [...owner.rec.crumbs, { uid: child, title: boardTitle2(host.blockString?.(child)) }]);
+        if (opts?.focus) enterNested(owner.rec, trail, opts.focus);
+        else visit(owner.rec, trail);
+      },
       onSelectTab: (uid) => {
         if (!uid) return;
         visit(owner.rec, trailFor(uid, [{ uid, title: boardTitle2(host.blockString?.(uid)) }]));
@@ -108341,6 +108811,7 @@ async function installPlexusDiagram({
 
 // src/extension.js
 init_settings();
+init_discovery();
 init_settings();
 var activeLifecycle = null;
 var ourTeardown = null;

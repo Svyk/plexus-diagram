@@ -1311,6 +1311,79 @@ function remountDiagram(t, uid) {
   t.tick();
 }
 
+// Five boards, zoomed on the leaf. Crumb index 1 is Board 2, the same index the overflow menu passes.
+const FIVE = [
+  ["boardAAA1", "Board 1", 1],
+  ["midBBB001", "Board 2", 2],
+  ["midCCC001", "Board 3", 3],
+  ["midDDD001", "Board 4", 4],
+];
+const FIVE_TITLES = ["Board 1", "Board 2", "Board 3", "Board 4", "Board 5"];
+
+function fiveBoards(t, nav = {}) {
+  t.env.ancestors = { leafEEE01: chainPull("leafEEE01", FIVE) };
+  for (const [uid, title] of FIVE) t.strings.set(uid, `{{[[diagram]]:${title}}}`);
+  t.strings.set("leafEEE01", "{{[[diagram]]:Board 5}}");
+  t.host.api.ui.mainWindow = {
+    openBlock(arg) { nav.openBlock?.(arg); },
+    openPage(arg) { nav.openPage?.(arg); },
+  };
+  addNative(t.doc, "leafEEE01");
+}
+
+function poolView(view, doc) {
+  view.suspend = () => {};
+  view.root = doc.createElement("div");
+}
+
+test("F5 an external openBlock of the zoomed board replaces the crumb view with the full path", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "midBBB001", "midCCC001", "midDDD001", "leafEEE01"] }, async (t) => {
+    fiveBoards(t);
+    await t.install();
+    t.tick();
+    assert.deepEqual(t.views[0].args.crumbs.map((c) => c.title), FIVE_TITLES);
+    t.views[0].args.onCrumb(1);
+    await settle();
+    assert.equal(t.env.win.__plexusDiagram.mounts()[0].current, "midBBB001");
+    assert.deepEqual(t.views.at(-1).args.crumbs.map((c) => c.uid), ["boardAAA1", "midBBB001"]);
+    assert.equal(t.writes.openBlock.length, 0, "a crumb click stays in place");
+    t.host.api.ui.mainWindow.openBlock({ block: { uid: "leafEEE01" } });
+    await settle();
+    const shown = t.env.win.__plexusDiagram.mounts()[0];
+    assert.equal(shown.uid, "leafEEE01");
+    assert.equal(shown.current, "leafEEE01");
+    assert.deepEqual(t.views.at(-1).args.crumbs.map((c) => c.title), FIVE_TITLES);
+    assert.equal(t.writes.openBlock.length, 0, "the page called roamAlphaAPI, not the host stub");
+  });
+});
+
+test("F5 an external openBlock wins when Roam replaces the zoomed block before the view can follow", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "midBBB001", "midCCC001", "midDDD001", "leafEEE01"] }, async (t) => {
+    let replace = false;
+    fiveBoards(t, {
+      openBlock() {
+        if (!replace) return;
+        for (const node of t.doc.querySelectorAll(".rm-diagram")) node.remove();
+      },
+    });
+    await t.install();
+    t.tick();
+    t.views[0].args.onCrumb(1);
+    await settle();
+    poolView(t.views.at(-1), t.doc);
+    remountDiagram(t, "leafEEE01");
+    assert.equal(t.env.win.__plexusDiagram.mounts()[0].current, "midBBB001", "leaving and returning keeps the in-place board");
+    replace = true;
+    t.host.api.ui.mainWindow.openBlock({ block: { uid: "leafEEE01" } });
+    t.tick();
+    addNative(t.doc, "leafEEE01");
+    t.tick();
+    await settle();
+    assert.equal(t.env.win.__plexusDiagram.mounts()[0].current, "leafEEE01");
+    assert.deepEqual(t.views.at(-1).args.crumbs.map((c) => c.title), FIVE_TITLES);
+  });
+});
+
 test("F5 a parent pull that is not the block is not cached, so the next open still finds the path", async () => {
   await withEnv({ enhanced: ["leafEEE01"] }, async (t) => {
     const chain = [

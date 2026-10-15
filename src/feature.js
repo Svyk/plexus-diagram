@@ -102,6 +102,8 @@ const MOUNT_BACKOFF_MS = [5000, 30000];
 // FAST-5. Navigation keeps this many canvases, off the document, per window.
 const KEEP_ALIVE_CAP = 2;
 const KEEP_ALIVE_MS = 300000;
+// An external openBlock/openPage is noted for this long. A later in-place crumb must not be thrown away by a stale note.
+const EXTERNAL_NAV_MS = 2000;
 // A pooled board past this many items comes back behind its snapshot (navigate).
 const BRIDGE_MIN_ITEMS = 400;
 const LEGACY_METADATA_PAGE = "plexus-diagram/metadata";
@@ -2081,13 +2083,87 @@ export async function installPlexusDiagram({
     return alive.some((entry) => entry.boardUid === rec.uid && entry.kind === kind && aliveUsable(entry));
   }
 
+  // Page code calls roamAlphaAPI directly. A crumb click does not, so the hash can stay on the zoomed
+  // board while the canvas shows an ancestor. The next open of that board has to win, including when Roam
+  // replaces the native before the in-place view can follow and the alive pool would put the ancestor back.
+  let externalNav = null;
+  function noteExternal(uid) {
+    externalNav = { uid, at: Date.now() };
+  }
+  function externalPending(uid) {
+    const hit = externalNav;
+    if (!hit || hit.uid !== uid) return false;
+    if (Date.now() - hit.at > EXTERNAL_NAV_MS) {
+      externalNav = null;
+      return false;
+    }
+    return true;
+  }
+  function takeExternal(uid) {
+    if (!externalPending(uid)) return false;
+    externalNav = null;
+    return true;
+  }
+  function followExternal(uid) {
+    if (!externalPending(uid)) return;
+    for (const rec of [...mounts.values()]) {
+      if (mounts.get(rec.native) !== rec) continue;
+      if (rec.native?.isConnected === false || rec.mountEl?.isConnected === false) continue;
+      if (isSecondaryMount(rec) || rec.uid !== uid) continue;
+      if (currentUid(rec) !== uid) visit(rec, pathFor(uid));
+      const watched = rec;
+      queueMicrotask(() => {
+        if (mounts.get(watched.native) === watched && currentUid(watched) === uid) takeExternal(uid);
+      });
+    }
+  }
+  function navTargetUid(arg, key) {
+    const node = arg?.[key];
+    if (typeof node === "string") return node.trim();
+    if (!node || typeof node !== "object") return "";
+    const uid = node.uid ?? node["block-uid"];
+    return typeof uid === "string" ? uid.trim() : "";
+  }
+  function bindExternalNav() {
+    const mw = host.api?.ui?.mainWindow;
+    if (!mw) return;
+    const bind = (name, key) => {
+      const orig = mw[name];
+      if (typeof orig !== "function" || orig.__pxdExternal) return null;
+      const wrapped = function (arg, ...rest) {
+        const uid = navTargetUid(arg, key);
+        if (uid) noteExternal(uid);
+        try {
+          return orig.call(this, arg, ...rest);
+        } finally {
+          if (uid) followExternal(uid);
+        }
+      };
+      wrapped.__pxdExternal = true;
+      mw[name] = wrapped;
+      return () => { if (mw[name] === wrapped) mw[name] = orig; };
+    };
+    const restore = [bind("openBlock", "block"), bind("openPage", "page")].filter(Boolean);
+    if (restore.length) lifecycle.add(() => { for (const off of restore) off(); });
+  }
+
   function claimAlive(rec, boardUid, native) {
     const pooled = takeAlive(boardUid, poolKind(native));
+    const pending = externalPending(boardUid);
+    const shown = pooled?.crumbs?.[pooled.crumbs.length - 1]?.uid;
+    // The pooled canvas remembers the in-place ancestor. The open asked for this board, so that memory loses.
+    if (pending && shown !== boardUid) {
+      if (pooled) disposePair(pooled.view, pooled.session, true);
+      takeExternal(boardUid);
+      return false;
+    }
     if (aliveUsable(pooled)) {
       adoptAlive(rec, pooled);
+      if (pending) takeExternal(boardUid);
       return true;
     }
     if (pooled) disposePair(pooled.view, pooled.session, true);
+    if (pending) takeExternal(boardUid);
     return false;
   }
 
@@ -4297,6 +4373,7 @@ export async function installPlexusDiagram({
     lifecycle.event(win, "roam-task-status-tags:unload", () => { statusApiSeen = null; refreshStatuses(); });
     lifecycle.add(() => { try { statusApiSeen?.removeEventListener?.("statuses", refreshStatuses); } catch { /* gone */ } });
     followStatusApi();
+    bindExternalNav();
     lifecycle.event(win, "hashchange", onHash);
     lifecycle.event(win, "popstate", onNavigate);
   }

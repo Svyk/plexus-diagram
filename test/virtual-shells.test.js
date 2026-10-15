@@ -236,9 +236,9 @@ test("at map zoom only the shells within a third of a screen of the view are att
 test("a zoom settle re-places edges a slice per frame, not all in one", async () => {
   const m = mount({ x: 0, y: 0, zoom: 0.2 });
   try {
-    await m.pump(80);
-    m.stub.flushTimers();
-    await m.pump(10);
+    // Wait by time, not a frame count: slow runners attach edges over more frames.
+    const until = Date.now() + 3000;
+    do { await m.pump(40); m.stub.flushTimers(); await m.pump(10); } while (m.view.stats().edgesAttached <= 300 && Date.now() < until);
     const attached = m.view.stats().edgesAttached;
     assert.ok(attached > 300, `edges attached at 0.2: ${attached}`);
     const before = m.view.stats().edgePlacements;

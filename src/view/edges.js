@@ -709,12 +709,12 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
           continue;
         }
       }
-      // A slice names the edges for this frame. An edge already waiting (its cards were not
-      // drawn yet) stays waiting, so flushWaiting can paint it. An edge that was never waiting
-      // is left for the frame that names it, so a 250-edge slice is not dumped into one flush.
+      // A slice names the edges for this frame. An edge with no element, or one that was hidden
+      // until its cards counted as drawn, stays waiting when this frame did not name it.
+      // Showing every newly-ready edge here dumped a zoom into overview into one task.
       const fresh = !rec;
       const wasHidden = Boolean(rec && !rec.parked && rec.g.getAttribute("display") === "none");
-      if (!rec && dirty && !dirty.has(edge.uid)) continue;
+      if (dirty && !dirty.has(edge.uid) && (fresh || wasHidden)) continue;
       waiting.delete(edge.uid);
       if (fresh || wasHidden || !dirty || dirty.has(edge.uid) || rec.stale) showEdge(board, edge, rects, zoom, coveredEdges, selection);
     }
@@ -780,6 +780,18 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       if (!endsReady(board, edge)) {
         waiting.add(edge.uid);
         if (rec && !rec.parked) hideEdge(rec);
+        continue;
+      }
+      // Map zoom does not treat a cover box as drawn, so a zoom into overview can make the
+      // whole waiting set ready at once. Leave those for the sliced render. A far one is parked
+      // so flushWaiting does not walk it on every shell.
+      if (waiting.has(edge.uid)) {
+        const pinnedWait = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
+        const waitNear = pinnedWait || (rec && !rec.parked ? !edgeFar(board, edge, rects) : edgeNear(board, edge, rects));
+        if (!waitNear) {
+          waiting.delete(edge.uid);
+          if (rec) parkEdge(rec);
+        }
         continue;
       }
       waiting.delete(edge.uid);

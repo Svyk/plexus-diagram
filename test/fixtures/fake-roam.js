@@ -1,6 +1,8 @@
 // In-memory fake of window.roamAlphaAPI for session and view tests.
 // API: createFakeRoam(opts) -> fake. See the header of each section.
 
+import { HOME_PULL, REFS_PULL } from "../../src/model/arrow-home.js";
+
 const colonKeys = (v) => {
   if (Array.isArray(v)) return v.map(colonKeys);
   if (v && typeof v === "object") {
@@ -374,7 +376,46 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
         }];
       }
     }
+    // Arrow homes ask for parents by this exact pattern. A broader board pull must not grow parents.
+    if (out && String(pattern) === HOME_PULL) {
+      out[":block/parents"] = topUid(out[":block/uid"]).slice(1).map(parentNode).filter(Boolean);
+    }
+    // Arrows that mention a card, for the quiet badge on a nested board. Same exact-pattern rule.
+    if (out && String(pattern) === REFS_PULL) {
+      const uid = out[":block/uid"];
+      const refs = [];
+      for (const b of blocks.values()) {
+        const plexus = b.props?.plexus;
+        if (plexus?.type !== "edge" || (plexus.from !== uid && plexus.to !== uid)) continue;
+        refs.push({
+          ":db/id": b.eid,
+          ":block/uid": b.uid,
+          ":block/string": b.string ?? "",
+          ":block/props": colonKeys(b.props || {}),
+          ":block/parents": topUid(b.uid).slice(1).map(parentNode).filter(Boolean),
+        });
+      }
+      out[":block/_refs"] = refs;
+    }
     return out;
+  }
+
+  function parentNode(uid) {
+    const b = blocks.get(uid);
+    const p = pages.get(uid);
+    const node = b || p;
+    if (!node) return null;
+    const props = b?.props;
+    return {
+      ":db/id": node.eid,
+      ":block/uid": uid,
+      ":block/string": b?.string ?? p?.title ?? "",
+      ...(props && Object.keys(props).length ? { ":block/props": colonKeys(props) } : {}),
+      ":block/parents": topUid(uid).slice(1).map((u) => {
+        const n = blocks.get(u) || pages.get(u);
+        return n ? { ":db/id": n.eid } : null;
+      }).filter(Boolean),
+    };
   }
 
   // ---- watches ----

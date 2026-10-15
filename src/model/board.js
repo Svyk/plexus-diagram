@@ -479,16 +479,34 @@ export function displayRects(board, stored) {
   return out;
 }
 
-// Endpoints after collapse. Null when both ends land on the same visible item (no loop on the section).
+// The visible item an end attaches to. A card on this board sticks to itself (a stored home is ignored,
+// so moving the card back out draws the arrow at the card again). A card that lives inside a board card
+// on this board sticks to that board card, or to the section it is folded into.
+export function edgeAnchor(board, uid, home) {
+  if (board?.items?.has(uid)) return anchorUid(board, uid);
+  const card = home?.cardUid;
+  if (card && board?.items?.has(card)) return anchorUid(board, card);
+  return uid;
+}
+
+// Endpoints after collapse. Null when both ends land on the same visible item (no loop on the section
+// or on a board card that holds one end and is the other end).
 export function routedEdge(board, edge, rects) {
   if (!board || !edge) return null;
-  const from = anchorUid(board, edge.from);
-  const to = anchorUid(board, edge.to);
+  const fromOn = board.items.has(edge.from);
+  const toOn = board.items.has(edge.to);
+  const fromHome = !fromOn && edge.homeFrom?.cardUid ? edge.homeFrom : null;
+  const toHome = !toOn && edge.homeTo?.cardUid ? edge.homeTo : null;
+  const from = edgeAnchor(board, edge.from, fromHome);
+  const to = edgeAnchor(board, edge.to, toHome);
   if (!from || !to || from === to) return null;
   const a = rects?.get(from);
   const b = rects?.get(to);
   if (!a || !b) return null;
-  return { from, to, a, b };
+  const out = { from, to, a, b };
+  if (fromHome && anchorUid(board, fromHome.cardUid) === from) out.fromHome = fromHome;
+  if (toHome && anchorUid(board, toHome.cardUid) === to) out.toHome = toHome;
+  return out;
 }
 
 export function worldRects(board) {

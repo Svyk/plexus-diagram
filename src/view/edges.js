@@ -3,7 +3,7 @@
 // group (never var() in presentation attributes), and only edges touching moving items are
 // recomputed during a drag.
 
-import { anchorUid, routedEdge } from "../model/board.js";
+import { edgeAnchor, routedEdge } from "../model/board.js";
 import { edgeMayTarget, regionInnerEnd } from "../model/endpoints.js";
 import { arrowHeadPath, arrowSize, blockAnchor, blockInner, center, edgePath, screenPx, sidePoint } from "../model/geometry.js";
 import { routeAround } from "../model/section6.js";
@@ -101,8 +101,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   };
   const edgeNear = (board, edge, rects) => {
     if (!view) return true;
-    const a = rects.get(anchorUid(board, edge.from));
-    const b = rects.get(anchorUid(board, edge.to));
+    const a = rects.get(edgeAnchor(board, edge.from, edge.homeFrom));
+    const b = rects.get(edgeAnchor(board, edge.to, edge.homeTo));
     if (!a || !b) return true;
     const meets = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
     if (meets(a) || meets(b)) return true;
@@ -156,7 +156,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       if (!targetGeo?.mid) return null;
       const stub = { x: targetGeo.mid.x, y: targetGeo.mid.y, w: 0, h: 0 };
       const itemUid = fromEdge ? edge.to : edge.from;
-      const itemRect = rects.get(anchorUid(board, itemUid));
+      const itemHome = fromEdge ? edge.homeTo : edge.homeFrom;
+      const itemRect = rects.get(edgeAnchor(board, itemUid, itemHome));
       if (!itemRect) return null;
       const a = fromEdge ? stub : itemRect;
       const b = toEdge ? stub : itemRect;
@@ -247,8 +248,18 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         }
       }
     }
+    // A card that lives inside a board card on this board enters that card the way a block arrow does:
+    // a pill on the board card's edge, labelled with the moved card. No inner segment into the card.
+    if (routed.fromHome && fromClamp == null) fromClamp = "top";
+    if (routed.toHome && toClamp == null) toClamp = "top";
     const geo = edgePath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset(board, edge), via, fromPoint, toPoint });
-    if (m) { geo.fromClamp = fromClamp; geo.toClamp = toClamp; geo.fromW = routed.a.w; geo.toW = routed.b.w; geo.fromBlockAnchored = Boolean(fromPoint) && !m.from?.region; geo.toBlockAnchored = Boolean(toPoint) && !m.to?.region; geo.fromInner = fromReady || (fromInnerSpec ? blockInner(fromInnerSpec) : null); geo.toInner = toReady || (toInnerSpec ? blockInner(toInnerSpec) : null); }
+    geo.fromClamp = fromClamp;
+    geo.toClamp = toClamp;
+    geo.fromW = routed.a.w;
+    geo.toW = routed.b.w;
+    geo.fromHome = routed.fromHome || null;
+    geo.toHome = routed.toHome || null;
+    if (m) { geo.fromBlockAnchored = Boolean(fromPoint) && !m.from?.region; geo.toBlockAnchored = Boolean(toPoint) && !m.to?.region; geo.fromInner = fromReady || (fromInnerSpec ? blockInner(fromInnerSpec) : null); geo.toInner = toReady || (toInnerSpec ? blockInner(toInnerSpec) : null); }
     return geo;
   };
 
@@ -445,6 +456,18 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
 
   const dimmed = (e) => Boolean(focusSet) && !(focusSet.has(e.from) && focusSet.has(e.to));
 
+  // The board card a missing end is drawn to. Null when the stored card is itself on this board.
+  const housedEnd = (board, edge, end) => {
+    const stored = end === "from" ? edge?.from : edge?.to;
+    const home = end === "from" ? edge?.homeFrom : edge?.homeTo;
+    if (!home?.cardUid || !board?.items || board.items.has(stored) || !board.items.has(home.cardUid)) return null;
+    return home;
+  };
+  const homeWords = (home) => {
+    const title = String(home?.title || "Untitled");
+    return title.length > 22 ? `${title.slice(0, 21)}\u2026` : title;
+  };
+
   const paintEdge = (board, edge, rec, { covered, selected }) => {
     const cls = ["pxd-edge"];
     const named = PALETTE.includes(edge.color);
@@ -455,7 +478,12 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     if (edge.weight > 1) cls.push(`pxd-edge--w${edge.weight}`);
     if (selected) cls.push("pxd-edge--selected");
     if (covered) cls.push("pxd-edge--covered");
-    if (!edge.valid) cls.push("pxd-edge--invalid");
+    const fromHome = housedEnd(board, edge, "from");
+    const toHome = housedEnd(board, edge, "to");
+    const endLive = (uid, home) => Boolean(board?.items?.has(uid) || board?.edges?.has(uid) || home);
+    // A resolved home is drawn, so it is not the red missing-end stroke. The stored flag stays false:
+    // focus mode and export still treat the endpoint as off this board.
+    if (!edge.valid && !(endLive(edge.from, fromHome) && endLive(edge.to, toHome))) cls.push("pxd-edge--invalid");
     rec.from = edge.from;
     rec.to = edge.to;
     const searchOn = Boolean(searchEdges?.has(edge.uid));
@@ -479,6 +507,13 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     rec.dir = edge.dir;
     rec.weight = edge.weight;
     for (const end of ["from", "to"]) {
+      const home = end === "from" ? fromHome : toHome;
+      if (home) {
+        const bend = bendOf(rec, end);
+        bend.words = homeWords(home);
+        bend.g.setAttribute("data-tip-extra", bend.words);
+        continue;
+      }
       const uid = end === "from" ? edge.fromBlock : edge.toBlock;
       if (!uid) { if (rec.bends?.[end]) dropBend(rec, end); continue; }
       bendOf(rec, end);
@@ -546,8 +581,16 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     rec.dot.setAttribute("cx", String(geo.mid.x));
     rec.dot.setAttribute("cy", String(geo.mid.y));
     if (edge.fromBlock || edge.toBlock || rec.inner) placeInner(rec, edge, geo, zoom);
-    if (edge.fromBlock || edge.toBlock || rec.bends) {
+    if (edge.fromBlock || edge.toBlock || geo.fromHome || geo.toHome || rec.bends) {
       for (const end of ["from", "to"]) {
+        const home = end === "from" ? geo.fromHome : geo.toHome;
+        if (home) {
+          const bend = bendOf(rec, end);
+          bend.g.removeAttribute("display");
+          if (!bend.words) bend.words = homeWords(home);
+          placeBend(rec, end, end === "from" ? geo.start : geo.end, (end === "from" ? geo.fromClamp : geo.toClamp) || "top", zoom, end === "from" ? geo.fromSide : geo.toSide, end === "from" ? geo.fromW : geo.toW);
+          continue;
+        }
         const anchored = end === "from" ? geo.fromBlockAnchored : geo.toBlockAnchored;
         const uid = end === "from" ? edge.fromBlock : edge.toBlock;
         if (!uid || !anchored) { if (rec.bends?.[end]) rec.bends[end].g.setAttribute("display", "none"); continue; }
@@ -622,7 +665,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   const waiting = new Set();
   const endsReady = (board, edge) => {
     if (typeof drawnFn !== "function") return true;
-    return Boolean(drawnFn(anchorUid(board, edge.from)) && drawnFn(anchorUid(board, edge.to)));
+    return Boolean(drawnFn(edgeAnchor(board, edge.from, edge.homeFrom)) && drawnFn(edgeAnchor(board, edge.to, edge.homeTo)));
   };
   const hideEdge = (rec) => {
     rec.g.setAttribute("display", "none");

@@ -78,6 +78,7 @@ import { sameSize as sameSizeRects, spaceOut as spaceOutRects, tidyRects } from 
 import { coveredBy, filterLinks, linksQuery, reduceLinks } from "./model/links.js";
 import { isQueryString } from "./model/query.js";
 import { autoEligibility, storedLayoutIn } from "./discovery.js";
+import { HOME_PULL, resolveArrowHomes, resolveOutsideArrows } from "./model/arrow-home.js";
 import { createEchoLedger, createWriteQueue } from "./host/roam.js";
 import { sharedBgBudget } from "./bg-budget.js";
 import { notedSpeedFlags } from "./settings.js";
@@ -542,7 +543,109 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     if (board) for (const item of board.items.values()) if (item.kind === "highlight" && item.target?.uid) knownHighlights.add(item.target.uid);
     if (highlightWatchReady) syncHighlightWatches();
   };
+
+  // Where a card that left this board still lives, and which outside arrows a nested card still has.
+  // One pull per structural publish. A keystroke reuses the maps. An unverified board keeps the last maps
+  // and never deletes an arrow because a pull has not happened.
+  let homeCache = new Map();
+  let outsideCache = new Map();
+  let homeJson = "[]";
+  let outsideJson = "[]";
+  let arrowReady = false;
+  let arrowHeld = false;
+  let inPublish = false;
+  const cacheJson = (map) => {
+    const rows = [];
+    for (const [id, value] of map) rows.push([id, value]);
+    rows.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+    return JSON.stringify(rows);
+  };
+  const applyArrowCache = (target) => {
+    if (!target?.edges) return;
+    for (const edge of target.edges.values()) {
+      const from = homeCache.get(edge.from);
+      const to = homeCache.get(edge.to);
+      if (from) edge.homeFrom = from;
+      else delete edge.homeFrom;
+      if (to) edge.homeTo = to;
+      else delete edge.homeTo;
+    }
+    target.outsides = outsideCache;
+  };
+  // A card this board already holds (just moved into a board card) answers from that tree. Roam's pull
+  // still has the old parent until the write lands. The board's own parents are not in the tree.
+  const localHomeNode = (id) => {
+    if (!id || id === uid) return null;
+    const hit = ix().get(id);
+    if (!hit?.node || hit.node === raw) return null;
+    const parents = [];
+    let cur = hit.parent;
+    while (cur?.[UID]) {
+      const grand = [];
+      let walk = ix().get(cur[UID])?.parent;
+      while (walk?.[UID]) { grand.push({ ":db/id": grand.length + 1 }); walk = ix().get(walk[UID])?.parent; }
+      parents.push({
+        ":block/uid": cur[UID],
+        ":block/string": cur[STR] ?? "",
+        ":block/props": cur[PROPS],
+        ":block/parents": grand,
+      });
+      cur = ix().get(cur[UID])?.parent;
+    }
+    return { ":block/uid": id, ":block/string": hit.node[STR] ?? "", ":block/parents": parents };
+  };
+  const refreshArrowCache = (target) => {
+    const pullMany = (pattern, ids) => {
+      let remote = [];
+      try { remote = host.pullMany?.(pattern, ids) || []; } catch { remote = []; }
+      if (!Array.isArray(remote)) remote = [];
+      if (pattern !== HOME_PULL) return remote;
+      const list = ids || [];
+      if (!list.length) return remote;
+      const merged = [];
+      const used = new Set();
+      for (const id of list) {
+        const local = localHomeNode(id);
+        if (local) { merged.push(local); used.add(id); continue; }
+        const far = remote.find((node) => (node?.[":block/uid"] ?? node?.uid) === id);
+        if (far) { merged.push(far); used.add(id); }
+      }
+      for (const node of remote) {
+        const id = node?.[":block/uid"] ?? node?.uid;
+        if (id && !used.has(id)) merged.push(node);
+      }
+      return merged.length ? merged : remote;
+    };
+    const homes = resolveArrowHomes(target, pullMany);
+    const outsides = resolveOutsideArrows(target, pullMany);
+    const nextHome = cacheJson(homes);
+    const nextOut = cacheJson(outsides);
+    let changed = false;
+    if (nextHome !== homeJson) { homeCache = homes; homeJson = nextHome; changed = true; }
+    if (nextOut !== outsideJson) { outsideCache = outsides; outsideJson = nextOut; changed = true; }
+    return changed;
+  };
+  const touchOutsides = (diff, prevBoard, nextBoard) => {
+    const next = nextBoard?.outsides;
+    const prevOut = prevBoard?.outsides;
+    if (!next && !prevOut) return;
+    const seen = new Set();
+    if (next) {
+      for (const [id, list] of next) {
+        seen.add(id);
+        if (JSON.stringify(prevOut?.get(id) ?? null) !== JSON.stringify(list)) diff.dirty.add(id);
+      }
+    }
+    if (prevOut) for (const id of prevOut.keys()) if (!seen.has(id)) diff.dirty.add(id);
+  };
+  const primeArrows = () => {
+    if (!board || arrowReady || host.boardUnverified?.(uid) === true) return;
+    refreshArrowCache(board);
+    applyArrowCache(board);
+    arrowReady = true;
+  };
   rebuild();
+  primeArrows();
   emitted = board;
 
   let allLinks = [];
@@ -665,20 +768,46 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   }
 
   const publish = () => {
-    rebuild();
-    if (!board) return null;
-    const prev = emitted;
-    const diff = diffBoards(prev, board);
-    emitted = board;
-    if (diff.structural || diff.dirty.size) emit("change", diff);
-    recomputeLinks(false);
-    const nextRefs = linkRefKey(board);
-    if (nextRefs !== linkRefs) {
-      linkRefs = nextRefs;
-      refreshLinks();
+    if (inPublish) return null;
+    inPublish = true;
+    try {
+      rebuild();
+      if (!board) return null;
+      applyArrowCache(board);
+      const prev = emitted;
+      let diff = diffBoards(prev, board);
+      if (host.boardUnverified?.(uid) === true) {
+        if (!arrowHeld) {
+          arrowHeld = true;
+          try {
+            host.onBoardVerified?.(uid, () => {
+              arrowHeld = false;
+              arrowReady = false;
+              if (!destroyed) publish();
+            });
+          } catch { /* listener */ }
+        }
+      } else if (diff.structural || !arrowReady) {
+        if (refreshArrowCache(board)) {
+          applyArrowCache(board);
+          diff = diffBoards(prev, board);
+        }
+        arrowReady = true;
+      }
+      touchOutsides(diff, prev, board);
+      emitted = board;
+      if (diff.structural || diff.dirty.size) emit("change", diff);
+      recomputeLinks(false);
+      const nextRefs = linkRefKey(board);
+      if (nextRefs !== linkRefs) {
+        linkRefs = nextRefs;
+        refreshLinks();
+      }
+      queueDependentDrops(prev, board);
+      return diff;
+    } finally {
+      inPublish = false;
     }
-    queueDependentDrops(prev, board);
-    return diff;
   };
 
   // The board block itself vanished (deleted, or undone away): tell the owner once so it can pop out.

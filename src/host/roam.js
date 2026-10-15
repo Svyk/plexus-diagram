@@ -2362,6 +2362,22 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       }
     },
 
+    // One datalog pull for many entities. A missing pull_many falls back to one pull each.
+    // Used for arrow homes: never a `:in $ [?u ...]` query.
+    pullMany(pattern, uids) {
+      const ids = [...new Set((uids || []).filter((id) => typeof id === "string" && id))];
+      if (!ids.length || typeof pattern !== "string" || pattern === "") return [];
+      const entities = ids.map((id) => eidKey(id));
+      try {
+        const res = typeof data.pull_many === "function"
+          ? data.pull_many(pattern, entities)
+          : entities.map((entity) => rawPull(pattern, entity));
+        return Array.isArray(res) ? res.filter(Boolean) : [];
+      } catch {
+        return [];
+      }
+    },
+
     watchBoard(uid, cb) {
       const covers = boardCovers.get(uid) === true;
       if (!covers && bigBoards.has(uid) && splitWatchOn()) return watchSplit(uid, cb);

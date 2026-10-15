@@ -17022,10 +17022,35 @@ function clipTitle(text4) {
   if (!t) return "Untitled";
   return t.length > 22 ? `${t.slice(0, 21)}…` : t;
 }
-function cardTitleOf(node2) {
-  const text4 = nodeString(node2);
-  if (isDiagramString2(text4)) return clipTitle(parseBoardTitle(text4) || firstLine(text4) || "Untitled");
-  return clipTitle(firstLine(text4) || plainText(text4, 80) || "Untitled");
+function titleFromString(text4, resolve) {
+  const raw = String(text4 || "").trim();
+  if (isDiagramString2(raw)) return clipTitle(parseBoardTitle(raw) || firstLine(raw) || "Untitled");
+  const ref = BLOCK_ONLY.exec(raw);
+  if (ref && typeof resolve === "function") {
+    let target = "";
+    try {
+      target = resolve(ref[1]);
+    } catch {
+      target = "";
+    }
+    if (typeof target === "string" && target.trim() && !BLOCK_ONLY.test(target.trim())) {
+      return titleFromString(target, null);
+    }
+  }
+  return clipTitle(firstLine(raw) || plainText(raw, 80) || "Untitled");
+}
+function cardTitleOf(node2, resolve) {
+  return titleFromString(nodeString(node2), resolve);
+}
+function shownEdgeLabel(label, homes) {
+  const custom = plainText(String(label ?? ""), 80);
+  if (custom) return clipTitle(custom);
+  const list = Array.isArray(homes) ? homes : [];
+  for (const home of list) {
+    const title = String(home?.title || "").trim();
+    if (title) return clipTitle(title);
+  }
+  return "";
 }
 function unresolvedUids(board2) {
   const out = [];
@@ -17039,7 +17064,7 @@ function unresolvedUids(board2) {
   }
   return out;
 }
-function homeOf(board2, node2) {
+function homeOf(board2, node2, resolve) {
   if (!board2?.items || !node2) return null;
   const hits = [];
   for (const parent of parentNodes(node2)) {
@@ -17052,7 +17077,7 @@ function homeOf(board2, node2) {
   hits.sort((a, b) => b.depth - a.depth);
   const shown = hits.find((hit) => anchorUid(board2, hit.uid) === hit.uid);
   const best = shown || hits[0];
-  return { cardUid: best.uid, title: cardTitleOf(node2) };
+  return { cardUid: best.uid, title: cardTitleOf(node2, resolve) };
 }
 function boardIsNested(node2) {
   for (const parent of parentNodes(node2)) {
@@ -17079,14 +17104,14 @@ function byUid(nodes) {
   }
   return map;
 }
-function resolveArrowHomes(board2, pullMany) {
+function resolveArrowHomes(board2, pullMany, resolve) {
   const uids = unresolvedUids(board2);
   const out = /* @__PURE__ */ new Map();
   if (!uids.length) return out;
   const found = byUid(pullNodes(pullMany, HOME_PULL, uids));
   for (const uid of uids) {
     const node2 = found.get(uid);
-    out.set(uid, node2 ? homeOf(board2, node2) : null);
+    out.set(uid, node2 ? homeOf(board2, node2, resolve) : null);
   }
   return out;
 }
@@ -17104,7 +17129,7 @@ function outsidePlace(node2) {
   if (!best) return null;
   return { uid: nodeUid(best), title: parseBoardTitle(nodeString(best)) || UNTITLED_BOARD };
 }
-function resolveOutsideArrows(board2, pullMany) {
+function resolveOutsideArrows(board2, pullMany, resolve) {
   const out = /* @__PURE__ */ new Map();
   if (!board2?.uid || !board2.items) return out;
   const self = byUid(pullNodes(pullMany, HOME_PULL, [board2.uid])).get(board2.uid);
@@ -17146,7 +17171,7 @@ function resolveOutsideArrows(board2, pullMany) {
     list.push({
       edgeUid: row4.edgeUid,
       otherUid: row4.otherUid,
-      otherTitle: cardTitleOf(node2),
+      otherTitle: cardTitleOf(node2, resolve),
       boardUid: place3.uid,
       boardTitle: place3.title
     });
@@ -17160,7 +17185,7 @@ function outsideBadgeText(n3) {
 function outsideTip(list) {
   return (list || []).map((row4) => `from ${row4.otherTitle} on ${row4.boardTitle}`).join("\n");
 }
-var HOME_PULL, REFS_PULL;
+var HOME_PULL, REFS_PULL, BLOCK_ONLY;
 var init_arrow_home = __esm({
   "src/model/arrow-home.js"() {
     init_discovery();
@@ -17168,6 +17193,7 @@ var init_arrow_home = __esm({
     init_schema();
     HOME_PULL = "[:block/uid :block/string {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]";
     REFS_PULL = "[:block/uid {(limit :block/_refs nil) [:block/uid :block/string :block/props {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]}]";
+    BLOCK_ONLY = /^\(\(([\w-]+)\)\)$/;
   }
 });
 
@@ -47013,8 +47039,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       }
       return merged.length ? merged : remote;
     };
-    const homes = resolveArrowHomes(target, pullMany);
-    const outsides = resolveOutsideArrows(target, pullMany);
+    const readTitle = (id) => {
+      try {
+        return host.blockString?.(id);
+      } catch {
+        return null;
+      }
+    };
+    const homes = resolveArrowHomes(target, pullMany, readTitle);
+    const outsides = resolveOutsideArrows(target, pullMany, readTitle);
     const nextHome = cacheJson(homes);
     const nextOut = cacheJson(outsides);
     let changed2 = false;
@@ -54943,8 +54976,13 @@ function createInteractions({ actions, settings } = {}) {
         return;
       }
       case "edge":
-      case "label":
         if (t.uid) selectEdge(t.uid);
+        return;
+      case "label":
+        if (t.uid) {
+          selectEdge(t.uid);
+          begin({ kind: "label", edge: t.uid, start: ev.screen });
+        }
         return;
       case "link":
         if (t.key || t.uid) selectLink(t.key || t.uid);
@@ -55095,6 +55133,10 @@ function createInteractions({ actions, settings } = {}) {
     }
     const sdx = ev.screen.x - (g.start.x ?? 0);
     const sdy = ev.screen.y - (g.start.y ?? 0);
+    if (g.kind === "label") {
+      if (!g.moved && Math.hypot(sdx, sdy) >= DRAG_THRESHOLD_PX) g.moved = true;
+      return;
+    }
     if (g.kind === "pan") {
       if (!g.moved && Math.hypot(sdx, sdy) < DRAG_THRESHOLD_PX) return;
       g.moved = true;
@@ -55234,6 +55276,14 @@ function createInteractions({ actions, settings } = {}) {
       case "pan":
         if (!g.moved && g.clearOnClick) clearSelection();
         break;
+      case "label": {
+        if (!g.moved && g.edge) {
+          const edge = b?.edges.get(g.edge);
+          const end2 = edge && edge.homeFrom?.cardUid && !b.items.has(edge.from) ? "from" : edge && edge.homeTo?.cardUid && !b.items.has(edge.to) ? "to" : null;
+          if (end2) call("revealBlockEnd", g.edge, end2);
+        }
+        break;
+      }
       case "marquee":
       case "lasso":
         if (!g.moved && !g.shift) clearSelection();
@@ -79665,6 +79715,7 @@ function editorKeyAction({
 }
 
 // src/view/edges.js
+init_arrow_home();
 init_board();
 init_endpoints();
 init_geometry();
@@ -80171,11 +80222,12 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (hex) rec.g.style.setProperty("--pxd-line", hex);
     else rec.g.style.removeProperty("--pxd-line");
     const wasClear = Boolean(rec.ends) && rec.label.classList.contains("pxd-label--clear");
-    rec.label.className = `pxd-label${named2 ? ` pxd-c-${edge.color}` : ""}${edge.label || edge.why ? "" : " pxd-label--empty"}${edge.why ? " pxd-label--why" : ""}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
+    const words = shownEdgeLabel(edge.label, [fromHome, toHome]);
+    rec.label.className = `pxd-label${named2 ? ` pxd-c-${edge.color}` : ""}${words || edge.why ? "" : " pxd-label--empty"}${edge.why ? " pxd-label--why" : ""}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
     rec.label.title = edge.why ? whyTip(edge.why) : "";
     if (wasClear) rec.label.classList.add("pxd-label--clear");
     rec.label.style.color = hex || "";
-    if (editingLabel?.uid !== edge.uid) rec.label.textContent = edge.label || "";
+    if (editingLabel?.uid !== edge.uid) rec.label.textContent = words;
     rec.dir = edge.dir;
     rec.weight = edge.weight;
     for (const end of ["from", "to"]) {
@@ -80384,7 +80436,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       }
       const fresh = !rec;
       const wasHidden = Boolean(rec && !rec.parked && rec.g.getAttribute("display") === "none");
-      if (!rec && dirty && !dirty.has(edge.uid)) continue;
+      if (dirty && !dirty.has(edge.uid) && (fresh || wasHidden)) continue;
       waiting.delete(edge.uid);
       if (fresh || wasHidden || !dirty || dirty.has(edge.uid) || rec.stale) showEdge(board2, edge, rects, zoom, coveredEdges, selection);
     }
@@ -80450,6 +80502,15 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       if (!endsReady(board2, edge)) {
         waiting.add(edge.uid);
         if (rec && !rec.parked) hideEdge(rec);
+        continue;
+      }
+      if (waiting.has(edge.uid)) {
+        const pinnedWait = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
+        const waitNear = pinnedWait || (rec && !rec.parked ? !edgeFar(board2, edge, rects) : edgeNear(board2, edge, rects));
+        if (!waitNear) {
+          waiting.delete(edge.uid);
+          if (rec) parkEdge(rec);
+        }
         continue;
       }
       waiting.delete(edge.uid);
@@ -94020,7 +94081,12 @@ function buildBoardView(onFail, {
     underlayDrawn = false;
   };
   let coverUids = /* @__PURE__ */ new Set();
-  const endpointReady = (uid) => Boolean(uid && (itemsR.shellOf?.(uid) || coverUids.has(uid)));
+  const endpointReady = (uid) => {
+    if (!uid) return false;
+    const el3 = itemsR.shellOf?.(uid);
+    if (el3?.isConnected) return true;
+    return tier === "overview" && coverUids.has(uid);
+  };
   paintOverviewCover = () => {
     if (disposed || underlayDrawn) return;
     try {
@@ -98709,7 +98775,7 @@ ${url}`;
     return { kind: "empty" };
   };
   const END_GESTURE = /* @__PURE__ */ new Set(["edge-end", "connect"]);
-  const NO_END_GESTURE = /* @__PURE__ */ new Set(["pan", "marquee", "move", "lasso", "resize", "place", "section-draw", "board-draw", "region-end", "region-start"]);
+  const NO_END_GESTURE = /* @__PURE__ */ new Set(["pan", "marquee", "move", "lasso", "resize", "place", "section-draw", "board-draw", "region-end", "region-start", "label"]);
   const edgeEndWanted = (type, event) => {
     const kind = ctl.gestureKind();
     if (NO_END_GESTURE.has(kind)) return false;

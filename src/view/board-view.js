@@ -6948,7 +6948,7 @@ function buildBoardView(onFail, {
   const paintTabStrip = (tabs, current) => {
     // P32-6: one tab is just the board you are on. The strip shows from two tabs up; the list,
     // its persistence and Cmd+1..9 do not depend on the strip being painted.
-    if (!isFullscreen || !Array.isArray(tabs) || tabs.length < 2) {
+    if (!isFullscreen || setting("show-board-trail", false) !== true || !Array.isArray(tabs) || tabs.length < 2) {
       dropTabStrip();
       root.classList.remove("pxd-root--fstabs");
       root.style.setProperty("--pxd-tabs-h", "0px");
@@ -9629,11 +9629,13 @@ function buildBoardView(onFail, {
       // styles and re-placed every edge (0.5 s on a crumb back to the PhD main board).
       if (next === settingsRef) return;
       const minimapBefore = setting("show-minimap", true) !== false;
+      const trailBefore = setting("show-board-trail", false) === true;
       const opensBefore = trackOpensOn();
       const interopBefore = readSetting("interop") !== false;
       const coverBefore = readSetting("pdf-cover");
       const warmBefore = coverWarmOn();
       settingsRef = next;
+      if ((setting("show-board-trail", false) === true) !== trailBefore) syncFullscreenTabs();
       applyPdfDark();
       if (readSetting("pdf-cover") !== coverBefore) {
         forgetCovers();

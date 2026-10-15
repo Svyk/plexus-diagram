@@ -55,7 +55,7 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
   assert.deepEqual(settingIds.sort(), Object.keys(settingsDefaults()).sort());
   assert.deepEqual(settingIds.sort(), [
     "attr-styles", "collapse-outline", "default-card-height", "default-card-look", "default-card-width", "disable-on-mobile", "enable-shortcuts", "enabled",
-    "controls-position", "fullscreen-on-zoom", "graph-links", "grid", "show-minimap", "show-version-badge", "snap-grid", "snap-guides", "wheel",
+    "controls-position", "fullscreen-on-zoom", "graph-links", "grid", "show-minimap", "show-board-trail", "show-version-badge", "snap-grid", "snap-guides", "wheel",
     "auto-fit-sections", "board-tone", "map-zoom", "motion", "show-card-badges", "show-palette", "space-out",
     "enter-in-card",
     "toolbar-layout", "dock-position", "dock-style", "dock-labels", "chrome-density", "dock-options",

@@ -262,6 +262,92 @@ test("clicking the outer marker opens the board centred on the moved card", asyn
   } finally { restore(); }
 });
 
+function seedLabels(fake) {
+  fake.seedPage({
+    title: "Scratch",
+    uid: "pgScratch1",
+    children: [{ uid: "t072313cT", string: "Target title" }],
+  });
+  fake.seedBoard({
+    uid: "b1",
+    string: "{{[[diagram]]:Outer}}",
+    props: { plexus: { v: 2 } },
+    children: [
+      { uid: "x072313cA", string: "Alpha", props: { plexus: { x: 100, y: 100, w: 200, h: 100 } } },
+      { uid: "p072313cP", string: "[[Alpha Page]]", props: { plexus: { x: 100, y: 240, w: 200, h: 100 } } },
+      { uid: "m072313cM", string: "**Bold** note", props: { plexus: { x: 100, y: 380, w: 200, h: 100 } } },
+      { uid: "r072313cR", string: "((t072313cT))", props: { plexus: { x: 100, y: 520, w: 200, h: 100 } } },
+      { uid: "l072313cL", string: "ABCDEFGHIJKLMNOPQRSTUVWXYZ", props: { plexus: { x: 100, y: 660, w: 200, h: 100 } } },
+      { uid: "k072313cK", string: "Kept card", props: { plexus: { x: 100, y: 800, w: 200, h: 100 } } },
+      { uid: "b072313cB", string: "Beta", props: { plexus: { x: 700, y: 100, w: 200, h: 100 } } },
+      { uid: "nb", string: "{{[[diagram]]:Inner}}", props: { plexus: { x: 0, y: 1100, w: 320, h: 220, v: 2 } }, children: [] },
+      {
+        uid: "ec",
+        string: "Connections",
+        props: { plexus: { type: "edges" } },
+        children: [
+          { uid: "eAlpha01", string: "((x072313cA)) → ((b072313cB))", props: { plexus: { type: "edge", from: "x072313cA", to: "b072313cB" } } },
+          { uid: "ePage001", string: "[[Alpha Page]] → ((b072313cB))", props: { plexus: { type: "edge", from: "p072313cP", to: "b072313cB" } } },
+          { uid: "eMark001", string: "((m072313cM)) → ((b072313cB))", props: { plexus: { type: "edge", from: "m072313cM", to: "b072313cB" } } },
+          { uid: "eRef0001", string: "((r072313cR)) → ((b072313cB))", props: { plexus: { type: "edge", from: "r072313cR", to: "b072313cB" } } },
+          { uid: "eLong001", string: "((l072313cL)) → ((b072313cB))", props: { plexus: { type: "edge", from: "l072313cL", to: "b072313cB" } } },
+          { uid: "eKeep001", string: "((k072313cK)) → keeps → ((b072313cB))", props: { plexus: { type: "edge", from: "k072313cK", to: "b072313cB" } } },
+        ],
+      },
+    ],
+  });
+}
+
+function labelText(root, uid) {
+  const nodes = [...root.querySelectorAll(".pxd-label")];
+  const label = nodes.find((node) => (node.dataset?.uid || node.getAttribute?.("data-uid")) === uid);
+  return label ? label.textContent : null;
+}
+
+async function mountLabels(host, session, stub) {
+  const { mountBoardView } = await import("../src/view/board-view.js");
+  const mountEl = stub.document.createElement("div");
+  stub.document.body.append(mountEl);
+  const view = mountBoardView({
+    host,
+    session,
+    mountEl,
+    settings: { get: () => undefined },
+    version: "3.32.0",
+  });
+  stub.flushFrames?.();
+  return view;
+}
+
+test("the outer arrow label names the moved card, not its raw ref", async () => {
+  const stub = createDomStub({ width: 1400, height: 900 });
+  const restore = stub.install();
+  try {
+    const fake = createFakeRoam({ pullMany: true, echoDelay: 0 });
+    const host = createHost({ api: fake.api, storage: stub.localStorage, graph: "g" });
+    seedLabels(fake);
+    const session = acquireSession("b1", { host, linkDelay: 0 });
+    await session.moveIntoBoard(["x072313cA", "p072313cP", "m072313cM", "r072313cR", "l072313cL", "k072313cK"], "nb");
+    await fake.flush();
+    const view = await mountLabels(host, session, stub);
+    assert.equal(labelText(view.root, "eAlpha01"), "Alpha");
+    assert.equal(labelText(view.root, "ePage001"), "Alpha Page");
+    assert.equal(labelText(view.root, "eMark001"), "Bold note");
+    assert.equal(labelText(view.root, "eRef0001"), "Target title");
+    assert.equal(labelText(view.root, "eLong001"), "ABCDEFGHIJKLMNOPQRSTU\u2026");
+    assert.equal(labelText(view.root, "eKeep001"), "keeps");
+    assert.equal(fake.block("eAlpha01").string, "((x072313cA)) → ((b072313cB))");
+    view.dispose();
+    session.release();
+    const again = acquireSession("b1", { host, linkDelay: 0 });
+    const reopened = await mountLabels(host, again, stub);
+    assert.equal(labelText(reopened.root, "eAlpha01"), "Alpha");
+    assert.equal(fake.block("eAlpha01").string, "((x072313cA)) → ((b072313cB))");
+    reopened.dispose();
+    again.release();
+  } finally { restore(); }
+});
+
 test("an unverified board does not pull or delete the arrow", async () => {
   const fake = createFakeRoam({ pullMany: true, echoDelay: 0 });
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });

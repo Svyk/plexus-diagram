@@ -27,10 +27,37 @@ function clipTitle(text) {
   return t.length > 22 ? `${t.slice(0, 21)}\u2026` : t;
 }
 
-export function cardTitleOf(node) {
-  const text = nodeString(node);
-  if (isDiagramString(text)) return clipTitle(parseBoardTitle(text) || firstLine(text) || "Untitled");
-  return clipTitle(firstLine(text) || plainText(text, 80) || "Untitled");
+const BLOCK_ONLY = /^\(\(([\w-]+)\)\)$/;
+
+function titleFromString(text, resolve) {
+  const raw = String(text || "").trim();
+  if (isDiagramString(raw)) return clipTitle(parseBoardTitle(raw) || firstLine(raw) || "Untitled");
+  const ref = BLOCK_ONLY.exec(raw);
+  if (ref && typeof resolve === "function") {
+    let target = "";
+    try { target = resolve(ref[1]); } catch { target = ""; }
+    if (typeof target === "string" && target.trim() && !BLOCK_ONLY.test(target.trim())) {
+      return titleFromString(target, null);
+    }
+  }
+  return clipTitle(firstLine(raw) || plainText(raw, 80) || "Untitled");
+}
+
+export function cardTitleOf(node, resolve) {
+  return titleFromString(nodeString(node), resolve);
+}
+
+// Midpoint pill. A typed label stays, with refs and markup flattened. A label that is only the
+// missing end's ref shows that card's short title. The stored edge string is left alone.
+export function shownEdgeLabel(label, homes) {
+  const custom = plainText(String(label ?? ""), 80);
+  if (custom) return clipTitle(custom);
+  const list = Array.isArray(homes) ? homes : [];
+  for (const home of list) {
+    const title = String(home?.title || "").trim();
+    if (title) return clipTitle(title);
+  }
+  return "";
 }
 
 // Endpoint uids that are not cards or edges on this board. Those are the ones that may live inside a board card.
@@ -49,7 +76,7 @@ export function unresolvedUids(board) {
 
 // Nearest enhanced board card on this board that contains the pulled block. A shown card wins over a
 // collapsed one further in; if every ancestor board is folded, the nearest one is still the home.
-export function homeOf(board, node) {
+export function homeOf(board, node, resolve) {
   if (!board?.items || !node) return null;
   const hits = [];
   for (const parent of parentNodes(node)) {
@@ -62,7 +89,7 @@ export function homeOf(board, node) {
   hits.sort((a, b) => b.depth - a.depth);
   const shown = hits.find((hit) => anchorUid(board, hit.uid) === hit.uid);
   const best = shown || hits[0];
-  return { cardUid: best.uid, title: cardTitleOf(node) };
+  return { cardUid: best.uid, title: cardTitleOf(node, resolve) };
 }
 
 export function boardIsNested(node) {
@@ -90,14 +117,14 @@ function byUid(nodes) {
 }
 
 // Map of unresolved uid → { cardUid, title } or null. A miss is null. Nothing is deleted.
-export function resolveArrowHomes(board, pullMany) {
+export function resolveArrowHomes(board, pullMany, resolve) {
   const uids = unresolvedUids(board);
   const out = new Map();
   if (!uids.length) return out;
   const found = byUid(pullNodes(pullMany, HOME_PULL, uids));
   for (const uid of uids) {
     const node = found.get(uid);
-    out.set(uid, node ? homeOf(board, node) : null);
+    out.set(uid, node ? homeOf(board, node, resolve) : null);
   }
   return out;
 }
@@ -118,7 +145,7 @@ function outsidePlace(node) {
 }
 
 // Map of card uid → arrows that stay on an outer board. Empty for a top-level board, after one parent pull.
-export function resolveOutsideArrows(board, pullMany) {
+export function resolveOutsideArrows(board, pullMany, resolve) {
   const out = new Map();
   if (!board?.uid || !board.items) return out;
   const self = byUid(pullNodes(pullMany, HOME_PULL, [board.uid])).get(board.uid);
@@ -160,7 +187,7 @@ export function resolveOutsideArrows(board, pullMany) {
     list.push({
       edgeUid: row.edgeUid,
       otherUid: row.otherUid,
-      otherTitle: cardTitleOf(node),
+      otherTitle: cardTitleOf(node, resolve),
       boardUid: place.uid,
       boardTitle: place.title,
     });

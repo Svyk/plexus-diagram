@@ -3,6 +3,7 @@
 // group (never var() in presentation attributes), and only edges touching moving items are
 // recomputed during a drag.
 
+import { shownEdgeLabel } from "../model/arrow-home.js";
 import { edgeAnchor, routedEdge } from "../model/board.js";
 import { edgeMayTarget, regionInnerEnd } from "../model/endpoints.js";
 import { arrowHeadPath, arrowSize, blockAnchor, blockInner, center, edgePath, screenPx, sidePoint } from "../model/geometry.js";
@@ -499,11 +500,12 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     if (hex) rec.g.style.setProperty("--pxd-line", hex);
     else rec.g.style.removeProperty("--pxd-line");
     const wasClear = Boolean(rec.ends) && rec.label.classList.contains("pxd-label--clear");
-    rec.label.className = `pxd-label${named ? ` pxd-c-${edge.color}` : ""}${edge.label || edge.why ? "" : " pxd-label--empty"}${edge.why ? " pxd-label--why" : ""}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
+    const words = shownEdgeLabel(edge.label, [fromHome, toHome]);
+    rec.label.className = `pxd-label${named ? ` pxd-c-${edge.color}` : ""}${words || edge.why ? "" : " pxd-label--empty"}${edge.why ? " pxd-label--why" : ""}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
     rec.label.title = edge.why ? whyTip(edge.why) : "";
     if (wasClear) rec.label.classList.add("pxd-label--clear");
     rec.label.style.color = hex || "";
-    if (editingLabel?.uid !== edge.uid) rec.label.textContent = edge.label || "";
+    if (editingLabel?.uid !== edge.uid) rec.label.textContent = words;
     rec.dir = edge.dir;
     rec.weight = edge.weight;
     for (const end of ["from", "to"]) {

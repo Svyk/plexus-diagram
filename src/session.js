@@ -616,8 +616,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       }
       return merged.length ? merged : remote;
     };
-    const homes = resolveArrowHomes(target, pullMany);
-    const outsides = resolveOutsideArrows(target, pullMany);
+    const readTitle = (id) => {
+      try { return host.blockString?.(id); } catch { return null; }
+    };
+    const homes = resolveArrowHomes(target, pullMany, readTitle);
+    const outsides = resolveOutsideArrows(target, pullMany, readTitle);
     const nextHome = cacheJson(homes);
     const nextOut = cacheJson(outsides);
     let changed = false;

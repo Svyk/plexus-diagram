@@ -18922,6 +18922,72 @@ var init_settings = __esm({
   }
 });
 
+// src/model/card-children.js
+function childIsOpen(block) {
+  if (!block || typeof block !== "object") return true;
+  if (block.open === false || block[":block/open"] === false) return false;
+  return true;
+}
+function kidsHeightPlan({ on, h, extraH = 0, memory, cap: cap4 = KIDS_H_CAP } = {}) {
+  const mem = {
+    foldedH: memory?.foldedH,
+    unfoldedH: memory?.unfoldedH,
+    userSized: memory?.userSized === true
+  };
+  const base = Number.isFinite(Number(h)) ? Number(h) : 0;
+  if (on) {
+    if (mem.foldedH == null) mem.foldedH = base;
+    const grown = Math.min(cap4, Math.ceil(mem.foldedH + Math.max(0, Number(extraH) || 0)));
+    const target = mem.userSized && mem.unfoldedH != null ? mem.unfoldedH : grown;
+    mem.unfoldedH = target;
+    return { h: target, memory: mem };
+  }
+  return { h: mem.foldedH != null ? mem.foldedH : base, memory: mem };
+}
+function rememberUnfoldedSize(memory, h) {
+  const mem = {
+    foldedH: memory?.foldedH,
+    unfoldedH: memory?.unfoldedH,
+    userSized: memory?.userSized === true
+  };
+  const next = Number(h);
+  if (!Number.isFinite(next)) return mem;
+  mem.unfoldedH = next;
+  mem.userSized = true;
+  return mem;
+}
+function peekAllowed({ tier, gesturing, kind, childCount, showing, editing } = {}) {
+  if (tier !== "detail" || gesturing || editing || showing) return false;
+  if (kind !== "block" && kind !== "page") return false;
+  return Number(childCount) > 0;
+}
+function findBlock(list, uid, read2) {
+  const want = String(uid || "");
+  if (!want) return null;
+  const walk3 = (nodes, trail) => {
+    for (const node2 of nodes || []) {
+      const id = String(read2.uid(node2) || "");
+      if (!id) continue;
+      const next = [...trail, { uid: id, label: read2.label(node2) }];
+      if (id === want) return { block: node2, trail: next };
+      const hit = walk3(read2.kids(node2), next);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  return walk3(list, []);
+}
+var KIDS_H_CAP, PEEK_HOVER_MS, PEEK_LEAVE_MS, PEEK_ANIM_MS, CHILD_GROW_H;
+var init_card_children = __esm({
+  "src/model/card-children.js"() {
+    KIDS_H_CAP = 900;
+    PEEK_HOVER_MS = 800;
+    PEEK_LEAVE_MS = 400;
+    PEEK_ANIM_MS = 200;
+    CHILD_GROW_H = 30;
+  }
+});
+
 // src/model/highlighter.js
 function bgName(match) {
   return match[1] || match[2] || match[4] || match[5] || match[7] || match[8] || null;
@@ -28349,7 +28415,7 @@ function cardContentKey(item, live2 = false, pdfOpen = false, chipSig = "", cove
   const walk3 = (kids, depth) => {
     if (depth > CONTENT_DEPTH) return;
     for (const c of kids) {
-      parts.push(childString4(c));
+      parts.push(childString4(c), childIsOpen(c) ? "o" : "x");
       walk3(childKids(c), depth + 1);
     }
   };
@@ -28756,6 +28822,8 @@ function createItemRenderer({
     const pin2 = sourcePinOf(item?.content);
     if (pin2) key += `pin:${pin2.uid}`;
     if (item?.hitsKey) key += `hits:${item.hitsKey}`;
+    const focused = cardFocus.get(item?.uid);
+    if (focused) key += `focus:${focused}`;
     return key;
   };
   const shells = /* @__PURE__ */ new Map();
@@ -28767,6 +28835,9 @@ function createItemRenderer({
     bag.items[uid] = (Number(bag.items[uid]) || 0) + 1;
   };
   let lod = "detail";
+  const cardFocus = /* @__PURE__ */ new Map();
+  let hotRow = null;
+  let peekBlocked = false;
   let focusSet = null;
   let badgeMap = /* @__PURE__ */ new Map();
   let showBadges = false;
@@ -29759,7 +29830,16 @@ function createItemRenderer({
     }
     if (focusSet && !focusSet.has(item.uid)) cls.push(item.type === "section" ? "pxd-section--focus-dim" : "pxd-item--focus-dim");
     if (item.type !== "section") {
-      if (isKidsCard(item)) cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
+      if (isKidsCard(item)) {
+        cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
+        const kidsOn = Boolean(item.kids);
+        if (rec.kidsOn !== void 0 && rec.kidsOn !== kidsOn && !motionInstant()) {
+          cls.push("pxd-item--kids-anim");
+          rec.kidsAnim = true;
+          later(() => rec.el.classList.remove("pxd-item--kids-anim"), PEEK_ANIM_MS + 20);
+        }
+        rec.kidsOn = kidsOn;
+      }
       if (rec.bare && !rec.faced) cls.push("pxd-item--bare");
       if (rec.thumbed) cls.push("pxd-item--thumb");
       if (rec.refBoard) cls.push("pxd-item--wb");
@@ -29831,6 +29911,7 @@ function createItemRenderer({
     node2.setAttribute("aria-label", `${announced}, ${item.type}`);
     if (item.landmark || rec.landmarkEl) paintLandmarkMark(rec, item);
     if (trailBadgeMap.size || rec.trailBadge) paintTrailBadge(rec, item.uid);
+    if (item.type === "card" && (item.kind === "block" || item.kind === "page")) armLinkHover(rec, item);
   };
   const paintLandmarkMark = (rec, item) => {
     if (!item.landmark) {
@@ -29870,13 +29951,42 @@ function createItemRenderer({
     rec.rect = rect;
     if (editing?.uid === rec.uid && prev && prev.x === rect.x && prev.y === rect.y && prev.w === rect.w && prev.h === rect.h) return;
     const shown = shownRect(rec.uid, rect);
+    const nextH = rec.peekH > 0 ? rec.peekH : shown.h;
     rec.el.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
     rec.el.style.width = `${shown.w}px`;
-    rec.el.style.height = `${shown.h}px`;
+    if (rec.kidsAnim) void rec.el.offsetHeight;
+    rec.el.style.height = `${nextH}px`;
+    if (rec.kidsAnim) rec.kidsAnim = false;
     if (editing?.uid === rec.uid && rec.el.classList?.contains("pxd-item--editing") && rec.el.style?.height && rec.el.style.setProperty) {
       rec.el.style.setProperty("height", rec.el.style.height, "important");
     }
     if (rec.shapeName) syncShape(rec, { type: "text", shape: rec.shapeName, w: rect.w, h: rect.h }, rect);
+  };
+  const bindTracked = (rec, node2, type, fn) => {
+    if (!node2?.addEventListener || !fn) return;
+    node2.addEventListener(type, fn);
+    if (!rec) return;
+    if (!rec.rowOffs) rec.rowOffs = [];
+    rec.rowOffs.push(() => node2.removeEventListener(type, fn));
+  };
+  const dropRowOffs = (rec) => {
+    const offs = rec?.rowOffs;
+    if (!offs) return;
+    rec.rowOffs = null;
+    for (const off of offs) {
+      try {
+        off();
+      } catch {
+      }
+    }
+  };
+  const dropPeekListeners = (rec) => {
+    try {
+      rec?.peekOff?.();
+    } catch {
+    }
+    if (rec) rec.peekOff = null;
+    dropRowOffs(rec);
   };
   const removeShell = (uid) => {
     const rec = shells.get(uid);
@@ -29890,6 +30000,8 @@ function createItemRenderer({
     }
     if (selectedPrimary === uid) selectedPrimary = null;
     if (editing?.uid === uid) void exitEdit({ silent: true });
+    dropPeekListeners(rec);
+    dropPeek(rec);
     try {
       rec.focusOff?.();
     } catch {
@@ -30229,6 +30341,7 @@ function createItemRenderer({
     return rec.el;
   };
   const sync = ({ board: board2, rects, dirty: changed2 = null, structural = false, view = null, attachView = null }) => {
+    const prevBoardUid = lastBoard?.uid || "";
     sourcePass += 1;
     pageKids = /* @__PURE__ */ new Map();
     try {
@@ -30237,6 +30350,11 @@ function createItemRenderer({
       virtualOff = false;
     }
     lastBoard = board2;
+    if (prevBoardUid && board2?.uid && prevBoardUid !== board2.uid) {
+      cardFocus.clear();
+      hotRow = null;
+      closeCardPeek();
+    }
     lastRects = rects;
     coverShift = null;
     let dirty = changed2;
@@ -30503,7 +30621,24 @@ function createItemRenderer({
     rec.kidsBtn.setAttribute("data-tip", "kids");
     rec.kidsBtn.setAttribute("data-tip-state", item.kids ? "on" : "off");
   };
-  const renderBlocks = (parent, blocks, depth, budget) => {
+  const outlineRead = {
+    uid: (node2) => childUid(node2),
+    kids: (node2) => childKids(node2),
+    label: (node2) => plainText(firstLine(childString4(node2))).trim().slice(0, 48) || "block"
+  };
+  const cardLabelOf = (item) => {
+    const rec = shells.get(item?.uid);
+    const raw = item?.kind === "block" ? rec?.refTitle || item?.title || "" : item?.title || item?.string || "";
+    const text4 = plainText(firstLine(String(raw || ""))).trim();
+    return text4.slice(0, 48) || "Card";
+  };
+  const stopPress = (event) => {
+    stopEvent(event);
+    event.preventDefault?.();
+  };
+  const renderBlocks = (parent, blocks, depth, budget, opts = {}) => {
+    const viewOnly = opts.viewOnly === true;
+    const cardUid = opts.cardUid || "";
     for (const b of blocks) {
       if (budget.n >= CONTENT_LIMIT) return;
       const s = childString4(b);
@@ -30514,19 +30649,309 @@ function createItemRenderer({
         mountTableHost(parent, rowUid, budget);
         continue;
       }
-      const row4 = el2("div", "pxd-block", parent);
+      const row4 = el2("div", "pxd-block pxd-outline", parent);
       row4.dataset.uid = rowUid;
+      row4.setAttribute("data-uid", rowUid);
       row4.setAttribute("data-pxd-row", rowUid);
+      const line = el2("div", "pxd-outline__line", row4);
+      const kids = childKids(b);
+      const canNest = visibleKids(kids).length > 0 && depth < CONTENT_DEPTH;
+      const open = childIsOpen(b);
+      if (canNest) {
+        const caret = el2("button", "pxd-outline__caret", line);
+        caret.type = "button";
+        caret.textContent = open ? "▾" : "▸";
+        caret.setAttribute("aria-expanded", open ? "true" : "false");
+        caret.setAttribute("aria-label", open ? "Fold" : "Unfold");
+        const caretRec = shells.get(cardUid);
+        for (const type of ["pointerdown", "mousedown", "dblclick"]) bindTracked(caretRec, caret, type, stopPress);
+        const onCaret = (event) => {
+          stopPress(event);
+          const next = caret.getAttribute("aria-expanded") !== "true";
+          caret.setAttribute("aria-expanded", next ? "true" : "false");
+          caret.textContent = next ? "▾" : "▸";
+          caret.setAttribute("aria-label", next ? "Fold" : "Unfold");
+          let wrap = null;
+          for (const child of row4.children || []) if (child.classList?.contains("pxd-block__children")) wrap = child;
+          if (wrap && next && wrap.getAttribute("data-pxd-filled") !== "1") {
+            wrap.setAttribute("data-pxd-filled", "1");
+            const sub = { n: budget.n, roots: [] };
+            renderBlocks(wrap, kids, depth + 1, sub, opts);
+            budget.n = sub.n;
+            budget.roots.push(...sub.roots);
+            const rec = shells.get(cardUid);
+            if (rec?.roots) rec.roots.push(...sub.roots);
+          }
+          if (wrap) setHidden2(wrap, !next);
+          if (!viewOnly && rowUid) void session?.setNodeOpen?.(rowUid, next);
+        };
+        bindTracked(caretRec, caret, "click", onCaret);
+      }
+      const bullet2 = el2("button", "pxd-outline__bullet", line);
+      bullet2.type = "button";
+      bullet2.setAttribute("aria-label", "Focus block");
+      const bulletRec = shells.get(cardUid);
+      const onBullet = (event) => {
+        stopPress(event);
+        if (cardUid && rowUid) focusInside(cardUid, rowUid);
+      };
+      const onBulletOver = () => {
+        if (cardUid && rowUid) hotRow = { card: cardUid, uid: rowUid };
+      };
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) bindTracked(bulletRec, bullet2, type, stopPress);
+      bindTracked(bulletRec, bullet2, "click", onBullet);
+      bindTracked(bulletRec, bullet2, "pointerover", onBulletOver);
       const posterCount = embedSplit(String(s || ""), embedOptsFor(rowUid)).posters.length;
       holdHeight(row4, posterCount ? embedBoxFor(rowUid).h : KID_ROW_H);
-      const node2 = renderRowRoot(row4, s, "pxd-rs pxd-block__text", rowUid);
+      const node2 = renderRowRoot(line, s, "pxd-rs pxd-block__text", rowUid);
       budget.roots.push(node2);
-      const kids = childKids(b);
-      if (kids.length && depth < CONTENT_DEPTH) {
+      if (canNest) {
         const wrap = el2("div", "pxd-block__children", row4);
-        renderBlocks(wrap, kids, depth + 1, budget);
+        if (open) {
+          wrap.setAttribute("data-pxd-filled", "1");
+          renderBlocks(wrap, kids, depth + 1, budget, opts);
+        } else setHidden2(wrap, true);
       }
     }
+  };
+  const paintCrumb = (parent, item, trail) => {
+    const crumb = el2("div", "pxd-focus__crumb", parent);
+    const addBtn = (label, focusId) => {
+      const btn2 = el2("button", "", crumb);
+      btn2.type = "button";
+      btn2.textContent = label;
+      btn2.setAttribute("data-pxd-focus", focusId || "card");
+      const crumbRec = shells.get(item.uid);
+      const onCrumb = (event) => {
+        stopPress(event);
+        if (!focusId) {
+          cardFocus.delete(item.uid);
+          const rec = shells.get(item.uid);
+          if (rec?.peekOpen) rerenderPeek(rec);
+          else if (rec) remountCard(rec);
+          return;
+        }
+        focusInside(item.uid, focusId);
+      };
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) bindTracked(crumbRec, btn2, type, stopPress);
+      bindTracked(crumbRec, btn2, "click", onCrumb);
+    };
+    addBtn(cardLabelOf(item), "");
+    for (const step of trail || []) {
+      crumb.append(doc.createTextNode(" › "));
+      addBtn(step.label || "block", step.uid);
+    }
+    return crumb;
+  };
+  const paintCardKids = (body, item, budget, blocks, viewOnly = false) => {
+    let list = blocks || [];
+    const focusUid = cardFocus.get(item?.uid) || "";
+    if (focusUid) {
+      const hit = findBlock(list, focusUid, outlineRead);
+      if (hit) {
+        paintCrumb(body, item, hit.trail);
+        list = [hit.block];
+      }
+    }
+    renderBlocks(body, list, 1, budget, { viewOnly, cardUid: item?.uid || "" });
+  };
+  const remountCard = (rec) => {
+    const item = lastBoard?.items.get(rec?.uid);
+    if (!rec || !item || disposed || editing?.uid === rec.uid) return;
+    unmountRoots(rec);
+    rec.body?.replaceChildren?.();
+    rec.contentKey = null;
+    rec.pageKey = "";
+    mounted.delete(rec.uid);
+    mountContent(rec, item);
+  };
+  const focusInside = (cardUid, blockUid2) => {
+    if (!cardUid || !blockUid2) return false;
+    cardFocus.set(cardUid, blockUid2);
+    hotRow = { card: cardUid, uid: blockUid2 };
+    const rec = shells.get(cardUid);
+    if (!rec || disposed) return true;
+    if (rec.peekOpen) {
+      rec.peekPinned = true;
+      rec.peekLeave?.();
+      rec.peekLeave = null;
+      rerenderPeek(rec);
+      armOutsidePeek();
+      return true;
+    }
+    if (editing?.uid === cardUid) return true;
+    remountCard(rec);
+    return true;
+  };
+  const dropPeek = (rec) => {
+    if (!rec?.peekOpen && !rec?.peekNode) return false;
+    rec.peekTimer?.();
+    rec.peekTimer = null;
+    rec.peekLeave?.();
+    rec.peekLeave = null;
+    for (const node2 of rec.peekRoots || []) {
+      try {
+        host?.unmount?.(node2);
+      } catch {
+      }
+    }
+    rec.peekRoots = [];
+    try {
+      rec.peekNode?.remove?.();
+    } catch {
+    }
+    rec.peekNode = null;
+    rec.peekBlocks = null;
+    rec.peekOpen = false;
+    rec.peekPinned = false;
+    rec.peekH = 0;
+    rec.el?.classList?.remove("pxd-item--peek");
+    if (rec.rect?.h != null) rec.el.style.height = `${rec.rect.h}px`;
+    return true;
+  };
+  const rerenderPeek = (rec) => {
+    const item = lastBoard?.items.get(rec?.uid);
+    if (!rec?.peekNode || !item) return;
+    for (const node2 of rec.peekRoots || []) {
+      try {
+        host?.unmount?.(node2);
+      } catch {
+      }
+    }
+    rec.peekNode.replaceChildren();
+    const budget = { n: 0, roots: [] };
+    paintCardKids(rec.peekNode, item, budget, rec.peekBlocks || [], true);
+    rec.peekRoots = budget.roots;
+    if (rec.roots) rec.roots.push(...budget.roots);
+  };
+  const finishPeek = (rec, item, blocks) => {
+    if (disposed || !rec?.el?.isConnected || rec.peekOpen || editing?.uid === item.uid) return;
+    const showing = item.kind === "block" ? item.kids === true : item.collapsed === true || item.open === false ? false : true;
+    const count = visibleKids(blocks).length;
+    if (!peekAllowed({ tier: lod, gesturing: peekBlocked, kind: item.kind, childCount: count, showing, editing: Boolean(editing) })) return;
+    const node2 = el2("div", "pxd-link-peek", rec.body || rec.el);
+    const budget = { n: 0, roots: [] };
+    paintCardKids(node2, item, budget, blocks || [], true);
+    rec.peekNode = node2;
+    rec.peekBlocks = blocks || [];
+    rec.peekRoots = budget.roots;
+    rec.peekOpen = true;
+    rec.peekPinned = false;
+    if (rec.roots) rec.roots.push(...budget.roots);
+    const baseH = Number(rec.rect?.h || item.h) || 0;
+    rec.peekH = Math.min(900, Math.ceil(baseH + Math.max(budget.n, 1) * KID_ROW_H + 8));
+    if (!motionInstant()) {
+      rec.el.classList.add("pxd-item--peek");
+      void rec.el.offsetHeight;
+    }
+    rec.el.style.height = `${rec.peekH}px`;
+  };
+  const openLinkPeek = (rec) => {
+    rec.peekTimer = null;
+    const item = lastBoard?.items.get(rec?.uid);
+    if (!item || disposed || rec.peekOpen || editing) return;
+    const take = (blocks) => finishPeek(rec, item, blocks || []);
+    if (item.kind === "block") {
+      const tree = host?.pullTree?.(item.target?.uid, CONTENT_DEPTH, 200);
+      if (tree && typeof tree.then === "function") tree.then(take).catch(() => {
+      });
+      else take(tree);
+      return;
+    }
+    if (item.kind === "page") {
+      const preview = host?.pagePreview?.(item.target?.title || item.title, 64, 200);
+      const apply = (page) => take(page?.blocks || []);
+      if (preview && typeof preview.then === "function") preview.then(apply).catch(() => {
+      });
+      else apply(preview);
+    }
+  };
+  const showingKids = (item) => {
+    if (!item) return true;
+    if (item.kind === "block") return item.kids === true;
+    if (item.kind === "page") return item.collapsed !== true && item.open !== false;
+    return true;
+  };
+  const armLinkHover = (rec) => {
+    if (rec.peekArmed || !rec.el) return;
+    rec.peekArmed = true;
+    const node2 = rec.el;
+    const onEnter = (event) => {
+      if (event?.buttons) return;
+      rec.peekLeave?.();
+      rec.peekLeave = null;
+      if (rec.peekOpen || rec.peekTimer) return;
+      const item = lastBoard?.items.get(rec.uid);
+      if (!item || editing || peekBlocked) return;
+      const showing = showingKids(item);
+      let count = 0;
+      if (!showing && item.kind === "block" && item.target?.uid) {
+        const tree = host?.pullTree?.(item.target.uid, 1, 40);
+        count = tree && typeof tree.then === "function" ? 1 : visibleKids(tree).length;
+      } else if (!showing && item.kind === "page") {
+        const preview = host?.pagePreview?.(item.target?.title || item.title, 8, 20);
+        count = preview && typeof preview.then !== "function" ? visibleKids(preview.blocks).length || (preview.exists ? 1 : 0) : 1;
+      }
+      if (!peekAllowed({ tier: lod, gesturing: peekBlocked, kind: item.kind, childCount: count, showing, editing: Boolean(editing) })) return;
+      rec.peekTimer = later(() => openLinkPeek(rec), PEEK_HOVER_MS);
+    };
+    const onLeave = () => {
+      rec.peekTimer?.();
+      rec.peekTimer = null;
+      if (!rec.peekOpen || rec.peekPinned) return;
+      rec.peekLeave?.();
+      rec.peekLeave = later(() => dropPeek(rec), PEEK_LEAVE_MS);
+    };
+    const onDown = () => {
+      if (!rec.peekOpen) return;
+      rec.peekPinned = true;
+      rec.peekLeave?.();
+      rec.peekLeave = null;
+      armOutsidePeek();
+    };
+    node2.addEventListener("mouseenter", onEnter);
+    node2.addEventListener("mouseleave", onLeave);
+    node2.addEventListener("pointerdown", onDown);
+    rec.peekOff = () => {
+      node2.removeEventListener("mouseenter", onEnter);
+      node2.removeEventListener("mouseleave", onLeave);
+      node2.removeEventListener("pointerdown", onDown);
+    };
+  };
+  let outsidePeekOn = false;
+  const onOutsidePeek = (event) => {
+    const pinned2 = [];
+    for (const rec of shells.values()) if (rec.peekOpen && rec.peekPinned) pinned2.push(rec);
+    if (!pinned2.length) return;
+    if (pinned2.some((rec) => rec.el?.contains?.(event.target))) return;
+    closeCardPeek();
+  };
+  const armOutsidePeek = () => {
+    if (outsidePeekOn) return;
+    outsidePeekOn = true;
+    doc.addEventListener?.("pointerdown", onOutsidePeek, true);
+  };
+  const cancelCardPeek = () => {
+    for (const rec of shells.values()) {
+      rec.peekTimer?.();
+      rec.peekTimer = null;
+      rec.peekLeave?.();
+      rec.peekLeave = null;
+      if (rec.peekOpen && !rec.peekPinned) dropPeek(rec);
+    }
+  };
+  const closeCardPeek = () => {
+    let closed = false;
+    for (const rec of shells.values()) {
+      rec.peekTimer?.();
+      rec.peekTimer = null;
+      if (rec.peekOpen || rec.peekNode) closed = dropPeek(rec) || closed;
+    }
+    return closed;
+  };
+  const setPeekBlocked = (on) => {
+    peekBlocked = Boolean(on);
+    if (peekBlocked) cancelCardPeek();
   };
   const openBoard = (uid) => {
     if (onOpenBoard) onOpenBoard(uid);
@@ -30826,6 +31251,19 @@ function createItemRenderer({
       fold.setAttribute("aria-expanded", folded ? "false" : "true");
       for (const type of ["pointerdown", "mousedown", "dblclick"]) fold.addEventListener(type, stopEvent);
     }
+    const focusBullet = el2("button", "pxd-outline__bullet", line);
+    focusBullet.type = "button";
+    focusBullet.setAttribute("aria-label", "Focus block");
+    const onFocusClick = (event) => {
+      stopPress(event);
+      focusInside(rec.uid, uid);
+    };
+    const onFocusOver = () => {
+      hotRow = { card: rec.uid, uid };
+    };
+    for (const type of ["pointerdown", "mousedown", "dblclick"]) bindTracked(rec, focusBullet, type, stopPress);
+    bindTracked(rec, focusBullet, "click", onFocusClick);
+    bindTracked(rec, focusBullet, "pointerover", onFocusOver);
     const posters = embedSplit(s, embedOptsFor(uid)).posters;
     if (isRoamTableString(s)) {
       const root = renderRowRoot(line, s, "pxd-rs pxd-block__text", uid);
@@ -31122,6 +31560,37 @@ function createItemRenderer({
     return bucket.roots;
   };
   const paintPage = (rec, holder, p) => {
+    rec.pageBlocks = p?.blocks || [];
+    const focusUid = cardFocus.get(rec.uid) || "";
+    const focused = focusUid ? findBlock(rec.pageBlocks, focusUid, outlineRead) : null;
+    if (focused) {
+      startRows();
+      const old2 = new Set(rec.pageRoots || []);
+      for (const node2 of old2) {
+        try {
+          node2.__pxdEmbedMo?.disconnect();
+        } catch {
+        }
+        try {
+          host?.unmount?.(node2.querySelector?.(".pxd-rs__live") || embedLive(node2));
+        } catch {
+        }
+      }
+      if (old2.size && rec.roots) rec.roots = rec.roots.filter((node2) => !old2.has(node2));
+      startRowSched(rec);
+      holder.replaceChildren();
+      rec.pageRoots = [];
+      rec.rowState = /* @__PURE__ */ new Map();
+      rec.pageTitle = p?.title || rec.pageTitle || "";
+      rec.pageUid = p?.uid || rec.pageUid || null;
+      rec.pageKey = `focus:${focusUid}`;
+      paintCrumb(holder, { uid: rec.uid, string: rec.pageTitle, title: rec.pageTitle, kind: "page" }, focused.trail);
+      const b2 = { n: 0, more: 0, roots: [] };
+      renderOutline(holder, [focused.block], b2, rec);
+      rec.pageRoots = [...b2.roots];
+      onPageLayout?.(rec.uid);
+      return b2.roots;
+    }
     if (p?.exists && rec.rowState?.size && holder.querySelector?.(".pxd-prow")) return patchPage(rec, holder, p);
     startRows();
     const old = new Set(rec.pageRoots || []);
@@ -32662,7 +33131,7 @@ function createItemRenderer({
           if (imageRef) syncEndpointHits(rec, blocks);
           if (item.kids) {
             const b = { n: 0, roots: [] };
-            renderBlocks(body, blocks || [], 1, b);
+            paintCardKids(body, item, b, blocks || []);
             if (sync2) budget.roots.push(...b.roots);
             else rec.roots.push(...b.roots);
           }
@@ -32710,7 +33179,7 @@ function createItemRenderer({
       if (item.string?.trim()) budget.roots.push(taskBlockOn(item) ? mountTaskLine(body, item) : renderRoot(body, item.string, "pxd-rs pxd-item__string", item.uid));
       rec.kidCount = visibleKids(item.content).length;
       rec.kidRows = kidRowsOf(item.content);
-      if (item.kids) renderBlocks(body, item.content || [], 1, budget);
+      if (item.kids) paintCardKids(body, item, budget, item.content || []);
       if (!item.string?.trim() && !(item.content || []).length) {
         el2("div", "pxd-item__placeholder", body).textContent = "Empty card";
       }
@@ -33193,6 +33662,7 @@ function createItemRenderer({
     lod = nextLod === "map" || nextLod === "overview" ? nextLod : "detail";
     setZoom(zoom);
     closePeek();
+    if (lod !== "detail") closeCardPeek();
     if (prev === "detail" !== (lod === "detail")) {
       let moved = false;
       for (const [uid, rec] of shells) {
@@ -33677,6 +34147,14 @@ function createItemRenderer({
       return false;
     }
   };
+  const motionInstant = () => {
+    if (prefersReducedMotion2()) return true;
+    const root = itemsLayer?.closest?.(".pxd-root") || sectionsLayer?.closest?.(".pxd-root") || null;
+    if (!root) return false;
+    if (root.classList?.contains("pxd-root--motion-off")) return true;
+    const mode = root.getAttribute?.("data-motion") || "";
+    return mode === "reduced" || mode === "none";
+  };
   const clearEditFade = (e2) => {
     e2?.fadeCancel?.();
     e2?.releaseCancel?.();
@@ -33753,7 +34231,7 @@ function createItemRenderer({
     }
     return input;
   };
-  const pageHitIgnored = (target) => Boolean(target?.closest?.(".pxd-row__fold, .pxd-row__more, .pxd-grip, .pxd-port"));
+  const pageHitIgnored = (target) => Boolean(target?.closest?.(".pxd-row__fold, .pxd-row__more, .pxd-outline__bullet, .pxd-outline__caret, .pxd-focus__crumb, .pxd-grip, .pxd-port"));
   const rememberPageCaret = (rec, event) => {
     pagePointer = null;
     if (!rec?.body || disposed) return;
@@ -34409,6 +34887,13 @@ function createItemRenderer({
     pdfOpenUid = null;
     dropRegionWatch();
     closePeek();
+    closeCardPeek();
+    cardFocus.clear();
+    hotRow = null;
+    if (outsidePeekOn) {
+      doc.removeEventListener?.("pointerdown", onOutsidePeek, true);
+      outsidePeekOn = false;
+    }
     if (editing) {
       const e2 = editing;
       clearEditFade(e2);
@@ -34431,6 +34916,7 @@ function createItemRenderer({
     for (const snap of [...snapshots]) dropSnapshot(snap);
     for (const uid of [...shells.keys()]) {
       const rec = shells.get(uid);
+      dropPeekListeners(rec);
       try {
         rec.focusOff?.();
       } catch {
@@ -34478,6 +34964,11 @@ function createItemRenderer({
     resetRects,
     measureContent,
     toggleKids,
+    focusInside,
+    cancelCardPeek,
+    closeCardPeek,
+    setPeekBlocked,
+    hotRow: () => hotRow,
     setBadges,
     setChanged,
     setShowBadges,
@@ -34662,6 +35153,7 @@ var init_cards = __esm({
     init_roam_table();
     init_table_card();
     init_table_cells();
+    init_card_children();
     SIDES3 = ["top", "right", "bottom", "left"];
     CHUNK_MS = 8;
     LRU_CAP = 80;
@@ -45617,6 +46109,7 @@ async function executeImport(plan, host, board2) {
 }
 
 // src/session.js
+init_card_children();
 var UID3 = ":block/uid";
 var STR = ":block/string";
 var ORD = ":block/order";
@@ -46734,6 +47227,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         rawString(id, string);
         ops.push({ op: "string", uid: id, string });
       },
+      open(id, value) {
+        const node2 = rawNode(id);
+        if (!node2) return;
+        const next = value !== false;
+        node2[OPEN] = next;
+        ops.push({ op: "open", uid: id, open: next });
+      },
       // A page outside the board. Nothing in the board tree changes.
       page({ uid: id, title }) {
         const newUid = id ?? host.generateUid();
@@ -47392,6 +47892,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     await host.createBlock({ parentUid, order: "last", string });
     return made.uid;
   }
+  const kidsMemory = /* @__PURE__ */ new Map();
   const session = {
     uid,
     host,
@@ -47473,6 +47974,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           fitTouched.push(r.uid);
           const parentRect = item.parentUid === uid ? { x: 0, y: 0 } : rects.get(item.parentUid) ?? { x: 0, y: 0 };
           const size = clampSize(item.type, r.w ?? item.w, r.h ?? item.h);
+          if (item.type === "card" && item.kids && round14(size.h) !== round14(item.h)) {
+            kidsMemory.set(r.uid, rememberUnfoldedSize(kidsMemory.get(r.uid), round14(size.h)));
+          }
           t.props(r.uid, itemPlexus(r.uid, {
             x: round14(r.x - parentRect.x),
             y: round14(r.y - parentRect.y),
@@ -48348,19 +48852,83 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         return false;
       });
     },
-    // CH-1: show or hide a card's children inside it. One props write. Turning it on grows the card by `extraH`
-    // (the renderer's estimate of the outline) in the same write, so one Cmd+Z undoes both.
+    // CH-1: show or hide a card's children inside it. One props write. Unfold grows from the stored
+    // folded height; refold returns to it. A resize while open is remembered as the unfolded size only.
     setKids(id, value, extraH = 0) {
       return txn((t) => {
         const item = board2.items.get(id);
         if (!item || item.type !== "card" || item.kind !== "note" && item.kind !== "block") return;
         const on = value === true;
         if (Boolean(item.kids) === on) return;
+        const plan = kidsHeightPlan({ on, h: item.h, extraH, memory: kidsMemory.get(id) });
+        kidsMemory.set(id, plan.memory);
         const patch = { kids: on ? true : void 0 };
-        if (on && extraH > 0) patch.h = Math.min(900, Math.ceil(item.h + extraH));
+        if (plan.h !== item.h) patch.h = plan.h;
         t.props(id, itemPlexus(id, patch));
-        if (patch.h > item.h) applyFit(t, [id]);
+        if (on && plan.h > item.h) applyFit(t, [id]);
       });
+    },
+    // Shift+Enter on the card's top block. One custom undo removes the child and restores the folded size.
+    addCardChild(id) {
+      const item = board2?.items.get(id);
+      if (!item || item.type !== "card" || item.kind !== "note" && item.kind !== "block") return Promise.resolve(null);
+      const beforePlexus = clone(rawPlexus(id));
+      const beforeMem = kidsMemory.has(id) ? { ...kidsMemory.get(id) } : null;
+      const beforeOpen = rawNode(id)?.[OPEN] !== false;
+      let childUid2 = null;
+      let afterMem = beforeMem;
+      const custom = {
+        async undo() {
+          const back = [];
+          if (childUid2) back.push({ op: "delete", uid: childUid2 });
+          back.push({ op: "props", uid: id, plexus: beforePlexus });
+          if (!beforeOpen) back.push({ op: "open", uid: id, open: false });
+          if (beforeMem) kidsMemory.set(id, { ...beforeMem });
+          else kidsMemory.delete(id);
+          await execute(back);
+        },
+        async redo() {
+          await execute(custom.forward);
+          if (afterMem) kidsMemory.set(id, { ...afterMem });
+          else kidsMemory.delete(id);
+        }
+      };
+      return txn((t) => {
+        childUid2 = t.create({ parent: id, string: "" });
+        if (!item.kids) {
+          const plan = kidsHeightPlan({ on: true, h: item.h, extraH: CHILD_GROW_H, memory: kidsMemory.get(id) });
+          afterMem = plan.memory;
+          kidsMemory.set(id, plan.memory);
+          t.props(id, itemPlexus(id, { kids: true, h: plan.h }));
+          if (plan.h > item.h) applyFit(t, [id]);
+        }
+        if (!beforeOpen) t.open(id, true);
+        return childUid2;
+      }, custom);
+    },
+    // :block/open on a block inside a card. One custom undo. The card renderer also toggles the row locally,
+    // because a child fold does not mark the card dirty.
+    setNodeOpen(id, open) {
+      if (!board2 || destroyed || gone) return Promise.resolve(false);
+      const node2 = rawNode(id);
+      if (!node2 || node2 === raw) return Promise.resolve(false);
+      const next = open !== false;
+      const prev = node2[OPEN] !== false;
+      if (prev === next) return Promise.resolve(false);
+      node2[OPEN] = next;
+      const custom = {
+        async undo() {
+          const n3 = rawNode(id);
+          if (n3) n3[OPEN] = prev;
+          await execute([{ op: "open", uid: id, open: prev }]);
+        },
+        async redo() {
+          const n3 = rawNode(id);
+          if (n3) n3[OPEN] = next;
+          await execute([{ op: "open", uid: id, open: next }]);
+        }
+      };
+      return commit([{ op: "open", uid: id, open: next }], true, custom);
     },
     setFontSize(id, size) {
       return txn((t) => {
@@ -78391,6 +78959,7 @@ function editorKeyAction({
   const mod = Boolean(meta || ctrl);
   if (key === "Tab" && !alt) return { type: "roam" };
   if (key === "Enter" && mod && !shift && !alt) return { type: "roam" };
+  if (key === "Enter" && shift && !mod && !alt && isRoot) return { type: "make-child" };
   if (key === "Enter" && isRoot && !shift && !mod && !alt && enterMode !== "child") return { type: "newline" };
   if (key === "Backspace" && isRoot && fresh && !mod && !alt) {
     const text4 = String(value ?? "");
@@ -96730,6 +97299,7 @@ ${url}`;
     },
     setGesturing: (on, info) => {
       gesturing = Boolean(on);
+      itemsR.setPeekBlocked?.(gesturing);
       guardSelection(gesturing && Boolean(ctl.gestureKind?.()));
       if (!gesturing) {
         hitShield.drop();
@@ -97721,6 +98291,7 @@ ${url}`;
   const WHEEL_MEASURE_MS = 150;
   let wheelMeasuredAt = -Infinity;
   const wheelBurst = (event) => {
+    itemsR.cancelCardPeek?.();
     const t = perfNow3();
     if (!wheelLayer || t - wheelMeasuredAt > WHEEL_MEASURE_MS) {
       measure();
@@ -98251,6 +98822,11 @@ ${url}`;
       closeBlockEdit();
       return;
     }
+    if (event.key === "Escape" && itemsR.closeCardPeek?.()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (event.key === "Escape" && hoverUid) hideHover();
     if (event.key === "Escape" && chrome.popover.isOpen()) {
       chrome.popover.close();
@@ -98310,6 +98886,46 @@ ${url}`;
       itemsR.recoverFocus();
       return;
     }
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key === ".") {
+      const typingElsewhere = inputFocused && !itemsR.isEditing() && !event.target?.closest?.("[data-pxd-row]");
+      if (!typingElsewhere) {
+        let cardUid = "";
+        let blockUid2 = "";
+        const rowEl = event.target?.closest?.("[data-pxd-row]");
+        if (rowEl) {
+          blockUid2 = rowEl.getAttribute("data-pxd-row") || "";
+          cardUid = rowEl.closest?.(".pxd-item")?.getAttribute?.("data-uid") || "";
+        }
+        if (itemsR.isEditing()) {
+          const editUid = itemsR.editingUid();
+          const ta = String(event.target?.tagName || "").toLowerCase() === "textarea" ? event.target : doc.activeElement;
+          const role = inputBlockRole(ta, editUid);
+          if (role.role === "child" && role.uid) {
+            cardUid = editUid || cardUid;
+            blockUid2 = role.uid;
+          }
+        }
+        if (!blockUid2) {
+          const hot = itemsR.hotRow?.();
+          const selected = selection.items.length === 1 ? selection.items[0] : "";
+          if (hot && (!selected || hot.card === selected || hot.card === cardUid)) {
+            cardUid = hot.card;
+            blockUid2 = hot.uid;
+          }
+        }
+        if (cardUid && blockUid2) {
+          event.preventDefault();
+          event.stopPropagation();
+          const focusUid = cardUid;
+          const rowUid = blockUid2;
+          void (async () => {
+            if (itemsR.isEditing()) await exitEdit();
+            itemsR.focusInside?.(focusUid, rowUid);
+          })();
+          return;
+        }
+      }
+    }
     if (inputFocused && itemsR.isEditing()) {
       const ta = String(event.target?.tagName || "").toLowerCase() === "textarea" ? event.target : doc.activeElement;
       if (ta && String(ta.tagName || "").toLowerCase() === "textarea") {
@@ -98333,6 +98949,19 @@ ${url}`;
           event.stopPropagation();
           event.stopImmediatePropagation?.();
           swallowEnterUp = true;
+          return;
+        }
+        if (action.type === "make-child") {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation?.();
+          swallowEnterUp = true;
+          const cardUid = uid;
+          void session.addCardChild?.(cardUid).then(async (child) => {
+            if (!child || disposed) return;
+            await exitEdit();
+            await itemsR.enterEdit(cardUid, { row: child });
+          });
           return;
         }
         if (action.type === "delete-card") {

@@ -821,7 +821,44 @@ test("moving or resizing a board card keeps v:2 and unknown keys", async () => {
   assert.deepEqual(fake.props("nbFull").plexus, { x: 10, y: 520, w: 400, h: 300, v: 2 });
 });
 
-test("wrapInBoard rebases coordinates, moves internal edges into a new Connections block and retargets crossing edges", async () => {
+test("moveIntoBoard leaves a one-ended arrow attached to the moved card", async () => {
+  const { fake, session } = nestedSetup();
+  const before = {
+    e12: fake.props("e12"),
+    e13: fake.props("e13"),
+    e1f: fake.props("e1f"),
+    e23: fake.props("e23"),
+    s12: fake.block("e12").string,
+    s13: fake.block("e13").string,
+    s1f: fake.block("e1f").string,
+    p12: fake.block("e12").parent,
+    p1f: fake.block("e1f").parent,
+  };
+  fake.clearLog();
+  const res = await session.moveIntoBoard(["c1"], "nbFull");
+  assert.equal(fake.block("c1").parent, "nbFull");
+  assert.deepEqual(fake.props("e12"), before.e12);
+  assert.deepEqual(fake.props("e13"), before.e13);
+  assert.deepEqual(fake.props("e1f"), before.e1f);
+  assert.deepEqual(fake.props("e23"), before.e23);
+  assert.equal(fake.block("e12").string, before.s12);
+  assert.equal(fake.block("e13").string, before.s13);
+  assert.equal(fake.block("e1f").string, before.s1f);
+  assert.equal(fake.block("e12").parent, before.p12);
+  assert.equal(fake.block("e1f").parent, before.p1f);
+  assert.equal(fake.has("e1f"), true);
+  const edgeWrites = fake.writesLog().filter((e) => ["e12", "e13", "e1f", "e23"].includes(e[1]));
+  assert.deepEqual(edgeWrites, [], "a one-ended arrow is not rewritten, moved, or deleted");
+  await res.undo();
+  assert.equal(fake.block("c1").parent, "b1");
+  assert.deepEqual(fake.props("c1").plexus, { x: 100, y: 100, w: 200, h: 100 });
+  assert.deepEqual(fake.props("e12"), before.e12);
+  assert.deepEqual(fake.props("e1f"), before.e1f);
+  assert.equal(fake.block("e1f").parent, "ec");
+  assert.equal(fake.block("e12").string, before.s12);
+});
+
+test("wrapInBoard rebases coordinates, moves internal edges into a new Connections block and leaves crossing arrows", async () => {
   const { fake, session } = nestedSetup();
   const uid = await session.wrapInBoard(["c1", "c2"]);
   assert.ok(uid);
@@ -839,23 +876,26 @@ test("wrapInBoard rebases coordinates, moves internal edges into a new Connectio
   assert.deepEqual(fake.props(container).plexus, { type: "edges" });
   assert.equal(fake.block(container).open, false);
   assert.deepEqual(fake.children(container), ["e12"], "the edge between the moved cards follows them");
-  // crossing edges now point at the board card
-  assert.deepEqual(fake.props("e13").plexus, { type: "edge", from: uid, to: "c3", toSide: "left" });
-  assert.equal(fake.block("e13").string, `((${uid})) → [[C]]`);
-  // e13 and e23 both become uid -> c3: the second is a duplicate and is deleted
-  assert.equal(fake.has("e23"), false);
-  assert.deepEqual(fake.props("e1f").plexus, { type: "edge", from: uid, to: "nbFull" });
+  // one end stayed behind: the arrow keeps the moved card and is not rewritten
+  assert.deepEqual(fake.props("e13").plexus, { type: "edge", from: "c1", to: "c3", fromSide: "right", toSide: "left" });
+  assert.equal(fake.block("e13").string, "[[A]] → [[C]]");
+  assert.equal(fake.block("e13").parent, "ec");
+  assert.deepEqual(fake.props("e23").plexus, { type: "edge", from: "c2", to: "c3" });
+  assert.equal(fake.has("e23"), true, "a second crossing arrow is not deleted as a duplicate of a retarget");
+  assert.deepEqual(fake.props("e1f").plexus, { type: "edge", from: "c1", to: "nbFull" });
+  assert.equal(fake.block("e1f").parent, "ec");
   assert.equal(session.board.items.get(uid).kind, "board");
   assert.equal(session.board.items.has("c1"), false, "moved cards are no longer items of the parent board");
   assert.equal(session.board.items.get(uid).content.length, 3, "the card holds both cards and the new Connections block");
 });
 
-test("wrapInBoard of a selection whose only edge is internal creates one Connections block and no retargets", async () => {
+test("wrapInBoard of a selection whose only edge is internal creates one Connections block and leaves outside arrows", async () => {
   const { fake, session } = nestedSetup();
   const uid = await session.wrapInBoard(["c1", "c2", "c3"]);
   const container = fake.children(uid).at(-1);
   assert.deepEqual(fake.children(container).sort(), ["e12", "e13", "e23"]);
-  assert.equal(fake.props("e1f").plexus.from, uid, "an edge to a card outside is retargeted to the board");
+  assert.equal(fake.props("e1f").plexus.from, "c1", "an edge to a card outside stays attached to the moved card");
+  assert.equal(fake.block("e1f").parent, "ec");
 });
 
 test("moveIntoBoard puts items to the right of existing child content, rebased, in one move+props per item", async () => {
@@ -871,11 +911,13 @@ test("moveIntoBoard puts items to the right of existing child content, rebased, 
   const kids = fake.children("nbFull");
   assert.equal(kids.at(-1), "kec", "Connections stays last inside the child");
   assert.equal(kids.indexOf("c1"), 2);
-  // e12 crosses (c1 moved, c2 not): retargeted to the board; e13 becomes nbFull->c3; e1f would be a self edge and is deleted
-  assert.deepEqual(fake.props("e12").plexus, { type: "edge", from: "nbFull", to: "c2" });
-  assert.equal(fake.has("e1f"), false, "an edge between the moved card and the board itself disappears");
-  assert.deepEqual(fake.props("e13").plexus, { type: "edge", from: "nbFull", to: "c3", toSide: "left" });
-  assert.equal(fake.block("e12").string, "((nbFull)) → [[B]]");
+  // one end stayed behind: the arrow is not rewritten and an edge onto the board card is not deleted
+  assert.deepEqual(fake.props("e12").plexus, { type: "edge", from: "c1", to: "c2" });
+  assert.equal(fake.has("e1f"), true, "an edge between the moved card and the board itself stays");
+  assert.deepEqual(fake.props("e1f").plexus, { type: "edge", from: "c1", to: "nbFull" });
+  assert.deepEqual(fake.props("e13").plexus, { type: "edge", from: "c1", to: "c3", fromSide: "right", toSide: "left" });
+  assert.equal(fake.block("e12").string, "[[A]] → [[B]]");
+  assert.equal(fake.block("e12").parent, "ec");
 });
 
 test("moveIntoBoard into an empty board places at 0,0 and moves internal edges into a fresh Connections block", async () => {
@@ -929,14 +971,17 @@ test("moveIntoBoard undo restores parents, orders, props and edges in one transa
   assert.deepEqual(fake.children("nbEmpty"), [], "the Connections block created for the move is removed again");
 });
 
-test("moveIntoBoard undo re-creates an edge that the move deleted", async () => {
+test("moveIntoBoard undo restores the card and does not rewrite a crossing arrow", async () => {
   const { fake, session } = nestedSetup();
   const res = await session.moveIntoBoard(["c1"], "nbFull");
-  assert.equal(fake.has("e1f"), false);
+  assert.equal(fake.has("e1f"), true);
+  assert.deepEqual(fake.props("e1f").plexus, { type: "edge", from: "c1", to: "nbFull" });
+  assert.equal(fake.block("e12").parent, "ec");
   await res.undo();
   assert.equal(fake.has("e1f"), true);
   assert.deepEqual(fake.props("e1f").plexus, { type: "edge", from: "c1", to: "nbFull" });
   assert.equal(fake.block("e1f").parent, "ec");
+  assert.equal(fake.block("e12").string, "[[A]] → [[B]]");
   assert.equal(fake.block("c1").parent, "b1");
 });
 

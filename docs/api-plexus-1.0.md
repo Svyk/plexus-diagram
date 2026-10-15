@@ -285,7 +285,7 @@ boardPreview(item, {max=60}) → {count, aspect, rects:[{x,y,w,h,type,color}], b
 // session
 session.createBoard({rect, title?}) → uid          // one create call, open:false; parent = container at the rect center
 session.wrapInBoard(uids) → uid|null               // card at the bounds (w 240..480, h 180..360); items rebased to the child origin;
-                                                   // edges with both ends moved go to a Connections block in the child; crossing edges are retargeted to the board card (self/duplicate edges are deleted)
+                                                   // edges with both ends moved go to a Connections block in the child; a one-ended arrow stays on this board and keeps the moved card's uid
 session.moveIntoBoard(uids, boardUid) → {moved, title, boardUid, undo()}|null
                                                    // null unless the target is a board card; drops the target and any section containing it;
                                                    // placed right of existing child content (bounds.x+w+48) or at 0,0 when empty; undo() is an inverse transaction
@@ -296,7 +296,7 @@ executeImport(...)                                 // final write is withBoardMa
 
 ```js
 // view
-mountBoardView({ ..., crumbs:[{uid,title}]|null, onOpenBoard(uid), onCrumb(index), routeUid=session.uid, autofocus=false })
+mountBoardView({ ..., crumbs:[{uid,title}]|null, onOpenBoard(uid, opts?), onCrumb(index), routeUid=session.uid, autofocus=false })
 ```
 `crumbs` entries are shared with the caller, so a board rename updates them. `routeUid` is the board of the Roam route/mount: it keys the inline height and the fullscreen route watch (the viewport store stays keyed by `session.uid`). Without `onOpenBoard`, Open falls back to `host.openBlock`. Interaction actions added: `createBoard`, `moveIntoBoard(uids, boardUid, dx, dy)` (the view falls back to `commitMove` when it returns null), `openBoard`, `popBoard() → boolean`. Tool `board` (key W); Esc order is gesture, edit, selection, `popBoard`, fullscreen. `createItemRenderer` takes `onOpenBoard(uid)` and `onRenameBoard(uid, title)` and returns `renameBoard(uid)`. `createChrome` takes `crumbs` and returns `toolbar.setCrumbs(list)`; the context bar has a `board` kind (Open, Rename board) and the multi-select bar has Move into new board.
 

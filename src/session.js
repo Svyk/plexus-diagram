@@ -17,7 +17,6 @@ import {
   descendantsOf,
   diffBoards,
   edgesTouching,
-  findEdge,
   itemsInRect,
   membershipPlan,
   outlineOrder,
@@ -3792,7 +3791,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     });
   }
 
-  // Moves top-level items into a child board (rebased to its origin) and re-homes the connections that follow.
+  // Moves top-level items into a child board (rebased to its origin). An arrow whose both ends move
+  // follows them into the child Connections block. An arrow with one end outside stays on this board
+  // and keeps the moved card's uid: nothing is rewritten or deleted for that arrow.
   function moveItemsInto(t, top, boardUid, origin, place, track = {}) {
     const moved = track.moved ?? new Set([...top].flatMap((id) => [id, ...descendantsOf(board, id)]));
     // A nested board that is only virtual (auto-enhance) gets its marker with the first card moved into it.
@@ -3811,38 +3812,19 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       if (track.info) track.info.createdContainer = childContainer;
       return childContainer;
     };
-    const taken = new Set();
     // Snapshot first: moving one edge out renumbers its siblings, and undo needs the original positions.
-    const touched = [...board.edges.values()].filter((e) => moved.has(e.from) || moved.has(e.to));
+    const followed = [...board.edges.values()].filter((e) => moved.has(e.from) && moved.has(e.to));
     const snapshots = new Map();
-    for (const e of touched) {
+    for (const e of followed) {
       const hit = ix().get(e.uid);
       if (hit?.parent) {
-        snapshots.set(e.uid, { uid: e.uid, parent: hit.parent[UID], order: kidsOf(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])), string: hit.node[STR] ?? "" });
+        snapshots.set(e.uid, { uid: e.uid, parent: hit.parent[UID], order: kidsOf(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])), string: hit.node[STR] ?? "", relocated: true });
       }
     }
-    for (const e of touched) {
+    for (const e of followed) {
       const snapshot = snapshots.get(e.uid);
       if (snapshot) track.undoEdges?.push(snapshot);
-      if (moved.has(e.from) && moved.has(e.to)) {
-        if (snapshot) snapshot.relocated = true;
-        t.move(e.uid, childEdges(), "last");
-        continue;
-      }
-      const from = moved.has(e.from) ? boardUid : e.from;
-      const to = moved.has(e.to) ? boardUid : e.to;
-      const dup = findEdge(board, from, to);
-      const key = `${from}>${to}`;
-      if (from === to || (dup && dup.uid !== e.uid) || taken.has(key)) {
-        if (snapshot) snapshot.deleted = true;
-        t.del(e.uid);
-        continue;
-      }
-      taken.add(key);
-      const fromBlock = moved.has(e.from) ? undefined : e.fromBlock;
-      const toBlock = moved.has(e.to) ? undefined : e.toBlock;
-      t.props(e.uid, edgePlexus(e.uid, { from, to, fromSide: moved.has(e.from) ? "auto" : e.fromSide, toSide: moved.has(e.to) ? "auto" : e.toSide, fromBlock, toBlock }));
-      t.string(e.uid, edgeStringFor(from, to, e.dir, e.label, fromBlock, toBlock));
+      t.move(e.uid, childEdges(), "last");
     }
   }
 

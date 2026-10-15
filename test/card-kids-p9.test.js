@@ -264,7 +264,7 @@ test("CH-1: setKids is one props write, keeps other keys, grows the card once, a
   await session.setKids("X", false);
   assert.equal(fake.writesLog().length, 1);
   assert.equal("kids" in fake.props("X").plexus, false);
-  assert.equal(fake.props("X").plexus.h, 180, "closing keeps the height the user has");
+  assert.equal(fake.props("X").plexus.h, 100, "closing returns to the height from before the unfold");
 });
 
 test("CH-4: spreadChildren stacks block-ref cards right of the card with one arrow each, inside one undo group", async () => {

@@ -69,3 +69,105 @@
   padding-left: 14px;
   color: var(--pxd-muted);
 }
+
+.pxd-root .pxd-outline__line {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 22px;
+}
+
+.pxd-root .pxd-outline__bullet,
+.pxd-root .pxd-outline__caret {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--pxd-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-outline__bullet::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+}
+
+.pxd-root .pxd-item--kids .pxd-block__children,
+.pxd-root .pxd-item--peek .pxd-block__children {
+  margin-left: 16px;
+}
+
+.pxd-root .pxd-block__children[hidden] {
+  display: none;
+}
+
+.pxd-root .pxd-focus__crumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: var(--pxd-muted);
+}
+
+.pxd-root .pxd-focus__crumb button {
+  border: 0;
+  background: transparent;
+  color: var(--pxd-accent, var(--pxd-text));
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.pxd-root .pxd-link-peek {
+  margin-top: 4px;
+}
+
+.pxd-root:not(.pxd-root--motion-off):not([data-motion="reduced"]):not([data-motion="none"]) .pxd-item--kids-anim,
+.pxd-root:not(.pxd-root--motion-off):not([data-motion="reduced"]):not([data-motion="none"]) .pxd-item--peek {
+  transition: height 200ms ease-out;
+}
+
+.pxd-root:not(.pxd-root--motion-off):not([data-motion="reduced"]):not([data-motion="none"]) .pxd-item--peek .pxd-block {
+  animation: pxd-peek-row 200ms ease-out both;
+}
+
+.pxd-root:not(.pxd-root--motion-off):not([data-motion="reduced"]):not([data-motion="none"]) .pxd-item--peek .pxd-block:nth-child(2) {
+  animation-delay: 28ms;
+}
+
+.pxd-root:not(.pxd-root--motion-off):not([data-motion="reduced"]):not([data-motion="none"]) .pxd-item--peek .pxd-block:nth-child(3) {
+  animation-delay: 56ms;
+}
+
+.pxd-root:not(.pxd-root--motion-off):not([data-motion="reduced"]):not([data-motion="none"]) .pxd-item--peek .pxd-block:nth-child(4) {
+  animation-delay: 84ms;
+}
+
+@keyframes pxd-peek-row {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pxd-root .pxd-item--kids-anim,
+  .pxd-root .pxd-item--peek {
+    transition: none;
+  }
+  .pxd-root .pxd-item--peek .pxd-block {
+    animation: none;
+  }
+}

@@ -7203,6 +7203,7 @@ function buildBoardView(onFail, {
     },
     setGesturing: (on, info) => {
       gesturing = Boolean(on);
+      itemsR.setPeekBlocked?.(gesturing);
       guardSelection(gesturing && Boolean(ctl.gestureKind?.()));
       if (!gesturing) { hitShield.drop(); endUnderlay(); }
       setRootFlag("gesturing", gesturing);
@@ -8094,6 +8095,7 @@ function buildBoardView(onFail, {
   let wheelMeasuredAt = -Infinity;
   // The burst after its first event comes from the hit shield (the targets below are what the first event saw).
   const wheelBurst = (event) => {
+    itemsR.cancelCardPeek?.();
     // The outer Roam page scrolls without any pointer event on the board, so the root is measured again; inside a
     // wheel burst that read forced a style recalc of the whole board on every event (PhD main board: ~14 ms each).
     const t = perfNow();
@@ -8562,6 +8564,11 @@ function buildBoardView(onFail, {
       closeBlockEdit();
       return;
     }
+    if (event.key === "Escape" && itemsR.closeCardPeek?.()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (event.key === "Escape" && hoverUid) hideHover();
     // Escape closes the Background popover before the controller's chain (selection, up a level, fullscreen) runs.
     if (event.key === "Escape" && chrome.popover.isOpen()) { chrome.popover.close(); noteOverlayClosed(); event.preventDefault(); event.stopPropagation(); return; }
@@ -8610,6 +8617,46 @@ function buildBoardView(onFail, {
     if (keyGate(event, tableKey).yield) return;
     // Roam dropped focus to <body> mid-edit: put it back on the editor instead of running a board shortcut.
     if (!inputFocused && itemsR.isEditing() && event.key !== "Escape") { itemsR.recoverFocus(); return; }
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key === ".") {
+      const typingElsewhere = inputFocused && !itemsR.isEditing() && !event.target?.closest?.("[data-pxd-row]");
+      if (!typingElsewhere) {
+        let cardUid = "";
+        let blockUid = "";
+        const rowEl = event.target?.closest?.("[data-pxd-row]");
+        if (rowEl) {
+          blockUid = rowEl.getAttribute("data-pxd-row") || "";
+          cardUid = rowEl.closest?.(".pxd-item")?.getAttribute?.("data-uid") || "";
+        }
+        if (itemsR.isEditing()) {
+          const editUid = itemsR.editingUid();
+          const ta = String(event.target?.tagName || "").toLowerCase() === "textarea" ? event.target : doc.activeElement;
+          const role = inputBlockRole(ta, editUid);
+          if (role.role === "child" && role.uid) {
+            cardUid = editUid || cardUid;
+            blockUid = role.uid;
+          }
+        }
+        if (!blockUid) {
+          const hot = itemsR.hotRow?.();
+          const selected = selection.items.length === 1 ? selection.items[0] : "";
+          if (hot && (!selected || hot.card === selected || hot.card === cardUid)) {
+            cardUid = hot.card;
+            blockUid = hot.uid;
+          }
+        }
+        if (cardUid && blockUid) {
+          event.preventDefault();
+          event.stopPropagation();
+          const focusUid = cardUid;
+          const rowUid = blockUid;
+          void (async () => {
+            if (itemsR.isEditing()) await exitEdit();
+            itemsR.focusInside?.(focusUid, rowUid);
+          })();
+          return;
+        }
+      }
+    }
     if (inputFocused && itemsR.isEditing()) {
       const ta = String(event.target?.tagName || "").toLowerCase() === "textarea" ? event.target : doc.activeElement;
       if (ta && String(ta.tagName || "").toLowerCase() === "textarea") {
@@ -8638,6 +8685,19 @@ function buildBoardView(onFail, {
           event.stopPropagation();
           event.stopImmediatePropagation?.();
           swallowEnterUp = true;
+          return;
+        }
+        if (action.type === "make-child") {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation?.();
+          swallowEnterUp = true;
+          const cardUid = uid;
+          void session.addCardChild?.(cardUid).then(async (child) => {
+            if (!child || disposed) return;
+            await exitEdit();
+            await itemsR.enterEdit(cardUid, { row: child });
+          });
           return;
         }
         if (action.type === "delete-card") {

@@ -59,6 +59,9 @@ export function editorKeyAction({
   const mod = Boolean(meta || ctrl);
   if (key === "Tab" && !alt) return { type: "roam" };
   if (key === "Enter" && mod && !shift && !alt) return { type: "roam" };
+  // Shift+Enter on the card's top block makes a child. Inside a nested block it stays
+  // Roam's soft newline. Autocomplete and a modifier chord stay with Roam too.
+  if (key === "Enter" && shift && !mod && !alt && isRoot) return { type: "make-child" };
   // In "child" mode Enter stays with Roam, which inserts the new block as a child
   // of the card and repaints the outline. Writing the child through the API
   // leaves a block the open editor never shows.

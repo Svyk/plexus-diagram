@@ -83,6 +83,7 @@ import { createEchoLedger, createWriteQueue } from "./host/roam.js";
 import { sharedBgBudget } from "./bg-budget.js";
 import { notedSpeedFlags } from "./settings.js";
 import { executeImport, planImport, readNative, readV06Entry } from "./host/migrate.js";
+import { CHILD_GROW_H, kidsHeightPlan, rememberUnfoldedSize } from "./model/card-children.js";
 
 const UID = ":block/uid";
 const STR = ":block/string";
@@ -1203,6 +1204,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         rawString(id, string);
         ops.push({ op: "string", uid: id, string });
       },
+      open(id, value) {
+        const node = rawNode(id);
+        if (!node) return;
+        const next = value !== false;
+        node[OPEN] = next;
+        ops.push({ op: "open", uid: id, open: next });
+      },
       // A page outside the board. Nothing in the board tree changes.
       page({ uid: id, title }) {
         const newUid = id ?? host.generateUid();
@@ -1865,6 +1873,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return made.uid;
   }
 
+  // Folded height is session memory. A resize while children are open is the unfolded size only.
+  const kidsMemory = new Map();
+
   // ---- session object ----
   const session = {
     uid,
@@ -1937,6 +1948,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           fitTouched.push(r.uid);
           const parentRect = item.parentUid === uid ? { x: 0, y: 0 } : rects.get(item.parentUid) ?? { x: 0, y: 0 };
           const size = clampSize(item.type, r.w ?? item.w, r.h ?? item.h);
+          if (item.type === "card" && item.kids && round1(size.h) !== round1(item.h)) {
+            kidsMemory.set(r.uid, rememberUnfoldedSize(kidsMemory.get(r.uid), round1(size.h)));
+          }
           t.props(r.uid, itemPlexus(r.uid, {
             x: round1(r.x - parentRect.x),
             y: round1(r.y - parentRect.y),
@@ -2811,19 +2825,85 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       return (stamp.length ? stampedRun(stamp, write) : queue.run(write)).catch((err) => { handleFailure(err); return false; });
     },
 
-    // CH-1: show or hide a card's children inside it. One props write. Turning it on grows the card by `extraH`
-    // (the renderer's estimate of the outline) in the same write, so one Cmd+Z undoes both.
+    // CH-1: show or hide a card's children inside it. One props write. Unfold grows from the stored
+    // folded height; refold returns to it. A resize while open is remembered as the unfolded size only.
     setKids(id, value, extraH = 0) {
       return txn((t) => {
         const item = board.items.get(id);
-        if (!item || item.type !== "card" || item.kind !== "note" && item.kind !== "block") return;
+        if (!item || item.type !== "card" || (item.kind !== "note" && item.kind !== "block")) return;
         const on = value === true;
         if (Boolean(item.kids) === on) return;
+        const plan = kidsHeightPlan({ on, h: item.h, extraH, memory: kidsMemory.get(id) });
+        kidsMemory.set(id, plan.memory);
         const patch = { kids: on ? true : undefined };
-        if (on && extraH > 0) patch.h = Math.min(900, Math.ceil(item.h + extraH));
+        if (plan.h !== item.h) patch.h = plan.h;
         t.props(id, itemPlexus(id, patch));
-        if (patch.h > item.h) applyFit(t, [id]);
+        if (on && plan.h > item.h) applyFit(t, [id]);
       });
+    },
+
+    // Shift+Enter on the card's top block. One custom undo removes the child and restores the folded size.
+    addCardChild(id) {
+      const item = board?.items.get(id);
+      if (!item || item.type !== "card" || (item.kind !== "note" && item.kind !== "block")) return Promise.resolve(null);
+      const beforePlexus = clone(rawPlexus(id));
+      const beforeMem = kidsMemory.has(id) ? { ...kidsMemory.get(id) } : null;
+      const beforeOpen = rawNode(id)?.[OPEN] !== false;
+      let childUid = null;
+      let afterMem = beforeMem;
+      const custom = {
+        async undo() {
+          const back = [];
+          if (childUid) back.push({ op: "delete", uid: childUid });
+          back.push({ op: "props", uid: id, plexus: beforePlexus });
+          if (!beforeOpen) back.push({ op: "open", uid: id, open: false });
+          if (beforeMem) kidsMemory.set(id, { ...beforeMem });
+          else kidsMemory.delete(id);
+          await execute(back);
+        },
+        async redo() {
+          await execute(custom.forward);
+          if (afterMem) kidsMemory.set(id, { ...afterMem });
+          else kidsMemory.delete(id);
+        },
+      };
+      return txn((t) => {
+        childUid = t.create({ parent: id, string: "" });
+        if (!item.kids) {
+          const plan = kidsHeightPlan({ on: true, h: item.h, extraH: CHILD_GROW_H, memory: kidsMemory.get(id) });
+          afterMem = plan.memory;
+          kidsMemory.set(id, plan.memory);
+          t.props(id, itemPlexus(id, { kids: true, h: plan.h }));
+          if (plan.h > item.h) applyFit(t, [id]);
+        }
+        if (!beforeOpen) t.open(id, true);
+        return childUid;
+      }, custom);
+    },
+
+    // :block/open on a block inside a card. One custom undo. The card renderer also toggles the row locally,
+    // because a child fold does not mark the card dirty.
+    setNodeOpen(id, open) {
+      if (!board || destroyed || gone) return Promise.resolve(false);
+      const node = rawNode(id);
+      if (!node || node === raw) return Promise.resolve(false);
+      const next = open !== false;
+      const prev = node[OPEN] !== false;
+      if (prev === next) return Promise.resolve(false);
+      node[OPEN] = next;
+      const custom = {
+        async undo() {
+          const n = rawNode(id);
+          if (n) n[OPEN] = prev;
+          await execute([{ op: "open", uid: id, open: prev }]);
+        },
+        async redo() {
+          const n = rawNode(id);
+          if (n) n[OPEN] = next;
+          await execute([{ op: "open", uid: id, open: next }]);
+        },
+      };
+      return commit([{ op: "open", uid: id, open: next }], true, custom);
     },
 
     setFontSize(id, size) {

@@ -1762,6 +1762,7 @@ function buildBoardView(onFail, {
     timers,
     adoptShell,
     onOverviewQueue: () => paintOverviewCover(),
+    onShells: () => { try { edgesR.flushWaiting?.(); } catch { /* the edge layer follows the shells */ } },
     tableThumb,
     onTableShown,
     onEditChange: (uid) => {
@@ -3944,16 +3945,22 @@ function buildBoardView(onFail, {
   // gesture underlay (pointer-events none) until the pump or a hit builds them. A gesture hides that canvas
   // when it settles; draw the queue again afterwards. A zoom from that cover into detail keeps the boxes
   // until the queue is empty. Opening already at detail does not paint them.
+  let coverUids = new Set();
+  // A card counts as drawn when its shell exists, or a cover box is standing in for it.
+  // The open snapshot paints its own edges, so a card that is only in the snapshot does not release a live edge.
+  const endpointReady = (uid) => Boolean(uid && (itemsR.shellOf?.(uid) || coverUids.has(uid)));
   paintOverviewCover = () => {
     if (disposed || underlayDrawn) return;
-    try { if (notedSpeedFlags().overviewFast === false) return; } catch { return; }
+    try { if (notedSpeedFlags().overviewFast === false) { coverUids = new Set(); return; } } catch { coverUids = new Set(); return; }
     if (tier === "detail" && itemsR.coverHeld?.() !== true) {
       const pending = itemsR.pendingBoxes?.() || [];
+      coverUids = new Set();
       if (!pending.length) underlay.hide();
       return;
     }
     const items = itemsR.pendingBoxes?.() || [];
-    if (!items.length) { underlay.hide(); return; }
+    if (!items.length) { coverUids = new Set(); underlay.hide(); return; }
+    coverUids = new Set(items.map((item) => item.uid));
     underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
   };
   const releaseUnderlay = () => {
@@ -9016,7 +9023,7 @@ function buildBoardView(onFail, {
           for (const uid of sliceSource) (slice.size < EDGE_SLICE ? slice : edgeRest).add(uid);
           part = slice;
         }
-        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: part, view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null, skipLinks: edgeSlicing && !dirty.links });
+        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: part, view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null, skipLinks: edgeSlicing && !dirty.links, drawn: endpointReady });
         paintLegend();
         if (suggestMode !== "off") refreshSuggest();
       }

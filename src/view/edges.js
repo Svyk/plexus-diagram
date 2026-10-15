@@ -617,15 +617,43 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
 
   // Full or partial render. `dirty` = Set of edge uids to repaint; null = all.
   let lastPass = null;
+  // Endpoints the board has actually drawn (shell, cover box, or snapshot). Absent means every end counts.
+  let drawnFn = null;
+  const waiting = new Set();
+  const endsReady = (board, edge) => {
+    if (typeof drawnFn !== "function") return true;
+    return Boolean(drawnFn(anchorUid(board, edge.from)) && drawnFn(anchorUid(board, edge.to)));
+  };
+  const hideEdge = (rec) => {
+    rec.g.setAttribute("display", "none");
+    rec.label.style.display = "none";
+  };
+  const showEdge = (board, edge, rects, zoom, coveredEdges, selection) => {
+    let rec = edgeEls.get(edge.uid);
+    const fresh = !rec;
+    if (!rec) rec = buildEdge(edge);
+    else if (rec.parked) unparkEdge(rec);
+    rec.stale = false;
+    paintEdge(board, edge, rec, { covered: coveredEdges.has(edge.uid), selected: selection.edge === edge.uid });
+    placeEdge(board, edge, rec, rects, zoom);
+    return fresh;
+  };
   // skipLinks: a continuation frame of a sliced settle; the links were placed with the first slice.
-  const render = ({ board, rects, links = [], coveredEdges = new Set(), selection = {}, zoom = 1, dirty = null, view: near = undefined, skipLinks = false }) => {
+  const render = ({ board, rects, links = [], coveredEdges = new Set(), selection = {}, zoom = 1, dirty = null, view: near = undefined, skipLinks = false, drawn = undefined }) => {
     zoomCache = zoom;
     if (near !== undefined) view = near;
+    if (drawn !== undefined) drawnFn = drawn;
     lastPass = { board, rects, coveredEdges, selection };
     const virt = Boolean(view) && virtualEdges(board);
-    for (const uid of [...edgeEls.keys()]) if (!board.edges.has(uid)) removeEdge(uid);
+    for (const uid of [...edgeEls.keys()]) if (!board.edges.has(uid)) { waiting.delete(uid); removeEdge(uid); }
     for (const edge of board.edges.values()) {
       let rec = edgeEls.get(edge.uid);
+      if (!endsReady(board, edge)) {
+        waiting.add(edge.uid);
+        if (rec && !rec.parked) hideEdge(rec);
+        continue;
+      }
+      waiting.delete(edge.uid);
       if (virt && selection.edge !== edge.uid && editingLabel?.uid !== edge.uid) {
         const attached = rec && !rec.parked;
         if (attached ? edgeFar(board, edge, rects) : !edgeNear(board, edge, rects)) {
@@ -634,15 +662,10 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         }
       }
       // A slice names the edges for this frame. An edge that is not built yet waits for the frame that names it.
-      if (!rec && dirty && !dirty.has(edge.uid)) continue;
       const fresh = !rec;
-      if (!rec) rec = buildEdge(edge);
-      else if (rec.parked) unparkEdge(rec);
-      if (fresh || !dirty || dirty.has(edge.uid) || rec.stale) {
-        rec.stale = false;
-        paintEdge(board, edge, rec, { covered: coveredEdges.has(edge.uid), selected: selection.edge === edge.uid });
-        placeEdge(board, edge, rec, rects, zoom);
-      }
+      const wasHidden = Boolean(rec && !rec.parked && rec.g.getAttribute("display") === "none");
+      if (!rec && dirty && !dirty.has(edge.uid)) continue;
+      if (fresh || wasHidden || !dirty || dirty.has(edge.uid) || rec.stale) showEdge(board, edge, rects, zoom, coveredEdges, selection);
     }
     if (!skipLinks) {
       const keys = new Set(links.map((l) => l.key));
@@ -653,6 +676,22 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       }
     }
     labelsLayer?.classList.toggle("pxd-labels--hidden", zoom < LABEL_HIDE_ZOOM);
+  };
+
+  // Shells that landed after the open. Only the edges that were waiting are placed.
+  const flushWaiting = () => {
+    if (!lastPass || !waiting.size) return 0;
+    const { board, rects, coveredEdges, selection } = lastPass;
+    let n = 0;
+    for (const uid of [...waiting]) {
+      const edge = board.edges.get(uid);
+      if (!edge || !endsReady(board, edge)) continue;
+      if (view && virtualEdges(board) && !edgeNear(board, edge, rects)) continue;
+      waiting.delete(uid);
+      showEdge(board, edge, rects, zoomCache, coveredEdges, selection);
+      n += 1;
+    }
+    return n;
   };
 
   // A gesture frame: build or attach edges coming into `rect`, at most `budget` per frame. Parking waits for render.
@@ -666,6 +705,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       if (n >= budget) break;
       const rec = edgeEls.get(edge.uid);
       if (rec && !rec.parked) continue;
+      if (!endsReady(board, edge)) { waiting.add(edge.uid); continue; }
       if (!edgeNear(board, edge, rects)) continue;
       const live = rec || buildEdge(edge);
       if (rec) unparkEdge(live);
@@ -685,6 +725,12 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     if (!virtualEdges(board)) return;
     for (const edge of board.edges.values()) {
       const rec = edgeEls.get(edge.uid);
+      if (!endsReady(board, edge)) {
+        waiting.add(edge.uid);
+        if (rec && !rec.parked) hideEdge(rec);
+        continue;
+      }
+      waiting.delete(edge.uid);
       const pinned = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
       const near = pinned || (rec && !rec.parked ? !edgeFar(board, edge, rects) : edgeNear(board, edge, rects));
       if (!near) {
@@ -981,6 +1027,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       return n;
     },
     placements: () => placements,
+    flushWaiting,
     setSelection,
     setHover,
     setTempWire,

@@ -694,6 +694,7 @@ export function createItemRenderer({
   onPinOpen = null,
   settings: speedSettings = null,
   onOverviewQueue = null,
+  onShells = null,
   interopOn = null,
   adoptShell = null,
   tableThumb = null,
@@ -2068,6 +2069,7 @@ export function createItemRenderer({
     if (!shellQueue.length) coverHeld = false;
     try { onOverviewQueue?.(); } catch { /* the view paints the cover */ }
   };
+  const noteShells = () => { try { onShells?.(); } catch { /* edges follow the shells */ } };
   // A wheel, drag-pan, or pinch burst. The view sets this for the whole burst, including the event
   // that opens it. Building or attaching here is the long frame the burst exists to avoid.
   let shellsHeld = false;
@@ -2119,6 +2121,7 @@ export function createItemRenderer({
     }
     if (pendingView && !pendingView.size) viewBuilt();
     if (!shellQueue.length) noteOverviewQueue();
+    if (built.length) noteShells();
     return shellQueue.length === 0;
   };
   const pumpShells = () => {
@@ -2222,6 +2225,7 @@ export function createItemRenderer({
     if (rect) position(rec, rect);
     if (showBadges) renderBadges(rec);
     attachShell(rec);
+    noteShells();
     return rec.el;
   };
   // view: a screen around the camera (which shells to build first, which bodies are offscreen). attachView: the tighter

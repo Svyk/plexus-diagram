@@ -9,7 +9,7 @@ import { createDomStub } from "./fixtures/dom-stub.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
-function pulled(extraChildren = []) {
+function pulled(extraChildren = [], extraEdges = []) {
   const item = (uid, string, plexus, order, children = []) => ({
     ":block/uid": uid,
     ":block/string": string,
@@ -35,6 +35,7 @@ function pulled(extraChildren = []) {
       item("edgesEEE5", "Connections", { ":type": "edges" }, 6, [
         item("edgeFFFF6", "((cardAAAA1)) → causes → [[Beta]]", { ":type": "edge", ":from": "cardAAAA1", ":to": "cardBBBB2" }, 0),
         item("edgeGGGG7", "[[Beta]] → ((cardAAAA1))", { ":type": "edge", ":from": "cardBBBB2", ":to": "cardAAAA1" }, 1),
+        ...extraEdges,
       ]),
       ...extraChildren,
     ],
@@ -136,11 +137,11 @@ function fakeSession(board) {
   return session;
 }
 
-function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extraChildren = [], hostOverrides = {}, viewOptions = {}, cardOpen, kidsOn = [] } = {}) {
+function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extraChildren = [], extraEdges = [], hostOverrides = {}, viewOptions = {}, cardOpen, kidsOn = [] } = {}) {
   const stub = createDomStub();
   const restore = stub.install();
   stub.localStorage.setItem(`plexus-diagram:vp:Svy:board0001`, JSON.stringify(vp));
-  const tree = pulled(extraChildren);
+  const tree = pulled(extraChildren, extraEdges);
   if (cardOpen === false) tree[":block/children"][0][":block/open"] = false;
   for (const c of tree[":block/children"]) if (kidsOn.includes(c[":block/uid"])) c[":block/props"] = { ":plexus": { ...(c[":block/props"]?.[":plexus"] || {}), ":kids": true } };
   const board = buildBoard(tree);
@@ -1785,6 +1786,33 @@ test("F5: dropping a card with motion off skips the fly and still toasts Moved t
     assert.equal(f.view.root.querySelector("[data-uid=nbCard001]").classList.contains("pxd-item--pulse"), false);
     assert.equal(f.view.root.querySelector(".pxd-toast__text").textContent, "Moved to Inner");
     assert.equal(f.session.mutations.filter((m) => m[0] === "commitMove").length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("edges wait until both cards are drawn", async () => {
+  const far = [];
+  for (let i = 0; i < 90; i += 1) {
+    far.push(extraCard(`farCard${String(i).padStart(2, "0")}`, `Far ${i}`, 20 + i, { ":x": 6000 + i * 40, ":y": 0, ":w": 30, ":h": 24 }));
+  }
+  const f = mountFixture({
+    extraChildren: far,
+    extraEdges: [extraCard("edgeFAR001", "((farCard00)) → ((farCard01))", 2, { ":type": "edge", ":from": "farCard00", ":to": "farCard01" })],
+  });
+  try {
+    f.stub.flushFrames();
+    const edgeOf = (uid) => f.view.root.querySelector(`[data-uid="${uid}"].pxd-edge`) || [...f.view.root.querySelectorAll(".pxd-edge")].find((node) => node.getAttribute("data-uid") === uid);
+    const near = edgeOf("edgeFFFF6");
+    assert.ok(near && near.getAttribute("display") !== "none", "an edge between drawn cards paints");
+    assert.equal(Boolean(edgeOf("edgeFAR001")), false, "an edge waits while its cards are not drawn");
+    for (let i = 0; i < 8; i += 1) {
+      f.stub.flushFrames();
+      f.stub.flushIdle();
+    }
+    const later = edgeOf("edgeFAR001");
+    assert.ok(later && later.getAttribute("display") !== "none", "the edge paints once both cards exist");
   } finally {
     f.view.dispose();
     f.restore();

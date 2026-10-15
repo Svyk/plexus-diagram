@@ -2571,6 +2571,55 @@ test("ED-6: Backspace in an empty fresh card deletes it once", async () => {
   }
 });
 
+test("a text-selection click in the reader, a PDF, or a text layer does not create a card", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const root = f.view.root;
+    const doc = f.stub.document;
+    const layer = (className) => {
+      const host = doc.createElement("div");
+      host.className = className;
+      const text = doc.createElement("div");
+      text.className = "textLayer";
+      const span = doc.createElement("span");
+      span.textContent = "osmotic";
+      text.append(span);
+      host.append(text);
+      root.append(host);
+      return span;
+    };
+    const named = [
+      ["read pane", layer("pxd-read")],
+      ["pdf container", layer("rm-pdf-container")],
+      ["pdf reader", layer("pxd-pdf-reader")],
+      ["pdf interact", layer("pxd-pdf-live")],
+    ];
+    const card = root.querySelector("[data-uid=cardAAAA1]");
+    const inCard = doc.createElement("span");
+    inCard.className = "textLayer";
+    card.querySelector(".pxd-item__body").append(inCard);
+    named.push(["card text layer", inCard]);
+    const created = () => f.session.mutations.filter((row) => row[0] === "createCard");
+    for (const [label, span] of named) {
+      const down = f.stub.dispatch(span, "pointerdown", { button: 0, clientX: 1271, clientY: 738, pointerId: 9 });
+      f.stub.dispatch(span, "pointermove", { button: 0, clientX: 1300, clientY: 760, pointerId: 9 });
+      f.stub.dispatch(doc, "pointerup", { button: 0, clientX: 1300, clientY: 760, pointerId: 9 });
+      const click = f.stub.dispatch(span, "dblclick", { button: 0, clientX: 1271, clientY: 738, detail: 3 });
+      assert.equal(down.defaultPrevented, false, `${label} pointerdown stays a selection`);
+      assert.equal(click.defaultPrevented, false, `${label} dblclick stays a selection`);
+      assert.equal(created().length, 0, "selecting text does not create a card");
+      assert.equal(card.classList.contains("pxd-item--editing"), false);
+    }
+    f.stub.dispatch(root.querySelector(".pxd-viewport"), "dblclick", { clientX: 700, clientY: 200 });
+    for (let i = 0; i < 4; i += 1) { f.stub.flushFrames(); await tick(); }
+    assert.equal(created().length, 1, "a double-click on empty board still creates a card");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("ED-7: a multi-line paste in the card root becomes children, not board cards", async () => {
   const created = [];
   const updates = [];

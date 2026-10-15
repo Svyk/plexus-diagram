@@ -42,7 +42,7 @@ import { timelineQuery } from "../model/timeline.js";
 import { createOpenStore, edgeOpens } from "../model/strength.js";
 import { applyDust, applyStrength, clearLens } from "./strength-lens.js";
 import { openWhyPopover } from "./why-pop.js";
-import { leavesBoardPointer } from "./overlay-hit.js";
+import { inReaderText, leavesBoardPointer } from "./overlay-hit.js";
 import { mountContextsDrawer } from "./contexts-drawer.js";
 import { mountMemoryLane } from "./lane-bar.js";
 import { breadcrumb, snippetOf } from "../model/contexts.js";
@@ -7587,7 +7587,7 @@ function buildBoardView(onFail, {
   // ------------------------------------------------------------ DOM events → controller
   const targetOf = (t) => {
     if (!t || typeof t.closest !== "function") return { kind: "empty" };
-    if (t.closest(".pxd-chrome")) return { kind: "chrome" };
+    if (t.closest(".pxd-chrome") || inReaderText(t)) return { kind: "chrome" };
     const port = t.closest(".pxd-port");
     if (port) {
       const owner = port.closest(".pxd-item, .pxd-section");
@@ -7741,7 +7741,7 @@ function buildBoardView(onFail, {
     const kind = event.pointerType;
     if (kind !== "touch" && kind !== "pen") return;
     if ((event.button ?? 0) !== 0) return;
-    if (leavesBoardPointer(event.target)) return;
+    if (leavesBoardPointer(event.target) || inReaderText(event.target)) return;
     // A primary pointer starts a new touch sequence; ids whose pointerup never reached us are stale.
     if (event.isPrimary === true) touchIds.clear();
     if (event.pointerId != null) touchIds.add(event.pointerId);
@@ -7883,7 +7883,7 @@ function buildBoardView(onFail, {
   };
   let onBoardPointerDown;
   listen(root, "pointerdown", onBoardPointerDown = (event) => {
-    if (leavesBoardPointer(event.target)) return;
+    if (leavesBoardPointer(event.target) || inReaderText(event.target)) return;
     if (inRoamTable(event.target) && !event.__pxdGrab) { tablePointer = event.target; return; }
     // Interact is on: this click belongs to the reader. preventDefault or stopPropagation would block page nav.
     if (pdfClickShield(event.target)) return;
@@ -7965,7 +7965,7 @@ function buildBoardView(onFail, {
     // A ((pin)) ref navigates on the mousedown after this press. Cancel the press here
     // so that mousedown never starts, without a second listener on the root.
     if (stealPinPress(event)) return;
-    if (leavesBoardPointer(event.target)) return;
+    if (leavesBoardPointer(event.target) || inReaderText(event.target)) return;
     const item = event.target?.closest?.(".pxd-item");
     if (!item || !root.contains(item)) return;
     const uid = item.getAttribute?.("data-uid") || item.dataset?.uid;
@@ -8006,7 +8006,7 @@ function buildBoardView(onFail, {
   for (const type of ["mousedown", "mouseup"]) {
     listen(root, type, (event) => {
       if (type === "mousedown" && stealPinPress(event)) return;
-      if (leavesBoardPointer(event.target) || inRoamTable(event.target)) return;
+      if (leavesBoardPointer(event.target) || inReaderText(event.target) || inRoamTable(event.target)) return;
       const native = nativeClickKind(event.target);
       if (native === "checkbox" || native === "image") return;
       const editing = itemsR.editingUid();
@@ -8015,7 +8015,7 @@ function buildBoardView(onFail, {
     });
   }
   listen(root, "dragstart", (event) => {
-    if (leavesBoardPointer(event.target) || inRoamTable(event.target) || event.target?.closest?.(".pxd-item--editing, .pxd-refs__row")) return;
+    if (leavesBoardPointer(event.target) || inReaderText(event.target) || inRoamTable(event.target) || event.target?.closest?.(".pxd-item--editing, .pxd-refs__row")) return;
     event.preventDefault();
   });
   // Capture phase only cancels the click that ends a drag. Shielding Roam's block-edit handlers happens in
@@ -8103,10 +8103,11 @@ function buildBoardView(onFail, {
       const uid = open.getAttribute?.("data-open-board") || open.closest?.(".pxd-item[data-uid]")?.getAttribute?.("data-uid");
       if (uid) void openBoard(uid);
     }
-    if (!leavesBoardPointer(event.target)) event.stopPropagation();
+    if (!leavesBoardPointer(event.target) && !inReaderText(event.target)) event.stopPropagation();
   });
   listen(root, "dblclick", (event) => {
-    if (leavesBoardPointer(event.target) || inRoamTable(event.target) || event.target?.closest?.(".pxd-refs")) return;
+    // Return before preventDefault so a triple-click can still select the text.
+    if (leavesBoardPointer(event.target) || inReaderText(event.target) || inRoamTable(event.target) || event.target?.closest?.(".pxd-refs")) return;
     if (nativeClickKind(event.target)) return;
     event.stopPropagation();
     event.preventDefault();
@@ -8196,7 +8197,7 @@ function buildBoardView(onFail, {
   // Right-click: the controller decides what was hit and asks us to open the menu; an editing card keeps the
   // browser's own menu (the controller returns false there). A long-press calls this same function.
   const onRootContextMenu = (event) => {
-    if (leavesBoardPointer(event.target) || inRoamTable(event.target)) return;
+    if (leavesBoardPointer(event.target) || inReaderText(event.target) || inRoamTable(event.target)) return;
     event.stopPropagation?.();
     // Roam's own menu for a ref / tag already handled this (its React root ran first); links and images keep the browser's.
     if (event.defaultPrevented) return;

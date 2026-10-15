@@ -30895,10 +30895,10 @@ function createItemRenderer({
     mounted.delete(rec.uid);
     mountContent(rec, item);
   };
-  const focusInside = (cardUid, blockUid2) => {
-    if (!cardUid || !blockUid2) return false;
-    cardFocus.set(cardUid, blockUid2);
-    hotRow = { card: cardUid, uid: blockUid2 };
+  const focusInside = (cardUid, blockUid3) => {
+    if (!cardUid || !blockUid3) return false;
+    cardFocus.set(cardUid, blockUid3);
+    hotRow = { card: cardUid, uid: blockUid3 };
     const rec = shells.get(cardUid);
     if (!rec || disposed) return true;
     if (rec.peekOpen) {
@@ -99365,10 +99365,10 @@ ${url}`;
       const typingElsewhere = inputFocused && !itemsR.isEditing() && !event.target?.closest?.("[data-pxd-row]");
       if (!typingElsewhere) {
         let cardUid = "";
-        let blockUid2 = "";
+        let blockUid3 = "";
         const rowEl = event.target?.closest?.("[data-pxd-row]");
         if (rowEl) {
-          blockUid2 = rowEl.getAttribute("data-pxd-row") || "";
+          blockUid3 = rowEl.getAttribute("data-pxd-row") || "";
           cardUid = rowEl.closest?.(".pxd-item")?.getAttribute?.("data-uid") || "";
         }
         if (itemsR.isEditing()) {
@@ -99377,22 +99377,22 @@ ${url}`;
           const role = inputBlockRole(ta, editUid);
           if (role.role === "child" && role.uid) {
             cardUid = editUid || cardUid;
-            blockUid2 = role.uid;
+            blockUid3 = role.uid;
           }
         }
-        if (!blockUid2) {
+        if (!blockUid3) {
           const hot = itemsR.hotRow?.();
           const selected = selection.items.length === 1 ? selection.items[0] : "";
           if (hot && (!selected || hot.card === selected || hot.card === cardUid)) {
             cardUid = hot.card;
-            blockUid2 = hot.uid;
+            blockUid3 = hot.uid;
           }
         }
-        if (cardUid && blockUid2) {
+        if (cardUid && blockUid3) {
           event.preventDefault();
           event.stopPropagation();
           const focusUid = cardUid;
-          const rowUid = blockUid2;
+          const rowUid = blockUid3;
           void (async () => {
             if (itemsR.isEditing()) await exitEdit();
             itemsR.focusInside?.(focusUid, rowUid);

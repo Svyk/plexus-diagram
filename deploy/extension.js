@@ -53328,8 +53328,12 @@ function openWhyPopover({
 
 // src/view/overlay-hit.js
 var BOARD_OVERLAY = ".pxd-chrome, .pxd-contexts, .pxd-memory";
+var READER_TEXT = ".pxd-read, .rm-pdf-container, .pxd-pdf-reader, .pxd-pdf-live, .textLayer";
 function leavesBoardPointer(target) {
   return Boolean(target?.closest?.(BOARD_OVERLAY));
+}
+function inReaderText(target) {
+  return Boolean(target?.closest?.(READER_TEXT));
 }
 
 // src/model/contexts.js
@@ -98187,7 +98191,7 @@ ${url}`;
   ctl.setTool("select");
   const targetOf2 = (t) => {
     if (!t || typeof t.closest !== "function") return { kind: "empty" };
-    if (t.closest(".pxd-chrome")) return { kind: "chrome" };
+    if (t.closest(".pxd-chrome") || inReaderText(t)) return { kind: "chrome" };
     const port = t.closest(".pxd-port");
     if (port) {
       const owner = port.closest(".pxd-item, .pxd-section");
@@ -98338,7 +98342,7 @@ ${url}`;
     const kind = event.pointerType;
     if (kind !== "touch" && kind !== "pen") return;
     if ((event.button ?? 0) !== 0) return;
-    if (leavesBoardPointer(event.target)) return;
+    if (leavesBoardPointer(event.target) || inReaderText(event.target)) return;
     if (event.isPrimary === true) touchIds.clear();
     if (event.pointerId != null) touchIds.add(event.pointerId);
     if (touchIds.size >= 2) {
@@ -98475,7 +98479,7 @@ ${url}`;
   };
   let onBoardPointerDown;
   listen(root, "pointerdown", onBoardPointerDown = (event) => {
-    if (leavesBoardPointer(event.target)) return;
+    if (leavesBoardPointer(event.target) || inReaderText(event.target)) return;
     if (inRoamTable(event.target) && !event.__pxdGrab) {
       tablePointer = event.target;
       return;
@@ -98557,7 +98561,7 @@ ${url}`;
   listen(root, "pointerdown", (event) => {
     if ((event.button ?? 0) !== 0) return;
     if (stealPinPress(event)) return;
-    if (leavesBoardPointer(event.target)) return;
+    if (leavesBoardPointer(event.target) || inReaderText(event.target)) return;
     const item = event.target?.closest?.(".pxd-item");
     if (!item || !root.contains(item)) return;
     const uid = item.getAttribute?.("data-uid") || item.dataset?.uid;
@@ -98594,7 +98598,7 @@ ${url}`;
   for (const type of ["mousedown", "mouseup"]) {
     listen(root, type, (event) => {
       if (type === "mousedown" && stealPinPress(event)) return;
-      if (leavesBoardPointer(event.target) || inRoamTable(event.target)) return;
+      if (leavesBoardPointer(event.target) || inReaderText(event.target) || inRoamTable(event.target)) return;
       const native = nativeClickKind(event.target);
       if (native === "checkbox" || native === "image") return;
       const editing = itemsR.editingUid();
@@ -98603,7 +98607,7 @@ ${url}`;
     });
   }
   listen(root, "dragstart", (event) => {
-    if (leavesBoardPointer(event.target) || inRoamTable(event.target) || event.target?.closest?.(".pxd-item--editing, .pxd-refs__row")) return;
+    if (leavesBoardPointer(event.target) || inReaderText(event.target) || inRoamTable(event.target) || event.target?.closest?.(".pxd-item--editing, .pxd-refs__row")) return;
     event.preventDefault();
   });
   listen(root, "click", (event) => {
@@ -98620,6 +98624,29 @@ ${url}`;
   }, true);
   let lastRefKey = "";
   let lastRefAt = 0;
+  const dismissRoamHoverPopups = () => {
+    const root2 = doc?.body || doc;
+    if (typeof root2?.querySelectorAll !== "function") return;
+    const matched = [...root2.querySelectorAll(".bp3-portal, .bp3-overlay")];
+    for (const node2 of matched) {
+      if (node2.closest?.(".pxd-root")) continue;
+      if (!node2.querySelector?.(".rm-zoom")) continue;
+      if (matched.some((other) => other !== node2 && other.contains?.(node2))) continue;
+      try {
+        const Ctor = doc?.defaultView?.MouseEvent || globalThis.MouseEvent;
+        if (typeof Ctor === "function") {
+          const ev = new Ctor("mouseleave", { bubbles: true });
+          node2.querySelector(".rm-zoom")?.dispatchEvent?.(ev);
+          node2.dispatchEvent?.(ev);
+        }
+      } catch {
+      }
+      try {
+        node2.remove?.();
+      } catch {
+      }
+    }
+  };
   const openRefFromClick = (event) => {
     const t = event.target;
     if (!t?.closest || !t.closest(".pxd-item") || t.closest(".pxd-item--editing")) return false;
@@ -98646,6 +98673,7 @@ ${url}`;
     lastRefKey = key;
     lastRefAt = now4;
     if (pinJump) {
+      dismissRoamHoverPopups();
       if (pinJump.mode === "sidebar") {
         try {
           host?.openInSidebar?.(pinJump.plan.pdfUid);
@@ -98704,10 +98732,10 @@ ${url}`;
       const uid = open.getAttribute?.("data-open-board") || open.closest?.(".pxd-item[data-uid]")?.getAttribute?.("data-uid");
       if (uid) void openBoard(uid);
     }
-    if (!leavesBoardPointer(event.target)) event.stopPropagation();
+    if (!leavesBoardPointer(event.target) && !inReaderText(event.target)) event.stopPropagation();
   });
   listen(root, "dblclick", (event) => {
-    if (leavesBoardPointer(event.target) || inRoamTable(event.target) || event.target?.closest?.(".pxd-refs")) return;
+    if (leavesBoardPointer(event.target) || inReaderText(event.target) || inRoamTable(event.target) || event.target?.closest?.(".pxd-refs")) return;
     if (nativeClickKind(event.target)) return;
     event.stopPropagation();
     event.preventDefault();
@@ -98810,7 +98838,7 @@ ${url}`;
     wheelBurst(event);
   }, { passive: false });
   const onRootContextMenu = (event) => {
-    if (leavesBoardPointer(event.target) || inRoamTable(event.target)) return;
+    if (leavesBoardPointer(event.target) || inReaderText(event.target) || inRoamTable(event.target)) return;
     event.stopPropagation?.();
     if (event.defaultPrevented) return;
     const native = event.target?.closest?.(NATIVE_MENU_TARGETS);
@@ -103642,6 +103670,7 @@ var NEGATIVE_TTL_MS = 3e4;
 var MOUNT_BACKOFF_MS = [5e3, 3e4];
 var KEEP_ALIVE_CAP = 2;
 var KEEP_ALIVE_MS = 3e5;
+var EXTERNAL_NAV_MS = 2e3;
 var BRIDGE_MIN_ITEMS = 400;
 var LEGACY_METADATA_PAGE = "plexus-diagram/metadata";
 var TITLE_PANEL_CLASS = "rm-diagram-title-panel";
@@ -105810,13 +105839,86 @@ async function installPlexusDiagram({
     }
     return alive.some((entry) => entry.boardUid === rec.uid && entry.kind === kind && aliveUsable(entry));
   }
+  let externalNav = null;
+  function noteExternal(uid) {
+    externalNav = { uid, at: Date.now() };
+  }
+  function externalPending(uid) {
+    const hit = externalNav;
+    if (!hit || hit.uid !== uid) return false;
+    if (Date.now() - hit.at > EXTERNAL_NAV_MS) {
+      externalNav = null;
+      return false;
+    }
+    return true;
+  }
+  function takeExternal(uid) {
+    if (!externalPending(uid)) return false;
+    externalNav = null;
+    return true;
+  }
+  function followExternal(uid) {
+    if (!externalPending(uid)) return;
+    for (const rec of [...mounts.values()]) {
+      if (mounts.get(rec.native) !== rec) continue;
+      if (rec.native?.isConnected === false || rec.mountEl?.isConnected === false) continue;
+      if (isSecondaryMount(rec) || rec.uid !== uid) continue;
+      if (currentUid(rec) !== uid) visit(rec, pathFor(uid));
+      const watched = rec;
+      queueMicrotask(() => {
+        if (mounts.get(watched.native) === watched && currentUid(watched) === uid) takeExternal(uid);
+      });
+    }
+  }
+  function navTargetUid(arg, key) {
+    const node2 = arg?.[key];
+    if (typeof node2 === "string") return node2.trim();
+    if (!node2 || typeof node2 !== "object") return "";
+    const uid = node2.uid ?? node2["block-uid"];
+    return typeof uid === "string" ? uid.trim() : "";
+  }
+  function bindExternalNav() {
+    const mw = host.api?.ui?.mainWindow;
+    if (!mw) return;
+    const bind = (name, key) => {
+      const orig = mw[name];
+      if (typeof orig !== "function" || orig.__pxdExternal) return null;
+      const wrapped = function(arg, ...rest) {
+        const uid = navTargetUid(arg, key);
+        if (uid) noteExternal(uid);
+        try {
+          return orig.call(this, arg, ...rest);
+        } finally {
+          if (uid) followExternal(uid);
+        }
+      };
+      wrapped.__pxdExternal = true;
+      mw[name] = wrapped;
+      return () => {
+        if (mw[name] === wrapped) mw[name] = orig;
+      };
+    };
+    const restore2 = [bind("openBlock", "block"), bind("openPage", "page")].filter(Boolean);
+    if (restore2.length) lifecycle.add(() => {
+      for (const off of restore2) off();
+    });
+  }
   function claimAlive(rec, boardUid, native) {
     const pooled = takeAlive(boardUid, poolKind(native));
+    const pending = externalPending(boardUid);
+    const shown = pooled?.crumbs?.[pooled.crumbs.length - 1]?.uid;
+    if (pending && shown !== boardUid) {
+      if (pooled) disposePair(pooled.view, pooled.session, true);
+      takeExternal(boardUid);
+      return false;
+    }
     if (aliveUsable(pooled)) {
       adoptAlive(rec, pooled);
+      if (pending) takeExternal(boardUid);
       return true;
     }
     if (pooled) disposePair(pooled.view, pooled.session, true);
+    if (pending) takeExternal(boardUid);
     return false;
   }
   function detachCurrent(rec) {
@@ -108202,6 +108304,7 @@ async function installPlexusDiagram({
       }
     });
     followStatusApi();
+    bindExternalNav();
     lifecycle.event(win2, "hashchange", onHash);
     lifecycle.event(win2, "popstate", onNavigate);
   }

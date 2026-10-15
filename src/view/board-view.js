@@ -7375,9 +7375,11 @@ function buildBoardView(onFail, {
     createSection: (p) => session.createSection?.({ rect: p.rect, ...(pendingFor("section")?.color ? { color: pendingFor("section").color } : {}) }),
     createBoard: (p) => session.createBoard?.({ rect: p.rect }),
     moveIntoBoard: async (uids, boardUid, dx = 0, dy = 0) => {
+      const fly = startFlyInto(uids, boardUid);
       const res = await session.moveIntoBoard?.(uids, boardUid);
-      if (!res) { void session.commitMove?.(uids, dx, dy); return; }
-      chrome.toast.show({ message: `Moved into ${res.title}`, action: { label: "Undo", run: () => res.undo() } });
+      if (!res) { fly.cancel(); void session.commitMove?.(uids, dx, dy); return; }
+      pulseItem(boardUid);
+      chrome.toast.show({ message: `Moved to ${res.title}`, action: { label: "Undo", run: () => res.undo() } });
     },
     openBoard: (uid) => openBoard(uid),
     isBoardCard: (uid) => Boolean(boardTargetOf(uid)),
@@ -9129,6 +9131,55 @@ function buildBoardView(onFail, {
     void shell.offsetWidth;
     shell.classList.add("pxd-item--pulse");
     timers.later(() => { if (!disposed) shell.classList.remove("pxd-item--pulse"); }, ms);
+  };
+  // The card shrinks into the board card. The write is not delayed. Reduced and off skip the flight.
+  const FLY_MS = 200;
+  const readShift = (el) => {
+    const m = /translate\(\s*(-?[\d.]+)px,\s*(-?[\d.]+)px\s*\)/.exec(el?.style?.transform || "");
+    return m ? { x: Number(m[1]), y: Number(m[2]) } : { x: 0, y: 0 };
+  };
+  const startFlyInto = (uids, boardUid) => {
+    const ghosts = [];
+    const hidden = [];
+    const cancel = () => {
+      for (const ghost of ghosts) ghost.remove();
+      for (const el of hidden) el.classList.remove("pxd-item--into");
+    };
+    if (motionProfile(currentMotion()).zoomMs < 150) return { cancel };
+    const target = itemsR.shellOf?.(boardUid);
+    if (!target) return { cancel };
+    const dest = readShift(target);
+    const dw = parseFloat(target.style.width) || 0;
+    const dh = parseFloat(target.style.height) || 0;
+    for (const uid of uids || []) {
+      if (!uid || uid === boardUid) continue;
+      const shell = itemsR.shellOf?.(uid);
+      if (!shell) continue;
+      const from = readShift(shell);
+      const w = parseFloat(shell.style.width) || 0;
+      const h = parseFloat(shell.style.height) || 0;
+      shell.classList.add("pxd-item--into");
+      hidden.push(shell);
+      const ghost = doc.createElement("div");
+      ghost.className = "pxd-fly";
+      ghost.style.width = `${w}px`;
+      ghost.style.height = `${h}px`;
+      ghost.style.transformOrigin = "center center";
+      ghost.style.opacity = "1";
+      ghost.style.transform = `translate(${from.x}px, ${from.y}px)`;
+      world.append(ghost);
+      ghosts.push(ghost);
+      const tx = dest.x + dw / 2 - w / 2;
+      const ty = dest.y + dh / 2 - h / 2;
+      timers.frame(() => {
+        if (disposed || ghost.isConnected === false) return;
+        ghost.style.transition = `transform ${FLY_MS}ms ease-out, opacity ${FLY_MS}ms ease-out`;
+        ghost.style.transform = `translate(${tx}px, ${ty}px) scale(0.2)`;
+        ghost.style.opacity = "0";
+      });
+      timers.later(() => { if (!disposed) ghost.remove(); }, FLY_MS + 40);
+    }
+    return { cancel };
   };
   const haloCache = new Map();
   const haloPending = new Map();

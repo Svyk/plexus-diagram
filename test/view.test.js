@@ -1746,7 +1746,15 @@ test("F5: dropping a card on a board card moves it in with an Undo toast; a refu
     assert.equal(f.session.mutations.filter((m) => m[0] === "commitMove").length, 0);
     const toast = f.view.root.querySelector(".pxd-toast");
     assert.equal(toast.style.display, "");
-    assert.equal(toast.querySelector(".pxd-toast__text").textContent, "Moved into Inner");
+    assert.equal(toast.querySelector(".pxd-toast__text").textContent, "Moved to Inner");
+    assert.equal(toast.querySelector(".pxd-toast__action").textContent, "Undo");
+    const fly = f.view.root.querySelector(".pxd-fly");
+    assert.ok(fly, "a ghost of the card flies into the board");
+    f.stub.flushFrames();
+    assert.match(fly.style.transition, /200ms ease-out/);
+    assert.match(fly.style.transform, /scale\(0\.2\)/);
+    assert.equal(fly.style.opacity, "0");
+    assert.ok(f.view.root.querySelector("[data-uid=nbCard001]").classList.contains("pxd-item--pulse"), "the board card pulses");
     toast.querySelector(".pxd-toast__action").click();
     assert.ok(f.session.mutations.some((m) => m[0] === "moveUndo"), "Undo runs the inverse transaction");
     f.session.moveResult = null;
@@ -1756,6 +1764,27 @@ test("F5: dropping a card on a board card moves it in with an Undo toast; a refu
     f.stub.dispatch(f.stub.document, "pointerup", { clientX: 560, clientY: 340, pointerId: 2 });
     await tick();
     assert.equal(f.session.mutations.filter((m) => m[0] === "commitMove").length, 1);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: dropping a card with motion off skips the fly and still toasts Moved to", async () => {
+  const f = mountFixture({ extraChildren: boardCardChildren(), settings: { motion: "none" } });
+  try {
+    await f.flush();
+    const alpha = f.view.root.querySelector("[data-uid=cardAAAA1]");
+    f.stub.dispatch(alpha, "pointerdown", { button: 0, clientX: 50, clientY: 50, pointerId: 1 });
+    f.stub.dispatch(f.stub.document, "pointermove", { clientX: 300, clientY: 200, pointerId: 1 });
+    f.stub.dispatch(f.stub.document, "pointermove", { clientX: 560, clientY: 340, pointerId: 1 });
+    f.stub.dispatch(f.stub.document, "pointerup", { clientX: 560, clientY: 340, pointerId: 1 });
+    await tick();
+    f.stub.flushFrames();
+    assert.equal(f.view.root.querySelector(".pxd-fly"), null);
+    assert.equal(f.view.root.querySelector("[data-uid=nbCard001]").classList.contains("pxd-item--pulse"), false);
+    assert.equal(f.view.root.querySelector(".pxd-toast__text").textContent, "Moved to Inner");
+    assert.equal(f.session.mutations.filter((m) => m[0] === "commitMove").length, 0);
   } finally {
     f.view.dispose();
     f.restore();

@@ -289,3 +289,21 @@ test("edges: ghosts are drawn, resized and cleared; focus dims edges outside the
   assert.equal(over.querySelectorAll(".pxd-ghost").length, 0);
   assert.equal(stub.listenerCount(), 0);
 });
+
+test("edges wait until both endpoints are drawn, then paint on the next render", () => {
+  const { doc } = setup();
+  const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const over = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const labels = doc.createElement("div");
+  doc.body.append(svg, over, labels);
+  const layer = createEdgeLayer({ doc, svg, labelsLayer: labels, overlaySvg: over });
+  const board = edgeBoard();
+  const rects = worldRects(board);
+  const edgeOf = (uid) => [...svg.querySelectorAll(".pxd-edge")].find((node) => node.getAttribute("data-uid") === uid) || null;
+  layer.render({ board, rects, drawn: (uid) => uid === "c1" || uid === "c2" });
+  assert.ok(edgeOf("e12") && edgeOf("e12").getAttribute("display") !== "none");
+  assert.equal(edgeOf("e23"), null, "c3 is not drawn, so the edge waits");
+  layer.render({ board, rects, drawn: () => true });
+  assert.ok(edgeOf("e23") && edgeOf("e23").getAttribute("display") !== "none");
+  layer.dispose();
+});

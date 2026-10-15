@@ -36,7 +36,7 @@ function sessionFor(uid, title) {
   };
 }
 
-function mount(stub, { uid, title, store, fullscreen = true, onSelectTab, host = {} } = {}) {
+function mount(stub, { uid, title, store, fullscreen = true, onSelectTab, host = {}, settings = null } = {}) {
   const mountEl = stub.document.createElement("div");
   mountEl.className = "pxd-mount";
   stub.document.body.append(mountEl);
@@ -53,7 +53,7 @@ function mount(stub, { uid, title, store, fullscreen = true, onSelectTab, host =
     },
     session: sessionFor(uid, title),
     mountEl,
-    settings: { get: () => undefined },
+    settings: settings || { get: (id) => (id === "show-board-trail" ? true : undefined) },
     fullscreen,
     tabStore: store,
     onSelectTab,
@@ -270,6 +270,34 @@ test("leaving and re-entering fullscreen does not stack the tab strip's click li
       view.setFullscreen(true);
     }
     assert.equal(view.stats().listeners, base);
+    view.dispose();
+  } finally {
+    restore();
+  }
+});
+
+test("Show board trail is off: two fullscreen boards paint no tab strip, and Cmd+1 still selects", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const store = createTabStore({ storage: memoryStorage(), graph: "Notes" });
+    const picked = [];
+    const off = { get: () => undefined };
+    mount(stub, { uid: "boardAAA1", title: "Alpha", store, settings: off }).view.dispose();
+    const { view } = mount(stub, {
+      uid: "boardBBB2",
+      title: "Beta",
+      store,
+      settings: off,
+      onSelectTab: (uid) => picked.push(uid),
+    });
+    assert.equal(store.get().length, 2);
+    assert.equal(view.root.querySelector(".pxd-fstabs"), null);
+    stub.dispatch(stub.window, "keydown", { key: "1", code: "Digit1", metaKey: true, ctrlKey: false, shiftKey: false, altKey: false });
+    assert.deepEqual(picked, ["boardAAA1"]);
+    assert.equal(view.root.querySelector(".pxd-fstabs"), null);
+    view.setSettings({ get: (id) => (id === "show-board-trail" ? true : undefined) });
+    assert.deepEqual(tabsOf(view.root).map((t) => t.uid), ["boardAAA1", "boardBBB2"]);
     view.dispose();
   } finally {
     restore();

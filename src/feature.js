@@ -36,9 +36,10 @@ import { imageSrc } from "./model/export.js";
 import { closeAskAI } from "./view/ask-ai.js";
 import { imageRegionFrac, polygonClipPath } from "./model/image-region.js";
 import { parseRegion } from "./model/regions.js";
-import { boardsFromRefs, PIN_BOARDS_QUERY, pinOpenFallback, pinOpenPlan, pinPdfUrl, pxdPinTarget } from "./model/pdf-pin.js";
+import { boardsFromRefs, PIN_BOARDS_QUERY, pinOpenFallback, pinOpenPlan, pinPdfUrl, pxdPinTarget, takePendingPin } from "./model/pdf-pin.js";
 import { pdfMacroUrl } from "./model/pdf.js";
 import { mountPdfPin } from "./view/pdf-pin-view.js";
+import { boardPath } from "./model/board-path.js";
 import { classifyString, firstLine, parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
 import { parseTrailBlock, renderTrailStrip, trailStrip } from "./model/trails.js";
 import { eachRegionButton, openRegionCrop, openRegionView, regionUidForButton, resetCropUrls } from "./view/region-crop.js";
@@ -682,21 +683,30 @@ export async function installPlexusDiagram({
     }
   }
 
-  // Enhanced diagram ancestors (root first) plus the board itself: the trail shown when a nested board is opened directly.
-  function seedCrumbs(uid) {
+  // One pull of :block/parents per board, kept for the life of this install. A miss is not cached:
+  // the block may not be loaded yet, and a later open still has to find the path.
+  const pathCache = new Map();
+  function pathFor(uid) {
+    const cached = pathCache.get(uid);
+    if (cached) return cached.slice();
     const self = { uid, title: boardTitle(host.blockString?.(uid)) };
-    try {
-      const res = pullVia(host, ANCESTORS_PATTERN, [":block/uid", uid]);
-      const parents = res?.[":block/parents"] ?? [];
-      const chain = parents
-        .filter((p) => isDiagramString(pulledString(p)) && readPlexus(p[":block/props"] ?? p.props)?.v === 2)
-        .map((p) => ({ uid: p[":block/uid"], title: boardTitle(p[":block/string"]), depth: (p[":block/parents"] ?? []).length }))
-        .sort((a, b) => a.depth - b.depth)
-        .map(({ uid: u, title }) => ({ uid: u, title }));
-      return [...chain, self];
-    } catch {
-      return [self];
-    }
+    let res = null;
+    try { res = pullVia(host, ANCESTORS_PATTERN, [":block/uid", uid]); } catch { res = null; }
+    if (!res) return [self];
+    const path = boardPath(res[":block/parents"] ?? [], self);
+    pathCache.set(uid, path);
+    return path.slice();
+  }
+  // The block tree wins when this board sits inside other boards. A top-level board keeps the
+  // navigation trail (enter, back, forward) so a click history is not thrown away.
+  function trailFor(uid, fallback) {
+    const structural = pathFor(uid);
+    if (structural.length >= 2) return structural;
+    if (Array.isArray(fallback) && fallback.length && fallback[fallback.length - 1]?.uid === uid) return fallback;
+    return structural;
+  }
+  function seedCrumbs(uid) {
+    return pathFor(uid);
   }
 
   const isDiagramUid = (candidate) => isDiagramString(host.blockString?.(candidate));
@@ -1594,10 +1604,10 @@ export async function installPlexusDiagram({
       routeUid: rec0.uid,
       autofocus,
       initialViewport: viewport,
-      onOpenBoard: (child) => visit(owner.rec, [...owner.rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }]),
+      onOpenBoard: (child) => visit(owner.rec, trailFor(child, [...owner.rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }])),
       onSelectTab: (uid) => {
         if (!uid) return;
-        visit(owner.rec, [{ uid, title: boardTitle(host.blockString?.(uid)) }]);
+        visit(owner.rec, trailFor(uid, [{ uid, title: boardTitle(host.blockString?.(uid)) }]));
       },
       tabStore: host.tabs,
       boardsOf: (uid) => {
@@ -2039,6 +2049,7 @@ export async function installPlexusDiagram({
     rec.session = pooled.session;
     if (pooled.crumbs?.length) rec.crumbs = crumbCopy(pooled.crumbs);
     rec.view = pooled.view;
+    try { pooled.view?.setCrumbs?.(rec.crumbs); } catch { /* the parked view keeps the path it painted */ }
     resumeView(rec, pooled.view);
     try { pooled.view?.restoreViewport?.(pooled.viewport); } catch { /* the camera is optional */ }
     try { pooled.view?.setSettings?.(settings); } catch { /* settings are optional */ }
@@ -2112,6 +2123,7 @@ export async function installPlexusDiagram({
   }
   function reattach(rec, view) {
     rec.view = view;
+    try { view?.setCrumbs?.(rec.crumbs); } catch { /* the parked view keeps the path it painted */ }
     resumeView(rec, view);
     const session = rec.session;
     const rest = () => {
@@ -3094,6 +3106,10 @@ export async function installPlexusDiagram({
     pendingPin = { pinUid: target.pinUid, until: Date.now() + 8000 };
   }
   function tryPendingPin() {
+    if (!pendingPin) {
+      const noted = takePendingPin(Date.now());
+      if (noted) pendingPin = noted;
+    }
     const pending = pendingPin;
     if (!pending) return;
     if (Date.now() > pending.until) { pendingPin = null; return; }

@@ -1244,6 +1244,54 @@ test("F5 a zoomed nested board seeds its breadcrumbs root-first from the diagram
   });
 });
 
+test("F5 opening a board from the trail keeps the five-deep ancestor path", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "leafEEE01"] }, async (t) => {
+    const chain = [
+      ["boardAAA1", "Root", 1],
+      ["midBBB001", "Two", 2],
+      ["midCCC001", "Three", 3],
+      ["midDDD001", "Four", 4],
+    ];
+    t.env.ancestors = {
+      leafEEE01: {
+        ":block/uid": "leafEEE01",
+        ":block/parents": [
+          ...chain.map(([uid, title, depth]) => ({
+            ":block/uid": uid,
+            ":block/string": `{{[[diagram]]:${title}}}`,
+            ":block/props": { ":plexus": { ":v": 2 } },
+            ":block/parents": Array.from({ length: depth }, (_, i) => ({ ":db/id": i + 1 })),
+          })),
+          { ":block/uid": "nativeNN01", ":block/string": "{{[[diagram]]:Native}}", ":block/props": {}, ":block/parents": [] },
+          { ":block/uid": "pageBlk01", ":block/string": "just a bullet", ":block/parents": [{ ":db/id": 1 }] },
+        ],
+      },
+    };
+    t.strings.set("boardAAA1", "{{[[diagram]]:Root}}");
+    t.strings.set("leafEEE01", "{{[[diagram]]:Leaf}}");
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    const titles = ["Root", "Two", "Three", "Four", "Leaf"];
+    t.views[0].args.onSelectTab("leafEEE01");
+    await settle();
+    assert.deepEqual(t.views.at(-1).args.crumbs.map((c) => c.title), titles);
+    assert.equal(t.views.at(-1).args.session.uid, "leafEEE01");
+    t.views.at(-1).args.onCrumb(0);
+    await settle();
+    assert.deepEqual(t.views.at(-1).args.crumbs.map((c) => c.uid), ["boardAAA1"]);
+    delete t.env.ancestors.leafEEE01;
+    t.views.at(-1).args.onHistoryForward();
+    await settle();
+    assert.deepEqual(t.views.at(-1).args.crumbs.map((c) => c.title), titles, "history restores the path without another pull");
+    t.views.at(-1).args.onCrumb(0);
+    await settle();
+    t.views.at(-1).args.onSelectTab("leafEEE01");
+    await settle();
+    assert.deepEqual(t.views.at(-1).args.crumbs.map((c) => c.title), titles, "the parent pull is cached per board");
+  });
+});
+
 test("F5 a native diagram nested inside a hidden native or our overlay is not mounted", async () => {
   await withEnv({ enhanced: ["boardAAA1", "innerNNN1"] }, async (t) => {
     const { native } = addNative(t.doc, "boardAAA1");

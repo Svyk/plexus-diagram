@@ -414,6 +414,7 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Board | Mouse wheel | Pan or zoom. Pinch still zooms. |
 | Board | Drag on empty canvas | Pan moves the board when you drag empty space. Shift-drag draws a selection box. Select draws the box on every empty drag. |
 | Board | Show minimap | Show the small map of the whole board. |
+| Board | Show board trail | Show the row of boards you have opened. Off leaves that row hidden. The path inside nested boards stays. |
 | Board | Show tool palette | Show the tool dock. |
 | Board | Toolbar layout | Split: board bar on top, tools in the dock. Classic: the 2.1 look. Dock only: hide the top bar until the pointer is near the top edge. |
 | Board | Tool dock position | Bottom, left or top. A board can override it from its More menu. |

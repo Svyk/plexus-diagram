@@ -590,10 +590,10 @@ function parseIds(raw, cap4) {
   if (!ids.length || cap4 && ids.length > MAX_IDS || ids.some((id) => !isId(id))) return null;
   return ids;
 }
-function parseRegion(blockString3) {
-  if (typeof blockString3 !== "string") return null;
-  if (blockString3.indexOf(REGION_COMPONENT) === -1 && blockString3.indexOf(PIN_COMPONENT) === -1) return null;
-  const m = HEAD_RE.exec(blockString3);
+function parseRegion(blockString4) {
+  if (typeof blockString4 !== "string") return null;
+  if (blockString4.indexOf(REGION_COMPONENT) === -1 && blockString4.indexOf(PIN_COMPONENT) === -1) return null;
+  const m = HEAD_RE.exec(blockString4);
   if (!m) return null;
   const isPin = m[1] === PIN_COMPONENT;
   const caption = (m[3] ?? "").trim();
@@ -1668,14 +1668,14 @@ function drawingRefModel(targetString) {
 function drawingCreateSpec(boardUid) {
   return { parentUid: boardUid, order: "last", string: DRAWING_STRING };
 }
-function droppedDrawingUids(strings, blockString3) {
+function droppedDrawingUids(strings, blockString4) {
   const out = [];
   for (const string of strings || []) {
     const match = String(string ?? "").trim().match(REF_ONLY);
     if (!match) continue;
     let text4 = "";
     try {
-      text4 = blockString3?.(match[1]) || "";
+      text4 = blockString4?.(match[1]) || "";
     } catch {
       text4 = "";
     }
@@ -2558,8 +2558,8 @@ function refsIn(string) {
   }
   return out;
 }
-function endpointKindOf(blockString3) {
-  const region = parseRegion(blockString3);
+function endpointKindOf(blockString4) {
+  const region = parseRegion(blockString4);
   if (!region || region.error) return null;
   if (region.supported) {
     if (region.kind === "img") return "region";
@@ -2569,8 +2569,8 @@ function endpointKindOf(blockString3) {
   if (region.kind === "imgpoly" || region.kind === "imgrect") return "region";
   return null;
 }
-function endpointDisplayText(blockString3) {
-  const text4 = String(blockString3 ?? "");
+function endpointDisplayText(blockString4) {
+  const text4 = String(blockString4 ?? "");
   const region = parseRegion(text4);
   if (!region) return text4;
   if (region.caption) return region.caption;
@@ -2883,7 +2883,7 @@ function endpointIndex(rows) {
         counts.get(ref).push(edge.edgeUid);
       }
     }
-    for (const [blockUid2, edgeUids] of counts) {
+    for (const [blockUid3, edgeUids] of counts) {
       const entry = {
         count: edgeUids.length,
         boardUid,
@@ -2891,8 +2891,8 @@ function endpointIndex(rows) {
         edgeUid: edgeUids[0],
         edges: edgeUids
       };
-      const prev = hits.get(blockUid2);
-      if (!prev || entry.count > prev.count) hits.set(blockUid2, entry);
+      const prev = hits.get(blockUid3);
+      if (!prev || entry.count > prev.count) hits.set(blockUid3, entry);
     }
   }
   return hits;
@@ -14887,6 +14887,95 @@ function sourceAttrString(uid) {
   if (!UID_RE4.test(id)) return "";
   return `Source:: ((${id}))`;
 }
+function blankBullet(line) {
+  return /^[-*•]\s*$/.test(String(line ?? "").trim());
+}
+function oneBulletTree(text4) {
+  const kept = [];
+  for (const line of String(text4 ?? "").split("\n")) {
+    if (!line.trim() || blankBullet(line)) continue;
+    kept.push(line);
+  }
+  if (!kept.length) return "";
+  const allBullets = kept.every((line) => /^\s*[-*]\s+/.test(line));
+  if (allBullets) {
+    let seen = 0;
+    let start = -1;
+    for (let i = 0; i < kept.length; i += 1) {
+      if (/^- /.test(kept[i])) {
+        seen += 1;
+        if (seen === 2) {
+          start = i;
+          break;
+        }
+      }
+    }
+    if (start < 0) return kept.join("\n");
+    return kept.map((line, i) => i >= start ? `  ${line}` : line).join("\n");
+  }
+  const first = kept[0].replace(/^\s*[-*]\s+/, "").trim();
+  const rest = kept.slice(1).map((line) => {
+    const body = line.replace(/^\s*[-*]\s+/, "").trim();
+    return body ? `  - ${body}` : "";
+  }).filter(Boolean);
+  return [`- ${first}`, ...rest].join("\n");
+}
+function planCopiedSource({ markdown = "", source = "" } = {}) {
+  let pin2 = String(source ?? "").trim();
+  if (!UID_RE4.test(pin2)) pin2 = "";
+  let found = Boolean(pin2);
+  const body = [];
+  for (const line of String(markdown ?? "").replace(/\r\n/g, "\n").split("\n")) {
+    const match = SOURCE_LINE_RE.exec(line.trim());
+    if (match) {
+      found = true;
+      if (!pin2) pin2 = match[1];
+      continue;
+    }
+    body.push(line);
+  }
+  const text4 = oneBulletTree(body.join("\n"));
+  if (!text4 && pin2) return { markdown: `- ${sourceAttrString(pin2)}`, sourceUid: "", sourced: true };
+  return { markdown: text4, sourceUid: text4 ? pin2 : "", sourced: found && Boolean(text4 || pin2) };
+}
+function refOpenPlan({ uid = "", string = "", shiftKey = false } = {}) {
+  const id = String(uid ?? "").trim();
+  const region = parseRegion(String(string ?? ""));
+  if (region && region.kind === "pdf" && region.supported !== false) {
+    region.uid = id || region.uid || "";
+    const plan = pinOpenPlan(region);
+    if (plan) return { kind: "pin", mode: shiftKey ? "sidebar" : "main", plan };
+  }
+  return { kind: shiftKey ? "sidebar" : "block", uid: id };
+}
+function fracScrollTop({ frac, pageTop, pageHeight, viewTop, viewHeight, scrollTop } = {}) {
+  if (!Array.isArray(frac) || frac.length < 2) return null;
+  const yInPage = Number(frac[1]);
+  const pageH = Number(pageHeight);
+  const viewH = Number(viewHeight);
+  if (!Number.isFinite(yInPage) || !(pageH > 0) || !(viewH > 0)) return null;
+  const pageT = Number(pageTop) || 0;
+  const viewT = Number(viewTop) || 0;
+  const current3 = Number(scrollTop);
+  const top = Number.isFinite(current3) ? current3 : 0;
+  const markTop = pageT + yInPage * pageH;
+  return Math.max(0, top + (markTop - viewT) - viewH * 0.3);
+}
+function notePendingPin(pending) {
+  if (!pending?.pinUid) {
+    notedPin = null;
+    return null;
+  }
+  notedPin = pending;
+  return pending;
+}
+function takePendingPin(now4 = 0) {
+  const pending = notedPin;
+  if (!pending) return null;
+  notedPin = null;
+  if (Number(now4) > Number(pending.until)) return null;
+  return pending;
+}
 function sourcePinOf(children) {
   for (const child of children || []) {
     const text4 = String(child?.[":block/string"] ?? child?.string ?? "").trim();
@@ -14939,13 +15028,15 @@ function parseCardJson(raw) {
 function pasteCardPlan(data, point) {
   const parsed = data && typeof data === "object" && typeof data.markdown === "string" ? cardJsonPayload(data) : parseCardJson(data);
   if (!parsed) return null;
+  const copied = planCopiedSource({ markdown: parsed.markdown, source: parsed.source || "" });
+  if (!copied.markdown.trim()) return null;
   return {
     x: Number.isFinite(point?.x) ? point.x : 0,
     y: Number.isFinite(point?.y) ? point.y : 0,
     w: parsed.size.w,
     h: parsed.size.h,
-    markdown: parsed.markdown,
-    sourceUid: parsed.source || ""
+    markdown: copied.markdown,
+    sourceUid: copied.sourceUid || ""
   };
 }
 function pinDeepLink({ graph, pageUid: pageUid2, pinUid } = {}) {
@@ -15052,7 +15143,7 @@ function planPinWrites(spec) {
   creates.push({ role: "pin", parentUid: containerUid, uid: pinUid, string });
   return { uid: pinUid, reused: false, creates, containerUid: spec?.containerUid || "" };
 }
-var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE4, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash, PIN_PENDING_MS;
+var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE4, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash, SOURCE_LINE_RE, notedPin, PIN_PENDING_MS;
 var init_pdf_pin = __esm({
   "src/model/pdf-pin.js"() {
     init_deeplink();
@@ -15075,6 +15166,8 @@ var init_pdf_pin = __esm({
       { id: "link", label: "Copy link", keys: "" }
     ]);
     squash = (text4) => String(text4 ?? "").replace(/\s+/g, " ").trim();
+    SOURCE_LINE_RE = /^(?:[-*]\s+)?Source::\s*\(\(([\w-]{1,32})\)\)\s*$/;
+    notedPin = null;
     PIN_PENDING_MS = 8e3;
   }
 });
@@ -15417,9 +15510,9 @@ function imageRegionRows(content) {
     };
   });
 }
-function renameRegionCaption(blockString3, caption) {
-  if (typeof blockString3 !== "string") return null;
-  const match = MACRO_RE.exec(blockString3);
+function renameRegionCaption(blockString4, caption) {
+  if (typeof blockString4 !== "string") return null;
+  const match = MACRO_RE.exec(blockString4);
   if (!match) return null;
   const next = String(caption ?? "").replace(/\s+/g, " ").trim();
   return next ? `${match[1]} ${next}` : match[1];
@@ -18554,6 +18647,7 @@ var init_settings = __esm({
       wheel: "wheel",
       emptyDrag: "empty-drag",
       showMinimap: "show-minimap",
+      showBoardTrail: "show-board-trail",
       controlsPosition: "controls-position",
       snapGuides: "snap-guides",
       snapGrid: "snap-grid",
@@ -18630,6 +18724,7 @@ var init_settings = __esm({
       [SETTING_IDS.wheel]: "pan",
       [SETTING_IDS.emptyDrag]: "pan",
       [SETTING_IDS.showMinimap]: true,
+      [SETTING_IDS.showBoardTrail]: false,
       [SETTING_IDS.controlsPosition]: "rail",
       [SETTING_IDS.snapGuides]: true,
       [SETTING_IDS.snapGrid]: false,
@@ -18777,6 +18872,7 @@ var init_settings = __esm({
       [SETTING_IDS.wheel]: () => selectRow(SETTING_IDS.wheel, "Mouse wheel", "What the mouse wheel does on the board. Pinch still zooms.", ["pan", "zoom"]),
       [SETTING_IDS.emptyDrag]: () => selectRow(SETTING_IDS.emptyDrag, "Drag on empty canvas", "Pan: dragging empty space moves the board, and Shift-drag draws a selection box. Select: dragging empty space draws the box.", ["pan", "select"]),
       [SETTING_IDS.showMinimap]: () => switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the small map of the whole board."),
+      [SETTING_IDS.showBoardTrail]: () => switchRow(SETTING_IDS.showBoardTrail, "Show board trail", "Show the row of boards you have opened. Off leaves that row hidden. The path inside nested boards stays."),
       [SETTING_IDS.showPalette]: () => switchRow(SETTING_IDS.showPalette, "Show tool palette", "Show the tool palette along the bottom of the board."),
       [SETTING_IDS.motion]: () => selectRow(SETTING_IDS.motion, "Motion", "Full, reduced, or none. A system reduced-motion setting shortens Full.", ["full", "reduced", "none"]),
       [SETTING_IDS.toolbarLayout]: () => selectRow(SETTING_IDS.toolbarLayout, "Toolbar layout", "Split: board bar on top, tools in the dock. Classic: the 2.1 look, tools in the top bar. Dock only: hide the top bar until the pointer is near the top edge.", ["split", "classic", "dock-only"]),
@@ -18884,6 +18980,7 @@ var init_settings = __esm({
         SETTING_IDS.wheel,
         SETTING_IDS.emptyDrag,
         SETTING_IDS.showMinimap,
+        SETTING_IDS.showBoardTrail,
         SETTING_IDS.showPalette,
         SETTING_IDS.toolbarLayout,
         SETTING_IDS.dockPosition,
@@ -20271,18 +20368,18 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
       return "block";
     }
   };
-  const barFor = (itemUid, blockUid2) => {
+  const barFor = (itemUid, blockUid3) => {
     const item = board2.items.get(itemUid);
-    if (!blockUid2 || !item || item.type === "section" || routed.from === routed.to) return null;
+    if (!blockUid3 || !item || item.type === "section" || routed.from === routed.to) return null;
     let frac = null;
     try {
-      frac = rowFrac?.(item, blockUid2);
+      frac = rowFrac?.(item, blockUid3);
     } catch {
       frac = null;
     }
     const rect = itemUid === edge.from ? a : b;
     const box2 = rowBarRect(rect, frac, font);
-    return { ...box2, frac: clamp013(frac), text: textOf2(blockUid2), label: clip3(textOf2(blockUid2), box2.maxChars) };
+    return { ...box2, frac: clamp013(frac), text: textOf2(blockUid3), label: clip3(textOf2(blockUid3), box2.maxChars) };
   };
   const fromBar = routed.from === edge.from ? barFor(edge.from, edge.fromBlock) : null;
   const toBar = routed.to === edge.to ? barFor(edge.to, edge.toBlock) : null;
@@ -20390,7 +20487,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
       return null;
     }
   };
-  const rowFrac = (item, blockUid2) => {
+  const rowFrac = (item, blockUid3) => {
     if (item?.target?.kind !== "page") return null;
     let outline = null;
     try {
@@ -20398,7 +20495,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     } catch {
       outline = null;
     }
-    return rowFraction(outline?.blocks, blockUid2);
+    return rowFraction(outline?.blocks, blockUid3);
   };
   const modelOf = (boardUid) => {
     const hit = models.get(boardUid);
@@ -20628,21 +20725,21 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     });
     return chip;
   };
-  const buildEndpointChip = (blockUid2) => {
-    const info = cache.endpointOf(blockUid2);
+  const buildEndpointChip = (blockUid3) => {
+    const info = cache.endpointOf(blockUid3);
     if (!info) return null;
     const chip = doc.createElement("div");
     chip.className = `${CHIP_CLASS} pxd-relchip--end`;
     chip.setAttribute("role", "button");
     chip.setAttribute("tabindex", "0");
-    chip.setAttribute("data-end", blockUid2);
+    chip.setAttribute("data-end", blockUid3);
     chip.setAttribute("data-edge", info.edgeUid);
     chip.textContent = endpointChipText({ count: info.count, boardTitle: info.boardTitle });
     for (const type of ["pointerdown", "mousedown", "mouseup", "dblclick"]) chip.addEventListener(type, stop3);
     const open = (event) => {
       stop3(event);
       event.preventDefault?.();
-      openPop(chip, info.edgeUid, chip.parentElement?.querySelector?.(".rm-block-main"), blockUid2);
+      openPop(chip, info.edgeUid, chip.parentElement?.querySelector?.(".rm-block-main"), blockUid3);
     };
     chip.addEventListener("click", open);
     chip.addEventListener("keydown", (event) => {
@@ -20650,13 +20747,13 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     });
     return chip;
   };
-  const attachEndpoint = (input, blockUid2) => {
+  const attachEndpoint = (input, blockUid3) => {
     const container = input.closest?.(".roam-block-container") || input.parentElement;
     if (!container || container.closest?.(".pxd-root")) return;
     for (const child of container.children || []) {
       if (child.classList?.contains(CHIP_CLASS) && (child.getAttribute("data-edge") || child.getAttribute("data-end"))) return;
     }
-    const chip = buildEndpointChip(blockUid2);
+    const chip = buildEndpointChip(blockUid3);
     if (!chip) return;
     let kids = null;
     for (const child of container.children || []) if (child.classList?.contains("rm-block-children")) {
@@ -27216,17 +27313,17 @@ function cropFrame(frac, naturalW, naturalH, maxH = CROP_MAX_H) {
     top: -ry * imgH
   };
 }
-function regionUidForButton(button3, blockString3) {
+function regionUidForButton(button3, blockString4) {
   const refUid = button3?.closest?.(".rm-block-ref[data-uid]")?.getAttribute?.("data-uid");
   if (refUid) return refUid;
   const card2 = button3?.closest?.(".pxd-item[data-uid]");
   const cardUid = card2?.getAttribute?.("data-uid") || "";
   const container = button3?.closest?.(".roam-block-container[data-block-uid]");
   const containerInside = Boolean(container && card2?.contains?.(container));
-  if (!containerInside && cardUid && typeof blockString3 === "function") {
+  if (!containerInside && cardUid && typeof blockString4 === "function") {
     let text4 = "";
     try {
-      text4 = blockString3(cardUid) || "";
+      text4 = blockString4(cardUid) || "";
     } catch {
       text4 = "";
     }
@@ -28673,6 +28770,7 @@ function createItemRenderer({
   onPinOpen = null,
   settings: speedSettings = null,
   onOverviewQueue = null,
+  onShells = null,
   interopOn = null,
   adoptShell = null,
   tableThumb = null,
@@ -29806,7 +29904,7 @@ function createItemRenderer({
     rec.stickyBits = null;
     rec.el.classList.remove("pxd-sticky--picking");
   };
-  const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash", "pxd-item--roam-table"];
+  const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash", "pxd-item--roam-table", "pxd-item--into"];
   const imageRegionString2 = (text4) => {
     const region = parseRegion(text4);
     return Boolean(region && region.kind === "img" && region.supported === true && region.owner === "plexus-diagram" && region.error == null);
@@ -30211,6 +30309,12 @@ function createItemRenderer({
     } catch {
     }
   };
+  const noteShells = () => {
+    try {
+      onShells?.();
+    } catch {
+    }
+  };
   let shellsHeld = false;
   const holdShells = (on) => {
     const next = Boolean(on);
@@ -30256,6 +30360,7 @@ function createItemRenderer({
     }
     if (pendingView && !pendingView.size) viewBuilt();
     if (!shellQueue.length) noteOverviewQueue();
+    if (built.length) noteShells();
     return shellQueue.length === 0;
   };
   const pumpShells = () => {
@@ -30360,6 +30465,7 @@ function createItemRenderer({
     if (rect) position(rec, rect);
     if (showBadges) renderBadges(rec);
     attachShell(rec);
+    noteShells();
     return rec.el;
   };
   const sync = ({ board: board2, rects, dirty: changed2 = null, structural = false, view = null, attachView = null }) => {
@@ -32768,10 +32874,10 @@ function createItemRenderer({
       stop3 = later(tick, 100);
     });
   };
-  const openPdfBlock = (blockUid2, page, source, highlightUid) => {
-    if (typeof blockUid2 !== "string" || blockUid2 === "") return Promise.resolve(false);
-    paneForce = { blockUid: blockUid2, source: typeof source === "string" ? source : "", page, highlightUid };
-    return openPdfAt(blockUid2, page, highlightUid);
+  const openPdfBlock = (blockUid3, page, source, highlightUid) => {
+    if (typeof blockUid3 !== "string" || blockUid3 === "") return Promise.resolve(false);
+    paneForce = { blockUid: blockUid3, source: typeof source === "string" ? source : "", page, highlightUid };
+    return openPdfAt(blockUid3, page, highlightUid);
   };
   const flashItem = (uid) => {
     const shell = shells.get(uid)?.el;
@@ -36166,7 +36272,12 @@ function parseClipboard(data) {
   if (card2) return { kind: "card-json", data: card2 };
   const files = [...data?.files ?? []].filter((f) => typeof f?.type === "string" && f.type.startsWith("image/"));
   if (files.length) return { kind: "images", files };
-  const entries = parsePastedText(get("text/plain"));
+  const text4 = get("text/plain");
+  const copied = planCopiedSource({ markdown: text4 });
+  if (copied.sourced && copied.markdown.trim()) {
+    return { kind: "card-json", data: cardJsonPayload({ markdown: copied.markdown, source: copied.sourceUid }) };
+  }
+  const entries = parsePastedText(text4);
   return entries.length ? { kind: "text", entries } : null;
 }
 var MAX_EDITOR_LINES = 45;
@@ -37831,20 +37942,20 @@ function createReadKeeper({ host = null, session = null, store = null, settings 
     }
   };
   const inflight = /* @__PURE__ */ new Set();
-  async function keepRead(doc, { blockUid: blockUid2 = "", total = 0 } = {}) {
+  async function keepRead(doc, { blockUid: blockUid3 = "", total = 0 } = {}) {
     try {
       if (!enabled()) return { ok: false, reason: "off" };
       const kind = readKind(doc);
       if (!kind) return { ok: false, reason: "not-kept" };
-      if (!blockUid2 || typeof host?.uploadFile !== "function") return { ok: false, reason: "no-target" };
+      if (!blockUid3 || typeof host?.uploadFile !== "function") return { ok: false, reason: "no-target" };
       if (!isCompleteRead(doc, total)) return { ok: false, reason: "partial" };
       const text4 = JSON.stringify({ schema: READ_SCHEMA, parseRev: PARSE_REV, engine: kind.engine, mode: kind.mode, doc });
       const raw = new TextEncoder().encode(text4);
       const docHash = await sha256Hex(raw);
       const key = readEntryKey(kind);
-      const have = readEntries(propsOf(blockUid2)).find((e2) => e2.key === key);
+      const have = readEntries(propsOf(blockUid3)).find((e2) => e2.key === key);
       if (have && have.docHash === docHash && have.sha256 === doc.sha256) return { ok: false, reason: "already" };
-      const flight = `${blockUid2}|${key}|${docHash}`;
+      const flight = `${blockUid3}|${key}|${docHash}`;
       if (inflight.has(flight)) return { ok: false, reason: "busy" };
       inflight.add(flight);
       try {
@@ -37865,10 +37976,10 @@ function createReadKeeper({ host = null, session = null, store = null, settings 
           docHash
         };
         const write = async () => {
-          await host.updateReads(blockUid2, mergeReads(propsOf(blockUid2)[READS_KEY], entry));
+          await host.updateReads(blockUid3, mergeReads(propsOf(blockUid3)[READS_KEY], entry));
           return { ok: true };
         };
-        const wrote = typeof session?.noteRead === "function" ? await session.noteRead(blockUid2, entry) : await (typeof host.group === "function" ? host.group(write, "Keep read") : write());
+        const wrote = typeof session?.noteRead === "function" ? await session.noteRead(blockUid3, entry) : await (typeof host.group === "function" ? host.group(write, "Keep read") : write());
         if (wrote && wrote.ok === false) return { ok: false, reason: wrote.reason || "write-failed" };
         return { ok: true, url, entry };
       } finally {
@@ -37879,10 +37990,10 @@ function createReadKeeper({ host = null, session = null, store = null, settings 
       return { ok: false, reason: "error" };
     }
   }
-  async function restoreRead({ blockUid: blockUid2 = "", getBytes = null, url = "", sha256 = "" } = {}) {
+  async function restoreRead({ blockUid: blockUid3 = "", getBytes = null, url = "", sha256 = "" } = {}) {
     try {
-      if (!blockUid2 || !store || typeof host?.getFile !== "function") return null;
-      const entries = readEntries(propsOf(blockUid2)).filter((e2) => e2.schema === READ_SCHEMA);
+      if (!blockUid3 || !store || typeof host?.getFile !== "function") return null;
+      const entries = readEntries(propsOf(blockUid3)).filter((e2) => e2.schema === READ_SCHEMA);
       if (!entries.length) return null;
       let sha = String(sha256 || "");
       if (!sha) {
@@ -39906,6 +40017,7 @@ var TRANSIENT = /* @__PURE__ */ new Set([
   "pxd-item--hit",
   "pxd-item--dim",
   "pxd-item--offscreen",
+  "pxd-item--into",
   "pxd-item--future",
   "pxd-item--fresh",
   "pxd-pdf-live",
@@ -45468,19 +45580,19 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const kind = item.target?.kind || item.kind || "self";
       if (kind === "board" || item.kind === "board") return [];
       const pageTitle = kind === "page" ? String(item.target?.title || item.title || "") : "";
-      const blockUid2 = pageTitle ? "" : String(item.target?.uid || item.uid || "");
-      if (!pageTitle && !blockUid2) return [];
+      const blockUid3 = pageTitle ? "" : String(item.target?.uid || item.uid || "");
+      if (!pageTitle && !blockUid3) return [];
       const byPage = Boolean(pageTitle);
       const outQuery = byPage ? `[:find ?rt ?ss :in $ ?title :where [?p :node/title ?title] [?b :block/page ?p] [?b :block/refs ?r] [?r :node/title ?rt] [?b :block/string ?ss]]` : `[:find ?rt ?ss :in $ ?uid :where [?s :block/uid ?uid] (or [?b :block/parents ?s] [(= ?b ?s)]) [?b :block/refs ?r] [?r :node/title ?rt] [?b :block/string ?ss]]`;
       const inQuery = byPage ? `[:find ?u ?ss ?pt :in $ ?title ?board :where [?p :node/title ?title] [?b :block/refs ?p] (not [?b :block/parents ?board]) [(not= ?b ?board)] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]` : `[:find ?u ?ss ?pt :in $ ?uid ?board :where [?s :block/uid ?uid] [?b :block/refs ?s] (not [?b :block/parents ?board]) [(not= ?b ?board)] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`;
       try {
         if (mode === "in") {
           const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
-          const incoming = host.q(inQuery, pageTitle || blockUid2, boardEid) || [];
-          return splitNeighbors({ incoming, selfTitle: pageTitle, selfUid: blockUid2 }).in;
+          const incoming = host.q(inQuery, pageTitle || blockUid3, boardEid) || [];
+          return splitNeighbors({ incoming, selfTitle: pageTitle, selfUid: blockUid3 }).in;
         }
-        const outgoing = host.q(outQuery, pageTitle || blockUid2) || [];
-        const split = splitNeighbors({ outgoing, selfTitle: pageTitle, selfUid: blockUid2 });
+        const outgoing = host.q(outQuery, pageTitle || blockUid3) || [];
+        const split = splitNeighbors({ outgoing, selfTitle: pageTitle, selfUid: blockUid3 });
         return mode === "attr" ? split.attr : split.out;
       } catch {
         return [];
@@ -45617,9 +45729,9 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     showOnBoard(uid) {
       const id = String(uid ?? "").trim();
       if (!id) return null;
-      const propsOf = (blockUid2) => {
+      const propsOf = (blockUid3) => {
         try {
-          return host.pullProps(blockUid2);
+          return host.pullProps(blockUid3);
         } catch {
           return {};
         }
@@ -45914,8 +46026,8 @@ function readNative(host, boardUid) {
   const keyById = /* @__PURE__ */ new Map();
   const nodes = rawNodes.map((n3) => {
     const id = n3[":db/id"];
-    const blockUid2 = n3[":diagram.node/block"]?.[":block/uid"] ?? null;
-    const key = blockUid2 ?? `n${id}`;
+    const blockUid3 = n3[":diagram.node/block"]?.[":block/uid"] ?? null;
+    const key = blockUid3 ?? `n${id}`;
     keyById.set(id, key);
     const data = parseData(n3[":diagram.node/data"]);
     const abs = data.positionAbsolute && finite4(data.positionAbsolute.x) !== void 0 ? data.positionAbsolute : null;
@@ -45923,7 +46035,7 @@ function readNative(host, boardUid) {
     const type = data.type === "group" ? "group" : "node";
     return {
       key,
-      blockUid: blockUid2,
+      blockUid: blockUid3,
       x: finite4(pos.x) ?? 0,
       y: finite4(pos.y) ?? 0,
       w: finite4(data.width) ?? finite4(data.measured?.width),
@@ -48198,7 +48310,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     // One note card. Children stay in the block tree; kids stays off unless the layout says so.
     insertParsedCard({ x, y, w, h, markdown, pin: pin2, sourceUid, sourceUids } = {}) {
       if (!board2 || destroyed || gone) return Promise.resolve(void 0);
-      const nested = nestMarkdownUnderFirst(markdown);
+      const copied = planCopiedSource({ markdown, source: sourceUid });
+      const nested = nestMarkdownUnderFirst(copied.markdown);
+      sourceUid = copied.sourceUid;
       if (!String(nested).trim() || bulletCount(nested) === 0) return Promise.resolve({ ok: false, reason: "empty" });
       const width = Number.isFinite(w) ? w : DEFAULT_SIZES.card.w;
       const height = Number.isFinite(h) ? h : DEFAULT_SIZES.card.h;
@@ -48206,8 +48320,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       const { parent, rel } = placeParsed(x, y, size.w, size.h);
       const order = insertOrder(parent);
       return runParsed(async () => {
-        const fn = await settleFootnotes([markdown], { reserve: 2 });
-        const body = fn ? nestMarkdownUnderFirst(fn.apply(markdown)) : nested;
+        const fn = await settleFootnotes([copied.markdown], { reserve: 2 });
+        const body = fn ? nestMarkdownUnderFirst(fn.apply(copied.markdown)) : nested;
         if (fn && bulletCount(body) === 0) return { ok: false, reason: "empty" };
         const plexus = serializeItemLayout(withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, body));
         const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: body });
@@ -48332,11 +48446,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       });
     },
     // Notes a kept read on the PDF block's props: one write, one undo step. Nothing else changes.
-    noteRead(blockUid2, entry) {
+    noteRead(blockUid3, entry) {
       if (destroyed || gone) return Promise.resolve({ ok: false, reason: "gone" });
       return runParsed(async () => {
-        const reads = mergeReads(host.pullProps(blockUid2)?.[READS_KEY], entry);
-        await host.updateReads(blockUid2, reads);
+        const reads = mergeReads(host.pullProps(blockUid3)?.[READS_KEY], entry);
+        await host.updateReads(blockUid3, reads);
         return { ok: true, writes: 1 };
       });
     },
@@ -48827,10 +48941,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       });
     },
     // One ref card, centered on the board's content (the origin when nothing is placed yet).
-    addBlockRef(blockUid2) {
-      if (!blockUid2 || !board2) return Promise.resolve(null);
+    addBlockRef(blockUid3) {
+      if (!blockUid3 || !board2) return Promise.resolve(null);
       const at = cardAtCenter(boundsOf([...rects.values()]), DEFAULT_SIZES.card);
-      return this.addRefCards([{ string: `((${blockUid2}))`, x: at.x, y: at.y }]).then((ids) => ids?.[0] ?? null);
+      return this.addRefCards([{ string: `((${blockUid3}))`, x: at.x, y: at.y }]).then((ids) => ids?.[0] ?? null);
     },
     deleteItems(uids, { withContents = false, force = false } = {}) {
       return txn((t) => {
@@ -49120,14 +49234,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         return null;
       });
     },
-    setHighlightColor(blockUid2, name) {
+    setHighlightColor(blockUid3, name) {
       return txn((t) => {
         if (!HIGHLIGHT_COLORS.includes(name)) return;
-        const cur = host.blockString?.(blockUid2);
+        const cur = host.blockString?.(blockUid3);
         if (cur == null) return;
         const next = rewriteHighlightTag(cur, name);
         if (next === cur) return;
-        t.string(blockUid2, next);
+        t.string(blockUid3, next);
       });
     },
     growToFit(id, contentHeight) {
@@ -51775,10 +51889,10 @@ function warmPlan(input) {
       if (card2.kind && card2.kind !== "pdf") continue;
       if (card2.hasCover && !card2.needsTitle) continue;
       const uid = text2(card2.uid);
-      const blockUid2 = text2(card2.blockUid);
-      if (!uid || !blockUid2) continue;
+      const blockUid3 = text2(card2.blockUid);
+      if (!uid || !blockUid3) continue;
       if (!visibleHas(src.visible, uid)) continue;
-      return { uid, blockUid: blockUid2 };
+      return { uid, blockUid: blockUid3 };
     }
     if (src.offscreenTitles !== true) return null;
     for (const card2 of cards) {
@@ -51786,9 +51900,9 @@ function warmPlan(input) {
       if (card2.kind && card2.kind !== "pdf") continue;
       if (!card2.hasCover || !card2.needsTitle) continue;
       const uid = text2(card2.uid);
-      const blockUid2 = text2(card2.blockUid);
-      if (!uid || !blockUid2) continue;
-      return { uid, blockUid: blockUid2 };
+      const blockUid3 = text2(card2.blockUid);
+      if (!uid || !blockUid3) continue;
+      return { uid, blockUid: blockUid3 };
     }
     return null;
   } catch {
@@ -70945,7 +71059,7 @@ function createParseView({
         return true;
       }
       if (id === "card" || id === "source") {
-        const markdown = isImageCopy(block) ? captionText2(block) : toMarkdown(parsed, [block.id]);
+        const plain2 = isImageCopy(block) ? captionText2(block) : toMarkdown(parsed, [block.id]);
         let source = "";
         if (id === "source") {
           source = await ensurePin(block);
@@ -70955,9 +71069,10 @@ function createParseView({
           } catch {
           }
         }
-        const json = cardJsonPayload({ markdown, size: { w: 280, h: 160 }, kind: block.type || "card", source });
-        const text4 = source ? `${markdown}
-${sourceAttrString(source)}` : markdown;
+        const copied = planCopiedSource({ markdown: plain2, source });
+        const json = cardJsonPayload({ markdown: copied.markdown, size: { w: 280, h: 160 }, kind: block.type || "card", source: copied.sourceUid });
+        const text4 = source ? `${plain2}
+${sourceAttrString(source)}` : plain2;
         return writeTyped({ "text/plain": text4, [CARD_JSON_MIME]: JSON.stringify(json) });
       }
       if (id === "crop") {
@@ -74465,9 +74580,9 @@ function pillButton(doc, el2, parent, label, text4) {
   button3.setAttribute("aria-label", label);
   return button3;
 }
-function readerJumpPlan({ cardUid = "", blockUid: blockUid2 = "" } = {}) {
+function readerJumpPlan({ cardUid = "", blockUid: blockUid3 = "" } = {}) {
   if (typeof cardUid === "string" && cardUid) return { action: "card", uid: cardUid };
-  if (typeof blockUid2 === "string" && blockUid2) return { action: "block", uid: blockUid2 };
+  if (typeof blockUid3 === "string" && blockUid3) return { action: "block", uid: blockUid3 };
   return { action: "missing", toast: "Click the highlight to open the PDF" };
 }
 function indexNodes(nodes, map) {
@@ -74894,13 +75009,13 @@ function createReadPane({
     };
     tick();
   };
-  const mountReader = (blockUid2) => {
-    if (!blockUid2) return false;
-    if (liveBlock === blockUid2 && live2.querySelector?.(".rm-pdf-container")) return false;
+  const mountReader = (blockUid3) => {
+    if (!blockUid3) return false;
+    if (liveBlock === blockUid3 && live2.querySelector?.(".rm-pdf-container")) return false;
     clearLive();
-    liveBlock = blockUid2;
+    liveBlock = blockUid3;
     try {
-      host?.renderBlock?.(live2, blockUid2);
+      host?.renderBlock?.(live2, blockUid3);
     } catch {
     }
     try {
@@ -75868,7 +75983,36 @@ function createReadPane({
     if (/^#[0-9a-fA-F]{3,8}$/.test(name)) return name;
     return "var(--pxd-yellow-line, #ca8a04)";
   };
+  const scrollFrac = (frac) => {
+    const scroller = live2.querySelector?.(".PdfHighlighter");
+    const page = live2.querySelector?.(".rm-pdf-container .page") || live2.querySelector?.(".page");
+    if (!scroller || !page) return;
+    let pageBox = null;
+    let view2 = null;
+    try {
+      pageBox = page.getBoundingClientRect();
+    } catch {
+      pageBox = null;
+    }
+    try {
+      view2 = scroller.getBoundingClientRect();
+    } catch {
+      view2 = null;
+    }
+    if (!pageBox || !view2) return;
+    const next = fracScrollTop({
+      frac,
+      pageTop: pageBox.top,
+      pageHeight: pageBox.height,
+      viewTop: view2.top,
+      viewHeight: view2.height,
+      scrollTop: Number(scroller.scrollTop) || 0
+    });
+    if (next == null) return;
+    scroller.scrollTop = next;
+  };
   const flashFrac = (frac) => {
+    scrollFrac(frac);
     const style = fracStyle(frac);
     const page = live2.querySelector?.(".rm-pdf-container .page") || live2.querySelector?.(".page");
     if (!style || !page) return;
@@ -77420,26 +77564,26 @@ function createReadPane({
   return {
     open(detail) {
       const next = detail && typeof detail === "object" ? detail : {};
-      const blockUid2 = typeof next.blockUid === "string" ? next.blockUid : "";
-      if (!blockUid2 || !root) return;
-      const kept = openFlag && blockUid2 === current3.blockUid && liveBlock === blockUid2 && fitDone ? readerScale() : null;
-      if (blockUid2 !== current3.blockUid) {
+      const blockUid3 = typeof next.blockUid === "string" ? next.blockUid : "";
+      if (!blockUid3 || !root) return;
+      const kept = openFlag && blockUid3 === current3.blockUid && liveBlock === blockUid3 && fitDone ? readerScale() : null;
+      if (blockUid3 !== current3.blockUid) {
         textLayer.clear();
         ocrSha = "";
         resetOcrState();
         if (parsedView && viewMode === "reader") dropParsed();
       }
-      if (!openFlag || blockUid2 !== current3.blockUid) {
+      if (!openFlag || blockUid3 !== current3.blockUid) {
         fitDone = false;
         userZoomed = false;
         settleNoted = false;
-        if (blockUid2 !== current3.blockUid) parsedTitle = "";
+        if (blockUid3 !== current3.blockUid) parsedTitle = "";
         fitState.path = "none";
         fitState.clicks = 0;
       }
       current3 = {
         cardUid: typeof next.cardUid === "string" ? next.cardUid : "",
-        blockUid: blockUid2,
+        blockUid: blockUid3,
         title: typeof next.title === "string" ? next.title : "",
         source: typeof next.source === "string" ? next.source : "",
         pageUid: typeof next.pageUid === "string" ? next.pageUid : ""
@@ -77466,7 +77610,7 @@ function createReadPane({
         narrowTab = "page";
         applyModeClass();
       }
-      const remounted = mountReader(blockUid2);
+      const remounted = mountReader(blockUid3);
       if (remounted && !(kept && jumping)) fitDone = false;
       attachReaderWatch();
       armSettle();
@@ -78149,8 +78293,8 @@ function createPdfWarm({ doc, root, host, store, timers, now: now4, renderFirst 
         return;
       }
       const url = coverKey(job.card.url);
-      const blockUid2 = typeof job.card.blockUid === "string" ? job.card.blockUid.trim() : "";
-      if (!url || !blockUid2 || !doc || !root || typeof host?.renderBlock !== "function") {
+      const blockUid3 = typeof job.card.blockUid === "string" ? job.card.blockUid.trim() : "";
+      if (!url || !blockUid3 || !doc || !root || typeof host?.renderBlock !== "function") {
         outcomes.set(job.uid, "skipped");
         settle2(job, null);
         return;
@@ -78214,7 +78358,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now4, renderFirst 
             return null;
           }
           paths.reader += 1;
-          return mount(job, url, blockUid2);
+          return mount(job, url, blockUid3);
         });
       }).catch(() => {
         if (!job.done) {
@@ -78229,7 +78373,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now4, renderFirst 
       }
     }
   }
-  function mount(job, url, blockUid2) {
+  function mount(job, url, blockUid3) {
     if (job.gen !== generation || job.done) return null;
     let holder = null;
     let mountEl = null;
@@ -78253,7 +78397,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now4, renderFirst 
     job.holder = holder;
     job.mount = mountEl;
     try {
-      host.renderBlock(mountEl, blockUid2);
+      host.renderBlock(mountEl, blockUid3);
     } catch {
       teardown(job);
       outcomes.set(job.uid, "error");
@@ -78322,9 +78466,9 @@ function createPdfWarm({ doc, root, host, store, timers, now: now4, renderFirst 
     request(card2) {
       try {
         const uid = typeof card2?.uid === "string" ? card2.uid.trim() : "";
-        const blockUid2 = typeof card2?.blockUid === "string" ? card2.blockUid.trim() : "";
+        const blockUid3 = typeof card2?.blockUid === "string" ? card2.blockUid.trim() : "";
         const url = coverKey(card2?.url);
-        if (!uid || !blockUid2 || !url) return Promise.resolve(null);
+        if (!uid || !blockUid3 || !url) return Promise.resolve(null);
         if (current3 || spentCount >= WARM_MAX) return Promise.resolve(null);
         const gen = generation;
         let resolve = () => {
@@ -79798,14 +79942,44 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     linkEls.delete(key);
   };
   let lastPass = null;
-  const render = ({ board: board2, rects, links = [], coveredEdges = /* @__PURE__ */ new Set(), selection = {}, zoom = 1, dirty = null, view: near2 = void 0, skipLinks = false }) => {
+  let drawnFn = null;
+  const waiting = /* @__PURE__ */ new Set();
+  const endsReady = (board2, edge) => {
+    if (typeof drawnFn !== "function") return true;
+    return Boolean(drawnFn(anchorUid(board2, edge.from)) && drawnFn(anchorUid(board2, edge.to)));
+  };
+  const hideEdge = (rec) => {
+    rec.g.setAttribute("display", "none");
+    rec.label.style.display = "none";
+  };
+  const showEdge = (board2, edge, rects, zoom, coveredEdges, selection) => {
+    let rec = edgeEls.get(edge.uid);
+    const fresh = !rec;
+    if (!rec) rec = buildEdge(edge);
+    else if (rec.parked) unparkEdge(rec);
+    rec.stale = false;
+    paintEdge(board2, edge, rec, { covered: coveredEdges.has(edge.uid), selected: selection.edge === edge.uid });
+    placeEdge(board2, edge, rec, rects, zoom);
+    return fresh;
+  };
+  const render = ({ board: board2, rects, links = [], coveredEdges = /* @__PURE__ */ new Set(), selection = {}, zoom = 1, dirty = null, view: near2 = void 0, skipLinks = false, drawn = void 0 }) => {
     zoomCache = zoom;
     if (near2 !== void 0) view = near2;
+    if (drawn !== void 0) drawnFn = drawn;
     lastPass = { board: board2, rects, coveredEdges, selection };
     const virt = Boolean(view) && virtualEdges(board2);
-    for (const uid of [...edgeEls.keys()]) if (!board2.edges.has(uid)) removeEdge(uid);
+    for (const uid of [...edgeEls.keys()]) if (!board2.edges.has(uid)) {
+      waiting.delete(uid);
+      removeEdge(uid);
+    }
     for (const edge of board2.edges.values()) {
       let rec = edgeEls.get(edge.uid);
+      if (!endsReady(board2, edge)) {
+        waiting.add(edge.uid);
+        if (rec && !rec.parked) hideEdge(rec);
+        continue;
+      }
+      waiting.delete(edge.uid);
       if (virt && selection.edge !== edge.uid && editingLabel?.uid !== edge.uid) {
         const attached = rec && !rec.parked;
         if (attached ? edgeFar(board2, edge, rects) : !edgeNear(board2, edge, rects)) {
@@ -79813,15 +79987,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
           continue;
         }
       }
-      if (!rec && dirty && !dirty.has(edge.uid)) continue;
       const fresh = !rec;
-      if (!rec) rec = buildEdge(edge);
-      else if (rec.parked) unparkEdge(rec);
-      if (fresh || !dirty || dirty.has(edge.uid) || rec.stale) {
-        rec.stale = false;
-        paintEdge(board2, edge, rec, { covered: coveredEdges.has(edge.uid), selected: selection.edge === edge.uid });
-        placeEdge(board2, edge, rec, rects, zoom);
-      }
+      const wasHidden = Boolean(rec && !rec.parked && rec.g.getAttribute("display") === "none");
+      if (!rec && dirty && !dirty.has(edge.uid)) continue;
+      if (fresh || wasHidden || !dirty || dirty.has(edge.uid) || rec.stale) showEdge(board2, edge, rects, zoom, coveredEdges, selection);
     }
     if (!skipLinks) {
       const keys = new Set(links.map((l) => l.key));
@@ -79833,6 +80002,20 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     }
     labelsLayer?.classList.toggle("pxd-labels--hidden", zoom < LABEL_HIDE_ZOOM);
   };
+  const flushWaiting = () => {
+    if (!lastPass || !waiting.size) return 0;
+    const { board: board2, rects, coveredEdges, selection } = lastPass;
+    let n3 = 0;
+    for (const uid of [...waiting]) {
+      const edge = board2.edges.get(uid);
+      if (!edge || !endsReady(board2, edge)) continue;
+      if (view && virtualEdges(board2) && !edgeNear(board2, edge, rects)) continue;
+      waiting.delete(uid);
+      showEdge(board2, edge, rects, zoomCache, coveredEdges, selection);
+      n3 += 1;
+    }
+    return n3;
+  };
   const reveal = (rect, budget = 80) => {
     if (!rect || !lastPass) return 0;
     view = rect;
@@ -79843,6 +80026,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       if (n3 >= budget) break;
       const rec = edgeEls.get(edge.uid);
       if (rec && !rec.parked) continue;
+      if (!endsReady(board2, edge)) {
+        waiting.add(edge.uid);
+        continue;
+      }
       if (!edgeNear(board2, edge, rects)) continue;
       const live2 = rec || buildEdge(edge);
       if (rec) unparkEdge(live2);
@@ -79860,6 +80047,12 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (!virtualEdges(board2)) return;
     for (const edge of board2.edges.values()) {
       const rec = edgeEls.get(edge.uid);
+      if (!endsReady(board2, edge)) {
+        waiting.add(edge.uid);
+        if (rec && !rec.parked) hideEdge(rec);
+        continue;
+      }
+      waiting.delete(edge.uid);
       const pinned2 = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
       const near2 = pinned2 || (rec && !rec.parked ? !edgeFar(board2, edge, rects) : edgeNear(board2, edge, rects));
       if (!near2) {
@@ -80153,6 +80346,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       return n3;
     },
     placements: () => placements,
+    flushWaiting,
     setSelection,
     setHover,
     setTempWire,
@@ -82203,12 +82397,12 @@ function sortRows4(rows, column, dir = "asc") {
   });
   return list;
 }
-function planAttrCell({ name, value, blockUid: blockUid2 = null, parentUid = null } = {}) {
+function planAttrCell({ name, value, blockUid: blockUid3 = null, parentUid = null } = {}) {
   const attr = cleanName(name);
   if (!attr) return null;
   const text4 = String(value ?? "").trim();
   const string = text4 ? `${attr}:: ${text4}` : `${attr}::`;
-  if (blockUid2) return { op: "update", uid: blockUid2, string };
+  if (blockUid3) return { op: "update", uid: blockUid3, string };
   if (!text4 || !parentUid) return null;
   return { op: "create", parent: parentUid, string };
 }
@@ -82373,13 +82567,13 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
     }
     paint2();
   };
-  const openEditor = (cell, blockUid2) => {
-    if (!blockUid2 || typeof host?.renderBlock !== "function") return;
+  const openEditor = (cell, blockUid3) => {
+    if (!blockUid3 || typeof host?.renderBlock !== "function") return;
     closeEditors();
     cell.classList.add("pxd-table__edit");
     cell.replaceChildren();
     try {
-      host.renderBlock(cell, blockUid2);
+      host.renderBlock(cell, blockUid3);
     } catch {
     }
   };
@@ -89126,9 +89320,9 @@ function rasterizeSvg(doc, svg) {
     img.src = url;
   });
 }
-function freshCardIsBlank({ blockString: blockString3, itemString, contentCount = 0, editorText = "" } = {}) {
+function freshCardIsBlank({ blockString: blockString4, itemString, contentCount = 0, editorText = "" } = {}) {
   if (contentCount > 0) return false;
-  return ![blockString3, itemString, editorText].some((s) => !isBareTask(s) && String(s ?? "").trim());
+  return ![blockString4, itemString, editorText].some((s) => !isBareTask(s) && String(s ?? "").trim());
 }
 function editingPlainText(root) {
   const editor = root.querySelector?.(".pxd-item--editing .pxd-item__editor");
@@ -90806,6 +91000,12 @@ function buildBoardView(onFail, {
     timers,
     adoptShell,
     onOverviewQueue: () => paintOverviewCover(),
+    onShells: () => {
+      try {
+        edgesR.flushWaiting?.();
+      } catch {
+      }
+    },
     tableThumb,
     onTableShown,
     onEditChange: (uid) => {
@@ -90963,17 +91163,17 @@ function buildBoardView(onFail, {
     let item = null;
     for (const it of b.items.values()) {
       if (!it || it.kind !== "pdf") continue;
-      const blockUid3 = it.target?.kind === "block" ? it.target.uid : it.uid;
-      if (it.uid === pdfUid || blockUid3 === pdfUid || it.target?.uid === pdfUid) {
+      const blockUid4 = it.target?.kind === "block" ? it.target.uid : it.uid;
+      if (it.uid === pdfUid || blockUid4 === pdfUid || it.target?.uid === pdfUid) {
         item = it;
         break;
       }
     }
     if (!item) return false;
-    const blockUid2 = item.target?.kind === "block" ? item.target.uid : item.uid;
+    const blockUid3 = item.target?.kind === "block" ? item.target.uid : item.uid;
     ensureReadPane().open?.({
       cardUid: item.uid,
-      blockUid: blockUid2,
+      blockUid: blockUid3,
       page: plan.page,
       frac: plan.frac,
       source: item.string || "",
@@ -92433,8 +92633,8 @@ function buildBoardView(onFail, {
     for (const item of board2()?.items.values() || []) {
       if (item?.kind !== "pdf") continue;
       const url = coverUrlOf(item);
-      const blockUid2 = pdfBlockUid(item);
-      if (!url || !blockUid2) continue;
+      const blockUid3 = pdfBlockUid(item);
+      if (!url || !blockUid3) continue;
       const rect = r.get(item.uid);
       if (view2 && rect && rectsIntersect(rect, view2)) visible2.add(item.uid);
       if (!coverFaces.has(url)) {
@@ -92446,7 +92646,7 @@ function buildBoardView(onFail, {
       if (wanted ? !due : titleWanted(url, { anyRenderer: true })) pending += 1;
       cards.push({
         uid: item.uid,
-        blockUid: blockUid2,
+        blockUid: blockUid3,
         kind: "pdf",
         hasCover: coverFaces.get(url)?.state === "ready",
         needsTitle: wanted && due,
@@ -93416,23 +93616,32 @@ function buildBoardView(onFail, {
   const endUnderlay = () => {
     underlayDrawn = false;
   };
+  let coverUids = /* @__PURE__ */ new Set();
+  const endpointReady = (uid) => Boolean(uid && (itemsR.shellOf?.(uid) || coverUids.has(uid)));
   paintOverviewCover = () => {
     if (disposed || underlayDrawn) return;
     try {
-      if (notedSpeedFlags().overviewFast === false) return;
+      if (notedSpeedFlags().overviewFast === false) {
+        coverUids = /* @__PURE__ */ new Set();
+        return;
+      }
     } catch {
+      coverUids = /* @__PURE__ */ new Set();
       return;
     }
     if (tier === "detail" && itemsR.coverHeld?.() !== true) {
       const pending = itemsR.pendingBoxes?.() || [];
+      coverUids = /* @__PURE__ */ new Set();
       if (!pending.length) underlay.hide();
       return;
     }
     const items = itemsR.pendingBoxes?.() || [];
     if (!items.length) {
+      coverUids = /* @__PURE__ */ new Set();
       underlay.hide();
       return;
     }
+    coverUids = new Set(items.map((item) => item.uid));
     underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1 });
   };
   const releaseUnderlay = () => {
@@ -93767,7 +93976,7 @@ function buildBoardView(onFail, {
     skip: () => /* @__PURE__ */ new Set([boardUid]),
     place: (strings) => addStringsBeside(strings)
   });
-  const crumbList = Array.isArray(crumbs) ? crumbs : [];
+  let crumbList = Array.isArray(crumbs) ? crumbs.slice() : [];
   const boardTargetOf = (uid) => {
     const item = board2()?.items.get(uid);
     if (item?.kind === "board") return uid;
@@ -93950,9 +94159,9 @@ function buildBoardView(onFail, {
       doc,
       parent: root,
       rows,
-      onOpen: (blockUid2, { sidebar }) => {
-        if (sidebar) host?.openInSidebar?.(blockUid2, "block");
-        else host?.openBlock?.(blockUid2);
+      onOpen: (blockUid3, { sidebar }) => {
+        if (sidebar) host?.openInSidebar?.(blockUid3, "block");
+        else host?.openBlock?.(blockUid3);
       }
     });
   };
@@ -94501,8 +94710,8 @@ function buildBoardView(onFail, {
     if (disposed || !session.board?.items?.has?.(cardUid)) return;
     await itemsR.enterEdit(cardUid);
   };
-  const pasteEditorImages = async (ta, blockUid2, files) => {
-    if (!files?.length || !blockUid2) return;
+  const pasteEditorImages = async (ta, blockUid3, files) => {
+    if (!files?.length || !blockUid3) return;
     if (typeof host?.uploadFile !== "function") {
       toast("Image upload is not available here");
       return;
@@ -94530,7 +94739,7 @@ function buildBoardView(onFail, {
     if (!ta) {
       let current3 = null;
       try {
-        current3 = host?.blockString?.(blockUid2);
+        current3 = host?.blockString?.(blockUid3);
       } catch {
         current3 = null;
       }
@@ -94550,7 +94759,7 @@ function buildBoardView(onFail, {
       }
     }
     try {
-      const write = () => host.updateString(blockUid2, placed.string);
+      const write = () => host.updateString(blockUid3, placed.string);
       if (host.group) await host.group(write);
       else await write();
     } catch {
@@ -94561,15 +94770,15 @@ function buildBoardView(onFail, {
     if (failed) toast(`Added ${urls2.length} of ${files.length} images`);
     await remountEditor(cardUid);
   };
-  const pasteEditorBlocks = async (ta, blockUid2, plan) => {
-    if (!blockUid2 || plan?.type !== "blocks") return;
+  const pasteEditorBlocks = async (ta, blockUid3, plan) => {
+    if (!blockUid3 || plan?.type !== "blocks") return;
     if (typeof host?.updateString !== "function" || typeof host?.createBlock !== "function") return;
     const cardUid = itemsR.editingUid?.();
     if (ta) commitTextareaValue(ta, plan.string);
     try {
       const write = async () => {
-        await host.updateString(blockUid2, plan.string);
-        for (const line of plan.children) await host.createBlock({ parentUid: blockUid2, order: "last", string: line });
+        await host.updateString(blockUid3, plan.string);
+        for (const line of plan.children) await host.createBlock({ parentUid: blockUid3, order: "last", string: line });
       };
       if (host.group) await host.group(write);
       else await write();
@@ -94600,13 +94809,13 @@ function buildBoardView(onFail, {
       isRoot: role.role === "root"
     });
     if (!plan || plan.type === "roam") return false;
-    const blockUid2 = role.uid || cardUid;
-    if (!blockUid2) return false;
+    const blockUid3 = role.uid || cardUid;
+    if (!blockUid3) return false;
     if (plan.type === "images") {
-      void pasteEditorImages(ta, blockUid2, files);
+      void pasteEditorImages(ta, blockUid3, files);
       return true;
     }
-    void pasteEditorBlocks(ta, blockUid2, plan);
+    void pasteEditorBlocks(ta, blockUid3, plan);
     return true;
   };
   const statusWin = () => doc?.defaultView || globalThis;
@@ -95857,15 +96066,15 @@ function buildBoardView(onFail, {
       cards.push({ uid: other.uid, source: pdfSourceOfItem(other) });
     }
     const match = pdfCardForUrl(url, cards);
-    let blockUid2 = "";
+    let blockUid3 = "";
     if (!match && url) {
       try {
-        blockUid2 = host?.pdfBlockByUrl?.(url) || "";
+        blockUid3 = host?.pdfBlockByUrl?.(url) || "";
       } catch {
-        blockUid2 = "";
+        blockUid3 = "";
       }
     }
-    const plan = readerJumpPlan({ cardUid: match || "", blockUid: blockUid2 });
+    const plan = readerJumpPlan({ cardUid: match || "", blockUid: blockUid3 });
     const page = item.highlight?.page;
     if (plan.action === "card") {
       const pending = itemsR.openPdfAt?.(plan.uid, page, item.target.uid);
@@ -97226,7 +97435,7 @@ ${url}`;
     tabStripOff = null;
   };
   const paintTabStrip = (tabs, current3) => {
-    if (!isFullscreen || !Array.isArray(tabs) || tabs.length < 2) {
+    if (!isFullscreen || setting("show-board-trail", false) !== true || !Array.isArray(tabs) || tabs.length < 2) {
       dropTabStrip();
       root.classList.remove("pxd-root--fstabs");
       root.style.setProperty("--pxd-tabs-h", "0px");
@@ -97731,12 +97940,15 @@ ${url}`;
     createSection: (p) => session.createSection?.({ rect: p.rect, ...pendingFor("section")?.color ? { color: pendingFor("section").color } : {} }),
     createBoard: (p) => session.createBoard?.({ rect: p.rect }),
     moveIntoBoard: async (uids, boardUid2, dx = 0, dy = 0) => {
+      const fly = startFlyInto(uids, boardUid2);
       const res = await session.moveIntoBoard?.(uids, boardUid2);
       if (!res) {
+        fly.cancel();
         void session.commitMove?.(uids, dx, dy);
         return;
       }
-      chrome.toast.show({ message: `Moved into ${res.title}`, action: { label: "Undo", run: () => res.undo() } });
+      pulseItem(boardUid2);
+      chrome.toast.show({ message: `Moved to ${res.title}`, action: { label: "Undo", run: () => res.undo() } });
     },
     openBoard: (uid) => openBoard(uid),
     isBoardCard: (uid) => Boolean(boardTargetOf(uid)),
@@ -98329,6 +98541,7 @@ ${url}`;
   };
   listen(root, "pointerdown", (event) => {
     if ((event.button ?? 0) !== 0) return;
+    if (stealPinPress(event)) return;
     if (leavesBoardPointer(event.target)) return;
     const item = event.target?.closest?.(".pxd-item");
     if (!item || !root.contains(item)) return;
@@ -98365,6 +98578,7 @@ ${url}`;
   }, true);
   for (const type of ["mousedown", "mouseup"]) {
     listen(root, type, (event) => {
+      if (type === "mousedown" && stealPinPress(event)) return;
       if (leavesBoardPointer(event.target) || inRoamTable(event.target)) return;
       const native = nativeClickKind(event.target);
       if (native === "checkbox" || native === "image") return;
@@ -98398,15 +98612,72 @@ ${url}`;
     const page = t.closest("[data-link-uid]");
     const block = t.closest(".rm-block-ref[data-uid]");
     const uid = page?.getAttribute("data-link-uid") || block?.getAttribute("data-uid");
-    if (!uid || !api3?.ui) return false;
-    const key = `${uid}:${event.shiftKey ? 1 : 0}`;
+    if (!uid) return false;
+    let pinJump = null;
+    if (block && !page) {
+      let string = "";
+      try {
+        string = host?.blockString?.(uid) || "";
+      } catch {
+        string = "";
+      }
+      const decided = refOpenPlan({ uid, string, shiftKey: Boolean(event.shiftKey) });
+      if (decided.kind === "pin") pinJump = decided;
+    }
+    if (!pinJump && !api3?.ui) return false;
+    const key = `${uid}:${event.shiftKey ? 1 : 0}:${pinJump ? "pin" : "ref"}`;
     const now4 = Date.now();
     if (key === lastRefKey && now4 - lastRefAt < 500) return true;
     lastRefKey = key;
     lastRefAt = now4;
+    if (pinJump) {
+      if (pinJump.mode === "sidebar") {
+        try {
+          host?.openInSidebar?.(pinJump.plan.pdfUid);
+        } catch {
+        }
+        return true;
+      }
+      const opened = openPin(pinJump.plan);
+      if (!opened) {
+        let pageUid2 = "";
+        try {
+          pageUid2 = host?.blockPageUid?.(pinJump.plan.pdfUid) || "";
+        } catch {
+          pageUid2 = "";
+        }
+        const fallback = pinOpenFallback({ opened: false, plan: pinJump.plan, pageUid: pageUid2, now: now4 });
+        if (fallback?.openPage) {
+          notePendingPin(fallback.pending);
+          try {
+            host?.openPage?.(fallback.openPage);
+          } catch {
+          }
+        }
+      }
+      return true;
+    }
     if (event.shiftKey) api3.ui.rightSidebar?.addWindow?.({ window: { type: page ? "outline" : "block", "block-uid": uid } });
     else if (page) api3.ui.mainWindow?.openPage?.({ page: { uid } });
     else api3.ui.mainWindow?.openBlock?.({ block: { uid } });
+    return true;
+  };
+  let stealPinPress = () => false;
+  stealPinPress = (event) => {
+    if (event.button != null && event.button !== 0) return false;
+    const block = event.target?.closest?.(".rm-block-ref[data-uid]");
+    if (!block || !event.target?.closest?.(".pxd-item") || event.target?.closest?.(".pxd-item--editing")) return false;
+    const uid = block.getAttribute?.("data-uid") || "";
+    let string = "";
+    try {
+      string = host?.blockString?.(uid) || "";
+    } catch {
+      string = "";
+    }
+    if (refOpenPlan({ uid, string, shiftKey: Boolean(event.shiftKey) }).kind !== "pin") return false;
+    if (!openRefFromClick(event)) return false;
+    event.preventDefault();
+    event.stopPropagation();
     return true;
   };
   listen(root, "click", (event) => {
@@ -99505,7 +99776,7 @@ ${url}`;
           for (const uid of sliceSource) (slice.size < EDGE_SLICE ? slice : edgeRest).add(uid);
           part = slice;
         }
-        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || /* @__PURE__ */ new Set(), selection, zoom: vp.zoom, dirty: part, view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null, skipLinks: edgeSlicing && !dirty.links });
+        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || /* @__PURE__ */ new Set(), selection, zoom: vp.zoom, dirty: part, view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null, skipLinks: edgeSlicing && !dirty.links, drawn: endpointReady });
         paintLegend();
         if (suggestMode !== "off") refreshSuggest();
       }
@@ -99608,6 +99879,56 @@ ${url}`;
     timers.later(() => {
       if (!disposed) shell.classList.remove("pxd-item--pulse");
     }, ms);
+  };
+  const FLY_MS = 200;
+  const readShift = (el3) => {
+    const m = /translate\(\s*(-?[\d.]+)px,\s*(-?[\d.]+)px\s*\)/.exec(el3?.style?.transform || "");
+    return m ? { x: Number(m[1]), y: Number(m[2]) } : { x: 0, y: 0 };
+  };
+  const startFlyInto = (uids, boardUid2) => {
+    const ghosts = [];
+    const hidden = [];
+    const cancel = () => {
+      for (const ghost of ghosts) ghost.remove();
+      for (const el3 of hidden) el3.classList.remove("pxd-item--into");
+    };
+    if (motionProfile(currentMotion()).zoomMs < 150) return { cancel };
+    const target = itemsR.shellOf?.(boardUid2);
+    if (!target) return { cancel };
+    const dest = readShift(target);
+    const dw = parseFloat(target.style.width) || 0;
+    const dh = parseFloat(target.style.height) || 0;
+    for (const uid of uids || []) {
+      if (!uid || uid === boardUid2) continue;
+      const shell = itemsR.shellOf?.(uid);
+      if (!shell) continue;
+      const from = readShift(shell);
+      const w = parseFloat(shell.style.width) || 0;
+      const h = parseFloat(shell.style.height) || 0;
+      shell.classList.add("pxd-item--into");
+      hidden.push(shell);
+      const ghost = doc.createElement("div");
+      ghost.className = "pxd-fly";
+      ghost.style.width = `${w}px`;
+      ghost.style.height = `${h}px`;
+      ghost.style.transformOrigin = "center center";
+      ghost.style.opacity = "1";
+      ghost.style.transform = `translate(${from.x}px, ${from.y}px)`;
+      world.append(ghost);
+      ghosts.push(ghost);
+      const tx = dest.x + dw / 2 - w / 2;
+      const ty = dest.y + dh / 2 - h / 2;
+      timers.frame(() => {
+        if (disposed || ghost.isConnected === false) return;
+        ghost.style.transition = `transform ${FLY_MS}ms ease-out, opacity ${FLY_MS}ms ease-out`;
+        ghost.style.transform = `translate(${tx}px, ${ty}px) scale(0.2)`;
+        ghost.style.opacity = "0";
+      });
+      timers.later(() => {
+        if (!disposed) ghost.remove();
+      }, FLY_MS + 40);
+    }
+    return { cancel };
   };
   const haloCache = /* @__PURE__ */ new Map();
   const haloPending = /* @__PURE__ */ new Map();
@@ -100022,6 +100343,10 @@ ${url}`;
       return false;
     }
   }
+  const replaceCrumbs = (list) => {
+    crumbList = Array.isArray(list) ? list.slice() : [];
+    chrome.toolbar.setCrumbs(crumbList);
+  };
   const view = {
     refreshStatuses() {
       itemsR?.refreshStatuses?.();
@@ -100029,6 +100354,9 @@ ${url}`;
     },
     root,
     controller: ctl,
+    setCrumbs(list) {
+      if (!disposed) replaceCrumbs(list);
+    },
     setFullscreen(on) {
       if (Boolean(on) !== isFullscreen) applyFullscreen(on);
     },
@@ -100222,11 +100550,13 @@ ${url}`;
       if (disposed) return;
       if (next === settingsRef) return;
       const minimapBefore = setting("show-minimap", true) !== false;
+      const trailBefore = setting("show-board-trail", false) === true;
       const opensBefore = trackOpensOn();
       const interopBefore = readSetting2("interop") !== false;
       const coverBefore = readSetting2("pdf-cover");
       const warmBefore = coverWarmOn();
       settingsRef = next;
+      if (setting("show-board-trail", false) === true !== trailBefore) syncFullscreenTabs();
       applyPdfDark();
       if (readSetting2("pdf-cover") !== coverBefore) {
         forgetCovers();
@@ -101501,8 +101831,8 @@ function createBoardChips({ doc = globalThis.document, cache } = {}) {
     chip.type = "button";
     chip.className = "pxd-boardchip";
     chip.textContent = "On board";
-    const blockUid2 = container.getAttribute?.("data-block-uid") || "";
-    if (blockUid2) chip.setAttribute("data-block-uid", blockUid2);
+    const blockUid3 = container.getAttribute?.("data-block-uid") || "";
+    if (blockUid3) chip.setAttribute("data-block-uid", blockUid3);
     for (const type of ["pointerdown", "mousedown", "mouseup", "dblclick", "click"]) {
       chip.addEventListener(type, stop3);
     }
@@ -101608,8 +101938,8 @@ function createPrefetch({
     }
     const boardChip = node2.closest(".pxd-boardchip");
     if (boardChip) {
-      const blockUid2 = boardChip.getAttribute?.("data-block-uid") || boardChip.closest?.("[data-block-uid]")?.getAttribute?.("data-block-uid") || "";
-      return { el: boardChip, uids: blockUid2 ? dedupe(cache?.boardsOf?.(blockUid2) || []) : [] };
+      const blockUid3 = boardChip.getAttribute?.("data-block-uid") || boardChip.closest?.("[data-block-uid]")?.getAttribute?.("data-block-uid") || "";
+      return { el: boardChip, uids: blockUid3 ? dedupe(cache?.boardsOf?.(blockUid3) || []) : [] };
     }
     const crumb = node2.closest(".pxd-crumb");
     if (crumb) {
@@ -101951,18 +102281,18 @@ function createCardChips({
     doc.addEventListener("mouseover", onOver);
     doc.addEventListener("pointerout", onOut);
   }
-  const makeChip = (boardUid, blockUid2) => {
+  const makeChip = (boardUid, blockUid3) => {
     const chip = doc.createElement("button");
     chip.type = "button";
     chip.className = "pxd-cardchip";
     chip.textContent = chipText3(cache?.titleOf?.(boardUid));
     chip.setAttribute("data-board", boardUid);
-    chip.setAttribute("data-uid", cache?.cardOn?.(boardUid, blockUid2) || blockUid2);
+    chip.setAttribute("data-uid", cache?.cardOn?.(boardUid, blockUid3) || blockUid3);
     chips.add(chip);
     return chip;
   };
-  const fill = (parent, before, blockUid2) => {
-    const boards = (cache?.boardsOf?.(blockUid2) || []).slice(0, 3);
+  const fill = (parent, before, blockUid3) => {
+    const boards = (cache?.boardsOf?.(blockUid3) || []).slice(0, 3);
     const wanted = new Set(boards);
     for (const child of [...parent.children || []]) {
       const mine = child.classList?.contains("pxd-cardchip") || child.classList?.contains("pxd-cardchip-more");
@@ -101979,11 +102309,11 @@ function createCardChips({
     }
     for (const boardUid of boards) {
       if (present2.has(boardUid)) continue;
-      const chip = makeChip(boardUid, blockUid2);
+      const chip = makeChip(boardUid, blockUid3);
       if (before && before.parentElement === parent) parent.insertBefore(chip, before);
       else parent.append(chip);
     }
-    const extra = Math.max(0, (cache?.boardsOf?.(blockUid2) || []).length - 3);
+    const extra = Math.max(0, (cache?.boardsOf?.(blockUid3) || []).length - 3);
     if (extra > 0) {
       const more = doc.createElement("span");
       more.className = "pxd-cardchip-more";
@@ -102383,6 +102713,37 @@ init_regions();
 init_pdf_pin();
 init_pdf();
 init_pdf_pin_view();
+
+// src/model/board-path.js
+init_schema();
+function blockString2(node2) {
+  return String(node2?.[":block/string"] ?? node2?.string ?? "");
+}
+function blockUid2(node2) {
+  return node2?.[":block/uid"] ?? node2?.uid ?? "";
+}
+function parentCount(node2) {
+  const parents = node2?.[":block/parents"] ?? node2?.parents;
+  return Array.isArray(parents) ? parents.length : 0;
+}
+function boardPath(parents, self) {
+  const selfUid = self?.uid || "";
+  const chain = [];
+  for (const node2 of parents || []) {
+    const uid = blockUid2(node2);
+    if (!uid || uid === selfUid) continue;
+    const string = blockString2(node2);
+    if (!isDiagramString2(string)) continue;
+    if (readPlexus(node2?.[":block/props"] ?? node2?.props)?.v !== 2) continue;
+    chain.push({ uid, title: parseBoardTitle(string) || UNTITLED_BOARD, depth: parentCount(node2) });
+  }
+  chain.sort((a, b) => a.depth - b.depth);
+  const out = chain.map(({ uid, title }) => ({ uid, title }));
+  if (selfUid) out.push({ uid: selfUid, title: self?.title || UNTITLED_BOARD });
+  return out;
+}
+
+// src/feature.js
 init_schema();
 init_trails();
 init_region_crop();
@@ -102684,14 +103045,14 @@ function boardVersion(pulled) {
   }
   return readPlexus(pulled[":block/props"] ?? pulled.props)?.v;
 }
-function blockString2(pulled) {
+function blockString3(pulled) {
   if (!pulled || typeof pulled !== "object") return "";
   if (typeof pulled[":block/string"] === "string") return pulled[":block/string"];
   if (typeof pulled.string === "string") return pulled.string;
   return "";
 }
 function boardTitle(pulled) {
-  return parseBoardTitle(blockString2(pulled)) || "Untitled board";
+  return parseBoardTitle(blockString3(pulled)) || "Untitled board";
 }
 function parseAddRef(raw) {
   if (raw == null) return null;
@@ -103827,16 +104188,30 @@ async function installPlexusDiagram({
       console.warn("[plexus-diagram] setFullscreen failed", error);
     }
   }
-  function seedCrumbs(uid) {
+  const pathCache = /* @__PURE__ */ new Map();
+  function pathFor(uid) {
+    const cached = pathCache.get(uid);
+    if (cached) return cached.slice();
     const self = { uid, title: boardTitle2(host.blockString?.(uid)) };
+    let res = null;
     try {
-      const res = pullVia(host, ANCESTORS_PATTERN, [":block/uid", uid]);
-      const parents = res?.[":block/parents"] ?? [];
-      const chain = parents.filter((p) => isDiagramString2(pulledString(p)) && readPlexus(p[":block/props"] ?? p.props)?.v === 2).map((p) => ({ uid: p[":block/uid"], title: boardTitle2(p[":block/string"]), depth: (p[":block/parents"] ?? []).length })).sort((a, b) => a.depth - b.depth).map(({ uid: u, title }) => ({ uid: u, title }));
-      return [...chain, self];
+      res = pullVia(host, ANCESTORS_PATTERN, [":block/uid", uid]);
     } catch {
-      return [self];
+      res = null;
     }
+    if (!res) return [self];
+    const path = boardPath(res[":block/parents"] ?? [], self);
+    pathCache.set(uid, path);
+    return path.slice();
+  }
+  function trailFor(uid, fallback) {
+    const structural = pathFor(uid);
+    if (structural.length >= 2) return structural;
+    if (Array.isArray(fallback) && fallback.length && fallback[fallback.length - 1]?.uid === uid) return fallback;
+    return structural;
+  }
+  function seedCrumbs(uid) {
+    return pathFor(uid);
   }
   const isDiagramUid = (candidate) => isDiagramString2(host.blockString?.(candidate));
   const inputUids = /* @__PURE__ */ new Map();
@@ -104878,10 +105253,10 @@ async function installPlexusDiagram({
       routeUid: rec0.uid,
       autofocus,
       initialViewport: viewport2,
-      onOpenBoard: (child) => visit(owner.rec, [...owner.rec.crumbs, { uid: child, title: boardTitle2(host.blockString?.(child)) }]),
+      onOpenBoard: (child) => visit(owner.rec, trailFor(child, [...owner.rec.crumbs, { uid: child, title: boardTitle2(host.blockString?.(child)) }])),
       onSelectTab: (uid) => {
         if (!uid) return;
-        visit(owner.rec, [{ uid, title: boardTitle2(host.blockString?.(uid)) }]);
+        visit(owner.rec, trailFor(uid, [{ uid, title: boardTitle2(host.blockString?.(uid)) }]));
       },
       tabStore: host.tabs,
       boardsOf: (uid) => {
@@ -105374,6 +105749,10 @@ async function installPlexusDiagram({
     rec.session = pooled.session;
     if (pooled.crumbs?.length) rec.crumbs = crumbCopy(pooled.crumbs);
     rec.view = pooled.view;
+    try {
+      pooled.view?.setCrumbs?.(rec.crumbs);
+    } catch {
+    }
     resumeView(rec, pooled.view);
     try {
       pooled.view?.restoreViewport?.(pooled.viewport);
@@ -105460,6 +105839,10 @@ async function installPlexusDiagram({
   }
   function reattach(rec, view) {
     rec.view = view;
+    try {
+      view?.setCrumbs?.(rec.crumbs);
+    } catch {
+    }
     resumeView(rec, view);
     const session = rec.session;
     const rest = () => {
@@ -106474,6 +106857,10 @@ async function installPlexusDiagram({
     pendingPin = { pinUid: target.pinUid, until: Date.now() + 8e3 };
   }
   function tryPendingPin() {
+    if (!pendingPin) {
+      const noted = takePendingPin(Date.now());
+      if (noted) pendingPin = noted;
+    }
     const pending = pendingPin;
     if (!pending) return;
     if (Date.now() > pending.until) {
@@ -107149,19 +107536,19 @@ async function installPlexusDiagram({
         "display-conditional": (event) => active2() && Boolean(event?.["block-uid"]),
         callback: (event) => {
           if (!active2()) return;
-          const blockUid2 = event?.["block-uid"];
-          if (!blockUid2) return;
+          const blockUid3 = event?.["block-uid"];
+          if (!blockUid3) return;
           closeAddToBoard();
           const picker = openAddToBoard({
             doc,
-            blockUid: blockUid2,
+            blockUid: blockUid3,
             listBoards: () => host.listBoards?.() ?? [],
             onPick: async (board2) => {
-              if (!board2?.uid || board2.uid === blockUid2) return false;
+              if (!board2?.uid || board2.uid === blockUid3) return false;
               let session = null;
               try {
                 session = acquireSession2(board2.uid, { host, settings: liveSettings });
-                const id = await session?.addBlockRef?.(blockUid2);
+                const id = await session?.addBlockRef?.(blockUid3);
                 return Boolean(id);
               } catch (error) {
                 console.warn("[plexus-diagram] Add to board failed", error);
@@ -107187,8 +107574,8 @@ async function installPlexusDiagram({
             say(OUTLINE_TOAST.notImage);
             return;
           }
-          const blockUid2 = event?.["block-uid"];
-          const img = outlineImage(blockUid2);
+          const blockUid3 = event?.["block-uid"];
+          const img = outlineImage(blockUid3);
           if (!img) {
             say(OUTLINE_TOAST.ready);
             return;
@@ -107204,8 +107591,8 @@ async function installPlexusDiagram({
               let session = null;
               let made = false;
               try {
-                session = acquireSession2(blockUid2, { host, settings: liveSettings });
-                const result = await session?.addImageRegion?.(blockUid2, frac, caption, uid);
+                session = acquireSession2(blockUid3, { host, settings: liveSettings });
+                const result = await session?.addImageRegion?.(blockUid3, frac, caption, uid);
                 made = result !== null && result !== false;
               } catch (error) {
                 console.warn("[plexus-diagram] Mark image region failed", error);

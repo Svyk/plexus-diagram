@@ -9,7 +9,7 @@ import { createDomStub } from "./fixtures/dom-stub.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
-function pulled(extraChildren = []) {
+function pulled(extraChildren = [], extraEdges = []) {
   const item = (uid, string, plexus, order, children = []) => ({
     ":block/uid": uid,
     ":block/string": string,
@@ -35,6 +35,7 @@ function pulled(extraChildren = []) {
       item("edgesEEE5", "Connections", { ":type": "edges" }, 6, [
         item("edgeFFFF6", "((cardAAAA1)) → causes → [[Beta]]", { ":type": "edge", ":from": "cardAAAA1", ":to": "cardBBBB2" }, 0),
         item("edgeGGGG7", "[[Beta]] → ((cardAAAA1))", { ":type": "edge", ":from": "cardBBBB2", ":to": "cardAAAA1" }, 1),
+        ...extraEdges,
       ]),
       ...extraChildren,
     ],
@@ -137,11 +138,11 @@ function fakeSession(board) {
   return session;
 }
 
-function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extraChildren = [], hostOverrides = {}, viewOptions = {}, cardOpen, kidsOn = [] } = {}) {
+function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extraChildren = [], extraEdges = [], hostOverrides = {}, viewOptions = {}, cardOpen, kidsOn = [] } = {}) {
   const stub = createDomStub();
   const restore = stub.install();
   stub.localStorage.setItem(`plexus-diagram:vp:Svy:board0001`, JSON.stringify(vp));
-  const tree = pulled(extraChildren);
+  const tree = pulled(extraChildren, extraEdges);
   if (cardOpen === false) tree[":block/children"][0][":block/open"] = false;
   for (const c of tree[":block/children"]) if (kidsOn.includes(c[":block/uid"])) c[":block/props"] = { ":plexus": { ...(c[":block/props"]?.[":plexus"] || {}), ":kids": true } };
   const board = buildBoard(tree);
@@ -1536,6 +1537,26 @@ test("F5: breadcrumbs render only with two or more entries and a click calls onC
   }
 });
 
+test("F5: setCrumbs paints a path that was missing when the board mounted", async () => {
+  const f = mountFixture({ viewOptions: { crumbs: [{ uid: "leafEEE01", title: "Leaf" }] } });
+  try {
+    await f.flush();
+    const bar = f.view.root.querySelector(".pxd-crumbs");
+    assert.equal(bar.style.display, "none");
+    f.view.setCrumbs([
+      { uid: "boardAAA1", title: "Root" },
+      { uid: "midBBB001", title: "Two" },
+      { uid: "leafEEE01", title: "Leaf" },
+    ]);
+    assert.equal(bar.style.display, "");
+    assert.deepEqual([...bar.querySelectorAll("button.pxd-crumb")].map((b) => b.textContent), ["Root", "Two"]);
+    assert.equal(bar.querySelector(".pxd-crumb--current").textContent, "Leaf");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("F5: more than four crumbs collapse the middle into an ellipsis that names the hidden boards", async () => {
   const clicked = [];
   const crumbs = ["A", "B", "C", "D", "E", "F"].map((t, i) => ({ uid: `crumb00${i}`, title: t }));
@@ -1727,7 +1748,15 @@ test("F5: dropping a card on a board card moves it in with an Undo toast; a refu
     assert.equal(f.session.mutations.filter((m) => m[0] === "commitMove").length, 0);
     const toast = f.view.root.querySelector(".pxd-toast");
     assert.equal(toast.style.display, "");
-    assert.equal(toast.querySelector(".pxd-toast__text").textContent, "Moved into Inner");
+    assert.equal(toast.querySelector(".pxd-toast__text").textContent, "Moved to Inner");
+    assert.equal(toast.querySelector(".pxd-toast__action").textContent, "Undo");
+    const fly = f.view.root.querySelector(".pxd-fly");
+    assert.ok(fly, "a ghost of the card flies into the board");
+    f.stub.flushFrames();
+    assert.match(fly.style.transition, /200ms ease-out/);
+    assert.match(fly.style.transform, /scale\(0\.2\)/);
+    assert.equal(fly.style.opacity, "0");
+    assert.ok(f.view.root.querySelector("[data-uid=nbCard001]").classList.contains("pxd-item--pulse"), "the board card pulses");
     toast.querySelector(".pxd-toast__action").click();
     assert.ok(f.session.mutations.some((m) => m[0] === "moveUndo"), "Undo runs the inverse transaction");
     f.session.moveResult = null;
@@ -1737,6 +1766,54 @@ test("F5: dropping a card on a board card moves it in with an Undo toast; a refu
     f.stub.dispatch(f.stub.document, "pointerup", { clientX: 560, clientY: 340, pointerId: 2 });
     await tick();
     assert.equal(f.session.mutations.filter((m) => m[0] === "commitMove").length, 1);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: dropping a card with motion off skips the fly and still toasts Moved to", async () => {
+  const f = mountFixture({ extraChildren: boardCardChildren(), settings: { motion: "none" } });
+  try {
+    await f.flush();
+    const alpha = f.view.root.querySelector("[data-uid=cardAAAA1]");
+    f.stub.dispatch(alpha, "pointerdown", { button: 0, clientX: 50, clientY: 50, pointerId: 1 });
+    f.stub.dispatch(f.stub.document, "pointermove", { clientX: 300, clientY: 200, pointerId: 1 });
+    f.stub.dispatch(f.stub.document, "pointermove", { clientX: 560, clientY: 340, pointerId: 1 });
+    f.stub.dispatch(f.stub.document, "pointerup", { clientX: 560, clientY: 340, pointerId: 1 });
+    await tick();
+    f.stub.flushFrames();
+    assert.equal(f.view.root.querySelector(".pxd-fly"), null);
+    assert.equal(f.view.root.querySelector("[data-uid=nbCard001]").classList.contains("pxd-item--pulse"), false);
+    assert.equal(f.view.root.querySelector(".pxd-toast__text").textContent, "Moved to Inner");
+    assert.equal(f.session.mutations.filter((m) => m[0] === "commitMove").length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("edges wait until both cards are drawn", async () => {
+  const far = [];
+  for (let i = 0; i < 90; i += 1) {
+    far.push(extraCard(`farCard${String(i).padStart(2, "0")}`, `Far ${i}`, 20 + i, { ":x": 6000 + i * 40, ":y": 0, ":w": 30, ":h": 24 }));
+  }
+  const f = mountFixture({
+    extraChildren: far,
+    extraEdges: [extraCard("edgeFAR001", "((farCard00)) → ((farCard01))", 2, { ":type": "edge", ":from": "farCard00", ":to": "farCard01" })],
+  });
+  try {
+    f.stub.flushFrames();
+    const edgeOf = (uid) => f.view.root.querySelector(`[data-uid="${uid}"].pxd-edge`) || [...f.view.root.querySelectorAll(".pxd-edge")].find((node) => node.getAttribute("data-uid") === uid);
+    const near = edgeOf("edgeFFFF6");
+    assert.ok(near && near.getAttribute("display") !== "none", "an edge between drawn cards paints");
+    assert.equal(Boolean(edgeOf("edgeFAR001")), false, "an edge waits while its cards are not drawn");
+    for (let i = 0; i < 8; i += 1) {
+      f.stub.flushFrames();
+      f.stub.flushIdle();
+    }
+    const later = edgeOf("edgeFAR001");
+    assert.ok(later && later.getAttribute("display") !== "none", "the edge paints once both cards exist");
   } finally {
     f.view.dispose();
     f.restore();

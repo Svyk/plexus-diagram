@@ -25,7 +25,7 @@ import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS, highlightModel, noteActionPlan } from "../model/highlight.js";
 import { cleanPdfTitle, coverModel, embedSplit, parsedDocTitle, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
-import { answerSource, gestureSource, pasteCardPlan, pinOpenPlan, readWithSource } from "../model/pdf-pin.js";
+import { answerSource, gestureSource, notePendingPin, pasteCardPlan, pinOpenFallback, pinOpenPlan, readWithSource, refOpenPlan } from "../model/pdf-pin.js";
 import { parseRegion } from "../model/regions.js";
 import { isMetaBanner } from "../model/title-cap.js";
 import { createSharpStore } from "./sharp-store.js";
@@ -1762,6 +1762,7 @@ function buildBoardView(onFail, {
     timers,
     adoptShell,
     onOverviewQueue: () => paintOverviewCover(),
+    onShells: () => { try { edgesR.flushWaiting?.(); } catch { /* the edge layer follows the shells */ } },
     tableThumb,
     onTableShown,
     onEditChange: (uid) => {
@@ -3944,16 +3945,22 @@ function buildBoardView(onFail, {
   // gesture underlay (pointer-events none) until the pump or a hit builds them. A gesture hides that canvas
   // when it settles; draw the queue again afterwards. A zoom from that cover into detail keeps the boxes
   // until the queue is empty. Opening already at detail does not paint them.
+  let coverUids = new Set();
+  // A card counts as drawn when its shell exists, or a cover box is standing in for it.
+  // The open snapshot paints its own edges, so a card that is only in the snapshot does not release a live edge.
+  const endpointReady = (uid) => Boolean(uid && (itemsR.shellOf?.(uid) || coverUids.has(uid)));
   paintOverviewCover = () => {
     if (disposed || underlayDrawn) return;
-    try { if (notedSpeedFlags().overviewFast === false) return; } catch { return; }
+    try { if (notedSpeedFlags().overviewFast === false) { coverUids = new Set(); return; } } catch { coverUids = new Set(); return; }
     if (tier === "detail" && itemsR.coverHeld?.() !== true) {
       const pending = itemsR.pendingBoxes?.() || [];
+      coverUids = new Set();
       if (!pending.length) underlay.hide();
       return;
     }
     const items = itemsR.pendingBoxes?.() || [];
-    if (!items.length) { underlay.hide(); return; }
+    if (!items.length) { coverUids = new Set(); underlay.hide(); return; }
+    coverUids = new Set(items.map((item) => item.uid));
     underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
   };
   const releaseUnderlay = () => {
@@ -4278,7 +4285,7 @@ function buildBoardView(onFail, {
 
   // ------------------------------------------------------------ nested boards
   // `crumbs` entries are shared with the feature's record, so a rename shows up in both.
-  const crumbList = Array.isArray(crumbs) ? crumbs : [];
+  let crumbList = Array.isArray(crumbs) ? crumbs.slice() : [];
   // The board block a card opens: the card itself (nested board), or the target of a whiteboard-shortcut
   // card (a ((ref)) to a {{[[diagram]]}} block). `uid` is an item uid, or a referenced uid the card renderer passes.
   const boardTargetOf = (uid) => {
@@ -6948,7 +6955,7 @@ function buildBoardView(onFail, {
   const paintTabStrip = (tabs, current) => {
     // P32-6: one tab is just the board you are on. The strip shows from two tabs up; the list,
     // its persistence and Cmd+1..9 do not depend on the strip being painted.
-    if (!isFullscreen || !Array.isArray(tabs) || tabs.length < 2) {
+    if (!isFullscreen || setting("show-board-trail", false) !== true || !Array.isArray(tabs) || tabs.length < 2) {
       dropTabStrip();
       root.classList.remove("pxd-root--fstabs");
       root.style.setProperty("--pxd-tabs-h", "0px");
@@ -7376,9 +7383,11 @@ function buildBoardView(onFail, {
     createSection: (p) => session.createSection?.({ rect: p.rect, ...(pendingFor("section")?.color ? { color: pendingFor("section").color } : {}) }),
     createBoard: (p) => session.createBoard?.({ rect: p.rect }),
     moveIntoBoard: async (uids, boardUid, dx = 0, dy = 0) => {
+      const fly = startFlyInto(uids, boardUid);
       const res = await session.moveIntoBoard?.(uids, boardUid);
-      if (!res) { void session.commitMove?.(uids, dx, dy); return; }
-      chrome.toast.show({ message: `Moved into ${res.title}`, action: { label: "Undo", run: () => res.undo() } });
+      if (!res) { fly.cancel(); void session.commitMove?.(uids, dx, dy); return; }
+      pulseItem(boardUid);
+      chrome.toast.show({ message: `Moved to ${res.title}`, action: { label: "Undo", run: () => res.undo() } });
     },
     openBoard: (uid) => openBoard(uid),
     isBoardCard: (uid) => Boolean(boardTargetOf(uid)),
@@ -7953,6 +7962,9 @@ function buildBoardView(onFail, {
   };
   listen(root, "pointerdown", (event) => {
     if ((event.button ?? 0) !== 0) return;
+    // A ((pin)) ref navigates on the mousedown after this press. Cancel the press here
+    // so that mousedown never starts, without a second listener on the root.
+    if (stealPinPress(event)) return;
     if (leavesBoardPointer(event.target)) return;
     const item = event.target?.closest?.(".pxd-item");
     if (!item || !root.contains(item)) return;
@@ -7990,8 +8002,10 @@ function buildBoardView(onFail, {
     event.preventDefault();
   }, true);
   // mousedown/mouseup: inner React roots (renderString links) see them first; Roam's block handlers do not.
+  // A pin press that arrived as mousedown alone (no pointerdown) is stolen on this same listener.
   for (const type of ["mousedown", "mouseup"]) {
     listen(root, type, (event) => {
+      if (type === "mousedown" && stealPinPress(event)) return;
       if (leavesBoardPointer(event.target) || inRoamTable(event.target)) return;
       const native = nativeClickKind(event.target);
       if (native === "checkbox" || native === "image") return;
@@ -8026,15 +8040,56 @@ function buildBoardView(onFail, {
     const page = t.closest("[data-link-uid]");
     const block = t.closest(".rm-block-ref[data-uid]");
     const uid = page?.getAttribute("data-link-uid") || block?.getAttribute("data-uid");
-    if (!uid || !api?.ui) return false;
-    const key = `${uid}:${event.shiftKey ? 1 : 0}`;
+    if (!uid) return false;
+    let pinJump = null;
+    if (block && !page) {
+      let string = "";
+      try { string = host?.blockString?.(uid) || ""; } catch { string = ""; }
+      const decided = refOpenPlan({ uid, string, shiftKey: Boolean(event.shiftKey) });
+      if (decided.kind === "pin") pinJump = decided;
+    }
+    if (!pinJump && !api?.ui) return false;
+    const key = `${uid}:${event.shiftKey ? 1 : 0}:${pinJump ? "pin" : "ref"}`;
     const now = Date.now();
     if (key === lastRefKey && now - lastRefAt < 500) return true;
     lastRefKey = key;
     lastRefAt = now;
+    if (pinJump) {
+      if (pinJump.mode === "sidebar") {
+        try { host?.openInSidebar?.(pinJump.plan.pdfUid); } catch { /* host */ }
+        return true;
+      }
+      // The pin block lives under plexus-pins. Open the PDF at the region, not that list.
+      const opened = openPin(pinJump.plan);
+      if (!opened) {
+        let pageUid = "";
+        try { pageUid = host?.blockPageUid?.(pinJump.plan.pdfUid) || ""; } catch { pageUid = ""; }
+        const fallback = pinOpenFallback({ opened: false, plan: pinJump.plan, pageUid, now });
+        if (fallback?.openPage) {
+          notePendingPin(fallback.pending);
+          try { host?.openPage?.(fallback.openPage); } catch { /* host */ }
+        }
+      }
+      return true;
+    }
     if (event.shiftKey) api.ui.rightSidebar?.addWindow?.({ window: { type: page ? "outline" : "block", "block-uid": uid } });
     else if (page) api.ui.mainWindow?.openPage?.({ page: { uid } });
     else api.ui.mainWindow?.openBlock?.({ block: { uid } });
+    return true;
+  };
+  // Assigned after openRefFromClick. A press before that returns false and the board handles it.
+  let stealPinPress = () => false;
+  stealPinPress = (event) => {
+    if (event.button != null && event.button !== 0) return false;
+    const block = event.target?.closest?.(".rm-block-ref[data-uid]");
+    if (!block || !event.target?.closest?.(".pxd-item") || event.target?.closest?.(".pxd-item--editing")) return false;
+    const uid = block.getAttribute?.("data-uid") || "";
+    let string = "";
+    try { string = host?.blockString?.(uid) || ""; } catch { string = ""; }
+    if (refOpenPlan({ uid, string, shiftKey: Boolean(event.shiftKey) }).kind !== "pin") return false;
+    if (!openRefFromClick(event)) return false;
+    event.preventDefault();
+    event.stopPropagation();
     return true;
   };
   listen(root, "click", (event) => {
@@ -9035,7 +9090,7 @@ function buildBoardView(onFail, {
           for (const uid of sliceSource) (slice.size < EDGE_SLICE ? slice : edgeRest).add(uid);
           part = slice;
         }
-        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: part, view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null, skipLinks: edgeSlicing && !dirty.links });
+        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: part, view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null, skipLinks: edgeSlicing && !dirty.links, drawn: endpointReady });
         paintLegend();
         if (suggestMode !== "off") refreshSuggest();
       }
@@ -9150,6 +9205,55 @@ function buildBoardView(onFail, {
     void shell.offsetWidth;
     shell.classList.add("pxd-item--pulse");
     timers.later(() => { if (!disposed) shell.classList.remove("pxd-item--pulse"); }, ms);
+  };
+  // The card shrinks into the board card. The write is not delayed. Reduced and off skip the flight.
+  const FLY_MS = 200;
+  const readShift = (el) => {
+    const m = /translate\(\s*(-?[\d.]+)px,\s*(-?[\d.]+)px\s*\)/.exec(el?.style?.transform || "");
+    return m ? { x: Number(m[1]), y: Number(m[2]) } : { x: 0, y: 0 };
+  };
+  const startFlyInto = (uids, boardUid) => {
+    const ghosts = [];
+    const hidden = [];
+    const cancel = () => {
+      for (const ghost of ghosts) ghost.remove();
+      for (const el of hidden) el.classList.remove("pxd-item--into");
+    };
+    if (motionProfile(currentMotion()).zoomMs < 150) return { cancel };
+    const target = itemsR.shellOf?.(boardUid);
+    if (!target) return { cancel };
+    const dest = readShift(target);
+    const dw = parseFloat(target.style.width) || 0;
+    const dh = parseFloat(target.style.height) || 0;
+    for (const uid of uids || []) {
+      if (!uid || uid === boardUid) continue;
+      const shell = itemsR.shellOf?.(uid);
+      if (!shell) continue;
+      const from = readShift(shell);
+      const w = parseFloat(shell.style.width) || 0;
+      const h = parseFloat(shell.style.height) || 0;
+      shell.classList.add("pxd-item--into");
+      hidden.push(shell);
+      const ghost = doc.createElement("div");
+      ghost.className = "pxd-fly";
+      ghost.style.width = `${w}px`;
+      ghost.style.height = `${h}px`;
+      ghost.style.transformOrigin = "center center";
+      ghost.style.opacity = "1";
+      ghost.style.transform = `translate(${from.x}px, ${from.y}px)`;
+      world.append(ghost);
+      ghosts.push(ghost);
+      const tx = dest.x + dw / 2 - w / 2;
+      const ty = dest.y + dh / 2 - h / 2;
+      timers.frame(() => {
+        if (disposed || ghost.isConnected === false) return;
+        ghost.style.transition = `transform ${FLY_MS}ms ease-out, opacity ${FLY_MS}ms ease-out`;
+        ghost.style.transform = `translate(${tx}px, ${ty}px) scale(0.2)`;
+        ghost.style.opacity = "0";
+      });
+      timers.later(() => { if (!disposed) ghost.remove(); }, FLY_MS + 40);
+    }
+    return { cancel };
   };
   const haloCache = new Map();
   const haloPending = new Map();
@@ -9489,10 +9593,15 @@ function buildBoardView(onFail, {
     }
   }
 
+  const replaceCrumbs = (list) => {
+    crumbList = Array.isArray(list) ? list.slice() : [];
+    chrome.toolbar.setCrumbs(crumbList);
+  };
   const view = {
     refreshStatuses() { itemsR?.refreshStatuses?.(); kanbanCtl?.refresh?.(); },
     root,
     controller: ctl,
+    setCrumbs(list) { if (!disposed) replaceCrumbs(list); },
     setFullscreen(on) { if (Boolean(on) !== isFullscreen) applyFullscreen(on); },
     fit() { fitAll(); },
     // Select and pulse a card or connection by uid, without a page check (feature.js enters a nested board first).
@@ -9645,11 +9754,13 @@ function buildBoardView(onFail, {
       // styles and re-placed every edge (0.5 s on a crumb back to the PhD main board).
       if (next === settingsRef) return;
       const minimapBefore = setting("show-minimap", true) !== false;
+      const trailBefore = setting("show-board-trail", false) === true;
       const opensBefore = trackOpensOn();
       const interopBefore = readSetting("interop") !== false;
       const coverBefore = readSetting("pdf-cover");
       const warmBefore = coverWarmOn();
       settingsRef = next;
+      if ((setting("show-board-trail", false) === true) !== trailBefore) syncFullscreenTabs();
       applyPdfDark();
       if (readSetting("pdf-cover") !== coverBefore) {
         forgetCovers();

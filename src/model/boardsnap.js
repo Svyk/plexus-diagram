@@ -46,7 +46,7 @@ const UNSAFE_VALUE = /(javascript:|expression\(|url\(|@import|<)/i;
 // Shell classes that describe a moment, not the board.
 const TRANSIENT = new Set([
   "pxd-item--selected", "pxd-section--selected", "pxd-item--drop", "pxd-item--editing", "pxd-item--typing",
-  "pxd-item--pulse", "pxd-item--flash", "pxd-item--hit", "pxd-item--dim", "pxd-item--offscreen",
+  "pxd-item--pulse", "pxd-item--flash", "pxd-item--hit", "pxd-item--dim", "pxd-item--offscreen", "pxd-item--into",
   "pxd-item--future", "pxd-item--fresh", "pxd-pdf-live", "pxd-item--lift", "pxd-item--snap",
 ]);
 const ROOT_TRANSIENT = new Set(["pxd-root--gesturing", "pxd-root--editing", "pxd-root--searching", "pxd-root--focus", "pxd-root--present"]);

@@ -6,7 +6,7 @@ import { CARD_MIME, PARSE_MIME } from "../model/drop.js";
 import { HIGHLIGHT_COLORS, highlightModel } from "../model/highlight.js";
 import { highlightRows } from "../model/highlight-pick.js";
 import { cleanPdfTitle, coverModel, nextParsedTitle, pdfFileTitle, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
-import { fracStyle } from "../model/pdf-pin.js";
+import { fracScrollTop, fracStyle } from "../model/pdf-pin.js";
 import { dragChipText, fiberOf, highlightById, highlighterContext, PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
 import { fitDecision, fitWidthStep, fitsWidth, pageIndicator, pageTotalText, pdfDocumentFromFiber, pillActions, viewerFromFiber } from "../model/read-pane-model.js";
 import { isTextEntryTarget } from "./cards.js";
@@ -1379,7 +1379,28 @@ export function createReadPane({
     if (/^#[0-9a-fA-F]{3,8}$/.test(name)) return name;
     return "var(--pxd-yellow-line, #ca8a04)";
   };
+  const scrollFrac = (frac) => {
+    const scroller = live.querySelector?.(".PdfHighlighter");
+    const page = live.querySelector?.(".rm-pdf-container .page") || live.querySelector?.(".page");
+    if (!scroller || !page) return;
+    let pageBox = null;
+    let view = null;
+    try { pageBox = page.getBoundingClientRect(); } catch { pageBox = null; }
+    try { view = scroller.getBoundingClientRect(); } catch { view = null; }
+    if (!pageBox || !view) return;
+    const next = fracScrollTop({
+      frac,
+      pageTop: pageBox.top,
+      pageHeight: pageBox.height,
+      viewTop: view.top,
+      viewHeight: view.height,
+      scrollTop: Number(scroller.scrollTop) || 0,
+    });
+    if (next == null) return;
+    scroller.scrollTop = next;
+  };
   const flashFrac = (frac) => {
+    scrollFrac(frac);
     const style = fracStyle(frac);
     const page = live.querySelector?.(".rm-pdf-container .page") || live.querySelector?.(".page");
     if (!style || !page) return;

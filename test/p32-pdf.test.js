@@ -693,7 +693,7 @@ test("P32-6: the strip CSS is 28px and reserves nothing while hidden", () => {
   assert.match(css, /margin-top: calc\(var\(--pxd-fstabs-h, 28px\) \+ 8px\)/);
   assert.equal(css.includes("margin-top: 46px"), false);
   const src = readFileSync(new URL("../src/view/board-view.js", import.meta.url), "utf8");
-  assert.match(src, /if \(!isFullscreen \|\| !Array\.isArray\(tabs\) \|\| tabs\.length < 2\)/);
+  assert.match(src, /if \(!isFullscreen \|\| setting\("show-board-trail", false\) !== true \|\| !Array\.isArray\(tabs\) \|\| tabs\.length < 2\)/);
 });
 
 test("P32-7: the reading bed is light grey in light mode and the chrome colour in dark", () => {

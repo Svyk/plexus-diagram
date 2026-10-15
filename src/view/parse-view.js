@@ -11,6 +11,7 @@ import {
   pinDeepLink,
   pinSpecFromBlock,
   pinnedToast,
+  planCopiedSource,
   sourceAttrString,
 } from "../model/pdf-pin.js";
 import { assembleDocument, parsePageGeometry } from "../model/parse/index.js";
@@ -813,15 +814,16 @@ export function createParseView({
         return true;
       }
       if (id === "card" || id === "source") {
-        const markdown = isImageCopy(block) ? captionText(block) : toMarkdown(parsed, [block.id]);
+        const plain = isImageCopy(block) ? captionText(block) : toMarkdown(parsed, [block.id]);
         let source = "";
         if (id === "source") {
           source = await ensurePin(block);
           if (!source) return false;
           try { onToast?.(pinnedToast(block.page)); } catch { /* host */ }
         }
-        const json = cardJsonPayload({ markdown, size: { w: 280, h: 160 }, kind: block.type || "card", source });
-        const text = source ? `${markdown}\n${sourceAttrString(source)}` : markdown;
+        const copied = planCopiedSource({ markdown: plain, source });
+        const json = cardJsonPayload({ markdown: copied.markdown, size: { w: 280, h: 160 }, kind: block.type || "card", source: copied.sourceUid });
+        const text = source ? `${plain}\n${sourceAttrString(source)}` : plain;
         return writeTyped({ "text/plain": text, [CARD_JSON_MIME]: JSON.stringify(json) });
       }
       if (id === "crop") {

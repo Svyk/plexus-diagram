@@ -384,6 +384,22 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   animation: pxd-pulse 0.9s ease-out 2;
 }
 
+.pxd-item--into {
+  opacity: 0;
+}
+
+.pxd-fly {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 6;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: var(--pxd-fill, var(--pxd-card));
+  box-shadow: var(--pxd-shadow);
+  pointer-events: none;
+}
+
 .pxd-root.pxd-root--motion-reduced .pxd-item--pulse {
   animation-duration: 0.4s;
   animation-iteration-count: 1;

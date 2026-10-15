@@ -143,6 +143,56 @@ test("Place and open() locate the same highlight", () => {
   }
 });
 
+test("a pin jump flashes the numbered page, not the first .page in the reader", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  const doc = stub.document;
+  const root = doc.createElement("div");
+  root.className = "pxd-root";
+  doc.body.append(root);
+  const pane = createReadPane({
+    doc,
+    root,
+    host: {
+      renderBlock(node) {
+        const box = doc.createElement("div");
+        box.className = "rm-pdf-container";
+        const input = doc.createElement("input");
+        input.value = "6";
+        const scroller = doc.createElement("div");
+        scroller.className = "PdfHighlighter";
+        scroller.scrollTop = 0;
+        scroller._rect = rect(0, 0, 100, 200);
+        const page1 = doc.createElement("div");
+        page1.className = "page";
+        page1.setAttribute("data-page-number", "1");
+        page1._rect = rect(0, 0, 100, 400);
+        const page6 = doc.createElement("div");
+        page6.className = "page";
+        page6.setAttribute("data-page-number", "6");
+        page6._rect = rect(0, 800, 100, 400);
+        scroller.append(page1, page6);
+        box.append(input, scroller);
+        node.append(box);
+      },
+      pdfHighlightTree() { return []; },
+    },
+  });
+  try {
+    pane.open({ blockUid: "blk", cardUid: "card", title: "Paper", pageUid: "page", page: 6, frac: [0.1, 0.5, 0.2, 0.05] });
+    stub.flushTimers();
+    const scroller = root.querySelector(".PdfHighlighter");
+    const page6 = root.querySelector('[data-page-number="6"]');
+    const flash = root.querySelector(".pxd-read__pin-flash");
+    assert.equal(scroller.scrollTop, 940);
+    assert.ok(flash);
+    assert.equal(page6.contains(flash), true);
+    pane.dispose();
+  } finally {
+    restore();
+  }
+});
+
 test("a missing scrollToHighlight scrolls the first part to 30% from the top", () => {
   const highlight = { id: "hlrow0001", type: "text", color: "green", content: { text: "quoted passage" } };
   const { stub, restore, root, pane } = mount({

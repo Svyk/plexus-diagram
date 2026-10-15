@@ -1379,13 +1379,22 @@ export function createReadPane({
     if (/^#[0-9a-fA-F]{3,8}$/.test(name)) return name;
     return "var(--pxd-yellow-line, #ca8a04)";
   };
-  const scrollFrac = (frac) => {
+  // The reader keeps a window of pages. The first .page is often not the page the jump asked for.
+  const fracPage = (page) => {
+    if (typeof page === "number" && page >= 1) {
+      const numbered = pageElement(page);
+      if (numbered) return numbered;
+    }
+    const pages = live.querySelectorAll?.(".page") || [];
+    return pages.length === 1 ? pages[0] : null;
+  };
+  const scrollFrac = (frac, page) => {
     const scroller = live.querySelector?.(".PdfHighlighter");
-    const page = live.querySelector?.(".rm-pdf-container .page") || live.querySelector?.(".page");
-    if (!scroller || !page) return;
+    const node = fracPage(page);
+    if (!scroller || !node) return;
     let pageBox = null;
     let view = null;
-    try { pageBox = page.getBoundingClientRect(); } catch { pageBox = null; }
+    try { pageBox = node.getBoundingClientRect(); } catch { pageBox = null; }
     try { view = scroller.getBoundingClientRect(); } catch { view = null; }
     if (!pageBox || !view) return;
     const next = fracScrollTop({
@@ -1399,11 +1408,11 @@ export function createReadPane({
     if (next == null) return;
     scroller.scrollTop = next;
   };
-  const flashFrac = (frac) => {
-    scrollFrac(frac);
+  const flashFrac = (frac, page) => {
+    scrollFrac(frac, page);
     const style = fracStyle(frac);
-    const page = live.querySelector?.(".rm-pdf-container .page") || live.querySelector?.(".page");
-    if (!style || !page) return;
+    const node = fracPage(page);
+    if (!style || !node) return;
     clearFlash();
     const mark = doc.createElement("div");
     mark.className = "pxd-read__pin-flash";
@@ -1411,7 +1420,7 @@ export function createReadPane({
     mark.style.top = style.top;
     mark.style.width = style.width;
     mark.style.height = style.height;
-    const hostPage = page.querySelector?.(".canvasWrapper") || page;
+    const hostPage = node.querySelector?.(".canvasWrapper") || node;
     hostPage.append(mark);
     flashed = [mark];
     flashTimer = later(() => { flashTimer = null; clearFlash(); }, FLASH_MS);
@@ -2720,7 +2729,7 @@ export function createReadPane({
       if (jumping) {
         jumpPageWhenReady(next.page, () => {
           if (wanted) locateHighlight(wanted);
-          else if (frac) flashFrac(frac);
+          else if (frac) flashFrac(frac, next.page);
         }, kept);
       }
       else if (wanted) locateHighlight(wanted);

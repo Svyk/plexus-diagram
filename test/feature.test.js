@@ -240,7 +240,7 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
         return () => set?.delete(fn);
       },
       emitGone: () => goneHandlers.forEach((fn) => fn()),
-      emitChange: () => handlers.forEach((fn) => fn()),
+      emitChange: (diff) => handlers.forEach((fn) => fn(diff)),
       handlerCount: () => handlers.size,
       enhance: async () => { sessions.enhance += 1; props.set(uid, { ":plexus": { ":v": 2 } }); },
       restoreNative: async () => {
@@ -1289,6 +1289,91 @@ test("F5 opening a board from the trail keeps the five-deep ancestor path", asyn
     t.views.at(-1).args.onSelectTab("leafEEE01");
     await settle();
     assert.deepEqual(t.views.at(-1).args.crumbs.map((c) => c.title), titles, "the parent pull is cached per board");
+  });
+});
+
+function chainPull(self, chain) {
+  return {
+    ":block/uid": self,
+    ":block/parents": chain.map(([uid, title, depth]) => ({
+      ":block/uid": uid,
+      ":block/string": `{{[[diagram]]:${title}}}`,
+      ":block/props": { ":plexus": { ":v": 2 } },
+      ":block/parents": Array.from({ length: depth }, (_, i) => ({ ":db/id": i + 1 })),
+    })),
+  };
+}
+
+function remountDiagram(t, uid) {
+  for (const node of t.doc.querySelectorAll(".rm-diagram")) node.remove();
+  t.tick();
+  addNative(t.doc, uid);
+  t.tick();
+}
+
+test("F5 a parent pull that is not the block is not cached, so the next open still finds the path", async () => {
+  await withEnv({ enhanced: ["leafEEE01"] }, async (t) => {
+    const chain = [
+      ["boardAAA1", "Root", 1],
+      ["midBBB001", "Two", 2],
+      ["midCCC001", "Three", 3],
+      ["midDDD001", "Four", 4],
+    ];
+    const titles = ["Root", "Two", "Three", "Four", "Leaf"];
+    t.env.ancestors = { leafEEE01: {} };
+    t.strings.set("leafEEE01", "{{[[diagram]]:Leaf}}");
+    addNative(t.doc, "leafEEE01");
+    await t.install();
+    t.tick();
+    assert.deepEqual(t.views[0].args.crumbs.map((c) => c.uid), ["leafEEE01"]);
+    t.env.ancestors.leafEEE01 = chainPull("leafEEE01", chain);
+    remountDiagram(t, "leafEEE01");
+    assert.deepEqual(t.views.at(-1).args.crumbs.map((c) => c.title), titles, "an empty pull must not stick");
+  });
+});
+
+test("F5 a diagram ancestor whose props have not loaded is not cached as a top-level board", async () => {
+  await withEnv({ enhanced: ["leafEEE01"] }, async (t) => {
+    t.env.ancestors = {
+      leafEEE01: {
+        ":block/uid": "leafEEE01",
+        ":block/parents": [
+          { ":block/uid": "boardAAA1", ":block/string": "{{[[diagram]]:Root}}", ":block/parents": [{ ":db/id": 1 }] },
+        ],
+      },
+    };
+    t.strings.set("leafEEE01", "{{[[diagram]]:Leaf}}");
+    addNative(t.doc, "leafEEE01");
+    await t.install();
+    t.tick();
+    assert.deepEqual(t.views[0].args.crumbs.map((c) => c.uid), ["leafEEE01"]);
+    t.env.ancestors.leafEEE01[":block/parents"][0][":block/props"] = { ":plexus": { ":v": 2 } };
+    remountDiagram(t, "leafEEE01");
+    assert.deepEqual(t.views.at(-1).args.crumbs.map((c) => c.title), ["Root", "Leaf"]);
+  });
+});
+
+test("F5 moving a board drops the cached path on the next open", async () => {
+  await withEnv({ enhanced: ["leafEEE01"] }, async (t) => {
+    const before = [
+      ["boardAAA1", "Root", 1],
+      ["midBBB001", "Two", 2],
+    ];
+    const after = [["otherZZ01", "Other", 1]];
+    t.env.ancestors = { leafEEE01: chainPull("leafEEE01", before) };
+    t.strings.set("leafEEE01", "{{[[diagram]]:Leaf}}");
+    addNative(t.doc, "leafEEE01");
+    await t.install();
+    t.tick();
+    assert.deepEqual(t.views[0].args.crumbs.map((c) => c.title), ["Root", "Two", "Leaf"]);
+    t.env.ancestors.leafEEE01 = chainPull("leafEEE01", after);
+    t.sessions.made.find((s) => s.uid === "leafEEE01").emitChange({ structural: true });
+    remountDiagram(t, "leafEEE01");
+    assert.deepEqual(t.views.at(-1).args.crumbs.map((c) => c.title), ["Other", "Leaf"], "a reparent is not the old chain");
+    t.env.ancestors.leafEEE01 = chainPull("leafEEE01", before);
+    t.setHash("#/app/Svy/page/other0001");
+    remountDiagram(t, "leafEEE01");
+    assert.deepEqual(t.views.at(-1).args.crumbs.map((c) => c.title), ["Root", "Two", "Leaf"], "a route change reads the path again");
   });
 });
 

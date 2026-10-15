@@ -75983,14 +75983,22 @@ function createReadPane({
     if (/^#[0-9a-fA-F]{3,8}$/.test(name)) return name;
     return "var(--pxd-yellow-line, #ca8a04)";
   };
-  const scrollFrac = (frac) => {
+  const fracPage = (page) => {
+    if (typeof page === "number" && page >= 1) {
+      const numbered = pageElement(page);
+      if (numbered) return numbered;
+    }
+    const pages = live2.querySelectorAll?.(".page") || [];
+    return pages.length === 1 ? pages[0] : null;
+  };
+  const scrollFrac = (frac, page) => {
     const scroller = live2.querySelector?.(".PdfHighlighter");
-    const page = live2.querySelector?.(".rm-pdf-container .page") || live2.querySelector?.(".page");
-    if (!scroller || !page) return;
+    const node2 = fracPage(page);
+    if (!scroller || !node2) return;
     let pageBox = null;
     let view2 = null;
     try {
-      pageBox = page.getBoundingClientRect();
+      pageBox = node2.getBoundingClientRect();
     } catch {
       pageBox = null;
     }
@@ -76011,11 +76019,11 @@ function createReadPane({
     if (next == null) return;
     scroller.scrollTop = next;
   };
-  const flashFrac = (frac) => {
-    scrollFrac(frac);
+  const flashFrac = (frac, page) => {
+    scrollFrac(frac, page);
     const style = fracStyle(frac);
-    const page = live2.querySelector?.(".rm-pdf-container .page") || live2.querySelector?.(".page");
-    if (!style || !page) return;
+    const node2 = fracPage(page);
+    if (!style || !node2) return;
     clearFlash();
     const mark = doc.createElement("div");
     mark.className = "pxd-read__pin-flash";
@@ -76023,7 +76031,7 @@ function createReadPane({
     mark.style.top = style.top;
     mark.style.width = style.width;
     mark.style.height = style.height;
-    const hostPage = page.querySelector?.(".canvasWrapper") || page;
+    const hostPage = node2.querySelector?.(".canvasWrapper") || node2;
     hostPage.append(mark);
     flashed = [mark];
     flashTimer = later(() => {
@@ -77620,7 +77628,7 @@ function createReadPane({
       if (jumping) {
         jumpPageWhenReady(next.page, () => {
           if (wanted) locateHighlight(wanted);
-          else if (frac) flashFrac(frac);
+          else if (frac) flashFrac(frac, next.page);
         }, kept);
       } else if (wanted) locateHighlight(wanted);
       armWatch(current3.title);
@@ -79968,6 +79976,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (drawn !== void 0) drawnFn = drawn;
     lastPass = { board: board2, rects, coveredEdges, selection };
     const virt = Boolean(view) && virtualEdges(board2);
+    for (const uid of [...waiting]) if (!board2.edges.has(uid)) waiting.delete(uid);
     for (const uid of [...edgeEls.keys()]) if (!board2.edges.has(uid)) {
       waiting.delete(uid);
       removeEdge(uid);
@@ -79979,10 +79988,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
         if (rec && !rec.parked) hideEdge(rec);
         continue;
       }
-      waiting.delete(edge.uid);
       if (virt && selection.edge !== edge.uid && editingLabel?.uid !== edge.uid) {
         const attached = rec && !rec.parked;
         if (attached ? edgeFar(board2, edge, rects) : !edgeNear(board2, edge, rects)) {
+          waiting.delete(edge.uid);
           if (rec) parkEdge(rec);
           continue;
         }
@@ -79990,6 +79999,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       const fresh = !rec;
       const wasHidden = Boolean(rec && !rec.parked && rec.g.getAttribute("display") === "none");
       if (!rec && dirty && !dirty.has(edge.uid)) continue;
+      waiting.delete(edge.uid);
       if (fresh || wasHidden || !dirty || dirty.has(edge.uid) || rec.stale) showEdge(board2, edge, rects, zoom, coveredEdges, selection);
     }
     if (!skipLinks) {
@@ -80008,7 +80018,11 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     let n3 = 0;
     for (const uid of [...waiting]) {
       const edge = board2.edges.get(uid);
-      if (!edge || !endsReady(board2, edge)) continue;
+      if (!edge) {
+        waiting.delete(uid);
+        continue;
+      }
+      if (!endsReady(board2, edge)) continue;
       if (view && virtualEdges(board2) && !edgeNear(board2, edge, rects)) continue;
       waiting.delete(uid);
       showEdge(board2, edge, rects, zoomCache, coveredEdges, selection);
@@ -80347,6 +80361,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     },
     placements: () => placements,
     flushWaiting,
+    waitingLeft: () => waiting.size,
     setSelection,
     setHover,
     setTempWire,
@@ -104189,6 +104204,16 @@ async function installPlexusDiagram({
     }
   }
   const pathCache = /* @__PURE__ */ new Map();
+  function parentsUnloaded(parents) {
+    if (!Array.isArray(parents)) return true;
+    for (const node2 of parents) {
+      const string = String(node2?.[":block/string"] ?? node2?.string ?? "");
+      if (!isDiagramString2(string)) continue;
+      const props = node2?.[":block/props"] ?? node2?.props;
+      if (props == null) return true;
+    }
+    return false;
+  }
   function pathFor(uid) {
     const cached = pathCache.get(uid);
     if (cached) return cached.slice();
@@ -104199,8 +104224,9 @@ async function installPlexusDiagram({
     } catch {
       res = null;
     }
-    if (!res) return [self];
-    const path = boardPath(res[":block/parents"] ?? [], self);
+    const parents = res?.[":block/parents"];
+    if (!res || res[":block/uid"] !== uid || parentsUnloaded(parents)) return [self];
+    const path = boardPath(parents, self);
     pathCache.set(uid, path);
     return path.slice();
   }
@@ -105433,6 +105459,7 @@ async function installPlexusDiagram({
       else unmount(rec);
     });
     const offChange = session.on?.("change", (diff) => {
+      if (diff?.structural) pathCache.clear();
       scheduleSketch(rec);
       if (diff?.structural && session.board) {
         relChips.noteBoard(session.board);
@@ -107261,6 +107288,7 @@ async function installPlexusDiagram({
   }
   function onNavigate() {
     mountFail.clear();
+    pathCache.clear();
     negativeUntil.clear();
     autoCache.clear();
     for (const rec of mounts.values()) {

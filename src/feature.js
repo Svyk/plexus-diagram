@@ -683,17 +683,30 @@ export async function installPlexusDiagram({
     }
   }
 
-  // One pull of :block/parents per board, kept for the life of this install. A miss is not cached:
-  // the block may not be loaded yet, and a later open still has to find the path.
+  // One pull of :block/parents per board. A miss is not cached: the block may not be loaded yet,
+  // and a later open still has to find the path. A truthy pull that is not this block, or a diagram
+  // ancestor whose props have not loaded, is the same kind of miss. A structural edit or a route
+  // change drops the cache, because either one can reparent a board.
   const pathCache = new Map();
+  function parentsUnloaded(parents) {
+    if (!Array.isArray(parents)) return true;
+    for (const node of parents) {
+      const string = String(node?.[":block/string"] ?? node?.string ?? "");
+      if (!isDiagramString(string)) continue;
+      const props = node?.[":block/props"] ?? node?.props;
+      if (props == null) return true;
+    }
+    return false;
+  }
   function pathFor(uid) {
     const cached = pathCache.get(uid);
     if (cached) return cached.slice();
     const self = { uid, title: boardTitle(host.blockString?.(uid)) };
     let res = null;
     try { res = pullVia(host, ANCESTORS_PATTERN, [":block/uid", uid]); } catch { res = null; }
-    if (!res) return [self];
-    const path = boardPath(res[":block/parents"] ?? [], self);
+    const parents = res?.[":block/parents"];
+    if (!res || res[":block/uid"] !== uid || parentsUnloaded(parents)) return [self];
+    const path = boardPath(parents, self);
     pathCache.set(uid, path);
     return path.slice();
   }
@@ -1766,6 +1779,7 @@ export async function installPlexusDiagram({
       else unmount(rec);
     });
     const offChange = session.on?.("change", (diff) => {
+      if (diff?.structural) pathCache.clear();
       scheduleSketch(rec);
       if (diff?.structural && session.board) {
         relChips.noteBoard(session.board);
@@ -3443,6 +3457,7 @@ export async function installPlexusDiagram({
 
   function onNavigate() {
     mountFail.clear();
+    pathCache.clear();
     // The route changed. A uid classified on the previous page has to be read again.
     negativeUntil.clear();
     autoCache.clear();

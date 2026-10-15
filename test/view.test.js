@@ -1820,6 +1820,55 @@ test("edges wait until both cards are drawn", async () => {
   }
 });
 
+test("map zoom holds an edge until both cards are painted, and overview still draws it on cover boxes", async () => {
+  const cards = [];
+  for (let i = 0; i < 110; i += 1) {
+    const col = i % 11;
+    const row = Math.floor(i / 11);
+    cards.push(extraCard(
+      `mapNear${String(i).padStart(2, "0")}`,
+      `Near ${i}`,
+      30 + i,
+      { ":x": 1500 + col * 48, ":y": 1100 + row * 36, ":w": 36, ":h": 24 },
+    ));
+  }
+  cards.push(extraCard("mapNear0A", "Near A", 200, { ":x": 1739, ":y": 1304, ":w": 40, ":h": 28 }));
+  cards.push(extraCard("mapNear0B", "Near B", 201, { ":x": 1790, ":y": 1304, ":w": 40, ":h": 28 }));
+  cards.push(extraCard("mapFar00A", "Far A", 202, { ":x": 80, ":y": 80, ":w": 40, ":h": 28 }));
+  cards.push(extraCard("mapFar00B", "Far B", 203, { ":x": 140, ":y": 80, ":w": 40, ":h": 28 }));
+  const edges = [
+    extraCard("edgeNearM1", "((mapNear0A)) → ((mapNear0B))", 2, { ":type": "edge", ":from": "mapNear0A", ":to": "mapNear0B" }),
+    extraCard("edgeFarM01", "((mapFar00A)) → ((mapFar00B))", 3, { ":type": "edge", ":from": "mapFar00A", ":to": "mapFar00B" }),
+  ];
+  const edgeOf = (root, uid) => root.querySelector(`[data-uid="${uid}"].pxd-edge`)
+    || [...root.querySelectorAll(".pxd-edge")].find((node) => node.getAttribute("data-uid") === uid);
+  const shown = (node) => Boolean(node && node.getAttribute("display") !== "none");
+  const map = mountFixture({ vp: { x: 0, y: 0, zoom: 0.23 }, extraChildren: cards, extraEdges: edges });
+  try {
+    map.stub.flushFrames();
+    assert.equal(map.view.root.getAttribute("data-pxd-lod"), "map");
+    assert.equal(shown(edgeOf(map.view.root, "edgeNearM1")), true, "an edge between painted cards shows at map zoom");
+    assert.equal(shown(edgeOf(map.view.root, "edgeFarM01")), false, "an edge stays hidden while both cards are only cover boxes");
+    for (let i = 0; i < 8; i += 1) {
+      map.stub.flushFrames();
+      map.stub.flushIdle();
+    }
+    assert.equal(shown(edgeOf(map.view.root, "edgeFarM01")), true, "the edge paints once both cards are on screen");
+  } finally {
+    map.view.dispose();
+    map.restore();
+  }
+  const overview = mountFixture({ vp: { x: 0, y: 0, zoom: 0.1 }, extraChildren: cards, extraEdges: edges });
+  try {
+    overview.stub.flushFrames();
+    assert.equal(overview.view.root.getAttribute("data-pxd-lod"), "overview");
+    assert.equal(shown(edgeOf(overview.view.root, "edgeFarM01")), true, "overview still draws the edge on cover boxes");
+  } finally {
+    overview.view.dispose();
+    overview.restore();
+  }
+});
+
 test("F5: opening a board card calls onOpenBoard with the uid, and leaves edit mode first", async () => {
   const opened = [];
   const f = mountFixture({ extraChildren: boardCardChildren(), viewOptions: { onOpenBoard: (u) => opened.push(u) } });

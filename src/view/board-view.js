@@ -3946,9 +3946,16 @@ function buildBoardView(onFail, {
   // when it settles; draw the queue again afterwards. A zoom from that cover into detail keeps the boxes
   // until the queue is empty. Opening already at detail does not paint them.
   let coverUids = new Set();
-  // A card counts as drawn when its shell exists, or a cover box is standing in for it.
-  // The open snapshot paints its own edges, so a card that is only in the snapshot does not release a live edge.
-  const endpointReady = (uid) => Boolean(uid && (itemsR.shellOf?.(uid) || coverUids.has(uid)));
+  // A card counts as drawn when its shell is actually in the document. A shell record that has not
+  // been attached yet is not painted. Map-zoom cover boxes are the same card colour as the board, so
+  // they do not count either. Overview still releases an edge onto those boxes (3.31.0). The open
+  // snapshot paints its own edges, so a card that is only in the snapshot does not release a live edge.
+  const endpointReady = (uid) => {
+    if (!uid) return false;
+    const el = itemsR.shellOf?.(uid);
+    if (el?.isConnected) return true;
+    return tier === "overview" && coverUids.has(uid);
+  };
   paintOverviewCover = () => {
     if (disposed || underlayDrawn) return;
     try { if (notedSpeedFlags().overviewFast === false) { coverUids = new Set(); return; } } catch { coverUids = new Set(); return; }

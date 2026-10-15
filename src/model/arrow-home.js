@@ -6,7 +6,7 @@ import { firstLine, parseBoardTitle, plainText, readPlexus, UNTITLED_BOARD } fro
 export const HOME_PULL = "[:block/uid :block/string {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]";
 
 // One pull_many of the cards on a nested board. Not a datalog `:in $ [?u ...]`.
-export const REFS_PULL = "[:block/uid {:block/_refs [:block/uid :block/string :block/props {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]}]";
+export const REFS_PULL = "[:block/uid {(limit :block/_refs nil) [:block/uid :block/string :block/props {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]}]";
 
 function nodeUid(node) {
   return node?.[":block/uid"] ?? node?.uid ?? "";

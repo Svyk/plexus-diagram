@@ -307,3 +307,50 @@ test("edges wait until both endpoints are drawn, then paint on the next render",
   assert.ok(edgeOf("e23") && edgeOf("e23").getAttribute("display") !== "none");
   layer.dispose();
 });
+
+test("a ready edge left out of a dirty slice stays waiting and paints on flush", () => {
+  const { doc } = setup();
+  const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const over = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const labels = doc.createElement("div");
+  doc.body.append(svg, over, labels);
+  const layer = createEdgeLayer({ doc, svg, labelsLayer: labels, overlaySvg: over });
+  const board = edgeBoard();
+  const rects = worldRects(board);
+  const edgeOf = (uid) => [...svg.querySelectorAll(".pxd-edge")].find((node) => node.getAttribute("data-uid") === uid) || null;
+  layer.render({ board, rects, drawn: () => false });
+  assert.equal(edgeOf("e12"), null);
+  assert.equal(edgeOf("e23"), null);
+  layer.render({ board, rects, drawn: () => true, dirty: new Set(["e23"]) });
+  assert.ok(edgeOf("e23") && edgeOf("e23").getAttribute("display") !== "none");
+  assert.equal(edgeOf("e12"), null, "this slice did not name e12");
+  layer.flushWaiting();
+  assert.ok(edgeOf("e12") && edgeOf("e12").getAttribute("display") !== "none", "both cards are drawn, so the waiting edge paints");
+  layer.dispose();
+});
+
+test("waiting edges from the previous board are dropped when the layer renders another board", () => {
+  const { doc } = setup();
+  const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const over = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const labels = doc.createElement("div");
+  doc.body.append(svg, over, labels);
+  const layer = createEdgeLayer({ doc, svg, labelsLayer: labels, overlaySvg: over });
+  const board = edgeBoard();
+  const rects = worldRects(board);
+  const other = buildBoard(blk("b2", "{{[[diagram]]:C}}", null, [
+    blk("d1", "d", plexus({ x: 0, y: 0, w: 80, h: 40 })),
+    blk("d2", "e", plexus({ x: 200, y: 0, w: 80, h: 40 })),
+    blk("ed", "Connections", plexus({ type: "edges" }), [
+      blk("ed12", "", plexus({ type: "edge", from: "d1", to: "d2" })),
+    ]),
+  ]));
+  layer.render({ board, rects, drawn: () => false });
+  assert.equal(layer.waitingLeft(), 2);
+  layer.render({ board: other, rects: worldRects(other), drawn: () => true });
+  assert.equal(layer.waitingLeft(), 0, "unbuilt edges do not stay waiting on the next board");
+  layer.flushWaiting();
+  const uids = [...svg.querySelectorAll(".pxd-edge")].map((node) => node.getAttribute("data-uid"));
+  assert.deepEqual(uids, ["ed12"]);
+  layer.dispose();
+});

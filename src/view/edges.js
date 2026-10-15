@@ -645,6 +645,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     if (drawn !== undefined) drawnFn = drawn;
     lastPass = { board, rects, coveredEdges, selection };
     const virt = Boolean(view) && virtualEdges(board);
+    for (const uid of [...waiting]) if (!board.edges.has(uid)) waiting.delete(uid);
     for (const uid of [...edgeEls.keys()]) if (!board.edges.has(uid)) { waiting.delete(uid); removeEdge(uid); }
     for (const edge of board.edges.values()) {
       let rec = edgeEls.get(edge.uid);
@@ -653,18 +654,23 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         if (rec && !rec.parked) hideEdge(rec);
         continue;
       }
-      waiting.delete(edge.uid);
+      // A far virtual edge is not kept waiting: reveal and cull bring it back when the camera does.
+      // Holding every far edge would make flushWaiting walk the whole board on each shell.
       if (virt && selection.edge !== edge.uid && editingLabel?.uid !== edge.uid) {
         const attached = rec && !rec.parked;
         if (attached ? edgeFar(board, edge, rects) : !edgeNear(board, edge, rects)) {
+          waiting.delete(edge.uid);
           if (rec) parkEdge(rec);
           continue;
         }
       }
-      // A slice names the edges for this frame. An edge that is not built yet waits for the frame that names it.
+      // A slice names the edges for this frame. An edge already waiting (its cards were not
+      // drawn yet) stays waiting, so flushWaiting can paint it. An edge that was never waiting
+      // is left for the frame that names it, so a 250-edge slice is not dumped into one flush.
       const fresh = !rec;
       const wasHidden = Boolean(rec && !rec.parked && rec.g.getAttribute("display") === "none");
       if (!rec && dirty && !dirty.has(edge.uid)) continue;
+      waiting.delete(edge.uid);
       if (fresh || wasHidden || !dirty || dirty.has(edge.uid) || rec.stale) showEdge(board, edge, rects, zoom, coveredEdges, selection);
     }
     if (!skipLinks) {
@@ -685,7 +691,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     let n = 0;
     for (const uid of [...waiting]) {
       const edge = board.edges.get(uid);
-      if (!edge || !endsReady(board, edge)) continue;
+      if (!edge) { waiting.delete(uid); continue; }
+      if (!endsReady(board, edge)) continue;
       if (view && virtualEdges(board) && !edgeNear(board, edge, rects)) continue;
       waiting.delete(uid);
       showEdge(board, edge, rects, zoomCache, coveredEdges, selection);
@@ -1028,6 +1035,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     },
     placements: () => placements,
     flushWaiting,
+    waitingLeft: () => waiting.size,
     setSelection,
     setHover,
     setTempWire,

@@ -1535,6 +1535,26 @@ test("F5: breadcrumbs render only with two or more entries and a click calls onC
   }
 });
 
+test("F5: setCrumbs paints a path that was missing when the board mounted", async () => {
+  const f = mountFixture({ viewOptions: { crumbs: [{ uid: "leafEEE01", title: "Leaf" }] } });
+  try {
+    await f.flush();
+    const bar = f.view.root.querySelector(".pxd-crumbs");
+    assert.equal(bar.style.display, "none");
+    f.view.setCrumbs([
+      { uid: "boardAAA1", title: "Root" },
+      { uid: "midBBB001", title: "Two" },
+      { uid: "leafEEE01", title: "Leaf" },
+    ]);
+    assert.equal(bar.style.display, "");
+    assert.deepEqual([...bar.querySelectorAll("button.pxd-crumb")].map((b) => b.textContent), ["Root", "Two"]);
+    assert.equal(bar.querySelector(".pxd-crumb--current").textContent, "Leaf");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("F5: more than four crumbs collapse the middle into an ellipsis that names the hidden boards", async () => {
   const clicked = [];
   const crumbs = ["A", "B", "C", "D", "E", "F"].map((t, i) => ({ uid: `crumb00${i}`, title: t }));

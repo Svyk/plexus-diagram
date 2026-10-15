@@ -4278,7 +4278,7 @@ function buildBoardView(onFail, {
 
   // ------------------------------------------------------------ nested boards
   // `crumbs` entries are shared with the feature's record, so a rename shows up in both.
-  const crumbList = Array.isArray(crumbs) ? crumbs : [];
+  let crumbList = Array.isArray(crumbs) ? crumbs.slice() : [];
   // The board block a card opens: the card itself (nested board), or the target of a whiteboard-shortcut
   // card (a ((ref)) to a {{[[diagram]]}} block). `uid` is an item uid, or a referenced uid the card renderer passes.
   const boardTargetOf = (uid) => {
@@ -9468,10 +9468,15 @@ function buildBoardView(onFail, {
     }
   }
 
+  const replaceCrumbs = (list) => {
+    crumbList = Array.isArray(list) ? list.slice() : [];
+    chrome.toolbar.setCrumbs(crumbList);
+  };
   const view = {
     refreshStatuses() { itemsR?.refreshStatuses?.(); kanbanCtl?.refresh?.(); },
     root,
     controller: ctl,
+    setCrumbs(list) { if (!disposed) replaceCrumbs(list); },
     setFullscreen(on) { if (Boolean(on) !== isFullscreen) applyFullscreen(on); },
     fit() { fitAll(); },
     // Select and pulse a card or connection by uid, without a page check (feature.js enters a nested board first).

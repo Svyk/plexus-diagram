@@ -12,7 +12,7 @@ import {
   wantsParts,
   wantsType,
 } from "../src/model/library.js";
-import { buildPartsIndex, partSnippet, searchParts } from "../src/model/parts-search.js";
+import { buildPartsIndex, finishPartsIndex, partSnippet, searchParts } from "../src/model/parts-search.js";
 import { serializeRegion } from "../src/model/regions.js";
 
 test("types accept a set, a legacy string, and collapse a full set to all", () => {
@@ -156,7 +156,7 @@ test("a 300-page index searches well under 50 ms", () => {
   blocks["b150-5"].text += " needle phrase";
   const rows = buildPartsIndex({ sha256: "big", blocks, order }, { docTitle: "Big" });
   assert.equal(rows.length, 6000);
-  searchParts(rows, { text: "warm" });
+  finishPartsIndex(rows);
   const t0 = performance.now();
   const hit = searchParts(rows, { text: "needle phrase" });
   const ms = performance.now() - t0;

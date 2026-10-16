@@ -2,7 +2,7 @@
 // Rebuilt after invalidate() (the panel calls it on open); a doc that did not change is not re-indexed.
 
 import { parsedDocTitle, pdfFileTitle } from "../model/pdf.js";
-import { buildPartsIndex, warmPartsIndex } from "../model/parts-search.js";
+import { buildPartsIndex, schedulePartsIndex } from "../model/parts-search.js";
 import { readableParse, subscribeParseStored } from "./parse-store.js";
 
 // Same options the reader uses for the plain built-in parse.
@@ -24,11 +24,13 @@ function detach(index) {
   if (!live.size && offStored) { offStored(); offStored = null; }
 }
 
-export function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS } = {}) {
+export function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS, budget = null, now } = {}) {
   const perDoc = new Map();
   let rows = null;
   let building = null;
   let epoch = 0;
+  let stopIndex = null;
+  const changed = new Set();
 
   const build = async () => {
     const mine = epoch;
@@ -56,13 +58,20 @@ export function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS
       out.push(...part);
     }
     if (mine === epoch) {
-      warmPartsIndex(out);
-      if (mine === epoch) rows = out;
+      rows = out;
+      try { stopIndex?.(); } catch { /* gone */ }
+      // The gram index fills in idle slices. get() does not build it, so a keystroke cannot either.
+      stopIndex = schedulePartsIndex(out, {
+        budget,
+        now,
+        onReady: () => {
+          if (mine !== epoch) return;
+          for (const fn of [...changed]) { try { fn({}); } catch { /* listener */ } }
+        },
+      });
     }
     return out;
   };
-
-  const changed = new Set();
 
   const index = {
     async get() {
@@ -73,6 +82,8 @@ export function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS
     invalidate() {
       epoch += 1;
       rows = null;
+      try { stopIndex?.(); } catch { /* gone */ }
+      stopIndex = null;
     },
     size: () => (rows ? rows.length : 0),
     // A parse was just stored: drop that sha's cached rows and the merged rows; the next get() rebuilds.
@@ -86,6 +97,8 @@ export function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS
       return () => { changed.delete(fn); };
     },
     dispose() {
+      try { stopIndex?.(); } catch { /* gone */ }
+      stopIndex = null;
       detach(index);
       changed.clear();
     },

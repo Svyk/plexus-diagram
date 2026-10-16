@@ -28,9 +28,10 @@ import { bindGuardStats, guardCallback } from "../guard.js";
 import { installCommentHost } from "./comments.js";
 import { SPLIT_WATCH_MIN, containerKind, createSplitWatch, treeSize } from "./split-watch.js";
 import { notedSpeedFlags } from "../settings.js";
-import { linksQuery } from "../model/links.js";
+import { buildBoard } from "../model/board.js";
+import { linksQuery, reduceLinks } from "../model/links.js";
 import { createSlicedRead, SLICED_SLICE_MS } from "./sliced-read.js";
-import { createTreeDecoder, createTreeEncoder } from "./model-store.js";
+import { createTreeDecoder, createTreeEncoder, packDerived, unpackDerived } from "./model-store.js";
 import { createPartSizer } from "../part-sizer.js";
 import { sharedBgBudget } from "../bg-budget.js";
 
@@ -1011,7 +1012,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     holdSplit(uid, split);
     if (offered.trusted) unverified.set(uid, offered.stamp);
     else if (modelStore && trustOn() && modelStore.stampOf(uid) !== offered.stamp) keepModel(uid, tree, offered.stamp);
-    adoptedTrees.set(uid, { node: tree, found: offered.found, stamp: offered.stamp, at: Date.now(), split, trusted: offered.trusted === true });
+    adoptedTrees.set(uid, { node: tree, found: offered.found, stamp: offered.stamp, at: Date.now(), split, trusted: offered.trusted === true, derived: offered.derived ?? null });
     return true;
   };
   // The board's page stamp "edit-time|edit-nonce", or null when Roam has none.
@@ -1030,6 +1031,72 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // with no board read. Until a background read verifies it, the board is "unverified" (boardUnverified): nothing
   // destructive may act on it. Speed flag trustSnapshot.
   const trustOn = () => { try { return notedSpeedFlags().trustSnapshot !== false; } catch { return true; } };
+  const derivedOn = () => { try { return notedSpeedFlags().storedDerived !== false; } catch { return true; } };
+  // uid -> { stamp, badges: Map, links }. Seeded from the store on a trusted hit; replaced by the check.
+  const derivedLive = new Map();
+  const seedDerived = (uid, stamp, raw) => {
+    if (!derivedOn()) return false;
+    const unpacked = unpackDerived(raw);
+    if (!unpacked) return false;
+    derivedLive.set(uid, { stamp, badges: unpacked.badges, links: unpacked.links });
+    return true;
+  };
+  // Full links from a verified tree: the same reduce the session's link job does, in one pass.
+  function linksFromTree(uid, tree) {
+    let board = null;
+    try {
+      board = buildBoard(tree, {
+        resolve: (id) => {
+          try {
+            const text = host.blockString?.(id);
+            return typeof text === "string" ? text : null;
+          } catch { return null; }
+        },
+      });
+    } catch { return []; }
+    if (!board) return [];
+    const resolved = new Map();
+    const resolveOnce = (ref) => {
+      const key = ref.title != null ? `title:${ref.title}` : `uid:${ref.uid}`;
+      if (resolved.has(key)) return resolved.get(key);
+      let eid = null;
+      try { eid = host.resolveEid(ref); } catch { eid = null; }
+      resolved.set(key, eid);
+      return eid;
+    };
+    const boardEid = resolveOnce({ uid });
+    const eidToItems = new Map();
+    for (const item of board.items.values()) {
+      if (item.type !== "card" || !item.target) continue;
+      const t = item.target;
+      const ref = t.kind === "page" ? { title: t.title } : { uid: t.uid };
+      const eid = resolveOnce(ref);
+      if (eid == null || eid === boardEid) continue;
+      if (!eidToItems.has(eid)) eidToItems.set(eid, []);
+      eidToItems.get(eid).push(item.uid);
+    }
+    const eids = [...eidToItems.keys()];
+    if (!eids.length || boardEid == null) return [];
+    let rows = [];
+    try { rows = host.linkRows(boardEid, new Set(eids), eids) || []; } catch { return []; }
+    const parentStrings = new Map();
+    for (const row of rows) {
+      if (row.length > 4 && row[4] != null) parentStrings.set(row[2], row[4]);
+    }
+    try { return reduceLinks(rows, { eidToItems, parentStrings }); } catch { return []; }
+  }
+  function recomputeDerived(uid, tree) {
+    const badges = new Map();
+    try {
+      const found = collectTargets(tree);
+      const res = host.cardStats(found.stats, { boardUid: uid });
+      if (res instanceof Map) for (const [key, stat] of res) badges.set(key, stat);
+    } catch { /* the check still verifies */ }
+    let links = [];
+    try { links = linksFromTree(uid, tree) || []; } catch { links = []; }
+    derivedLive.set(uid, { stamp: null, badges, links });
+    try { return packDerived(badges, links); } catch { return null; }
+  }
   let modelStore = null;
   const unverified = new Map(); // uid -> stamp the model was read at
   const verifyListeners = new Map(); // uid -> Set(fn)
@@ -1052,7 +1119,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     }
   };
   // Store a consistent tree with its stamp: encoded in parts on the background budget, then one put.
-  const keepModel = (uid, tree, stamp) => {
+  // derived undefined: compute it when the flag is on, so the next trusted open can skip prime and links.
+  // null: store no derived field payload (over the cap, or the recompute failed). An object is stored as given.
+  const keepModel = (uid, tree, stamp, derived) => {
     if (!modelStore || !trustOn() || !tree?.[":block/uid"] || typeof stamp !== "string") return;
     keeps.get(uid)?.();
     const enc = createTreeEncoder(tree);
@@ -1061,7 +1130,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!enc.step(Math.max(1, deadline.timeRemaining() - 2), clock)) return false;
       if (keeps.get(uid) === cancel) keeps.delete(uid);
       const model = enc.result();
-      if (model) void modelStore.put(uid, stamp, model);
+      if (model) {
+        let packed = derived;
+        if (packed === undefined && derivedOn()) {
+          try { packed = recomputeDerived(uid, tree); } catch { packed = null; }
+        }
+        if (packed !== undefined) model.derived = packed;
+        void modelStore.put(uid, stamp, model);
+      }
       stats.modelsKept = (stats.modelsKept || 0) + 1;
       return true;
     }, { label: "model-keep", partMs: 4, firstQuiet: 1000 });
@@ -1183,8 +1259,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (split && !split.disposed) changed = split.reseed(tree, { contents: true }) !== false;
       stats.checks = (stats.checks || 0) + 1;
       if (changed) stats.checkChanges = (stats.checkChanges || 0) + 1;
+      // Recompute before the listeners run, so a seeded open replaces the stored links in the same turn.
+      let packed;
+      if (derivedOn()) {
+        try { packed = recomputeDerived(uid, tree); } catch { packed = null; }
+      }
       markVerified(uid);
-      if (changed || modelStore?.stampOf(uid) !== stamp) keepModel(uid, tree, stamp);
+      if (changed || modelStore?.stampOf(uid) !== stamp) keepModel(uid, tree, stamp, packed);
+      else if (derivedOn()) void modelStore?.putDerived(uid, stamp, packed ?? null);
     }, {
       prepare: (tree) => absorb(uid, tree, false),
       stopIf: () => {
@@ -1961,6 +2043,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       let honored = false;
       let big = false;
       let found = null;
+      let derivedHit = false;
       let adopted = adoptedTrees.get(uid) || null;
       if (adopted) adoptedTrees.delete(uid);
       // Every non-trusted adopt rechecks the page stamp. A card-body write moves it and leaves the split's
@@ -1982,6 +2065,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         if (adopted.trusted) {
           stats.trustedOpens = (stats.trustedOpens || 0) + 1;
           scheduleCheck(uid);
+          derivedHit = seedDerived(uid, adopted.stamp, adopted.derived);
         } else stats.slicedReads = (stats.slicedReads || 0) + 1;
       } else {
         if (adopted && unverified.has(uid)) scheduleCheck(uid);
@@ -2051,6 +2135,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           if (trustedOpen) {
             unverified.set(uid, readStamp);
             scheduleCheck(uid);
+            derivedHit = seedDerived(uid, readStamp, offered?.derived);
           } else if (node === plain && modelStore && trustOn()) {
             // A whole pull: same task, so the stamp read now is the one the tree was read at.
             readStamp ??= pageStampOf(uid);
@@ -2166,15 +2251,15 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       // prime: false (card-chip cache, chip and board-row previews, thumbnails): structure and refs only; badges and
       // linked refs are asked for on demand. A preview of the PhD main board on another board primed its stats in idle
       // parts under that board's gestures (C. botulinum: 53-146 ms frames on fit, hover and select).
-      if (!light) { if (doPrime) prime(); } else {
+      if (!light) { if (doPrime && !derivedHit) prime(); } else {
         // Linked refs stay in chunks of PRIME_CHUNK. Card stats are one pull:
         // 300 cards measured about 19 ms, inside one idle slice.
         const idle = globalThis.requestIdleCallback;
         const later = (fn) => idleLater(idle, fn);
         // A big board reads linked refs and card stats for the cards on screen only (one part of 10 linked-ref titles
-        // was ~0.5 s on the PhD main board).
-        const titles = big ? [] : found.titles;
-        const targets = big ? [] : found.stats;
+        // was ~0.5 s on the PhD main board). A stored derived hit skips both; outline refs still run above.
+        const titles = (big || derivedHit) ? [] : found.titles;
+        const targets = (big || derivedHit) ? [] : found.stats;
         // The same gate as a full open: many items read in parts, not one call.
         const statsPart = statsInParts(node, targets) ? STATS_CHUNK : Infinity;
         const pulledAt = ++pullSeq;
@@ -2201,7 +2286,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
               refSizer.note(n, clock() - r0);
               continue;
             }
-            if (!dropped) { dropped = true; dropStats(uid); }
+            if (!dropped) { dropped = true; if (!derivedHit) dropStats(uid); }
             if (ti < titles.length) {
               try { fetchLinked(titles.slice(ti, ti + PRIME_CHUNK)); } catch { /* a later linkedRefs ask reads Roam */ }
               ti += PRIME_CHUNK;
@@ -2277,6 +2362,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       let decoder = null;
       let tree = null;
       let walk = null;
+      let derivedRaw = null;
       let cancelled = false;
       let ms = 0;
       const fallback = () => {
@@ -2288,6 +2374,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         waiting = null;
         if (cancelled) return;
         if (!model || model.stamp !== stamp) { fallback(); return; }
+        derivedRaw = model.derived ?? null;
         decoder = createTreeDecoder(model);
         phase = "decode";
       }, () => {
@@ -2323,7 +2410,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
             if (!walk.step(Math.max(1, sliceMs - (clock() - t0)), clock)) return false;
             // The stamp once more right before the offer (pullBoard checks it again).
             if (pageStampOf(id) !== stamp) { tree = null; fallback(); return false; }
-            offeredTrees.set(id, { tree, found: walk.result(), stamp, at: Date.now(), trusted: true });
+            offeredTrees.set(id, { tree, found: walk.result(), stamp, at: Date.now(), trusted: true, derived: derivedRaw });
             tree = null;
             walk = null;
             phase = "adopt";
@@ -2518,6 +2605,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     // True while a board that went live from a stored model has not been read again: nothing destructive may act on
     // what it shows. onBoardVerified(uid, fn) calls fn once when that read lands (at once when already verified).
     boardUnverified(uid) { return unverified.has(String(uid ?? "")); },
+    // Stored badge counts and derived links for a trusted hit, or null when the flag is off or this open had none.
+    storedDerived(uid) {
+      if (!derivedOn()) return null;
+      const live = derivedLive.get(String(uid ?? ""));
+      if (!live) return null;
+      return { badges: live.badges, links: live.links };
+    },
     onBoardVerified(uid, fn) {
       const id = String(uid ?? "");
       if (!unverified.has(id)) { try { fn(); } catch { /* listener */ } return () => {}; }

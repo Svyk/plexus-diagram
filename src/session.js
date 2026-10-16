@@ -1969,7 +1969,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
   // Reads the PDF block's region children. One group: the caller is already inside runParsed.
   async function writePdfPin(spec) {
-    if (!spec?.pdfUid || !Array.isArray(spec.frac)) return { uid: "", reused: false };
+    const created = [];
+    if (!spec?.pdfUid || !Array.isArray(spec.frac)) return { uid: "", reused: false, created };
     let kids = [];
     try {
       const raw = host.pullTree?.(spec.pdfUid, 2, 200);
@@ -1994,12 +1995,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       containerUid: container?.uid || "",
       pinUid: host.generateUid(),
     });
-    if (plan.reused) return { uid: plan.uid, reused: true };
+    if (plan.reused) return { uid: plan.uid, reused: true, created };
     let containerUid = container?.uid || "";
     let pinUid = plan.uid;
     for (const step of plan.creates) {
       const parentUid = step.role === "pin" && !step.parentUid ? containerUid : step.parentUid;
-      if (!parentUid) return { uid: "", reused: false };
+      if (!parentUid) return { uid: "", reused: false, created };
       const made = await host.createBlock({
         parentUid,
         order: "last",
@@ -2009,10 +2010,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         props: step.props,
       });
       const id = typeof made === "string" ? made : made?.uid || step.uid || "";
+      if (id) created.push({ uid: id, parentUid, string: step.string, open: step.open, props: step.props ? clone(step.props) : undefined });
       if (step.role === "container") containerUid = id;
       if (step.role === "pin") pinUid = id || pinUid;
     }
-    return { uid: pinUid, reused: false };
+    return { uid: pinUid, reused: false, created };
   }
   async function citePin(parentUid, pin) {
     if (!parentUid || !pin) return "";
@@ -2269,7 +2271,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     // grid falls back to native when the API is missing. flat repeats covered cells.
     // notes: the parse's footnote blocks on the table's page ([{ id, mark, text }]) for cell marks.
     // The card is a folded caption block (caption: the parse's table caption, else "Table · N rows") with the table under it.
-    insertParsedTable({ x, y, table, mode = "auto", notes, pin, caption } = {}) {
+    insertParsedTable({ x, y, table, mode = "auto", notes, pin, caption, sourceUid } = {}) {
       if (!board || destroyed || gone) return Promise.resolve(undefined);
       const asked = mode === "grid" || mode === "native" || mode === "flat" ? mode : "auto";
       const format = footnoteFormatNow();
@@ -2314,8 +2316,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           await host.deleteBlock(card);
           return { ok: false, reason: "empty" };
         }
-        // The Source:: pin stays under the table block, so the caption keeps exactly one child.
+        // The Source:: line stays under the table block, so the caption keeps exactly one child.
         if (pin) await citePin(uid, pin);
+        else if (sourceUid && sourceAttrString(sourceUid)) await host.createBlock({ parentUid: uid, order: "last", string: sourceAttrString(sourceUid) });
         repull();
         return { ok: true, uid: card, tableUid: uid, path, w: size.w, h: size.h };
       });
@@ -2372,6 +2375,86 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         const writes = Math.max(0, (Number(host.stats?.writes) || 0) - before);
         return { ok: Boolean(made.uid), uid: made.uid || "", reused: Boolean(made.reused), writes };
       });
+    },
+
+    // The figure file and its pin are one undo. Redo recreates the pin and reuses the file url.
+    // A failed pin deletes the upload and leaves no undo step.
+    copyFigureFile({ spec, file } = {}) {
+      if (destroyed || gone) return Promise.resolve({ ok: false, reason: "gone" });
+      if (!file && !spec?.pdfUid) return Promise.resolve({ ok: false, reason: "empty" });
+      const run = host.group ? (fn) => host.group(fn, "figure") : (fn) => fn();
+      return queue.run(() => run(async () => {
+        const created = [];
+        let uploadedUrl = "";
+        const dropUndo = () => {
+          try { host.setCustomUndo?.(null); } catch { /* host */ }
+        };
+        const discardUpload = async () => {
+          if (!uploadedUrl) return;
+          const url = uploadedUrl;
+          uploadedUrl = "";
+          try { await host.deleteFile?.(url); } catch { /* already gone */ }
+        };
+        const discardBlocks = async () => {
+          for (const row of created.splice(0).reverse()) {
+            if (!row?.uid) continue;
+            try { await host.deleteBlock(row.uid); } catch { /* already gone */ }
+          }
+        };
+        const custom = {
+          async undo() {
+            for (const row of created.slice().reverse()) {
+              if (!row?.uid) continue;
+              try { await host.deleteBlock(row.uid); } catch { /* already gone */ }
+            }
+          },
+          async redo() {
+            for (const row of created) {
+              try {
+                await host.createBlock({
+                  parentUid: row.parentUid,
+                  order: "last",
+                  uid: row.uid,
+                  string: row.string,
+                  open: row.open,
+                  props: row.props,
+                });
+              } catch { /* already there */ }
+            }
+          },
+        };
+        try { host.setCustomUndo?.(custom); } catch { /* host */ }
+        if (file) {
+          try { uploadedUrl = String(await host.uploadFile(file) || ""); }
+          catch {
+            dropUndo();
+            return { ok: false, uid: "", url: "", reused: false, reason: "upload-failed" };
+          }
+        }
+        let made = { uid: "", reused: false, created: [] };
+        if (spec?.pdfUid) {
+          try { made = await writePdfPin(spec) || made; }
+          catch {
+            await discardUpload();
+            await discardBlocks();
+            dropUndo();
+            return { ok: false, uid: "", url: "", reused: false, reason: "write-failed" };
+          }
+          for (const row of made.created || []) created.push(row);
+        }
+        if (spec?.pdfUid && !made.uid) {
+          await discardUpload();
+          await discardBlocks();
+          dropUndo();
+          return { ok: false, uid: "", url: "", reused: false };
+        }
+        // A reused pin was not created here, so its undo must not delete that pin.
+        // A copy that created nothing must not spend an undo step.
+        if (created.length || made.reused) {
+          try { host.noteGroupedWrite?.("upload"); } catch { /* host */ }
+        } else dropUndo();
+        return { ok: true, uid: made.uid || "", url: uploadedUrl, reused: Boolean(made.reused) };
+      }));
     },
 
     // Notes a kept read on the PDF block's props: one write, one undo step. Nothing else changes.

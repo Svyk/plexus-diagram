@@ -8108,6 +8108,23 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   border-color: var(--pxd-accent);
 }
 
+.page > .pxd-parsed-layer > .pxd-parsed-box.pxd-parsed-box--flash {
+  border-color: var(--pxd-accent, #2563eb);
+  border-width: 2px;
+  animation: pxd-parsed-flash 220ms ease-out;
+}
+
+@keyframes pxd-parsed-flash {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page > .pxd-parsed-layer > .pxd-parsed-box.pxd-parsed-box--flash {
+    animation: none;
+  }
+}
+
 .page > .pxd-parsed-layer > .pxd-parsed-copy {
   position: absolute;
   box-sizing: border-box;
@@ -11441,7 +11458,7 @@ body.bt-theme-dark .pxd-read-drawer .pxd-pdf-chip--on,
   box-sizing: border-box;
   width: var(--pxd-read-w, 360px);
   min-width: 360px;
-  max-width: 720px;
+  max-width: calc(100% - 48px);
   background: var(--pxd-chrome-bg, var(--pxd-surface, #fff));
   color: var(--pxd-text, inherit);
   border-left: 1px solid var(--pxd-border, #d0d7de);
@@ -11481,6 +11498,19 @@ body.bt-theme-dark .pxd-read-drawer .pxd-pdf-chip--on,
   width: 6px;
   cursor: col-resize;
   z-index: 1;
+}
+
+/* Roam's right sidebar, only while it holds a PDF. max-width only: flex-basis stays Roam's, so the drag handle still moves it. */
+#right-sidebar:has(.rm-pdf-container),
+.rm-right-sidebar:has(.rm-pdf-container),
+.rm-sidebar-window:has(.rm-pdf-container) {
+  max-width: calc(100vw - 48px) !important;
+}
+
+.roam-app:has(#right-sidebar .rm-pdf-container) .roam-main,
+.roam-app:has(#right-sidebar .rm-pdf-container) .roam-article {
+  min-width: 48px !important;
+  max-width: none !important;
 }
 
 .pxd-read.pxd-read--stack .pxd-read__split {
@@ -12098,6 +12128,56 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert {
 .pxd-read .page > .textLayer,
 .pxd-read .page .Highlight {
   z-index: 2;
+}
+
+/* Roam's own PDF window (sidebar and main). The page canvas is inverted, so pictures
+   drawn on the page invert with the text. A sibling canvas paints those pictures back
+   when pdf.js reports their place. Highlight marks, the text layer, and parsed outlines
+   are not filtered. The reader beside the board is left alone. */
+html.pxd-pdf-reader-dark .rm-pdf-container .page > canvas:not(.pxd-pdf-photo),
+html.pxd-pdf-reader-dark .rm-pdf-container .page > .canvasWrapper > canvas:not(.pxd-pdf-photo) {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+html.pxd-pdf-reader-dark .pxd-read .rm-pdf-container .page > canvas,
+html.pxd-pdf-reader-dark .pxd-read .rm-pdf-container .page > .canvasWrapper > canvas,
+html.pxd-pdf-reader-dark .pxd-root .rm-pdf-container .page > canvas,
+html.pxd-pdf-reader-dark .pxd-root .rm-pdf-container .page > .canvasWrapper > canvas {
+  filter: none;
+}
+
+html.pxd-pdf-reader-dark .rm-pdf-container .page > canvas.pxd-pdf-photo,
+html.pxd-pdf-reader-dark .rm-pdf-container .page > .canvasWrapper > canvas.pxd-pdf-photo {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  filter: none;
+}
+
+html.pxd-pdf-reader-dark .rm-pdf-toolbar {
+  background: #252a31;
+  color: #e7e8ea;
+}
+
+html.pxd-pdf-reader-dark .pxd-read .rm-pdf-toolbar,
+html.pxd-pdf-reader-dark .pxd-root .rm-pdf-toolbar {
+  background: unset;
+  color: unset;
+}
+
+html.pxd-pdf-reader-dark .rm-pdf-container,
+html.pxd-pdf-reader-dark .PdfHighlighter {
+  background: #14171b;
+}
+
+html.pxd-pdf-reader-dark .pxd-read .rm-pdf-container,
+html.pxd-pdf-reader-dark .pxd-read .PdfHighlighter,
+html.pxd-pdf-reader-dark .pxd-root .rm-pdf-container,
+html.pxd-pdf-reader-dark .pxd-root .PdfHighlighter {
+  background: unset;
 }
 
 /* The dock stays inside the free area left of the pane. When that area is narrower than the dock,
@@ -12954,6 +13034,25 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
   border: 1px solid var(--pxd-border, #3b4b58);
   background: transparent;
   color: #e6edf3;
+}
+
+/* A pasted figure is a note, so the image is not inside .pxd-item__media. Keep the chip on the card. */
+.pxd-item__body:has(> .pxd-chip--source) {
+  display: flex;
+  flex-direction: column;
+}
+
+.pxd-item__body:has(> .pxd-chip--source) > .pxd-chip--source {
+  flex: 0 0 auto;
+  margin-top: auto;
+}
+
+.pxd-item__body:has(> .pxd-chip--source) img,
+.pxd-item__body:has(> .pxd-chip--source) .rm-inline-img {
+  max-height: 360px;
+  max-width: 100%;
+  object-fit: contain;
+  flex: 0 1 auto;
 }
 
 /* TSK-3. Status glyphs are masks so they stay crisp at every zoom. status.css sorts before task.css,

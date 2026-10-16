@@ -85,17 +85,25 @@ function docKeys(stub) {
   return n;
 }
 
-test("readPaneWidth clamps to 360–720 and stacks under 720", () => {
+test("readPaneWidth can pass 720, up to the mount minus a margin, and still stacks under 720", () => {
   assert.equal(readPaneKey("notes"), "plexus-diagram:read:notes");
   assert.deepEqual(readPaneWidth(800, null), { stacked: false, width: 360 });
   assert.deepEqual(readPaneWidth(1000, null), { stacked: false, width: 420 });
-  assert.deepEqual(readPaneWidth(800, 500), { stacked: false, width: 440 }, "the board keeps 360 px");
+  assert.deepEqual(readPaneWidth(800, 500), { stacked: false, width: 500 });
   assert.deepEqual(readPaneWidth(1200, 500), { stacked: false, width: 500 });
   assert.deepEqual(readPaneWidth(800, 100), { stacked: false, width: 360 });
-  assert.deepEqual(readPaneWidth(800, 900), { stacked: false, width: 440 });
-  assert.deepEqual(readPaneWidth(1400, 900), { stacked: false, width: 720 });
+  assert.deepEqual(readPaneWidth(800, 900), { stacked: false, width: 752 });
+  assert.deepEqual(readPaneWidth(1400, 900), { stacked: false, width: 900 });
+  assert.deepEqual(readPaneWidth(1400, 2000), { stacked: false, width: 1352 });
   assert.deepEqual(readPaneWidth(0, null), { stacked: false, width: 360 });
+  assert.deepEqual(readPaneWidth(0, 2000), { stacked: false, width: 2000 });
   assert.deepEqual(readPaneWidth(600, 500), { stacked: true, width: 600 });
+  const css = readFileSync(new URL("../src/css/read-pane.css", import.meta.url), "utf8");
+  assert.match(css, /\.pxd-read \{[^}]*max-width:\s*calc\(100% - 48px\)/);
+  assert.match(css, /#right-sidebar:has\(\.rm-pdf-container\)/);
+  const side = css.slice(css.indexOf("#right-sidebar:has(.rm-pdf-container)"));
+  const block = side.slice(0, side.indexOf("}"));
+  assert.equal(/flex-basis/.test(block), false);
 });
 
 test("a mount under 720px stacks the pane", () => {

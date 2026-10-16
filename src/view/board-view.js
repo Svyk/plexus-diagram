@@ -25,7 +25,7 @@ import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS, highlightModel, noteActionPlan } from "../model/highlight.js";
 import { cleanPdfTitle, coverModel, embedSplit, parsedDocTitle, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
-import { answerSource, gestureSource, notePendingPin, pasteCardPlan, pinOpenFallback, pinOpenPlan, readWithSource, refOpenPlan } from "../model/pdf-pin.js";
+import { answerSource, gestureSource, matchParsedBlock, notePendingPin, pasteCardPlan, pinOpenFallback, pinOpenPlan, readWithSource, refOpenPlan, sourceOpenPlan } from "../model/pdf-pin.js";
 import { parseRegion } from "../model/regions.js";
 import { isMetaBanner } from "../model/title-cap.js";
 import { createSharpStore } from "./sharp-store.js";
@@ -81,6 +81,8 @@ import { createInteractions, emptyLabelShouldDeleteEdge, whyLabelField } from ".
 import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
+import { createPageChips } from "./page-chips.js";
+import { SIDEBAR_WAIT_MS, jumpSidebarPdf, pdfTargetsMatch, sidebarPageEl, sidebarPdfContainer, waitForSidebarPdf, watchNodeGone } from "./pin-reveal.js";
 import { createCardMotionRelay } from "./card-parse-motion.js";
 import { runChartToTable } from "./chart-table.js";
 import { askThemeChanged, openAskAI, setAskSettings } from "./ask-ai.js";
@@ -89,7 +91,8 @@ import { graphOfWindow } from "../model/ask-models.js";
 import { BUILTIN_OPTIONS, readParsedUrls } from "./parse-view.js";
 import { createPdfWarm } from "./pdf-warm.js";
 import { createFirstPageRenderer, createPdfMetaLookup, detectPdfjs, firstPageAllowed } from "./pdf-first-page.js";
-import { createThemeFollow } from "./theme-follow.js";
+import { createThemeFollow, sampleRoam } from "./theme-follow.js";
+import { applyPdfReaderDark, pdfReaderDarkOn } from "./pdf-reader-dark.js";
 import { PDF_DARK_CLASSES, createPdfFlip, pdfDarkClass } from "./pdf-flip.js";
 import { openViewDialog } from "./view-dialog.js";
 import { viewMapModel } from "./minimap-svg.js";
@@ -1208,11 +1211,17 @@ function buildBoardView(onFail, {
     const want = pdfDarkClass(readSetting("pdf-dark"));
     for (const name of PDF_DARK_CLASSES) root.classList.toggle(name, name === want);
   };
+  const applyReaderDark = () => {
+    let background = "";
+    try { background = sampleRoam(doc).background; } catch { background = ""; }
+    applyPdfReaderDark(doc, pdfReaderDarkOn(readSetting("pdf-reader-dark"), doc, background));
+  };
   const applyTheme = () => {
     const dark = isDarkHost(mountEl, doc);
     root.classList.toggle("pxd-root--dark", dark);
     root.classList.toggle("pxd-root--light", !dark && isLightHost(mountEl, doc, globalThis.window));
     applyPdfDark();
+    applyReaderDark();
     const hl = syncBoardHighlighter(doc, root);
     try { themeFollow?.apply?.(); } catch { /* theme */ }
     themeReady = true;
@@ -1870,18 +1879,162 @@ function buildBoardView(onFail, {
     try { readPane?.layout?.(size.width); } catch { /* first layout on the next resize */ }
     return readPane;
   };
+  let sidebarChips = null;
+  let sidebarHost = null;
+  let sidebarParsed = null;
+  let sidebarGen = 0;
+  let sidebarUnwatch = null;
+  let sidebarWake = null;
+  function pinPdfTarget(plan) {
+    const uid = String(plan?.pdfUid || "").trim();
+    if (!uid) return null;
+    let source = "";
+    try { source = host?.blockString?.(uid) || ""; } catch { source = ""; }
+    if (!source) {
+      try {
+        const b = board();
+        if (b) {
+          for (const it of b.items.values()) {
+            if (!it || it.kind !== "pdf") continue;
+            const blockUid = it.target?.kind === "block" ? it.target.uid : it.uid;
+            if (it.uid === uid || blockUid === uid || it.target?.uid === uid) { source = it.string || ""; break; }
+          }
+        }
+      } catch { source = ""; }
+    }
+    return { uid, url: pdfMacroUrl(source) || "" };
+  }
+  function parseMatchesPin(want) {
+    if (!want || !readPane?.parsedDoc?.()) return false;
+    return pdfTargetsMatch({
+      uid: readPane?.blockUid?.() || "",
+      url: readPane?.sourceUrl?.() || "",
+    }, want);
+  }
+  function dropSidebarChips() {
+    sidebarUnwatch?.();
+    sidebarUnwatch = null;
+    try { sidebarChips?.dispose?.(); } catch { /* gone */ }
+    sidebarChips = null;
+    sidebarHost = null;
+    sidebarParsed = null;
+  }
+  function boardPdfItem(pdfUid) {
+    const b = board();
+    if (!b || !pdfUid) return null;
+    for (const it of b.items.values()) {
+      if (!it || it.kind !== "pdf") continue;
+      const blockUid = it.target?.kind === "block" ? it.target.uid : it.uid;
+      if (it.uid === pdfUid || blockUid === pdfUid || it.target?.uid === pdfUid) return it;
+    }
+    return null;
+  }
+  // Jump only the sidebar PDF that is this pin. Shift-click waits until that window exists.
+  // Show parsed uses the open reader when it is this file, otherwise the cached parse for the url.
+  async function revealSidebarPin(plan) {
+    if (disposed || !plan) return false;
+    const want = pinPdfTarget(plan);
+    if (!want) return false;
+    const gen = ++sidebarGen;
+    const alive = () => !disposed && gen === sidebarGen;
+    const started = Date.now();
+    const sleep = (ms) => new Promise((resolve) => {
+      const cancel = timers.later(() => {
+        if (sidebarWake === wake) sidebarWake = null;
+        resolve();
+      }, ms);
+      const wake = () => { cancel(); resolve(); };
+      sidebarWake?.();
+      sidebarWake = wake;
+    });
+    try {
+      const box = await waitForSidebarPdf({
+        doc,
+        want,
+        readString: readBlock,
+        timeout: Math.max(0, SIDEBAR_WAIT_MS - (Date.now() - started)),
+        sleep,
+        alive,
+      });
+      if (!alive() || !box) return false;
+      if (Number.isInteger(plan.page) && plan.page >= 1) {
+        try { jumpSidebarPdf(doc, plan.page, want, readBlock); } catch { /* field */ }
+      }
+      let parsed = parseMatchesPin(want) ? readPane?.parsedDoc?.() || null : null;
+      if (!parsed && want.url) {
+        try { parsed = await loadParsedFor({ url: want.url }); } catch { parsed = null; }
+      }
+      if (!alive()) return false;
+      sidebarParsed = parsed || null;
+      if (!sidebarParsed) return true;
+      if (sidebarHost !== box) dropSidebarChips();
+      sidebarParsed = parsed;
+      sidebarHost = box;
+      sidebarUnwatch?.();
+      sidebarUnwatch = watchNodeGone(box, doc, () => {
+        if (sidebarHost !== box) return;
+        dropSidebarChips();
+      });
+      if (!sidebarChips) {
+        sidebarChips = createPageChips({
+          doc,
+          host: box,
+          getParsed: () => sidebarParsed,
+          pageEl: (n) => sidebarPageEl(box, n),
+          pageOf: (n) => (sidebarParsed?.pages || []).find((row) => row?.n === n) || null,
+          storage,
+        });
+      }
+      try { sidebarChips.setShown(true); } catch { /* chips */ }
+      const block = matchParsedBlock(sidebarParsed, plan);
+      if (block && alive()) {
+        try { sidebarChips.flash(block.id); } catch { /* chips */ }
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  function openCopiedSource(plan, { shift = false } = {}) {
+    if (!plan?.pdfUid) return false;
+    if (shift) {
+      try { host?.openInSidebar?.(plan.pdfUid); } catch { /* host */ }
+      try { revealSidebarPin(plan); } catch { /* sidebar */ }
+      return true;
+    }
+    const want = pinPdfTarget(plan);
+    const sidebar = Boolean(want && sidebarPdfContainer(doc, want, readBlock));
+    const choice = sourceOpenPlan({ sidebar, card: Boolean(boardPdfItem(plan.pdfUid)) });
+    if (choice === "reader") return openPin(plan);
+    if (choice === "sidebar") {
+      try { revealSidebarPin(plan); } catch { /* sidebar */ }
+      return true;
+    }
+    try { host?.openInSidebar?.(plan.pdfUid); } catch { /* host */ }
+    void revealSidebarPin(plan).then((found) => {
+      if (found || disposed) return;
+      let pageUid = "";
+      try { pageUid = host?.blockPageUid?.(plan.pdfUid) || ""; } catch { pageUid = ""; }
+      const fallback = pinOpenFallback({ opened: false, plan, pageUid, now: Date.now() });
+      if (fallback?.openPage) {
+        notePendingPin(fallback.pending);
+        try { host?.openPage?.(fallback.openPage); } catch { /* host */ }
+        return;
+      }
+      try { host?.openBlock?.(plan.pdfUid); } catch { /* host */ }
+    });
+    return true;
+  }
   function openPin(detail) {
     const plan = detail && typeof detail === "object" ? detail : null;
     const pdfUid = plan?.pdfUid || "";
     const b = board();
     if (disposed || !b || !pdfUid) return false;
-    let item = null;
-    for (const it of b.items.values()) {
-      if (!it || it.kind !== "pdf") continue;
-      const blockUid = it.target?.kind === "block" ? it.target.uid : it.uid;
-      if (it.uid === pdfUid || blockUid === pdfUid || it.target?.uid === pdfUid) { item = it; break; }
+    const item = boardPdfItem(pdfUid);
+    if (!item) {
+      try { revealSidebarPin(plan); } catch { /* sidebar */ }
+      return false;
     }
-    if (!item) return false;
     const blockUid = item.target?.kind === "block" ? item.target.uid : item.uid;
     ensureReadPane().open?.({
       cardUid: item.uid,
@@ -1891,6 +2044,7 @@ function buildBoardView(onFail, {
       source: item.string || "",
       title: pdfDisplayTitle(item),
     });
+    try { revealSidebarPin(plan); } catch { /* sidebar */ }
     return true;
   }
   openPinFromChip = (pinUid, event) => {
@@ -1901,11 +2055,7 @@ function buildBoardView(onFail, {
     region.uid = pinUid;
     const plan = pinOpenPlan(region);
     if (!plan) return false;
-    if (event?.shiftKey) {
-      try { host?.openInSidebar?.(plan.pdfUid); } catch { /* host */ }
-      return true;
-    }
-    return openPin(plan);
+    return openCopiedSource(plan, { shift: Boolean(event?.shiftKey) });
   };
   let parseActionsObj = null;
   const revealParsed = (uids) => {
@@ -8153,21 +8303,8 @@ function buildBoardView(onFail, {
     lastRefAt = now;
     if (pinJump) {
       dismissRoamHoverPopups();
-      if (pinJump.mode === "sidebar") {
-        try { host?.openInSidebar?.(pinJump.plan.pdfUid); } catch { /* host */ }
-        return true;
-      }
       // The pin block lives under plexus-pins. Open the PDF at the region, not that list.
-      const opened = openPin(pinJump.plan);
-      if (!opened) {
-        let pageUid = "";
-        try { pageUid = host?.blockPageUid?.(pinJump.plan.pdfUid) || ""; } catch { pageUid = ""; }
-        const fallback = pinOpenFallback({ opened: false, plan: pinJump.plan, pageUid, now });
-        if (fallback?.openPage) {
-          notePendingPin(fallback.pending);
-          try { host?.openPage?.(fallback.openPage); } catch { /* host */ }
-        }
-      }
+      openCopiedSource(pinJump.plan, { shift: pinJump.mode === "sidebar" });
       return true;
     }
     if (event.shiftKey) api.ui.rightSidebar?.addWindow?.({ window: { type: page ? "outline" : "block", "block-uid": uid } });
@@ -8979,14 +9116,24 @@ function buildBoardView(onFail, {
       pasteCardJson: (data) => {
         const plan = pasteCardPlan(data, pastePoint());
         if (!plan) return;
-        Promise.resolve(session.insertParsedCard?.({
-          x: plan.x,
-          y: plan.y,
-          w: plan.w,
-          h: plan.h,
-          markdown: plan.markdown,
-          ...(plan.sourceUid ? { sourceUid: plan.sourceUid } : {}),
-        })).then(afterCreate("Pasted")).catch(() => {});
+        const insert = plan.kind === "table" && plan.table
+          ? session.insertParsedTable?.({
+            x: plan.x,
+            y: plan.y,
+            table: plan.table,
+            caption: plan.caption,
+            mode: "native",
+            ...(plan.sourceUid ? { sourceUid: plan.sourceUid } : {}),
+          })
+          : session.insertParsedCard?.({
+            x: plan.x,
+            y: plan.y,
+            w: plan.w,
+            h: plan.h,
+            markdown: plan.markdown,
+            ...(plan.sourceUid ? { sourceUid: plan.sourceUid } : {}),
+          });
+        Promise.resolve(insert).then(afterCreate("Pasted")).catch(() => {});
       },
       editorPaste,
     },
@@ -9861,6 +10008,7 @@ function buildBoardView(onFail, {
       settingsRef = next;
       if ((setting("show-board-trail", false) === true) !== trailBefore) syncFullscreenTabs();
       applyPdfDark();
+      applyReaderDark();
       if (readSetting("pdf-cover") !== coverBefore) {
         forgetCovers();
         itemsR.repaintStyles();
@@ -10012,6 +10160,7 @@ function buildBoardView(onFail, {
       };
       // Each step stands alone. A throw used to set disposed and skip the body popover and the window listeners.
       step(() => perfLog?.cancelPan?.());
+      step(() => { sidebarGen += 1; sidebarWake?.(); sidebarWake = null; dropSidebarChips(); });
       step(() => { dropTabStrip(); root.classList.remove("pxd-root--fstabs"); });
       step(() => closeLinksMenu());
       step(() => closeOutsideMenu());

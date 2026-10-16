@@ -86,6 +86,8 @@ function pullVia(host, pattern, entity) {
   return host?.api?.data?.pull?.(pattern, entity) ?? null;
 }
 import { bindErrorStats, bindSpeedFlagSource, clearErrorStats, normalizeSetting, noteSpeedFlags, notedSpeedFlags, onSettingsChange, parseSpeedFlags, readSettings, refreshIntegrations, SETTING_IDS } from "./settings.js";
+import { applyPdfReaderDark, pdfReaderDarkOn } from "./view/pdf-reader-dark.js";
+import { sampleRoam } from "./view/theme-follow.js";
 import { INTEGRATION_EVENTS } from "./model/detect.js";
 import { createPerfLog, perfNow } from "./perf-log.js";
 import { createShiftWatch } from "./view/shift-watch.js";
@@ -265,6 +267,12 @@ export async function installPlexusDiagram({
   const QUERY_NUDGE_DELAY_MS = 4000;
 
   let settings = readSettings(extensionAPI);
+  const syncPdfReaderDark = () => {
+    let background = "";
+    try { background = sampleRoam(doc).background; } catch { background = ""; }
+    applyPdfReaderDark(doc, pdfReaderDarkOn(settings[SETTING_IDS.pdfReaderDark], doc, background));
+  };
+  syncPdfReaderDark();
   // Hidden speed-flags. The panel never lists this id, so the next gate re-reads the store.
   bindSpeedFlagSource(() => {
     try { return extensionAPI?.settings?.get?.(SETTING_IDS.speedFlags); }
@@ -3937,6 +3945,7 @@ export async function installPlexusDiagram({
     if (stopped) return;
     const next = id === SETTING_IDS.speedFlags ? parseSpeedFlags(value) : normalizeSetting(id, value);
     settings = { ...settings, [id]: next };
+    if (id === SETTING_IDS.pdfReaderDark) syncPdfReaderDark();
     if (id === SETTING_IDS.speedFlags) noteSpeedFlags(next);
     if (id === SETTING_IDS.speedLog) syncSpeedLog();
     if (id === SETTING_IDS.resurface) {
@@ -4252,6 +4261,10 @@ export async function installPlexusDiagram({
   }, 60000);
 
   if (doc && typeof globalThis.MutationObserver === "function") {
+    const onThemeClass = () => { if (!stopped) syncPdfReaderDark(); };
+    if (doc.documentElement) lifecycle.observer(new MutationObserver(guardCallback("observer", onThemeClass)), doc.documentElement, { attributes: true, attributeFilter: ["class"] });
+    if (doc.body) lifecycle.observer(new MutationObserver(guardCallback("observer", onThemeClass)), doc.body, { attributes: true, attributeFilter: ["class"] });
+    lifecycle.add(() => applyPdfReaderDark(doc, false));
     const onAdded = (records) => {
       for (const record of records) {
         for (const node of record.addedNodes || []) {

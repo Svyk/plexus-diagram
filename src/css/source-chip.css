@@ -28,3 +28,22 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
   background: transparent;
   color: #e6edf3;
 }
+
+/* A pasted figure is a note, so the image is not inside .pxd-item__media. Keep the chip on the card. */
+.pxd-item__body:has(> .pxd-chip--source) {
+  display: flex;
+  flex-direction: column;
+}
+
+.pxd-item__body:has(> .pxd-chip--source) > .pxd-chip--source {
+  flex: 0 0 auto;
+  margin-top: auto;
+}
+
+.pxd-item__body:has(> .pxd-chip--source) img,
+.pxd-item__body:has(> .pxd-chip--source) .rm-inline-img {
+  max-height: 360px;
+  max-width: 100%;
+  object-fit: contain;
+  flex: 0 1 auto;
+}

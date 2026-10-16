@@ -352,6 +352,10 @@ A pin is a `plexus-pin` block (kind `pdf`) under `{{[[plexus-pins]]}}` on the PD
 | `answerSource({ doc, blockId, pdfUid, wholeDoc })` | Out: `{ pin }` for a parsed block with a box, `{ sourceUid: pdfUid }` for a whole-document question, else `{}`. The Ask AI answer card cites it as `Source::`. |
 | `pageFracFromBbox(bbox, page)` | Out: four fractions in 0..1 from `viewportBox`, or null. Rotation and `page.userSpace` use that same frame. Fail: no box, or a viewport side that is not greater than 0, is null. |
 | `pinCaption(block, doc)` | Text uses `block.text` or `block.latex`, squashed, cut at `CAPTION_CAP`. A table is `Table N · rows×cols, p. P`. `N` is the 1-based index of `type === "table"` in `doc.order`. A figure or formula uses a caption block id, a caption whose `for` is the block, or the caption string. Fail: a missing block is `""`. |
+| `figureCardMarkdown(block, doc)` | Out: one line, `![alt](url)` then the caption, for a figure or a formula with no LaTeX. `alt` is the caption cut at 80 characters. Fail: another block type is `""`. No URL returns the caption only. |
+| `figureCopySize(block, doc, opts)` | Out: `{w: 280, h}` for a pasted figure. Height is the image aspect plus caption lines and, when `opts.source` is set, the Source chip, capped at 520. A bare crop with no caption and no source matches the drag size. |
+| `isSourceAttrString(text)` | Out: true when the trimmed string is exactly `Source:: ((uid))`. Fail: anything else is false. |
+| `matchParsedBlock(doc, { page, frac }, min)` | Out: the parsed block on that page whose box overlaps `frac` the most, above `min` (0.5 when omitted). Captions are skipped. Fail: a bad page, a short frac, or no overlap, is null. |
 | `rectIou(a, b)` | Out: intersection over union of two fraction rects (arrays or `{x,y,w,h}` / `{rx,ry,rw,rh}`). Fail: a bad rect, or no overlap, is 0. |
 | `findDuplicatePin(regions, spec, min)` | Out: the first kind `pdf` region with a uid, the same `pg`, and `rectIou` at least `min` (`PIN_IOU` when omitted). Fail: a bad page, a missing frac, or no uid, is null. |
 | `pinSpecFromBlock(block, doc, pdfUid)` | Out: `{pdfUid, page, frac, caption}` or null. `page` is the block's 1-based page. Fail: a blank pdf uid, a page below 1, or no frac, is null. |
@@ -360,13 +364,14 @@ A pin is a `plexus-pin` block (kind `pdf`) under `{{[[plexus-pins]]}}` on the PD
 | `gestureSource(stored, altKey)` | Out: `stored` when Option is up. The opposite when Option is down. `"1"` and `1` count as on. One call flips once. |
 | `readWithSource(storage)` | Out: true only when `getItem` returns `"1"`. Fail: a throw, or no storage, is false. |
 | `writeWithSource(storage, on)` | Out: the boolean written. Stores `"1"` or `"0"`. Fail: a throw still returns the boolean. |
-| `cardJsonPayload(opts)` | Out: `{markdown, size:{w,h}, kind, source?}`. Size defaults to 280 by 160. `source` is set only for a uid. |
+| `cardJsonPayload(opts)` | Out: `{markdown, size:{w,h}, kind, source?}`. Size defaults to 280 by 160. `source` is set only for a uid. Kind `table` also keeps `table` (cells, rows, cols, grid) and `caption`. |
 | `parseCardJson(raw)` | Out: a `cardJsonPayload` when `markdown` is a non-blank string. Fail: bad JSON, a non-object, or a blank markdown, is null. |
-| `pasteCardPlan(data, point)` | Out: `{x, y, w, h, markdown, sourceUid}` at `point`, or 0, 0. Fail: no markdown is null. |
+| `pasteCardPlan(data, point)` | Out: `{x, y, w, h, markdown, sourceUid}` at `point`, or 0, 0. A table payload also returns `kind: "table"`, `table`, and `caption`. Fail: no markdown is null. |
 | `pinDeepLink(opts)` | Out: `#/app/<graph>/page/<pageUid>?pxd-pin=<pinUid>`. Fail: a blank graph, or a uid that fails the uid test, is `""`. |
 | `pxdPinTarget(hash)` | Out: `{pinUid, pageUid, graph}` from `?pxd-pin=`. Fail: no query, or a bad uid, is null. `?pxd=` is not this key. |
 | `pinClickMode(event)` | Out: `sidebar` when Shift is down, else `main` when Meta or Ctrl is down, else `popover`. Shift wins. |
 | `pinOpenPlan(region)` | Out: `{pdfUid, page, frac, pinUid}` for a supported kind `pdf` region (either macro). Fail: anything else is null. |
+| `sourceOpenPlan({ sidebar, card })` | Out: `sidebar` when that PDF is already in the sidebar, else `reader` when a board PDF card exists, else `roam`. The sidebar wins when both are open. |
 | `pinnedToast(page)` | Out: `Pinned p. N` for a page at least 1. Otherwise `Pinned`. |
 | `pinOpenFallback({opened, plan, pageUid, now})` | Out: `{openPage, pending: {pinUid, until}}` when no mounted board opened the pin and the PDF's page uid is known; `until` is `now + PIN_PENDING_MS`. Fail: null when opened, or no pin uid or page. |
 | `PIN_PENDING_MS` | 8000. How long a pin opened from an outline waits for a board on the PDF's page to mount. |

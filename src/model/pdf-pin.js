@@ -33,6 +33,48 @@ function rectOf(frac) {
   return { x: Number(frac.x), y: Number(frac.y), w: Number(frac.w), h: Number(frac.h) };
 }
 
+function finiteRect(frac) {
+  const box = rectOf(frac);
+  if (!box || ![box.x, box.y, box.w, box.h].every(Number.isFinite) || !(box.w > 0) || !(box.h > 0)) return null;
+  return box;
+}
+
+function rectArea(frac) {
+  const box = finiteRect(frac);
+  return box ? box.w * box.h : 0;
+}
+
+function overlapArea(a, b) {
+  const A = finiteRect(a);
+  const B = finiteRect(b);
+  if (!A || !B) return 0;
+  const iw = Math.min(A.x + A.w, B.x + B.w) - Math.max(A.x, B.x);
+  const ih = Math.min(A.y + A.h, B.y + B.h) - Math.max(A.y, B.y);
+  if (iw <= 0 || ih <= 0) return 0;
+  return iw * ih;
+}
+
+function centreInside(hit, block) {
+  const H = finiteRect(hit);
+  const B = finiteRect(block);
+  if (!H || !B) return false;
+  const cx = H.x + H.w / 2;
+  const cy = H.y + H.h / 2;
+  return cx >= B.x && cx <= B.x + B.w && cy >= B.y && cy <= B.y + B.h;
+}
+
+// A page-sized hit covers every block. Coverage counts only when the two areas are in the same neighbourhood.
+const COVER_AREA_SLACK = 4;
+
+function smallerMostlyCovered(hit, block, min) {
+  const inter = overlapArea(hit, block);
+  const hitArea = rectArea(hit);
+  const blockArea = rectArea(block);
+  const smaller = Math.min(hitArea, blockArea);
+  if (!(inter > 0) || !(smaller > 0) || !(inter / smaller > min)) return false;
+  return Math.max(hitArea, blockArea) <= smaller * COVER_AREA_SLACK;
+}
+
 function tableSize(block) {
   const grid = block?.grid;
   let rows = Number(block?.rows) || (Array.isArray(grid?.ys) ? grid.ys.length - 1 : 0);
@@ -84,16 +126,103 @@ export function pinCaption(block, doc) {
   return squash(block.text || block.latex || "").slice(0, CAPTION_CAP);
 }
 
+// One card face: the figure (or a formula crop) and its caption on the same line.
+// A missing URL keeps the caption, so a copy still has words when the crop was not uploaded.
+export function figureCardMarkdown(block, doc) {
+  if (!block || (block.type !== "figure" && !(block.type === "formula" && !block.latex))) return "";
+  const caption = pinCaption(block, doc);
+  const url = String(block.image?.url || block.url || "").trim();
+  if (!url) return caption;
+  let alt = caption.replace(/\]/g, "").trim();
+  if (alt.length > 80) alt = alt.slice(0, 80).trim();
+  if (!alt) alt = block.type === "formula" ? "Formula" : "Figure";
+  const image = `![${alt}](${url})`;
+  return caption ? `${image} ${caption}` : image;
+}
+
+// A pasted figure is a note card: the image, the caption lines, and the Source chip share one height.
+// Width stays 280. A bare crop matches figureCardSize. A caption or a chip grows the card, capped at 520.
+const FIGURE_COPY_W = 280;
+const FIGURE_COPY_PAD = 26;
+const FIGURE_COPY_LINE = 20;
+const FIGURE_COPY_CHIP = 28;
+const FIGURE_COPY_CHARS = 42;
+const FIGURE_COPY_MAX_LINES = 6;
+const FIGURE_COPY_IMAGE_CAP = 360;
+const FIGURE_COPY_IMAGE_MIN = 72;
+const FIGURE_COPY_MAX = 520;
+
+export function figureCopySize(block, doc, { source = false } = {}) {
+  const caption = pinCaption(block, doc);
+  const lines = caption
+    ? Math.min(FIGURE_COPY_MAX_LINES, Math.max(1, Math.ceil(caption.length / FIGURE_COPY_CHARS)))
+    : 0;
+  const chip = source ? FIGURE_COPY_CHIP : 0;
+  let image = 0;
+  const box = block?.bbox;
+  if (Array.isArray(box) && box.length >= 4) {
+    const bw = Number(box[2]) - Number(box[0]);
+    const bh = Number(box[3]) - Number(box[1]);
+    if (bw > 0 && bh > 0) image = Math.round((FIGURE_COPY_W - FIGURE_COPY_PAD) * (bh / bw));
+  }
+  if (!(image > 0)) image = FIGURE_COPY_IMAGE_MIN;
+  else image = Math.min(FIGURE_COPY_IMAGE_CAP, image);
+  let h = FIGURE_COPY_PAD + image + lines * FIGURE_COPY_LINE + chip;
+  if (h > FIGURE_COPY_MAX) {
+    const keep = chip + (lines ? FIGURE_COPY_LINE : 0);
+    const room = Math.max(FIGURE_COPY_IMAGE_MIN, FIGURE_COPY_MAX - FIGURE_COPY_PAD - keep);
+    image = Math.min(image, room);
+    const textRoom = FIGURE_COPY_MAX - FIGURE_COPY_PAD - image - chip;
+    const fit = Math.max(lines ? 1 : 0, Math.min(lines, Math.floor(textRoom / FIGURE_COPY_LINE)));
+    h = FIGURE_COPY_PAD + image + fit * FIGURE_COPY_LINE + chip;
+    if (h > FIGURE_COPY_MAX) h = FIGURE_COPY_MAX;
+  }
+  return { w: FIGURE_COPY_W, h: Math.round(h) };
+}
+
+export function isSourceAttrString(text) {
+  return SOURCE_RE.test(String(text ?? "").trim());
+}
+
+// The parsed block a pin's page and fraction land on. Captions are the figure's label, not a part.
+// Two similar boxes still need IoU above `min`. A word-sized hit matches the tightest block whose
+// box holds the hit centre, or the block when the smaller rect is mostly covered.
+export function matchParsedBlock(doc, { page, frac } = {}, min = 0.5) {
+  const pg = Number(page);
+  if (!Number.isInteger(pg) || pg < 1 || !Array.isArray(frac) || frac.length < 4) return null;
+  const info = (doc?.pages || []).find((row) => Number(row?.n) === pg) || { n: pg, w: 612, h: 792, rotation: 0 };
+  let floor = Number(min);
+  if (!Number.isFinite(floor)) floor = 0.5;
+  let best = null;
+  let score = floor;
+  let tight = null;
+  let tightArea = Infinity;
+  const ids = Array.isArray(doc?.order) && doc.order.length ? doc.order : Object.keys(doc?.blocks || {});
+  for (const id of ids) {
+    const block = doc?.blocks?.[id];
+    if (!block || block.type === "caption" || Number(block.page) !== pg || !Array.isArray(block.bbox)) continue;
+    const box = pageFracFromBbox(block.bbox, info);
+    if (!box) continue;
+    const iou = rectIou(box, frac);
+    if (iou > score) {
+      score = iou;
+      best = block;
+    }
+    const area = rectArea(box);
+    if (!(area > 0) || area >= tightArea) continue;
+    if (centreInside(frac, box) || smallerMostlyCovered(frac, box, floor)) {
+      tight = block;
+      tightArea = area;
+    }
+  }
+  if (best) return best;
+  return tight;
+}
+
 export function rectIou(a, b) {
-  const A = rectOf(a);
-  const B = rectOf(b);
-  if (!A || !B) return 0;
-  if (![A.x, A.y, A.w, A.h, B.x, B.y, B.w, B.h].every(Number.isFinite)) return 0;
-  const iw = Math.min(A.x + A.w, B.x + B.w) - Math.max(A.x, B.x);
-  const ih = Math.min(A.y + A.h, B.y + B.h) - Math.max(A.y, B.y);
-  if (iw <= 0 || ih <= 0) return 0;
-  const inter = iw * ih;
-  const union = A.w * A.h + B.w * B.h - inter;
+  const inter = overlapArea(a, b);
+  if (!(inter > 0)) return 0;
+  const union = rectArea(a) + rectArea(b) - inter;
   return union > 0 ? inter / union : 0;
 }
 
@@ -262,7 +391,28 @@ export function writeWithSource(storage, on) {
   return next;
 }
 
-export function cardJsonPayload({ markdown = "", size = null, kind = "card", source = "" } = {}) {
+function tableSnapshot(table) {
+  if (!table || typeof table !== "object" || Array.isArray(table)) return null;
+  const cells = [];
+  for (const cell of Array.isArray(table.cells) ? table.cells : []) {
+    if (!cell || typeof cell !== "object") continue;
+    const row = {
+      r: Number.isInteger(cell.r) ? cell.r : 0,
+      c: Number.isInteger(cell.c) ? cell.c : 0,
+      text: String(cell.text ?? ""),
+    };
+    if (Number.isInteger(cell.colSpan) && cell.colSpan > 1) row.colSpan = cell.colSpan;
+    if (Number.isInteger(cell.rowSpan) && cell.rowSpan > 1) row.rowSpan = cell.rowSpan;
+    cells.push(row);
+  }
+  const snap = { cells };
+  if (Number.isInteger(table.rows)) snap.rows = table.rows;
+  if (Number.isInteger(table.cols)) snap.cols = table.cols;
+  if (table.grid && typeof table.grid === "object") snap.grid = table.grid;
+  return snap;
+}
+
+export function cardJsonPayload({ markdown = "", size = null, kind = "card", source = "", table = null, caption = "" } = {}) {
   const body = {
     markdown: String(markdown ?? ""),
     size: { w: Number(size?.w) > 0 ? Number(size.w) : 280, h: Number(size?.h) > 0 ? Number(size.h) : 160 },
@@ -270,6 +420,12 @@ export function cardJsonPayload({ markdown = "", size = null, kind = "card", sou
   };
   const pin = String(source ?? "").trim();
   if (UID_RE.test(pin)) body.source = pin;
+  if (body.kind === "table") {
+    const snap = tableSnapshot(table);
+    if (snap) body.table = snap;
+    const cap = String(caption ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
+    if (cap) body.caption = cap;
+  }
   return body;
 }
 
@@ -286,7 +442,7 @@ export function pasteCardPlan(data, point) {
   if (!parsed) return null;
   const copied = planCopiedSource({ markdown: parsed.markdown, source: parsed.source || "" });
   if (!copied.markdown.trim()) return null;
-  return {
+  const plan = {
     x: Number.isFinite(point?.x) ? point.x : 0,
     y: Number.isFinite(point?.y) ? point.y : 0,
     w: parsed.size.w,
@@ -294,6 +450,12 @@ export function pasteCardPlan(data, point) {
     markdown: copied.markdown,
     sourceUid: copied.sourceUid || "",
   };
+  if (parsed.kind === "table" && parsed.table) {
+    plan.kind = "table";
+    plan.table = parsed.table;
+    plan.caption = String(parsed.caption || "");
+  }
+  return plan;
 }
 
 export function pinDeepLink({ graph, pageUid, pinUid } = {}) {
@@ -318,6 +480,13 @@ export function pinClickMode({ shiftKey = false, metaKey = false, ctrlKey = fals
   if (shiftKey) return "sidebar";
   if (metaKey || ctrlKey) return "main";
   return "popover";
+}
+
+// A Source click. The sidebar wins when that PDF is already open there.
+export function sourceOpenPlan({ sidebar = false, card = false } = {}) {
+  if (sidebar) return "sidebar";
+  if (card) return "reader";
+  return "roam";
 }
 
 export function pinOpenPlan(region) {

@@ -647,10 +647,11 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
       },
     },
     get file() {
-      if (!uploadStub && !fileGetStub) return undefined;
+      if (!uploadStub && !fileGetStub && !fileDeleteStub) return undefined;
       const file = {};
       if (uploadStub) file.upload = uploadStub;
       if (fileGetStub) file.get = fileGetStub;
+      if (fileDeleteStub) file.delete = fileDeleteStub;
       return file;
     },
     ui: {
@@ -691,8 +692,10 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   // Route q calls whose query text matches `match` (RegExp) to fn; returns {calls} for asserting.
   fake.onQuery = (match, fn) => { const r = { match, fn, calls: [] }; qRoutes.push(r); return r; };
   let fileGetStub = null;
+  let fileDeleteStub = null;
   fake.setUpload = (fn) => { uploadStub = fn; };
   fake.setFileGet = (fn) => { fileGetStub = fn; };
+  fake.setFileDelete = (fn) => { fileDeleteStub = fn; };
   fake.watchCount = () => watches.length;
   fake.watchList = () => watches.map((w) => ({ uid: w.uid, pattern: String(w.pattern) }));
   fake.pull = (uid) => pull("[*]", [":block/uid", uid]);

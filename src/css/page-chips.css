@@ -114,6 +114,23 @@
   border-color: var(--pxd-accent);
 }
 
+.page > .pxd-parsed-layer > .pxd-parsed-box.pxd-parsed-box--flash {
+  border-color: var(--pxd-accent, #2563eb);
+  border-width: 2px;
+  animation: pxd-parsed-flash 220ms ease-out;
+}
+
+@keyframes pxd-parsed-flash {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page > .pxd-parsed-layer > .pxd-parsed-box.pxd-parsed-box--flash {
+    animation: none;
+  }
+}
+
 .page > .pxd-parsed-layer > .pxd-parsed-copy {
   position: absolute;
   box-sizing: border-box;

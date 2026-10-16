@@ -8,6 +8,9 @@ import { optionsHash, sha256Hex } from "../model/parse-hash.js";
 import {
   CARD_JSON_MIME,
   cardJsonPayload,
+  figureCardMarkdown,
+  figureCopySize,
+  matchParsedBlock,
   pinDeepLink,
   pinSpecFromBlock,
   pinnedToast,
@@ -54,6 +57,7 @@ import { graphOfWindow } from "../model/ask-models.js";
 import { createPartGutter } from "./part-gutter.js";
 import { docCounts, partBoxes } from "./parse-motion.js";
 import { toRoamMarkdown } from "../model/parse-to-roam-md.js";
+import { parsedTableCaption } from "../model/roam-table.js";
 import { present as liveAiPresent, SETUP_HINT } from "../host/liveai.js";
 import { pdfNameFor } from "../model/pdf-name-for.js";
 
@@ -814,15 +818,54 @@ export function createParseView({
         return true;
       }
       if (id === "card" || id === "source") {
-        const plain = isImageCopy(block) ? captionText(block) : toMarkdown(parsed, [block.id]);
+        let plain = "";
         let source = "";
-        if (id === "source") {
+        if (isImageCopy(block)) {
+          let live = block;
+          const url = String(block.image?.url || block.url || "").trim();
+          if (!url) {
+            try {
+              const spec = figureImageSpec(block);
+              const blob = spec ? await spec.getBlob() : null;
+              if (blob) {
+                const name = `${spec.name || "figure"}.png`;
+                const file = typeof File === "function" ? new File([blob], name, { type: blob.type || "image/png" }) : blob;
+                const pinSpec = id === "source" ? pinForBlock(block) : null;
+                if (id === "source" && !pinSpec) return false;
+                if (typeof session?.copyFigureFile === "function") {
+                  const made = await session.copyFigureFile({ spec: pinSpec, file });
+                  if (id === "source" && !made?.uid) return false;
+                  if (made?.url) live = { ...block, image: { ...(block.image || {}), url: String(made.url) } };
+                  if (made?.uid) source = made.uid;
+                } else if (typeof host?.uploadFile === "function") {
+                  const uploaded = await host.uploadFile(file);
+                  if (uploaded) live = { ...block, image: { ...(block.image || {}), url: String(uploaded) } };
+                }
+              }
+            } catch { /* caption only */ }
+          }
+          plain = figureCardMarkdown(live, parsed) || captionText(block);
+        } else {
+          plain = toMarkdown(parsed, [block.id]);
+        }
+        if (id === "source" && !source) {
           source = await ensurePin(block);
           if (!source) return false;
+        }
+        if (id === "source" && source) {
           try { onToast?.(pinnedToast(block.page)); } catch { /* host */ }
         }
         const copied = planCopiedSource({ markdown: plain, source });
-        const json = cardJsonPayload({ markdown: copied.markdown, size: { w: 280, h: 160 }, kind: block.type || "card", source: copied.sourceUid });
+        const size = isImageCopy(block)
+          ? figureCopySize(block, parsed, { source: Boolean(copied.sourceUid || source) })
+          : { w: 280, h: 160 };
+        const json = cardJsonPayload({
+          markdown: copied.markdown,
+          size,
+          kind: block.type || "card",
+          source: copied.sourceUid,
+          ...(block.type === "table" ? { table: block, caption: parsedTableCaption(block, parsed) } : {}),
+        });
         const text = source ? `${plain}\n${sourceAttrString(source)}` : plain;
         return writeTyped({ "text/plain": text, [CARD_JSON_MIME]: JSON.stringify(json) });
       }
@@ -2605,6 +2648,15 @@ export function createParseView({
     // Show parsed: persistent boxes and copy icons on the page. Remembered per device.
     showParsed: () => (pageChips ? pageChips.shown() : readShowParsed(storage)),
     setShowParsed(on) { return pageChips ? pageChips.setShown(on) : (writeShowParsed(storage, on), Boolean(on)); },
+    // Turn the page boxes on and flash the part that overlaps this pin. False when nothing is parsed yet.
+    flashPart({ page, frac } = {}) {
+      const chips = chipsOn();
+      if (!chips || !parsed) return false;
+      chips.setShown(true);
+      const block = matchParsedBlock(parsed, { page, frac });
+      if (!block) return false;
+      return chips.flash(block.id) === true;
+    },
     hasParse: () => Boolean(parsed),
     getDoc: () => parsed,
     askAbout,

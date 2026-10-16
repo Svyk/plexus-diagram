@@ -59,7 +59,7 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
     "auto-fit-sections", "board-tone", "map-zoom", "motion", "show-card-badges", "show-palette", "space-out",
     "enter-in-card",
     "toolbar-layout", "dock-position", "dock-style", "dock-labels", "chrome-density", "dock-options",
-    "tooltips", "tooltip-delay", "task-tool", "task-chips", "task-default-project", "better-tasks", "card-chips", "empty-drag", "pdf-cover", "pdf-cover-warm", "highlight-open", "pdf-dark",
+    "tooltips", "tooltip-delay", "task-tool", "task-chips", "task-default-project", "better-tasks", "card-chips", "empty-drag", "pdf-cover", "pdf-cover-warm", "highlight-open", "pdf-dark", "pdf-reader-dark",
     "why-prompt", "resurface-intervals", "resurface", "regions-inline", "interop", "auto-enhance", "speed-log",
     "look-canvas", "look-sections", "look-highlights", "theme",
     "parse-helper-url", "parse-helper-token", "parse-engine-default", "parse-formula", "parse-ocr", "parse-page-reader", "parse-auto-read", "keep-reads", "ask-figure-images", "ask-model", "link-answer-sources", "parse-link-safe", "parse-numbered", "parse-footnotes", "parse-footnote-format",
@@ -173,7 +173,7 @@ test("UI-10: settings are grouped, described in plain language, and reset applie
       members[current].push(row.id);
     }
   }
-  assert.deepEqual(groups, ["Cards", "Integrations", "Sections", "Connections", "Board", "Performance", "PDF parse", "Image search"]);
+  assert.deepEqual(groups, ["Cards", "PDF reader", "Integrations", "Sections", "Connections", "Board", "Performance", "PDF parse", "Image search"]);
   assert.deepEqual(members.Cards, ["default-card-look", "default-card-width", "default-card-height", "enter-in-card", "show-card-badges", "space-out", "pdf-cover", "pdf-cover-warm", "highlight-open", "pdf-dark"]);
   assert.deepEqual(members.Integrations, [
     "status-better-tasks", "better-tasks", "status-task-status-tags", "task-tool", "task-chips", "task-default-project",

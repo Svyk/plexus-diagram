@@ -363,9 +363,8 @@ export function createCoverRepaintJob({ takeUrls, repaint, count, partSize = COV
       uids = [...(takeUrls?.() || [])];
       at = 0;
       if (!uids.length) {
-        try { count?.(); } catch { /* count */ }
-        uids = null;
-        return true;
+        counting = true;
+        return false;
       }
     }
     const part = uids.slice(at, at + partSize);
@@ -2975,6 +2974,33 @@ function buildBoardView(onFail, {
   // Repainting every shell per cover was 14.5 s on the PhD main board (122 PDF covers × 1,512 shells).
   let coverRepaint = null;
   let coverJob = null;
+  let coverRepaintCalls = 0;
+  const coverRepaintUids = [];
+  // Overview CSS hides the PDF body. A detached shell and a shell outside the attach rect are the same:
+  // painting them is work the user cannot see. storedDerived off keeps today's full walk.
+  const coverCullOn = () => {
+    try { return notedSpeedFlags().storedDerived !== false; } catch { return true; }
+  };
+  const coverBodyOnScreen = (item) => {
+    if (tier === "overview") return false;
+    if (itemsR.attachedUid?.(item.uid) !== true) return false;
+    if (!(size.width > 0) || !(size.height > 0)) return true;
+    const rect = rects().get(item.uid);
+    if (!rect || !(rect.w > 0) || !(rect.h > 0)) return false;
+    return rectsIntersect(rect, visibleWorldRect(vp, size, ATTACH_MARGIN));
+  };
+  const takeCoverUids = (urls) => {
+    const uids = [];
+    const cull = coverCullOn();
+    for (const item of board()?.items.values() || []) {
+      if (item?.kind !== "pdf" || !urls?.has(coverUrlOf(item))) continue;
+      if (cull && !coverBodyOnScreen(item)) continue;
+      uids.push(item.uid);
+    }
+    coverRepaintCalls += 1;
+    coverRepaintUids.push(...uids);
+    return uids;
+  };
   const repaintForCover = (url) => {
     if (disposed) return;
     // Covers land from IndexedDB after an open. Six cards per part, then the highlight count on its own,
@@ -2986,11 +3012,7 @@ function buildBoardView(onFail, {
           takeUrls: () => {
             const urls = coverRepaint;
             coverRepaint = null;
-            const uids = [];
-            for (const item of board()?.items.values() || []) {
-              if (item?.kind === "pdf" && urls?.has(coverUrlOf(item))) uids.push(item.uid);
-            }
-            return uids;
+            return takeCoverUids(urls);
           },
           repaint: (part) => itemsR.repaintItems(part),
           count: () => { try { refreshPdfHighlightCounts(); } catch { /* count */ } },
@@ -3011,10 +3033,7 @@ function buildBoardView(onFail, {
         const urls = coverRepaint;
         coverRepaint = null;
         if (disposed || !urls?.size) return;
-        const uids = [];
-        for (const item of board()?.items.values() || []) {
-          if (item?.kind === "pdf" && urls.has(coverUrlOf(item))) uids.push(item.uid);
-        }
+        const uids = takeCoverUids(urls);
         if (uids.length) itemsR.repaintItems(uids);
         try { refreshPdfHighlightCounts(); } catch { /* count */ }
       };
@@ -10387,7 +10406,7 @@ function buildBoardView(onFail, {
       };
     },
     stats() {
-      return { timers: timers.count(), listeners: listeners.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount(), edgePlacements: edgesR.placements?.() ?? 0, edgesAttached: edgesR.attachedCount?.() ?? 0 };
+      return { timers: timers.count(), listeners: listeners.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount(), edgePlacements: edgesR.placements?.() ?? 0, edgesAttached: edgesR.attachedCount?.() ?? 0, coverRepaints: coverRepaintUids.length, coverRepaintUids: coverRepaintUids.slice(), coverRepaintCalls };
     },
     // P32 live probes: cover source (pdf.js or hidden reader) and the pane's fit path. Read-only.
     pdfProbe() {

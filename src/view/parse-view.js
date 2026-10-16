@@ -817,18 +817,28 @@ export function createParseView({
       }
       if (id === "card" || id === "source") {
         let plain = "";
+        let source = "";
         if (isImageCopy(block)) {
           let live = block;
           const url = String(block.image?.url || block.url || "").trim();
-          if (!url && typeof host?.uploadFile === "function") {
+          if (!url) {
             try {
               const spec = figureImageSpec(block);
               const blob = spec ? await spec.getBlob() : null;
               if (blob) {
                 const name = `${spec.name || "figure"}.png`;
                 const file = typeof File === "function" ? new File([blob], name, { type: blob.type || "image/png" }) : blob;
-                const uploaded = await host.uploadFile(file);
-                if (uploaded) live = { ...block, image: { ...(block.image || {}), url: String(uploaded) } };
+                const pinSpec = id === "source" ? pinForBlock(block) : null;
+                if (id === "source" && !pinSpec) return false;
+                if (typeof session?.copyFigureFile === "function") {
+                  const made = await session.copyFigureFile({ spec: pinSpec, file });
+                  if (id === "source" && !made?.uid) return false;
+                  if (made?.url) live = { ...block, image: { ...(block.image || {}), url: String(made.url) } };
+                  if (made?.uid) source = made.uid;
+                } else if (typeof host?.uploadFile === "function") {
+                  const uploaded = await host.uploadFile(file);
+                  if (uploaded) live = { ...block, image: { ...(block.image || {}), url: String(uploaded) } };
+                }
               }
             } catch { /* caption only */ }
           }
@@ -836,10 +846,11 @@ export function createParseView({
         } else {
           plain = toMarkdown(parsed, [block.id]);
         }
-        let source = "";
-        if (id === "source") {
+        if (id === "source" && !source) {
           source = await ensurePin(block);
           if (!source) return false;
+        }
+        if (id === "source" && source) {
           try { onToast?.(pinnedToast(block.page)); } catch { /* host */ }
         }
         const copied = planCopiedSource({ markdown: plain, source });

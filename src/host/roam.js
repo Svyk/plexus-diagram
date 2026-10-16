@@ -3070,6 +3070,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       else if (!entry) delete openGroup.custom;
     },
 
+    // A file upload does not pass through noteWrite. A group that only uploaded would be dropped.
+    noteGroupedWrite(kind) {
+      noteWrite(typeof kind === "string" && kind ? kind : "upload");
+    },
+
     async deletePage(uid) {
       stats.writes++;
       await mutate(() => data.page.delete({ page: { uid } }));
@@ -3611,6 +3616,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!url) throw new Error("upload-failed");
       stats.writes++;
       return url;
+    },
+
+    async deleteFile(url) {
+      const remove = api.file?.delete;
+      const target = typeof url === "string" ? url.trim() : "";
+      if (!target || typeof remove !== "function") return false;
+      await remove.call(api.file, { url: target });
+      return true;
     },
 
     searchPages(text, limit = 40) {

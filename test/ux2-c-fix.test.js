@@ -4,9 +4,12 @@ import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createHost } from "../src/host/roam.js";
 import { matchParsedBlock, pageFracFromBbox } from "../src/model/pdf-pin.js";
+import { acquireSession } from "../src/session.js";
 import { jumpSidebarPdf, pdfTargetsMatch, waitForSidebarPdf, watchNodeGone } from "../src/view/pin-reveal.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
+import { createFakeRoam } from "./fixtures/fake-roam.js";
 
 function figureDoc() {
   const page = { n: 3, w: 100, h: 200, rotation: 0 };
@@ -196,4 +199,71 @@ test("a sidebar PDF that is already open is jumped without waiting", async () =>
   } finally {
     restore();
   }
+});
+
+function pinSetup() {
+  const fake = createFakeRoam();
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  fake.seedBoard({
+    uid: "b1",
+    props: { plexus: { v: 2 } },
+    children: [{ uid: "c1", string: "note", props: { plexus: { x: 0, y: 0, w: 280, h: 160 } } }],
+  });
+  fake.seedPage({
+    uid: "page1",
+    title: "Lab",
+    children: [{ uid: "pdf1", string: "{{[[pdf]]: http://x/y.pdf}}" }],
+  });
+  const session = acquireSession("b1", { host, linkDelay: 0 });
+  return { fake, host, session };
+}
+
+const figurePin = { pdfUid: "pdf1", page: 6, frac: [0.1, 0.2, 0.3, 0.1], caption: "Osmotic water flow" };
+
+function pinsOf(fake) {
+  const uid = fake.children("pdf1").find((id) => String(fake.block(id)?.string) === "{{[[plexus-pins]]}}");
+  return uid ? fake.block(uid) : null;
+}
+
+test("a figure copy undoes the upload and the pin together", async () => {
+  const { fake, session } = pinSetup();
+  const deleted = [];
+  const uploads = [];
+  fake.setUpload(async ({ file }) => {
+    uploads.push(file?.name || "file");
+    return `https://files.test/${uploads.length}.png`;
+  });
+  fake.setFileDelete(async ({ url }) => { deleted.push(url); });
+  const card = await session.insertParsedCard({ x: 10, y: 10, markdown: "- stay" });
+  const made = await session.copyFigureFile({ spec: figurePin, file: { name: "fig.png", type: "image/png" } });
+  assert.equal(made.ok, true);
+  assert.equal(made.url, "https://files.test/1.png");
+  assert.ok(made.uid);
+  assert.ok(pinsOf(fake));
+  await session.undo();
+  assert.deepEqual(deleted, ["https://files.test/1.png"]);
+  assert.equal(pinsOf(fake), null);
+  assert.equal(fake.has(card.uid), true);
+  assert.equal(fake.calls.filter((row) => row[0] === "undo").length, 0);
+  await session.redo();
+  assert.ok(pinsOf(fake));
+  assert.equal(uploads.length, 2);
+
+  const again = await session.copyFigureFile({ spec: figurePin, file: { name: "fig.png", type: "image/png" } });
+  assert.equal(again.reused, true);
+  assert.equal(again.uid, made.uid);
+  const before = deleted.length;
+  await session.undo();
+  assert.equal(deleted.length, before + 1);
+  assert.equal(fake.has(made.uid), true);
+
+  deleted.length = 0;
+  const missed = await session.copyFigureFile({ spec: { pdfUid: "pdf1" }, file: { name: "fig.png", type: "image/png" } });
+  assert.equal(missed.ok, false);
+  assert.ok(deleted.includes(missed.url) || deleted.length >= 1);
+  await session.undo();
+  assert.equal(fake.has(card.uid), true);
+  const menu = readFileSync(new URL("../src/view/parse-view.js", import.meta.url), "utf8");
+  assert.match(menu, /copyFigureFile\(/);
+  assert.match(menu, /figureCardMarkdown\(live, parsed\)/);
 });

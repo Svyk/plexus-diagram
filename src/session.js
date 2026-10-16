@@ -1969,7 +1969,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
   // Reads the PDF block's region children. One group: the caller is already inside runParsed.
   async function writePdfPin(spec) {
-    if (!spec?.pdfUid || !Array.isArray(spec.frac)) return { uid: "", reused: false };
+    const created = [];
+    if (!spec?.pdfUid || !Array.isArray(spec.frac)) return { uid: "", reused: false, created };
     let kids = [];
     try {
       const raw = host.pullTree?.(spec.pdfUid, 2, 200);
@@ -1994,12 +1995,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       containerUid: container?.uid || "",
       pinUid: host.generateUid(),
     });
-    if (plan.reused) return { uid: plan.uid, reused: true };
+    if (plan.reused) return { uid: plan.uid, reused: true, created };
     let containerUid = container?.uid || "";
     let pinUid = plan.uid;
     for (const step of plan.creates) {
       const parentUid = step.role === "pin" && !step.parentUid ? containerUid : step.parentUid;
-      if (!parentUid) return { uid: "", reused: false };
+      if (!parentUid) return { uid: "", reused: false, created };
       const made = await host.createBlock({
         parentUid,
         order: "last",
@@ -2009,10 +2010,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         props: step.props,
       });
       const id = typeof made === "string" ? made : made?.uid || step.uid || "";
+      if (id) created.push({ uid: id, parentUid, string: step.string, open: step.open, props: step.props ? clone(step.props) : undefined });
       if (step.role === "container") containerUid = id;
       if (step.role === "pin") pinUid = id || pinUid;
     }
-    return { uid: pinUid, reused: false };
+    return { uid: pinUid, reused: false, created };
   }
   async function citePin(parentUid, pin) {
     if (!parentUid || !pin) return "";
@@ -2372,6 +2374,99 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         const writes = Math.max(0, (Number(host.stats?.writes) || 0) - before);
         return { ok: Boolean(made.uid), uid: made.uid || "", reused: Boolean(made.reused), writes };
       });
+    },
+
+    // The figure file and its pin are one undo. A failed pin deletes the upload before the group closes.
+    copyFigureFile({ spec, file } = {}) {
+      if (destroyed || gone) return Promise.resolve({ ok: false, reason: "gone" });
+      if (!file && !spec?.pdfUid) return Promise.resolve({ ok: false, reason: "empty" });
+      const run = host.group ? (fn) => host.group(fn, "figure") : (fn) => fn();
+      return queue.run(() => run(async () => {
+        const created = [];
+        let uploadedUrl = "";
+        let failed = false;
+        let noted = false;
+        const keep = () => {
+          if (noted) return;
+          noted = true;
+          try { host.noteGroupedWrite?.("upload"); } catch { /* host */ }
+        };
+        const custom = {
+          async undo() {
+            for (const row of created.slice().reverse()) {
+              if (!row?.uid) continue;
+              try { await host.deleteBlock(row.uid); } catch { /* already gone */ }
+            }
+            if (!uploadedUrl) return;
+            const url = uploadedUrl;
+            uploadedUrl = "";
+            try { await host.deleteFile?.(url); } catch { /* already gone */ }
+          },
+          async redo() {
+            if (failed) return;
+            for (const row of created) {
+              try {
+                await host.createBlock({
+                  parentUid: row.parentUid,
+                  order: "last",
+                  uid: row.uid,
+                  string: row.string,
+                  open: row.open,
+                  props: row.props,
+                });
+              } catch { /* already there */ }
+            }
+            if (file && !uploadedUrl) {
+              try { uploadedUrl = String(await host.uploadFile(file) || ""); } catch { uploadedUrl = ""; }
+            }
+          },
+        };
+        try { host.setCustomUndo?.(custom); } catch { /* host */ }
+        if (file) {
+          try { uploadedUrl = String(await host.uploadFile(file) || ""); }
+          catch {
+            try { host.setCustomUndo?.(null); } catch { /* host */ }
+            return { ok: false, uid: "", url: "", reused: false, reason: "upload-failed" };
+          }
+          if (uploadedUrl) keep();
+        }
+        let made = { uid: "", reused: false, created: [] };
+        if (spec?.pdfUid) {
+          try { made = await writePdfPin(spec) || made; }
+          catch {
+            failed = true;
+            for (const row of created.slice().reverse()) {
+              try { await host.deleteBlock(row.uid); } catch { /* gone */ }
+            }
+            if (uploadedUrl) {
+              const url = uploadedUrl;
+              uploadedUrl = "";
+              try { await host.deleteFile?.(url); } catch { /* gone */ }
+            }
+            if (!noted) keep();
+            return { ok: false, uid: "", url: "", reused: false, reason: "write-failed" };
+          }
+          for (const row of made.created || []) created.push(row);
+        }
+        if (spec?.pdfUid && !made.uid) {
+          failed = true;
+          if (uploadedUrl) {
+            const url = uploadedUrl;
+            uploadedUrl = "";
+            try { await host.deleteFile?.(url); } catch { /* gone */ }
+          }
+          for (const row of created.slice().reverse()) {
+            try { await host.deleteBlock(row.uid); } catch { /* gone */ }
+            created.pop();
+          }
+          if (!noted) keep();
+          return { ok: false, uid: "", url: "", reused: false };
+        }
+        if (!uploadedUrl && !created.length) {
+          try { host.setCustomUndo?.(null); } catch { /* host */ }
+        }
+        return { ok: true, uid: made.uid || "", url: uploadedUrl, reused: Boolean(made.reused) };
+      }));
     },
 
     // Notes a kept read on the PDF block's props: one write, one undo step. Nothing else changes.

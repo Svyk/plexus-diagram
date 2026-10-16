@@ -329,3 +329,80 @@ test("E2-2: the zoom-in settle parks far edges in slices (at most ~500 per task)
     assert.ok(m.view.stats().edgesAttached < 1500, "the far edges are parked in the end");
   } finally { probe.span = orig; m.done(); }
 });
+
+// E2-1 (perf2): overviewCanvas. QA3: while zooming toward the map tier the canvas bitmap was upscaled (blurry flat
+// blocks), and at ~0.3 the flat line-colour blocks turned into card-look shells in one frame (the hand-back pop).
+const bitmapScale = (canvas) => canvas.width / parseFloat(canvas.style.width || /(?:^|;)width:([\d.]+)px/.exec(canvas.style.cssText)?.[1]);
+test("E2-1: on the overview canvas a zoom burst redraws the bitmap before it would be upscaled (no blur)", async () => {
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true }, fullscreen: true });
+  try {
+    await settledIn(m);
+    const canvas = m.view.root.querySelector(".pxd-underlay");
+    const worst = [];
+    for (let i = 0; i < 4; i += 1) {
+      m.stub.dispatch(m.view.root, "wheel", { deltaX: 0, deltaY: -20, ctrlKey: true, deltaMode: 0, clientX: 700, clientY: 450 });
+      await tick(16);
+      m.stub.flushFrames();
+      const z = m.view.viewport().zoom;
+      worst.push(+(z / bitmapScale(canvas)).toFixed(2));
+    }
+    assert.equal(m.view.state().lod, "overview", "still the canvas tier during the burst");
+    assert.ok(worst.every((u) => u <= 1.35), `upscale per frame: ${worst}`);
+  } finally { m.done(); }
+});
+
+test("E2-1: the hand-back from the overview canvas to the map tier draws the boxes in the map card look with titles", async () => {
+  const VARS2 = { "--pxd-card": "#26333f", "--pxd-border-strong": "#6b7f91", "--pxd-red-line": "#f87171", "--pxd-red-fill": "#3a1f1f", "--pxd-red-text": "#fca5a5", "--pxd-text": "#e5e7eb" };
+  const titled = (board) => { let i = 0; for (const item of board.items.values()) { if (item.type === "section") continue; item.color = i % 2 ? "red" : ""; item.title = `Card ${i}`; i += 1; } };
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true }, fullscreen: true, theme: VARS2, prep: titled });
+  try {
+    await settledIn(m);
+    const canvas = m.view.root.querySelector(".pxd-underlay");
+    const frames = [];
+    let handBack = null;
+    for (let i = 0; i < 6; i += 1) {
+      m.stub.dispatch(m.view.root, "wheel", { deltaX: 0, deltaY: -20, ctrlKey: true, deltaMode: 0, clientX: 700, clientY: 450 });
+      await tick(16);
+      m.stub.flushFrames();
+      frames.push(m.view.paintAudit());
+    }
+    for (let i = 0; i < 30 && !handBack; i += 1) {
+      await tick(16);
+      m.stub.flushTimers();
+      if (m.view.state().lod !== "overview" && canvas.style.display !== "none") handBack = canvas.__ctx.ops.map((op) => op.join(" "));
+      m.stub.flushFrames();
+      frames.push(m.view.paintAudit());
+    }
+    for (let i = 0; i < 60; i += 1) { await tick(16); m.stub.flushTimers(); m.stub.flushFrames(); m.stub.flushIdle(); frames.push(m.view.paintAudit()); }
+    assert.equal(m.view.state().lod, "map");
+    assert.ok(handBack, "the canvas is up when the tier flips");
+    assert.ok(handBack.includes("fill #26333f"), `card fill, not flat line-colour blocks: ${handBack.slice(0, 6)}`);
+    assert.ok(handBack.includes("stroke #f87171") && handBack.includes("stroke #6b7f91"), "card borders");
+    assert.ok(handBack.some((op) => op.startsWith("fillText #fca5a5 Card")), "coloured cards' titles in the palette text colour");
+    assert.ok(!handBack.includes("fillRect #f87171"), "no overview line-colour block");
+    assert.deepEqual(missingFrames(frames), []);
+  } finally { m.done(); }
+});
+
+// E2-4 (perf2): QA3 C zoom-out: the burst boxes were dark detail cards with a faint border on a dark board, a
+// near-blank frame (#9) and sparse dim boxes. Below a readable size their title and body are text-coloured bars.
+test("E2-4: a zoom-out burst from detail draws the far cards with greeked titles and body lines, not empty dark boxes", async () => {
+  const VARS3 = { "--pxd-card": "#26333f", "--pxd-border-strong": "#6b7f91", "--pxd-text": "#e5e7eb" };
+  const titled = (board) => { let i = 0; for (const item of board.items.values()) { if (item.type === "section") continue; item.title = `Card number ${i}`; i += 1; } };
+  const m = mountBig({ x: -2000, y: -1500, zoom: 1 }, { theme: VARS3, prep: titled });
+  try {
+    await settledIn(m);
+    for (let i = 0; i < 6; i += 1) {
+      m.stub.dispatch(m.view.root, "wheel", { deltaX: 0, deltaY: 20, ctrlKey: true, deltaMode: 0, clientX: 700, clientY: 450 });
+      await tick(16);
+      m.stub.flushFrames();
+    }
+    assert.ok(m.view.viewport().zoom < 0.5);
+    const canvas = m.view.root.querySelector(".pxd-underlay");
+    assert.ok(canvas && canvas.style.display !== "none");
+    const ops = canvas.__ctx.ops.map((op) => op.join(" "));
+    const bars = ops.filter((op) => op === "fillRect #e5e7eb").length;
+    assert.ok(bars > 100, `greeked text bars on the burst boxes: ${bars}`);
+    assert.ok(ops.includes("fill #26333f"), "the boxes keep the card fill");
+  } finally { m.done(); }
+});

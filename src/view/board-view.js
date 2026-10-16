@@ -4192,8 +4192,11 @@ function buildBoardView(onFail, {
   // The tier the boxes were drawn for: a burst canvas kept through a settle that flipped the tier is drawn again.
   let underlayTier = "";
   const showUnderlay = () => {
-    // C2: the overview canvas is the underlay already. A pan or a zoom burst does not redraw it.
+    // C2: the overview canvas is the underlay already. A pan or a zoom burst does not redraw it (unless it no longer
+    // covers the view sharply, E2-1).
     if (overviewCanvasOn() && paintOverviewCanvas({ band: false })) return;
+    // E2-1: a burst canvas that the camera has left, or zoomed past its resolution, is drawn again (fills only).
+    if (underlayDrawn && underlayKind === "burst" && size.width && !underlay.covers(visibleWorldRect(vp, size, 0), vp.zoom, win?.devicePixelRatio || 1)) underlayDrawn = false;
     if (underlayDrawn) return;
     underlayDrawn = true;
     underlayKind = "burst";
@@ -4204,7 +4207,7 @@ function buildBoardView(onFail, {
     for (const item of b.items.values()) {
       if (item.type === "section") continue;
       const rect = r.get(item.uid);
-      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect, color: item.color || "" });
+      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect, color: item.color || "", title: item.title || "" });
     }
     const edges = [];
     if (edgesR.isVirtual?.(b)) {
@@ -4215,8 +4218,10 @@ function buildBoardView(onFail, {
       }
     }
     underlayTier = tier;
-    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: styledUnderlay(), tier });
+    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: styledUnderlay(), tier, view: underlayView() });
   };
+  // E2-1: the camera's world rect, for the underlay's window and titles (null before the first measure).
+  const underlayView = () => (size.width ? visibleWorldRect(vp, size, 0) : null);
   const endUnderlay = () => { underlayDrawn = false; };
   // Live at map zoom drops the snapshot while shells are still queued. Those cards stay as boxes on the
   // gesture underlay (pointer-events none) until the pump or a hit builds them. A gesture hides that canvas
@@ -4267,7 +4272,7 @@ function buildBoardView(onFail, {
       }
     }
     underlayTier = tier;
-    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: styledUnderlay(), tier });
+    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: styledUnderlay(), tier, view: underlayView() });
   };
   const releaseUnderlay = () => {
     if (overviewCanvasOn() && paintOverviewCanvas()) return;
@@ -4290,7 +4295,7 @@ function buildBoardView(onFail, {
       if (item.type === "section" || skip?.has(item.uid)) continue;
       const rect = r.get(item.uid);
       if (!rect || !rectsIntersect(rect, view) || itemsR.attachedUid(item.uid)) continue;
-      out.push({ uid: item.uid, rect, color: item.color || "" });
+      out.push({ uid: item.uid, rect, color: item.color || "", title: item.title || "" });
     }
     return out;
   };
@@ -4301,7 +4306,7 @@ function buildBoardView(onFail, {
     gapCover = true;
     underlayKind = "cover";
     underlayTier = tier;
-    underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: true, tier });
+    underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: true, tier, view: underlayView() });
     return true;
   };
   refreshGapCover = () => {
@@ -4340,7 +4345,8 @@ function buildBoardView(onFail, {
     const model = rects();
     const attached = itemsR.attachedCount?.() ?? 0;
     if (b !== ovModel || model !== ovRects || attached !== ovAttached) ovDirty = true;
-    if (shown && !ovDirty && (!band || nextBand === ovBand)) { underlayDrawn = true; return true; }
+    const sharp = !size.width || underlay.covers(visibleWorldRect(vp, size, 0), vp.zoom, win?.devicePixelRatio || 1);
+    if (shown && !ovDirty && sharp && (!band || nextBand === ovBand)) { underlayDrawn = true; return true; }
     ovDirty = false;
     ovBand = nextBand;
     ovModel = b;
@@ -4369,7 +4375,7 @@ function buildBoardView(onFail, {
     coverUids = new Set();
     ovDraws += 1;
     ovItems = items.length;
-    underlay.drawOverview({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
+    underlay.drawOverview({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, view: underlayView() });
     return true;
   };
   // C1. The settle after a fit or a zoom out on a big board attached every near shell and edge in one task (PhD MAIN
@@ -4470,7 +4476,9 @@ function buildBoardView(onFail, {
     if (!edgesLeft && !((itemsR.attachLeft?.() || 0) > 0)) { endSlice(); releaseUnderlay(); return; }
     // A burst's canvas (or the overview canvas being left) already shows every box that is not attached; a fit (no
     // burst) or the overview cover draws it.
-    const stale = underlayKind === "burst" && styledUnderlay() && underlayTier !== tier;
+    // E2-1: the overview canvas being left is drawn again in the new tier's card look (fill, border, radius, title), so
+    // a map shell that attaches over its box changes nothing (it was a flat line-colour block: the pop at ~0.3).
+    const stale = styledUnderlay() && ((underlayKind === "burst" && underlayTier !== tier) || (underlayKind === "overview" && tier !== "overview"));
     if (underlay.isShown() && !stale && (underlayKind === "burst" || underlayKind === "overview")) underlayDrawn = true;
     else { underlayDrawn = false; showUnderlay(); }
     slicing = true;

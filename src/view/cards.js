@@ -6878,7 +6878,7 @@ export function createItemRenderer({
       for (const uid of lastBoard?.order || []) {
         if (!queued.has(uid) || shells.has(uid)) continue;
         const rect = coverShift?.get(uid) || lastRects?.get(uid);
-        if (rect) out.push({ uid, rect, color: lastBoard.items.get(uid)?.color || "" });
+        if (rect) out.push({ uid, rect, color: lastBoard.items.get(uid)?.color || "", title: lastBoard.items.get(uid)?.title || "" });
       }
       return out;
     },

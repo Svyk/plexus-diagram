@@ -269,7 +269,10 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
           clearRect() { ops.length = 0; }, fillRect() { ops.push(["fillRect", ctx.fillStyle]); }, strokeRect() {}, beginPath() {}, rect() {}, roundRect() {},
           fill() { ops.push(["fill", ctx.fillStyle]); }, stroke() { ops.push(["stroke", ctx.strokeStyle]); },
           save() {}, restore() {}, scale() {}, translate() {}, setTransform() {}, moveTo() {}, lineTo() {},
-          fillStyle: "", strokeStyle: "", lineWidth: 1, globalAlpha: 1,
+          // Text: ~0.55 em per character at the font's px size.
+          fillText(text) { ops.push(["fillText", ctx.fillStyle, String(text)]); },
+          measureText(text) { const px = Number(/([\d.]+)px/.exec(ctx.font)?.[1]) || 10; return { width: String(text).length * px * 0.55 }; },
+          fillStyle: "", strokeStyle: "", lineWidth: 1, globalAlpha: 1, font: "", textBaseline: "alphabetic",
         };
         el.__ctx = ctx;
         return ctx;

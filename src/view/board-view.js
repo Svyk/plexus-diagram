@@ -8384,7 +8384,7 @@ function buildBoardView(onFail, {
     const hostNode = tablePointerTarget(node);
     return Boolean(hostNode && root.contains(hostNode));
   };
-  const tablePressSkip = ".pxd-table-overlay, .pxd-roam-table__open, .rg-col-resize, .rg-row-resize, .pxd-table-caption";
+  const tablePressSkip = ".pxd-table-overlay, .pxd-roam-table__open, .rg-root, .rg-col-resize, .rg-row-resize, .pxd-table-caption";
   const shieldTablePress = (event) => {
     try { if (notedSpeedFlags().tableCaptionEdit === false) return; } catch { return; }
     if (event.target?.closest?.(tablePressSkip)) return;

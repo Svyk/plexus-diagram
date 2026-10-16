@@ -120,7 +120,8 @@ export function blockKind(string) {
 export function libraryKind(row) {
   if (row?.kind === "board") return "board";
   if (row?.kind === "part") return LIBRARY_PART_TYPES.includes(row.part) ? row.part : "paragraph";
-  if (row?.kind === "block") return blockKind(row.string ?? row.text);
+  // A cached PDF row already knows its kind. blockKind() would rescan the string.
+  if (row?.kind === "block") return row.blockKind || blockKind(row.string ?? row.text);
   const title = row?.title ?? "";
   if (row?.kind === "daily" || isDailyTitle(title)) return "daily";
   return "page";
@@ -147,7 +148,9 @@ export function narrowLibrary(rows, filter, now = Date.now()) {
       if (!tags.includes(f.tag)) return false;
     }
     if (terms.length) {
-      const hay = [row?.title, row?.string, row?.text].filter((v) => v != null).join("\n").toLowerCase();
+      const hay = typeof row?.lower === "string"
+        ? row.lower
+        : [row?.title, row?.string, row?.text].filter((v) => v != null).join("\n").toLowerCase();
       if (!terms.every((t) => hay.includes(t))) return false;
     }
     if (f.days && !editedSince(row?.edited, f.days, now)) return false;

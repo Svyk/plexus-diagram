@@ -1879,6 +1879,38 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // The browse list's page titles and times: one pull over every page (~80 ms in a 6.5k-page graph), kept a short while
   // so reopening the panel, switching sorts or clearing the box does not read the graph again.
   let browsePages = null;
+  // One prepared copy of the caller's PDF list. A new array (panel open, board change) rebuilds it.
+  // Typing passes the same array, so the strings are not scanned again.
+  let pdfPrepFrom = null;
+  const pdfPrep = [];
+  const preparedPdfBlocks = (list) => {
+    if (list === pdfPrepFrom) return pdfPrep;
+    pdfPrepFrom = list;
+    pdfPrep.length = 0;
+    const src = Array.isArray(list) ? list : [];
+    for (let i = 0; i < src.length; i += 1) {
+      const row = src[i];
+      const string = typeof row?.string === "string" ? row.string : "";
+      const uid = row?.uid;
+      if (!string || uid == null || uid === "") continue;
+      const pageTitle = typeof row.pageTitle === "string" ? row.pageTitle : "";
+      if (pageTitle.startsWith("roam/")) continue;
+      const knownUrl = typeof row.url === "string" ? row.url : "";
+      pdfPrep.push({
+        kind: "block",
+        blockKind: "pdf",
+        uid: String(uid),
+        string,
+        lower: string.toLowerCase(),
+        url: knownUrl || pdfMacroUrl(string),
+        pageTitle,
+        edited: null,
+        tags: [],
+        onBoard: false,
+      });
+    }
+    return pdfPrep;
+  };
   const attachMeta = (rows) => {
     const uids = rows.map((r) => r.uid).filter(Boolean);
     if (!uids.length) return rows;
@@ -3718,48 +3750,74 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         return out;
       };
       // PDFs named by what they are (title, authors, venue, first words), ahead of the capped text queries.
+      // The panel caches the PDF list for one open. Tag and days still ask the graph.
+      const pdfCacheOn = !f.tag && since == null && typeof pdfList === "function"
+        && ((f.text && typeof pdfMatch === "function" && wantsType(f, "pdf")) || f.types.includes("pdf"));
+      let pdfCached = null;
+      if (pdfCacheOn) {
+        try { pdfCached = pdfList() || []; } catch { pdfCached = []; }
+      }
       if (f.text && typeof pdfMatch === "function" && wantsType(f, "pdf")) {
         const terms = queryTerms(f.text);
-        const inputs = ["$", "?kind"];
-        const where = [];
-        const args = [BLOCK_KIND_PATTERNS.pdf];
-        if (f.tag) {
-          inputs.push("?name");
-          args.push(f.tag);
-          where.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
-        }
-        where.push("[?b :block/string ?s]", "[(re-pattern ?kind) ?kre]", "[(re-find ?kre ?s)]", "[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
-        const find = ["?s", "?u", "?t"];
-        if (since != null) {
-          inputs.push("?since");
-          args.push(since);
-          find.push("?e");
-          where.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
-        }
-        const cached = !f.tag && since == null && typeof pdfList === "function" ? pdfList() : null;
-        const found = Array.isArray(cached)
-          ? cached.map((r) => [r.string, r.uid, r.pageTitle])
-          : timed("pdf-names", () => host.q(`[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where.join(" ")}]`, ...args));
-        for (const rec of found) {
-          const string = rec?.[0];
-          const uid = rec?.[1];
-          const pageTitle = rec?.[2];
-          if (typeof string !== "string" || !uid) continue;
-          if (typeof pageTitle === "string" && pageTitle.startsWith("roam/")) continue;
-          const url = pdfMacroUrl(string);
-          let hay = "";
-          try { hay = url ? String(pdfMatch(url, terms) || "") : ""; } catch { hay = ""; }
-          if (!hay) continue;
-          if (!push({
-            kind: "block",
-            uid: String(uid),
-            string,
-            text: hay,
-            pageTitle: typeof pageTitle === "string" ? pageTitle : "",
-            edited: since != null ? editedOf(rec?.[3]) : null,
-            tags: f.tag ? [f.tag] : [],
-            onBoard: false,
-          })) break;
+        if (pdfCacheOn) {
+          const prepared = preparedPdfBlocks(pdfCached);
+          for (let i = 0; i < prepared.length; i += 1) {
+            if (candidates.length >= cap) break;
+            const rec = prepared[i];
+            let hay = "";
+            try { hay = rec.url ? String(pdfMatch(rec.url, terms) || "") : ""; } catch { hay = ""; }
+            if (!hay) continue;
+            push({
+              kind: "block",
+              blockKind: "pdf",
+              uid: rec.uid,
+              string: rec.string,
+              text: hay,
+              pageTitle: rec.pageTitle,
+              edited: null,
+              tags: [],
+              onBoard: false,
+            });
+          }
+        } else {
+          const inputs = ["$", "?kind"];
+          const where = [];
+          const args = [BLOCK_KIND_PATTERNS.pdf];
+          if (f.tag) {
+            inputs.push("?name");
+            args.push(f.tag);
+            where.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
+          }
+          where.push("[?b :block/string ?s]", "[(re-pattern ?kind) ?kre]", "[(re-find ?kre ?s)]", "[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
+          const find = ["?s", "?u", "?t"];
+          if (since != null) {
+            inputs.push("?since");
+            args.push(since);
+            find.push("?e");
+            where.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
+          }
+          const found = timed("pdf-names", () => host.q(`[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where.join(" ")}]`, ...args));
+          for (const rec of found) {
+            const string = rec?.[0];
+            const uid = rec?.[1];
+            const pageTitle = rec?.[2];
+            if (typeof string !== "string" || !uid) continue;
+            if (typeof pageTitle === "string" && pageTitle.startsWith("roam/")) continue;
+            const url = pdfMacroUrl(string);
+            let hay = "";
+            try { hay = url ? String(pdfMatch(url, terms) || "") : ""; } catch { hay = ""; }
+            if (!hay) continue;
+            if (!push({
+              kind: "block",
+              uid: String(uid),
+              string,
+              text: hay,
+              pageTitle: typeof pageTitle === "string" ? pageTitle : "",
+              edited: since != null ? editedOf(rec?.[3]) : null,
+              tags: f.tag ? [f.tag] : [],
+              onBoard: false,
+            })) break;
+          }
         }
       }
 
@@ -3916,6 +3974,33 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       // PDF, image, web link, region and pin blocks. One bounded string-pattern query per kind, capped like the rest.
       for (const kind of ["pdf", "image", "web", "region", "pin"]) {
         if (!f.types.includes(kind)) continue;
+        if (kind === "pdf" && pdfCacheOn) {
+          queries.push({ name: "pdf-cache", ms: 0 });
+          const terms = f.text ? queryTerms(f.text) : [];
+          const prepared = preparedPdfBlocks(pdfCached);
+          for (let i = 0; i < prepared.length; i += 1) {
+            if (candidates.length >= cap) break;
+            const rec = prepared[i];
+            if (terms.length) {
+              let ok = true;
+              for (let t = 0; t < terms.length; t += 1) if (!rec.lower.includes(terms[t])) { ok = false; break; }
+              if (!ok) continue;
+            }
+            // A copy: markOnBoard and the card must not stick on the cached row. A duplicate uid (the identity hit) does not stop the rest.
+            push({
+              kind: "block",
+              blockKind: "pdf",
+              uid: rec.uid,
+              string: rec.string,
+              lower: rec.lower,
+              pageTitle: rec.pageTitle,
+              edited: null,
+              tags: [],
+              onBoard: false,
+            });
+          }
+          continue;
+        }
         const find = ["?s", "?u", "?t"];
         const inputs = ["$", "?kind"];
         const where = [];

@@ -6291,7 +6291,7 @@ function buildBoardView(onFail, {
     if (!partsIdx) {
       partsIdx = createPartsIndex({
         store: createParseStore({ indexedDB: doc.defaultView?.indexedDB }),
-        listPdfs: () => host?.listPdfBlocks?.() || [],
+        listPdfs: () => pdfBlocks(),
       });
       offPartsChange = partsIdx.onChange(() => { try { panel?.refreshSearch?.(); } catch { /* panel gone */ } });
     }
@@ -9133,6 +9133,11 @@ function buildBoardView(onFail, {
   // ------------------------------------------------------------ session events
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {
     if (disposed || suspended) return;
+    // A card added or removed can change which PDFs exist. The next search reads the list once.
+    if (structural) {
+      pdfBlockList = null;
+      try { partsIdx?.invalidate(); } catch { /* index gone */ }
+    }
     const b = board();
     const current = crumbList[crumbList.length - 1];
     if (current && b) {

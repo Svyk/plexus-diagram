@@ -6,6 +6,8 @@ import test from "node:test";
 
 import { figureCardMarkdown, isSourceAttrString, matchParsedBlock, pageFracFromBbox, planCopiedSource } from "../src/model/pdf-pin.js";
 import { createPageChips } from "../src/view/page-chips.js";
+import { applyPdfReaderDark, normalizePdfReaderDark, PDF_READER_DARK_CLASS, pdfReaderDarkOn } from "../src/view/pdf-reader-dark.js";
+import { createSettingsPanel, settingsDefaults } from "../src/settings.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const CAPTION = "Fig. 1 | Data characterization, preprocessing pipeline, and data analysis.";
@@ -98,4 +100,64 @@ test("show parsed flashes the matched part and scrolls it into view", () => {
   } finally {
     restore();
   }
+});
+
+test("PDF dark mode follows Roam, inverts native page canvases, and leaves highlights alone", () => {
+  assert.equal(normalizePdfReaderDark(undefined), "follow");
+  assert.equal(normalizePdfReaderDark("ON"), "on");
+  assert.equal(normalizePdfReaderDark("nope"), "follow");
+  const dark = {
+    documentElement: { className: "bp3-dark", classList: { contains: (name) => name === "bp3-dark" } },
+    body: { className: "", classList: { contains: () => false } },
+  };
+  const light = {
+    documentElement: { className: "", classList: { contains: () => false } },
+    body: { className: "", classList: { contains: () => false } },
+  };
+  assert.equal(pdfReaderDarkOn("follow", dark, ""), true);
+  assert.equal(pdfReaderDarkOn("follow", light, "rgb(255, 255, 255)"), false);
+  assert.equal(pdfReaderDarkOn("off", dark, ""), false);
+  assert.equal(pdfReaderDarkOn("on", light, "rgb(255, 255, 255)"), true);
+  const src = readFileSync(new URL("../src/view/pdf-reader-dark.js", import.meta.url), "utf8");
+  assert.equal(src.includes("prefers-color-scheme"), false);
+  const css = readFileSync(new URL("../src/css/read-pane.css", import.meta.url), "utf8");
+  const start = css.indexOf("html.pxd-pdf-reader-dark .rm-pdf-container .page > canvas");
+  assert.ok(start > 0);
+  const rule = css.slice(start, css.indexOf("}", start));
+  assert.match(rule, /filter:\s*invert\(1\) hue-rotate\(180deg\)/);
+  assert.equal(/img|Highlight|pxd-parsed-box|textLayer/.test(rule), false);
+  assert.equal(settingsDefaults()["pdf-reader-dark"], "follow");
+  const row = createSettingsPanel().settings.find((entry) => entry.id === "pdf-reader-dark");
+  assert.equal(row.name, "PDF dark mode");
+  assert.deepEqual(row.action.items, ["off", "follow", "on"]);
+  const groups = [];
+  let current = null;
+  const members = {};
+  for (const entry of createSettingsPanel().settings) {
+    if (String(entry.id).startsWith("group-")) {
+      current = entry.name;
+      groups.push(current);
+      members[current] = [];
+    } else if (current && entry.id !== "reset-plexus-settings") members[current].push(entry.id);
+  }
+  assert.equal(groups[1], "PDF reader");
+  assert.deepEqual(members["PDF reader"], ["pdf-reader-dark"]);
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  assert.match(readme, /\| PDF reader \| PDF dark mode \|/);
+  const html = {
+    names: new Set(),
+    classList: null,
+  };
+  html.classList = {
+    toggle(name, on) { if (on) html.names.add(name); else html.names.delete(name); },
+    contains(name) { return html.names.has(name); },
+  };
+  applyPdfReaderDark({ documentElement: html }, true);
+  assert.equal(html.classList.contains(PDF_READER_DARK_CLASS), true);
+  applyPdfReaderDark({ documentElement: html }, false);
+  assert.equal(html.classList.contains(PDF_READER_DARK_CLASS), false);
+  const board = readFileSync(new URL("../src/view/board-view.js", import.meta.url), "utf8");
+  assert.match(board, /pdfReaderDarkOn\(readSetting\("pdf-reader-dark"\)/);
+  const feature = readFileSync(new URL("../src/feature.js", import.meta.url), "utf8");
+  assert.match(feature, /applyPdfReaderDark\(/);
 });

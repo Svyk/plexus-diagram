@@ -705,6 +705,25 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert {
   z-index: 2;
 }
 
+/* Roam's native PDF window. The page canvas is inverted; a real <img> beside it is not,
+   so an element photo stays natural. Canvas-baked figures invert with the text.
+   Highlight marks, the text layer, and parsed outlines are not filtered.
+   The pane's own pdf-dark rules are more specific, so they keep the reader beside the board. */
+html.pxd-pdf-reader-dark .rm-pdf-container .page > canvas,
+html.pxd-pdf-reader-dark .rm-pdf-container .page > .canvasWrapper > canvas {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+html.pxd-pdf-reader-dark .rm-pdf-toolbar {
+  background: #252a31;
+  color: #e7e8ea;
+}
+
+html.pxd-pdf-reader-dark .rm-pdf-container,
+html.pxd-pdf-reader-dark .PdfHighlighter {
+  background: #14171b;
+}
+
 /* The dock stays inside the free area left of the pane. When that area is narrower than the dock,
    the dock drops its labels, shrinks its buttons and scrolls instead of running under the pane. */
 .pxd-root.pxd-root--read .pxd-palette > * {

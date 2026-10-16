@@ -91,7 +91,8 @@ import { graphOfWindow } from "../model/ask-models.js";
 import { BUILTIN_OPTIONS, readParsedUrls } from "./parse-view.js";
 import { createPdfWarm } from "./pdf-warm.js";
 import { createFirstPageRenderer, createPdfMetaLookup, detectPdfjs, firstPageAllowed } from "./pdf-first-page.js";
-import { createThemeFollow } from "./theme-follow.js";
+import { createThemeFollow, sampleRoam } from "./theme-follow.js";
+import { applyPdfReaderDark, pdfReaderDarkOn } from "./pdf-reader-dark.js";
 import { PDF_DARK_CLASSES, createPdfFlip, pdfDarkClass } from "./pdf-flip.js";
 import { openViewDialog } from "./view-dialog.js";
 import { viewMapModel } from "./minimap-svg.js";
@@ -1210,11 +1211,17 @@ function buildBoardView(onFail, {
     const want = pdfDarkClass(readSetting("pdf-dark"));
     for (const name of PDF_DARK_CLASSES) root.classList.toggle(name, name === want);
   };
+  const applyReaderDark = () => {
+    let background = "";
+    try { background = sampleRoam(doc).background; } catch { background = ""; }
+    applyPdfReaderDark(doc, pdfReaderDarkOn(readSetting("pdf-reader-dark"), doc, background));
+  };
   const applyTheme = () => {
     const dark = isDarkHost(mountEl, doc);
     root.classList.toggle("pxd-root--dark", dark);
     root.classList.toggle("pxd-root--light", !dark && isLightHost(mountEl, doc, globalThis.window));
     applyPdfDark();
+    applyReaderDark();
     const hl = syncBoardHighlighter(doc, root);
     try { themeFollow?.apply?.(); } catch { /* theme */ }
     themeReady = true;
@@ -9904,6 +9911,7 @@ function buildBoardView(onFail, {
       settingsRef = next;
       if ((setting("show-board-trail", false) === true) !== trailBefore) syncFullscreenTabs();
       applyPdfDark();
+      applyReaderDark();
       if (readSetting("pdf-cover") !== coverBefore) {
         forgetCovers();
         itemsR.repaintStyles();

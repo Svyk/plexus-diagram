@@ -59,6 +59,7 @@ export const SETTING_IDS = Object.freeze({
   pdfCoverWarm: "pdf-cover-warm",
   highlightOpen: "highlight-open",
   pdfDark: "pdf-dark",
+  pdfReaderDark: "pdf-reader-dark",
   parseHelperUrl: "parse-helper-url",
   parseHelperToken: "parse-helper-token",
   parseEngineDefault: "parse-engine-default",
@@ -136,6 +137,7 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.pdfCoverWarm]: true,
   [SETTING_IDS.highlightOpen]: "reader",
   [SETTING_IDS.pdfDark]: "dim",
+  [SETTING_IDS.pdfReaderDark]: "follow",
   [SETTING_IDS.parseHelperUrl]: "http://127.0.0.1:48765",
   [SETTING_IDS.parseHelperToken]: "",
   [SETTING_IDS.parseEngineDefault]: "auto",
@@ -184,6 +186,7 @@ const ENUMS = Object.freeze({
   [SETTING_IDS.pdfCover]: ["first", "last-read"],
   [SETTING_IDS.highlightOpen]: ["reader", "sidebar"],
   [SETTING_IDS.pdfDark]: ["off", "dim", "invert"],
+  [SETTING_IDS.pdfReaderDark]: ["off", "follow", "on"],
   [SETTING_IDS.parseEngineDefault]: ["auto", "builtin", "docling"],
   [SETTING_IDS.parseOcr]: ["auto", "on", "off"],
   [SETTING_IDS.parsePageReader]: ["doubtful", "all"],
@@ -528,6 +531,7 @@ const SETTING_ROWS = {
   [SETTING_IDS.pdfCoverWarm]: () => switchRow(SETTING_IDS.pdfCoverWarm, "Prepare PDF covers in the background", "On. A quiet board prepares a cover for a visible PDF that does not have one: Roam's PDF engine draws page 1 when it is reachable, otherwise a hidden reader does."),
   [SETTING_IDS.highlightOpen]: () => selectRow(SETTING_IDS.highlightOpen, "Highlight click opens", "Reader: the PDF pane scrolls to the highlight. Sidebar: Roam opens the highlight block in the right sidebar. Shift-click always opens the sidebar; the chip's arrow lists every choice.", ["reader", "sidebar"]),
   [SETTING_IDS.pdfDark]: () => selectRow(SETTING_IDS.pdfDark, "PDF pages in dark mode", "When the board is dark. Off keeps white pages. Dim darkens the page. Invert flips the page colors. Marks stay readable.", ["off", "dim", "invert"]),
+  [SETTING_IDS.pdfReaderDark]: () => selectRow(SETTING_IDS.pdfReaderDark, "PDF dark mode", "Off, Follow Roam, or On. Follow Roam is the default. On inverts the page canvas in Roam's PDF window so the page matches a dark graph. Photos that are their own image stay natural. Highlight colours and parsed outlines stay as they are.", ["off", "follow", "on"]),
   [SETTING_IDS.parseHelperUrl]: () => inputRow(SETTING_IDS.parseHelperUrl, "Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
   [SETTING_IDS.parseHelperToken]: () => inputRow(SETTING_IDS.parseHelperToken, "Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address.", { password: true, placeholder: "Token" }),
   [SETTING_IDS.parseEngineDefault]: () => selectRow(SETTING_IDS.parseEngineDefault, "Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper.", ["auto", "builtin", "docling"]),
@@ -551,6 +555,9 @@ const SETTING_GROUPS = [
   ["group-cards", "Cards", "How new cards look, and the marks on them.", [
     SETTING_IDS.defaultCardLook, SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight, SETTING_IDS.enterInCard, SETTING_IDS.showCardBadges, SETTING_IDS.spaceOut,
     SETTING_IDS.pdfCover, SETTING_IDS.pdfCoverWarm, SETTING_IDS.highlightOpen, SETTING_IDS.pdfDark,
+  ]],
+  ["group-pdf-reader", "PDF reader", "Roam's PDF window, in the sidebar and in the main view.", [
+    SETTING_IDS.pdfReaderDark,
   ]],
   ["group-integrations", "Integrations", "Sibling extensions, and the switches that turn them on.", [
     STATUS_IDS.betterTasks, SETTING_IDS.betterTasks,

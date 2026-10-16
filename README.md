@@ -396,6 +396,7 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Cards | Prepare PDF covers in the background | On. A quiet board prepares a cover for a visible PDF that has none: Roam's PDF engine draws page 1 when it is reachable, otherwise a hidden reader does. |
 | Cards | Highlight click opens | Reader (default) or Sidebar. Shift-click on a highlight card's chip always opens the sidebar; the chip's arrow lists Reader, Sidebar and Open page in main. |
 | Cards | PDF pages in dark mode | Off, Dim, or Invert. Dim is the default. Applies when the board is dark, to the page canvas only, so highlight marks stay readable. Off keeps white pages. |
+| PDF reader | PDF dark mode | Off, Follow Roam, or On. Follow Roam is the default. Inverts the page canvas in Roam's PDF window (sidebar and main view) so the page matches a dark graph. Photos that are their own image stay natural. Highlight colours and parsed outlines stay as they are. |
 | Integrations | Better Tasks integration | Use Better Tasks for task chips, the light checkbox, and task edits. Off leaves the TODO marker to Roam. Starts off. |
 | Integrations | Task tool | Show the Task tool (K) in the dock. Starts off. A saved on stays on. |
 | Integrations | Task chips | Full (due date, project, priority, repeat, status), due only, or none. |

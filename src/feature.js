@@ -223,12 +223,17 @@ export async function installPlexusDiagram({
   lifecycle.add(() => {
     try { closeOpenWhyPopovers(); } catch { /* already gone */ }
     const nodes = doc?.querySelectorAll?.("[class*='pxd-']");
+    const roots = [doc?.documentElement, doc?.body, doc?.head].filter(Boolean);
+    const anchors = [".roam-app", ".roam-body", "#app"].map((sel) => { try { return doc?.querySelector?.(sel); } catch { return null; } }).filter(Boolean);
+    // Plexus did not create html, body, head, or anything that holds the Roam app: strip our marks, never remove.
+    const isHostNode = (el) => roots.includes(el) || anchors.some((anchor) => anchor === el || el.contains?.(anchor));
     for (const el of [...(nodes || [])]) {
       try {
         const classes = String(el.getAttribute?.("class") ?? el.className ?? "").split(/\s+/).filter(Boolean);
         // A Roam node (a second diagram in an embed) only carries our marker classes. React owns the node.
-        if (classes.some((name) => /^(rm-|roam-)/.test(name))) {
+        if (isHostNode(el) || classes.some((name) => /^(rm-|roam-)/.test(name))) {
           for (const name of classes) if (name.startsWith("pxd-")) el.classList.remove(name);
+          for (const attr of Array.from(el.attributes || [], (a) => a.name)) if (attr.startsWith("data-pxd-")) el.removeAttribute(attr);
         } else {
           el.remove();
         }
@@ -4499,6 +4504,7 @@ export async function installPlexusDiagram({
     bindExternalNav();
     lifecycle.add(installRoamStack(doc));
     lifecycle.add(() => syncBoardClass(doc, false));
+    lifecycle.add(() => { try { doc.body?.classList?.remove?.("pxd-has-fullscreen"); } catch { /* gone */ } });
     lifecycle.event(win, "hashchange", onHash);
     lifecycle.event(win, "popstate", onNavigate);
   }

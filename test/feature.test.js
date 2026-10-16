@@ -2100,3 +2100,41 @@ test("C1: unload closes the floating chat: its resize listener goes and a stream
     t.restore();
   }
 });
+
+test("teardown sweep never removes html or body, only strips their pxd marks", async () => {
+  const ctx = setup({ settings: {}, hash: "#/app/Svy" });
+  try {
+    const { doc } = ctx;
+    doc.documentElement = doc.root;
+    doc.root.cls.add("pxd-pdf-reader-dark");
+    doc.root.cls.add("bp3-dark");
+    doc.body.cls.add("pxd-has-board");
+    doc.body.cls.add("pxd-has-fullscreen");
+    const removed = [];
+    for (const el of [doc.root, doc.body, doc.head]) {
+      const original = el.remove.bind(el);
+      el.remove = () => { removed.push(el.tag); original(); };
+    }
+    const mount = doc.createElement("div");
+    mount.cls.add("pxd-mount");
+    doc.app.append(mount);
+    const real = doc.querySelectorAll;
+    doc.querySelectorAll = (selector) => {
+      if (selector !== "[class*='pxd-']") return real(selector);
+      const all = [doc.root, ...doc.root.querySelectorAll("*")];
+      return all.filter((el) => [...el.cls].some((n) => n.includes("pxd-")));
+    };
+    await ctx.install();
+    await ctx.lifecycle.dispose();
+    assert.deepEqual(removed, []);
+    assert.equal(doc.root.parentElement, null);
+    assert.ok(doc.root.children.includes(doc.body), "body is still attached");
+    assert.equal(doc.root.cls.has("pxd-pdf-reader-dark"), false);
+    assert.equal(doc.root.cls.has("bp3-dark"), true);
+    assert.equal(doc.body.cls.has("pxd-has-board"), false);
+    assert.equal(doc.body.cls.has("pxd-has-fullscreen"), false);
+    assert.equal(doc.app.children.includes(mount), false);
+  } finally {
+    ctx.restore();
+  }
+});

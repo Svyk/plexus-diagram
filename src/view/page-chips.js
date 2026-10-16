@@ -245,6 +245,7 @@ export function createPageChips({
   let boxCount = 0;
   let syncFrame = 0;
   let syncRetries = 0;
+  let flashTimer = null;
 
   const on = (node, type, fn, capture = false) => {
     if (!node || typeof node.addEventListener !== "function") return;
@@ -299,6 +300,60 @@ export function createPageChips({
   };
 
   const later = (fn, ms) => (win()?.setTimeout || setTimeout)(fn, ms);
+  const stopFlash = () => {
+    if (flashTimer == null) return;
+    (win()?.clearTimeout || clearTimeout)(flashTimer);
+    flashTimer = null;
+  };
+  const flash = (id) => {
+    const want = String(id || "");
+    if (!want || disposed) return false;
+    if (!showParsed) {
+      showParsed = true;
+      writeShowParsed(storage, true);
+      syncRetries = 0;
+    }
+    sync();
+    let box = null;
+    let pageNode = null;
+    for (const entry of layers.values()) {
+      const hit = entry.boxes?.get?.(want);
+      if (!hit) continue;
+      box = hit;
+      pageNode = entry.el;
+      break;
+    }
+    if (!box) return false;
+    for (const entry of layers.values()) {
+      for (const other of entry.boxes.values()) {
+        if (other !== box) other.classList?.remove?.("pxd-parsed-box--flash");
+      }
+    }
+    box.classList.add("pxd-parsed-box--flash");
+    const scroller = box.closest?.(".PdfHighlighter") || pageNode?.closest?.(".PdfHighlighter");
+    if (scroller) {
+      let view = null;
+      let pageBox = null;
+      let mark = null;
+      try { view = scroller.getBoundingClientRect(); } catch { view = null; }
+      try { pageBox = pageNode?.getBoundingClientRect?.(); } catch { pageBox = null; }
+      try { mark = box.getBoundingClientRect(); } catch { mark = null; }
+      const markTop = mark && (mark.height > 0 || mark.top > 0) ? mark.top : pageBox?.top;
+      if (markTop != null) {
+        const current = Number(scroller.scrollTop);
+        const top = Number.isFinite(current) ? current : 0;
+        const viewTop = Number(view?.top) || 0;
+        const viewH = Number(view?.height) || 0;
+        scroller.scrollTop = Math.max(0, top + (Number(markTop) - viewTop) - viewH * 0.3);
+      }
+    }
+    stopFlash();
+    flashTimer = later(() => {
+      flashTimer = null;
+      try { box.classList.remove("pxd-parsed-box--flash"); } catch { /* gone */ }
+    }, 700);
+    return true;
+  };
 
   const button = (cls, text, tip) => {
     const node = doc.createElement("button");
@@ -980,9 +1035,11 @@ export function createPageChips({
       return showParsed;
     },
     boxCount: () => boxCount,
+    flash,
     openCopyMenu: (block, anchor) => openCopyMenu(block, anchor),
     dispose() {
       disposed = true;
+      stopFlash();
       closeCopyMenu();
       clearPress();
       hideAll();

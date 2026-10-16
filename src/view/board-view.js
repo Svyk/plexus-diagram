@@ -25,7 +25,7 @@ import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS, highlightModel, noteActionPlan } from "../model/highlight.js";
 import { cleanPdfTitle, coverModel, embedSplit, parsedDocTitle, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
-import { answerSource, gestureSource, notePendingPin, pasteCardPlan, pinOpenFallback, pinOpenPlan, readWithSource, refOpenPlan } from "../model/pdf-pin.js";
+import { answerSource, gestureSource, matchParsedBlock, notePendingPin, pasteCardPlan, pinOpenFallback, pinOpenPlan, readWithSource, refOpenPlan } from "../model/pdf-pin.js";
 import { parseRegion } from "../model/regions.js";
 import { isMetaBanner } from "../model/title-cap.js";
 import { createSharpStore } from "./sharp-store.js";
@@ -81,6 +81,8 @@ import { createInteractions, emptyLabelShouldDeleteEdge, whyLabelField } from ".
 import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
+import { createPageChips } from "./page-chips.js";
+import { jumpSidebarPdf, sidebarPageEl, sidebarPdfContainer } from "./pin-reveal.js";
 import { createCardMotionRelay } from "./card-parse-motion.js";
 import { runChartToTable } from "./chart-table.js";
 import { askThemeChanged, openAskAI, setAskSettings } from "./ask-ai.js";
@@ -1870,6 +1872,41 @@ function buildBoardView(onFail, {
     try { readPane?.layout?.(size.width); } catch { /* first layout on the next resize */ }
     return readPane;
   };
+  let sidebarChips = null;
+  let sidebarHost = null;
+  // An already-open sidebar PDF jumps to the pin. Chips attach only when a parse is loaded,
+  // and only when that reader is on the page, so a board with no sidebar grows no listeners.
+  function revealSidebarPin(plan) {
+    if (disposed || !plan) return false;
+    const box = sidebarPdfContainer(doc);
+    if (!box) return false;
+    if (Number.isInteger(plan.page) && plan.page >= 1) {
+      try { jumpSidebarPdf(doc, plan.page); } catch { /* field */ }
+    }
+    const parsed = readPane?.parsedDoc?.() || null;
+    if (!parsed) return true;
+    if (sidebarChips && sidebarHost !== box) {
+      try { sidebarChips.dispose(); } catch { /* gone */ }
+      sidebarChips = null;
+    }
+    sidebarHost = box;
+    if (!sidebarChips) {
+      sidebarChips = createPageChips({
+        doc,
+        host: box,
+        getParsed: () => readPane?.parsedDoc?.() || null,
+        pageEl: (n) => sidebarPageEl(sidebarPdfContainer(doc) || box, n),
+        pageOf: (n) => (readPane?.parsedDoc?.()?.pages || []).find((row) => row?.n === n) || null,
+        storage,
+      });
+    }
+    try { sidebarChips.setShown(true); } catch { /* chips */ }
+    const block = matchParsedBlock(parsed, plan);
+    if (block) {
+      try { sidebarChips.flash(block.id); } catch { /* chips */ }
+    }
+    return true;
+  }
   function openPin(detail) {
     const plan = detail && typeof detail === "object" ? detail : null;
     const pdfUid = plan?.pdfUid || "";
@@ -1881,7 +1918,10 @@ function buildBoardView(onFail, {
       const blockUid = it.target?.kind === "block" ? it.target.uid : it.uid;
       if (it.uid === pdfUid || blockUid === pdfUid || it.target?.uid === pdfUid) { item = it; break; }
     }
-    if (!item) return false;
+    if (!item) {
+      try { revealSidebarPin(plan); } catch { /* sidebar */ }
+      return false;
+    }
     const blockUid = item.target?.kind === "block" ? item.target.uid : item.uid;
     ensureReadPane().open?.({
       cardUid: item.uid,
@@ -1891,6 +1931,7 @@ function buildBoardView(onFail, {
       source: item.string || "",
       title: pdfDisplayTitle(item),
     });
+    try { revealSidebarPin(plan); } catch { /* sidebar */ }
     return true;
   }
   openPinFromChip = (pinUid, event) => {
@@ -1903,6 +1944,7 @@ function buildBoardView(onFail, {
     if (!plan) return false;
     if (event?.shiftKey) {
       try { host?.openInSidebar?.(plan.pdfUid); } catch { /* host */ }
+      try { revealSidebarPin(plan); } catch { /* sidebar */ }
       return true;
     }
     return openPin(plan);
@@ -8155,6 +8197,7 @@ function buildBoardView(onFail, {
       dismissRoamHoverPopups();
       if (pinJump.mode === "sidebar") {
         try { host?.openInSidebar?.(pinJump.plan.pdfUid); } catch { /* host */ }
+        try { revealSidebarPin(pinJump.plan); } catch { /* sidebar */ }
         return true;
       }
       // The pin block lives under plexus-pins. Open the PDF at the region, not that list.
@@ -10012,6 +10055,7 @@ function buildBoardView(onFail, {
       };
       // Each step stands alone. A throw used to set disposed and skip the body popover and the window listeners.
       step(() => perfLog?.cancelPan?.());
+      step(() => { sidebarChips?.dispose?.(); sidebarChips = null; sidebarHost = null; });
       step(() => { dropTabStrip(); root.classList.remove("pxd-root--fstabs"); });
       step(() => closeLinksMenu());
       step(() => closeOutsideMenu());

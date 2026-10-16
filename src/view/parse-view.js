@@ -8,6 +8,8 @@ import { optionsHash, sha256Hex } from "../model/parse-hash.js";
 import {
   CARD_JSON_MIME,
   cardJsonPayload,
+  figureCardMarkdown,
+  matchParsedBlock,
   pinDeepLink,
   pinSpecFromBlock,
   pinnedToast,
@@ -814,7 +816,26 @@ export function createParseView({
         return true;
       }
       if (id === "card" || id === "source") {
-        const plain = isImageCopy(block) ? captionText(block) : toMarkdown(parsed, [block.id]);
+        let plain = "";
+        if (isImageCopy(block)) {
+          let live = block;
+          const url = String(block.image?.url || block.url || "").trim();
+          if (!url && typeof host?.uploadFile === "function") {
+            try {
+              const spec = figureImageSpec(block);
+              const blob = spec ? await spec.getBlob() : null;
+              if (blob) {
+                const name = `${spec.name || "figure"}.png`;
+                const file = typeof File === "function" ? new File([blob], name, { type: blob.type || "image/png" }) : blob;
+                const uploaded = await host.uploadFile(file);
+                if (uploaded) live = { ...block, image: { ...(block.image || {}), url: String(uploaded) } };
+              }
+            } catch { /* caption only */ }
+          }
+          plain = figureCardMarkdown(live, parsed) || captionText(block);
+        } else {
+          plain = toMarkdown(parsed, [block.id]);
+        }
         let source = "";
         if (id === "source") {
           source = await ensurePin(block);
@@ -2605,6 +2626,15 @@ export function createParseView({
     // Show parsed: persistent boxes and copy icons on the page. Remembered per device.
     showParsed: () => (pageChips ? pageChips.shown() : readShowParsed(storage)),
     setShowParsed(on) { return pageChips ? pageChips.setShown(on) : (writeShowParsed(storage, on), Boolean(on)); },
+    // Turn the page boxes on and flash the part that overlaps this pin. False when nothing is parsed yet.
+    flashPart({ page, frac } = {}) {
+      const chips = chipsOn();
+      if (!chips || !parsed) return false;
+      chips.setShown(true);
+      const block = matchParsedBlock(parsed, { page, frac });
+      if (!block) return false;
+      return chips.flash(block.id) === true;
+    },
     hasParse: () => Boolean(parsed),
     getDoc: () => parsed,
     askAbout,

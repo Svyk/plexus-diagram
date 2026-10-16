@@ -84,6 +84,47 @@ export function pinCaption(block, doc) {
   return squash(block.text || block.latex || "").slice(0, CAPTION_CAP);
 }
 
+// One card face: the figure (or a formula crop) and its caption on the same line.
+// A missing URL keeps the caption, so a copy still has words when the crop was not uploaded.
+export function figureCardMarkdown(block, doc) {
+  if (!block || (block.type !== "figure" && !(block.type === "formula" && !block.latex))) return "";
+  const caption = pinCaption(block, doc);
+  const url = String(block.image?.url || block.url || "").trim();
+  if (!url) return caption;
+  let alt = caption.replace(/\]/g, "").trim();
+  if (alt.length > 80) alt = alt.slice(0, 80).trim();
+  if (!alt) alt = block.type === "formula" ? "Formula" : "Figure";
+  const image = `![${alt}](${url})`;
+  return caption ? `${image} ${caption}` : image;
+}
+
+export function isSourceAttrString(text) {
+  return SOURCE_RE.test(String(text ?? "").trim());
+}
+
+// The parsed block a pin's page and fraction land on. Captions are the figure's label, not a part.
+export function matchParsedBlock(doc, { page, frac } = {}, min = 0.5) {
+  const pg = Number(page);
+  if (!Number.isInteger(pg) || pg < 1 || !Array.isArray(frac) || frac.length < 4) return null;
+  const info = (doc?.pages || []).find((row) => Number(row?.n) === pg) || { n: pg, w: 612, h: 792, rotation: 0 };
+  let best = null;
+  let score = Number(min);
+  if (!Number.isFinite(score)) score = 0.5;
+  const ids = Array.isArray(doc?.order) && doc.order.length ? doc.order : Object.keys(doc?.blocks || {});
+  for (const id of ids) {
+    const block = doc?.blocks?.[id];
+    if (!block || block.type === "caption" || Number(block.page) !== pg || !Array.isArray(block.bbox)) continue;
+    const box = pageFracFromBbox(block.bbox, info);
+    if (!box) continue;
+    const iou = rectIou(box, frac);
+    if (iou > score) {
+      score = iou;
+      best = block;
+    }
+  }
+  return best;
+}
+
 export function rectIou(a, b) {
   const A = rectOf(a);
   const B = rectOf(b);

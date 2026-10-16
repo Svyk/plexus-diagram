@@ -37,7 +37,7 @@ import { paintPdfChipStrip } from "./pdf-chip-strip.js";
 import { guardCallback } from "../guard.js";
 import { notedSpeedFlags, parseSpeedFlags, SETTING_IDS } from "../settings.js";
 import { authorBlockUid, buildSourceChip, chipWithAuthor, sourceChipFor, sourceChipKey } from "../model/source-chip.js";
-import { sourcePinOf } from "../model/pdf-pin.js";
+import { isSourceAttrString, sourcePinOf } from "../model/pdf-pin.js";
 import { buildPinChip } from "./pdf-pin-view.js";
 import { isRoamTableString, tableUidOf } from "../model/roam-table.js";
 import { mountRoamTable } from "./table-card.js";
@@ -407,7 +407,7 @@ const stickyTitleOf = (string) => {
 };
 // Direct children that count as rows. Better Tasks attribute children are chips, never rows, bullets or badge counts.
 const isTaskAttrString = (s) => taskAttrId(s) !== null;
-const skipChildString = (s) => isTaskAttrString(s) || isStructuralString(s);
+const skipChildString = (s) => isTaskAttrString(s) || isStructuralString(s) || isSourceAttrString(s);
 const visibleKids = (list) => (list || []).filter((c) => !skipChildString(childString(c)));
 // A note card whose block is a task, with Better Tasks loaded, draws a light Plexus checkbox (a span, not an input, so
 // it is not one of Better Tasks' 100 decorated checkboxes) and renders the rest of the title with the marker cut off.

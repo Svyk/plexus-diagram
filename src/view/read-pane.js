@@ -2729,7 +2729,17 @@ export function createReadPane({
       if (jumping) {
         jumpPageWhenReady(next.page, () => {
           if (wanted) locateHighlight(wanted);
-          else if (frac) flashFrac(frac, next.page);
+          else if (frac) {
+            showParsedBtn.setAttribute("aria-pressed", "true");
+            let flashed = false;
+            try {
+              if (parsedView) {
+                parsedView.setShowParsed(true);
+                if (parsedView.hasParse?.()) flashed = parsedView.flashPart({ page: next.page, frac }) === true;
+              } else writeShowParsed(storage, true);
+            } catch { flashed = false; }
+            if (!flashed) flashFrac(frac, next.page);
+          }
         }, kept);
       }
       else if (wanted) locateHighlight(wanted);
@@ -2777,6 +2787,7 @@ export function createReadPane({
     showParsed() { void enterParsed("both"); },
     showOutline() { void enterParsed("both"); },
     mode: () => viewMode,
+    parsedDoc: () => parsedView?.getDoc?.() || null,
     // U2 contract for OCR sources: pxd-ocr/1 page records (or { pages }) for the open PDF.
     setOcrPages: (pages, opts) => setOcrPages(pages, opts),
     noteScan,

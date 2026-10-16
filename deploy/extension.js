@@ -32706,6 +32706,8 @@ function createItemRenderer({
   };
   const focusInside = (cardUid, blockUid3) => {
     if (!cardUid || !blockUid3) return false;
+    const prev = cardFocus.get(cardUid) || "";
+    const changed2 = prev !== blockUid3;
     cardFocus.set(cardUid, blockUid3);
     revealCards.add(cardUid);
     hotRow = { card: cardUid, uid: blockUid3 };
@@ -32722,7 +32724,7 @@ function createItemRenderer({
     }
     if (editing?.uid === cardUid) return true;
     rec.el.classList.remove("pxd-item--collapsed");
-    if (rowReady(rec, blockUid3)) {
+    if (!changed2 && rowReady(rec, blockUid3)) {
       bumpRevealHeight(rec, item);
       return true;
     }
@@ -83052,14 +83054,25 @@ init_offscreen();
 
 // src/view/editor-keys.js
 var UID7 = /^[A-Za-z0-9_-]{9,15}$/;
+function uidFromBlockInput(id) {
+  const prefix = "block-input-";
+  if (!id.startsWith(prefix)) return null;
+  const rest = id.slice(prefix.length);
+  if (UID7.test(rest)) return rest;
+  for (let i = rest.length - 1; i >= 0; i -= 1) {
+    if (rest[i] !== "-") continue;
+    const tail = rest.slice(i + 1);
+    if (tail.length > 15) return null;
+    if (UID7.test(tail)) return tail;
+  }
+  return null;
+}
 function blockUidFromNode(node2) {
   let el2 = node2;
   while (el2 && el2.nodeType === 1) {
     const id = String(el2.id || el2.getAttribute?.("id") || "");
-    if (id.startsWith("block-input-")) {
-      const rest = id.slice("block-input-".length);
-      if (UID7.test(rest)) return rest;
-    }
+    const fromInput = uidFromBlockInput(id);
+    if (fromInput) return fromInput;
     if (UID7.test(id)) return id;
     const data = el2.dataset?.uid || el2.getAttribute?.("data-uid") || "";
     if (UID7.test(data)) return data;
@@ -105208,8 +105221,7 @@ ${url}`;
         }
         if (!blockUid3) {
           const hot = itemsR.hotRow?.();
-          const selected = selection.items.length === 1 ? selection.items[0] : "";
-          if (hot && (!selected || hot.card === selected || hot.card === cardUid)) {
+          if (hot) {
             cardUid = hot.card;
             blockUid3 = hot.uid;
           }

@@ -9481,8 +9481,9 @@ function buildBoardView(onFail, {
         }
         if (!blockUid) {
           const hot = itemsR.hotRow?.();
-          const selected = selection.items.length === 1 ? selection.items[0] : "";
-          if (hot && (!selected || hot.card === selected || hot.card === cardUid)) {
+          // Hover is the newer intent, even when another card is selected.
+          // Nothing hovered leaves the selection alone and focuses no child.
+          if (hot) {
             cardUid = hot.card;
             blockUid = hot.uid;
           }

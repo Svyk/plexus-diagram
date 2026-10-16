@@ -2755,6 +2755,8 @@ export function createItemRenderer({
   };
   const focusInside = (cardUid, blockUid) => {
     if (!cardUid || !blockUid) return false;
+    const prev = cardFocus.get(cardUid) || "";
+    const changed = prev !== blockUid;
     cardFocus.set(cardUid, blockUid);
     revealCards.add(cardUid);
     hotRow = { card: cardUid, uid: blockUid };
@@ -2771,7 +2773,9 @@ export function createItemRenderer({
     }
     if (editing?.uid === cardUid) return true;
     rec.el.classList.remove("pxd-item--collapsed");
-    if (rowReady(rec, blockUid)) {
+    // The grandchild row is already on screen under a child focus. Same uid can
+    // keep that paint. A new uid has to remount or the crumb stays on the old block.
+    if (!changed && rowReady(rec, blockUid)) {
       bumpRevealHeight(rec, item);
       return true;
     }

@@ -220,3 +220,31 @@ test("F1: Cmd+. while editing a grandchild focuses card › child › grandchild
     f.restore();
   }
 });
+
+test("F2: a grandchild bullet inside a child focus remounts, then Escape steps back", async () => {
+  const f = mount();
+  try {
+    await show(f);
+    const card = f.view.root.querySelector("[data-uid=cardAAAA1]");
+    const childBullet = card.querySelector("[data-pxd-row=kidA00001] .pxd-outline__bullet");
+    assert.ok(childBullet, "the child has a focus bullet");
+    childBullet.click();
+    f.stub.flushFrames();
+    assert.deepEqual(crumbLabels(card), ["Parent card", "Child block"]);
+    const grandBullet = card.querySelector("[data-pxd-row=kidA10001] .pxd-outline__bullet");
+    assert.ok(grandBullet, "the grandchild bullet is inside the child focus");
+    grandBullet.click();
+    f.stub.flushFrames();
+    assert.deepEqual(crumbLabels(card), ["Parent card", "Child block", "Grandchild block"]);
+    f.stub.dispatch(f.stub.window, "keydown", { key: "Escape" });
+    f.stub.flushFrames();
+    assert.deepEqual(crumbLabels(card), ["Parent card", "Child block"]);
+    f.stub.dispatch(f.stub.window, "keydown", { key: "Escape" });
+    f.stub.flushFrames();
+    assert.deepEqual(crumbLabels(card), []);
+    assert.equal(f.session.mutations.length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});

@@ -27,6 +27,7 @@ export function createTaskProbe({ now = () => (globalThis.performance?.now ? glo
     } catch { observer = null; }
   };
   // Nested spans count once, under the outermost name (a settle that runs a content pass is the settle's time).
+  // name: a string, or a function that returns it (read only for a span that is kept).
   // phase: what the board was doing (wheel, pan, settle, slice, idle...), from the caller.
   const span = (name, fn, phase = "") => {
     if (depth > 0) return fn();
@@ -38,7 +39,9 @@ export function createTaskProbe({ now = () => (globalThis.performance?.now ? glo
       depth -= 1;
       const ms = now() - t0;
       if (ms >= SPAN_MIN_MS) {
-        spans.push({ name, start: t0, ms, phase });
+        let label = name;
+        if (typeof name === "function") { try { label = String(name()); } catch { label = "?"; } }
+        spans.push({ name: label, start: t0, ms, phase });
         if (spans.length > MAX_SPANS) spans.shift();
       }
     }

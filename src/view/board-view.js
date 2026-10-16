@@ -390,17 +390,33 @@ const BADGE_MAX = 60;
 const NOTE_KINDS = ["note", "block", "page"];
 
 // E2-5: every frame and timer callback runs inside a long-task probe span named by its caller (view.longTasks()).
-function createTimers({ phase = () => "" } = {}) {
+// E3-3: a job scheduled without a label is named after the function that scheduled it ("timer@scheduleUnmounts"), so
+// view.longTasks() names every deferred job (QA4: a 3-4 s `timer` task after a detail pan had no name). The call site is
+// captured with a short stack (no formatting) and read only for a span that is kept.
+const siteLabel = (kind) => {
+  const keep = Error.stackTraceLimit;
+  let err = null;
+  try { Error.stackTraceLimit = 5; err = new Error(); } catch { return kind; } finally { Error.stackTraceLimit = keep; }
+  return () => {
+    const lines = String(err?.stack || "").split("\n").slice(3);
+    for (const line of lines) {
+      const name = /at (?:Object\.|async )?([\w$.]+) /.exec(line.trim())?.[1] || "";
+      if (name && !/^(later|frame|idle|bgIdle|bgRun|setTimer|setTimeout|Object|Array|Promise)$/.test(name)) return `${kind}@${name}`;
+    }
+    return kind;
+  };
+};
+export function createTimers({ phase = () => "" } = {}) {
   const active = new Set();
   const probe = sharedTaskProbe();
   const run = (label, fn, arg) => probe.span(label, () => fn(arg), phase());
-  const later = (fn, ms, label = "timer") => {
+  const later = (fn, ms, label = siteLabel("timer")) => {
     const id = setTimeout(() => { active.delete(entry); run(label, fn); }, ms);
     const entry = () => { clearTimeout(id); active.delete(entry); };
     active.add(entry);
     return entry;
   };
-  const frame = (fn, label = "frame") => {
+  const frame = (fn, label = siteLabel("frame")) => {
     const raf = globalThis.requestAnimationFrame;
     let entry;
     if (typeof raf === "function") {
@@ -413,7 +429,7 @@ function createTimers({ phase = () => "" } = {}) {
     active.add(entry);
     return entry;
   };
-  const idle = (fn, label = "idle") => {
+  const idle = (fn, label = siteLabel("idle")) => {
     const ric = globalThis.requestIdleCallback;
     let entry;
     if (typeof ric === "function") {

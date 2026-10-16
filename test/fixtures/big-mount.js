@@ -10,7 +10,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 // renderMs: each card body render spins this long (Roam's renderString/renderBlock cost per card). With 0 the stub
 // builds a whole view of shells in one pump chunk, which hid the live zoom-in gap (QA3: 2-3 shells per pump frame).
 const spin = (ms) => { if (!(ms > 0)) return; const t0 = performance.now(); while (performance.now() - t0 < ms) { /* render */ } };
-export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, prep = null, renderMs = 0 } = {}) {
+export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, prep = null, renderMs = 0, unmountMs = 0, slowUids = null } = {}) {
   noteSpeedFlags(flags);
   const stub = createDomStub({ width: 1400, height: 900 });
   const restore = stub.install();
@@ -21,8 +21,9 @@ export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, pre
   const host = {
     stats: {}, graph: "Svy",
     renderString(el, string) { spin(renderMs); el.textContent = string; },
-    renderBlock(el, uid) { spin(renderMs); el.textContent = uid; },
-    unmount() {},
+    // slowUids: these bodies cost 60 ms to render and to unmount (a big Roam outline).
+    renderBlock(el, uid) { spin(slowUids?.has(uid) ? 60 : renderMs); el.textContent = uid; el.__pxdUid = uid; },
+    unmount(el) { host.stats.unmounts = (host.stats.unmounts || 0) + 1; spin(slowUids?.has(el?.__pxdUid) ? 60 : unmountMs); },
     pagePreview: () => ({ exists: false, blocks: [] }), pullTree: () => [], blockString: () => null,
     openBlock() {}, openInSidebar() {}, searchPages: () => [], searchBlocks: () => [], related: () => [],
   };
@@ -53,7 +54,7 @@ export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, pre
   };
   const settle = async () => { await tick(160); await pump(4); };
   const done = () => { try { view.dispose(); } catch { /* gone */ } restore(); noteSpeedFlags(null); };
-  return { stub, view, mountEl, pump, settle, done, board, session, commits };
+  return { stub, view, mountEl, pump, settle, done, board, session, commits, unmounts: () => host.stats.unmounts || 0 };
 }
 
 export const withFrozenClock = async (fn) => {
@@ -113,7 +114,7 @@ export async function taskLedger(m) {
   const probe = sharedTaskProbe();
   const span = probe.span;
   let outer = "";
-  probe.span = (name, fn, phase) => { if (!outer) outer = name; return span(name, fn, phase); };
+  probe.span = (name, fn, phase) => { if (!outer) outer = typeof name === "function" ? String(name()) : name; return span(name, fn, phase); };
   const tasks = [];
   const draws = () => m.view.underlayStats?.().draws || 0;
   const run = (kind, fn, arg) => {

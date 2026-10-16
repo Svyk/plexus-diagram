@@ -47,6 +47,17 @@ import { childIsOpen, findBlock, focusStep, PEEK_ANIM_MS, PEEK_HOVER_MS, PEEK_LE
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
 const LRU_CAP = 80;
+// E3-3 (perf2, speed flag quietBodies): card bodies whose last mount (Roam render included) took this long or more, by
+// uid, for the session. Such a body mounts again only in a quiet background slice, never inside a pan's content pass.
+const SLOW_BODY_MS = 50;
+const slowBodies = new Map();
+const noteBodyMs = (uid, ms) => {
+  if (ms >= SLOW_BODY_MS) {
+    slowBodies.delete(uid);
+    slowBodies.set(uid, ms);
+    if (slowBodies.size > 500) slowBodies.delete(slowBodies.keys().next().value);
+  } else slowBodies.delete(uid);
+};
 const UNMOUNT_AFTER_MS = UNMOUNT_GRACE_MS;
 const HYDRATE_CAP_MS = 900;
 const CONTENT_LIMIT = 12;
@@ -5379,10 +5390,39 @@ export function createItemRenderer({
   // view.longTasks() (QA3: a 4.4 s single task while panning at detail, not attributed).
   const SLOW_MOUNT_MS = 50;
   const slowMounts = [];
+  // E3-3 (quietBodies): a body that was slow to mount before waits for a quiet background slice, one a slice; the shell
+  // shows its header and card look meanwhile. A content pass during a pan mounted one in a 700-1,265 ms task.
+  const heavyQueue = new Set();
+  let heavyJob = null;
+  let heavyNow = false;
+  const queueHeavy = (uid) => {
+    heavyQueue.add(uid);
+    if (heavyJob || disposed) return;
+    heavyJob = timers.bgRun(() => {
+      for (const uid of heavyQueue) {
+        heavyQueue.delete(uid);
+        if (mounted.has(uid)) continue;
+        // Out of view by now: a new row when it comes back.
+        if (!wanted.has(uid)) { contentSched?.drop(uid); continue; }
+        heavyNow = true;
+        try { timedMount(uid); } finally { heavyNow = false; }
+        break;
+      }
+      if (heavyQueue.size) return false;
+      heavyJob = null;
+      return true;
+    }, { label: "body:slow", partMs: 1000 });
+  };
   const timedMount = (uid) => {
+    if (!heavyNow && quietBodies() && slowBodies.has(uid) && wanted.has(uid) && !mounted.has(uid) && editing?.uid !== uid) {
+      queueHeavy(uid);
+      return true;
+    }
     const t0 = now();
-    try { return mountScheduled(uid); } finally {
+    let did = false;
+    try { did = mountScheduled(uid); return did; } finally {
       const ms = now() - t0;
+      if (did && mounted.has(uid)) noteBodyMs(uid, ms);
       if (ms >= SLOW_MOUNT_MS) {
         slowMounts.push({ uid, kind: lastBoard?.items.get(uid)?.kind || "", ms: Math.round(ms), at: Math.round(t0) });
         if (slowMounts.length > 30) slowMounts.shift();
@@ -5434,6 +5474,28 @@ export function createItemRenderer({
     });
   };
 
+  // E3-3 (quietBodies): unmounts (the 10 s grace and the LRU cap) leave in background slices, one body a part, after
+  // input and camera quiet. Each Roam unmount of a big outline costs about what its mount did (QA4: a `block` body
+  // 699 ms to mount), and the grace timer unmounted every due body in one task: a 3-4 s `timer` task ~4 s after a
+  // detail pan on the PhD main board.
+  const quietBodies = () => { try { return speedOf().quietBodies !== false && typeof timers?.bgRun === "function"; } catch { return false; } };
+  const unmountQueue = new Set();
+  let unmountJob = null;
+  const queueUnmount = (uid) => {
+    unmountQueue.add(uid);
+    if (unmountJob || disposed) return;
+    unmountJob = timers.bgRun(() => {
+      for (const uid of unmountQueue) {
+        unmountQueue.delete(uid);
+        if (!mounted.has(uid) || wanted.has(uid)) continue;
+        unmountContent(uid);
+        break;
+      }
+      if (unmountQueue.size) return false;
+      unmountJob = null;
+      return true;
+    }, { label: "unmount", partMs: 8 });
+  };
   const evict = () => {
     if (mounted.size <= LRU_CAP) return;
     const victims = [];
@@ -5445,6 +5507,7 @@ export function createItemRenderer({
       if (mounted.size - victims.length <= LRU_CAP) break;
       if (!victims.includes(uid)) victims.push(uid);
     }
+    if (quietBodies()) { for (const uid of victims) if (!wanted.has(uid)) queueUnmount(uid); else unmountContent(uid); return; }
     victims.forEach(unmountContent);
   };
 
@@ -5455,11 +5518,12 @@ export function createItemRenderer({
       unmountTimer = null;
       if (disposed) return;
       const t = now();
+      const sliced = quietBodies();
       for (const [uid, seen] of [...mounted]) {
-        if (!wanted.has(uid) && unmountDue(seen, t, UNMOUNT_AFTER_MS - 1)) unmountContent(uid);
+        if (!wanted.has(uid) && unmountDue(seen, t, UNMOUNT_AFTER_MS - 1)) { if (sliced) queueUnmount(uid); else unmountContent(uid); }
       }
-      if ([...mounted.keys()].some((u) => !wanted.has(u))) scheduleUnmounts();
-    }, UNMOUNT_AFTER_MS);
+      if ([...mounted.keys()].some((u) => !wanted.has(u) && !unmountQueue.has(u))) scheduleUnmounts();
+    }, UNMOUNT_AFTER_MS, "unmount-due");
   };
 
   // Decide which items need content for the current viewport; mount in idle chunks.

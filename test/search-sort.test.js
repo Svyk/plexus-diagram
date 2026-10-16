@@ -149,7 +149,8 @@ function hostWithGraph() {
   return { host, seen };
 }
 
-test("librarySearch with a sort reads the numbers once for the candidates and orders by them; best match reads none", () => {
+test("librarySearch with a sort reads the numbers once for the candidates and orders by them; best match reads none", (t) => {
+  t.mock.method(Date, "now", () => NOW + 1000);
   const { host, seen } = hostWithGraph();
   const best = host.librarySearch({ text: "plexus", types: ["page"] }, 40);
   assert.deepEqual(best.rows.map((r) => r.string), ["[[Plexus one]]", "[[Plexus two]]", "[[Plexus three]]"]);

@@ -123,8 +123,11 @@ test("a ref edit recomputes in a later idle callback; a move and a typing flush 
   try {
     paintThenIdle(ctx.stub);
     await ctx.session.linksPromise;
+    // The open's linked-ref prime runs on the shared background budget (real timers, duty-cycled), so on a loaded
+    // runner it can land after the link query: wait for it by time so it is not counted as typing.
+    for (let i = 0; i < 500 && ctx.queries() < 3; i += 1) { paintThenIdle(ctx.stub); await new Promise((r) => setTimeout(r, 10)); }
     const afterOpen = ctx.queries();
-    assert.equal(afterOpen > 0, true);
+    assert.equal(afterOpen, 3, "board pull, linked-ref prime and link query all ran");
 
     await ctx.session.commitMove(["c4"], 24, 0);
     paintThenIdle(ctx.stub);

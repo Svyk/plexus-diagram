@@ -226,11 +226,11 @@ export function normalizeSetting(id, value) {
 // previous path without a release. edgeFingerprint is off: Roam re-stamps :edit/time on every block that references an
 // edited block, so each card write changed its edges' fingerprint and read Connections whole (+100 ms per write).
 // overviewFast off restores the 3.30.0 open at map zoom: live waits until every shell in the view is built.
-// perf2 lane E (no-flash navigation): steadyCamera, keepFullscreen, styledUnderlay, gestureQuiet, dragLayer, slicedResume; each off restores 3.34.0.
-const SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "slicedResume"];
+// perf2 lane E (no-flash navigation): steadyCamera, keepFullscreen, styledUnderlay, gestureQuiet, dragLayer, slicedResume, idlePark; each off restores 3.34.0.
+const SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "slicedResume", "idlePark"];
 
 export function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, slicedResume: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, slicedResume: true, idlePark: true };
 }
 
 export function parseSpeedFlags(raw) {

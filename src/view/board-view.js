@@ -1787,7 +1787,7 @@ function buildBoardView(onFail, {
     sectionsLayer,
     timers,
     adoptShell,
-    onOverviewQueue: () => paintOverviewCover(),
+    onOverviewQueue: () => paintOverviewCover({ quiet: true }),
     onShells: () => {
       try { edgesR.flushWaiting?.(); } catch { /* the edge layer follows the shells */ }
       // E2-2: boxes stood in for in-view cards still queued; the ones just built drop off the canvas.
@@ -3434,11 +3434,23 @@ function buildBoardView(onFail, {
     labelsLayer,
     overlaySvg,
     virtualOff: () => { try { return notedSpeedFlags().virtualEdges === false; } catch { return false; } },
+    deferPark: () => { try { return notedSpeedFlags().idlePark !== false; } catch { return false; } },
+    onParkDue: () => armEdgePark(),
     onLabelCommit: (uid, label) => session.updateEdge?.(uid, { label }),
     blockText: (uid) => host?.blockString?.(uid),
     onHover: (uid, on) => hoverRows(uid, on),
   });
   edgesR.setCanvasTier?.(() => overviewCanvasOn());
+  // E3-1: far edges left by a settle are parked here, in background slices once the camera has been still.
+  let edgeParkJob = null;
+  function armEdgePark() {
+    if (edgeParkJob || disposed) return;
+    edgeParkJob = timers.bgRun((d) => {
+      const done = edgesR.parkSome(d);
+      if (done) edgeParkJob = null;
+      return done;
+    }, { label: "edge-park", partMs: 1000 }); // one part (PARK_PART edges) a slice: the cost is the browser's, not ours
+  }
 
   // NAV-3 / MEM-8. Queries run when Info opens or a lens turns on, not while the board is mounting.
   const timelineTargetUid = (item) => {
@@ -4188,6 +4200,7 @@ function buildBoardView(onFail, {
   const syncShellHold = () => {
     const hold = deferReveal();
     if (hold) cancelSlice();
+    else if (dirty.edges.size && !disposed && !suspended) schedule(); // E3-1: edge slices held by the burst
     try { itemsR.holdShells?.(hold); } catch { /* renderer */ }
     // E5: no background slice while a gesture or a wheel burst is open; the quiet after it starts at its settle.
     try { sharedBgBudget().hold(bgHoldKey, !disposed && !suspended && (gesturing || wheelLayer)); } catch { /* budget */ }
@@ -4244,7 +4257,22 @@ function buildBoardView(onFail, {
     if (itemsR.shellOf?.(uid)) return true;
     return tier === "overview" && coverUids.has(uid);
   };
-  paintOverviewCover = () => {
+  // E3-1: the cover was drawn again for every pump chunk (QA4 B zoom-in: a full-size bitmap raster per chunk, ~20 in a
+  // settle). A box under an attached shell is hidden by the shell, so a `quiet` call (the queue or the shells changed)
+  // draws again only when the canvas no longer shows what it should: an in-view card with no shell and no box, the
+  // rects or the tier changed (a box at a card's old place), or nothing is left to cover (hide).
+  let coverRects = null;
+  // paintRects() is a new Map each call: the key is the board, the stored rects and the live (edit) rects.
+  const coverStamp = () => ({ b: board(), r: rects(), live: liveRects });
+  const sameCoverStamp = (k) => Boolean(k) && k.b === board() && k.r === rects() && k.live === liveRects;
+  const coverCurrent = (items) => {
+    if (!underlay.isShown() || underlayKind !== "cover" || !sameCoverStamp(coverRects) || underlayTier !== tier || !size.width) return false;
+    const view = visibleWorldRect(vp, size, 0);
+    const drawn = underlay.drawnUids();
+    for (const item of items) if (!drawn.has(item.uid) && rectsIntersect(item.rect, view)) return false;
+    return true;
+  };
+  paintOverviewCover = ({ quiet = false } = {}) => {
     if (disposed) return;
     if (overviewCanvasOn()) {
       ovDirty = true;
@@ -4253,17 +4281,19 @@ function buildBoardView(onFail, {
     }
     if (underlayDrawn) return;
     gapCover = false;
-    try { if (notedSpeedFlags().overviewFast === false) { coverUids = new Set(); if (!paintGapCover()) underlay.hide(); return; } } catch { coverUids = new Set(); return; }
+    try { if (notedSpeedFlags().overviewFast === false) { coverUids = new Set(); if (!paintGapCover(quiet)) underlay.hide(); return; } } catch { coverUids = new Set(); return; }
     if (tier === "detail" && itemsR.coverHeld?.() !== true) {
       coverUids = new Set();
-      if (!paintGapCover()) underlay.hide();
+      if (!paintGapCover(quiet)) underlay.hide();
       return;
     }
     const items = itemsR.pendingBoxes?.() || [];
     // E2-2: a built shell that is not in the DOM yet (a slice still to come) keeps its box as well.
     if (styledUnderlay()) items.push(...gapBoxes(new Set(items.map((item) => item.uid))));
     if (!items.length) { coverUids = new Set(); underlay.hide(); return; }
+    if (quiet && coverCurrent(items)) return;
     coverUids = new Set(items.map((item) => item.uid));
+    coverRects = coverStamp();
     underlayKind = "cover";
     // E1: the open snapshot drew the arrows; an arrow still held back for a queued end is a hairline here until then.
     const edges = [];
@@ -4304,11 +4334,13 @@ function buildBoardView(onFail, {
     }
     return out;
   };
-  const paintGapCover = () => {
+  const paintGapCover = (quiet = false) => {
     if (!styledUnderlay()) return false;
     const items = gapBoxes();
     if (!items.length) return false;
     gapCover = true;
+    if (quiet && coverCurrent(items)) return true;
+    coverRects = coverStamp();
     underlayKind = "cover";
     underlayTier = tier;
     underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: true, tier, view: underlayView() });
@@ -4316,7 +4348,7 @@ function buildBoardView(onFail, {
   };
   refreshGapCover = () => {
     if (disposed || suspended || underlayDrawn || gesturing || wheelLayer || slicing || underlayKind !== "cover") return;
-    paintOverviewCover();
+    paintOverviewCover({ quiet: true });
   };
   // C2. Overview tier of a big board on the underlay canvas (speed flag overviewCanvas, off by default this round).
   // Below zoom 0.2 a card is a coloured box of ~15x10 screen pixels with its header hidden (extension.css), and the
@@ -9866,9 +9898,17 @@ function buildBoardView(onFail, {
     // onto the short frame, even when no edge block itself changed.
     const itemsMoveEdges = dirty.items.size && !dirty.all && !dirty.structural;
     let edgeRest = null;
-    if (edgesDue || itemsMoveEdges) {
+    // E3-1: a zoom settle's edge slices (the whole board re-placed for the new zoom, EDGE_SLICE a frame) wait while a
+    // burst holds the reveal. They kept building and placing ~180 edges in every wheel frame of the next zoom (QA4 B
+    // zoom-in runs 1-2 started while the fit's slices were still going). The settle re-dirties them for its own zoom.
+    let edgesHeld = false;
+    if (edgesDue && !dirty.all && !dirty.structural && !dirty.links && dirty.edges.size > EDGE_SLICE && deferReveal()) {
+      edgesHeld = true;
+      edgeRest = dirty.edges;
+    }
+    if ((edgesDue && !edgesHeld) || itemsMoveEdges) {
       const shown = paintRects();
-      if (edgesDue) {
+      if (edgesDue && !edgesHeld) {
         // An edge-only change used to call update(), which moves the path and skips
         // paintEdge, so dash and color never reached the DOM until a full render.
         const links = paintedLinks();
@@ -9989,8 +10029,8 @@ function buildBoardView(onFail, {
     dirty.resync = false;
     dirty.selection = false;
     dirty.links = false;
-    edgeSlicing = Boolean(edgeRest);
-    if (edgeRest) schedule();
+    edgeSlicing = Boolean(edgeRest) && !edgesHeld;
+    if (edgeRest && !edgesHeld) schedule();
   };
   let edgeSlicing = false;
 
@@ -10768,6 +10808,10 @@ function buildBoardView(onFail, {
     // C2 probe: whether the overview canvas tier is on, and how many times it was drawn.
     flipStats() {
       return { flips: flipStats.flips, attachedAtFlip: flipStats.attachedAtFlip.slice() };
+    },
+    // E3 probe: underlay bitmap redraws and reallocations since the mount.
+    underlayStats() {
+      return underlay.stats();
     },
     overviewCanvasStats() {
       return { on: overviewCanvasOn(), draws: ovDraws, items: ovItems, shown: underlay.isShown() && underlayKind === "overview" };

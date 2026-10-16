@@ -39,7 +39,7 @@ const setClass = (el, name) => {
   if (el.classList && !el.classList.contains(name.split(" ")[0])) el.className = name;
 };
 
-export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText, onHover, virtualOff = () => false } = {}) {
+export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText, onHover, virtualOff = () => false, deferPark = () => false, onParkDue = null } = {}) {
   const edgeEls = new Map(); // uid → {g, hit, line, head, tail, dot, label}
   const laneHidden = new Set();
   const linkEls = new Map(); // key → {g, hit, line, head, label}
@@ -120,6 +120,23 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     rec.g.remove();
     rec.label.remove();
     for (const end of ["from", "to"]) dropInner(rec, end);
+  };
+  // E3-1 (perf2, speed flag idlePark): a far edge that leaves the view at a settle is not removed in the settle's tasks
+  // (a zoom-in to detail parked ~1,500 edges in two of them); it is marked stale, kept as it was (off the view), and
+  // parked later in background slices (parkSome). It is placed again if the camera brings it back first.
+  const parkDue = new Set();
+  let parkNoted = false;
+  const parkLater = (uid, rec) => {
+    let later = false;
+    try { later = deferPark() === true; } catch { later = false; }
+    if (!later) { parkEdge(rec); return; }
+    rec.stale = true;
+    if (parkDue.has(uid)) return;
+    parkDue.add(uid);
+    if (!parkNoted) {
+      parkNoted = true;
+      queueMicrotask(() => { parkNoted = false; if (parkDue.size) { try { onParkDue?.(); } catch { /* the view parks them */ } } });
+    }
   };
   const unparkEdge = (rec) => {
     if (!rec.parked) return;
@@ -699,6 +716,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   };
 
   const removeEdge = (uid) => {
+    parkDue.delete(uid);
     const rec = edgeEls.get(uid);
     if (!rec) return;
     rec.g.remove();
@@ -768,9 +786,11 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         const attached = rec && !rec.parked;
         if (attached ? edgeFar(board, edge, rects) : !edgeNear(board, edge, rects)) {
           waiting.delete(edge.uid);
-          if (rec) parkEdge(rec);
+          if (attached) parkLater(edge.uid, rec);
+          else if (rec) parkEdge(rec);
           continue;
         }
+        parkDue.delete(edge.uid);
       }
       // A slice names the edges for this frame. An edge with no element, or one that was hidden
       // until its cards counted as drawn, stays waiting when this frame did not name it.
@@ -847,8 +867,9 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     let built = 0;
     let left = 0;
     let parks = budget < Infinity ? PARK_SLICE : Infinity;
-    const park = (rec) => {
+    const park = (rec, uid) => {
       if (rec.parked) return;
+      if (deferPark() === true) { parkLater(uid, rec); return; }
       if (parks <= 0) { left += 1; return; }
       parks -= 1;
       parkEdge(rec);
@@ -867,9 +888,9 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         const pinnedWait = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
         const waitNear = pinnedWait || (rec && !rec.parked ? !edgeFar(board, edge, rects) : edgeNear(board, edge, rects));
         if (!waitNear) {
-          if (rec && !rec.parked && parks <= 0) { left += 1; continue; }
+          if (rec && !rec.parked && parks <= 0 && deferPark() !== true) { left += 1; continue; }
           waiting.delete(edge.uid);
-          if (rec) park(rec);
+          if (rec) park(rec, edge.uid);
         }
         continue;
       }
@@ -877,9 +898,10 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       const pinned = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
       const near = pinned || (rec && !rec.parked ? !edgeFar(board, edge, rects) : edgeNear(board, edge, rects));
       if (!near) {
-        if (rec) park(rec);
+        if (rec) park(rec, edge.uid);
         continue;
       }
+      parkDue.delete(edge.uid);
       if (rec && !rec.parked && !rec.stale) continue;
       if (!pinned && (built >= budget || (t0 && built % 16 === 0 && built && now() - t0 > ms))) { left += 1; continue; }
       const live = rec || buildEdge(edge);
@@ -1157,6 +1179,23 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     editingLabel = null;
   };
 
+  // One background slice of the deferred parks: the ones still far are parked, a near one is left to the next pass.
+  // Returns true when none is left.
+  const PARK_PART = 100;
+  const parkSome = (deadline = null) => {
+    if (!lastPass) { parkDue.clear(); return true; }
+    const { board, rects, selection } = lastPass;
+    let n = 0;
+    for (const uid of [...parkDue]) {
+      if (n >= PARK_PART || (n && deadline && deadline.timeRemaining() < 1)) break;
+      parkDue.delete(uid);
+      const rec = edgeEls.get(uid);
+      const edge = board.edges.get(uid);
+      if (!rec || rec.parked || !edge || selection.edge === uid || editingLabel?.uid === uid || drag?.recs.has(rec)) continue;
+      if (!view || edgeFar(board, edge, rects)) { parkEdge(rec); n += 1; }
+    }
+    return parkDue.size === 0;
+  };
   // The gesture underlay draws a hairline for every edge that is not in the DOM.
   const edgeShown = (uid) => { const rec = edgeEls.get(uid); return Boolean(rec && !rec.parked); };
   return {
@@ -1181,6 +1220,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     dragInner: () => drag?.inner ?? null,
     flushWaiting,
     waitingLeft: () => waiting.size,
+    parkSome,
+    parkDueCount: () => parkDue.size,
     setSelection,
     setHover,
     setTempWire,

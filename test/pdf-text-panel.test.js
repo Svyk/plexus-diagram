@@ -35,7 +35,7 @@ const HIT = {
   text: "plasticity of the brain", snippet: { before: "…", hit: "brain", after: " plasticity" },
   frac: [0.2, 0.3, 0.4, 0.05], thumb: "https://cdn.example/p3.png",
 };
-const DUP = { ...HIT, hash: "abc", url: "https://x/plan.pdf", title: "Plan", thumb: "" };
+const DUP = { ...HIT, hash: "abc", url: "https://x/plan.pdf", title: "Plan", thumb: "", page: 4 };
 const IMG = { uid: "u1", string: "![chart](https://x.test/chart.png)", pageTitle: "Notes", palette: ["#e02020"], snippet: "a brain chart" };
 
 test("search groups cards, pdf text, and images, with a marked snippet, page chip, and thumb", async (t) => {
@@ -68,6 +68,22 @@ test("search groups cards, pdf text, and images, with a marked snippet, page chi
   assert.equal(opened[0], HIT);
   f.stub.dispatch(q(f.root, ".pxd-panel__row--part .pxd-panel__page-chip"), "click");
   assert.equal(opened[1], PART);
+});
+
+test("a parsed paragraph hides only that page of the same file", async (t) => {
+  const same = { ...HIT, hash: "abc", url: "https://x/plan.pdf", page: 4, title: "Plan", thumb: "" };
+  const other = { ...HIT, hash: "abc", url: "https://x/plan.pdf", page: 9, title: "Plan", thumb: "" };
+  const f = setup({
+    on: {
+      searchParts: async () => [PART],
+      searchPdfText: () => [same, other],
+    },
+  });
+  t.after(f.restore);
+  await search(f, "brain");
+  const rows = [...f.root.querySelectorAll(".pxd-panel__row--pdftext")];
+  assert.equal(rows.length, 1);
+  assert.equal(q(rows[0], ".pxd-panel__page-chip").textContent, "p. 9");
 });
 
 test("arrow keys move the active row and Enter opens it; Enter with no selection still searches", async (t) => {

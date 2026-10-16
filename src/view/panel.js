@@ -986,10 +986,17 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     const covered = new Set();
     for (const part of parts) {
       if (!part || part.kind === "figure") continue;
-      if (part.url) covered.add(part.url);
-      if (part.sha256) covered.add(part.sha256);
+      const page = Number(part.page) || 0;
+      if (part.url) covered.add(`${part.url}\n${page}`);
+      if (part.sha256) covered.add(`${part.sha256}\n${page}`);
     }
-    pdfHits = pdfHits.filter((hit) => hit && !covered.has(hit.url) && !covered.has(hit.hash));
+    pdfHits = pdfHits.filter((hit) => {
+      if (!hit) return false;
+      const page = Number(hit.page) || 0;
+      if (hit.url && covered.has(`${hit.url}\n${page}`)) return false;
+      if (hit.hash && covered.has(`${hit.hash}\n${page}`)) return false;
+      return true;
+    });
     const images = Array.isArray(found.images) ? found.images : [];
     const figures = Array.isArray(found.figures) ? found.figures : [];
     const textParts = [];

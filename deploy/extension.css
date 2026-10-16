@@ -333,6 +333,13 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   pointer-events: none;
 }
 
+/* R4 (bucketLayers): a big board's layers group their children in buckets (buckets.js). A bucket makes no box. */
+.pxd-sections > div.pxd-bucket,
+.pxd-items > div.pxd-bucket,
+.pxd-labels > div.pxd-bucket {
+  display: contents;
+}
+
 /* Roam's normalize sheet sets svg:not(:root) { overflow: hidden } at (0,1,1); these layers are 1px boxes that must paint outside themselves. */
 .pxd-world > svg.pxd-edges,
 .pxd-world > svg.pxd-overlay {
@@ -2411,7 +2418,10 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   z-index: 1;
 }
 
-.pxd-root .pxd-item:has(> .pxd-item__badges) > .pxd-item__body {
+/* R4: the :has() sits on the body, not the card. A card-level :has() aimed at a child put .pxd-item__body in the
+   style invalidation set of every :has() anchor above the board (Roam has some), so any DOM change restyled every
+   card body. Same rule for every :has() in this file set: no high-count element on the right of a :has(). */
+.pxd-root .pxd-item > .pxd-item__body:has(~ .pxd-item__badges) {
   padding-bottom: 24px;
 }
 
@@ -6798,11 +6808,11 @@ body.bt-theme-dark .pxd-root .pxd-highlight-chip__more,
   display: none;
 }
 
-.pxd-root .pxd-item.pxd-item--pdf:has(> .pxd-hl-add) > .pxd-item__header {
+.pxd-root .pxd-item.pxd-item--pdf > .pxd-item__header:has(~ .pxd-hl-add) {
   padding-right: calc(12px + 26px * var(--pxd-screen-px, 1));
 }
 
-.pxd-root .pxd-item.pxd-item--pdf:has(> .pxd-hl-add:not([data-count="0"])) > .pxd-item__header {
+.pxd-root .pxd-item.pxd-item--pdf > .pxd-item__header:has(~ .pxd-hl-add:not([data-count="0"])) {
   padding-right: calc(12px + 44px * var(--pxd-screen-px, 1));
 }
 
@@ -6811,8 +6821,8 @@ body.bt-theme-dark .pxd-root .pxd-highlight-chip__more,
   display: none;
 }
 
-.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf:has(> .pxd-hl-add) > .pxd-item__header,
-.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf:has(> .pxd-hl-add) > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf > .pxd-item__header:has(~ .pxd-hl-add),
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf > .pxd-item__header:has(~ .pxd-hl-add) {
   padding-right: 12px;
 }
 
@@ -10086,11 +10096,11 @@ body.bt-theme-dark .pxd-root .pxd-pdf-hover,
   transition: opacity var(--pxd-pdf-fade, 80ms) var(--pxd-pdf-ease, ease) 0ms;
 }
 
-.pxd-root .pxd-pdf-cover:has(> .pxd-pdf-hover:not([hidden])) > .pxd-pdf-pills {
+.pxd-root .pxd-pdf-cover > .pxd-pdf-hover:not([hidden]) ~ .pxd-pdf-pills {
   bottom: calc(var(--pxd-pdf-strip-h, 28px) + var(--pxd-pdf-lift, 0px));
 }
 
-.pxd-root .pxd-pdf-cover:has(.pxd-pdf-bar) > .pxd-pdf-pills {
+.pxd-root .pxd-pdf-cover > :where(.pxd-pdf-paper):has(.pxd-pdf-bar) ~ .pxd-pdf-pills {
   bottom: calc(30px + var(--pxd-pdf-lift, 0px));
   border-radius: 0;
 }
@@ -10314,7 +10324,7 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill:hover,
   bottom: calc(4px + var(--pxd-pdf-lift, 0px));
 }
 
-.pxd-root .pxd-item:has(.pxd-pdf-bar) > .pxd-item__badges {
+.pxd-root .pxd-item.pxd-item--pdf-bar > .pxd-item__badges {
   bottom: calc(34px + var(--pxd-pdf-lift, 0px));
 }
 
@@ -10389,16 +10399,16 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-paper {
 
 /* P32-1 (live fix). Map and overview hide every card body, which left the cover with no box. A PDF card with a cached
    cover keeps its body as a full-card layer at those tiers, above the colour tile and the title tile. */
-.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf:not(.pxd-item--editing):has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body,
-.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf:not(.pxd-item--editing) > .pxd-item__body:has(.pxd-pdf-cover[data-cover-img]),
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf > .pxd-item__body:has(.pxd-pdf-cover[data-cover-img]) {
   display: block;
   position: absolute;
   inset: 0;
   z-index: 1;
 }
 
-.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header,
-.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf > .pxd-item__header:has(~ :where(.pxd-item__body) .pxd-pdf-cover[data-cover-img]),
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf > .pxd-item__header:has(~ :where(.pxd-item__body) .pxd-pdf-cover[data-cover-img]) {
   visibility: hidden;
 }
 
@@ -11618,8 +11628,10 @@ body.bt-theme-dark .pxd-read-drawer .pxd-pdf-chip--on,
   max-width: calc(100vw - 48px) !important;
 }
 
-.roam-app:has(#right-sidebar .rm-pdf-container) .roam-main,
-.roam-app:has(#right-sidebar .rm-pdf-container) .roam-article {
+/* R4: a class on <html> (sidebar-pdf.js), not .roam-app:has(): an anchor above the board re-ran its invalidation
+   on every DOM change in the board. :not(#pxd-none) keeps the old rule's id weight. */
+:root.pxd-sidebar-pdf .roam-app:not(#pxd-none) .roam-main,
+:root.pxd-sidebar-pdf .roam-app:not(#pxd-none) .roam-article {
   min-width: 48px !important;
   max-width: none !important;
 }
@@ -13156,15 +13168,15 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
   align-items: stretch;
 }
 
-.pxd-item__body:has(> .pxd-chip--source) > .pxd-chip--source {
+.pxd-item__body > .pxd-chip.pxd-chip--source {
   position: static;
   flex: 0 0 auto;
   align-self: flex-start;
   margin-top: 4px;
 }
 
-.pxd-item__body:has(> .pxd-chip--source) > .pxd-rs,
-.pxd-item__body:has(> .pxd-chip--source) > .pxd-item__string {
+.pxd-item__body > .pxd-rs:has(~ .pxd-chip--source),
+.pxd-item__body > .pxd-item__string:has(~ .pxd-chip--source) {
   flex: 0 0 auto;
   height: auto;
   min-height: min-content;
@@ -13172,9 +13184,9 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
   position: static;
 }
 
-.pxd-item__body:has(> .pxd-chip--source) img,
-.pxd-item__body:has(> .pxd-chip--source) .rm-inline-img,
-.pxd-item__body:has(> .pxd-chip--source) .rm-inline-img__resize {
+.pxd-item__body.pxd-item__body--source img,
+.pxd-item__body.pxd-item__body--source .rm-inline-img,
+.pxd-item__body.pxd-item__body--source .rm-inline-img__resize {
   display: block;
   width: auto;
   height: auto;
@@ -13353,7 +13365,7 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
 }
 
 /* Map tier: the header mark is the only visible status. 22 screen px via --pxd-screen-px. Done keeps its check. */
-.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--editing):not(:has(.pxd-task-check--done)):has(.pxd-task-check[data-status]) > .pxd-item__header::before {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header:not(:has(~ :where(.pxd-item__body) .pxd-task-check--done)):has(~ :where(.pxd-item__body) .pxd-task-check[data-status])::before {
   content: "";
   width: calc(22px * var(--pxd-screen-px, 1));
   height: calc(22px * var(--pxd-screen-px, 1));
@@ -13364,7 +13376,7 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
 }
 
 /* Overview tier: a coloured 20 px border box. No fill. */
-.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--editing):not(:has(.pxd-task-check--done)):has(.pxd-task-check[data-status]) > .pxd-item__header::before {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header:not(:has(~ :where(.pxd-item__body) .pxd-task-check--done)):has(~ :where(.pxd-item__body) .pxd-task-check[data-status])::before {
   border-color: var(--pxd-status-text, currentColor);
   background: transparent;
 }
@@ -13795,6 +13807,19 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   line-height: 20px;
   color: inherit;
   background: transparent;
+}
+
+/* R4: a block-look card hides its header at detail. While the caption is edited the header shows
+   over the top of the card instead, so the table under it does not move. */
+.pxd-root:not(:is([data-pxd-lod="map"],[data-pxd-lod="overview"])) .pxd-item.pxd-card--block.pxd-item--roam-table.pxd-item--editing > .pxd-item__header {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  background: var(--pxd-card, var(--pxd-surface, canvas));
+  border-bottom: 1px solid var(--pxd-border, currentColor);
 }
 
 /* Fullscreen board tabs. Inside .pxd-root so the chrome tokens apply. Not on document.body.

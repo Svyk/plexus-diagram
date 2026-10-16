@@ -19286,7 +19286,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: true, quietBodies: true, adaptiveSlices: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true };
 }
 function parseSpeedFlags(raw) {
   const base = defaultSpeedFlags();
@@ -19740,7 +19740,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -28701,9 +28701,9 @@ var init_source_chip = __esm({
 });
 
 // src/view/region-open.js
-function pickCameraMount(rows, boardUid, isSidebar = () => false, current3 = (row4) => row4?.current ?? row4?.uid) {
+function pickCameraMount(rows, boardUid, isSidebar2 = () => false, current3 = (row4) => row4?.current ?? row4?.uid) {
   const list = Array.isArray(rows) ? rows : [];
-  const side2 = typeof isSidebar === "function" ? isSidebar : () => false;
+  const side2 = typeof isSidebar2 === "function" ? isSidebar2 : () => false;
   const idOf = typeof current3 === "function" ? current3 : (row4) => row4?.uid;
   if (!boardUid) {
     return list.find((row4) => row4 && !side2(row4) && row4.view) || list.find((row4) => row4 && !side2(row4)) || list.find((row4) => row4?.view) || list[0] || null;
@@ -29650,6 +29650,95 @@ var init_table_card = __esm({
   }
 });
 
+// src/view/buckets.js
+function createBucketHost(container, { doc = globalThis.document, svg = false, size = BUCKET_SIZE, on = () => true } = {}) {
+  const make4 = () => {
+    const b = svg && typeof doc?.createElementNS === "function" ? doc.createElementNS(SVG_NS3, "g") : doc.createElement("div");
+    if (svg) b.setAttribute("class", BUCKET_CLASS);
+    else b.className = BUCKET_CLASS;
+    return b;
+  };
+  const tail = () => {
+    let last = lastKid(container);
+    if (!isBucket(last) || kidCount(last) >= size) {
+      last = make4();
+      container.append(last);
+    }
+    return last;
+  };
+  const split = (b) => {
+    const n3 = kidCount(b);
+    if (n3 <= size * 2) return;
+    const kids = [...b.children].slice(n3 - size);
+    const next = make4();
+    const siblings = [...container.children || []];
+    container.insertBefore(next, siblings[siblings.indexOf(b) + 1] || null);
+    next.append(...kids);
+  };
+  const host = {
+    // True when el is in this layer: directly or in one of its buckets.
+    has(el2) {
+      const p = el2?.parentElement;
+      return Boolean(p) && (p === container || isBucket(p) && p.parentElement === container);
+    },
+    // Where a new child goes when it is added at the end of the layer.
+    target() {
+      return on() ? tail() : container;
+    },
+    append(el2) {
+      host.target().append(el2);
+    },
+    // before: a child of this layer (in a bucket or not), or null for the end.
+    insertBefore(el2, before) {
+      const p = before?.parentElement;
+      if (!before || !p || !(p === container || isBucket(p) && p.parentElement === container)) {
+        host.append(el2);
+        return;
+      }
+      p.insertBefore(el2, before);
+      if (isBucket(p)) split(p);
+    },
+    // Puts these elements, in this order, at the end of the layer. The bulk paths (a full re-order of every shell)
+    // fill buckets in order, one fragment per bucket.
+    appendAll(els) {
+      if (!els.length) return;
+      if (!on()) {
+        const frag = typeof doc?.createDocumentFragment === "function" ? doc.createDocumentFragment() : null;
+        if (!frag) {
+          for (const el2 of els) container.append(el2);
+          return;
+        }
+        frag.append(...els);
+        container.append(frag);
+        return;
+      }
+      let i = 0;
+      while (i < els.length) {
+        const b = tail();
+        const room = Math.max(1, size - kidCount(b));
+        b.append(...els.slice(i, i + room));
+        i += room;
+      }
+    },
+    // Empty buckets cost nothing to keep; a full re-order drops them so the layer does not grow without bound.
+    prune() {
+      for (const b of [...container.children || []]) if (isBucket(b) && kidCount(b) === 0) b.remove();
+    }
+  };
+  return host;
+}
+var BUCKET_CLASS, BUCKET_SIZE, SVG_NS3, isBucket, kidCount, lastKid;
+var init_buckets = __esm({
+  "src/view/buckets.js"() {
+    BUCKET_CLASS = "pxd-bucket";
+    BUCKET_SIZE = 64;
+    SVG_NS3 = "http://www.w3.org/2000/svg";
+    isBucket = (node2) => Boolean(node2?.classList?.contains?.(BUCKET_CLASS));
+    kidCount = (node2) => typeof node2?.childElementCount === "number" ? node2.childElementCount : node2?.children?.length || 0;
+    lastKid = (node2) => node2?.lastElementChild ?? node2?.children?.[kidCount(node2) - 1] ?? null;
+  }
+});
+
 // src/view/table-cells.js
 function gridOf(tree) {
   const grid = [];
@@ -30553,6 +30642,15 @@ function createItemRenderer({
     pageKids.set(pageUid2, kids);
     return kids;
   };
+  const SOURCE_BODY = "pxd-item__body--source";
+  const clearBody = (rec) => {
+    rec.body?.replaceChildren?.();
+    rec.body?.classList?.remove?.(SOURCE_BODY);
+  };
+  const appendSourceChip = (body, node2) => {
+    body.append(node2);
+    body.classList?.add?.(SOURCE_BODY);
+  };
   const paintPinChip = (body, children) => {
     if (!body || body.querySelector?.(".pxd-chip--source")) return;
     const pin2 = sourcePinOf(children);
@@ -30563,7 +30661,7 @@ function createItemRenderer({
       } catch {
       }
     });
-    if (node2) body.append(node2);
+    if (node2) appendSourceChip(body, node2);
   };
   const sourceChipOf = (item) => {
     if (item?.kind !== "block") return null;
@@ -31518,10 +31616,10 @@ function createItemRenderer({
       return;
     }
     if (!rec.shapeEl) {
-      const svg = doc.createElementNS(SVG_NS3, "svg");
+      const svg = doc.createElementNS(SVG_NS4, "svg");
       svg.setAttribute("class", "pxd-shape");
       svg.setAttribute("aria-hidden", "true");
-      const path = doc.createElementNS(SVG_NS3, "path");
+      const path = doc.createElementNS(SVG_NS4, "path");
       svg.append(path);
       const before = rec.body || null;
       if (before) rec.el.insertBefore(svg, before);
@@ -31595,7 +31693,7 @@ function createItemRenderer({
     rec.stickyBits = null;
     rec.el.classList.remove("pxd-sticky--picking");
   };
-  const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash", "pxd-item--roam-table", "pxd-item--into"];
+  const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash", "pxd-item--roam-table", "pxd-item--into", "pxd-item--pdf-bar"];
   const imageRegionString2 = (text4) => {
     const region = parseRegion(text4);
     return Boolean(region && region.kind === "img" && region.supported === true && region.owner === "plexus-diagram" && region.error == null);
@@ -31859,15 +31957,17 @@ function createItemRenderer({
       }
       return;
     }
-    const sectionNodes = doc.createDocumentFragment();
-    const itemNodes = doc.createDocumentFragment();
+    const sectionEls = [];
+    const itemEls = [];
     for (const uid of lastBoard?.order || []) {
       const rec = shells.get(uid);
       if (!rec?.el) continue;
-      (rec.type === "section" ? sectionNodes : itemNodes).append(rec.el);
+      (rec.type === "section" ? sectionEls : itemEls).push(rec.el);
     }
-    if (sectionNodes.childNodes.length) sectionsLayer.append(sectionNodes);
-    if (itemNodes.childNodes.length) itemsLayer.append(itemNodes);
+    sectionsHost.appendAll(sectionEls);
+    itemsHost.appendAll(itemEls);
+    sectionsHost.prune();
+    itemsHost.prune();
   };
   const VIRTUAL_MIN = 400;
   const OPEN_NOW_MAX = 150;
@@ -31909,6 +32009,17 @@ function createItemRenderer({
     return orderIndex.get(uid) ?? order.length;
   };
   const layerOf = (rec) => rec.type === "section" ? sectionsLayer : itemsLayer;
+  const bucketsOn = () => {
+    if (!virtual()) return false;
+    try {
+      return speedOf().bucketLayers !== false;
+    } catch {
+      return false;
+    }
+  };
+  const sectionsHost = createBucketHost(sectionsLayer, { doc, on: bucketsOn });
+  const itemsHost = createBucketHost(itemsLayer, { doc, on: bucketsOn });
+  const hostOf2 = (rec) => rec.type === "section" ? sectionsHost : itemsHost;
   const freshen = (rec) => {
     if (!rec?.stalePaint) return;
     rec.stalePaint = false;
@@ -31924,38 +32035,39 @@ function createItemRenderer({
   const attachShell = (rec) => {
     if (!rec?.el || isAttached(rec)) return;
     freshen(rec);
-    const layer = layerOf(rec);
+    const host2 = hostOf2(rec);
     const order = lastBoard?.order || [];
     let before = null;
     for (let j = indexOfUid(rec.uid) + 1; j < order.length; j += 1) {
       const next = shells.get(order[j]);
-      if (next?.el && next.el.parentElement === layer) {
+      if (next?.el && host2.has(next.el)) {
         before = next.el;
         break;
       }
     }
-    if (before && typeof layer.insertBefore === "function") layer.insertBefore(rec.el, before);
-    else layer.append(rec.el);
+    host2.insertBefore(rec.el, before);
   };
   const placeVirtual = (extra = null) => {
     const active2 = activeShellUid();
     const frag = typeof doc.createDocumentFragment === "function";
-    const sectionNodes = frag ? doc.createDocumentFragment() : null;
-    const itemNodes = frag ? doc.createDocumentFragment() : null;
+    const sectionEls = [];
+    const itemEls = [];
     for (const uid of lastBoard?.order || []) {
       const rec = shells.get(uid);
       if (!rec?.el) continue;
       if (extra?.has(rec) || keepAttached(uid, rec, active2) || nearView(uid)) {
         freshen(rec);
-        if (frag) (rec.type === "section" ? sectionNodes : itemNodes).append(rec.el);
+        if (frag) (rec.type === "section" ? sectionEls : itemEls).push(rec.el);
         else layerOf(rec).append(rec.el);
       } else if (isAttached(rec)) {
         rec.el.remove();
         noteCanvasDetach();
       }
     }
-    if (sectionNodes?.childNodes.length) sectionsLayer.append(sectionNodes);
-    if (itemNodes?.childNodes.length) itemsLayer.append(itemNodes);
+    sectionsHost.appendAll(sectionEls);
+    itemsHost.appendAll(itemEls);
+    sectionsHost.prune();
+    itemsHost.prune();
   };
   const cullShells = (rect, { reveal = false, budget = Infinity, ms = Infinity } = {}) => {
     const t0 = ms < Infinity ? now2() : 0;
@@ -32007,20 +32119,18 @@ function createItemRenderer({
   };
   const attachMany = (set) => {
     const order = lastBoard?.order || [];
-    const next = /* @__PURE__ */ new Map([[sectionsLayer, null], [itemsLayer, null]]);
+    const next = /* @__PURE__ */ new Map([[sectionsHost, null], [itemsHost, null]]);
     for (let i = order.length - 1; i >= 0; i -= 1) {
       const rec = shells.get(order[i]);
       if (!rec?.el) continue;
-      const layer = layerOf(rec);
+      const host2 = hostOf2(rec);
       if (set.has(rec) && !isAttached(rec)) {
         freshen(rec);
-        const before = next.get(layer);
-        if (before && typeof layer.insertBefore === "function") layer.insertBefore(rec.el, before);
-        else layer.append(rec.el);
+        host2.insertBefore(rec.el, next.get(host2));
       }
-      if (rec.el.parentElement === layer) next.set(layer, rec.el);
+      if (host2.has(rec.el)) next.set(host2, rec.el);
     }
-    for (const rec of set) if (!isAttached(rec)) layerOf(rec).append(rec.el);
+    for (const rec of set) if (!isAttached(rec)) hostOf2(rec).append(rec.el);
   };
   const overviewFastOn = () => {
     try {
@@ -32125,10 +32235,23 @@ function createItemRenderer({
     shellBg = null;
     stopPriorityFrame();
   };
+  const HANDBACK_CHUNK = 12;
+  let priorityLimit = OPEN_CHUNK;
+  let priorityAt = 0;
   const pumpPriorityFrame = () => {
     priorityFrame = null;
     if (!shellsLive || shellsHeld || canvasCards()) return;
-    pumpChunk({ limit: OPEN_CHUNK, priority: true });
+    if (priorityLimit < OPEN_CHUNK || priorityAt) {
+      const gap = priorityAt ? now2() - priorityAt : 0;
+      if (gap > 50) priorityLimit = Math.max(HANDBACK_CHUNK, Math.floor(priorityLimit / 2));
+      else if (gap && gap < 24) priorityLimit = Math.min(OPEN_CHUNK, priorityLimit * 2);
+    }
+    pumpChunk({ limit: priorityLimit, priority: true });
+    priorityAt = priorityLimit < OPEN_CHUNK || priorityAt ? now2() : 0;
+    if (priorityLeft <= 0 || !shellQueue.length) {
+      priorityLimit = OPEN_CHUNK;
+      priorityAt = 0;
+    }
     if (!shellsLive || shellsHeld) return;
     if (priorityLeft > 0 && shellQueue.length && timers?.frame) {
       priorityFrame = timers.frame(pumpPriorityFrame, "shells");
@@ -32188,6 +32311,16 @@ function createItemRenderer({
     }
     shellQueue = inside8.concat(outside);
     priorityLeft = inside8.length;
+    if (nearest) {
+      let adaptive = true;
+      try {
+        adaptive = speedOf().adaptiveSlices !== false;
+      } catch {
+        adaptive = true;
+      }
+      priorityLimit = adaptive ? HANDBACK_CHUNK : OPEN_CHUNK;
+      priorityAt = 0;
+    }
     armShellPump();
     noteOverviewQueue();
   };
@@ -32394,7 +32527,7 @@ function createItemRenderer({
           if (rec.contentKey !== null && rec.contentKey !== key && editing?.uid !== uid) {
             dropRowOffs(rec);
             unmountRoots(rec);
-            rec.body?.replaceChildren?.();
+            clearBody(rec);
             rec.contentKey = null;
             mounted.delete(uid);
             contentSched?.drop(uid);
@@ -32671,7 +32804,7 @@ function createItemRenderer({
     if (!rec || !item || disposed || editing?.uid === rec.uid) return;
     dropRowOffs(rec);
     unmountRoots(rec);
-    rec.body?.replaceChildren?.();
+    clearBody(rec);
     rec.contentKey = null;
     rec.pageKey = "";
     mounted.delete(rec.uid);
@@ -33045,12 +33178,12 @@ function createItemRenderer({
       };
       for (const r of preview.rects) if (r.type === "section") addMini(r);
       if (preview.edges.length) {
-        const svg = doc.createElementNS(SVG_NS3, "svg");
+        const svg = doc.createElementNS(SVG_NS4, "svg");
         svg.setAttribute("class", "pxd-board-preview__edges");
         svg.setAttribute("viewBox", "0 0 1 1");
         svg.setAttribute("preserveAspectRatio", "none");
         for (const e2 of preview.edges) {
-          const line = doc.createElementNS(SVG_NS3, "line");
+          const line = doc.createElementNS(SVG_NS4, "line");
           line.setAttribute("x1", String(e2.x1));
           line.setAttribute("y1", String(e2.y1));
           line.setAttribute("x2", String(e2.x2));
@@ -35072,6 +35205,7 @@ function createItemRenderer({
     unmountRoots(rec);
     if (rec.freezeKeep) rec.freezeBefore = directChildren(body);
     else body.replaceChildren();
+    body.classList?.remove?.(SOURCE_BODY);
     rec.stickyLive = false;
     rec.editor = null;
     rec.bare = false;
@@ -35228,7 +35362,7 @@ function createItemRenderer({
                 }
               });
               if (node2) {
-                body.append(node2);
+                appendSourceChip(body, node2);
                 armAuthorWatch(rec, chip, node2);
               }
             }
@@ -35529,7 +35663,7 @@ function createItemRenderer({
       rec.title.textContent = lastBoard?.items.get(uid)?.title || "Section";
       rec.titleRendered = false;
     } else {
-      rec.body?.replaceChildren?.();
+      clearBody(rec);
       dropKidsBadge(rec);
       if (rec.type === "card") {
         rec.bare = true;
@@ -37443,7 +37577,7 @@ function createItemRenderer({
       if (key === rec.contentKey) continue;
       dropRowOffs(rec);
       unmountRoots(rec);
-      rec.body?.replaceChildren?.();
+      clearBody(rec);
       rec.contentKey = null;
       mountContent(rec, item);
     }
@@ -37642,7 +37776,7 @@ function createItemRenderer({
         if (!rec || editing?.uid === uid) continue;
         dropRowOffs(rec);
         unmountRoots(rec);
-        rec.body?.replaceChildren?.();
+        clearBody(rec);
         rec.contentKey = null;
         mounted.delete(uid);
         contentSched?.drop(uid);
@@ -37672,7 +37806,7 @@ function createItemRenderer({
     dispose
   };
 }
-var SIDES3, CHUNK_MS, LRU_CAP, SLOW_BODY_MS, slowBodies, noteBodyMs, UNMOUNT_AFTER_MS, HYDRATE_CAP_MS, CONTENT_LIMIT, CONTENT_DEPTH, OUTLINE_CAP, OUTLINE_FETCH, PAGE_WATCH_MAX, PAGE_REFRESH_MS, BLOCK_REFRESH_MS, GROW_CAP, HEADER_H, META_H, REF_TITLE_MAX, HEADER_TEXT_MAX, TINY_MINI_PX, ATTR_CHIPS_MAX, SVG_NS3, ROW_BOARD_W, ROW_BOARD_H, ROW_BOARD_THUMBS, BOARD_KEY_DEPTH, BOARD_KEY_NODES, KID_ROW_H, PEEK_DELAY_MS, PEEK_TOP, PEEK_SUB, PEEK_TEXT_MAX, now2, HL_NAMES2, NOTE_CARET_SKIP, childString5, childKids, childUid, childProps, KIDS_KINDS, isKidsCard, isSticky, STICKY_TITLE_MAX, stickyTitleOf, isTaskAttrString, skipChildString, visibleKids, taskBlockOn, statusSig, TASK_MARK, isTaskCard, regionHubs;
+var SIDES3, CHUNK_MS, LRU_CAP, SLOW_BODY_MS, slowBodies, noteBodyMs, UNMOUNT_AFTER_MS, HYDRATE_CAP_MS, CONTENT_LIMIT, CONTENT_DEPTH, OUTLINE_CAP, OUTLINE_FETCH, PAGE_WATCH_MAX, PAGE_REFRESH_MS, BLOCK_REFRESH_MS, GROW_CAP, HEADER_H, META_H, REF_TITLE_MAX, HEADER_TEXT_MAX, TINY_MINI_PX, ATTR_CHIPS_MAX, SVG_NS4, ROW_BOARD_W, ROW_BOARD_H, ROW_BOARD_THUMBS, BOARD_KEY_DEPTH, BOARD_KEY_NODES, KID_ROW_H, PEEK_DELAY_MS, PEEK_TOP, PEEK_SUB, PEEK_TEXT_MAX, now2, HL_NAMES2, NOTE_CARET_SKIP, childString5, childKids, childUid, childProps, KIDS_KINDS, isKidsCard, isSticky, STICKY_TITLE_MAX, stickyTitleOf, isTaskAttrString, skipChildString, visibleKids, taskBlockOn, statusSig, TASK_MARK, isTaskCard, regionHubs;
 var init_cards = __esm({
   "src/view/cards.js"() {
     init_card_face();
@@ -37713,6 +37847,7 @@ var init_cards = __esm({
     init_pdf_pin_view();
     init_roam_table();
     init_table_card();
+    init_buckets();
     init_table_cells();
     init_card_children();
     SIDES3 = ["top", "right", "bottom", "left"];
@@ -37743,7 +37878,7 @@ var init_cards = __esm({
     HEADER_TEXT_MAX = 160;
     TINY_MINI_PX = 28;
     ATTR_CHIPS_MAX = 3;
-    SVG_NS3 = "http://www.w3.org/2000/svg";
+    SVG_NS4 = "http://www.w3.org/2000/svg";
     ROW_BOARD_W = 220;
     ROW_BOARD_H = 90;
     ROW_BOARD_THUMBS = 4;
@@ -51159,10 +51294,16 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         async undo() {
           const moves = [];
           const propsOps = [];
+          const wroteMove = /* @__PURE__ */ new Set();
+          const wroteProps = /* @__PURE__ */ new Set();
+          for (const op of custom.forward || []) {
+            if (op.op === "move") wroteMove.add(op.uid);
+            else if (op.op === "props") wroteProps.add(op.uid);
+          }
           for (const [id, prev] of before) {
             const parentNow = ix().get(id)?.parent?.[UID3] || uid;
-            if (prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
-            if (stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
+            if (wroteMove.has(id) || prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
+            if (wroteProps.has(id) || stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
           }
           moves.sort((a, b) => a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0));
           await execute([...moves, ...propsOps]);
@@ -54644,6 +54785,7 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     };
     let n3 = 0;
     for (const item of items) {
+      if (item.cover) continue;
       const title = String(item.title || "").trim();
       if (!title) continue;
       const r = item.rect;
@@ -54741,6 +54883,32 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     }
     ctx.globalAlpha = 1;
   };
+  const paintCovers = (ctx, items) => {
+    if (typeof ctx.drawImage !== "function") return;
+    for (const item of items) {
+      const img = item.cover;
+      const iw = Number(img?.naturalWidth || img?.width) || 0;
+      const ih = Number(img?.naturalHeight || img?.height) || 0;
+      if (!(iw > 0 && ih > 0)) continue;
+      const r = item.rect;
+      const k = Math.max(r.w / iw, r.h / ih);
+      const sw = r.w / k, sh = r.h / k;
+      const sx = (iw - sw) / 2;
+      ctx.save?.();
+      if (typeof ctx.roundRect === "function" && typeof ctx.clip === "function") {
+        ctx.beginPath();
+        ctx.roundRect(r.x, r.y, r.w, r.h, 8);
+        ctx.clip();
+      }
+      ctx.fillStyle = item.paper || "#ffffff";
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      try {
+        ctx.drawImage(img, sx, 0, sw, sh, r.x, r.y, r.w, r.h);
+      } catch {
+      }
+      ctx.restore?.();
+    }
+  };
   const paint2 = (ctx, { items, edges, c, scale, x0, y0, bw, bh, styled = false, tier = "overview", zoom = 1, view = null }) => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, bw, bh);
@@ -54759,10 +54927,12 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     ctx.globalAlpha = 1;
     if (styled && tier === "overview") {
       paintStyled(ctx, { items, c, scale });
+      paintCovers(ctx, items);
       return;
     }
     if (styled) {
       paintCards(ctx, { items, c, scale, tier, zoom, view });
+      paintCovers(ctx, items);
       return;
     }
     ctx.fillStyle = c.card;
@@ -59151,7 +59321,7 @@ function createInteractions({ actions, settings } = {}) {
     if (!wheelZooming) {
       if (state.gesture) return;
       wheelZooming = true;
-      call("setGesturing", true);
+      call("setGesturing", true, { wheelZoom: true });
     }
     if (wheelTimer) clearTimeout(wheelTimer);
     wheelTimer = setTimeout(() => {
@@ -73840,7 +74010,7 @@ var MOTION_TIMING = Object.freeze({
   maxPageMs: 4e3,
   fractionMs: 300
 });
-var SVG_NS4 = "http://www.w3.org/2000/svg";
+var SVG_NS5 = "http://www.w3.org/2000/svg";
 var clamp016 = (n3) => Math.max(0, Math.min(1, n3));
 function partKind(type) {
   const t = String(type || "").toLowerCase();
@@ -74010,7 +74180,7 @@ function createParseMotion({ doc, overlayHost: overlayHost2 = null, overlayPage 
     }
     if (h.timer != null) unlater(h.timer);
   };
-  const svgEl3 = (tag) => typeof doc?.createElementNS === "function" ? doc.createElementNS(SVG_NS4, tag) : doc.createElement(tag);
+  const svgEl3 = (tag) => typeof doc?.createElementNS === "function" ? doc.createElementNS(SVG_NS5, tag) : doc.createElement(tag);
   let overlay = null;
   let carrier = null;
   let partsSvg = null;
@@ -83263,6 +83433,7 @@ function createPdfFlip({ doc, win: win2, lib = null, timers = null, urlOf = null
   let loading = false;
   let announced = false;
   let host = null;
+  let barItem = null;
   let layer = null;
   let canvas = null;
   let bar = null;
@@ -83328,6 +83499,8 @@ function createPdfFlip({ doc, win: win2, lib = null, timers = null, urlOf = null
       bar?.remove?.();
     } catch {
     }
+    barItem?.classList?.remove?.("pxd-item--pdf-bar");
+    barItem = null;
     layer = null;
     canvas = null;
     bar = null;
@@ -83424,6 +83597,8 @@ function createPdfFlip({ doc, win: win2, lib = null, timers = null, urlOf = null
       bind(next, 1);
       bar.append(prev, pagesEl, next);
       host.append(bar);
+      barItem = host.closest?.(".pxd-item") || null;
+      barItem?.classList?.add?.("pxd-item--pdf-bar");
     }
     paintBar();
   };
@@ -83880,18 +84055,21 @@ init_offscreen();
 
 // src/view/editor-keys.js
 var UID7 = /^[A-Za-z0-9_-]{9,15}$/;
+var SHORT_UID = /^[A-Za-z0-9_]{5,15}$/;
 function uidFromBlockInput(id) {
   const prefix = "block-input-";
   if (!id.startsWith(prefix)) return null;
   const rest = id.slice(prefix.length);
-  if (UID7.test(rest)) return rest;
+  if (UID7.test(rest) || SHORT_UID.test(rest)) return rest;
+  const last = rest.slice(rest.lastIndexOf("-") + 1);
+  const short = last.length < 9 && SHORT_UID.test(last) ? last : null;
   for (let i = rest.length - 1; i >= 0; i -= 1) {
     if (rest[i] !== "-") continue;
     const tail = rest.slice(i + 1);
-    if (tail.length > 15) return null;
+    if (tail.length > 15) return short;
     if (UID7.test(tail)) return tail;
   }
-  return null;
+  return short;
 }
 function blockUidFromNode(node2) {
   let el2 = node2;
@@ -83901,7 +84079,7 @@ function blockUidFromNode(node2) {
     if (fromInput) return fromInput;
     if (UID7.test(id)) return id;
     const data = el2.dataset?.uid || el2.getAttribute?.("data-uid") || "";
-    if (UID7.test(data)) return data;
+    if (UID7.test(data) || SHORT_UID.test(data)) return data;
     el2 = el2.parentElement;
   }
   return null;
@@ -83952,6 +84130,7 @@ function editorKeyAction({
 }
 
 // src/view/edges.js
+init_buckets();
 init_arrow_home();
 init_board();
 init_endpoints();
@@ -83987,7 +84166,7 @@ function paintSuggest(doc, svg, lines) {
 }
 
 // src/view/edges.js
-var SVG_NS5 = "http://www.w3.org/2000/svg";
+var SVG_NS6 = "http://www.w3.org/2000/svg";
 var PAIR_OFFSET = 18;
 var LABEL_HIDE_ZOOM = 0.3;
 var now4 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
@@ -84014,7 +84193,9 @@ var setClass = (el2, name) => {
   el2.setAttribute("class", name);
   if (el2.classList && !el2.classList.contains(name.split(" ")[0])) el2.className = name;
 };
-function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText: blockText3, onHover, virtualOff = () => false, deferPark = () => false, onParkDue = null } = {}) {
+function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText: blockText3, onHover, virtualOff = () => false, deferPark = () => false, onParkDue = null, bucketed = () => false } = {}) {
+  const edgeHost = svg ? createBucketHost(svg, { doc, svg: true, on: bucketed }) : null;
+  const labelHost = labelsLayer ? createBucketHost(labelsLayer, { doc, on: bucketed }) : null;
   const edgeEls = /* @__PURE__ */ new Map();
   const laneHidden = /* @__PURE__ */ new Set();
   const linkEls = /* @__PURE__ */ new Map();
@@ -84032,7 +84213,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const measures = /* @__PURE__ */ new Map();
   const listeners3 = [];
   const mk = (tag, cls, parent) => {
-    const el2 = doc.createElementNS(SVG_NS5, tag);
+    const el2 = doc.createElementNS(SVG_NS6, tag);
     setClass(el2, cls);
     parent?.append(el2);
     return el2;
@@ -84123,21 +84304,23 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const unparkEdge = (rec) => {
     if (!rec.parked) return;
     rec.parked = false;
-    (drag?.recs.has(rec) ? drag.layer : drag?.crossing?.has(rec) ? drag.cross : svg)?.append(rec.g);
-    labelsLayer?.append(rec.label);
+    if (drag?.recs.has(rec)) drag.layer.append(rec.g);
+    else if (drag?.crossing?.has(rec)) drag.cross.append(rec.g);
+    else edgeHost?.append(rec.g);
+    labelHost?.append(rec.label);
   };
   let drag = null;
   const beginDrag = (board2, moving) => {
     endDrag(null);
     if (!svg?.parentElement || !moving?.size) return 0;
-    const layer = doc.createElementNS(SVG_NS5, "svg");
+    const layer = doc.createElementNS(SVG_NS6, "svg");
     setClass(layer, "pxd-edges pxd-edges--drag");
     layer.setAttribute("aria-hidden", "true");
     layer.style.willChange = "transform";
     svg.after?.(layer);
     if (!layer.parentElement) svg.parentElement.append(layer);
     const recs = /* @__PURE__ */ new Map();
-    const cross = doc.createElementNS(SVG_NS5, "svg");
+    const cross = doc.createElementNS(SVG_NS6, "svg");
     setClass(cross, "pxd-edges pxd-edges--cross");
     cross.setAttribute("aria-hidden", "true");
     cross.style.willChange = "transform";
@@ -84175,12 +84358,12 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (!drag) return;
     const { layer, recs, cross, crossing, links } = drag;
     drag = null;
-    for (const rec of crossing || []) if (!rec.parked && edgeEls.has(rec.uid) && rec.g.parentElement === cross) svg.append(rec.g);
-    for (const rec of links || []) if (rec.g.parentElement === cross) svg.append(rec.g);
+    for (const rec of crossing || []) if (!rec.parked && edgeEls.has(rec.uid) && rec.g.parentElement === cross) edgeHost.append(rec.g);
+    for (const rec of links || []) if (rec.g.parentElement === cross) edgeHost.append(rec.g);
     cross?.remove();
     for (const [rec, base] of recs) {
       if (rec.parked || !edgeEls.has(rec.uid)) continue;
-      svg.append(rec.g);
+      edgeHost.append(rec.g);
       if (rec.label && base) rec.label.style.transform = base;
       const edge = ctx?.board?.edges.get(rec.uid);
       if (edge && ctx.rects) placeEdge(ctx.board, edge, rec, ctx.rects, ctx.zoom ?? zoomCache);
@@ -84329,7 +84512,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     return geo;
   };
   const buildEdge = (edge) => {
-    const g = mk("g", "pxd-edge", svg);
+    const g = mk("g", "pxd-edge", edgeHost?.target());
     g.dataset.uid = edge.uid;
     g.setAttribute("data-uid", edge.uid);
     const hit = mk("path", "pxd-edge__hit", g);
@@ -84342,7 +84525,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     label.className = "pxd-label";
     label.dataset.uid = edge.uid;
     label.setAttribute("data-uid", edge.uid);
-    labelsLayer?.append(label);
+    labelHost?.append(label);
     const rec = { uid: edge.uid, g, hit, line, head, tail, dot, label, geo: null };
     edgeEls.set(edge.uid, rec);
     return rec;
@@ -84667,7 +84850,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     rec.label.style.transform = `translate(${geo.mid.x}px, ${geo.mid.y}px) translate(-50%, -50%)`;
   };
   const buildLink = (link) => {
-    const g = mk("g", "pxd-link", svg);
+    const g = mk("g", "pxd-link", edgeHost?.target());
     g.dataset.key = link.key;
     g.setAttribute("data-key", link.key);
     const hit = mk("path", "pxd-link__hit", g);
@@ -84677,7 +84860,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     label.className = "pxd-label pxd-label--link";
     label.dataset.key = link.key;
     label.setAttribute("data-key", link.key);
-    labelsLayer?.append(label);
+    labelHost?.append(label);
     const rec = { g, hit, line, head, label, geo: null };
     linkEls.set(link.key, rec);
     return rec;
@@ -84902,7 +85085,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     return left;
   };
   const toCross = (rec) => {
-    if (!drag?.cross || rec.g.parentElement !== svg || drag.recs.has(rec)) return;
+    if (!drag?.cross || !edgeHost?.has(rec.g) || drag.recs.has(rec)) return;
     if (!drag.cross.parentElement) drag.layer.parentElement?.insertBefore?.(drag.cross, drag.layer);
     drag.cross.append(rec.g);
     if (rec.uid != null && edgeEls.get(rec.uid) === rec) drag.crossing.add(rec);
@@ -94925,7 +95108,7 @@ init_section6();
 // src/view/later-views.js
 init_section6();
 var TITLES = { gallery: "Gallery", timeline: "Timeline", graph: "Graph" };
-var SVG_NS6 = "http://www.w3.org/2000/svg";
+var SVG_NS7 = "http://www.w3.org/2000/svg";
 function mountLater({ doc = globalThis.document, root, host, getBoard, onClose } = {}) {
   const resolve = (uid) => host?.blockString?.(uid);
   const box2 = doc.createElement("div");
@@ -95042,7 +95225,7 @@ function mountLater({ doc = globalThis.document, root, host, getBoard, onClose }
     const height = Math.round(maxY - minY + 80);
     body.style.minWidth = `${width}px`;
     body.style.minHeight = `${height}px`;
-    const svg = doc.createElementNS(SVG_NS6, "svg");
+    const svg = doc.createElementNS(SVG_NS7, "svg");
     svg.setAttribute("class", "pxd-later__links");
     svg.setAttribute("width", String(width));
     svg.setAttribute("height", String(height));
@@ -95052,7 +95235,7 @@ function mountLater({ doc = globalThis.document, root, host, getBoard, onClose }
       if (!a || !b) continue;
       const pa = at(a);
       const pb = at(b);
-      const line = doc.createElementNS(SVG_NS6, "line");
+      const line = doc.createElementNS(SVG_NS7, "line");
       line.setAttribute("class", "pxd-later__link");
       line.setAttribute("x1", String(pa.x));
       line.setAttribute("y1", String(pa.y));
@@ -95119,7 +95302,7 @@ init_changes();
 init_comments();
 init_endpoints();
 init_image_region();
-var SVG_NS7 = "http://www.w3.org/2000/svg";
+var SVG_NS8 = "http://www.w3.org/2000/svg";
 var pointerBoard = null;
 function sidebarMountKind(nativeEl) {
   const win2 = nativeEl?.closest?.(".rm-sidebar-window");
@@ -95659,11 +95842,11 @@ function pdfHighlightButton(doc, onClick, count = 0) {
   btn2.setAttribute("aria-label", PDF_HIGHLIGHTS_LABEL);
   btn2.setAttribute("data-tip", "pdf.highlights");
   if (typeof doc.createElementNS === "function") {
-    const svg = doc.createElementNS(SVG_NS7, "svg");
+    const svg = doc.createElementNS(SVG_NS8, "svg");
     svg.setAttribute("class", "pxd-pdf-highlights__glyph");
     svg.setAttribute("viewBox", "0 0 16 16");
     svg.setAttribute("aria-hidden", "true");
-    const path = doc.createElementNS(SVG_NS7, "path");
+    const path = doc.createElementNS(SVG_NS8, "path");
     path.setAttribute("d", HL_GLYPH);
     path.setAttribute("fill", "none");
     path.setAttribute("stroke", "currentColor");
@@ -96076,7 +96259,7 @@ function buildBoardView(onFail, {
     return node2;
   };
   const svg = (cls, parent) => {
-    const node2 = doc.createElementNS(SVG_NS7, "svg");
+    const node2 = doc.createElementNS(SVG_NS8, "svg");
     node2.setAttribute("class", cls);
     if (node2.classList && !node2.classList.contains(cls)) node2.className = cls;
     parent?.append(node2);
@@ -98556,6 +98739,10 @@ function buildBoardView(onFail, {
         coverFaces.set(url, src ? { state: "ready", src, w: record?.w ?? null, h: record?.h ?? null, lastPage: record?.lastPage ?? null, pageCount: record?.pageCount ?? null, ...titleFace(record) } : emptyFace("error", record));
       }
       repaintForCover(url);
+      if (underlay.isShown()) {
+        ovDirty = true;
+        schedule();
+      }
       if (!disposed && typeof record?.pageTitle === "string" && record.pageTitle) {
         try {
           readPane?.refreshCards?.();
@@ -98568,6 +98755,42 @@ function buildBoardView(onFail, {
       coverFaces.set(url, emptyFace("none", null));
       repaintForCover(url);
     });
+  };
+  const canvasCovers = /* @__PURE__ */ new Map();
+  const CANVAS_COVERS_MAX = 160;
+  const canvasCoverOf = (item) => {
+    if (item?.kind !== "pdf") return null;
+    try {
+      if (notedSpeedFlags().canvasCovers === false) return null;
+    } catch {
+      return null;
+    }
+    const key = coverKey(pdfMacroUrl(pdfSourceOf(item)));
+    if (!key) return null;
+    const face = coverFaces.get(key);
+    if (!face) {
+      loadCover(key);
+      return null;
+    }
+    const src = face.state !== "loading" ? presentFace(key, face)?.src : null;
+    if (!src) return null;
+    let img = canvasCovers.get(src);
+    if (!img) {
+      const Img = win2?.Image;
+      if (typeof Img !== "function") return null;
+      img = new Img();
+      img.decoding = "async";
+      img.onload = () => {
+        if (disposed) return;
+        ovDirty = true;
+        if (underlay.isShown()) schedule();
+      };
+      img.src = src;
+      canvasCovers.set(src, img);
+      if (canvasCovers.size > CANVAS_COVERS_MAX) canvasCovers.delete(canvasCovers.keys().next().value);
+      return null;
+    }
+    return img.complete && img.naturalWidth > 0 ? img : null;
   };
   const coverImageFor = (url) => {
     const key = coverKey(url);
@@ -99007,6 +99230,13 @@ function buildBoardView(onFail, {
       }
     },
     onParkDue: () => armEdgePark(),
+    bucketed: () => {
+      try {
+        return notedSpeedFlags().bucketLayers !== false && Boolean(itemsR.isBig?.());
+      } catch {
+        return false;
+      }
+    },
     onLabelCommit: (uid, label) => session.updateEdge?.(uid, { label }),
     blockText: (uid) => host?.blockString?.(uid),
     onHover: (uid, on) => hoverRows(uid, on)
@@ -99788,6 +100018,16 @@ function buildBoardView(onFail, {
   let suspendedBoard = null;
   let edgesZoomAt = NaN;
   let wheelLayer = false;
+  let zoomGesture = false;
+  let zoomWheel = false;
+  const zoomNoLayer = () => {
+    try {
+      return notedSpeedFlags().zoomNoLayer !== false;
+    } catch {
+      return false;
+    }
+  };
+  const worldLayer = () => (gesturing || wheelLayer) && !((zoomGesture || zoomWheel) && zoomNoLayer());
   let minimapAt = -Infinity;
   const MINIMAP_WHEEL_MS = 150;
   const perfNow3 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
@@ -99909,7 +100149,7 @@ function buildBoardView(onFail, {
     for (const item of b.items.values()) {
       if (item.type === "section") continue;
       const rect = r.get(item.uid);
-      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect, color: item.color || "", title: item.title || "" });
+      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect, color: item.color || "", title: item.title || "", cover: tier === "detail" ? null : canvasCoverOf(item) });
     }
     const edges = [];
     if (edgesR.isVirtual?.(b)) {
@@ -100070,7 +100310,7 @@ function buildBoardView(onFail, {
       if (!rect || itemsR.attachedUid(uid)) continue;
       const hit = Boolean(canvasSearch?.has(uid));
       const dim = Boolean(canvasSearch && !hit || canvasFocus && !canvasFocus.has(uid));
-      items.push({ uid, rect, color: item.color || "", title: item.title || "", dim, hit, selected: sel.has(uid) });
+      items.push({ uid, rect, color: item.color || "", title: item.title || "", dim, hit, selected: sel.has(uid), cover: canvasCoverOf(item) });
     }
     const edges = [];
     for (const e2 of b.edges.values()) {
@@ -100295,6 +100535,7 @@ function buildBoardView(onFail, {
       chrome.toolbar.setZoom(vp.zoom);
       if (wheelLayer) {
         wheelLayer = false;
+        zoomWheel = false;
         world.style.willChange = "";
         propsPanel.place();
       }
@@ -103159,7 +103400,7 @@ function buildBoardView(onFail, {
     }
     const d = pts.map((p, i) => `${i ? "L" : "M"}${p.x} ${p.y}`).join(" ");
     if (!trailPath) {
-      trailPath = doc.createElementNS(SVG_NS7, "path");
+      trailPath = doc.createElementNS(SVG_NS8, "path");
       trailPath.setAttribute("class", "pxd-trail");
       trailPath.setAttribute("fill", "none");
       overlaySvg.append(trailPath);
@@ -104620,6 +104861,7 @@ ${url}`;
     },
     setGesturing: (on, info) => {
       gesturing = Boolean(on);
+      zoomGesture = gesturing && Boolean(info?.wheelZoom);
       itemsR.setPeekBlocked?.(gesturing);
       guardSelection(gesturing && Boolean(ctl.gestureKind?.()));
       if (!gesturing) {
@@ -104627,7 +104869,7 @@ ${url}`;
         endUnderlay();
       }
       setRootFlag("gesturing", gesturing);
-      world.style.willChange = gesturing || wheelLayer ? "transform" : "";
+      world.style.willChange = worldLayer() ? "transform" : "";
       syncShellHold();
       if (gesturing) {
         resumeTimer?.();
@@ -105725,8 +105967,20 @@ ${url}`;
     }
     if (!leavesBoardPointer(event.target) && !inReaderText(event.target)) event.stopPropagation();
   });
+  const captionByTable = (target) => {
+    try {
+      if (notedSpeedFlags().tableCaptionEdit === false) return false;
+    } catch {
+      return false;
+    }
+    const card2 = target?.closest?.(".pxd-item.pxd-card--block.pxd-item--roam-table");
+    if (!card2 || !root.contains(card2)) return false;
+    const lod = root.getAttribute?.("data-pxd-lod");
+    if (lod === "map" || lod === "overview") return false;
+    return !target.closest?.(tablePressSkip);
+  };
   listen(root, "dblclick", (event) => {
-    if (leavesBoardPointer(event.target) || inReaderText(event.target) || inRoamTable(event.target) || event.target?.closest?.(".pxd-refs")) return;
+    if (leavesBoardPointer(event.target) || inReaderText(event.target) || inRoamTable(event.target) && !captionByTable(event.target) || event.target?.closest?.(".pxd-refs")) return;
     if (nativeClickKind(event.target)) return;
     event.stopPropagation();
     event.preventDefault();
@@ -105792,9 +106046,10 @@ ${url}`;
       wheelMeasuredAt = t;
     }
     const openedBurst = !wheelLayer && !gesturing && deferOn() && Boolean(itemsR.isVirtual?.());
+    zoomWheel = Boolean(event.ctrlKey || event.metaKey || setting("wheel", "pan") === "zoom");
     if (openedBurst) {
       wheelLayer = true;
-      world.style.willChange = "transform";
+      world.style.willChange = worldLayer() ? "transform" : "";
       syncShellHold();
     }
     const handled = ctl.handle(normalize2(event, "wheel"));
@@ -105803,7 +106058,7 @@ ${url}`;
       event.stopPropagation();
       if (!wheelLayer && !gesturing) {
         wheelLayer = true;
-        world.style.willChange = "transform";
+        world.style.willChange = worldLayer() ? "transform" : "";
       }
       syncShellHold();
       if (!event.ctrlKey && !event.metaKey) hitShield.raise();
@@ -105811,7 +106066,7 @@ ${url}`;
       settle2();
     } else if (openedBurst) {
       wheelLayer = false;
-      world.style.willChange = gesturing ? "transform" : "";
+      world.style.willChange = worldLayer() ? "transform" : "";
       syncShellHold();
     }
     return handled;
@@ -106755,6 +107010,7 @@ ${url}`;
     if (isFullscreen) requestFullscreen(false);
   }, win: win2 });
   let firstPainted = false;
+  let paintedVp = null;
   const renderFrame = () => {
     if (disposed || suspended) return;
     const b = board2();
@@ -106844,6 +107100,7 @@ ${url}`;
     }
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
+      paintedVp = { x: vp.x, y: vp.y, zoom: vp.zoom };
       if (size.width && !deferReveal()) {
         if (edgeRest) itemsR.reveal?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
         else revealNear();
@@ -107864,7 +108121,7 @@ ${url}`;
     paintAudit() {
       const b = board2();
       if (!b || !size.width) return { inView: 0, attached: 0, covered: 0, missing: 0, lod: tier };
-      const view2 = visibleWorldRect(vp, size, 0);
+      const view2 = visibleWorldRect(paintedVp || vp, size, 0);
       const r = paintRects();
       const under = underlay.isShown() ? underlay.drawnUids() : null;
       let inView = 0, attached = 0, covered = 0;
@@ -108143,7 +108400,7 @@ var SKETCH_HOLD_MS = 2e3;
 var SKETCH_ROOT_BORDER = 1;
 var PAIR_OFFSET2 = 18;
 var TITLE_MAX2 = 200;
-var SVG_NS8 = "http://www.w3.org/2000/svg";
+var SVG_NS9 = "http://www.w3.org/2000/svg";
 function sketchKey(graph, uid) {
   return `plexus-diagram:sketch:${graph}:${uid}`;
 }
@@ -108381,7 +108638,7 @@ function resolveSketchViewport({ stored, initial, board: board2, size } = {}) {
   return fitViewport(boundsOf([...rects.values()]), box2, { padding: 64, maxZoom: 1 });
 }
 function svgEl2(doc, tag) {
-  if (typeof doc.createElementNS === "function") return doc.createElementNS(SVG_NS8, tag);
+  if (typeof doc.createElementNS === "function") return doc.createElementNS(SVG_NS9, tag);
   return doc.createElement(tag);
 }
 function placeLayer(mountEl, layer) {
@@ -108516,6 +108773,7 @@ init_cards();
 // src/view/boardsnap-paint.js
 init_geometry();
 init_board();
+init_settings();
 var SNAP_CLASS = "pxd-item--snap";
 var CHROME_KEEP = /(^|\s)(pxd-toolbar|pxd-rail|pxd-palette|pxd-dock|pxd-mode|pxd-minimap|pxd-props|pxd-resize-grip|pxd-tabs|pxd-fstabs)(\s|$)/;
 var SNAP_ROOT_CLASS = "pxd-snap-root";
@@ -108741,6 +108999,45 @@ function el(doc, tag, cls, parent) {
   return node2;
 }
 var SNAP_FADE_MS = 140;
+var SNAP_FADE_HOLD = 2;
+var mainFadeOn = () => {
+  try {
+    return notedSpeedFlags().mainFade !== false;
+  } catch {
+    return false;
+  }
+};
+function fadeOnMain(node2, raf2, nowMs2) {
+  let held = 0;
+  let t0 = 0;
+  const step = () => {
+    if (!node2.parentElement) return;
+    if (held < SNAP_FADE_HOLD) {
+      held += 1;
+      raf2(step);
+      return;
+    }
+    const t = nowMs2();
+    if (!t0) t0 = t;
+    const k = Math.min(1, (t - t0) / SNAP_FADE_MS);
+    node2.style.opacity = String(Math.round((1 - k) * 1e3) / 1e3);
+    if (k >= 1) {
+      try {
+        node2.remove();
+      } catch {
+      }
+      return;
+    }
+    raf2(step);
+  };
+  raf2(step);
+  setTimeout(() => {
+    try {
+      node2.remove();
+    } catch {
+    }
+  }, SNAP_FADE_MS + 2e3);
+}
 function removeBoardSnap(mountEl, { fade = false } = {}) {
   const nodes = mountEl?.querySelectorAll?.(`.${SNAP_ROOT_CLASS}`);
   const win2 = mountEl?.ownerDocument?.defaultView || globalThis.window;
@@ -108762,6 +109059,11 @@ function removeBoardSnap(mountEl, { fade = false } = {}) {
         node2.removeAttribute?.("data-pxd-snap");
         node2.setAttribute?.("aria-hidden", "true");
         node2.style.pointerEvents = "none";
+        if (mainFadeOn()) {
+          const clock = win2?.performance || globalThis.performance;
+          fadeOnMain(node2, raf2, () => typeof clock?.now === "function" ? clock.now() : Date.now());
+          continue;
+        }
         node2.style.transition = `opacity ${SNAP_FADE_MS}ms linear`;
         raf2(() => {
           node2.style.opacity = "0";
@@ -111216,6 +111518,41 @@ function createShiftWatch() {
       return on;
     }
   };
+}
+
+// src/view/sidebar-pdf.js
+var SIDEBAR_PDF_CLASS = "pxd-sidebar-pdf";
+var PDF = ".rm-pdf-container";
+var sidebars = (doc) => {
+  const out = [];
+  const byId2 = doc?.getElementById?.("right-sidebar");
+  if (byId2) out.push(byId2);
+  for (const el2 of doc?.getElementsByClassName?.("rm-right-sidebar") || []) if (el2 !== byId2) out.push(el2);
+  return out;
+};
+var isSidebar = (node2) => node2?.id === "right-sidebar" || Boolean(node2?.classList?.contains?.("rm-right-sidebar"));
+var holdsPdf = (node2) => Boolean(node2?.matches?.(PDF) || node2?.querySelector?.(PDF));
+function sidebarPdfDirty(records, marked, doc = globalThis.document) {
+  const bars = sidebars(doc);
+  for (const record of records || []) {
+    const target = record.target;
+    if (bars.some((bar) => bar === target || bar.contains?.(target))) return true;
+    for (const node2 of record.addedNodes || []) {
+      if (node2.nodeType === 1 && (isSidebar(node2) || bars.length && bars.some((bar) => node2.contains?.(bar)))) return true;
+    }
+    if (!marked) continue;
+    for (const node2 of record.removedNodes || []) {
+      if (node2.nodeType === 1 && (isSidebar(node2) || holdsPdf(node2))) return true;
+    }
+  }
+  return false;
+}
+function syncSidebarPdf(doc) {
+  const html = doc?.documentElement;
+  if (!html?.classList) return false;
+  const on = sidebars(doc).some(holdsPdf);
+  if (html.classList.contains(SIDEBAR_PDF_CLASS) !== on) html.classList.toggle(SIDEBAR_PDF_CLASS, on);
+  return on;
 }
 
 // src/feature.js
@@ -115922,8 +116259,14 @@ async function installPlexusDiagram({
         }
       }
     };
+    const onAppChange = (records) => {
+      onAdded(records);
+      if (sidebarPdfDirty(records, doc.documentElement?.classList?.contains?.(SIDEBAR_PDF_CLASS), doc)) syncSidebarPdf(doc);
+    };
+    syncSidebarPdf(doc);
+    lifecycle.add(() => doc.documentElement?.classList?.remove?.(SIDEBAR_PDF_CLASS));
     const app = doc.querySelector(".roam-app");
-    if (app) lifecycle.observer(new MutationObserver(guardCallback("observer", onAdded)), app, { childList: true, subtree: true });
+    if (app) lifecycle.observer(new MutationObserver(guardCallback("observer", onAppChange)), app, { childList: true, subtree: true });
     if (doc.body) {
       lifecycle.observer(new MutationObserver(guardCallback("observer", (records) => {
         for (const record of records) {

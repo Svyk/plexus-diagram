@@ -81279,7 +81279,7 @@ function installPdfPhotoRestore(doc) {
     if (seen.get(canvas) === sizeKey || inflight.has(canvas)) return;
     void paint2(canvas, page, sizeKey);
   };
-  const consider = (node2) => {
+  const consider2 = (node2) => {
     if (!node2 || node2.nodeType !== 1) return;
     if (String(node2.tagName || "").toUpperCase() === "CANVAS") queuePaint(node2);
     const nested = node2.querySelectorAll?.("canvas") || [];
@@ -81288,7 +81288,7 @@ function installPdfPhotoRestore(doc) {
   const obs = new MutationObserver((records) => {
     for (const rec of records) {
       const nodes = rec.addedNodes || [];
-      for (const node2 of nodes) consider(node2);
+      for (const node2 of nodes) consider2(node2);
     }
   });
   const stop3 = () => {
@@ -81308,7 +81308,7 @@ function installPdfPhotoRestore(doc) {
   };
   try {
     const existing = doc.querySelectorAll?.("canvas") || [];
-    for (const canvas of existing) consider(canvas);
+    for (const canvas of existing) consider2(canvas);
     obs.observe(doc.body, { childList: true, subtree: true });
   } catch {
     return () => {

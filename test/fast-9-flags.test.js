@@ -56,6 +56,7 @@ const ALL_ON = {
   idlePark: true,
   quietBodies: true,
   adaptiveSlices: true,
+  bucketLayers: true,
 };
 
 test("the panel has no speed-flags control, and bad JSON leaves the defaults (thirty-one on, edgeFingerprint and overviewCanvas off)", () => {

@@ -78,6 +78,6 @@ test("E3-6: during a big drag no path in the main edges layer is rewritten; cros
     const kids = [...cross.children];
     m.stub.dispatch(el, "pointerup", { clientX: p.clientX + 24, clientY: p.clientY + 16, button: 0, buttons: 0, pointerId: 7 });
     assert.equal(root.querySelector(".pxd-edges--cross"), null, "the crossing layer is gone in the drop's task");
-    assert.ok(kids.every((g) => g.parentElement?.getAttribute("class") === "pxd-edges"), "crossing edges are back in the edges layer");
+    assert.ok(kids.every((g) => g.closest("svg")?.getAttribute("class") === "pxd-edges"), "crossing edges are back in the edges layer");
   } finally { m.done(); }
 });

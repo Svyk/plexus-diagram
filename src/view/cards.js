@@ -41,6 +41,7 @@ import { isSourceAttrString, sourcePinOf } from "../model/pdf-pin.js";
 import { buildPinChip } from "./pdf-pin-view.js";
 import { isRoamTableString, tableUidOf } from "../model/roam-table.js";
 import { mountRoamTable } from "./table-card.js";
+import { createBucketHost } from "./buckets.js";
 import { findCell, forgetTableCells, measureCell, revealCell, watchTable } from "./table-cells.js";
 import { childIsOpen, findBlock, focusStep, PEEK_ANIM_MS, PEEK_HOVER_MS, PEEK_LEAVE_MS, peekAllowed } from "../model/card-children.js";
 
@@ -1998,15 +1999,17 @@ export function createItemRenderer({
       }
       return;
     }
-    const sectionNodes = doc.createDocumentFragment();
-    const itemNodes = doc.createDocumentFragment();
+    const sectionEls = [];
+    const itemEls = [];
     for (const uid of lastBoard?.order || []) {
       const rec = shells.get(uid);
       if (!rec?.el) continue;
-      (rec.type === "section" ? sectionNodes : itemNodes).append(rec.el);
+      (rec.type === "section" ? sectionEls : itemEls).push(rec.el);
     }
-    if (sectionNodes.childNodes.length) sectionsLayer.append(sectionNodes);
-    if (itemNodes.childNodes.length) itemsLayer.append(itemNodes);
+    sectionsHost.appendAll(sectionEls);
+    itemsHost.appendAll(itemEls);
+    sectionsHost.prune();
+    itemsHost.prune();
   };
   // PhD main board: 1,512 shells and every edge stayed in the DOM (25k nodes), so each pan, zoom and marquee frame
   // paid style and layout for all of them. On a board past VIRTUAL_MIN items a shell is in the DOM only near the
@@ -2063,6 +2066,15 @@ export function createItemRenderer({
     return orderIndex.get(uid) ?? order.length;
   };
   const layerOf = (rec) => (rec.type === "section" ? sectionsLayer : itemsLayer);
+  // R4 (bucketLayers): on a big board the layers hold their shells in buckets (buckets.js), so a shell attached or
+  // detached mid-list restyles its bucket, not every later shell.
+  const bucketsOn = () => {
+    if (!virtual()) return false;
+    try { return speedOf().bucketLayers !== false; } catch { return false; }
+  };
+  const sectionsHost = createBucketHost(sectionsLayer, { doc, on: bucketsOn });
+  const itemsHost = createBucketHost(itemsLayer, { doc, on: bucketsOn });
+  const hostOf = (rec) => (rec.type === "section" ? sectionsHost : itemsHost);
   // A shell skipped by a sync while detached: paint it now, before it shows.
   const freshen = (rec) => {
     if (!rec?.stalePaint) return;
@@ -2080,33 +2092,34 @@ export function createItemRenderer({
   const attachShell = (rec) => {
     if (!rec?.el || isAttached(rec)) return;
     freshen(rec);
-    const layer = layerOf(rec);
+    const host = hostOf(rec);
     const order = lastBoard?.order || [];
     let before = null;
     for (let j = indexOfUid(rec.uid) + 1; j < order.length; j += 1) {
       const next = shells.get(order[j]);
-      if (next?.el && next.el.parentElement === layer) { before = next.el; break; }
+      if (next?.el && host.has(next.el)) { before = next.el; break; }
     }
-    if (before && typeof layer.insertBefore === "function") layer.insertBefore(rec.el, before);
-    else layer.append(rec.el);
+    host.insertBefore(rec.el, before);
   };
   // Every wanted shell in board order in one pass; shells no longer wanted leave the DOM.
   const placeVirtual = (extra = null) => {
     const active = activeShellUid();
     const frag = typeof doc.createDocumentFragment === "function";
-    const sectionNodes = frag ? doc.createDocumentFragment() : null;
-    const itemNodes = frag ? doc.createDocumentFragment() : null;
+    const sectionEls = [];
+    const itemEls = [];
     for (const uid of lastBoard?.order || []) {
       const rec = shells.get(uid);
       if (!rec?.el) continue;
       if (extra?.has(rec) || keepAttached(uid, rec, active) || nearView(uid)) {
         freshen(rec);
-        if (frag) (rec.type === "section" ? sectionNodes : itemNodes).append(rec.el);
+        if (frag) (rec.type === "section" ? sectionEls : itemEls).push(rec.el);
         else layerOf(rec).append(rec.el);
       } else if (isAttached(rec)) { rec.el.remove(); noteCanvasDetach(); }
     }
-    if (sectionNodes?.childNodes.length) sectionsLayer.append(sectionNodes);
-    if (itemNodes?.childNodes.length) itemsLayer.append(itemNodes);
+    sectionsHost.appendAll(sectionEls);
+    itemsHost.appendAll(itemEls);
+    sectionsHost.prune();
+    itemsHost.prune();
   };
   // reveal: attach only (a gesture frame), at most `budget` shells and about `ms` of attach work, nearest the rect's
   // centre first.
@@ -2162,20 +2175,18 @@ export function createItemRenderer({
   // layer. Attached shells are not moved (re-appending them all was ~2,000 DOM mutations per settle at map zoom).
   const attachMany = (set) => {
     const order = lastBoard?.order || [];
-    const next = new Map([[sectionsLayer, null], [itemsLayer, null]]);
+    const next = new Map([[sectionsHost, null], [itemsHost, null]]);
     for (let i = order.length - 1; i >= 0; i -= 1) {
       const rec = shells.get(order[i]);
       if (!rec?.el) continue;
-      const layer = layerOf(rec);
+      const host = hostOf(rec);
       if (set.has(rec) && !isAttached(rec)) {
         freshen(rec);
-        const before = next.get(layer);
-        if (before && typeof layer.insertBefore === "function") layer.insertBefore(rec.el, before);
-        else layer.append(rec.el);
+        host.insertBefore(rec.el, next.get(host));
       }
-      if (rec.el.parentElement === layer) next.set(layer, rec.el);
+      if (host.has(rec.el)) next.set(host, rec.el);
     }
-    for (const rec of set) if (!isAttached(rec)) layerOf(rec).append(rec.el);
+    for (const rec of set) if (!isAttached(rec)) hostOf(rec).append(rec.el);
   };
   // The cover is the map-zoom stand-in for shells still queued. Opening at detail, or with overviewFast
   // off, does not paint it. Once an overview-fast open has painted it, a zoom into detail keeps it until

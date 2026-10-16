@@ -3471,6 +3471,7 @@ function buildBoardView(onFail, {
     virtualOff: () => { try { return notedSpeedFlags().virtualEdges === false; } catch { return false; } },
     deferPark: () => { try { return notedSpeedFlags().idlePark !== false; } catch { return false; } },
     onParkDue: () => armEdgePark(),
+    bucketed: () => { try { return notedSpeedFlags().bucketLayers !== false && Boolean(itemsR.isBig?.()); } catch { return false; } },
     onLabelCommit: (uid, label) => session.updateEdge?.(uid, { label }),
     blockText: (uid) => host?.blockString?.(uid),
     onHover: (uid, on) => hoverRows(uid, on),

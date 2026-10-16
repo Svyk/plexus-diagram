@@ -3,6 +3,7 @@
 // group (never var() in presentation attributes), and only edges touching moving items are
 // recomputed during a drag.
 
+import { createBucketHost } from "./buckets.js";
 import { shownEdgeLabel } from "../model/arrow-home.js";
 import { edgeAnchor, routedEdge } from "../model/board.js";
 import { edgeMayTarget, regionInnerEnd } from "../model/endpoints.js";
@@ -39,7 +40,11 @@ const setClass = (el, name) => {
   if (el.classList && !el.classList.contains(name.split(" ")[0])) el.className = name;
 };
 
-export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText, onHover, virtualOff = () => false, deferPark = () => false, onParkDue = null } = {}) {
+export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText, onHover, virtualOff = () => false, deferPark = () => false, onParkDue = null, bucketed = () => false } = {}) {
+  // R4 (bucketLayers): on a big board edges and labels sit in buckets (buckets.js), so parking or adding one edge
+  // restyles its bucket, not every later edge.
+  const edgeHost = svg ? createBucketHost(svg, { doc, svg: true, on: bucketed }) : null;
+  const labelHost = labelsLayer ? createBucketHost(labelsLayer, { doc, on: bucketed }) : null;
   const edgeEls = new Map(); // uid → {g, hit, line, head, tail, dot, label}
   const laneHidden = new Set();
   const linkEls = new Map(); // key → {g, hit, line, head, label}
@@ -141,8 +146,10 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   const unparkEdge = (rec) => {
     if (!rec.parked) return;
     rec.parked = false;
-    (drag?.recs.has(rec) ? drag.layer : drag?.crossing?.has(rec) ? drag.cross : svg)?.append(rec.g);
-    labelsLayer?.append(rec.label);
+    if (drag?.recs.has(rec)) drag.layer.append(rec.g);
+    else if (drag?.crossing?.has(rec)) drag.cross.append(rec.g);
+    else edgeHost?.append(rec.g);
+    labelHost?.append(rec.label);
   };
 
   // E6 (perf2, speed flag dragLayer). A drag of a big selection re-pathed every edge touching it on every pointer
@@ -201,12 +208,12 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     if (!drag) return;
     const { layer, recs, cross, crossing, links } = drag;
     drag = null;
-    for (const rec of crossing || []) if (!rec.parked && edgeEls.has(rec.uid) && rec.g.parentElement === cross) svg.append(rec.g);
-    for (const rec of links || []) if (rec.g.parentElement === cross) svg.append(rec.g);
+    for (const rec of crossing || []) if (!rec.parked && edgeEls.has(rec.uid) && rec.g.parentElement === cross) edgeHost.append(rec.g);
+    for (const rec of links || []) if (rec.g.parentElement === cross) edgeHost.append(rec.g);
     cross?.remove();
     for (const [rec, base] of recs) {
       if (rec.parked || !edgeEls.has(rec.uid)) continue;
-      svg.append(rec.g);
+      edgeHost.append(rec.g);
       if (rec.label && base) rec.label.style.transform = base;
       const edge = ctx?.board?.edges.get(rec.uid);
       if (edge && ctx.rects) placeEdge(ctx.board, edge, rec, ctx.rects, ctx.zoom ?? zoomCache);
@@ -355,7 +362,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   };
 
   const buildEdge = (edge) => {
-    const g = mk("g", "pxd-edge", svg);
+    const g = mk("g", "pxd-edge", edgeHost?.target());
     g.dataset.uid = edge.uid;
     g.setAttribute("data-uid", edge.uid);
     const hit = mk("path", "pxd-edge__hit", g);
@@ -368,7 +375,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     label.className = "pxd-label";
     label.dataset.uid = edge.uid;
     label.setAttribute("data-uid", edge.uid);
-    labelsLayer?.append(label);
+    labelHost?.append(label);
     const rec = { uid: edge.uid, g, hit, line, head, tail, dot, label, geo: null };
     edgeEls.set(edge.uid, rec);
     return rec;
@@ -699,7 +706,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   };
 
   const buildLink = (link) => {
-    const g = mk("g", "pxd-link", svg);
+    const g = mk("g", "pxd-link", edgeHost?.target());
     g.dataset.key = link.key;
     g.setAttribute("data-key", link.key);
     const hit = mk("path", "pxd-link__hit", g);
@@ -709,7 +716,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     label.className = "pxd-label pxd-label--link";
     label.dataset.key = link.key;
     label.setAttribute("data-key", link.key);
-    labelsLayer?.append(label);
+    labelHost?.append(label);
     const rec = { g, hit, line, head, label, geo: null };
     linkEls.set(link.key, rec);
     return rec;
@@ -939,7 +946,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   // E3-6: during a drag ride, an edge or link re-placed here (it touches the moving set) leaves the edges <svg> for the
   // crossing layer first, also when it was attached after the drag began.
   const toCross = (rec) => {
-    if (!drag?.cross || rec.g.parentElement !== svg || drag.recs.has(rec)) return;
+    if (!drag?.cross || !edgeHost?.has(rec.g) || drag.recs.has(rec)) return;
     if (!drag.cross.parentElement) drag.layer.parentElement?.insertBefore?.(drag.cross, drag.layer);
     drag.cross.append(rec.g);
     if (rec.uid != null && edgeEls.get(rec.uid) === rec) drag.crossing.add(rec);

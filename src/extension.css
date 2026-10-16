@@ -333,6 +333,13 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   pointer-events: none;
 }
 
+/* R4 (bucketLayers): a big board's layers group their children in buckets (buckets.js). A bucket makes no box. */
+.pxd-sections > div.pxd-bucket,
+.pxd-items > div.pxd-bucket,
+.pxd-labels > div.pxd-bucket {
+  display: contents;
+}
+
 /* Roam's normalize sheet sets svg:not(:root) { overflow: hidden } at (0,1,1); these layers are 1px boxes that must paint outside themselves. */
 .pxd-world > svg.pxd-edges,
 .pxd-world > svg.pxd-overlay {

@@ -213,14 +213,14 @@ test("E6/E2-6: a big selection drags as one layer: shells in one group, inner ed
     assert.equal(riders(root), null, "the drag layer is gone in the drop's task");
     assert.equal(m.commits.length, 1, "one commit (one undo entry) for the whole move");
     assert.equal(m.view.root.querySelector(".pxd-drag-layer"), null, "the drag groups are gone in the drop's task");
-    assert.equal(el.parentElement?.getAttribute("class"), "pxd-items", "the shell is back in the items layer");
+    assert.equal(el.closest(".pxd-items, .pxd-drag-layer")?.getAttribute("class"), "pxd-items", "the shell is back in the items layer");
     const c = m.commits[0];
     const r0 = m.session.rects.get(el.getAttribute("data-uid"));
     assert.equal(el.style.transform, `translate(${r0.x}px, ${r0.y}px)`, "at the committed spot, no snap back");
     assert.ok(c.dx !== 0 || c.dy !== 0);
     const moved = before.filter(([g, d]) => g.children?.[1]?.getAttribute?.("d") !== d).length;
     assert.equal(moved, before.length, "every rider is placed at the committed spot before the frame paints");
-    assert.ok(before.every(([g]) => g.parentElement && g.parentElement.getAttribute("class")?.split(" ")[0] === "pxd-edges"), "riders are back in the edges layer");
+    assert.ok(before.every(([g]) => g.closest("svg")?.getAttribute("class") === "pxd-edges"), "riders are back in the edges layer");
   } finally { m.done(); }
 });
 
@@ -430,7 +430,7 @@ test("E2-6: Escape during a grouped drag puts every shell back where it was, out
     m.stub.dispatch(el, "pointerup", { clientX: p.clientX + 30, clientY: p.clientY + 20, button: 0, buttons: 0, pointerId: 7 });
     m.stub.flushFrames();
     assert.equal(root.querySelector(".pxd-drag-layer"), null);
-    assert.equal(el.parentElement?.getAttribute("class"), "pxd-items");
+    assert.equal(el.closest(".pxd-items, .pxd-drag-layer")?.getAttribute("class"), "pxd-items");
     if (m.commits.length === 0) assert.equal(el.style.transform, before, "a cancelled drag leaves the card where it was");
   } finally { m.done(); }
 });

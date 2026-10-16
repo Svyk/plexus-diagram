@@ -6292,6 +6292,7 @@ function buildBoardView(onFail, {
       partsIdx = createPartsIndex({
         store: createParseStore({ indexedDB: doc.defaultView?.indexedDB }),
         listPdfs: () => pdfBlocks(),
+        budget: sharedBgBudget(),
       });
       offPartsChange = partsIdx.onChange(() => { try { panel?.refreshSearch?.(); } catch { /* panel gone */ } });
     }

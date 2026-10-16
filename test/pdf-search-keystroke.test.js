@@ -5,7 +5,7 @@ import test from "node:test";
 
 import { createHost } from "../src/host/roam.js";
 import { createPartsIndex } from "../src/host/parts-index.js";
-import { buildPartsIndex, searchParts } from "../src/model/parts-search.js";
+import { buildPartsIndex, finishPartsIndex, partsPostingAdds, searchParts } from "../src/model/parts-search.js";
 import { createPanel } from "../src/view/panel.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
@@ -149,10 +149,12 @@ test("part search looks up an index after the rows are indexed", () => {
     const lower = row.lower;
     Object.defineProperty(row, "lower", { get() { reads += 1; return lower; } });
   }
-  searchParts(rows, { text: "lorem" });
+  finishPartsIndex(rows);
   reads = 0;
+  const before = partsPostingAdds();
   const hit = searchParts(rows, { text: "drains seasonal peak", kinds: ["paragraph"], pages: "p. 30-50" });
   assert.equal(hit.length, 1);
   assert.equal(hit[0].page, 40);
+  assert.equal(partsPostingAdds(), before, "a later key built postings");
   assert.equal(reads, 0, "a later key still read part text");
 });

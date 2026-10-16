@@ -1241,7 +1241,8 @@ export async function installPlexusDiagram({
     try { painted.fsOff?.(); } catch { /* observers already gone */ }
     painted.fsOff = null;
     if (!live && painted.fullscreen) { try { applyFullscreenChrome(rec.mountEl, false, doc); } catch { /* mount gone */ } }
-    try { removeBoardSnap(rec.mountEl); } catch { /* already gone */ }
+    // E1: the hand-off to a live board cross-fades (boardsnap-paint.js); a cancelled one leaves at once.
+    try { removeBoardSnap(rec.mountEl, { fade: live && speedFlags().styledUnderlay !== false }); } catch { /* already gone */ }
   }
 
   // Replay the one gesture made on the snapshot onto what is under it now.

@@ -464,6 +464,33 @@ test("a nested board with no stored camera paints its snapshot fitted to the mou
   }
 });
 
+// E1 (perf2): the snapshot was cut away the moment the live board took over. It now stops being the snapshot at once
+// (no class, no input) and fades out over ~140 ms on top of the live board, then leaves the DOM.
+test("the hand-off to the live board cross-fades the snapshot out instead of cutting it", async () => {
+  const idb = await seededIdb();
+  const env = installEnv({ idb });
+  env.win.requestAnimationFrame = (fn) => setTimeout(fn, 0);
+  try {
+    await env.install();
+    await tick(20);
+    const mount = env.doc.querySelector(".pxd-mount");
+    const snapRoot = mount.querySelector(".pxd-snap-root");
+    assert.ok(snapRoot);
+    env.seen[0].args.onFirstPaint();
+    assert.equal(mount.querySelector(".pxd-snap-root"), null, "no longer the snapshot");
+    assert.ok(snapRoot.parentElement, "still painted while it fades");
+    assert.equal(snapRoot.style.pointerEvents, "none");
+    assert.match(snapRoot.style.transition, /opacity/);
+    await tick(10);
+    assert.equal(snapRoot.style.opacity, "0");
+    await tick(260);
+    assert.equal(snapRoot.parentElement, null, "gone after the fade");
+  } finally {
+    await env.lifecycle.dispose().catch(() => {});
+    env.restore();
+  }
+});
+
 test("a sidebar copy paints its snapshot while dormant; the viewport watcher brings the live board", async () => {
   const idb = await seededIdb();
   const env = installEnv({ idb, sidebar: true });

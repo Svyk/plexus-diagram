@@ -258,10 +258,30 @@ function el(doc, tag, cls, parent) {
   return node;
 }
 
-export function removeBoardSnap(mountEl) {
+// fade (E1, perf2): the live board is under the snapshot (z-index 2) and painted by now. The snapshot stops being the
+// snapshot at once (class, attribute, input) and fades out over FADE_MS (opacity only), so the swap to the live board
+// is a cross-fade, not a cut. Reduced motion, or no frames: removed at once.
+export const SNAP_FADE_MS = 140;
+export function removeBoardSnap(mountEl, { fade = false } = {}) {
   const nodes = mountEl?.querySelectorAll?.(`.${SNAP_ROOT_CLASS}`);
+  const win = mountEl?.ownerDocument?.defaultView || globalThis.window;
+  let reduce = false;
+  try { reduce = Boolean(win?.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches); } catch { reduce = false; }
+  const raf = typeof win?.requestAnimationFrame === "function" ? win.requestAnimationFrame.bind(win) : null;
   for (const node of [...(nodes || [])]) {
     try { node.__pxdSnap?.off?.(); } catch { /* listeners already gone */ }
+    if (fade && !reduce && raf && node.style) {
+      try {
+        node.classList?.remove?.(SNAP_ROOT_CLASS);
+        node.removeAttribute?.("data-pxd-snap");
+        node.setAttribute?.("aria-hidden", "true");
+        node.style.pointerEvents = "none";
+        node.style.transition = `opacity ${SNAP_FADE_MS}ms linear`;
+        raf(() => { node.style.opacity = "0"; });
+        setTimeout(() => { try { node.remove(); } catch { /* already gone */ } }, SNAP_FADE_MS + 60);
+        continue;
+      } catch { /* fall through: remove now */ }
+    }
     try { node.remove(); } catch { /* already gone */ }
   }
 }

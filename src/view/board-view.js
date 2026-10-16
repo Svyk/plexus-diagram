@@ -1884,13 +1884,11 @@ function buildBoardView(onFail, {
   let sidebarGen = 0;
   let sidebarUnwatch = null;
   let sidebarWake = null;
-  const readBlock = (uid) => {
-    try { return host?.blockString?.(uid) || ""; } catch { return ""; }
-  };
   function pinPdfTarget(plan) {
     const uid = String(plan?.pdfUid || "").trim();
     if (!uid) return null;
-    let source = readBlock(uid);
+    let source = "";
+    try { source = host?.blockString?.(uid) || ""; } catch { source = ""; }
     if (!source) {
       try {
         const b = board();

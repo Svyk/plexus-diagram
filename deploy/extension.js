@@ -13886,11 +13886,11 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       units.push({ id, x0: 0, y0: 0, x1: pg.w, y1: pg.h });
     }
     const dots = pg.graphics.dots;
-    const shared4 = splitSharedCaptions(pg.free);
-    pg.free = shared4.lines;
+    const shared5 = splitSharedCaptions(pg.free);
+    pg.free = shared5.lines;
     const keepGutter = (list) => {
       const out = [...list];
-      for (const g of shared4.gutters) {
+      for (const g of shared5.gutters) {
         if (!out.some((o) => g.x0 <= o.x1 + 8 && o.x0 <= g.x1 + 8)) out.push(g);
       }
       return out.sort((a, b) => a.x0 - b.x0);
@@ -13928,8 +13928,8 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       const line = byY[k];
       let wide = rowWide.has(line) || gutters.some((g) => crossesGutter(line, g));
       if (!wide && lastWide && line.base - lastWide.base <= 1.7 * line.size && Math.abs(line.x0 - lastWide.x0) <= 1.5 * line.size && Math.abs(line.size - lastWide.size) <= 0.6) {
-        const shared5 = byY.some((o) => o !== line && Math.abs(o.base - line.base) <= 0.3 * line.size);
-        if (!shared5) wide = true;
+        const shared6 = byY.some((o) => o !== line && Math.abs(o.base - line.base) <= 0.3 * line.size);
+        if (!shared6) wide = true;
       }
       if (wide) {
         wideSeq.push(line);
@@ -18884,6 +18884,13 @@ var init_detect = __esm({
 });
 
 // src/perf-log.js
+function hasLiveCard(mountEl) {
+  const first = mountEl?.querySelector?.(".pxd-item");
+  if (!first) return false;
+  if (!first.classList?.contains?.("pxd-sketch__card")) return true;
+  for (const node2 of mountEl.querySelectorAll?.(".pxd-item") || []) if (!node2.classList?.contains?.("pxd-sketch__card")) return true;
+  return false;
+}
 function perfNow() {
   const clock = globalThis.performance;
   if (clock && typeof clock.now === "function") return clock.now();
@@ -19180,7 +19187,7 @@ function createPerfLog({ cap: cap4 = PERF_CAP } = {}) {
       if (Number.isFinite(ms) && ms >= 0) open.push(ms);
       publish2();
     };
-    if (mountEl.querySelector?.(".pxd-item")) {
+    if (hasLiveCard(mountEl)) {
       finish();
       return () => {
       };
@@ -19192,7 +19199,7 @@ function createPerfLog({ cap: cap4 = PERF_CAP } = {}) {
     const raf2 = globalThis.requestAnimationFrame;
     if (typeof raf2 !== "function") {
       queueMicrotask(() => {
-        if (!stopped && on && mountEl.querySelector?.(".pxd-item")) finish();
+        if (!stopped && on && hasLiveCard(mountEl)) finish();
       });
       watches.add(cancel);
       return cancel;
@@ -19202,7 +19209,7 @@ function createPerfLog({ cap: cap4 = PERF_CAP } = {}) {
     const step = () => {
       if (stopped || !on) return;
       if (mountEl.isConnected === false) return;
-      if (mountEl.querySelector?.(".pxd-item")) {
+      if (hasLiveCard(mountEl)) {
         finish();
         return;
       }
@@ -19279,7 +19286,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, slicedResume: true };
 }
 function parseSpeedFlags(raw) {
   const base = defaultSpeedFlags();
@@ -19733,7 +19740,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "slicedResume"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -31876,6 +31883,7 @@ function createItemRenderer({
   const virtual = () => !virtualOff && (lastBoard?.items?.size || 0) > VIRTUAL_MIN;
   let canvasOn = false;
   const canvasCards = () => canvasOn && virtual();
+  const keepOnCanvas = (item) => item?.type === "section" || item?.type === "card" && item.kind === "board";
   const isAttached = (rec) => Boolean(rec?.el?.parentElement);
   const activeShellUid = () => {
     const active2 = doc.activeElement;
@@ -31885,7 +31893,7 @@ function createItemRenderer({
   const keepAttached = (uid, rec, active2) => rec.type === "section" || uid === selectedPrimary || rec.hover || editing?.uid === uid || mounted.has(uid) || uid === active2;
   const farRect = () => cullRect ? { x: cullRect.x - cullRect.w * 0.125, y: cullRect.y - cullRect.h * 0.125, w: cullRect.w * 1.25, h: cullRect.h * 1.25 } : null;
   const nearView = (uid, rect = cullRect) => {
-    if (canvasCards() && lastBoard?.items.get(uid)?.type !== "section") return false;
+    if (canvasCards() && !keepOnCanvas(lastBoard?.items.get(uid))) return false;
     if (!rect) return true;
     const r = drawnRect(uid, lastRects?.get(uid));
     return !r || rectsIntersect(r, rect);
@@ -32102,7 +32110,7 @@ function createItemRenderer({
   const pumpShells = () => {
     if (shellsHeld || canvasCards()) return;
     if (pumpChunk()) return;
-    if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
+    if (shellQueue.length && timers?.frame) timers.frame(pumpShells, "shells");
   };
   let shellBg = null;
   let priorityFrame = null;
@@ -32123,7 +32131,7 @@ function createItemRenderer({
     pumpChunk({ limit: OPEN_CHUNK, priority: true });
     if (!shellsLive || shellsHeld) return;
     if (priorityLeft > 0 && shellQueue.length && timers?.frame) {
-      priorityFrame = timers.frame(pumpPriorityFrame);
+      priorityFrame = timers.frame(pumpPriorityFrame, "shells");
       return;
     }
     armShellPump();
@@ -32137,7 +32145,7 @@ function createItemRenderer({
     stopShellBg();
     if (!shellQueue.length) return;
     if (priorityLeft > 0 && timers?.frame) {
-      priorityFrame = timers.frame(pumpPriorityFrame);
+      priorityFrame = timers.frame(pumpPriorityFrame, "shells");
       return;
     }
     let fast = false;
@@ -32150,7 +32158,7 @@ function createItemRenderer({
       shellBg = timers.bgRun(() => pumpChunk(), { label: "shells", partMs: 4 });
       return;
     }
-    if (timers?.frame) timers.frame(pumpShells);
+    if (timers?.frame) timers.frame(pumpShells, "shells");
   };
   const pauseShells = () => {
     shellsLive = false;
@@ -32271,7 +32279,7 @@ function createItemRenderer({
       const later2 = [];
       for (const uid of board2.order) {
         const item = board2.items.get(uid);
-        if (item?.type === "section" || uid === selectedPrimary) now5.push(uid);
+        if (keepOnCanvas(item) || uid === selectedPrimary) now5.push(uid);
         else later2.push(uid);
       }
       if (view) {
@@ -35517,6 +35525,20 @@ function createItemRenderer({
       noteCanvasDetach();
     }
   };
+  const SLOW_MOUNT_MS = 50;
+  const slowMounts = [];
+  const timedMount = (uid) => {
+    const t0 = now2();
+    try {
+      return mountScheduled(uid);
+    } finally {
+      const ms = now2() - t0;
+      if (ms >= SLOW_MOUNT_MS) {
+        slowMounts.push({ uid, kind: lastBoard?.items.get(uid)?.kind || "", ms: Math.round(ms), at: Math.round(t0) });
+        if (slowMounts.length > 30) slowMounts.shift();
+      }
+    }
+  };
   const mountScheduled = (uid) => {
     if (disposed || paused) return false;
     if (!wanted.has(uid)) return false;
@@ -35532,10 +35554,10 @@ function createItemRenderer({
     return true;
   };
   contentSched = createRowScheduler({
-    idle: (fn) => idle(fn),
+    idle: (fn) => timers?.idle ? timers.idle(fn, "content") : idle(fn),
     now: now2,
     budgetMs: CHUNK_MS,
-    render: (uid) => mountScheduled(uid),
+    render: (uid) => timedMount(uid),
     eager: () => speedOf().budgetedMount === false
   });
   const publishMountFps = () => {
@@ -35751,7 +35773,10 @@ function createItemRenderer({
       canvasOn = false;
     }
     if (canvasWas && !canvasOn && shellQueue.length && !priorityFrame) armShellPump();
-    if (!canvasWas && canvasOn) stopShellBg();
+    if (!canvasWas && canvasOn) {
+      stopShellBg();
+      if (virtual()) for (const uid of shellQueue.filter((u) => keepOnCanvas(lastBoard?.items.get(u)))) ensureShell(uid);
+    }
     setZoom(zoom);
     closePeek();
     if (lod !== "detail") closeCardPeek();
@@ -35805,6 +35830,44 @@ function createItemRenderer({
     }
   };
   let coverShift = null;
+  let dragGroup = null;
+  const beginDragGroup = (set) => {
+    if (dragGroup || disposed) return false;
+    const make4 = (layer) => {
+      const g = doc.createElement("div");
+      g.className = "pxd-drag-layer";
+      g.style.cssText = "position:absolute;left:0;top:0;width:0;height:0;overflow:visible;pointer-events:none;will-change:transform;";
+      layer.append(g);
+      return g;
+    };
+    const recs = [];
+    for (const uid of set) {
+      const rec = shells.get(uid);
+      if (rec?.el && isAttached(rec)) recs.push(rec);
+    }
+    if (!recs.length) return false;
+    const group = { sections: make4(sectionsLayer), items: make4(itemsLayer), recs, before: /* @__PURE__ */ new Map(), last: null };
+    for (const rec of [...recs].sort((a, b) => indexOfUid(a.uid) - indexOfUid(b.uid))) {
+      group.before.set(rec, rec.el.style.transform);
+      (rec.type === "section" ? group.sections : group.items).append(rec.el);
+    }
+    dragGroup = group;
+    return true;
+  };
+  const endDragGroup = () => {
+    const group = dragGroup;
+    if (!group) return;
+    dragGroup = null;
+    for (const rec of group.recs) {
+      if (rec.el.parentElement !== group.sections && rec.el.parentElement !== group.items) continue;
+      const at = group.last?.get(rec.uid);
+      if (at && rec.el.style.transform === group.before.get(rec)) rec.el.style.transform = `translate(${at.x}px, ${at.y}px)`;
+      rec.el.remove();
+    }
+    attachMany(new Set(group.recs.filter((rec) => rec.el && !isAttached(rec) && shells.get(rec.uid) === rec)));
+    group.sections.remove();
+    group.items.remove();
+  };
   const previewMove = (uids, dx, dy, board2, rects) => {
     const set = new Set(uids);
     for (const u of uids) for (const d of descendantsOf(board2, u)) set.add(d);
@@ -35818,14 +35881,21 @@ function createItemRenderer({
       }
     }
     const live2 = /* @__PURE__ */ new Map();
+    const grouped = dragGroup;
+    if (grouped) {
+      const t = `translate(${dx}px, ${dy}px)`;
+      grouped.sections.style.transform = t;
+      grouped.items.style.transform = t;
+    }
     for (const uid of set) {
       const rec = shells.get(uid);
       const r = rects.get(uid);
       if (!rec || !r) continue;
       const moved = { x: r.x + dx, y: r.y + dy, w: r.w, h: r.h };
-      rec.el.style.transform = `translate(${moved.x}px, ${moved.y}px)`;
+      if (!grouped || rec.el.parentElement !== grouped.items && rec.el.parentElement !== grouped.sections) rec.el.style.transform = `translate(${moved.x}px, ${moved.y}px)`;
       live2.set(uid, moved);
     }
+    if (grouped) grouped.last = live2;
     noteOverviewQueue();
     return live2;
   };
@@ -37089,6 +37159,9 @@ function createItemRenderer({
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     ensureShell,
     holdShells,
+    slowMounts: () => slowMounts.slice(),
+    beginDragGroup,
+    endDragGroup,
     pauseShells,
     resumeShells,
     promoteQueue,
@@ -37100,7 +37173,7 @@ function createItemRenderer({
       for (const uid of lastBoard?.order || []) {
         if (!queued.has(uid) || shells.has(uid)) continue;
         const rect = coverShift?.get(uid) || lastRects?.get(uid);
-        if (rect) out.push({ uid, rect, color: lastBoard.items.get(uid)?.color || "" });
+        if (rect) out.push({ uid, rect, color: lastBoard.items.get(uid)?.color || "", title: lastBoard.items.get(uid)?.title || "" });
       }
       return out;
     },
@@ -37145,6 +37218,28 @@ function createItemRenderer({
       }
       if (removed) noteCanvasDetach();
       return removed;
+    },
+    // E2-5 (perf2): a kept big board coming back (crumb back) shows its `n` attached shells nearest the centre of
+    // `rect` at once; the others leave the DOM while it is still parked and come back in the view's slices, so the
+    // un-park renders ~n shells instead of the whole board in one task (PhD MAIN at fit: ~1,500, 514-595 ms).
+    keepNearest(rect, n3) {
+      if (disposed || !rect || !virtual()) return 0;
+      const active2 = activeShellUid();
+      const cx = rect.x + rect.w / 2;
+      const cy = rect.y + rect.h / 2;
+      const list = [];
+      for (const [uid, rec] of shells) {
+        if (!isAttached(rec) || keepAttached(uid, rec, active2)) continue;
+        const r = drawnRect(uid, lastRects?.get(uid));
+        list.push([rec, r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity]);
+      }
+      if (list.length <= n3) return 0;
+      list.sort((a, b) => a[1] - b[1]);
+      for (let i = n3; i < list.length; i += 1) list[i][0].el.remove();
+      cullRect = rect;
+      attachLeft = list.length - n3;
+      noteCanvasDetach();
+      return list.length - n3;
     },
     // C1: a settle on a big board attaches `{ budget, ms }` per content pass until the view clears it (null).
     sliceAttach(opts) {
@@ -42786,6 +42881,84 @@ function createPartSizer({ max = 30, start = 4 } = {}) {
   };
 }
 
+// src/long-tasks.js
+var LONG_MS = 100;
+var SPAN_MIN_MS = 2;
+var MAX_SPANS = 600;
+var MAX_TASKS = 60;
+function createTaskProbe({ now: now5 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now(), win: win2 = globalThis } = {}) {
+  const spans = [];
+  const tasks = [];
+  let depth = 0;
+  let observer = null;
+  const observe = () => {
+    if (observer || typeof win2?.PerformanceObserver !== "function") return;
+    try {
+      observer = new win2.PerformanceObserver((list) => {
+        for (const e2 of list.getEntries()) {
+          if (e2.duration < LONG_MS) continue;
+          tasks.push({ start: e2.startTime, ms: e2.duration });
+          if (tasks.length > MAX_TASKS) tasks.shift();
+        }
+      });
+      observer.observe({ type: "longtask", buffered: false });
+    } catch {
+      observer = null;
+    }
+  };
+  const span = (name, fn, phase = "") => {
+    if (depth > 0) return fn();
+    depth += 1;
+    const t0 = now5();
+    try {
+      return fn();
+    } finally {
+      depth -= 1;
+      const ms = now5() - t0;
+      if (ms >= SPAN_MIN_MS) {
+        spans.push({ name, start: t0, ms, phase });
+        if (spans.length > MAX_SPANS) spans.shift();
+      }
+    }
+  };
+  const longTasks = () => {
+    observe();
+    const source = observer && tasks.length ? tasks : spans.filter((s) => s.ms >= LONG_MS).map((s) => ({ start: s.start, ms: s.ms }));
+    return source.map((t) => {
+      const by2 = /* @__PURE__ */ new Map();
+      let phase = "";
+      for (const s of spans) {
+        if (s.start + s.ms < t.start || s.start > t.start + t.ms) continue;
+        by2.set(s.name, (by2.get(s.name) || 0) + s.ms);
+        if (!phase && s.phase) phase = s.phase;
+      }
+      const jobs = [...by2].map(([name, ms]) => ({ name, ms: Math.round(ms) })).sort((a, b) => b.ms - a.ms);
+      return { start: Math.round(t.start), ms: Math.round(t.ms), jobs, phase, plexusMs: jobs.reduce((n3, j) => n3 + j.ms, 0) };
+    });
+  };
+  return {
+    span,
+    longTasks,
+    observe,
+    clear: () => {
+      spans.length = 0;
+      tasks.length = 0;
+    },
+    dispose: () => {
+      try {
+        observer?.disconnect?.();
+      } catch {
+      }
+      observer = null;
+    }
+  };
+}
+var shared = null;
+function sharedTaskProbe() {
+  if (!shared) shared = createTaskProbe();
+  return shared;
+}
+
 // src/bg-budget.js
 var BG_SLICE_MS = 30;
 var BG_QUIET_MS = 300;
@@ -42894,7 +43067,7 @@ function createBgBudget({
         }
       };
       try {
-        fn(deadline);
+        sharedTaskProbe().span(`bg:${label || "?"}`, () => fn(deadline), "bg");
       } finally {
         const spent = now5() - t0;
         if (spent > 2 * sliceMs) {
@@ -42975,7 +43148,7 @@ function createBgBudget({
     }
   };
 }
-var shared = null;
+var shared2 = null;
 var flagOn = () => true;
 var quietFlag = () => false;
 function bindBgBudgetFlag(fn) {
@@ -42985,12 +43158,12 @@ function bindBgGestureFlag(fn) {
   quietFlag = typeof fn === "function" ? fn : () => false;
 }
 function sharedBgBudget() {
-  if (!shared) shared = createBgBudget({ enabled: () => flagOn(), gestureQuiet: () => quietFlag() });
-  return shared;
+  if (!shared2) shared2 = createBgBudget({ enabled: () => flagOn(), gestureQuiet: () => quietFlag() });
+  return shared2;
 }
 function resetSharedBgBudget() {
-  shared?.dispose();
-  shared = null;
+  shared2?.dispose();
+  shared2 = null;
 }
 
 // src/host/roam.js
@@ -53360,7 +53533,12 @@ function createHitShield({ doc, root, onWheel, onPress: onPress2, enabled = () =
 }
 
 // src/view/gesture-underlay.js
+init_geometry();
 var MAX_SIDE = 2048;
+var VIEW_PAD2 = 0.5;
+var SHARP_UPSCALE = 1.35;
+var TITLE_MIN_PX = 8;
+var TITLE_MAX_CARDS = 400;
 var PALETTE2 = ["gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
 function createGestureUnderlay({ doc, world, root, before = null } = {}) {
   let canvas = null;
@@ -53368,6 +53546,7 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
   let colorCache = null;
   let lastItems = [];
   let lastUids = null;
+  let drawn = null;
   const colors = () => {
     if (colorCache) return colorCache;
     const read2 = (name, fallback) => {
@@ -53418,13 +53597,23 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     c.accent = read2("--pxd-accent", "hsl(175 80% 30%)");
     c.border = read2("--pxd-border", c.line);
     c.borderStrong = read2("--pxd-border-strong", c.border);
+    c.text = read2("--pxd-text", "#1f2937");
+    c.texts = {};
+    for (const name of PALETTE2) c.texts[name] = read2(`--pxd-${name}-text`, c.text);
+    let family = "";
+    try {
+      family = doc.defaultView?.getComputedStyle?.(root)?.fontFamily || "";
+    } catch {
+      family = "";
+    }
+    c.family = family || "sans-serif";
     return c;
   };
   const hide = () => {
     shown = false;
     if (canvas && canvas.style.display !== "none") canvas.style.display = "none";
   };
-  const draw = ({ items = [], edges = [], zoom = 1, dpr = 1, styled = false, tier = "overview" } = {}) => {
+  const draw = ({ items = [], edges = [], zoom = 1, dpr = 1, styled = false, tier = "overview", view = null } = {}) => {
     if (!items.length && !edges.length) {
       hide();
       return 0;
@@ -53442,8 +53631,28 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       x1 = Math.max(x1, r.x + r.w / 2);
       y1 = Math.max(y1, r.y + r.h / 2);
     }
+    const want = zoom * Math.min(dpr, 1.25);
+    if (view && ((x1 - x0) * want > MAX_SIDE || (y1 - y0) * want > MAX_SIDE)) {
+      const px = view.w * VIEW_PAD2, py = view.h * VIEW_PAD2;
+      x0 = Math.max(x0, view.x - px);
+      y0 = Math.max(y0, view.y - py);
+      x1 = Math.min(x1, view.x + view.w + px);
+      y1 = Math.min(y1, view.y + view.h + py);
+      if (!(x1 > x0 && y1 > y0)) {
+        x0 = view.x;
+        y0 = view.y;
+        x1 = view.x + view.w;
+        y1 = view.y + view.h;
+      }
+      const box2 = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      items = items.filter(({ rect: r }) => r.x < box2.x + box2.w && r.x + r.w > box2.x && r.y < box2.y + box2.h && r.y + r.h > box2.y);
+      edges = edges.filter(([a, b]) => {
+        const ax = a.x + a.w / 2, ay = a.y + a.h / 2, bx = b.x + b.w / 2, by2 = b.y + b.h / 2;
+        return Math.max(ax, bx) >= box2.x && Math.min(ax, bx) <= box2.x + box2.w && Math.max(ay, by2) >= box2.y && Math.min(ay, by2) <= box2.y + box2.h;
+      });
+    }
     const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
-    const scale = Math.max(0.01, Math.min(zoom * Math.min(dpr, 1.25), MAX_SIDE / w, MAX_SIDE / h));
+    const scale = Math.max(0.01, Math.min(want, MAX_SIDE / w, MAX_SIDE / h));
     const c = styled ? paletteColors() : colors();
     if (!canvas) {
       canvas = doc.createElement("canvas");
@@ -53466,7 +53675,7 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       return 0;
     }
     try {
-      paint2(ctx, { items, edges, c, scale, x0, y0, bw, bh, styled, tier });
+      paint2(ctx, { items, edges, c, scale, x0, y0, bw, bh, styled, tier, zoom, view });
     } catch {
       hide();
       return 0;
@@ -53475,21 +53684,28 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     shown = true;
     lastItems = items;
     lastUids = null;
+    drawn = { x: x0, y: y0, w, h, scale, whole: !view || w * want <= MAX_SIDE && h * want <= MAX_SIDE };
     return items.length;
+  };
+  const covers2 = (view, zoom, dpr = 1) => {
+    if (!shown || !drawn || !view) return shown;
+    if (zoom * Math.min(dpr, 1.25) > drawn.scale * SHARP_UPSCALE) return false;
+    if (drawn.whole) return true;
+    return view.x >= drawn.x && view.y >= drawn.y && view.x + view.w <= drawn.x + drawn.w && view.y + view.h <= drawn.y + drawn.h;
   };
   const drawnUids = () => {
     if (!shown) return /* @__PURE__ */ new Set();
     if (!lastUids) lastUids = new Set(lastItems.map((item) => item.uid));
     return lastUids;
   };
-  const drawOverview = ({ items = [], edges = [], zoom = 1, dpr = 1 } = {}) => {
+  const drawOverview = ({ items = [], edges = [], zoom = 1, dpr = 1, view = null } = {}) => {
     if (!items.length && !edges.length) {
       hide();
       return 0;
     }
-    return draw({ items, edges, zoom, dpr, styled: true, tier: "overview" });
+    return draw({ items, edges, zoom, dpr, styled: true, tier: "overview", view });
   };
-  const paintCards = (ctx, { items, c, scale }) => {
+  const paintCards = (ctx, { items, c, scale, tier = "detail", zoom = 1, view = null }) => {
     const round6 = typeof ctx.roundRect === "function";
     const shape = (r) => {
       if (round6) ctx.roundRect(r.x, r.y, r.w, r.h, 8);
@@ -53515,10 +53731,12 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     }
     for (const [fill, rects] of fills) {
       ctx.fillStyle = fill;
+      ctx.globalAlpha = tier === "map" ? 0.5 : 1;
       ctx.beginPath();
       for (const r of rects) shape(r);
       ctx.fill();
     }
+    ctx.globalAlpha = 1;
     ctx.lineWidth = 1;
     for (const [line, rects] of lines) {
       ctx.strokeStyle = line;
@@ -53526,7 +53744,89 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       for (const r of rects) shape(r);
       ctx.stroke();
     }
+    paintTitles(ctx, { items, c, tier, zoom, view });
     ctx.lineWidth = 1 / scale;
+  };
+  const paintTitles = (ctx, { items, c, tier, zoom, view }) => {
+    const font = tier === "map" ? lodFonts(zoom).map : 13;
+    const lines = tier === "map" ? 3 : 1;
+    const lineH = font * 1.2;
+    if (font * zoom < TITLE_MIN_PX || typeof ctx.fillText !== "function") {
+      paintGreek(ctx, { items, c, tier, font, lines, lineH });
+      return;
+    }
+    if (tier === "detail") paintGreek(ctx, { items, c, tier, font, lines, lineH, bodyOnly: true });
+    ctx.font = `600 ${font}px ${c.family}`;
+    ctx.textBaseline = "top";
+    const fit3 = (text4, width) => {
+      if (typeof ctx.measureText !== "function" || ctx.measureText(text4).width <= width) return text4;
+      let lo = 0, hi = text4.length;
+      while (lo < hi) {
+        const mid = lo + hi + 1 >> 1;
+        if (ctx.measureText(`${text4.slice(0, mid)}…`).width <= width) lo = mid;
+        else hi = mid - 1;
+      }
+      return `${text4.slice(0, lo)}…`;
+    };
+    let n3 = 0;
+    for (const item of items) {
+      const title = String(item.title || "").trim();
+      if (!title) continue;
+      const r = item.rect;
+      if (view && !(r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y)) continue;
+      if (++n3 > TITLE_MAX_CARDS) break;
+      const width = r.w - 24;
+      if (width <= font) continue;
+      const name = item.color && c.texts?.[item.color] ? item.color : "";
+      ctx.fillStyle = name ? c.texts[name] : c.text;
+      const room = Math.max(1, Math.min(lines, Math.floor((r.h - 12) / lineH)));
+      const words = title.split(/\s+/);
+      let row4 = 0;
+      let line = "";
+      for (let i = 0; i < words.length && row4 < room; i += 1) {
+        const next = line ? `${line} ${words[i]}` : words[i];
+        if (!line || typeof ctx.measureText !== "function" || ctx.measureText(next).width <= width) {
+          line = next;
+          continue;
+        }
+        const last = row4 === room - 1;
+        ctx.fillText(last ? fit3(`${line} ${words.slice(i).join(" ")}`, width) : line, r.x + 12, r.y + 6 + row4 * lineH);
+        row4 += 1;
+        line = last ? "" : words[i];
+        if (last) break;
+      }
+      if (line && row4 < room) ctx.fillText(fit3(line, width), r.x + 12, r.y + 6 + row4 * lineH);
+    }
+  };
+  const paintGreek = (ctx, { items, c, tier, font, lines, lineH, bodyOnly = false }) => {
+    const charW = font * 0.55;
+    for (const item of items) {
+      const r = item.rect;
+      const width = r.w - 24;
+      if (width <= 0) continue;
+      const name = item.color && c.texts?.[item.color] ? item.color : "";
+      ctx.fillStyle = name ? c.texts[name] : c.text;
+      if (!bodyOnly) {
+        const title = String(item.title || "").trim();
+        if (title) {
+          ctx.globalAlpha = 0.55;
+          const room = Math.max(1, Math.min(lines, Math.floor((r.h - 12) / lineH)));
+          let left = title.length * charW;
+          for (let row4 = 0; row4 < room && left > 0; row4 += 1) {
+            const bar = Math.min(width, left);
+            ctx.fillRect(r.x + 12, r.y + 6 + row4 * lineH + font * 0.25, bar, font * 0.6);
+            left -= width;
+          }
+        }
+      }
+      if (tier === "detail" && r.h > 56) {
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle = c.text;
+        const rows = Math.min(4, Math.floor((r.h - 44) / 19));
+        for (let row4 = 0; row4 < rows; row4 += 1) ctx.fillRect(r.x + 12, r.y + 40 + row4 * 19, width * (row4 === rows - 1 ? 0.6 : 0.9 - row4 % 2 * 0.08), 6.5);
+      }
+    }
+    ctx.globalAlpha = 1;
   };
   const paintStyled = (ctx, { items, c, scale }) => {
     const groups2 = /* @__PURE__ */ new Map();
@@ -53567,7 +53867,7 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     }
     ctx.globalAlpha = 1;
   };
-  const paint2 = (ctx, { items, edges, c, scale, x0, y0, bw, bh, styled = false, tier = "overview" }) => {
+  const paint2 = (ctx, { items, edges, c, scale, x0, y0, bw, bh, styled = false, tier = "overview", zoom = 1, view = null }) => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, bw, bh);
     ctx.setTransform(scale, 0, 0, scale, -x0 * scale, -y0 * scale);
@@ -53588,7 +53888,7 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       return;
     }
     if (styled) {
-      paintCards(ctx, { items, c, scale });
+      paintCards(ctx, { items, c, scale, tier, zoom, view });
       return;
     }
     ctx.fillStyle = c.card;
@@ -53605,7 +53905,7 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
   const dropColors = () => {
     colorCache = null;
   };
-  return { draw, drawOverview, hide, dispose, dropColors, drawnUids, isShown: () => shown, element: () => canvas };
+  return { draw, drawOverview, hide, dispose, dropColors, drawnUids, covers: covers2, isShown: () => shown, element: () => canvas };
 }
 
 // src/view/board-view.js
@@ -55164,11 +55464,11 @@ function recencyNorm(editTime, now5) {
 }
 function strengthScore(components = {}, { trackOpens = false, now: now5 = components?.now ?? Date.now() } = {}) {
   const refs = normCount(components?.refs, REFS_CAP);
-  const shared4 = normCount(components?.shared, SHARED_CAP);
+  const shared5 = normCount(components?.shared, SHARED_CAP);
   const recency = recencyNorm(components?.editTime ?? components?.edit, now5);
-  if (trackOpens !== true) return clamp014(0.6 * refs + 0.25 * shared4 + 0.15 * recency);
+  if (trackOpens !== true) return clamp014(0.6 * refs + 0.25 * shared5 + 0.15 * recency);
   const opens = normCount(components?.opens, OPENS_CAP);
-  return clamp014(0.5 * refs + 0.2 * shared4 + 0.15 * recency + 0.15 * opens);
+  return clamp014(0.5 * refs + 0.2 * shared5 + 0.15 * recency + 0.15 * opens);
 }
 function strokeFor(score) {
   const s = clamp014(score);
@@ -55222,7 +55522,7 @@ function countPhrase(value, one, many) {
 }
 function explain(components = {}) {
   const refs = countPhrase(components?.refs, "ref", "refs");
-  const shared4 = countPhrase(components?.shared, "shared board", "shared boards");
+  const shared5 = countPhrase(components?.shared, "shared board", "shared boards");
   const edit = components?.editTime ?? components?.edit;
   const now5 = Number.isFinite(components?.now) ? components.now : Date.now();
   let when = "not edited";
@@ -55230,7 +55530,7 @@ function explain(components = {}) {
     const part = ageParts(Math.max(0, now5 - edit));
     when = part.unit === "today" ? "edited today" : `edited ${part.n} ${part.n === 1 ? part.unit : `${part.unit}s`} ago`;
   }
-  return `${refs}, ${shared4}, ${when}`;
+  return `${refs}, ${shared5}, ${when}`;
 }
 function edgeOpens(store, from, to) {
   if (typeof store?.get !== "function") return 0;
@@ -61291,7 +61591,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
   const order = [...doc.order || []];
   const applied = [];
   const used = /* @__PURE__ */ new Set();
-  const shared4 = sharedHosts(doc, structures);
+  const shared5 = sharedHosts(doc, structures);
   let seq = 0;
   for (const structure of structures) {
     if (!structure?.cells?.length || !structure.bbox) continue;
@@ -61302,7 +61602,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
       const trimmed = dropCaptionRow(built, pageWords);
       if (trimmed !== built) Object.assign(built, { cells: trimmed.cells, rows: trimmed.rows, headerRows: trimmed.headerRows });
     }
-    const sharedHost = shared4.get(structure);
+    const sharedHost = shared5.get(structure);
     if (sharedHost) {
       const hostBlock = blocks[sharedHost.id];
       if (hostBlock) {
@@ -69129,12 +69429,12 @@ function noteFor(reason) {
   if (reason === "off") return "";
   return UPLOAD_FAILED_NOTE;
 }
-var shared2 = null;
+var shared3 = null;
 function setFigureImages(service) {
-  shared2 = service || null;
+  shared3 = service || null;
 }
 function getFigureImages() {
-  return shared2;
+  return shared3;
 }
 
 // src/host/roam-lookup.js
@@ -83242,6 +83542,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     }
     return n3;
   };
+  const PARK_SLICE = 400;
   const cull = (rect, { budget = Infinity, ms = Infinity } = {}) => {
     if (!rect || !lastPass) return 0;
     view = rect;
@@ -83250,6 +83551,16 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     const t0 = ms < Infinity ? now4() : 0;
     let built = 0;
     let left = 0;
+    let parks = budget < Infinity ? PARK_SLICE : Infinity;
+    const park = (rec) => {
+      if (rec.parked) return;
+      if (parks <= 0) {
+        left += 1;
+        return;
+      }
+      parks -= 1;
+      parkEdge(rec);
+    };
     for (const edge of board2.edges.values()) {
       const rec = edgeEls.get(edge.uid);
       if (!endsReady(board2, edge)) {
@@ -83261,8 +83572,12 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
         const pinnedWait = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
         const waitNear = pinnedWait || (rec && !rec.parked ? !edgeFar(board2, edge, rects) : edgeNear(board2, edge, rects));
         if (!waitNear) {
+          if (rec && !rec.parked && parks <= 0) {
+            left += 1;
+            continue;
+          }
           waiting.delete(edge.uid);
-          if (rec) parkEdge(rec);
+          if (rec) park(rec);
         }
         continue;
       }
@@ -83270,7 +83585,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       const pinned2 = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
       const near2 = pinned2 || (rec && !rec.parked ? !edgeFar(board2, edge, rects) : edgeNear(board2, edge, rects));
       if (!near2) {
-        if (rec) parkEdge(rec);
+        if (rec) park(rec);
         continue;
       }
       if (rec && !rec.parked && !rec.stale) continue;
@@ -91340,13 +91655,13 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
   }
   return { status, download, cancel, read: read2, readCells, readBandTitle, readImageText, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };
 }
-var shared3 = null;
+var shared4 = null;
 function sharedDeviceOcr() {
-  if (!shared3) {
-    shared3 = createDeviceOcr();
-    if (supported(globalThis)) shared3.warmTitleLexicon();
+  if (!shared4) {
+    shared4 = createDeviceOcr();
+    if (supported(globalThis)) shared4.warmTitleLexicon();
   }
-  return shared3;
+  return shared4;
 }
 
 // src/view/title-lexicon-warm.js
@@ -93673,12 +93988,14 @@ function toggleTodoAt(string, index = 0) {
 }
 var BADGE_MAX = 60;
 var NOTE_KINDS2 = ["note", "block", "page"];
-function createTimers() {
+function createTimers({ phase = () => "" } = {}) {
   const active2 = /* @__PURE__ */ new Set();
-  const later = (fn, ms) => {
+  const probe = sharedTaskProbe();
+  const run = (label, fn, arg) => probe.span(label, () => fn(arg), phase());
+  const later = (fn, ms, label = "timer") => {
     const id = setTimeout(() => {
       active2.delete(entry);
-      fn();
+      run(label, fn);
     }, ms);
     const entry = () => {
       clearTimeout(id);
@@ -93687,13 +94004,13 @@ function createTimers() {
     active2.add(entry);
     return entry;
   };
-  const frame2 = (fn) => {
+  const frame2 = (fn, label = "frame") => {
     const raf2 = globalThis.requestAnimationFrame;
     let entry;
     if (typeof raf2 === "function") {
       const id = raf2((t) => {
         active2.delete(entry);
-        fn(t);
+        run(label, fn, t);
       });
       entry = () => {
         globalThis.cancelAnimationFrame?.(id);
@@ -93702,7 +94019,7 @@ function createTimers() {
     } else {
       const id = setTimeout(() => {
         active2.delete(entry);
-        fn(Date.now());
+        run(label, fn, Date.now());
       }, 16);
       entry = () => {
         clearTimeout(id);
@@ -93712,13 +94029,13 @@ function createTimers() {
     active2.add(entry);
     return entry;
   };
-  const idle = (fn) => {
+  const idle = (fn, label = "idle") => {
     const ric = globalThis.requestIdleCallback;
     let entry;
     if (typeof ric === "function") {
       const id = ric((d) => {
         active2.delete(entry);
-        fn(d);
+        run(label, fn, d);
       });
       entry = () => {
         globalThis.cancelIdleCallback?.(id);
@@ -93727,7 +94044,7 @@ function createTimers() {
     } else {
       const id = setTimeout(() => {
         active2.delete(entry);
-        fn({ timeRemaining: () => 8, didTimeout: true });
+        run(label, fn, { timeRemaining: () => 8, didTimeout: true });
       }, 0);
       entry = () => {
         clearTimeout(id);
@@ -94325,7 +94642,14 @@ function buildBoardView(onFail, {
   }
   const prefersReducedMotion2 = () => Boolean(motionMq?.matches);
   const currentMotion = () => resolveMotion(setting("motion", "full"), prefersReducedMotion2());
-  const timers = createTimers();
+  const taskPhase = () => {
+    try {
+      return boardPhase();
+    } catch {
+      return "";
+    }
+  };
+  const timers = createTimers({ phase: taskPhase });
   const listeners3 = [];
   const observers = [];
   const subs = [];
@@ -95232,6 +95556,9 @@ function buildBoardView(onFail, {
   } : null;
   let paintOverviewCover = () => {
   };
+  let gapCover = false;
+  let refreshGapCover = () => {
+  };
   itemsR = createItemRenderer({
     doc,
     host,
@@ -95246,6 +95573,7 @@ function buildBoardView(onFail, {
         edgesR.flushWaiting?.();
       } catch {
       }
+      if (gapCover) refreshGapCover();
     },
     tableThumb,
     onTableShown,
@@ -97752,7 +98080,7 @@ function buildBoardView(onFail, {
     frameHandle = timers.frame(() => {
       frameHandle = null;
       renderFrame();
-    });
+    }, "render");
   };
   const HOVER_GRACE = 400;
   let hoverUid = null;
@@ -98087,14 +98415,17 @@ function buildBoardView(onFail, {
   };
   const beginDragRide = (b, set) => {
     const shells = [];
-    for (const uid of set) {
-      const el3 = itemsR.shellOf(uid);
-      if (el3?.style) {
-        el3.style.willChange = "transform";
-        shells.push(el3);
+    const grouped = Boolean(itemsR.beginDragGroup?.(set));
+    if (!grouped) {
+      for (const uid of set) {
+        const el3 = itemsR.shellOf(uid);
+        if (el3?.style) {
+          el3.style.willChange = "transform";
+          shells.push(el3);
+        }
       }
     }
-    dragRide = { shells, edges: edgesR.beginDrag(b, set), turn: 0 };
+    dragRide = { shells, grouped, edges: edgesR.beginDrag(b, set), turn: 0 };
   };
   const DRAG_EDGE_BUDGET = 300;
   const rideCrossing = (b, touching) => {
@@ -98127,6 +98458,12 @@ function buildBoardView(onFail, {
       } catch {
       }
     }
+    if (ride.grouped) {
+      try {
+        itemsR.endDragGroup?.();
+      } catch {
+      }
+    }
     const b = board2();
     edgesR.endDrag(b ? { board: b, rects: paintRects(), zoom: vp.zoom } : null);
   };
@@ -98147,6 +98484,7 @@ function buildBoardView(onFail, {
   let underlayTier = "";
   const showUnderlay = () => {
     if (overviewCanvasOn() && paintOverviewCanvas({ band: false })) return;
+    if (underlayDrawn && underlayKind === "burst" && size.width && !underlay.covers(visibleWorldRect(vp, size, 0), vp.zoom, win2?.devicePixelRatio || 1)) underlayDrawn = false;
     if (underlayDrawn) return;
     underlayDrawn = true;
     underlayKind = "burst";
@@ -98157,7 +98495,7 @@ function buildBoardView(onFail, {
     for (const item of b.items.values()) {
       if (item.type === "section") continue;
       const rect = r.get(item.uid);
-      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect, color: item.color || "" });
+      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect, color: item.color || "", title: item.title || "" });
     }
     const edges = [];
     if (edgesR.isVirtual?.(b)) {
@@ -98168,8 +98506,9 @@ function buildBoardView(onFail, {
       }
     }
     underlayTier = tier;
-    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1, styled: styledUnderlay(), tier });
+    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1, styled: styledUnderlay(), tier, view: underlayView() });
   };
+  const underlayView = () => size.width ? visibleWorldRect(vp, size, 0) : null;
   const endUnderlay = () => {
     underlayDrawn = false;
   };
@@ -98187,9 +98526,11 @@ function buildBoardView(onFail, {
       return;
     }
     if (underlayDrawn) return;
+    gapCover = false;
     try {
       if (notedSpeedFlags().overviewFast === false) {
         coverUids = /* @__PURE__ */ new Set();
+        if (!paintGapCover()) underlay.hide();
         return;
       }
     } catch {
@@ -98197,12 +98538,12 @@ function buildBoardView(onFail, {
       return;
     }
     if (tier === "detail" && itemsR.coverHeld?.() !== true) {
-      const pending = itemsR.pendingBoxes?.() || [];
       coverUids = /* @__PURE__ */ new Set();
-      if (!pending.length) underlay.hide();
+      if (!paintGapCover()) underlay.hide();
       return;
     }
     const items = itemsR.pendingBoxes?.() || [];
+    if (styledUnderlay()) items.push(...gapBoxes(new Set(items.map((item) => item.uid))));
     if (!items.length) {
       coverUids = /* @__PURE__ */ new Set();
       underlay.hide();
@@ -98221,11 +98562,40 @@ function buildBoardView(onFail, {
       }
     }
     underlayTier = tier;
-    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1, styled: styledUnderlay(), tier });
+    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1, styled: styledUnderlay(), tier, view: underlayView() });
   };
   const releaseUnderlay = () => {
     if (overviewCanvasOn() && paintOverviewCanvas()) return;
+    underlayDrawn = false;
     underlay.hide();
+    paintOverviewCover();
+  };
+  const gapBoxes = (skip = null) => {
+    const b = board2();
+    if (!b || !size.width || !itemsR.isVirtual?.()) return [];
+    const view2 = visibleWorldRect(vp, size, 0);
+    const r = paintRects();
+    const out = [];
+    for (const item of b.items.values()) {
+      if (item.type === "section" || skip?.has(item.uid)) continue;
+      const rect = r.get(item.uid);
+      if (!rect || !rectsIntersect(rect, view2) || itemsR.attachedUid(item.uid)) continue;
+      out.push({ uid: item.uid, rect, color: item.color || "", title: item.title || "" });
+    }
+    return out;
+  };
+  const paintGapCover = () => {
+    if (!styledUnderlay()) return false;
+    const items = gapBoxes();
+    if (!items.length) return false;
+    gapCover = true;
+    underlayKind = "cover";
+    underlayTier = tier;
+    underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1, styled: true, tier, view: underlayView() });
+    return true;
+  };
+  refreshGapCover = () => {
+    if (disposed || suspended || underlayDrawn || gesturing || wheelLayer || slicing || underlayKind !== "cover") return;
     paintOverviewCover();
   };
   let ovDirty = true;
@@ -98248,7 +98618,8 @@ function buildBoardView(onFail, {
     const model = rects();
     const attached = itemsR.attachedCount?.() ?? 0;
     if (b !== ovModel || model !== ovRects || attached !== ovAttached) ovDirty = true;
-    if (shown && !ovDirty && (!band || nextBand === ovBand)) {
+    const sharp = !size.width || underlay.covers(visibleWorldRect(vp, size, 0), vp.zoom, win2?.devicePixelRatio || 1);
+    if (shown && !ovDirty && sharp && (!band || nextBand === ovBand)) {
       underlayDrawn = true;
       return true;
     }
@@ -98280,7 +98651,7 @@ function buildBoardView(onFail, {
     coverUids = /* @__PURE__ */ new Set();
     ovDraws += 1;
     ovItems = items.length;
-    underlay.drawOverview({ items, edges, zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1 });
+    underlay.drawOverview({ items, edges, zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1, view: underlayView() });
     return true;
   };
   const SETTLE_SHELLS = 48;
@@ -98288,6 +98659,48 @@ function buildBoardView(onFail, {
   const SETTLE_SLICE_MS = 6;
   let sliceFrame = null;
   let slicing = false;
+  const resumeView = () => {
+    suspended = false;
+    resumeObservers();
+    try {
+      itemsR.resumeShells?.();
+    } catch {
+    }
+    timers.resumeBg();
+    armCoverWarm();
+    if (board2() !== suspendedBoard || itemsR.queuedCount?.() > 0 && notedSpeedFlags().keepFullscreen === false) {
+      dirty.all = true;
+      dirty.structural = true;
+    } else if (itemsR.queuedCount?.() > 0) {
+      dirty.resync = true;
+      dirty.viewport = true;
+      dirty.selection = true;
+      dirty.minimap = true;
+    } else {
+      dirty.viewport = true;
+      dirty.selection = true;
+      dirty.minimap = true;
+    }
+    suspendedBoard = null;
+    if (!dirty.all) sliceResume();
+    schedule();
+  };
+  const RESUME_SHELLS = 96;
+  const sliceResume = () => {
+    try {
+      if (notedSpeedFlags().slicedResume === false) return;
+    } catch {
+      return;
+    }
+    if (!sliceWanted() || (itemsR.attachedCount?.() || 0) <= RESUME_SHELLS * 2) return;
+    const rect = visibleWorldRect(vp, size, ATTACH_MARGIN);
+    if (!itemsR.keepNearest?.(rect, RESUME_SHELLS)) return;
+    underlayDrawn = false;
+    showUnderlay();
+    beginSlice();
+    settleAttach();
+  };
+  const boardPhase = () => suspended ? "parked" : wheelLayer ? "wheel" : gesturing ? ctl.gestureKind?.() || "zoom" : slicing ? "slice" : settleTimer ? "settling" : "idle";
   const slicedSettleOn = () => {
     try {
       return notedSpeedFlags().slicedSettle !== false;
@@ -98327,7 +98740,7 @@ function buildBoardView(onFail, {
     if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, SETTLE_SHELLS, SETTLE_SLICE_MS);
     const edgesLeft = sliceEdges(rect);
     if (edgesLeft || (itemsR.attachLeft?.() || 0) > 0) {
-      sliceFrame = timers.frame(sliceStep);
+      sliceFrame = timers.frame(sliceStep, "slice");
       return;
     }
     endSlice();
@@ -98347,7 +98760,7 @@ function buildBoardView(onFail, {
       releaseUnderlay();
       return;
     }
-    const stale = underlayKind === "burst" && styledUnderlay() && underlayTier !== tier;
+    const stale = styledUnderlay() && (underlayKind === "burst" && underlayTier !== tier || underlayKind === "overview" && tier !== "overview");
     if (underlay.isShown() && !stale && (underlayKind === "burst" || underlayKind === "overview")) underlayDrawn = true;
     else {
       underlayDrawn = false;
@@ -98355,7 +98768,7 @@ function buildBoardView(onFail, {
     }
     slicing = true;
     sliceFrame?.();
-    sliceFrame = timers.frame(sliceStep);
+    sliceFrame = timers.frame(sliceStep, "slice");
   };
   const revealNear = () => {
     if (!size.width) return;
@@ -98443,7 +98856,7 @@ function buildBoardView(onFail, {
         } catch {
         }
       }
-    }, RESUME_MS);
+    }, RESUME_MS, "settle");
   };
   const refreshThumbnails = () => {
     if (disposed || gesturing || !board2()) return;
@@ -102673,7 +103086,7 @@ ${url}`;
           refreshBadges();
           considerCoverWarm();
           scheduleSharpCovers();
-        }, RESUME_MS);
+        }, RESUME_MS, "gesture-end");
       }
     },
     showMarquee: (rect, kind) => edgesR.setMarquee(rect, kind),
@@ -102683,11 +103096,11 @@ ${url}`;
     previewMove: (uids, dx, dy) => {
       const b = board2();
       if (!b) return;
-      liveRects = itemsR.previewMove(uids, dx, dy, b, rects());
-      if (overviewCanvasOn()) ovDirty = true;
       const set = new Set(uids);
       for (const u of uids) for (const d of descendantsOf(b, u)) set.add(d);
       if ((dx || dy) && !dragRide && dragLayerWanted(set)) beginDragRide(b, set);
+      liveRects = itemsR.previewMove(uids, dx, dy, b, rects());
+      if (overviewCanvasOn()) ovDirty = true;
       if (dragRide) edgesR.dragBy(dx, dy);
       const top = new Set(uids);
       const eff = effectiveRects();
@@ -105581,32 +105994,19 @@ ${url}`;
     },
     resume() {
       if (disposed || !suspended) return;
-      suspended = false;
-      resumeObservers();
-      try {
-        itemsR.resumeShells?.();
-      } catch {
-      }
-      timers.resumeBg();
-      armCoverWarm();
-      if (board2() !== suspendedBoard || itemsR.queuedCount?.() > 0 && notedSpeedFlags().keepFullscreen === false) {
-        dirty.all = true;
-        dirty.structural = true;
-      } else if (itemsR.queuedCount?.() > 0) {
-        dirty.resync = true;
-        dirty.viewport = true;
-        dirty.selection = true;
-        dirty.minimap = true;
-      } else {
-        dirty.viewport = true;
-        dirty.selection = true;
-        dirty.minimap = true;
-      }
-      suspendedBoard = null;
-      schedule();
+      sharedTaskProbe().span("resume", resumeView, "resume");
     },
     cameraRect() {
       return cameraRectOf({ x: vp.x, y: vp.y, zoom: vp.zoom }, viewSize());
+    },
+    // E2-5 probe: the long tasks seen since load (PerformanceObserver "longtask"), each with the Plexus job time inside
+    // it by job name (render, settle, gesture-end, slice, resume, shells, bg:<label>...) and the board's phase.
+    longTasks() {
+      return sharedTaskProbe().longTasks();
+    },
+    // Card bodies that took 50 ms or more to mount ({ uid, kind, ms, at }), to name a long "content" task.
+    slowMounts() {
+      return itemsR.slowMounts?.() || [];
     },
     applyShow(region) {
       if (disposed || !region) return;
@@ -106123,7 +106523,8 @@ function cleanItem2(item) {
     h: item.h,
     title: String(item.title || "").slice(0, TITLE_MAX2),
     color: typeof item.color === "string" ? item.color : "",
-    fill: typeof item.fill === "string" ? item.fill : ""
+    fill: typeof item.fill === "string" ? item.fill : "",
+    ...item.s ? { s: 1 } : {}
   };
 }
 function cleanEdge(edge) {
@@ -106316,7 +106717,8 @@ function captureSketch(board2) {
       h: rect.h,
       title: item.title || "",
       color: item.color || "",
-      fill: item.fill || ""
+      fill: item.fill || "",
+      s: item.type === "section" ? 1 : 0
     });
     if (clean2) items.push(clean2);
   }
@@ -106355,7 +106757,7 @@ function removeSketch(mountEl) {
     }
   }
 }
-function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER } = {}) {
+function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER, look = null } = {}) {
   if (!doc || !mountEl || !isSketchViewport(vp)) return null;
   const parsed = sketch?.items ? sketch : null;
   if (!parsed || !Array.isArray(parsed.items)) return null;
@@ -106363,7 +106765,7 @@ function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER } = 
   let layer;
   try {
     layer = doc.createElement("div");
-    layer.className = "pxd-sketch";
+    layer.className = look ? ["pxd-root", ...look.cls || [], "pxd-sketch"].join(" ") : "pxd-sketch";
     layer.setAttribute("data-pxd-sketch", "1");
     layer.setAttribute("aria-hidden", "true");
     layer.style.position = "absolute";
@@ -106374,6 +106776,27 @@ function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER } = 
     layer.style.overflow = "hidden";
     layer.style.pointerEvents = "none";
     layer.style.zIndex = "1";
+    if (look) {
+      if (inset > 0) for (const side2 of ["left", "top", "right", "bottom"]) layer.style[side2] = "0";
+      else layer.style.border = "none";
+      layer.style.width = "auto";
+      layer.style.height = "auto";
+      layer.style.margin = "0";
+      for (const [name, value] of Object.entries(look.vars || {})) {
+        try {
+          layer.style.setProperty(name, value);
+        } catch {
+        }
+      }
+      const f = lodFonts(vp.zoom);
+      layer.setAttribute("data-pxd-lod", lodTier(vp.zoom, "detail", { threshold: Number(look.threshold) > 0 ? Number(look.threshold) : 0.45 }));
+      try {
+        layer.style.setProperty("--pxd-map-font", `${f.map}px`);
+        layer.style.setProperty("--pxd-ui", String(f.ui));
+        layer.style.setProperty("--pxd-overview-font", `${f.section}px`);
+      } catch {
+      }
+    }
     const world = doc.createElement("div");
     world.className = "pxd-sketch__world";
     world.style.position = "absolute";
@@ -106392,6 +106815,8 @@ function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER } = 
     edges.style.top = "0";
     edges.style.overflow = "visible";
     edges.style.pointerEvents = "none";
+    const sections = look ? doc.createElement("div") : null;
+    if (sections) world.append(sections);
     world.append(edges);
     for (const edge of Array.isArray(parsed.edges) ? parsed.edges : []) {
       const clean2 = cleanEdge(edge);
@@ -106406,7 +106831,7 @@ function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER } = 
       const clean2 = cleanItem2(item);
       if (!clean2) continue;
       const card2 = doc.createElement("div");
-      card2.className = "pxd-sketch__card";
+      card2.className = !look ? "pxd-sketch__card" : clean2.s ? "pxd-section pxd-sketch__card" : "pxd-item pxd-item--card pxd-sketch__card";
       card2.setAttribute("data-uid", clean2.uid);
       card2.style.position = "absolute";
       card2.style.left = "0";
@@ -106425,11 +106850,16 @@ function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER } = 
         if (accent) card2.style.background = accent;
       }
       const title = doc.createElement("div");
-      title.className = "pxd-sketch__title";
+      title.className = look ? clean2.s ? "pxd-section__title pxd-sketch__title" : "pxd-item__header pxd-sketch__title" : "pxd-sketch__title";
       title.style.pointerEvents = "none";
       title.textContent = clean2.title;
       card2.append(title);
-      world.append(card2);
+      if (look && !clean2.s) {
+        const body = doc.createElement("div");
+        body.className = "pxd-item__body";
+        card2.append(body);
+      }
+      (sections && clean2.s ? sections : world).append(card2);
     }
     placeLayer(mountEl, layer);
     return layer;
@@ -109891,7 +110321,8 @@ async function installPlexusDiagram({
         size: sketchMountSize(rec)
       });
       anchorMount(rec.mountEl);
-      const layer = paintSketch(doc, rec.mountEl, sketch, vp, { inset: rec.fullscreen ? 0 : SKETCH_ROOT_BORDER });
+      const look = speedFlags().styledUnderlay !== false ? sketchLook(rec) : null;
+      const layer = paintSketch(doc, rec.mountEl, sketch, vp, { inset: rec.fullscreen ? 0 : SKETCH_ROOT_BORDER, look });
       return layer ? vp : null;
     } catch {
       try {
@@ -109900,6 +110331,27 @@ async function installPlexusDiagram({
       }
       return null;
     }
+  }
+  function sketchLook(rec) {
+    let src = null;
+    try {
+      src = rec.mountEl?.querySelector?.(".pxd-root:not(.pxd-sketch)") || doc.querySelector?.(".pxd-root:not(.pxd-sketch)") || null;
+    } catch {
+      src = null;
+    }
+    const cls = [];
+    const vars = {};
+    if (src) {
+      for (const name of String(src.className || "").split(/\s+/)) {
+        if (name.startsWith("pxd-root--") && name !== "pxd-root--fullscreen") cls.push(name);
+      }
+      const style = src.style;
+      for (let i = 0; i < (style?.length || 0); i += 1) {
+        const name = style[i];
+        if (typeof name === "string" && name.startsWith("--pxd-")) vars[name] = style.getPropertyValue(name);
+      }
+    } else if (isDarkTheme(rec)) cls.push("pxd-root--dark");
+    return { cls, vars };
   }
   function forgetSketch(rec) {
     if (!rec) return;
@@ -110804,7 +111256,7 @@ async function installPlexusDiagram({
     const finish = () => cancelSketchHandoff(rec);
     const look = () => {
       if (handoff.cancelled || handoff.holdRaf != null || handoff.soonTimer != null) return;
-      if (!rec.mountEl?.querySelector?.(".pxd-item")) return;
+      if (!hasLiveCard(rec.mountEl)) return;
       try {
         handoff.observer?.disconnect?.();
       } catch {
@@ -110904,7 +111356,7 @@ async function installPlexusDiagram({
     detachSketchInput(handoff);
     let view;
     try {
-      view = callMountView(rec, autofocus, viewport2);
+      view = callMountView(rec, autofocus, viewport2 || (steadyCamera() && handoff.vp ? { ...handoff.vp } : null));
     } catch (error) {
       handoff.cancelled = true;
       clearSketchHandoffTimers(handoff);
@@ -113736,6 +114188,8 @@ async function installPlexusDiagram({
       connected: rec.native.isConnected !== false && rec.mountEl.isConnected !== false,
       state: rec.view?.state?.() ?? null
     })),
+    // Debug probes for live QA: each mount's current view (paintAudit, flipStats, longTasks, overviewCanvasStats).
+    views: () => [...mounts.values()].map((rec) => rec.view).filter(Boolean),
     // "Open on board" for a connection (RF-3).
     openConnection: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid),
     cardCacheMs: () => cacheLoadMs,

@@ -68,7 +68,7 @@ test("E1: a parked fullscreen board lets go of the mount's chrome observers, tak
 const VARS = {
   "--pxd-card": "#26333f", "--pxd-border-strong": "#6b7f91",
   "--pxd-red-line": "#f87171", "--pxd-red-fill": "transparent",
-  "--pxd-teal-line": "#2dd4bf", "--pxd-teal-fill": "#f0fdfa",
+  "--pxd-teal-line": "#2dd4bf", "--pxd-teal-fill": "#f0fdfa", "--pxd-muted": "#8899aa",
 };
 const colourCards = (board) => {
   let i = 0;
@@ -90,6 +90,7 @@ test("styledUnderlay: the open cover draws queued cards the way the cards look (
       assert.ok(ops.includes("fill #26333f"), `card fill: ${ops.slice(0, 8)}`);
       assert.ok(ops.includes("fill #f0fdfa"), "teal palette fill over it");
       assert.ok(ops.includes("stroke #f87171") && ops.includes("stroke #2dd4bf") && ops.includes("stroke #6b7f91"), "borders in the card's line colour");
+      assert.ok(ops.includes("stroke #8899aa"), "arrows held back for a queued end are hairlines (the snapshot drew them)");
     } finally { m.done(); }
   });
 });

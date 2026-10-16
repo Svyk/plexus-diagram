@@ -4187,7 +4187,19 @@ function buildBoardView(onFail, {
     if (!items.length) { coverUids = new Set(); underlay.hide(); return; }
     coverUids = new Set(items.map((item) => item.uid));
     underlayKind = "cover";
-    underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: styledUnderlay(), tier });
+    // E1: the open snapshot drew the arrows; an arrow still held back for a queued end is a hairline here until then.
+    const edges = [];
+    const b = styledUnderlay() ? board() : null;
+    if (b && edgesR.isVirtual?.(b)) {
+      const r = paintRects();
+      for (const e of b.edges.values()) {
+        if (edgesR.edgeShown(e.uid) || !(coverUids.has(e.from) || coverUids.has(e.to))) continue;
+        const a = r.get(e.from), c = r.get(e.to);
+        if (a && c) edges.push([a, c]);
+      }
+    }
+    underlayTier = tier;
+    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: styledUnderlay(), tier });
   };
   const releaseUnderlay = () => {
     if (overviewCanvasOn() && paintOverviewCanvas()) return;

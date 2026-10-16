@@ -237,6 +237,6 @@ test("the Source chip sits under the caption instead of over it", () => {
   const rule = css.slice(css.indexOf(".pxd-item__body:has(> .pxd-chip--source) > .pxd-chip--source"));
   assert.doesNotMatch(rule, /margin-top:\s*auto/);
   assert.match(rule, /margin-top:\s*4px/);
-  assert.match(rule, /position:\s*relative/);
-  assert.match(rule, /z-index:\s*2/);
+  assert.match(rule, /position:\s*static/);
+  assert.doesNotMatch(rule, /z-index/);
 });

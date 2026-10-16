@@ -3506,11 +3506,11 @@ function readPaneWidth(mountWidth, stored) {
   const hasStored = Number.isFinite(given) && given > 0;
   if (stacked) return { stacked: true, width: Math.round(mount) };
   const raw = hasStored ? given : mount > 0 ? Math.round(mount * 0.42) : 360;
-  const room = mount > 0 ? Math.max(360, mount - 360) : 720;
-  const width = Math.min(720, room, Math.max(360, Math.round(raw)));
+  const room = mount > 0 ? Math.max(360, mount - READ_EDGE) : Infinity;
+  const width = Math.min(room, Math.max(360, Math.round(raw)));
   return { stacked: false, width };
 }
-var PDF_MACRO, PDF_READER_W, PDF_READER_H, PDF_CARD_MAX, ROMAN_ONLY, HEAVY_MACRO, HEAVY_ONE, REF_ONLY3, EMBED_ONLY2;
+var PDF_MACRO, PDF_READER_W, PDF_READER_H, PDF_CARD_MAX, ROMAN_ONLY, HEAVY_MACRO, HEAVY_ONE, REF_ONLY3, EMBED_ONLY2, READ_EDGE;
 var init_pdf = __esm({
   "src/model/pdf.js"() {
     init_title_cap();
@@ -3523,6 +3523,7 @@ var init_pdf = __esm({
     HEAVY_ONE = /\{\{\s*(?:\[\[)?(pdf|video|youtube|iframe|tweet|twitter)(?:\]\])?\s*:([^}]*)\}\}/i;
     REF_ONLY3 = /^\(\(([\w-]+)\)\)$/;
     EMBED_ONLY2 = /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i;
+    READ_EDGE = 48;
   }
 });
 
@@ -14856,6 +14857,41 @@ function pinCaption(block, doc) {
   }
   return squash(block.text || block.latex || "").slice(0, CAPTION_CAP);
 }
+function figureCardMarkdown(block, doc) {
+  if (!block || block.type !== "figure" && !(block.type === "formula" && !block.latex)) return "";
+  const caption = pinCaption(block, doc);
+  const url = String(block.image?.url || block.url || "").trim();
+  if (!url) return caption;
+  let alt = caption.replace(/\]/g, "").trim();
+  if (alt.length > 80) alt = alt.slice(0, 80).trim();
+  if (!alt) alt = block.type === "formula" ? "Formula" : "Figure";
+  const image = `![${alt}](${url})`;
+  return caption ? `${image} ${caption}` : image;
+}
+function isSourceAttrString(text4) {
+  return SOURCE_RE.test(String(text4 ?? "").trim());
+}
+function matchParsedBlock(doc, { page, frac } = {}, min = 0.5) {
+  const pg = Number(page);
+  if (!Number.isInteger(pg) || pg < 1 || !Array.isArray(frac) || frac.length < 4) return null;
+  const info = (doc?.pages || []).find((row4) => Number(row4?.n) === pg) || { n: pg, w: 612, h: 792, rotation: 0 };
+  let best = null;
+  let score = Number(min);
+  if (!Number.isFinite(score)) score = 0.5;
+  const ids = Array.isArray(doc?.order) && doc.order.length ? doc.order : Object.keys(doc?.blocks || {});
+  for (const id of ids) {
+    const block = doc?.blocks?.[id];
+    if (!block || block.type === "caption" || Number(block.page) !== pg || !Array.isArray(block.bbox)) continue;
+    const box2 = pageFracFromBbox(block.bbox, info);
+    if (!box2) continue;
+    const iou6 = rectIou(box2, frac);
+    if (iou6 > score) {
+      score = iou6;
+      best = block;
+    }
+  }
+  return best;
+}
 function rectIou(a, b) {
   const A2 = rectOf2(a);
   const B = rectOf2(b);
@@ -19157,6 +19193,7 @@ var init_settings = __esm({
       pdfCoverWarm: "pdf-cover-warm",
       highlightOpen: "highlight-open",
       pdfDark: "pdf-dark",
+      pdfReaderDark: "pdf-reader-dark",
       parseHelperUrl: "parse-helper-url",
       parseHelperToken: "parse-helper-token",
       parseEngineDefault: "parse-engine-default",
@@ -19233,6 +19270,7 @@ var init_settings = __esm({
       [SETTING_IDS.pdfCoverWarm]: true,
       [SETTING_IDS.highlightOpen]: "reader",
       [SETTING_IDS.pdfDark]: "dim",
+      [SETTING_IDS.pdfReaderDark]: "follow",
       [SETTING_IDS.parseHelperUrl]: "http://127.0.0.1:48765",
       [SETTING_IDS.parseHelperToken]: "",
       [SETTING_IDS.parseEngineDefault]: "auto",
@@ -19279,6 +19317,7 @@ var init_settings = __esm({
       [SETTING_IDS.pdfCover]: ["first", "last-read"],
       [SETTING_IDS.highlightOpen]: ["reader", "sidebar"],
       [SETTING_IDS.pdfDark]: ["off", "dim", "invert"],
+      [SETTING_IDS.pdfReaderDark]: ["off", "follow", "on"],
       [SETTING_IDS.parseEngineDefault]: ["auto", "builtin", "docling"],
       [SETTING_IDS.parseOcr]: ["auto", "on", "off"],
       [SETTING_IDS.parsePageReader]: ["doubtful", "all"],
@@ -19381,6 +19420,7 @@ var init_settings = __esm({
       [SETTING_IDS.pdfCoverWarm]: () => switchRow(SETTING_IDS.pdfCoverWarm, "Prepare PDF covers in the background", "On. A quiet board prepares a cover for a visible PDF that does not have one: Roam's PDF engine draws page 1 when it is reachable, otherwise a hidden reader does."),
       [SETTING_IDS.highlightOpen]: () => selectRow(SETTING_IDS.highlightOpen, "Highlight click opens", "Reader: the PDF pane scrolls to the highlight. Sidebar: Roam opens the highlight block in the right sidebar. Shift-click always opens the sidebar; the chip's arrow lists every choice.", ["reader", "sidebar"]),
       [SETTING_IDS.pdfDark]: () => selectRow(SETTING_IDS.pdfDark, "PDF pages in dark mode", "When the board is dark. Off keeps white pages. Dim darkens the page. Invert flips the page colors. Marks stay readable.", ["off", "dim", "invert"]),
+      [SETTING_IDS.pdfReaderDark]: () => selectRow(SETTING_IDS.pdfReaderDark, "PDF dark mode", "Off, Follow Roam, or On. Follow Roam is the default. On inverts the page canvas in Roam's PDF window so the page matches a dark graph. Photos that are their own image stay natural. Highlight colours and parsed outlines stay as they are.", ["off", "follow", "on"]),
       [SETTING_IDS.parseHelperUrl]: () => inputRow(SETTING_IDS.parseHelperUrl, "Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
       [SETTING_IDS.parseHelperToken]: () => inputRow(SETTING_IDS.parseHelperToken, "Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address.", { password: true, placeholder: "Token" }),
       [SETTING_IDS.parseEngineDefault]: () => selectRow(SETTING_IDS.parseEngineDefault, "Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper.", ["auto", "builtin", "docling"]),
@@ -19411,6 +19451,9 @@ var init_settings = __esm({
         SETTING_IDS.pdfCoverWarm,
         SETTING_IDS.highlightOpen,
         SETTING_IDS.pdfDark
+      ]],
+      ["group-pdf-reader", "PDF reader", "Roam's PDF window, in the sidebar and in the main view.", [
+        SETTING_IDS.pdfReaderDark
       ]],
       ["group-integrations", "Integrations", "Sibling extensions, and the switches that turn them on.", [
         STATUS_IDS.betterTasks,
@@ -35864,7 +35907,7 @@ var init_cards = __esm({
       return line ? line.slice(0, STICKY_TITLE_MAX) : "Note";
     };
     isTaskAttrString = (s) => taskAttrId(s) !== null;
-    skipChildString = (s) => isTaskAttrString(s) || isStructuralString(s);
+    skipChildString = (s) => isTaskAttrString(s) || isStructuralString(s) || isSourceAttrString(s);
     visibleKids = (list) => (list || []).filter((c) => !skipChildString(childString4(c)));
     taskBlockOn = () => false;
     statusSig = "";
@@ -61104,6 +61147,7 @@ function createPageChips({
   let boxCount = 0;
   let syncFrame = 0;
   let syncRetries = 0;
+  let flashTimer = null;
   const on = (node2, type, fn, capture = false) => {
     if (!node2 || typeof node2.addEventListener !== "function") return;
     node2.addEventListener(type, fn, capture);
@@ -61161,6 +61205,75 @@ function createPageChips({
     chipNode = null;
   };
   const later = (fn, ms) => (win2()?.setTimeout || setTimeout)(fn, ms);
+  const stopFlash = () => {
+    if (flashTimer == null) return;
+    (win2()?.clearTimeout || clearTimeout)(flashTimer);
+    flashTimer = null;
+  };
+  const flash = (id) => {
+    const want = String(id || "");
+    if (!want || disposed) return false;
+    if (!showParsed) {
+      showParsed = true;
+      writeShowParsed(storage, true);
+      syncRetries = 0;
+    }
+    sync();
+    let box2 = null;
+    let pageNode2 = null;
+    for (const entry of layers.values()) {
+      const hit = entry.boxes?.get?.(want);
+      if (!hit) continue;
+      box2 = hit;
+      pageNode2 = entry.el;
+      break;
+    }
+    if (!box2) return false;
+    for (const entry of layers.values()) {
+      for (const other of entry.boxes.values()) {
+        if (other !== box2) other.classList?.remove?.("pxd-parsed-box--flash");
+      }
+    }
+    box2.classList.add("pxd-parsed-box--flash");
+    const scroller = box2.closest?.(".PdfHighlighter") || pageNode2?.closest?.(".PdfHighlighter");
+    if (scroller) {
+      let view = null;
+      let pageBox = null;
+      let mark = null;
+      try {
+        view = scroller.getBoundingClientRect();
+      } catch {
+        view = null;
+      }
+      try {
+        pageBox = pageNode2?.getBoundingClientRect?.();
+      } catch {
+        pageBox = null;
+      }
+      try {
+        mark = box2.getBoundingClientRect();
+      } catch {
+        mark = null;
+      }
+      const markTop = mark && (mark.height > 0 || mark.top > 0) ? mark.top : pageBox?.top;
+      if (markTop != null) {
+        const current4 = Number(scroller.scrollTop);
+        const top = Number.isFinite(current4) ? current4 : 0;
+        const viewTop = Number(view?.top) || 0;
+        const viewH = Number(view?.height) || 0;
+        scroller.scrollTop = Math.max(0, top + (Number(markTop) - viewTop) - viewH * 0.3);
+      }
+    }
+    stopFlash();
+    flashTimer = later(() => {
+      flashTimer = null;
+      try {
+        box2.classList.remove("pxd-parsed-box--flash");
+      } catch {
+      }
+    }, 700);
+    return true;
+  };
   const button3 = (cls, text4, tip) => {
     const node2 = doc.createElement("button");
     node2.type = "button";
@@ -61917,9 +62030,11 @@ function createPageChips({
       return showParsed;
     },
     boxCount: () => boxCount,
+    flash,
     openCopyMenu: (block, anchor) => openCopyMenu(block, anchor),
     dispose() {
       disposed = true;
+      stopFlash();
       closeCopyMenu();
       clearPress();
       hideAll();
@@ -71462,7 +71577,27 @@ function createParseView({
         return true;
       }
       if (id === "card" || id === "source") {
-        const plain2 = isImageCopy(block) ? captionText2(block) : toMarkdown(parsed, [block.id]);
+        let plain2 = "";
+        if (isImageCopy(block)) {
+          let live2 = block;
+          const url2 = String(block.image?.url || block.url || "").trim();
+          if (!url2 && typeof host?.uploadFile === "function") {
+            try {
+              const spec = figureImageSpec(block);
+              const blob = spec ? await spec.getBlob() : null;
+              if (blob) {
+                const name = `${spec.name || "figure"}.png`;
+                const file = typeof File === "function" ? new File([blob], name, { type: blob.type || "image/png" }) : blob;
+                const uploaded = await host.uploadFile(file);
+                if (uploaded) live2 = { ...block, image: { ...block.image || {}, url: String(uploaded) } };
+              }
+            } catch {
+            }
+          }
+          plain2 = figureCardMarkdown(live2, parsed) || captionText2(block);
+        } else {
+          plain2 = toMarkdown(parsed, [block.id]);
+        }
         let source = "";
         if (id === "source") {
           source = await ensurePin(block);
@@ -73461,6 +73596,15 @@ ${sourceAttrString(source)}` : plain2;
     setShowParsed(on) {
       return pageChips2 ? pageChips2.setShown(on) : (writeShowParsed(storage, on), Boolean(on));
     },
+    // Turn the page boxes on and flash the part that overlaps this pin. False when nothing is parsed yet.
+    flashPart({ page, frac } = {}) {
+      const chips = chipsOn();
+      if (!chips || !parsed) return false;
+      chips.setShown(true);
+      const block = matchParsedBlock(parsed, { page, frac });
+      if (!block) return false;
+      return chips.flash(block.id) === true;
+    },
     hasParse: () => Boolean(parsed),
     getDoc: () => parsed,
     askAbout,
@@ -75268,7 +75412,7 @@ function createReadPane({
     live2.replaceChildren?.();
     liveBlock = "";
   };
-  const readerField = () => {
+  const readerField2 = () => {
     const bar2 = live2.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
     const boxed = live2.querySelector?.(".rm-pdf-container");
     const pool = bar2?.querySelectorAll ? [...bar2.querySelectorAll("input")] : [];
@@ -75278,7 +75422,7 @@ function createReadPane({
     return inputs.find((node2) => /^\d+$/.test(String(node2.value || "").trim())) || inputs[0] || null;
   };
   const jumpPage = (page) => {
-    const input = readerField();
+    const input = readerField2();
     if (!input) return false;
     const wrote = writeReaderPage(input, page);
     paintPill();
@@ -75392,7 +75536,7 @@ function createReadPane({
     const tick = () => {
       pageWait = null;
       if (gen !== pageGen || !openFlag) return;
-      const input = readerField();
+      const input = readerField2();
       const ready = input && live2.querySelector?.(".rm-pdf-container .page");
       if (!ready) {
         if (Date.now() - started < 5e3) pageWait = later(tick, 100);
@@ -75422,7 +75566,7 @@ function createReadPane({
     } catch {
     }
     try {
-      parsedView?.watchPageInput?.(readerField());
+      parsedView?.watchPageInput?.(readerField2());
     } catch {
     }
     let src = "";
@@ -76595,7 +76739,7 @@ function createReadPane({
     return out;
   };
   const pageParts = () => {
-    const input = readerField();
+    const input = readerField2();
     return { input, ...pageIndicator(input?.value, pageTotalText(totalCandidates(input))) };
   };
   const paintPill = () => {
@@ -76624,7 +76768,7 @@ function createReadPane({
   const searchInput = () => {
     const box2 = live2.querySelector?.(".rm-pdf-container");
     const inputs = [...box2?.querySelectorAll?.("input") || []];
-    const page = readerField();
+    const page = readerField2();
     return inputs.find((node2) => node2 !== page) || null;
   };
   const dropSearchWatch = () => {
@@ -76744,7 +76888,7 @@ function createReadPane({
       barNode = bar2;
       listen(bar2, "click", onSelBarClick);
     }
-    const input = readerField();
+    const input = readerField2();
     if (input && input !== pageInputNode) {
       forget(pageInputNode, "input", paintPill);
       pageInputNode = input;
@@ -77677,7 +77821,7 @@ function createReadPane({
       url: pdfUrl(),
       getPdf,
       jumpPage,
-      pageNow: () => Number(String(readerField()?.value || "").trim()) || 1,
+      pageNow: () => Number(String(readerField2()?.value || "").trim()) || 1,
       pageEl: pageElement,
       readerEl: live2,
       onToast: (message) => {
@@ -77723,12 +77867,12 @@ function createReadPane({
     });
     parsedMount.append(parsedView.element());
     try {
-      parsedView.watchPageInput(readerField());
+      parsedView.watchPageInput(readerField2());
     } catch {
     }
     return parsedView;
   };
-  const pageNowOf = () => Number(String(readerField()?.value || "").trim()) || 1;
+  const pageNowOf = () => Number(String(readerField2()?.value || "").trim()) || 1;
   const layoutShape = () => `${pane.style.width}|${pane.className}`;
   let resizeKeep = null;
   const keepPageAfterResize = (page) => {
@@ -77748,7 +77892,7 @@ function createReadPane({
         resizeKeep = null;
         return;
       }
-      const input = readerField();
+      const input = readerField2();
       if (input && String(input.value).trim() !== String(keep.page)) {
         writeReaderPage(input, keep.page);
         paintPill();
@@ -77859,7 +78003,7 @@ function createReadPane({
     view2.armKeys();
     view2.setTarget({ url: pdfUrl(), pdfUid: current3.cardUid });
     try {
-      view2.watchPageInput(readerField());
+      view2.watchPageInput(readerField2());
     } catch {
     }
     let found = null;
@@ -78031,7 +78175,19 @@ function createReadPane({
       if (jumping) {
         jumpPageWhenReady(next.page, () => {
           if (wanted) locateHighlight(wanted);
-          else if (frac) flashFrac(frac, next.page);
+          else if (frac) {
+            showParsedBtn.setAttribute("aria-pressed", "true");
+            let flashed2 = false;
+            try {
+              if (parsedView) {
+                parsedView.setShowParsed(true);
+                if (parsedView.hasParse?.()) flashed2 = parsedView.flashPart({ page: next.page, frac }) === true;
+              } else writeShowParsed(storage, true);
+            } catch {
+              flashed2 = false;
+            }
+            if (!flashed2) flashFrac(frac, next.page);
+          }
         }, kept);
       } else if (wanted) locateHighlight(wanted);
       armWatch(current3.title);
@@ -78062,7 +78218,7 @@ function createReadPane({
       if (typeof mountWidth === "number" && Number.isFinite(mountWidth) && mountWidth > 0) mountW = mountWidth;
       if (!openFlag) return;
       const shape = layoutShape();
-      const page = readerField() ? pageNowOf() : 0;
+      const page = readerField2() ? pageNowOf() : 0;
       applyBox();
       applyModeClass();
       if (layoutShape() !== shape) keepPageAfterResize(page);
@@ -78089,6 +78245,7 @@ function createReadPane({
       void enterParsed("both");
     },
     mode: () => viewMode,
+    parsedDoc: () => parsedView?.getDoc?.() || null,
     // U2 contract for OCR sources: pxd-ocr/1 page records (or { pages }) for the open PDF.
     setOcrPages: (pages, opts) => setOcrPages(pages, opts),
     noteScan,
@@ -78098,6 +78255,44 @@ function createReadPane({
     textLayerStats: () => textLayer.stats(),
     selectionBarOpen: () => Boolean(barInfo) && !bar.hasAttribute("hidden")
   };
+}
+
+// src/view/pin-reveal.js
+init_pdf();
+var SIDEBARS = ["#right-sidebar", ".rm-right-sidebar", ".rm-sidebar-window"];
+function sidebarPdfContainer(doc) {
+  if (!doc || typeof doc.querySelectorAll !== "function") return null;
+  for (const sel of SIDEBARS) {
+    let roots = [];
+    try {
+      roots = [...doc.querySelectorAll(sel)];
+    } catch {
+      roots = [];
+    }
+    for (const root of roots) {
+      const box2 = root.querySelector?.(".rm-pdf-container") || null;
+      if (box2) return box2;
+    }
+  }
+  return null;
+}
+function readerField(box2) {
+  const bar = box2?.querySelector?.(".rm-pdf-toolbar");
+  const pool = bar?.querySelectorAll ? [...bar.querySelectorAll("input")] : [];
+  const inputs = pool.length ? pool : [...box2?.querySelectorAll?.("input") || []];
+  const named2 = inputs.find((node2) => node2.classList?.contains?.("bp3-input") && /^\d+$/.test(String(node2.value || "").trim()));
+  if (named2) return named2;
+  return inputs.find((node2) => /^\d+$/.test(String(node2.value || "").trim())) || inputs[0] || null;
+}
+function jumpSidebarPdf(doc, page) {
+  const box2 = sidebarPdfContainer(doc);
+  if (!box2) return false;
+  return writeReaderPage(readerField(box2), page);
+}
+function sidebarPageEl(box2, n3) {
+  if (!box2?.querySelector) return null;
+  const want = String(n3);
+  return box2.querySelector(`.page[data-page-number="${want}"]`) || null;
 }
 
 // src/view/pdf-warm.js
@@ -78944,6 +79139,26 @@ function createPdfWarm({ doc, root, host, store, timers, now: now4, renderFirst 
       return { spent: spentCount, pending, paths: { ...paths } };
     }
   };
+}
+
+// src/view/pdf-reader-dark.js
+var PDF_READER_DARK_CLASS = "pxd-pdf-reader-dark";
+function normalizePdfReaderDark(value) {
+  const token = String(value ?? "").trim().toLowerCase();
+  if (token === "off" || token === "on" || token === "follow") return token;
+  return "follow";
+}
+function pdfReaderDarkOn(value, doc, background) {
+  const token = normalizePdfReaderDark(value);
+  if (token === "on") return true;
+  if (token === "off") return false;
+  return hostDark(doc, background);
+}
+function applyPdfReaderDark(doc, on) {
+  const root = doc?.documentElement;
+  if (!root?.classList?.toggle) return false;
+  root.classList.toggle(PDF_READER_DARK_CLASS, Boolean(on));
+  return Boolean(on);
 }
 
 // src/view/pdf-flip.js
@@ -90814,11 +91029,21 @@ function buildBoardView(onFail, {
     const want = pdfDarkClass(readSetting2("pdf-dark"));
     for (const name of PDF_DARK_CLASSES) root.classList.toggle(name, name === want);
   };
+  const applyReaderDark = () => {
+    let background = "";
+    try {
+      background = sampleRoam(doc).background;
+    } catch {
+      background = "";
+    }
+    applyPdfReaderDark(doc, pdfReaderDarkOn(readSetting2("pdf-reader-dark"), doc, background));
+  };
   const applyTheme = () => {
     const dark = isDarkHost(mountEl, doc);
     root.classList.toggle("pxd-root--dark", dark);
     root.classList.toggle("pxd-root--light", !dark && isLightHost(mountEl, doc, globalThis.window));
     applyPdfDark();
+    applyReaderDark();
     const hl = syncBoardHighlighter(doc, root);
     try {
       themeFollow?.apply?.();
@@ -91626,6 +91851,51 @@ function buildBoardView(onFail, {
     }
     return readPane;
   };
+  let sidebarChips = null;
+  let sidebarHost = null;
+  function revealSidebarPin(plan) {
+    if (disposed || !plan) return false;
+    const box2 = sidebarPdfContainer(doc);
+    if (!box2) return false;
+    if (Number.isInteger(plan.page) && plan.page >= 1) {
+      try {
+        jumpSidebarPdf(doc, plan.page);
+      } catch {
+      }
+    }
+    const parsed = readPane?.parsedDoc?.() || null;
+    if (!parsed) return true;
+    if (sidebarChips && sidebarHost !== box2) {
+      try {
+        sidebarChips.dispose();
+      } catch {
+      }
+      sidebarChips = null;
+    }
+    sidebarHost = box2;
+    if (!sidebarChips) {
+      sidebarChips = createPageChips({
+        doc,
+        host: box2,
+        getParsed: () => readPane?.parsedDoc?.() || null,
+        pageEl: (n3) => sidebarPageEl(sidebarPdfContainer(doc) || box2, n3),
+        pageOf: (n3) => (readPane?.parsedDoc?.()?.pages || []).find((row4) => row4?.n === n3) || null,
+        storage
+      });
+    }
+    try {
+      sidebarChips.setShown(true);
+    } catch {
+    }
+    const block = matchParsedBlock(parsed, plan);
+    if (block) {
+      try {
+        sidebarChips.flash(block.id);
+      } catch {
+      }
+    }
+    return true;
+  }
   function openPin(detail) {
     const plan = detail && typeof detail === "object" ? detail : null;
     const pdfUid = plan?.pdfUid || "";
@@ -91640,7 +91910,13 @@ function buildBoardView(onFail, {
         break;
       }
     }
-    if (!item) return false;
+    if (!item) {
+      try {
+        revealSidebarPin(plan);
+      } catch {
+      }
+      return false;
+    }
     const blockUid3 = item.target?.kind === "block" ? item.target.uid : item.uid;
     ensureReadPane().open?.({
       cardUid: item.uid,
@@ -91650,6 +91926,10 @@ function buildBoardView(onFail, {
       source: item.string || "",
       title: pdfDisplayTitle(item)
     });
+    try {
+      revealSidebarPin(plan);
+    } catch {
+    }
     return true;
   }
   openPinFromChip = (pinUid, event) => {
@@ -91667,6 +91947,10 @@ function buildBoardView(onFail, {
     if (event?.shiftKey) {
       try {
         host?.openInSidebar?.(plan.pdfUid);
+      } catch {
+      }
+      try {
+        revealSidebarPin(plan);
       } catch {
       }
       return true;
@@ -99214,6 +99498,10 @@ ${url}`;
           host?.openInSidebar?.(pinJump.plan.pdfUid);
         } catch {
         }
+        try {
+          revealSidebarPin(pinJump.plan);
+        } catch {
+        }
         return true;
       }
       const opened = openPin(pinJump.plan);
@@ -101136,6 +101424,7 @@ ${url}`;
       settingsRef = next;
       if (setting("show-board-trail", false) === true !== trailBefore) syncFullscreenTabs();
       applyPdfDark();
+      applyReaderDark();
       if (readSetting2("pdf-cover") !== coverBefore) {
         forgetCovers();
         itemsR.repaintStyles();
@@ -101327,6 +101616,11 @@ ${url}`;
         }
       };
       step(() => perfLog?.cancelPan?.());
+      step(() => {
+        sidebarChips?.dispose?.();
+        sidebarChips = null;
+        sidebarHost = null;
+      });
       step(() => {
         dropTabStrip();
         root.classList.remove("pxd-root--fstabs");
@@ -104353,6 +104647,16 @@ async function installPlexusDiagram({
   const openPerf = { lastOpen: null, opens: [] };
   const QUERY_NUDGE_DELAY_MS = 4e3;
   let settings = readSettings(extensionAPI);
+  const syncPdfReaderDark = () => {
+    let background = "";
+    try {
+      background = sampleRoam(doc).background;
+    } catch {
+      background = "";
+    }
+    applyPdfReaderDark(doc, pdfReaderDarkOn(settings[SETTING_IDS.pdfReaderDark], doc, background));
+  };
+  syncPdfReaderDark();
   bindSpeedFlagSource(() => {
     try {
       return extensionAPI?.settings?.get?.(SETTING_IDS.speedFlags);
@@ -108310,6 +108614,7 @@ async function installPlexusDiagram({
     if (stopped) return;
     const next = id === SETTING_IDS.speedFlags ? parseSpeedFlags(value) : normalizeSetting(id, value);
     settings = { ...settings, [id]: next };
+    if (id === SETTING_IDS.pdfReaderDark) syncPdfReaderDark();
     if (id === SETTING_IDS.speedFlags) noteSpeedFlags(next);
     if (id === SETTING_IDS.speedLog) syncSpeedLog();
     if (id === SETTING_IDS.resurface) {
@@ -108694,6 +108999,12 @@ async function installPlexusDiagram({
     refreshCardCache();
   }, 6e4);
   if (doc && typeof globalThis.MutationObserver === "function") {
+    const onThemeClass = () => {
+      if (!stopped) syncPdfReaderDark();
+    };
+    if (doc.documentElement) lifecycle.observer(new MutationObserver(guardCallback("observer", onThemeClass)), doc.documentElement, { attributes: true, attributeFilter: ["class"] });
+    if (doc.body) lifecycle.observer(new MutationObserver(guardCallback("observer", onThemeClass)), doc.body, { attributes: true, attributeFilter: ["class"] });
+    lifecycle.add(() => applyPdfReaderDark(doc, false));
     const onAdded = (records) => {
       for (const record of records) {
         for (const node2 of record.addedNodes || []) {

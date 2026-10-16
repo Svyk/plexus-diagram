@@ -15,7 +15,7 @@ import {
   planFromParse,
 } from "./anydoc-to-parse.js";
 import { sha256Hex } from "./parse-hash.js";
-import { pinSpecFromBlock } from "./pdf-pin.js";
+import { copiedPartPlan, pinSpecFromBlock } from "./pdf-pin.js";
 import { selectBlocks } from "./parse-schema.js";
 import { escapeMarkdownText, flattenLine, linkSafeText, toRoamMarkdown } from "./parse-to-roam-md.js";
 import { pageNoteBlocks } from "./footnotes.js";
@@ -271,7 +271,7 @@ export async function handleParseDrop({ payload, store, session, point, toast, u
     const figure = kind === "figure" || kind === "formula"
       ? selectBlocks(ready, payload?.ids).find((block) => block?.type === kind && (block.image?.url || block.url))
       : null;
-    const size = figure ? figureCardSize(figure) : null;
+    const size = figure ? copiedPartPlan({ block: figure, doc: ready, withSource: Boolean(payload?.withSource) }).size : null;
     const res = await session?.insertParsedCard?.({ x, y, markdown: plan.markdown, ...(size || {}), ...cited });
     return { ...(res || { ok: false, reason: "empty" }), uids: res?.uid ? [res.uid] : [] };
   }

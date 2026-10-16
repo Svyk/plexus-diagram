@@ -302,7 +302,7 @@ test("a copied figure card is tall enough for the caption and the Source chip", 
   assert.equal(bare.w, 280);
   assert.equal(bare.h, 153);
   const menu = readFileSync(new URL("../src/view/parse-view.js", import.meta.url), "utf8");
-  assert.match(menu, /figureCopySize\(/);
+  assert.match(menu, /copyMenuPlan\(/);
   const css = readFileSync(new URL("../src/css/source-chip.css", import.meta.url), "utf8");
   assert.match(css, /pxd-item__body:has\(> \.pxd-chip--source\)/);
   assert.match(css, /max-height:\s*360px/);

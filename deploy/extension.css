@@ -13152,8 +13152,10 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
 }
 
 .pxd-item__body:has(> .pxd-chip--source) > .pxd-chip--source {
+  position: relative;
+  z-index: 2;
   flex: 0 0 auto;
-  margin-top: auto;
+  margin-top: 4px;
 }
 
 .pxd-item__body:has(> .pxd-chip--source) img,

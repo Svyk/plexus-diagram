@@ -8,14 +8,12 @@ import { optionsHash, sha256Hex } from "../model/parse-hash.js";
 import {
   CARD_JSON_MIME,
   cardJsonPayload,
+  copyMenuPlan,
   figureCardMarkdown,
-  figureCopySize,
   matchParsedBlock,
   pinDeepLink,
   pinSpecFromBlock,
   pinnedToast,
-  planCopiedSource,
-  sourceAttrString,
 } from "../model/pdf-pin.js";
 import { assembleDocument, parsePageGeometry } from "../model/parse/index.js";
 import { resplitColumns } from "../model/parse/resplit.js";
@@ -820,8 +818,8 @@ export function createParseView({
       if (id === "card" || id === "source") {
         let plain = "";
         let source = "";
+        let live = block;
         if (isImageCopy(block)) {
-          let live = block;
           const url = String(block.image?.url || block.url || "").trim();
           if (!url) {
             try {
@@ -855,19 +853,16 @@ export function createParseView({
         if (id === "source" && source) {
           try { onToast?.(pinnedToast(block.page)); } catch { /* host */ }
         }
-        const copied = planCopiedSource({ markdown: plain, source });
-        const size = isImageCopy(block)
-          ? figureCopySize(block, parsed, { source: Boolean(copied.sourceUid || source) })
-          : { w: 280, h: 160 };
+        const planned = copyMenuPlan({ id, block: live, doc: parsed, markdown: plain, source });
+        if (!planned) return false;
         const json = cardJsonPayload({
-          markdown: copied.markdown,
-          size,
-          kind: block.type || "card",
-          source: copied.sourceUid,
-          ...(block.type === "table" ? { table: block, caption: parsedTableCaption(block, parsed) } : {}),
+          markdown: planned.markdown,
+          size: planned.size,
+          kind: block.type === "table" ? "table" : planned.kind,
+          source: planned.sourceUid,
+          ...(block.type === "table" ? { table: block, caption: planned.caption || parsedTableCaption(block, parsed) } : {}),
         });
-        const text = source ? `${plain}\n${sourceAttrString(source)}` : plain;
-        return writeTyped({ "text/plain": text, [CARD_JSON_MIME]: JSON.stringify(json) });
+        return writeTyped({ "text/plain": planned.text, [CARD_JSON_MIME]: JSON.stringify(json) });
       }
       if (id === "crop") {
         const src = await cropAt2x(block);
@@ -966,7 +961,7 @@ export function createParseView({
         });
         return;
       }
-      const go = (extra = {}) => runChipAction({ act, ...item, ...extra }, {
+      const go = (extra = {}) => runChipAction({ act, ...item, doc: parsed, ...extra }, {
         session,
         payload: (ids) => payload(ids.map((id) => parsed?.blocks?.[id]).filter(Boolean)),
         copy: (ids) => {
@@ -996,7 +991,7 @@ export function createParseView({
     try { placing?.dispose(); } catch { /* gone */ }
     placing = null;
     const ids = item?.ids || [];
-    const plan = placementContent(parsed, ids, act, item?.extra);
+    const plan = placementContent(parsed, ids, act, item?.extra, Boolean(item?.withSource));
     const first = parsed?.blocks?.[ids[0]];
     if (plan.content.kind === "figure" && first && store?.getImage) {
       try {

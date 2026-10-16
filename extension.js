@@ -14916,8 +14916,10 @@ function figureCopySize(block, doc, { source = false } = {}) {
     const bh = Number(box2[3]) - Number(box2[1]);
     if (bw > 0 && bh > 0) image = Math.round((FIGURE_COPY_W - FIGURE_COPY_PAD) * (bh / bw));
   }
-  if (!(image > 0)) image = FIGURE_COPY_IMAGE_MIN;
-  else image = Math.min(FIGURE_COPY_IMAGE_CAP, image);
+  if (!(image > 0)) {
+    const url = String(block?.image?.url || block?.url || "").trim();
+    image = url ? FIGURE_COPY_IMAGE_SLOT : FIGURE_COPY_IMAGE_MIN;
+  } else image = Math.min(FIGURE_COPY_IMAGE_CAP, image);
   let h = FIGURE_COPY_PAD + image + lines * FIGURE_COPY_LINE + chip;
   if (h > FIGURE_COPY_MAX) {
     const keep = chip + (lines ? FIGURE_COPY_LINE : 0);
@@ -15052,6 +15054,247 @@ function planCopiedSource({ markdown = "", source = "" } = {}) {
   const text4 = oneBulletTree(body.join("\n"));
   if (!text4 && pin2) return { markdown: `- ${sourceAttrString(pin2)}`, sourceUid: "", sourced: true };
   return { markdown: text4, sourceUid: text4 ? pin2 : "", sourced: found && Boolean(text4 || pin2) };
+}
+function splitMarks(markdown) {
+  let sourceUid = "";
+  let size = null;
+  const body = [];
+  for (const line of String(markdown ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")) {
+    const src = SOURCE_LINE_RE.exec(line.trim());
+    if (src) {
+      if (!sourceUid) sourceUid = src[1];
+      continue;
+    }
+    const sized = SIZE_LINE_RE.exec(line.trim());
+    if (sized) {
+      const w = Number(sized[1]);
+      const h = Number(sized[2]);
+      if (w > 0 && h > 0) size = { w: Math.round(w), h: Math.round(h) };
+      continue;
+    }
+    body.push(line);
+  }
+  return { body: body.join("\n"), sourceUid, size };
+}
+function isCropBlock(block) {
+  return Boolean(block && (block.type === "figure" || block.type === "formula" && !block.latex));
+}
+function decodeCell(text4) {
+  return String(text4 ?? "").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
+}
+function splitPipeRow(line) {
+  let body = String(line ?? "").trim();
+  if (body.startsWith("|")) body = body.slice(1);
+  if (body.endsWith("|")) body = body.slice(0, -1);
+  const cells = [];
+  let cur = "";
+  for (let i = 0; i < body.length; i += 1) {
+    if (body[i] === "\\" && body[i + 1] === "|") {
+      cur += "|";
+      i += 1;
+      continue;
+    }
+    if (body[i] === "|") {
+      cells.push(cur.trim());
+      cur = "";
+      continue;
+    }
+    cur += body[i];
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+function isRuleCell(text4) {
+  return /^:?-{3,}:?$/.test(String(text4 ?? "").replace(/\s/g, ""));
+}
+function cellsFromBlock(block) {
+  const cells = [];
+  for (const cell of block?.cells || []) {
+    if (!cell || typeof cell !== "object") continue;
+    const r = Number.isInteger(cell.r) ? cell.r : Number.isInteger(cell.row) ? cell.row : null;
+    const c = Number.isInteger(cell.c) ? cell.c : Number.isInteger(cell.col) ? cell.col : null;
+    if (r == null || c == null) continue;
+    const row4 = { r, c, text: String(cell.text ?? "") };
+    if (cell.header === true) row4.header = true;
+    const colSpan = Number(cell.colSpan);
+    const rowSpan = Number(cell.rowSpan);
+    if (Number.isInteger(colSpan) && colSpan > 1) row4.colSpan = colSpan;
+    if (Number.isInteger(rowSpan) && rowSpan > 1) row4.rowSpan = rowSpan;
+    cells.push(row4);
+  }
+  if (!cells.length) return null;
+  const snap = { cells };
+  if (Number.isInteger(block.rows)) snap.rows = block.rows;
+  if (Number.isInteger(block.cols)) snap.cols = block.cols;
+  return snap;
+}
+function htmlTable(text4) {
+  const found = /<table\b[^>]*>([\s\S]*?)<\/table>/i.exec(String(text4 ?? ""));
+  if (!found) return null;
+  const rawRows = [];
+  const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch;
+  while (rowMatch = rowRe.exec(found[1])) {
+    const row4 = [];
+    const cellRe = /<t([hd])\b([^>]*)>([\s\S]*?)<\/t\1>/gi;
+    let cellMatch;
+    while (cellMatch = cellRe.exec(rowMatch[1])) {
+      const attrs = cellMatch[2] || "";
+      const colSpan = Number(/colspan="(\d+)"/i.exec(attrs)?.[1]);
+      const rowSpan = Number(/rowspan="(\d+)"/i.exec(attrs)?.[1]);
+      const cell = { text: decodeCell(cellMatch[3]), header: cellMatch[1].toLowerCase() === "h" };
+      if (Number.isInteger(colSpan) && colSpan > 1) cell.colSpan = colSpan;
+      if (Number.isInteger(rowSpan) && rowSpan > 1) cell.rowSpan = rowSpan;
+      row4.push(cell);
+    }
+    if (row4.length) rawRows.push(row4);
+  }
+  if (!rawRows.length) return null;
+  const occupied = /* @__PURE__ */ new Set();
+  const key = (r, c) => `${r},${c}`;
+  const cells = [];
+  let cols = 0;
+  rawRows.forEach((row4, r) => {
+    let c = 0;
+    for (const cell of row4) {
+      while (occupied.has(key(r, c))) c += 1;
+      const rs = cell.rowSpan || 1;
+      const cs = cell.colSpan || 1;
+      const item = { r, c, text: cell.text };
+      if (cell.header) item.header = true;
+      if (cs > 1) item.colSpan = cs;
+      if (rs > 1) item.rowSpan = rs;
+      cells.push(item);
+      for (let dr = 0; dr < rs; dr += 1) {
+        for (let dc = 0; dc < cs; dc += 1) occupied.add(key(r + dr, c + dc));
+      }
+      c += cs;
+    }
+    cols = Math.max(cols, c);
+  });
+  const after = String(text4).slice(found.index + found[0].length);
+  let caption = "";
+  for (const line of after.split("\n")) {
+    const raw = line.trim().replace(/^[-*]\s+/, "");
+    if (!raw) continue;
+    caption = raw.replace(/\s+/g, " ").trim().slice(0, 200);
+    break;
+  }
+  return { table: { cells, rows: rawRows.length, cols }, caption };
+}
+function tableFromMarkdown(text4) {
+  const html = htmlTable(text4);
+  if (html) return html;
+  const lines = String(text4 ?? "").replace(/\r\n/g, "\n").split("\n");
+  const rows = [];
+  let end = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    const raw = lines[i].trim();
+    if (!raw) {
+      if (rows.length) break;
+      continue;
+    }
+    const stripped = raw.replace(/^[-*]\s+/, "");
+    if (stripped.startsWith("|") && stripped.endsWith("|") && stripped.includes("|")) {
+      rows.push(splitPipeRow(stripped));
+      end = i;
+      continue;
+    }
+    if (rows.length) break;
+  }
+  if (rows.length < 2 || rows[1].length !== rows[0].length || !rows[1].every(isRuleCell)) return null;
+  let caption = "";
+  for (let i = end + 1; i < lines.length; i += 1) {
+    const raw = lines[i].trim().replace(/^[-*]\s+/, "");
+    if (!raw) continue;
+    caption = raw.replace(/\s+/g, " ").trim().slice(0, 200);
+    break;
+  }
+  const header = rows[0];
+  const body = rows.slice(2);
+  const cells = [];
+  header.forEach((value, c) => cells.push({ r: 0, c, text: value, header: true }));
+  body.forEach((row4, r) => {
+    row4.forEach((value, c) => cells.push({ r: r + 1, c, text: value }));
+  });
+  const table = { cells, rows: body.length + 1, cols: header.length };
+  return { table, caption: caption || rowsCaption(table.rows) };
+}
+function imageFace(text4) {
+  const body = String(text4 ?? "");
+  const match = /!\[([^\]]*)\]\(([^)\s]+)\)/.exec(body);
+  if (!match) return null;
+  const caption = body.replace(/!\[[^\]]*\]\([^)]+\)/g, " ").replace(/\s+/g, " ").trim();
+  return { url: match[2], caption, markdown: body.trim() };
+}
+function copiedPartPlan({ block = null, doc = null, markdown = "", source = "", withSource = false } = {}) {
+  const split = splitMarks(markdown);
+  let sourceUid = split.sourceUid;
+  const given = String(source ?? "").trim();
+  if (!sourceUid && UID_RE4.test(given)) sourceUid = given;
+  const sourced = Boolean(sourceUid) || withSource === true;
+  const fromBlock = block?.type === "table" ? cellsFromBlock(block) : null;
+  const fromText = fromBlock ? null : tableFromMarkdown(split.body);
+  const tableHit = fromBlock || fromText?.table || null;
+  if (tableHit) {
+    const caption = fromText?.caption || parsedTableCaption(block?.type === "table" ? block : tableHit, doc);
+    return {
+      kind: "table",
+      markdown: split.body.trim() || "| |",
+      sourceUid,
+      size: null,
+      sourced: Boolean(sourceUid) || Boolean(fromText) || sourced,
+      sized: false,
+      image: false,
+      caption,
+      table: tableHit
+    };
+  }
+  const crop = isCropBlock(block);
+  const face = imageFace(split.body);
+  if (crop || face) {
+    const live2 = crop ? block : { type: "figure", caption: face.caption, image: { url: face.url } };
+    const text4 = (crop ? figureCardMarkdown(block, doc) : "") || face?.markdown || split.body.trim();
+    const size = split.size || figureCopySize(live2, crop ? doc : null, { source: sourced });
+    return {
+      kind: "card",
+      markdown: text4,
+      sourceUid,
+      size,
+      sourced,
+      sized: Boolean(split.size),
+      image: true,
+      caption: "",
+      table: null
+    };
+  }
+  const copied = planCopiedSource({ markdown: split.body, source: sourceUid });
+  return {
+    kind: "card",
+    markdown: copied.markdown,
+    sourceUid: copied.sourceUid,
+    size: split.size || { w: 280, h: 160 },
+    sourced: copied.sourced,
+    sized: Boolean(split.size),
+    image: false,
+    caption: "",
+    table: null
+  };
+}
+function copyMenuPlan({ id, block = null, doc = null, markdown = "", source = "" } = {}) {
+  if (id !== "source" && id !== "card") return null;
+  const plan = copiedPartPlan({ block, doc, markdown, source, withSource: id === "source" });
+  const raw = splitMarks(markdown).body.trim();
+  const body = raw || plan.markdown;
+  const lines = [];
+  if (body) lines.push(body);
+  if (plan.image && plan.size && plan.size.w > 0 && plan.size.h > 0) {
+    lines.push(`pxd-size:: ${Math.round(plan.size.w)} ${Math.round(plan.size.h)}`);
+  }
+  const pin2 = id === "source" ? UID_RE4.test(String(source ?? "").trim()) ? String(source).trim() : plan.sourceUid : "";
+  const cite = sourceAttrString(pin2);
+  if (cite) lines.push(cite);
+  return { ...plan, sourceUid: pin2 || plan.sourceUid, text: lines.join("\n") };
 }
 function refOpenPlan({ uid = "", string = "", shiftKey = false } = {}) {
   const id = String(uid ?? "").trim();
@@ -15216,6 +15459,22 @@ function sourceOpenPlan({ sidebar = false, card: card2 = false } = {}) {
   if (card2) return "reader";
   return "roam";
 }
+async function waitKeptParse(load, { timeout = KEPT_PARSE_WAIT_MS, sleep } = {}) {
+  let timer = null;
+  const pending = Promise.resolve().then(() => typeof load === "function" ? load() : null).catch(() => null);
+  const limit = typeof sleep === "function" ? Promise.resolve().then(() => sleep(timeout)).then(() => null).catch(() => null) : new Promise((resolve) => {
+    timer = setTimeout(() => resolve(null), Math.max(0, Number(timeout) || 0));
+  });
+  try {
+    const doc = await Promise.race([
+      pending.then((value) => value && value.blocks ? value : null),
+      limit
+    ]);
+    return doc && doc.blocks ? doc : null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 function pinOpenPlan(region) {
   if (!region || region.kind !== "pdf" || region.supported === false) return null;
   const pdfUid = String(region.drawingUid || "").trim();
@@ -15295,11 +15554,12 @@ function planPinWrites(spec) {
   creates.push({ role: "pin", parentUid: containerUid, uid: pinUid, string });
   return { uid: pinUid, reused: false, creates, containerUid: spec?.containerUid || "" };
 }
-var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE4, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash, COVER_AREA_SLACK, FIGURE_COPY_W, FIGURE_COPY_PAD, FIGURE_COPY_LINE, FIGURE_COPY_CHIP, FIGURE_COPY_CHARS, FIGURE_COPY_MAX_LINES, FIGURE_COPY_IMAGE_CAP, FIGURE_COPY_IMAGE_MIN, FIGURE_COPY_MAX, SOURCE_LINE_RE, notedPin, PIN_PENDING_MS;
+var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE4, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash, COVER_AREA_SLACK, FIGURE_COPY_W, FIGURE_COPY_PAD, FIGURE_COPY_LINE, FIGURE_COPY_CHIP, FIGURE_COPY_CHARS, FIGURE_COPY_MAX_LINES, FIGURE_COPY_IMAGE_CAP, FIGURE_COPY_IMAGE_MIN, FIGURE_COPY_IMAGE_SLOT, FIGURE_COPY_MAX, SOURCE_LINE_RE, SIZE_LINE_RE, notedPin, KEPT_PARSE_WAIT_MS, PIN_PENDING_MS;
 var init_pdf_pin = __esm({
   "src/model/pdf-pin.js"() {
     init_deeplink();
     init_regions();
+    init_roam_table();
     init_parse_overlay();
     PIN_IOU = 0.9;
     CAPTION_CAP = 300;
@@ -15327,9 +15587,12 @@ var init_pdf_pin = __esm({
     FIGURE_COPY_MAX_LINES = 6;
     FIGURE_COPY_IMAGE_CAP = 360;
     FIGURE_COPY_IMAGE_MIN = 72;
+    FIGURE_COPY_IMAGE_SLOT = 200;
     FIGURE_COPY_MAX = 520;
     SOURCE_LINE_RE = /^(?:[-*]\s+)?Source::\s*\(\(([\w-]{1,32})\)\)\s*$/;
+    SIZE_LINE_RE = /^(?:[-*]\s+)?pxd-size::\s*(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$/;
     notedPin = null;
+    KEPT_PARSE_WAIT_MS = 2500;
     PIN_PENDING_MS = 8e3;
   }
 });
@@ -23293,15 +23556,6 @@ function dataUrlToBlob2(url) {
   }
   return new Blob([bytes], { type });
 }
-function figureCardSize(block) {
-  const b = block?.bbox;
-  if (!Array.isArray(b) || b.length < 4) return null;
-  const bw = Number(b[2]) - Number(b[0]);
-  const bh = Number(b[3]) - Number(b[1]);
-  if (!(bw > 0) || !(bh > 0)) return null;
-  const inner = FIGURE_CARD_W - FIGURE_CARD_PAD;
-  return { w: FIGURE_CARD_W, h: Math.round(inner * (bh / bw) + FIGURE_CARD_PAD) };
-}
 function imageKey2(sha256, blockId) {
   return `${sha256}/${blockId}`;
 }
@@ -23363,7 +23617,7 @@ async function handleParseDrop({ payload, store, session, point, toast, upload }
   if (plan.action === "card") {
     const kind = payload?.kind;
     const figure = kind === "figure" || kind === "formula" ? selectBlocks(ready, payload?.ids).find((block) => block?.type === kind && (block.image?.url || block.url)) : null;
-    const size = figure ? figureCardSize(figure) : null;
+    const size = figure ? copiedPartPlan({ block: figure, doc: ready, withSource: Boolean(payload?.withSource) }).size : null;
     const res = await session?.insertParsedCard?.({ x, y, markdown: plan.markdown, ...size || {}, ...cited });
     return { ...res || { ok: false, reason: "empty" }, uids: res?.uid ? [res.uid] : [] };
   }
@@ -23511,7 +23765,7 @@ async function handleOfficeDrop({ office, convert, fetch: fetchImpl, session, po
     return { ok: false, reason: code || "convert", toast: "Could not convert this file", uids: [] };
   }
 }
-var CARD_MIME, PARSE_MIME, PARSE_MISSING_TOAST, TEXT_CARD_MAX, MAX_DROP, URL_LINE, APP_URL, FIGURE_CARD_W, FIGURE_CARD_PAD;
+var CARD_MIME, PARSE_MIME, PARSE_MISSING_TOAST, TEXT_CARD_MAX, MAX_DROP, URL_LINE, APP_URL;
 var init_drop = __esm({
   "src/model/drop.js"() {
     init_anydoc_to_parse();
@@ -23528,8 +23782,6 @@ var init_drop = __esm({
     MAX_DROP = 50;
     URL_LINE = /^(?:https?|roam):\/\//i;
     APP_URL = /#\/app\/([^/?#]+)(?:\/page\/([\w-]+))?/;
-    FIGURE_CARD_W = 280;
-    FIGURE_CARD_PAD = 26;
   }
 });
 
@@ -37159,9 +37411,30 @@ function parseClipboard(data) {
   const files = [...data?.files ?? []].filter((f) => typeof f?.type === "string" && f.type.startsWith("image/"));
   if (files.length) return { kind: "images", files };
   const text4 = get("text/plain");
-  const copied = planCopiedSource({ markdown: text4 });
-  if (copied.sourced && copied.markdown.trim()) {
-    return { kind: "card-json", data: cardJsonPayload({ markdown: copied.markdown, source: copied.sourceUid }) };
+  const plan = copiedPartPlan({ markdown: text4 });
+  if (plan.kind === "table" && plan.table && String(plan.markdown || "").trim()) {
+    return {
+      kind: "card-json",
+      data: cardJsonPayload({
+        markdown: plan.markdown,
+        size: plan.size,
+        kind: "table",
+        source: plan.sourceUid,
+        table: plan.table,
+        caption: plan.caption
+      })
+    };
+  }
+  if ((plan.sourced || plan.sized || plan.image) && plan.markdown.trim()) {
+    return {
+      kind: "card-json",
+      data: cardJsonPayload({
+        markdown: plan.markdown,
+        size: plan.size,
+        kind: plan.kind || "card",
+        source: plan.sourceUid
+      })
+    };
   }
   const entries = parsePastedText(text4);
   return entries.length ? { kind: "text", entries } : null;
@@ -62553,7 +62826,7 @@ function createPageChips({
     }
   };
 }
-function runChipAction({ act, ids, extra, block, client, withSource }, { session, payload, copy, latex } = {}) {
+function runChipAction({ act, ids, extra, block, client, withSource, doc }, { session, payload, copy, latex } = {}) {
   const blocks = ids || [];
   if (act === "with-source" || act === "pin-ref") return false;
   if (act === "copy") {
@@ -62570,6 +62843,13 @@ function runChipAction({ act, ids, extra, block, client, withSource }, { session
   const body = payload(blocks);
   const merged = extra ? { ...body, ...extra } : { ...body };
   if (withSource) merged.withSource = true;
+  if (block && (block.type === "figure" || block.type === "formula")) {
+    const plan = copiedPartPlan({ block, doc, withSource: Boolean(withSource) });
+    if (plan?.image && plan.size) {
+      merged.w = plan.size.w;
+      merged.h = plan.size.h;
+    }
+  }
   fn(client && Number.isFinite(client.x) && Number.isFinite(client.y) ? { ...merged, client: { x: client.x, y: client.y } } : merged);
   return true;
 }
@@ -64188,7 +64468,14 @@ function pinFor(doc, payload) {
   if (!first) return null;
   return pinSpecFromBlock(first, doc, payload.pdfBlockUid || payload.pdfUid);
 }
-function placementContent(doc, ids, act, extra = null) {
+function cropSize(doc, payload, blocks) {
+  if (!blocks || blocks.length !== 1) return null;
+  const block = blocks[0];
+  if (block?.type !== "figure" && !(block?.type === "formula" && !block.latex)) return null;
+  const plan = copiedPartPlan({ block, doc, withSource: Boolean(payload?.withSource) });
+  return plan?.image && plan.size ? plan.size : null;
+}
+function placementContent(doc, ids, act, extra = null, withSource = false) {
   const blocks = selectBlocks(doc, ids);
   const first = blocks[0] || null;
   if (!first) return { content: { kind: "text", text: "" }, width: CARD_SIZE.w, height: CARD_SIZE.h };
@@ -64200,7 +64487,12 @@ function placementContent(doc, ids, act, extra = null) {
     return { content: { kind: "table", rows, rowCap: 8, colCap: 12, page: first.page, mode: extra?.mode || "grid" }, width, height };
   }
   if (blocks.length === 1 && first.type === "figure") {
-    return { content: { kind: "figure", text: first.caption && doc?.blocks?.[first.caption]?.text ? doc.blocks[first.caption].text : "", page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
+    const plan = copiedPartPlan({ block: first, doc, withSource: Boolean(withSource) });
+    return {
+      content: { kind: "figure", text: first.caption && doc?.blocks?.[first.caption]?.text ? doc.blocks[first.caption].text : "", page: first.page },
+      width: plan.size?.w || CARD_SIZE.w,
+      height: plan.size?.h || CARD_SIZE.h
+    };
   }
   const text4 = blocks.map((b) => b.type === "list" ? (b.items || []).map((item) => item.text).join(" ") : b.text || b.latex || "").join(" ");
   return { content: { kind: "text", text: text4, page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
@@ -64344,8 +64636,10 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
         return res || { ok: false, reason: "no-session" };
       }
       if (plan.action === "card") {
-        const at = where2(payload, CARD_SIZE);
-        const res = await session?.insertParsedCard?.({ ...at, markdown: plan.markdown, ...pin2 ? { pin: pin2 } : {} });
+        const one = selectBlocks(withImages, payload.ids);
+        const sized = cropSize(withImages, payload, one);
+        const at = where2(payload, sized || CARD_SIZE);
+        const res = await session?.insertParsedCard?.({ ...at, markdown: plan.markdown, ...sized ? { w: sized.w, h: sized.h } : {}, ...pin2 ? { pin: pin2 } : {} });
         if (res?.ok) {
           pick2(res.uid ? [res.uid] : []);
           say("Sent 1 card to the board");
@@ -64409,10 +64703,12 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       const doc = await load(payload);
       if (!doc) return { ok: false, reason: "missing-cache" };
       const withImages = await withUploadedImages(doc, payload.ids);
+      const blocks = selectBlocks(withImages, payload.ids);
       const { markdown } = toRoamMarkdown(withImages, payload.ids, { footnoteFormat: fnFormat() });
-      const at = where2(payload, CARD_SIZE);
+      const sized = cropSize(withImages, payload, blocks);
+      const at = where2(payload, sized || CARD_SIZE);
       const pin2 = pinFor(withImages, payload);
-      const res = await session?.insertParsedCard?.({ ...at, markdown, ...pin2 ? { pin: pin2 } : {} });
+      const res = await session?.insertParsedCard?.({ ...at, markdown, ...sized ? { w: sized.w, h: sized.h } : {}, ...pin2 ? { pin: pin2 } : {} });
       if (res?.ok) {
         pick2(res.uid ? [res.uid] : []);
         say("Card inserted");
@@ -72082,8 +72378,8 @@ function createParseView({
       if (id === "card" || id === "source") {
         let plain2 = "";
         let source = "";
+        let live2 = block;
         if (isImageCopy(block)) {
-          let live2 = block;
           const url2 = String(block.image?.url || block.url || "").trim();
           if (!url2) {
             try {
@@ -72121,18 +72417,16 @@ function createParseView({
           } catch {
           }
         }
-        const copied = planCopiedSource({ markdown: plain2, source });
-        const size = isImageCopy(block) ? figureCopySize(block, parsed, { source: Boolean(copied.sourceUid || source) }) : { w: 280, h: 160 };
+        const planned = copyMenuPlan({ id, block: live2, doc: parsed, markdown: plain2, source });
+        if (!planned) return false;
         const json = cardJsonPayload({
-          markdown: copied.markdown,
-          size,
-          kind: block.type || "card",
-          source: copied.sourceUid,
-          ...block.type === "table" ? { table: block, caption: parsedTableCaption(block, parsed) } : {}
+          markdown: planned.markdown,
+          size: planned.size,
+          kind: block.type === "table" ? "table" : planned.kind,
+          source: planned.sourceUid,
+          ...block.type === "table" ? { table: block, caption: planned.caption || parsedTableCaption(block, parsed) } : {}
         });
-        const text4 = source ? `${plain2}
-${sourceAttrString(source)}` : plain2;
-        return writeTyped({ "text/plain": text4, [CARD_JSON_MIME]: JSON.stringify(json) });
+        return writeTyped({ "text/plain": planned.text, [CARD_JSON_MIME]: JSON.stringify(json) });
       }
       if (id === "crop") {
         const src = await cropAt2x(block);
@@ -72260,7 +72554,7 @@ ${sourceAttrString(source)}` : plain2;
         });
         return;
       }
-      const go = (extra = {}) => runChipAction({ act, ...item, ...extra }, {
+      const go = (extra = {}) => runChipAction({ act, ...item, doc: parsed, ...extra }, {
         session,
         payload: (ids) => payload(ids.map((id) => parsed?.blocks?.[id]).filter(Boolean)),
         copy: (ids) => {
@@ -72307,7 +72601,7 @@ ${sourceAttrString(source)}` : plain2;
     }
     placing = null;
     const ids = item?.ids || [];
-    const plan = placementContent(parsed, ids, act, item?.extra);
+    const plan = placementContent(parsed, ids, act, item?.extra, Boolean(item?.withSource));
     const first = parsed?.blocks?.[ids[0]];
     if (plan.content.kind === "figure" && first && store?.getImage) {
       try {
@@ -78759,6 +79053,35 @@ function createReadPane({
     parse() {
       void enterParsed("both", { run: true });
     },
+    // A kept parse that restore() skips. Show parsed and the outlines, then flash the pin.
+    showKeptParse(doc2, { page, frac } = {}) {
+      if (!openFlag || !doc2?.blocks) return false;
+      bgGen += 1;
+      revealModes();
+      const view2 = ensureParsed();
+      try {
+        view2.cancel?.();
+      } catch {
+      }
+      view2.setTarget({ url: pdfUrl(), pdfUid: current3.cardUid });
+      view2.showDoc(doc2);
+      viewMode = "both";
+      applyModeClass();
+      showParsedBtn.setAttribute("aria-pressed", "true");
+      try {
+        view2.setShowParsed(true);
+      } catch {
+      }
+      let flashed2 = false;
+      try {
+        flashed2 = view2.flashPart({ page, frac }) === true;
+      } catch {
+        flashed2 = false;
+      }
+      if (!flashed2 && Array.isArray(frac)) flashFrac(frac, page);
+      return true;
+    },
+    flashFrac: (frac, page) => flashFrac(frac, page),
     showParsed() {
       void enterParsed("both");
     },
@@ -93688,6 +94011,7 @@ function buildBoardView(onFail, {
   let sidebarHost = null;
   let sidebarParsed = null;
   let sidebarGen = 0;
+  let keptParseGen = 0;
   let sidebarUnwatch = null;
   let sidebarWake = null;
   function pinPdfTarget(plan) {
@@ -93892,19 +94216,53 @@ function buildBoardView(onFail, {
       return false;
     }
     const blockUid3 = item.target?.kind === "block" ? item.target.uid : item.uid;
+    const source = pdfSourceOfItem(item) || item.string || "";
     ensureReadPane().open?.({
       cardUid: item.uid,
       blockUid: blockUid3,
       page: plan.page,
       frac: plan.frac,
-      source: item.string || "",
+      source,
       title: pdfDisplayTitle(item)
     });
+    void revealKeptParse(plan, source);
     try {
       revealSidebarPin(plan);
     } catch {
     }
     return true;
+  }
+  async function revealKeptParse(plan, source) {
+    const gen = ++keptParseGen;
+    const pane = readPane;
+    const url = pdfMacroUrl(typeof source === "string" ? source : "");
+    if (!url) {
+      try {
+        pane?.flashFrac?.(plan?.frac, plan?.page);
+      } catch {
+      }
+      return;
+    }
+    let parsed = null;
+    try {
+      parsed = await waitKeptParse(() => loadParsedFor({ url }), { timeout: KEPT_PARSE_WAIT_MS });
+    } catch {
+      parsed = null;
+    }
+    if (disposed || gen !== keptParseGen || !pane?.isOpen?.()) return;
+    const live2 = pane.sourceUrl?.() || "";
+    if (live2 && live2 !== url) return;
+    if (parsed?.blocks) {
+      try {
+        pane.showKeptParse?.(parsed, { page: plan?.page, frac: plan?.frac });
+      } catch {
+      }
+      return;
+    }
+    try {
+      pane.flashFrac?.(plan?.frac, plan?.page);
+    } catch {
+    }
   }
   openPinFromChip = (pinUid, event) => {
     let text4 = "";
@@ -97360,6 +97718,27 @@ function buildBoardView(onFail, {
     Promise.resolve(session.pasteText?.(entries, { x: at.x, y: at.y })).then(afterCreate("Pasted")).catch(() => {
     });
   };
+  const pasteCardAt = (data, at = pastePoint()) => {
+    const plan = pasteCardPlan(data, at);
+    if (!plan) return;
+    const insert = plan.kind === "table" && plan.table ? session.insertParsedTable?.({
+      x: plan.x,
+      y: plan.y,
+      table: plan.table,
+      caption: plan.caption,
+      mode: "native",
+      ...plan.sourceUid ? { sourceUid: plan.sourceUid } : {}
+    }) : session.insertParsedCard?.({
+      x: plan.x,
+      y: plan.y,
+      w: plan.w,
+      h: plan.h,
+      markdown: plan.markdown,
+      ...plan.sourceUid ? { sourceUid: plan.sourceUid } : {}
+    });
+    Promise.resolve(insert).then(afterCreate("Pasted")).catch(() => {
+    });
+  };
   const pasteFromMenu = async (at, clone2) => {
     let text4 = null;
     try {
@@ -97380,7 +97759,12 @@ function buildBoardView(onFail, {
         return;
       }
     }
-    const entries = parsePastedText(text4 ?? "");
+    const parsed = parseClipboard({ getData: (type) => type === "text/plain" ? text4 ?? "" : "", files: [] });
+    if (parsed?.kind === "card-json") {
+      pasteCardAt(parsed.data, at);
+      return;
+    }
+    const entries = parsed?.kind === "text" ? parsed.entries : parsePastedText(text4 ?? "");
     if (entries.length) pasteEntries(entries, at);
     else toast("Nothing to paste");
   };
@@ -102498,25 +102882,7 @@ ${url}`;
         void pasteImages(files);
       },
       pasteCardJson: (data) => {
-        const plan = pasteCardPlan(data, pastePoint());
-        if (!plan) return;
-        const insert = plan.kind === "table" && plan.table ? session.insertParsedTable?.({
-          x: plan.x,
-          y: plan.y,
-          table: plan.table,
-          caption: plan.caption,
-          mode: "native",
-          ...plan.sourceUid ? { sourceUid: plan.sourceUid } : {}
-        }) : session.insertParsedCard?.({
-          x: plan.x,
-          y: plan.y,
-          w: plan.w,
-          h: plan.h,
-          markdown: plan.markdown,
-          ...plan.sourceUid ? { sourceUid: plan.sourceUid } : {}
-        });
-        Promise.resolve(insert).then(afterCreate("Pasted")).catch(() => {
-        });
+        pasteCardAt(data, pastePoint());
       },
       editorPaste
     }

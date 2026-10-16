@@ -1,7 +1,7 @@
 // Pure clipboard planning: what a copy puts on the clipboard and how a paste or a subtree clone is turned
 // into Roam creates. No DOM, no Roam calls; the host executes the returned plans.
 import { boundsOf, topLevelOf } from "./board.js";
-import { CARD_JSON_MIME, cardJsonPayload, parseCardJson, planCopiedSource } from "./pdf-pin.js";
+import { CARD_JSON_MIME, cardJsonPayload, copiedPartPlan, parseCardJson } from "./pdf-pin.js";
 import { PLEXUS_KEY, edgeString, plainKeys, semanticRef, serializeEdge } from "./schema.js";
 
 export const PLEXUS_MIME = "application/x-plexus-cards";
@@ -65,10 +65,32 @@ export function parseClipboard(data) {
   const files = [...(data?.files ?? [])].filter((f) => typeof f?.type === "string" && f.type.startsWith("image/"));
   if (files.length) return { kind: "images", files };
   const text = get("text/plain");
-  // Copy with source puts the citation on its own line. That is one card, not a second board item.
-  const copied = planCopiedSource({ markdown: text });
-  if (copied.sourced && copied.markdown.trim()) {
-    return { kind: "card-json", data: cardJsonPayload({ markdown: copied.markdown, source: copied.sourceUid }) };
+  // Copy with source puts the citation on its own line. The custom card MIME does not survive a
+  // live paste, so the text itself carries the figure height and a copied table.
+  const plan = copiedPartPlan({ markdown: text });
+  if (plan.kind === "table" && plan.table && String(plan.markdown || "").trim()) {
+    return {
+      kind: "card-json",
+      data: cardJsonPayload({
+        markdown: plan.markdown,
+        size: plan.size,
+        kind: "table",
+        source: plan.sourceUid,
+        table: plan.table,
+        caption: plan.caption,
+      }),
+    };
+  }
+  if ((plan.sourced || plan.sized || plan.image) && plan.markdown.trim()) {
+    return {
+      kind: "card-json",
+      data: cardJsonPayload({
+        markdown: plan.markdown,
+        size: plan.size,
+        kind: plan.kind || "card",
+        source: plan.sourceUid,
+      }),
+    };
   }
   const entries = parsePastedText(text);
   return entries.length ? { kind: "text", entries } : null;

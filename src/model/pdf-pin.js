@@ -3,6 +3,7 @@
 
 import { graphFromDeepLink, pageUidFromHash } from "./deeplink.js";
 import { normalizeFrac, parseRegion, PIN_CONTAINER_STRING, serializeRegion } from "./regions.js";
+import { parsedTableCaption, rowsCaption } from "./roam-table.js";
 import { viewportBox } from "../view/parse-overlay.js";
 
 export const PIN_IOU = 0.9;
@@ -150,6 +151,8 @@ const FIGURE_COPY_CHARS = 42;
 const FIGURE_COPY_MAX_LINES = 6;
 const FIGURE_COPY_IMAGE_CAP = 360;
 const FIGURE_COPY_IMAGE_MIN = 72;
+// A copied image with no crop box. 72px clips a real picture under a two-line caption.
+const FIGURE_COPY_IMAGE_SLOT = 200;
 const FIGURE_COPY_MAX = 520;
 
 export function figureCopySize(block, doc, { source = false } = {}) {
@@ -165,8 +168,10 @@ export function figureCopySize(block, doc, { source = false } = {}) {
     const bh = Number(box[3]) - Number(box[1]);
     if (bw > 0 && bh > 0) image = Math.round((FIGURE_COPY_W - FIGURE_COPY_PAD) * (bh / bw));
   }
-  if (!(image > 0)) image = FIGURE_COPY_IMAGE_MIN;
-  else image = Math.min(FIGURE_COPY_IMAGE_CAP, image);
+  if (!(image > 0)) {
+    const url = String(block?.image?.url || block?.url || "").trim();
+    image = url ? FIGURE_COPY_IMAGE_SLOT : FIGURE_COPY_IMAGE_MIN;
+  } else image = Math.min(FIGURE_COPY_IMAGE_CAP, image);
   let h = FIGURE_COPY_PAD + image + lines * FIGURE_COPY_LINE + chip;
   if (h > FIGURE_COPY_MAX) {
     const keep = chip + (lines ? FIGURE_COPY_LINE : 0);
@@ -264,6 +269,7 @@ export function sourceAttrString(uid) {
 }
 
 const SOURCE_LINE_RE = /^(?:[-*]\s+)?Source::\s*\(\(([\w-]{1,32})\)\)\s*$/;
+const SIZE_LINE_RE = /^(?:[-*]\s+)?pxd-size::\s*(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$/;
 
 function blankBullet(line) {
   return /^[-*•]\s*$/.test(String(line ?? "").trim());
@@ -319,6 +325,263 @@ export function planCopiedSource({ markdown = "", source = "" } = {}) {
   const text = oneBulletTree(body.join("\n"));
   if (!text && pin) return { markdown: `- ${sourceAttrString(pin)}`, sourceUid: "", sourced: true };
   return { markdown: text, sourceUid: text ? pin : "", sourced: found && Boolean(text || pin) };
+}
+
+// Pull the machine size line and the Source citation off the raw copy. They must not become bullets.
+function splitMarks(markdown) {
+  let sourceUid = "";
+  let size = null;
+  const body = [];
+  for (const line of String(markdown ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")) {
+    const src = SOURCE_LINE_RE.exec(line.trim());
+    if (src) {
+      if (!sourceUid) sourceUid = src[1];
+      continue;
+    }
+    const sized = SIZE_LINE_RE.exec(line.trim());
+    if (sized) {
+      const w = Number(sized[1]);
+      const h = Number(sized[2]);
+      if (w > 0 && h > 0) size = { w: Math.round(w), h: Math.round(h) };
+      continue;
+    }
+    body.push(line);
+  }
+  return { body: body.join("\n"), sourceUid, size };
+}
+
+function isCropBlock(block) {
+  return Boolean(block && (block.type === "figure" || (block.type === "formula" && !block.latex)));
+}
+
+function decodeCell(text) {
+  return String(text ?? "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitPipeRow(line) {
+  let body = String(line ?? "").trim();
+  if (body.startsWith("|")) body = body.slice(1);
+  if (body.endsWith("|")) body = body.slice(0, -1);
+  const cells = [];
+  let cur = "";
+  for (let i = 0; i < body.length; i += 1) {
+    if (body[i] === "\\" && body[i + 1] === "|") { cur += "|"; i += 1; continue; }
+    if (body[i] === "|") { cells.push(cur.trim()); cur = ""; continue; }
+    cur += body[i];
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+
+function isRuleCell(text) {
+  return /^:?-{3,}:?$/.test(String(text ?? "").replace(/\s/g, ""));
+}
+
+function cellsFromBlock(block) {
+  const cells = [];
+  for (const cell of block?.cells || []) {
+    if (!cell || typeof cell !== "object") continue;
+    const r = Number.isInteger(cell.r) ? cell.r : (Number.isInteger(cell.row) ? cell.row : null);
+    const c = Number.isInteger(cell.c) ? cell.c : (Number.isInteger(cell.col) ? cell.col : null);
+    if (r == null || c == null) continue;
+    const row = { r, c, text: String(cell.text ?? "") };
+    if (cell.header === true) row.header = true;
+    const colSpan = Number(cell.colSpan);
+    const rowSpan = Number(cell.rowSpan);
+    if (Number.isInteger(colSpan) && colSpan > 1) row.colSpan = colSpan;
+    if (Number.isInteger(rowSpan) && rowSpan > 1) row.rowSpan = rowSpan;
+    cells.push(row);
+  }
+  if (!cells.length) return null;
+  const snap = { cells };
+  if (Number.isInteger(block.rows)) snap.rows = block.rows;
+  if (Number.isInteger(block.cols)) snap.cols = block.cols;
+  return snap;
+}
+
+function htmlTable(text) {
+  const found = /<table\b[^>]*>([\s\S]*?)<\/table>/i.exec(String(text ?? ""));
+  if (!found) return null;
+  const rawRows = [];
+  const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch;
+  while ((rowMatch = rowRe.exec(found[1]))) {
+    const row = [];
+    const cellRe = /<t([hd])\b([^>]*)>([\s\S]*?)<\/t\1>/gi;
+    let cellMatch;
+    while ((cellMatch = cellRe.exec(rowMatch[1]))) {
+      const attrs = cellMatch[2] || "";
+      const colSpan = Number(/colspan="(\d+)"/i.exec(attrs)?.[1]);
+      const rowSpan = Number(/rowspan="(\d+)"/i.exec(attrs)?.[1]);
+      const cell = { text: decodeCell(cellMatch[3]), header: cellMatch[1].toLowerCase() === "h" };
+      if (Number.isInteger(colSpan) && colSpan > 1) cell.colSpan = colSpan;
+      if (Number.isInteger(rowSpan) && rowSpan > 1) cell.rowSpan = rowSpan;
+      row.push(cell);
+    }
+    if (row.length) rawRows.push(row);
+  }
+  if (!rawRows.length) return null;
+  const occupied = new Set();
+  const key = (r, c) => `${r},${c}`;
+  const cells = [];
+  let cols = 0;
+  rawRows.forEach((row, r) => {
+    let c = 0;
+    for (const cell of row) {
+      while (occupied.has(key(r, c))) c += 1;
+      const rs = cell.rowSpan || 1;
+      const cs = cell.colSpan || 1;
+      const item = { r, c, text: cell.text };
+      if (cell.header) item.header = true;
+      if (cs > 1) item.colSpan = cs;
+      if (rs > 1) item.rowSpan = rs;
+      cells.push(item);
+      for (let dr = 0; dr < rs; dr += 1) {
+        for (let dc = 0; dc < cs; dc += 1) occupied.add(key(r + dr, c + dc));
+      }
+      c += cs;
+    }
+    cols = Math.max(cols, c);
+  });
+  const after = String(text).slice(found.index + found[0].length);
+  let caption = "";
+  for (const line of after.split("\n")) {
+    const raw = line.trim().replace(/^[-*]\s+/, "");
+    if (!raw) continue;
+    caption = raw.replace(/\s+/g, " ").trim().slice(0, 200);
+    break;
+  }
+  return { table: { cells, rows: rawRows.length, cols }, caption };
+}
+
+// A real GFM table (header, rule, rows) or an HTML table from a spanned copy.
+// A single pipe line is not a table. Run this on the raw text, before oneBulletTree.
+function tableFromMarkdown(text) {
+  const html = htmlTable(text);
+  if (html) return html;
+  const lines = String(text ?? "").replace(/\r\n/g, "\n").split("\n");
+  const rows = [];
+  let end = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    const raw = lines[i].trim();
+    if (!raw) {
+      if (rows.length) break;
+      continue;
+    }
+    const stripped = raw.replace(/^[-*]\s+/, "");
+    if (stripped.startsWith("|") && stripped.endsWith("|") && stripped.includes("|")) {
+      rows.push(splitPipeRow(stripped));
+      end = i;
+      continue;
+    }
+    if (rows.length) break;
+  }
+  if (rows.length < 2 || rows[1].length !== rows[0].length || !rows[1].every(isRuleCell)) return null;
+  let caption = "";
+  for (let i = end + 1; i < lines.length; i += 1) {
+    const raw = lines[i].trim().replace(/^[-*]\s+/, "");
+    if (!raw) continue;
+    caption = raw.replace(/\s+/g, " ").trim().slice(0, 200);
+    break;
+  }
+  const header = rows[0];
+  const body = rows.slice(2);
+  const cells = [];
+  header.forEach((value, c) => cells.push({ r: 0, c, text: value, header: true }));
+  body.forEach((row, r) => {
+    row.forEach((value, c) => cells.push({ r: r + 1, c, text: value }));
+  });
+  const table = { cells, rows: body.length + 1, cols: header.length };
+  return { table, caption: caption || rowsCaption(table.rows) };
+}
+
+function imageFace(text) {
+  const body = String(text ?? "");
+  const match = /!\[([^\]]*)\]\(([^)\s]+)\)/.exec(body);
+  if (!match) return null;
+  const caption = body.replace(/!\[[^\]]*\]\([^)]+\)/g, " ").replace(/\s+/g, " ").trim();
+  return { url: match[2], caption, markdown: body.trim() };
+}
+
+// One plan for every copy, paste, drop, and chip insert. A figure carries a height that fits the
+// picture, the caption, and the Source chip. A size line wins, because the custom clipboard MIME
+// does not survive a live paste. Table detection is added on top of this same plan.
+export function copiedPartPlan({ block = null, doc = null, markdown = "", source = "", withSource = false } = {}) {
+  const split = splitMarks(markdown);
+  let sourceUid = split.sourceUid;
+  const given = String(source ?? "").trim();
+  if (!sourceUid && UID_RE.test(given)) sourceUid = given;
+  const sourced = Boolean(sourceUid) || withSource === true;
+  const fromBlock = block?.type === "table" ? cellsFromBlock(block) : null;
+  const fromText = fromBlock ? null : tableFromMarkdown(split.body);
+  const tableHit = fromBlock || fromText?.table || null;
+  if (tableHit) {
+    const caption = fromText?.caption || parsedTableCaption(block?.type === "table" ? block : tableHit, doc);
+    return {
+      kind: "table",
+      markdown: split.body.trim() || "| |",
+      sourceUid,
+      size: null,
+      sourced: Boolean(sourceUid) || Boolean(fromText) || sourced,
+      sized: false,
+      image: false,
+      caption,
+      table: tableHit,
+    };
+  }
+  const crop = isCropBlock(block);
+  const face = imageFace(split.body);
+  if (crop || face) {
+    const live = crop ? block : { type: "figure", caption: face.caption, image: { url: face.url } };
+    const text = (crop ? figureCardMarkdown(block, doc) : "") || face?.markdown || split.body.trim();
+    const size = split.size || figureCopySize(live, crop ? doc : null, { source: sourced });
+    return {
+      kind: "card",
+      markdown: text,
+      sourceUid,
+      size,
+      sourced,
+      sized: Boolean(split.size),
+      image: true,
+      caption: "",
+      table: null,
+    };
+  }
+  const copied = planCopiedSource({ markdown: split.body, source: sourceUid });
+  return {
+    kind: "card",
+    markdown: copied.markdown,
+    sourceUid: copied.sourceUid,
+    size: split.size || { w: 280, h: 160 },
+    sourced: copied.sourced,
+    sized: Boolean(split.size),
+    image: false,
+    caption: "",
+    table: null,
+  };
+}
+
+// Plain text for Copy as card / Copy with source. The size rides in the text because the JSON MIME is dropped.
+export function copyMenuPlan({ id, block = null, doc = null, markdown = "", source = "" } = {}) {
+  if (id !== "source" && id !== "card") return null;
+  const plan = copiedPartPlan({ block, doc, markdown, source, withSource: id === "source" });
+  const raw = splitMarks(markdown).body.trim();
+  const body = raw || plan.markdown;
+  const lines = [];
+  if (body) lines.push(body);
+  if (plan.image && plan.size && plan.size.w > 0 && plan.size.h > 0) {
+    lines.push(`pxd-size:: ${Math.round(plan.size.w)} ${Math.round(plan.size.h)}`);
+  }
+  const pin = id === "source" ? (UID_RE.test(String(source ?? "").trim()) ? String(source).trim() : plan.sourceUid) : "";
+  const cite = sourceAttrString(pin);
+  if (cite) lines.push(cite);
+  return { ...plan, sourceUid: pin || plan.sourceUid, text: lines.join("\n") };
 }
 
 // A click on a card's ((pin)) ref. A pdf pin opens the reader at that region.
@@ -487,6 +750,31 @@ export function sourceOpenPlan({ sidebar = false, card = false } = {}) {
   if (sidebar) return "sidebar";
   if (card) return "reader";
   return "roam";
+}
+
+// A Source click on a ref card waits this long for a stored parse, then flashes the page alone.
+export const KEPT_PARSE_WAIT_MS = 2500;
+
+// Race a kept-parse load against a bound. A hanging load loses. A value without blocks is a miss.
+export async function waitKeptParse(load, { timeout = KEPT_PARSE_WAIT_MS, sleep } = {}) {
+  let timer = null;
+  const pending = Promise.resolve()
+    .then(() => (typeof load === "function" ? load() : null))
+    .catch(() => null);
+  const limit = typeof sleep === "function"
+    ? Promise.resolve().then(() => sleep(timeout)).then(() => null).catch(() => null)
+    : new Promise((resolve) => {
+      timer = setTimeout(() => resolve(null), Math.max(0, Number(timeout) || 0));
+    });
+  try {
+    const doc = await Promise.race([
+      pending.then((value) => (value && value.blocks ? value : null)),
+      limit,
+    ]);
+    return doc && doc.blocks ? doc : null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export function pinOpenPlan(region) {

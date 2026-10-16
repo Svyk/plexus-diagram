@@ -75,10 +75,11 @@ body.roam-body.dark .pxd-commands__box.pxd-commands__box {
   background: var(--pxd-accent-soft);
 }
 
-/* Outline-side toast after Annotate pins a drawing. It sits on document.body, outside every .pxd-root. */
+/* Outline-side toast after Annotate pins a drawing. It sits on document.body, outside every .pxd-root.
+   Stay under a slash menu or date picker (4000) and under a dialog (400000) or menu portal (400010). */
 .pxd-toast.pxd-toast--pin {
   position: fixed;
-  z-index: 100000;
+  z-index: 3000;
   left: 50%;
   bottom: 24px;
   padding: 8px 12px;

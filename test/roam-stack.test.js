@@ -12,9 +12,28 @@ test("fullscreen stays at 40 and Roam's top bar and portals paint above the boar
   const fullscreenZ = Number(/\.pxd-mount--fullscreen \{[^}]*z-index: (\d+)/.exec(css)[1]);
   assert.equal(fullscreenZ, 40);
   assert.match(css, /body\.pxd-has-board \.rm-topbar \{[^}]*z-index:\s*80/);
-  assert.match(css, /body\.pxd-has-board > \.bp3-portal \{[^}]*z-index:\s*2500\s*!important/);
+  assert.match(css, /body\.pxd-has-board > \.bp3-portal \{[^}]*z-index:\s*2500/);
   assert.match(css, /body\.pxd-has-board > \.bp3-portal:has\(\.bp3-dialog\)[^}]*z-index:\s*400000\s*!important/);
   assert.match(css, /body\.pxd-has-board > \.bp3-portal:has\(\.bp3-alert\)/);
+});
+
+test("dialogs keep a floor; a menu or date portal stacks above it; the pin toast stays below both", () => {
+  const ordinary = /body\.pxd-has-board > \.bp3-portal \{[^}]*\}/.exec(css)?.[0] || "";
+  assert.match(ordinary, /z-index:\s*2500/);
+  assert.doesNotMatch(ordinary, /!important/);
+  const dialogAt = css.search(/body\.pxd-has-board > \.bp3-portal:has\(\.bp3-dialog\)[^}]*z-index:\s*400000\s*!important/);
+  assert.ok(dialogAt >= 0, "dialogs keep their floor");
+  assert.match(css, /body\.pxd-has-board > \.bp3-portal:has\(\.bp3-alert\)/);
+  for (const sel of [".bp3-menu", ".bp3-datepicker", ".bp3-select-popover", ".rm-date-picker", ".bp3-context-menu", ".rm-autocomplete__results"]) {
+    assert.match(css, new RegExp(`body\\.pxd-has-board > \\.bp3-portal:has\\(\\${sel}\\)`), sel);
+  }
+  const menuAt = css.search(/z-index:\s*400010\s*!important/);
+  assert.ok(menuAt > dialogAt, "a menu portal comes after the dialog floor so it paints above the dialog");
+  const commands = readFileSync(new URL("../src/css/commands.css", import.meta.url), "utf8");
+  const toast = Number(/\.pxd-toast\.pxd-toast--pin \{[^}]*z-index:\s*(\d+)/.exec(commands)[1]);
+  assert.ok(toast < 4000, "toast stays under a slash menu or date picker pinned at 4000");
+  assert.ok(toast < 400000);
+  assert.ok(toast < 400010);
 });
 
 test("a trapped overlay is not moved; a topbar search stays; a body portal keeps its inline z-index", () => {

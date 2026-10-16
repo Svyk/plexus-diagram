@@ -4181,6 +4181,13 @@ function buildBoardView(onFail, {
   let suspendedBoard = null;
   let edgesZoomAt = NaN;
   let wheelLayer = false;
+  // R4 (speed flag zoomNoLayer): a Ctrl/pinch zoom burst paints the world on the main thread each frame instead of
+  // scaling a will-change layer. On a zoom-out the compositor showed the scaled layer before the newly revealed area
+  // was rastered: a blank frame 3 ms after the last one (QA5 B/C zoom-out #10, checkerboarding). Pans keep the layer.
+  let zoomGesture = false;
+  let zoomWheel = false;
+  const zoomNoLayer = () => { try { return notedSpeedFlags().zoomNoLayer !== false; } catch { return false; } };
+  const worldLayer = () => (gesturing || wheelLayer) && !((zoomGesture || zoomWheel) && zoomNoLayer());
   let minimapAt = -Infinity;
   const MINIMAP_WHEEL_MS = 150;
   const perfNow = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
@@ -4682,6 +4689,7 @@ function buildBoardView(onFail, {
       chrome.toolbar.setZoom(vp.zoom);
       if (wheelLayer) {
         wheelLayer = false;
+        zoomWheel = false;
         world.style.willChange = "";
         propsPanel.place();
       }
@@ -8128,11 +8136,12 @@ function buildBoardView(onFail, {
     },
     setGesturing: (on, info) => {
       gesturing = Boolean(on);
+      zoomGesture = gesturing && Boolean(info?.wheelZoom);
       itemsR.setPeekBlocked?.(gesturing);
       guardSelection(gesturing && Boolean(ctl.gestureKind?.()));
       if (!gesturing) { hitShield.drop(); endUnderlay(); }
       setRootFlag("gesturing", gesturing);
-      world.style.willChange = gesturing || wheelLayer ? "transform" : "";
+      world.style.willChange = worldLayer() ? "transform" : "";
       syncShellHold();
       if (gesturing) {
         resumeTimer?.();
@@ -9198,9 +9207,10 @@ function buildBoardView(onFail, {
     // The hit-test inside this wheel builds the queued card under the pointer unless the hold is already on.
     // Raise the burst before normalize. A wheel the controller ignores puts the layer back.
     const openedBurst = !wheelLayer && !gesturing && deferOn() && Boolean(itemsR.isVirtual?.());
+    zoomWheel = Boolean(event.ctrlKey || event.metaKey || setting("wheel", "pan") === "zoom");
     if (openedBurst) {
       wheelLayer = true;
-      world.style.willChange = "transform";
+      world.style.willChange = worldLayer() ? "transform" : "";
       syncShellHold();
     }
     const handled = ctl.handle(normalize(event, "wheel"));
@@ -9211,7 +9221,7 @@ function buildBoardView(onFail, {
       // repainted every shell and edge (PhD main board at map zoom: ~60% of a pan). The settle drops the layer.
       if (!wheelLayer && !gesturing) {
         wheelLayer = true;
-        world.style.willChange = "transform";
+        world.style.willChange = worldLayer() ? "transform" : "";
       }
       syncShellHold();
       // Pan bursts only: a zoom burst re-tiers the board under the cursor, and the hover change the shield causes at
@@ -9221,7 +9231,7 @@ function buildBoardView(onFail, {
       settle();
     } else if (openedBurst) {
       wheelLayer = false;
-      world.style.willChange = gesturing ? "transform" : "";
+      world.style.willChange = worldLayer() ? "transform" : "";
       syncShellHold();
     }
     return handled;

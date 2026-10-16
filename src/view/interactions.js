@@ -1034,7 +1034,7 @@ export function createInteractions({ actions, settings } = {}) {
     if (!wheelZooming) {
       if (state.gesture) return;
       wheelZooming = true;
-      call("setGesturing", true);
+      call("setGesturing", true, { wheelZoom: true });
     }
     if (wheelTimer) clearTimeout(wheelTimer);
     wheelTimer = setTimeout(() => { wheelTimer = null; endWheelZoom(); }, WHEEL_ZOOM_IDLE_MS);

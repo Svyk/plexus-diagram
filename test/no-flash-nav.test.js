@@ -84,7 +84,7 @@ test("styledUnderlay off draws the 3.34.0 plain boxes", async () => {
 
 
 test("E2: a zoom-out from detail to overview shows every in-view card in every frame, and the burst closes", async () => {
-  for (const flags of [{}, { overviewCanvas: true }]) {
+  for (const flags of [{ overviewCanvas: false }, { overviewCanvas: true }]) {
     const m = mountBig({ x: -2000, y: -1500, zoom: 1 }, { flags });
     try {
       await settledIn(m);
@@ -92,7 +92,7 @@ test("E2: a zoom-out from detail to overview shows every in-view card in every f
       assert.equal(m.view.state().lod, "overview");
       assert.deepEqual(missingFrames(frames), [], `frames with cards in neither a shell nor a box (${JSON.stringify(flags)})`);
       assert.equal(m.view.root.querySelector(".pxd-world").style.willChange, "", "the wheel burst closed after the zoom gesture");
-      if (flags.overviewCanvas) assert.ok(m.view.overviewCanvasStats().shown, "the overview canvas shows the cards");
+      if (flags.overviewCanvas !== false) assert.ok(m.view.overviewCanvasStats().shown, "the overview canvas shows the cards");
       else assert.equal(frames.at(-1).attached, frames.at(-1).inView, "every in-view shell is attached in the end");
     } finally { m.done(); }
   }
@@ -115,7 +115,7 @@ test("E3: a zoom-in from overview to detail shows every in-view card in every fr
 test("E1: resuming a parked big board with shells still queued re-places no edge, keeps every edge element, and paints every in-view card", async () => {
   {
     for (const vp of [{ x: 300, y: 20, zoom: 0.1 }, { x: 0, y: 0, zoom: 0.3 }]) {
-      const m = mountBig(vp);
+      const m = mountBig(vp, { flags: { overviewCanvas: false } });
       try {
         await m.pump(30);
         assert.ok(m.view.stats().shells < 1570, "shells are still queued when the board parks");
@@ -178,7 +178,7 @@ test("E5: no background slice runs inside a wheel burst on the board; it runs on
 // the view are placed (at most 300 a frame). The drop places the riders at the committed spot in the same task.
 
 test("E6/E2-6: a big selection drags as one layer: shells in one group, inner edges ride untouched, crossing edges budgeted, the drop places everything in one task", async () => {
-  const { m, root, sel, el, p } = await dragSelection({});
+  const { m, root, sel, el, p } = await dragSelection({ overviewCanvas: false });
   try {
     assert.ok(sel.length >= 24, `selected ${sel.length}`);
     m.stub.dispatch(el, "pointerdown", { ...p, button: 0, buttons: 1, pointerId: 7 });
@@ -225,7 +225,7 @@ test("E6/E2-6: a big selection drags as one layer: shells in one group, inner ed
 });
 
 test("E6: dragLayer off keeps the 3.34.0 drag (every touching edge placed each frame, no layer)", async () => {
-  const { m, root, el, p } = await dragSelection({ dragLayer: false });
+  const { m, root, el, p } = await dragSelection({ dragLayer: false, overviewCanvas: false });
   try {
     m.stub.dispatch(el, "pointerdown", { ...p, button: 0, buttons: 1, pointerId: 7 });
     let most = 0;
@@ -244,7 +244,7 @@ test("E6: dragLayer off keeps the 3.34.0 drag (every touching edge placed each f
 // E2-5 (perf2): crumb back to a kept PhD MAIN at fit un-parked ~1,500 attached shells in one task (QA3: 514-595 ms,
 // 3.34.0 311). The un-park now renders the nearest RESUME_SHELLS; the rest come back in slices over styled boxes.
 const builtAtFit = async (flags = {}) => {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, flags });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, flags: { overviewCanvas: false, ...flags } });
   await settledIn(m);
   for (let k = 0; k < 40 && m.view.stats().shells < 1570; k += 1) { await tick(100); await m.pump(50); }
   await tick(700);
@@ -420,7 +420,7 @@ test("E2-4: a zoom-out burst from detail draws the far cards with greeked titles
 });
 
 test("E2-6: Escape during a grouped drag puts every shell back where it was, out of the group", async () => {
-  const { m, root, el, p } = await dragSelection({});
+  const { m, root, el, p } = await dragSelection({ overviewCanvas: false });
   try {
     const before = el.style.transform;
     m.stub.dispatch(el, "pointerdown", { ...p, button: 0, buttons: 1, pointerId: 7 });
@@ -446,7 +446,7 @@ test("E2-6: no background-budget slice runs inside a wheel burst while the board
   resetSharedBgBudget();
   resetSharedTaskProbe();
   const realRic = globalThis.requestIdleCallback;
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: false } });
   const probe = sharedTaskProbe();
   const orig = probe.span;
   const seen = { open: 0, burst: 0, after: 0 };

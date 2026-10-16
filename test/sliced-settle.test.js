@@ -90,7 +90,7 @@ const underlayShown = (m) => {
 
 test("a fit settle on a 1,500-card board attaches a slice per frame and finishes over several frames", async () => {
   await withFrozenClock(async () => {
-    noteSpeedFlags({});
+    noteSpeedFlags({ overviewCanvas: false });
     const m = mount(1500, { x: -200000, y: -200000, zoom: 1 });
     try {
       await toFit(m);
@@ -125,7 +125,7 @@ test("a fit settle on a 1,500-card board attaches a slice per frame and finishes
 
 test("the underlay hides only once both the shell and the edge queues are empty", async () => {
   await withFrozenClock(async () => {
-    noteSpeedFlags({});
+    noteSpeedFlags({ overviewCanvas: false });
     const m = mount(1500, { x: -200000, y: -200000, zoom: 1 }, 3);
     const total = 900 + 1498 + 1497;
     try {
@@ -154,7 +154,7 @@ test("the underlay hides only once both the shell and the edge queues are empty"
 
 test("a click on a box that is not attached yet selects that card", async () => {
   await withFrozenClock(async () => {
-    noteSpeedFlags({});
+    noteSpeedFlags({ overviewCanvas: false });
     const m = mount(1500, { x: -200000, y: -200000, zoom: 1 });
     try {
       await toFit(m);
@@ -180,7 +180,7 @@ test("a click on a box that is not attached yet selects that card", async () => 
 
 test("slicedSettle off attaches everything in the settle task, as 3.34.0 did", async () => {
   await withFrozenClock(async () => {
-    noteSpeedFlags({ slicedSettle: false });
+    noteSpeedFlags({ slicedSettle: false, overviewCanvas: false });
     const m = mount(1500, { x: -200000, y: -200000, zoom: 1 });
     try {
       await toFit(m);
@@ -198,7 +198,7 @@ test("slicedSettle off attaches everything in the settle task, as 3.34.0 did", a
 test("a board under the virtual threshold settles exactly as before", async () => {
   await withFrozenClock(async () => {
     for (const flags of [{}, { slicedSettle: false }]) {
-      noteSpeedFlags(flags);
+      noteSpeedFlags({ overviewCanvas: false, ...flags });
       const m = mount(300, { x: -200000, y: -200000, zoom: 1 });
       try {
         await toFit(m);

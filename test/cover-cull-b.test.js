@@ -204,6 +204,7 @@ describe("cover cull", { concurrency: 1 }, () => {
   });
 
   test("overview repaint runs and keeps every PDF body", async () => {
+    noteSpeedFlags({ overviewCanvas: false });
     const vp = { x: 0, y: 0, zoom: 0.05 };
     const live = openAt(vp);
     try {

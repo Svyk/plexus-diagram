@@ -3,6 +3,7 @@ import test from "node:test";
 import { resetSharedBgBudget } from "../src/bg-budget.js";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { mountBoardView } from "../src/view/board-view.js";
+import { noteSpeedFlags } from "../src/settings.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 import { segmentMeetsRect } from "../src/view/edges.js";
 
@@ -118,7 +119,9 @@ function finishShellPump(m) {
   }
 }
 
-test("a fit view of the whole board still shows every card", async () => {
+test("a fit view of the whole board still shows every card", async (t) => {
+  noteSpeedFlags({ overviewCanvas: false });
+  t.after(() => noteSpeedFlags(null));
   await freezeBudget(async () => {
     const m = mount({ x: 20, y: 20, zoom: 0.12 });
     try {
@@ -131,7 +134,9 @@ test("a fit view of the whole board still shows every card", async () => {
   });
 });
 
-test("a whole-board view builds the nearest shells first and reports first paint once the view is built", async () => {
+test("a whole-board view builds the nearest shells first and reports first paint once the view is built", async (t) => {
+  noteSpeedFlags({ overviewCanvas: false });
+  t.after(() => noteSpeedFlags(null));
   await freezeBudget(async () => {
     let painted = 0;
     const m = mount({ x: 20, y: 20, zoom: 0.12 }, { onFirstPaint: () => { painted += 1; } });
@@ -233,7 +238,9 @@ test("at map zoom only the shells within a third of a screen of the view are att
 });
 
 // F2 (Fable round): a settle after a zoom re-placed every attached edge in one task. It is sliced over frames now.
-test("a zoom settle re-places edges a slice per frame, not all in one", async () => {
+test("a zoom settle re-places edges a slice per frame, not all in one", async (t) => {
+  noteSpeedFlags({ overviewCanvas: false });
+  t.after(() => noteSpeedFlags(null));
   const m = mount({ x: 0, y: 0, zoom: 0.2 });
   try {
     // Wait by time, not a frame count: slow runners attach edges over more frames.

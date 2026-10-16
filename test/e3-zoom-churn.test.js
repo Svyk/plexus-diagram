@@ -7,7 +7,7 @@ import budgets from "../tools/live/big-board-budgets.json" with { type: "json" }
 // 26 / 2.5 s in 3.34.0, ~95% of it browser raster and layout).
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const builtAtFit = async (flags = {}) => {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, flags, renderMs: 1 });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, flags: { overviewCanvas: false, ...flags }, renderMs: 1 });
   await settledIn(m);
   for (let k = 0; k < 40 && m.view.stats().shells < 1570; k += 1) { await tick(100); await m.pump(50); }
   await tick(700);
@@ -84,7 +84,7 @@ const zoomInAndSettle = async (m) => {
   for (let i = 0; i < 60; i += 1) { await tick(30); m.stub.flushTimers(); m.stub.flushFrames(); m.stub.flushIdle(); }
 };
 test("E3-1 ratchet: a zoom-in changes the DOM in no more foreground tasks than 3.34.0 did; far edges are parked in background slices", async () => {
-  const m = await builtAtFit();
+  const m = await builtAtFit({ idlePark: true });
   try {
     const ledger = await taskLedger(m);
     await zoomInAndSettle(m);
@@ -117,7 +117,7 @@ test("E3-1 ratchet: the bench's second zoom-in (the fit's slices still attaching
 // overview-fast pump chunk drew the cover again: 44 full bitmaps (46 megapixels) in the open of the fixture, styled
 // since round 1 (palette fill, border stroke per card), each one a raster and an upload in the browser.
 test("E3-2: the open of a big board at overview draws the cover a couple of times, not once per pump chunk", async () => {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, flags: { overviewCanvas: false } });
   try {
     // Wait by condition, bounded by time (slow runners build the board later).
     const end = Date.now() + 15_000;

@@ -116,7 +116,7 @@ const graceUnmounts = (flags) => withClock((clock) => {
 });
 
 test("E3-3: bodies past the unmount grace leave in background slices, not all in the grace timer's task", () => {
-  const { mounted, inTimer, perSlice, left } = graceUnmounts({});
+  const { mounted, inTimer, perSlice, left } = graceUnmounts({ quietBodies: true });
   assert.equal(mounted, 20);
   assert.equal(inTimer, 0, "the grace timer only queues them");
   assert.equal(left, 0, "every due body is unmounted in the end");
@@ -129,7 +129,7 @@ test("E3-3: quietBodies off unmounts every due body in the grace timer's task (3
   assert.equal(left, 0);
 });
 test("E3-3: a body that was slow to mount mounts again only in a background slice, one a slice", () => withClock((clock) => {
-  const t = renderer({ slow: new Set(["Card 3", "Card 7"]) });
+  const t = renderer({ flags: { quietBodies: true }, slow: new Set(["Card 3", "Card 7"]) });
   try {
     const board = cards(20);
     t.r.sync({ board, rects: worldRects(board), structural: true });

@@ -59,7 +59,7 @@ const dWritesByLayer = (root) => {
   return counts;
 };
 test("E3-6: during a big drag no path in the main edges layer is rewritten; crossing edges are re-pathed in their own layer, and go back at the drop", async () => {
-  const { m, root, el, p } = await dragSelection({});
+  const { m, root, el, p } = await dragSelection({ overviewCanvas: false });
   try {
     m.stub.dispatch(el, "pointerdown", { ...p, button: 0, buttons: 1, pointerId: 7 });
     for (let i = 1; i <= 2; i += 1) {

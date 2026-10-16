@@ -53,8 +53,8 @@ const ALL_ON = {
   searchHay: true,
   tableCaptionEdit: true,
   storedDerived: true,
-  idlePark: true,
-  quietBodies: true,
+  idlePark: false,
+  quietBodies: false,
   adaptiveSlices: true,
   bucketLayers: true,
   zoomNoLayer: true,
@@ -62,7 +62,7 @@ const ALL_ON = {
   canvasCovers: true,
 };
 
-test("the panel has no speed-flags control, and bad JSON leaves the defaults (thirty-one on, edgeFingerprint and overviewCanvas off)", () => {
+test("the panel has no speed-flags control, and bad JSON leaves the defaults (every flag on but edgeFingerprint, overviewCanvas, idlePark and quietBodies)", () => {
   assert.equal(createSettingsPanel().settings.some((row) => row.id === "speed-flags"), false);
   assert.equal(Object.hasOwn(settingsDefaults(), "speed-flags"), false);
   assert.deepEqual(flagsDefault(), ALL_ON);

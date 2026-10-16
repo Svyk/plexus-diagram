@@ -164,3 +164,33 @@ test("E3: a zoom-in from overview to detail shows every in-view card in every fr
     assert.ok(at <= 120, `attached shells when the tier flipped: ${at}`);
   } finally { m.done(); }
 });
+
+// Crumb back to a kept big board (feature.js reattach: unpark, resume). With shells still queued the resume ran the
+// full pass, which re-pathed every edge (QA1 Part C #1: 1,936 `d` rewrites per edge part, 3,766 data-uid rewrites).
+test("E1: resuming a parked big board with shells still queued re-places no edge, keeps every edge element, and paints every in-view card", async () => {
+  {
+    for (const vp of [{ x: 300, y: 20, zoom: 0.1 }, { x: 0, y: 0, zoom: 0.3 }]) {
+      const m = mountBig(vp);
+      try {
+        await m.pump(30);
+        assert.ok(m.view.stats().shells < 1570, "shells are still queued when the board parks");
+        const before = m.view.stats();
+        const els = new Set(m.view.root.querySelectorAll(".pxd-edge"));
+        assert.ok(els.size > 0);
+        m.view.suspend();
+        assert.equal(m.view.park(), true);
+        m.view.unpark();
+        m.view.resume();
+        for (let i = 0; i < 6; i += 1) {
+          m.stub.flushFrames();
+          await null;
+          const f = m.view.paintAudit();
+          assert.equal(f.missing, 0, `frame ${i} at zoom ${vp.zoom}: ${f.attached} shells + ${f.covered} boxes of ${f.inView}`);
+        }
+        assert.equal(m.view.stats().edgePlacements, before.edgePlacements, "no edge is re-placed");
+        const after = new Set(m.view.root.querySelectorAll(".pxd-edge"));
+        assert.equal([...els].filter((el) => !after.has(el)).length, 0, "every edge element is the same one");
+      } finally { m.done(); }
+    }
+  }
+});

@@ -1331,7 +1331,7 @@ function buildBoardView(onFail, {
   let fsDispose = () => {};
   let fsParked = false;
   let routeOff = () => {};
-  const dirty = { viewport: false, items: new Set(), edges: new Set(), structural: false, all: true, selection: false, links: false, ctx: false, minimap: false };
+  const dirty = { viewport: false, items: new Set(), edges: new Set(), structural: false, all: true, selection: false, links: false, ctx: false, minimap: false, resync: false };
 
   const board = () => session.board;
 
@@ -9639,13 +9639,13 @@ function buildBoardView(onFail, {
       });
     }
     let itemsChanged = false;
-    if (dirty.all || dirty.structural || dirty.items.size) {
+    if (dirty.all || dirty.structural || dirty.items.size || dirty.resync) {
       // Live preview rects (edit growth, drag fit) ride along: a sync for a dirty card must not snap grown section shells back.
       itemsR.sync({
         board: b,
         rects: paintRects(),
-        dirty: dirty.all ? null : dirty.items,
-        structural: dirty.structural,
+        dirty: dirty.all || dirty.resync ? null : dirty.items,
+        structural: dirty.structural || dirty.resync,
         view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null,
         attachView: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null,
       });
@@ -9800,6 +9800,7 @@ function buildBoardView(onFail, {
     dirty.edges = edgeRest || new Set();
     dirty.structural = false;
     dirty.all = false;
+    dirty.resync = false;
     dirty.selection = false;
     dirty.links = false;
     edgeSlicing = Boolean(edgeRest);
@@ -10355,9 +10356,16 @@ function buildBoardView(onFail, {
       // The DOM was kept while parked. Only a board that changed meanwhile needs the full pass (a change that lands
       // later arrives through the session as usual); otherwise the camera, selection and minimap are enough.
       // A shell queue still open has to sync before the pump arms again, even when the board object is the same.
-      if (board() !== suspendedBoard || itemsR.queuedCount?.() > 0) {
+      // E1 (perf2): the same board with shells still queued syncs its shells only. The full pass also re-placed every
+      // edge (PhD main board crumb back: ~2,000 edges re-pathed, 1,936 `d` rewrites per edge part) though no edge moved.
+      if (board() !== suspendedBoard || (itemsR.queuedCount?.() > 0 && notedSpeedFlags().keepFullscreen === false)) {
         dirty.all = true;
         dirty.structural = true;
+      } else if (itemsR.queuedCount?.() > 0) {
+        dirty.resync = true;
+        dirty.viewport = true;
+        dirty.selection = true;
+        dirty.minimap = true;
       } else {
         dirty.viewport = true;
         dirty.selection = true;

@@ -14902,10 +14902,47 @@ function figureCardMarkdown(block, doc) {
   const image = `![${alt}](${url})`;
   return caption ? `${image} ${caption}` : image;
 }
+function captionLineCount(caption) {
+  const text4 = squash(caption);
+  if (!text4) return 0;
+  const cols = Math.max(1, FIGURE_COPY_CHARS);
+  let lines = 1;
+  let col2 = 0;
+  for (const word of text4.split(" ")) {
+    if (!word) continue;
+    let rest = word;
+    while (rest) {
+      if (col2 === 0) {
+        if (rest.length <= cols) {
+          col2 = rest.length;
+          rest = "";
+        } else {
+          rest = rest.slice(cols);
+          if (rest) {
+            lines += 1;
+            col2 = 0;
+          } else col2 = cols;
+        }
+      } else if (col2 + 1 + rest.length <= cols) {
+        col2 += 1 + rest.length;
+        rest = "";
+      } else if (rest.length <= cols) {
+        lines += 1;
+        col2 = rest.length;
+        rest = "";
+      } else {
+        lines += 1;
+        col2 = 0;
+      }
+    }
+  }
+  return lines;
+}
 function figureCopySize(block, doc, { source = false } = {}) {
   const caption = pinCaption(block, doc);
-  const lines = caption ? Math.min(FIGURE_COPY_MAX_LINES, Math.max(1, Math.ceil(caption.length / FIGURE_COPY_CHARS))) : 0;
+  const lines = captionLineCount(caption);
   const chip = source ? FIGURE_COPY_CHIP : 0;
+  const text4 = lines * FIGURE_COPY_LINE;
   let image = 0;
   const box2 = block?.bbox;
   if (Array.isArray(box2) && box2.length >= 4) {
@@ -14917,17 +14954,11 @@ function figureCopySize(block, doc, { source = false } = {}) {
     const url = String(block?.image?.url || block?.url || "").trim();
     image = url ? FIGURE_COPY_IMAGE_SLOT : FIGURE_COPY_IMAGE_MIN;
   } else image = Math.min(FIGURE_COPY_IMAGE_CAP, image);
-  let h = FIGURE_COPY_PAD + image + lines * FIGURE_COPY_LINE + chip;
-  if (h > FIGURE_COPY_MAX) {
-    const keep = chip + (lines ? FIGURE_COPY_LINE : 0);
-    const room = Math.max(FIGURE_COPY_IMAGE_MIN, FIGURE_COPY_MAX - FIGURE_COPY_PAD - keep);
-    image = Math.min(image, room);
-    const textRoom = FIGURE_COPY_MAX - FIGURE_COPY_PAD - image - chip;
-    const fit3 = Math.max(lines ? 1 : 0, Math.min(lines, Math.floor(textRoom / FIGURE_COPY_LINE)));
-    h = FIGURE_COPY_PAD + image + fit3 * FIGURE_COPY_LINE + chip;
-    if (h > FIGURE_COPY_MAX) h = FIGURE_COPY_MAX;
+  if (FIGURE_COPY_PAD + image + text4 + chip > FIGURE_COPY_MAX) {
+    const room = FIGURE_COPY_MAX - FIGURE_COPY_PAD - text4 - chip;
+    if (room >= FIGURE_COPY_IMAGE_MIN) image = Math.min(image, room);
   }
-  return { w: FIGURE_COPY_W, h: Math.round(h) };
+  return { w: FIGURE_COPY_W, h: Math.round(FIGURE_COPY_PAD + image + text4 + chip) };
 }
 function isSourceAttrString(text4) {
   return SOURCE_RE.test(String(text4 ?? "").trim());
@@ -15551,7 +15582,7 @@ function planPinWrites(spec) {
   creates.push({ role: "pin", parentUid: containerUid, uid: pinUid, string });
   return { uid: pinUid, reused: false, creates, containerUid: spec?.containerUid || "" };
 }
-var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE4, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash, COVER_AREA_SLACK, FIGURE_COPY_W, FIGURE_COPY_PAD, FIGURE_COPY_LINE, FIGURE_COPY_CHIP, FIGURE_COPY_CHARS, FIGURE_COPY_MAX_LINES, FIGURE_COPY_IMAGE_CAP, FIGURE_COPY_IMAGE_MIN, FIGURE_COPY_IMAGE_SLOT, FIGURE_COPY_MAX, SOURCE_LINE_RE, SIZE_LINE_RE, notedPin, KEPT_PARSE_WAIT_MS, PIN_PENDING_MS;
+var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE4, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash, COVER_AREA_SLACK, FIGURE_COPY_W, FIGURE_COPY_PAD, FIGURE_COPY_FONT, FIGURE_COPY_LINE_RATIO, FIGURE_COPY_LINE, FIGURE_COPY_CHARS, FIGURE_COPY_CHIP, FIGURE_COPY_IMAGE_CAP, FIGURE_COPY_IMAGE_MIN, FIGURE_COPY_IMAGE_SLOT, FIGURE_COPY_MAX, SOURCE_LINE_RE, SIZE_LINE_RE, notedPin, KEPT_PARSE_WAIT_MS, PIN_PENDING_MS;
 var init_pdf_pin = __esm({
   "src/model/pdf-pin.js"() {
     init_deeplink();
@@ -15578,10 +15609,11 @@ var init_pdf_pin = __esm({
     COVER_AREA_SLACK = 4;
     FIGURE_COPY_W = 280;
     FIGURE_COPY_PAD = 26;
-    FIGURE_COPY_LINE = 20;
+    FIGURE_COPY_FONT = 13;
+    FIGURE_COPY_LINE_RATIO = 1.4;
+    FIGURE_COPY_LINE = Math.ceil(FIGURE_COPY_FONT * FIGURE_COPY_LINE_RATIO);
+    FIGURE_COPY_CHARS = 34;
     FIGURE_COPY_CHIP = 28;
-    FIGURE_COPY_CHARS = 42;
-    FIGURE_COPY_MAX_LINES = 6;
     FIGURE_COPY_IMAGE_CAP = 360;
     FIGURE_COPY_IMAGE_MIN = 72;
     FIGURE_COPY_IMAGE_SLOT = 200;

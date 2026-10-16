@@ -2012,6 +2012,9 @@ export function createItemRenderer({
   // mounted and focused cards. The queue waits until the tier is left.
   let canvasOn = false;
   const canvasCards = () => canvasOn && virtual();
+  // E2-1 (perf2): board cards stay real shells on the overview canvas tier, like sections: a click on one enters the
+  // nested board there as it does on the DOM tiers (QA3: the canvas arm could not start a nested enter at overview).
+  const keepOnCanvas = (item) => item?.type === "section" || (item?.type === "card" && item.kind === "board");
   const isAttached = (rec) => Boolean(rec?.el?.parentElement);
   const activeShellUid = () => {
     const active = doc.activeElement;
@@ -2022,7 +2025,7 @@ export function createItemRenderer({
     || editing?.uid === uid || mounted.has(uid) || uid === active;
   const farRect = () => (cullRect ? { x: cullRect.x - cullRect.w * 0.125, y: cullRect.y - cullRect.h * 0.125, w: cullRect.w * 1.25, h: cullRect.h * 1.25 } : null);
   const nearView = (uid, rect = cullRect) => {
-    if (canvasCards() && lastBoard?.items.get(uid)?.type !== "section") return false;
+    if (canvasCards() && !keepOnCanvas(lastBoard?.items.get(uid))) return false;
     if (!rect) return true;
     const r = drawnRect(uid, lastRects?.get(uid));
     return !r || rectsIntersect(r, rect);
@@ -2235,7 +2238,7 @@ export function createItemRenderer({
   const pumpShells = () => {
     if (shellsHeld || canvasCards()) return;
     if (pumpChunk()) return;
-    if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
+    if (shellQueue.length && timers?.frame) timers.frame(pumpShells, "shells");
   };
   // The rAF pump ran on nearly every frame from first paint until live (~1 s of main-thread time on top of
   // the 25% budget). At map or overview, with overviewFast, priority shells finish a chunk per frame and the
@@ -2260,7 +2263,7 @@ export function createItemRenderer({
     pumpChunk({ limit: OPEN_CHUNK, priority: true });
     if (!shellsLive || shellsHeld) return;
     if (priorityLeft > 0 && shellQueue.length && timers?.frame) {
-      priorityFrame = timers.frame(pumpPriorityFrame);
+      priorityFrame = timers.frame(pumpPriorityFrame, "shells");
       return;
     }
     armShellPump();
@@ -2271,7 +2274,7 @@ export function createItemRenderer({
     stopShellBg();
     if (!shellQueue.length) return;
     if (priorityLeft > 0 && timers?.frame) {
-      priorityFrame = timers.frame(pumpPriorityFrame);
+      priorityFrame = timers.frame(pumpPriorityFrame, "shells");
       return;
     }
     let fast = false;
@@ -2280,7 +2283,7 @@ export function createItemRenderer({
       shellBg = timers.bgRun(() => pumpChunk(), { label: "shells", partMs: 4 });
       return;
     }
-    if (timers?.frame) timers.frame(pumpShells);
+    if (timers?.frame) timers.frame(pumpShells, "shells");
   };
   // Park cancels the priority rAF. Resume turns the flag back on and lets the next sync arm the pump.
   const pauseShells = () => {
@@ -2399,7 +2402,7 @@ export function createItemRenderer({
       const later = [];
       for (const uid of board.order) {
         const item = board.items.get(uid);
-        if (item?.type === "section" || uid === selectedPrimary) now.push(uid);
+        if (keepOnCanvas(item) || uid === selectedPrimary) now.push(uid);
         else later.push(uid);
       }
       if (view) {
@@ -5394,6 +5397,20 @@ export function createItemRenderer({
   };
 
   // One card body is one scheduler row. Already mounted bodies return done so renderBlock is not called again.
+  // E2-5 (perf2): card bodies whose mount (Roam render included) took SLOW_MOUNT_MS or more, the last 30, for
+  // view.longTasks() (QA3: a 4.4 s single task while panning at detail, not attributed).
+  const SLOW_MOUNT_MS = 50;
+  const slowMounts = [];
+  const timedMount = (uid) => {
+    const t0 = now();
+    try { return mountScheduled(uid); } finally {
+      const ms = now() - t0;
+      if (ms >= SLOW_MOUNT_MS) {
+        slowMounts.push({ uid, kind: lastBoard?.items.get(uid)?.kind || "", ms: Math.round(ms), at: Math.round(t0) });
+        if (slowMounts.length > 30) slowMounts.shift();
+      }
+    }
+  };
   const mountScheduled = (uid) => {
     if (disposed || paused) return false;
     if (!wanted.has(uid)) return false;
@@ -5409,10 +5426,10 @@ export function createItemRenderer({
     return true;
   };
   contentSched = createRowScheduler({
-    idle: (fn) => idle(fn),
+    idle: (fn) => (timers?.idle ? timers.idle(fn, "content") : idle(fn)),
     now,
     budgetMs: CHUNK_MS,
-    render: (uid) => mountScheduled(uid),
+    render: (uid) => timedMount(uid),
     eager: () => speedOf().budgetedMount === false,
   });
   const publishMountFps = () => {
@@ -5777,7 +5794,11 @@ export function createItemRenderer({
     // Leaving the canvas tier: the queue that waited there builds again, the cards in view first.
     // The view promotes the cards in the new view (promoteQueue) right after.
     if (canvasWas && !canvasOn && shellQueue.length && !priorityFrame) armShellPump();
-    if (!canvasWas && canvasOn) stopShellBg();
+    if (!canvasWas && canvasOn) {
+      stopShellBg();
+      // The board cards still queued are built now (a handful); the canvas draws every other card.
+      if (virtual()) for (const uid of shellQueue.filter((u) => keepOnCanvas(lastBoard?.items.get(u)))) ensureShell(uid);
+    }
     setZoom(zoom);
     closePeek();
     if (lod !== "detail") closeCardPeek();
@@ -5837,6 +5858,49 @@ export function createItemRenderer({
   // ---------------------------------------------------------------- preview during gestures
   // Queued member cards have no shell. The cover keeps their rects until the gesture ends.
   let coverShift = null;
+  // E2-6 (perf2, speed flag dragLayer): a drag of a big selection moves its attached shells into one group per layer
+  // (.pxd-drag-layer, the last child of the sections and items layers, so it stacks where they did) and a pointer frame
+  // writes one transform per group instead of one per shell (QA3: 125 composited shells, frame p50 200 ms). The drop
+  // puts each shell back in board order at its last preview spot, in the drop's task.
+  let dragGroup = null;
+  const beginDragGroup = (set) => {
+    if (dragGroup || disposed) return false;
+    const make = (layer) => {
+      const g = doc.createElement("div");
+      g.className = "pxd-drag-layer";
+      g.style.cssText = "position:absolute;left:0;top:0;width:0;height:0;overflow:visible;pointer-events:none;will-change:transform;";
+      layer.append(g);
+      return g;
+    };
+    const recs = [];
+    for (const uid of set) {
+      const rec = shells.get(uid);
+      if (rec?.el && isAttached(rec)) recs.push(rec);
+    }
+    if (!recs.length) return false;
+    const group = { sections: make(sectionsLayer), items: make(itemsLayer), recs, before: new Map(), last: null };
+    for (const rec of [...recs].sort((a, b) => indexOfUid(a.uid) - indexOfUid(b.uid))) {
+      group.before.set(rec, rec.el.style.transform);
+      (rec.type === "section" ? group.sections : group.items).append(rec.el);
+    }
+    dragGroup = group;
+    return true;
+  };
+  const endDragGroup = () => {
+    const group = dragGroup;
+    if (!group) return;
+    dragGroup = null;
+    for (const rec of group.recs) {
+      if (rec.el.parentElement !== group.sections && rec.el.parentElement !== group.items) continue;
+      // A shell nothing re-placed during the drag lands at its last preview spot (the commit re-places it there).
+      const at = group.last?.get(rec.uid);
+      if (at && rec.el.style.transform === group.before.get(rec)) rec.el.style.transform = `translate(${at.x}px, ${at.y}px)`;
+      rec.el.remove();
+    }
+    attachMany(new Set(group.recs.filter((rec) => rec.el && !isAttached(rec) && shells.get(rec.uid) === rec)));
+    group.sections.remove();
+    group.items.remove();
+  };
   const previewMove = (uids, dx, dy, board, rects) => {
     const set = new Set(uids);
     for (const u of uids) for (const d of descendantsOf(board, u)) set.add(d);
@@ -5850,14 +5914,21 @@ export function createItemRenderer({
       }
     }
     const live = new Map();
+    const grouped = dragGroup;
+    if (grouped) {
+      const t = `translate(${dx}px, ${dy}px)`;
+      grouped.sections.style.transform = t;
+      grouped.items.style.transform = t;
+    }
     for (const uid of set) {
       const rec = shells.get(uid);
       const r = rects.get(uid);
       if (!rec || !r) continue;
       const moved = { x: r.x + dx, y: r.y + dy, w: r.w, h: r.h };
-      rec.el.style.transform = `translate(${moved.x}px, ${moved.y}px)`;
+      if (!grouped || (rec.el.parentElement !== grouped.items && rec.el.parentElement !== grouped.sections)) rec.el.style.transform = `translate(${moved.x}px, ${moved.y}px)`;
       live.set(uid, moved);
     }
+    if (grouped) grouped.last = live;
     noteOverviewQueue();
     return live;
   };
@@ -7024,6 +7095,9 @@ export function createItemRenderer({
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     ensureShell,
     holdShells,
+    slowMounts: () => slowMounts.slice(),
+    beginDragGroup,
+    endDragGroup,
     pauseShells,
     resumeShells,
     promoteQueue,
@@ -7035,7 +7109,7 @@ export function createItemRenderer({
       for (const uid of lastBoard?.order || []) {
         if (!queued.has(uid) || shells.has(uid)) continue;
         const rect = coverShift?.get(uid) || lastRects?.get(uid);
-        if (rect) out.push({ uid, rect, color: lastBoard.items.get(uid)?.color || "" });
+        if (rect) out.push({ uid, rect, color: lastBoard.items.get(uid)?.color || "", title: lastBoard.items.get(uid)?.title || "" });
       }
       return out;
     },
@@ -7072,6 +7146,28 @@ export function createItemRenderer({
       }
       if (removed) noteCanvasDetach();
       return removed;
+    },
+    // E2-5 (perf2): a kept big board coming back (crumb back) shows its `n` attached shells nearest the centre of
+    // `rect` at once; the others leave the DOM while it is still parked and come back in the view's slices, so the
+    // un-park renders ~n shells instead of the whole board in one task (PhD MAIN at fit: ~1,500, 514-595 ms).
+    keepNearest(rect, n) {
+      if (disposed || !rect || !virtual()) return 0;
+      const active = activeShellUid();
+      const cx = rect.x + rect.w / 2;
+      const cy = rect.y + rect.h / 2;
+      const list = [];
+      for (const [uid, rec] of shells) {
+        if (!isAttached(rec) || keepAttached(uid, rec, active)) continue;
+        const r = drawnRect(uid, lastRects?.get(uid));
+        list.push([rec, r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity]);
+      }
+      if (list.length <= n) return 0;
+      list.sort((a, b) => a[1] - b[1]);
+      for (let i = n; i < list.length; i += 1) list[i][0].el.remove();
+      cullRect = rect;
+      attachLeft = list.length - n;
+      noteCanvasDetach();
+      return list.length - n;
     },
     // C1: a settle on a big board attaches `{ budget, ms }` per content pass until the view clears it (null).
     sliceAttach(opts) { attachSlice = opts && virtual() ? { budget: opts.budget ?? 48, ms: opts.ms ?? 6 } : null; },

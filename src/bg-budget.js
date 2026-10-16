@@ -1,3 +1,5 @@
+import { sharedTaskProbe } from "./long-tasks.js";
+
 // P8 U2. One background budget for the work that follows an open (links, ref and stat priming, PDF title repaints,
 // snapshot capture). A job runs in requestIdleCallback slices that stop at the idle deadline and at BG_SLICE_MS of
 // work, never while wheel, pointer or key input is active or for BG_QUIET_MS after it, and a job may ask for a longer
@@ -100,7 +102,7 @@ export function createBgBudget({
         },
       };
       try {
-        fn(deadline);
+        sharedTaskProbe().span(`bg:${label || "?"}`, () => fn(deadline), "bg");
       } finally {
         const spent = now() - t0;
         if (spent > 2 * sliceMs) { overruns.push({ label: label || "?", ms: Math.round(spent) }); if (overruns.length > 40) overruns.shift(); }

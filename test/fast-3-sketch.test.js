@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { createLifecycle } from "../src/lifecycle.js";
 import { installPlexusDiagram } from "../src/feature.js";
+import { hasLiveCard } from "../src/perf-log.js";
 import { worldToScreen } from "../src/model/geometry.js";
 import {
   SKETCH_DEBOUNCE_MS,
@@ -371,7 +372,7 @@ function fakeEvent(type, extra = {}) {
 
 const CACHED = { items: [{ uid: "cardAAAA1", x: 10.4, y: 24, w: 281, h: 80, title: "Cached", color: "blue", fill: "" }], edges: [] };
 
-function installEnv({ sketch = null, corrupt = false, failMount = false, gesturing = false, omitItems = false, clock = false } = {}) {
+function installEnv({ sketch = null, corrupt = false, failMount = false, gesturing = false, omitItems = false, clock = false, flags = null } = {}) {
   const saved = {};
   const globals = ["document", "window", "location", "MutationObserver"];
   for (const key of globals) saved[key] = Object.getOwnPropertyDescriptor(globalThis, key);
@@ -426,11 +427,12 @@ function installEnv({ sketch = null, corrupt = false, failMount = false, gesturi
     const sketchEl = args.mountEl.querySelector(".pxd-sketch");
     const shot = {
       sketch: Boolean(sketchEl),
-      items: args.mountEl.querySelectorAll(".pxd-item").length,
+      items: args.mountEl.querySelectorAll(".pxd-item").filter((el) => !el.classList.contains("pxd-sketch__card")).length,
       title: sketchEl?.querySelector(".pxd-sketch__title")?.textContent ?? null,
       transform: sketchEl?.querySelector(".pxd-sketch__world")?.style.transform ?? null,
       inset: sketchEl?.style.left ?? null,
       pointerEvents: sketchEl?.style.pointerEvents ?? null,
+      vp: args.initialViewport ?? null,
       live: 0,
       during: 0,
       sketchKeys: 0,
@@ -464,7 +466,7 @@ function installEnv({ sketch = null, corrupt = false, failMount = false, gesturi
   };
   const registry = () => ({ addCommand: async () => {}, removeCommand: async () => {} });
   const extensionAPI = {
-    settings: { get: (id) => (id === "fullscreen-on-zoom" || id === "auto-enhance" ? false : null) },
+    settings: { get: (id) => (id === "fullscreen-on-zoom" || id === "auto-enhance" ? false : id === "speed-flags" && flags ? JSON.stringify(flags) : null) },
     ui: { commandPalette: registry(), slashCommand: registry(), blockContextMenu: registry() },
     platform: { isMobile: () => false },
   };
@@ -499,7 +501,7 @@ test("mount shows the sketch first, the handoff key hits the live board once, th
     const mount = env.doc.querySelector(".pxd-mount");
     assert.equal(env.seen.length, 0);
     assert.ok(mount.querySelector(".pxd-sketch"));
-    assert.equal(mount.querySelector(".pxd-item"), null);
+    assert.equal(hasLiveCard(mount), false, "only the sketch's cards");
     assert.equal(mount.querySelector(".pxd-sketch").style.pointerEvents, "none");
     assert.equal(mount.style.position, "relative");
     let early = 0;
@@ -525,19 +527,19 @@ test("mount shows the sketch first, the handoff key hits the live board once, th
     assert.equal(shot.sketch, true);
     assert.equal(shot.items, 0);
     assert.equal(shot.title, "Cached");
-    assert.equal(shot.inset, "1px");
+    assert.equal(shot.inset, "0", "the styled sketch is a .pxd-root: its own 1px border is the inset");
     assert.equal(shot.pointerEvents, "none");
     assert.equal(shot.transform, "translate(12.5px, -8px) scale(0.5)");
     assert.equal(shot.during, 1);
     assert.equal(shot.sketchKeys, 0);
     assert.ok(mount.querySelector(".pxd-sketch"), "the sketch stays through the live mount");
-    assert.ok(mount.querySelector(".pxd-item"));
+    assert.ok(hasLiveCard(mount));
     // The replay targets the mount; this fake DOM does not bubble to window, so the live board's count is the check.
     assert.deepEqual(env.handed.filter((key) => key === "b"), ["b"]);
     assert.deepEqual(env.pointers, ["pointerdown"]);
     env.clock.flushRaf();
     assert.equal(mount.querySelector(".pxd-sketch"), null);
-    assert.ok(mount.querySelector(".pxd-item"));
+    assert.ok(hasLiveCard(mount));
     env.clock.advance(SKETCH_DEBOUNCE_MS);
     const saved = parseSketch(env.storage.getItem(KEY));
     assert.equal(saved.items.find((item) => item.uid === "cardAAAA1").title, "Live");
@@ -576,7 +578,7 @@ test("a corrupt sketch string still mounts the live board", async () => {
     assert.equal(env.seen[0].items, 0);
     const mount = env.doc.querySelector(".pxd-mount");
     assert.equal(mount.querySelector(".pxd-sketch"), null);
-    assert.ok(mount.querySelector(".pxd-item"));
+    assert.ok(hasLiveCard(mount));
     assert.equal(env.block[":edit/time"], 42);
   } finally {
     await env.lifecycle.dispose().catch(() => {});
@@ -612,7 +614,7 @@ test("the sketch comes off on the 2s timeout when no live card appears", async (
     env.clock.flushDue();
     const mount = env.doc.querySelector(".pxd-mount");
     assert.ok(mount.querySelector(".pxd-sketch"));
-    assert.equal(mount.querySelector(".pxd-item"), null);
+    assert.equal(hasLiveCard(mount), false, "only the sketch's cards");
     env.clock.advance(SKETCH_HOLD_MS - 1);
     assert.ok(mount.querySelector(".pxd-sketch"));
     env.clock.advance(1);
@@ -650,7 +652,7 @@ test("a late live card keeps the sketch until one more frame", async () => {
     env.clock.flushRaf();
     assert.equal(mount.querySelector(".pxd-sketch"), null);
     assert.equal(observed[0].dead, true);
-    assert.ok(mount.querySelector(".pxd-item"));
+    assert.ok(hasLiveCard(mount));
     assert.equal(env.block[":edit/time"], 42);
     assert.deepEqual(env.writes, []);
   } finally {
@@ -689,7 +691,7 @@ test("no sketch mounts in the same turn", async () => {
     assert.equal(env.clock.rafPending(), 0);
     const mount = env.doc.querySelector(".pxd-mount");
     assert.equal(mount.querySelector(".pxd-sketch"), null);
-    assert.ok(mount.querySelector(".pxd-item"));
+    assert.ok(hasLiveCard(mount));
     assert.equal(env.block[":edit/time"], 42);
   } finally {
     await env.lifecycle.dispose().catch(() => {});
@@ -713,5 +715,47 @@ test("P9: leaving a board whose sketch is current captures no sketch again", asy
     assert.equal(writes, 0, "no capture on leave");
   } finally {
     env.restore();
+  }
+});
+
+// E2-3 (perf2): the sketch had no stylesheet, so a mount or nested enter painted bare titles on a see-through layer for
+// up to ~0.5 s (QA3: "Roam's outline text showing"). With styledUnderlay the layer is a .pxd-root in the board's theme
+// and its cards have the live card's classes, header and body, so the board's CSS draws them.
+test("E2-3: paintSketch with a look draws a themed board root and card-classed shells, sections under the cards", () => {
+  const doc = makeDoc();
+  const sketch = { items: [
+    { uid: "secAAAAA1", x: 0, y: 0, w: 600, h: 400, title: "Section", color: "teal", fill: "", s: 1 },
+    { uid: "cardAAAA1", x: 20, y: 40, w: 200, h: 80, title: "One", color: "red", fill: "" },
+  ], edges: [] };
+  const layer = paintSketch(doc, doc.app, sketch, { x: 0, y: 0, zoom: 0.3 }, { look: { cls: ["pxd-root--dark"], vars: { "--pxd-card": "#123456" } } });
+  assert.ok(layer.classList.contains("pxd-root") && layer.classList.contains("pxd-root--dark") && layer.classList.contains("pxd-sketch"));
+  assert.equal(layer.getAttribute("data-pxd-lod"), "map");
+  const card = layer.querySelectorAll(".pxd-sketch__card").find((el) => el.getAttribute("data-uid") === "cardAAAA1");
+  assert.ok(card.classList.contains("pxd-item") && card.classList.contains("pxd-item--card") && card.classList.contains("pxd-c-red"));
+  assert.equal(card.querySelector(".pxd-item__header").textContent, "One");
+  assert.ok(card.querySelector(".pxd-item__body"));
+  const section = layer.querySelectorAll(".pxd-sketch__card").find((el) => el.getAttribute("data-uid") === "secAAAAA1");
+  assert.ok(section.classList.contains("pxd-section"));
+  const world = layer.querySelector(".pxd-sketch__world");
+  assert.ok(world.children[0].contains(section), "sections come first in the world, under the edges and cards");
+  assert.equal(hasLiveCard(doc.app), false, "a styled sketch card is not a live card");
+});
+
+test("E2-3: the mount's sketch is styled like the board by default; styledUnderlay off paints the bare 3.34.0 sketch", async () => {
+  for (const [flags, styled] of [[null, true], [{ styledUnderlay: false }, false]]) {
+    const env = installEnv({ clock: true, sketch: CACHED, flags });
+    try {
+      await env.install();
+      const layer = env.doc.querySelector(".pxd-mount").querySelector(".pxd-sketch");
+      assert.ok(layer);
+      assert.equal(layer.classList.contains("pxd-root"), styled);
+      assert.equal(layer.querySelector(".pxd-sketch__card").classList.contains("pxd-item"), styled);
+      env.clock.flushRaf();
+      env.clock.flushDue();
+      assert.deepEqual(env.seen[0].vp, { x: 12.5, y: -8, zoom: 0.5 }, "the live board starts at the sketch's camera");
+    } finally {
+      await env.lifecycle.dispose().catch(() => {});
+      env.restore();
+    }
   }
 });

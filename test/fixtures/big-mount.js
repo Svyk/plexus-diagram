@@ -7,7 +7,10 @@ import { createDomStub } from "./dom-stub.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
-export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, prep = null } = {}) {
+// renderMs: each card body render spins this long (Roam's renderString/renderBlock cost per card). With 0 the stub
+// builds a whole view of shells in one pump chunk, which hid the live zoom-in gap (QA3: 2-3 shells per pump frame).
+const spin = (ms) => { if (!(ms > 0)) return; const t0 = performance.now(); while (performance.now() - t0 < ms) { /* render */ } };
+export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, prep = null, renderMs = 0 } = {}) {
   noteSpeedFlags(flags);
   const stub = createDomStub({ width: 1400, height: 900 });
   const restore = stub.install();
@@ -17,8 +20,8 @@ export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, pre
   prep?.(board);
   const host = {
     stats: {}, graph: "Svy",
-    renderString(el, string) { el.textContent = string; },
-    renderBlock(el, uid) { el.textContent = uid; },
+    renderString(el, string) { spin(renderMs); el.textContent = string; },
+    renderBlock(el, uid) { spin(renderMs); el.textContent = uid; },
     unmount() {},
     pagePreview: () => ({ exists: false, blocks: [] }), pullTree: () => [], blockString: () => null,
     openBlock() {}, openInSidebar() {}, searchPages: () => [], searchBlocks: () => [], related: () => [],

@@ -177,7 +177,7 @@ test("E5: no background slice runs inside a wheel burst on the board; it runs on
 // layer (one transform a frame), the moving shells get their own compositor layers, and only the crossing edges near
 // the view are placed (at most 300 a frame). The drop places the riders at the committed spot in the same task.
 
-test("E6: a big selection drags as one layer: inner edges ride it untouched, crossing edges are budgeted, the drop places everything in one task", async () => {
+test("E6/E2-6: a big selection drags as one layer: shells in one group, inner edges ride untouched, crossing edges budgeted, the drop places everything in one task", async () => {
   const { m, root, sel, el, p } = await dragSelection({});
   try {
     assert.ok(sel.length >= 24, `selected ${sel.length}`);
@@ -201,11 +201,23 @@ test("E6: a big selection drags as one layer: inner edges ride it untouched, cro
     assert.match(layer.style.transform, /^translate\(/);
     assert.deepEqual(before.map(([g]) => g.children?.[1]?.getAttribute?.("d")), layerD, "a riding edge is not re-pathed during the drag");
     assert.ok(perFrame.slice(1).every((n) => n <= 300), `crossing edges placed per frame: ${perFrame}`);
-    assert.equal(el.style.willChange, "transform", "a moving shell is its own layer for the drag");
+    // E2-6: the moving shells ride one group per layer; a frame writes the group's transform, not each shell's.
+    const group = el.parentElement;
+    assert.equal(group.getAttribute("class"), "pxd-drag-layer", "the dragged shell rides the items layer's drag group");
+    assert.match(group.style.transform, /^translate\(/);
+    const fixed = el.style.transform;
+    m.stub.dispatch(el, "pointermove", { clientX: p.clientX + 33, clientY: p.clientY + 22, buttons: 1, pointerId: 7 });
+    m.stub.flushFrames();
+    assert.equal(el.style.transform, fixed, "a grouped shell's own transform is not written per frame");
     m.stub.dispatch(el, "pointerup", { clientX: p.clientX + 30, clientY: p.clientY + 20, button: 0, buttons: 0, pointerId: 7 });
     assert.equal(riders(root), null, "the drag layer is gone in the drop's task");
     assert.equal(m.commits.length, 1, "one commit (one undo entry) for the whole move");
-    assert.equal(el.style.willChange, "");
+    assert.equal(m.view.root.querySelector(".pxd-drag-layer"), null, "the drag groups are gone in the drop's task");
+    assert.equal(el.parentElement?.getAttribute("class"), "pxd-items", "the shell is back in the items layer");
+    const c = m.commits[0];
+    const r0 = m.session.rects.get(el.getAttribute("data-uid"));
+    assert.equal(el.style.transform, `translate(${r0.x}px, ${r0.y}px)`, "at the committed spot, no snap back");
+    assert.ok(c.dx !== 0 || c.dy !== 0);
     const moved = before.filter(([g, d]) => g.children?.[1]?.getAttribute?.("d") !== d).length;
     assert.equal(moved, before.length, "every rider is placed at the committed spot before the frame paints");
     assert.ok(before.every(([g]) => g.parentElement && g.parentElement.getAttribute("class")?.split(" ")[0] === "pxd-edges"), "riders are back in the edges layer");
@@ -227,4 +239,235 @@ test("E6: dragLayer off keeps the 3.34.0 drag (every touching edge placed each f
     assert.ok(most > 300, `every touching edge per frame (${most})`);
     m.stub.dispatch(el, "pointerup", { clientX: p.clientX + 18, clientY: p.clientY + 12, button: 0, buttons: 0, pointerId: 7 });
   } finally { m.done(); }
+});
+
+// E2-5 (perf2): crumb back to a kept PhD MAIN at fit un-parked ~1,500 attached shells in one task (QA3: 514-595 ms,
+// 3.34.0 311). The un-park now renders the nearest RESUME_SHELLS; the rest come back in slices over styled boxes.
+const builtAtFit = async (flags = {}) => {
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, flags });
+  await settledIn(m);
+  for (let k = 0; k < 40 && m.view.stats().shells < 1570; k += 1) { await tick(100); await m.pump(50); }
+  await tick(700);
+  await m.pump(20);
+  return m;
+};
+test("E2-5: crumb back to a fully built big board un-parks with ~96 shells, slices the rest in, and never misses a card", async () => {
+  const m = await builtAtFit();
+  try {
+    assert.ok(m.view.paintAudit().attached > 1400, `built and attached at fit: ${m.view.paintAudit().attached}`);
+    const before = m.view.stats().edgePlacements;
+    m.view.suspend();
+    assert.equal(m.view.park(), true);
+    m.view.unpark();
+    m.view.resume();
+    const first = m.view.paintAudit();
+    assert.ok(first.attached <= 120, `attached when the board shows again: ${first.attached}`);
+    assert.equal(first.missing, 0, "the rest are boxes");
+    const frames = [];
+    for (let i = 0; i < 60; i += 1) { m.stub.flushFrames(); await null; frames.push(m.view.paintAudit()); }
+    assert.deepEqual(missingFrames(frames), []);
+    assert.equal(frames.at(-1).attached, frames.at(-1).inView, "every in-view shell is back");
+    assert.equal(m.view.stats().edgePlacements, before, "no edge is re-placed");
+  } finally { m.done(); }
+});
+
+test("E2-5: slicedResume off un-parks every attached shell at once (3.34.0 + E)", async () => {
+  const m = await builtAtFit({ slicedResume: false });
+  try {
+    const n = m.view.paintAudit().attached;
+    m.view.suspend();
+    m.view.park();
+    m.view.unpark();
+    m.view.resume();
+    assert.equal(m.view.paintAudit().attached, n);
+  } finally { m.done(); }
+});
+
+// E2-2 (perf2): QA3 zoom-in fit->detail lost up to 123 of 139 in-view cards for ~0.6 s after the flip. When the settle's
+// slices ran out (only built shells count), releaseUnderlay hid the boxes and the cover that should follow returned at
+// once (underlayDrawn still set), and at detail it never drew queued cards. Ctrl-wheel into the part of the board the
+// open had not built yet, fullscreen, real card render cost.
+test("E2-2: a Ctrl-wheel zoom into unbuilt cards keeps a box under every in-view card until its shell is in the DOM", async () => {
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, renderMs: 1 });
+  try {
+    await settledIn(m);
+    const frames = [];
+    const audit = async () => { await null; await null; frames.push(m.view.paintAudit()); };
+    for (let i = 0; i < 9; i += 1) {
+      m.stub.dispatch(m.view.root, "wheel", { deltaX: 0, deltaY: -20, ctrlKey: true, deltaMode: 0, clientX: 1100, clientY: 120 });
+      await tick(16);
+      m.stub.flushFrames();
+      await audit();
+    }
+    for (let i = 0; i < 40; i += 1) { await tick(16); m.stub.flushTimers(); m.stub.flushFrames(); await audit(); m.stub.flushIdle(); }
+    assert.equal(m.view.state().lod, "detail");
+    assert.deepEqual(missingFrames(frames), []);
+    assert.equal(frames.at(-1).attached, frames.at(-1).inView);
+  } finally { m.done(); }
+});
+
+test("E2-2: the cover released when the slices run out draws the in-view cards that have no shell in the DOM", async () => {
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 });
+  try {
+    await m.pump(30);
+    // Park and come back: the resume keeps 96 shells, the slices end once the built ones are back, the queued rest
+    // must stay boxes until the pump builds them.
+    m.view.suspend();
+    m.view.park();
+    m.view.unpark();
+    m.view.resume();
+    let worst = 0;
+    for (let i = 0; i < 80; i += 1) { m.stub.flushFrames(); await null; worst = Math.max(worst, m.view.paintAudit().missing); m.stub.flushIdle(); }
+    assert.equal(worst, 0);
+  } finally { m.done(); }
+});
+
+test("E2-2: the zoom-in settle parks far edges in slices (at most ~500 per task), not ~1,300 in one task", async () => {
+  const { sharedTaskProbe } = await import("../src/long-tasks.js");
+  const m = await builtAtFit();
+  const probe = sharedTaskProbe();
+  const orig = probe.span;
+  const drops = [];
+  try {
+    probe.span = (name, fn, phase) => {
+      const a = m.view.stats().edgesAttached;
+      try { return orig(name, fn, phase); } finally { drops.push([name, a - m.view.stats().edgesAttached]); }
+    };
+    const frames = await zoomBurst(m, -1, 4);
+    assert.equal(m.view.state().lod, "detail");
+    assert.deepEqual(missingFrames(frames), []);
+    const most = Math.max(...drops.map(([, d]) => d));
+    assert.ok(most <= 500, `edges parked or dropped in one task: ${most} (${JSON.stringify(drops.filter(([, d]) => d > 100))})`);
+    assert.ok(m.view.stats().edgesAttached < 1500, "the far edges are parked in the end");
+  } finally { probe.span = orig; m.done(); }
+});
+
+// E2-1 (perf2): overviewCanvas. QA3: while zooming toward the map tier the canvas bitmap was upscaled (blurry flat
+// blocks), and at ~0.3 the flat line-colour blocks turned into card-look shells in one frame (the hand-back pop).
+const bitmapScale = (canvas) => canvas.width / parseFloat(canvas.style.width || /(?:^|;)width:([\d.]+)px/.exec(canvas.style.cssText)?.[1]);
+test("E2-1: on the overview canvas a zoom burst redraws the bitmap before it would be upscaled (no blur)", async () => {
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true }, fullscreen: true });
+  try {
+    await settledIn(m);
+    const canvas = m.view.root.querySelector(".pxd-underlay");
+    const worst = [];
+    for (let i = 0; i < 4; i += 1) {
+      m.stub.dispatch(m.view.root, "wheel", { deltaX: 0, deltaY: -20, ctrlKey: true, deltaMode: 0, clientX: 700, clientY: 450 });
+      await tick(16);
+      m.stub.flushFrames();
+      const z = m.view.viewport().zoom;
+      worst.push(+(z / bitmapScale(canvas)).toFixed(2));
+    }
+    assert.equal(m.view.state().lod, "overview", "still the canvas tier during the burst");
+    assert.ok(worst.every((u) => u <= 1.35), `upscale per frame: ${worst}`);
+  } finally { m.done(); }
+});
+
+test("E2-1: the hand-back from the overview canvas to the map tier draws the boxes in the map card look with titles", async () => {
+  const VARS2 = { "--pxd-card": "#26333f", "--pxd-border-strong": "#6b7f91", "--pxd-red-line": "#f87171", "--pxd-red-fill": "#3a1f1f", "--pxd-red-text": "#fca5a5", "--pxd-text": "#e5e7eb" };
+  const titled = (board) => { let i = 0; for (const item of board.items.values()) { if (item.type === "section") continue; item.color = i % 2 ? "red" : ""; item.title = `Card ${i}`; i += 1; } };
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true }, fullscreen: true, theme: VARS2, prep: titled });
+  try {
+    await settledIn(m);
+    const canvas = m.view.root.querySelector(".pxd-underlay");
+    const frames = [];
+    let handBack = null;
+    for (let i = 0; i < 6; i += 1) {
+      m.stub.dispatch(m.view.root, "wheel", { deltaX: 0, deltaY: -20, ctrlKey: true, deltaMode: 0, clientX: 700, clientY: 450 });
+      await tick(16);
+      m.stub.flushFrames();
+      frames.push(m.view.paintAudit());
+    }
+    for (let i = 0; i < 30 && !handBack; i += 1) {
+      await tick(16);
+      m.stub.flushTimers();
+      if (m.view.state().lod !== "overview" && canvas.style.display !== "none") handBack = canvas.__ctx.ops.map((op) => op.join(" "));
+      m.stub.flushFrames();
+      frames.push(m.view.paintAudit());
+    }
+    for (let i = 0; i < 60; i += 1) { await tick(16); m.stub.flushTimers(); m.stub.flushFrames(); m.stub.flushIdle(); frames.push(m.view.paintAudit()); }
+    assert.equal(m.view.state().lod, "map");
+    assert.ok(handBack, "the canvas is up when the tier flips");
+    assert.ok(handBack.includes("fill #26333f"), `card fill, not flat line-colour blocks: ${handBack.slice(0, 6)}`);
+    assert.ok(handBack.includes("stroke #f87171") && handBack.includes("stroke #6b7f91"), "card borders");
+    assert.ok(handBack.some((op) => op.startsWith("fillText #fca5a5 Card")), "coloured cards' titles in the palette text colour");
+    assert.ok(!handBack.includes("fillRect #f87171"), "no overview line-colour block");
+    assert.deepEqual(missingFrames(frames), []);
+  } finally { m.done(); }
+});
+
+// E2-4 (perf2): QA3 C zoom-out: the burst boxes were dark detail cards with a faint border on a dark board, a
+// near-blank frame (#9) and sparse dim boxes. Below a readable size their title and body are text-coloured bars.
+test("E2-4: a zoom-out burst from detail draws the far cards with greeked titles and body lines, not empty dark boxes", async () => {
+  const VARS3 = { "--pxd-card": "#26333f", "--pxd-border-strong": "#6b7f91", "--pxd-text": "#e5e7eb" };
+  const titled = (board) => { let i = 0; for (const item of board.items.values()) { if (item.type === "section") continue; item.title = `Card number ${i}`; i += 1; } };
+  const m = mountBig({ x: -2000, y: -1500, zoom: 1 }, { theme: VARS3, prep: titled });
+  try {
+    await settledIn(m);
+    for (let i = 0; i < 6; i += 1) {
+      m.stub.dispatch(m.view.root, "wheel", { deltaX: 0, deltaY: 20, ctrlKey: true, deltaMode: 0, clientX: 700, clientY: 450 });
+      await tick(16);
+      m.stub.flushFrames();
+    }
+    assert.ok(m.view.viewport().zoom < 0.5);
+    const canvas = m.view.root.querySelector(".pxd-underlay");
+    assert.ok(canvas && canvas.style.display !== "none");
+    const ops = canvas.__ctx.ops.map((op) => op.join(" "));
+    const bars = ops.filter((op) => op === "fillRect #e5e7eb").length;
+    assert.ok(bars > 100, `greeked text bars on the burst boxes: ${bars}`);
+    assert.ok(ops.includes("fill #26333f"), "the boxes keep the card fill");
+  } finally { m.done(); }
+});
+
+test("E2-6: Escape during a grouped drag puts every shell back where it was, out of the group", async () => {
+  const { m, root, el, p } = await dragSelection({});
+  try {
+    const before = el.style.transform;
+    m.stub.dispatch(el, "pointerdown", { ...p, button: 0, buttons: 1, pointerId: 7 });
+    for (let i = 1; i <= 5; i += 1) { m.stub.dispatch(el, "pointermove", { clientX: p.clientX + i * 6, clientY: p.clientY + i * 4, buttons: 1, pointerId: 7 }); m.stub.flushFrames(); }
+    assert.ok(root.querySelector(".pxd-drag-layer"));
+    m.stub.dispatch(m.stub.window, "keydown", { key: "Escape", code: "Escape" });
+    m.stub.dispatch(el, "pointerup", { clientX: p.clientX + 30, clientY: p.clientY + 20, button: 0, buttons: 0, pointerId: 7 });
+    m.stub.flushFrames();
+    assert.equal(root.querySelector(".pxd-drag-layer"), null);
+    assert.equal(el.parentElement?.getAttribute("class"), "pxd-items");
+    if (m.commits.length === 0) assert.equal(el.style.transform, before, "a cancelled drag leaves the card where it was");
+  } finally { m.done(); }
+});
+
+// E2-6 (gestureQuiet): the board's own background jobs (the overview-fast shell pump) during an open, then a 700 ms
+// wheel burst: no bg slice inside the burst. On this fixture the input quiet alone already keeps wheel bursts clear
+// (flag off: 0 too), and the camera quiet makes the open tail ~0.3 s longer (E.out.md "Fix round 2").
+test("E2-6: no background-budget slice runs inside a wheel burst while the board's own jobs are pending", async () => {
+  const { sharedTaskProbe, resetSharedTaskProbe } = await import("../src/long-tasks.js");
+  const { bindBgGestureFlag, bindBgBudgetFlag, resetSharedBgBudget } = await import("../src/bg-budget.js");
+  bindBgGestureFlag(() => true);
+  bindBgBudgetFlag(() => true);
+  resetSharedBgBudget();
+  resetSharedTaskProbe();
+  const realRic = globalThis.requestIdleCallback;
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 });
+  const probe = sharedTaskProbe();
+  const orig = probe.span;
+  const seen = { open: 0, burst: 0, after: 0 };
+  let phase = "open";
+  probe.span = (name, fn, ph) => { if (name.startsWith("bg:")) seen[phase] += 1; return orig(name, fn, ph); };
+  try {
+    const run = async (ms, step) => { const end = Date.now() + ms; while (Date.now() < end) { step?.(); m.stub.flushFrames(); m.stub.flushIdle(); m.stub.flushTimers(); await tick(16); } };
+    await run(300);
+    phase = "burst";
+    await run(700, () => m.stub.dispatch(m.view.root, "wheel", { deltaX: 20, deltaY: 20, deltaMode: 0, clientX: 700, clientY: 450 }));
+    phase = "after";
+    await run(2500);
+    assert.equal(seen.burst, 0, `bg slices inside the burst: ${JSON.stringify(seen)}`);
+    assert.ok(seen.after > 0, "the jobs ran once the camera was still");
+    assert.equal(m.view.stats().shells, 1570, "the shell pump finished after the burst");
+  } finally {
+    probe.span = orig;
+    globalThis.requestIdleCallback = realRic;
+    m.done();
+    bindBgGestureFlag(() => false);
+    resetSharedBgBudget();
+    resetSharedTaskProbe();
+  }
 });

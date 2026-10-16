@@ -4,6 +4,15 @@
 export const PERF_CAP = 256;
 const OPEN_FRAMES = 120;
 
+// A live board card in the mount (the styled sketch's cards carry .pxd-item too, for the board's CSS).
+export function hasLiveCard(mountEl) {
+  const first = mountEl?.querySelector?.(".pxd-item");
+  if (!first) return false;
+  if (!first.classList?.contains?.("pxd-sketch__card")) return true;
+  for (const node of mountEl.querySelectorAll?.(".pxd-item") || []) if (!node.classList?.contains?.("pxd-sketch__card")) return true;
+  return false;
+}
+
 export function perfNow() {
   const clock = globalThis.performance;
   if (clock && typeof clock.now === "function") return clock.now();
@@ -317,7 +326,7 @@ export function createPerfLog({ cap = PERF_CAP } = {}) {
       if (Number.isFinite(ms) && ms >= 0) open.push(ms);
       publish();
     };
-    if (mountEl.querySelector?.(".pxd-item")) {
+    if (hasLiveCard(mountEl)) {
       finish();
       return () => {};
     }
@@ -326,7 +335,7 @@ export function createPerfLog({ cap = PERF_CAP } = {}) {
     const raf = globalThis.requestAnimationFrame;
     if (typeof raf !== "function") {
       queueMicrotask(() => {
-        if (!stopped && on && mountEl.querySelector?.(".pxd-item")) finish();
+        if (!stopped && on && hasLiveCard(mountEl)) finish();
       });
       watches.add(cancel);
       return cancel;
@@ -336,7 +345,7 @@ export function createPerfLog({ cap = PERF_CAP } = {}) {
     const step = () => {
       if (stopped || !on) return;
       if (mountEl.isConnected === false) return;
-      if (mountEl.querySelector?.(".pxd-item")) { finish(); return; }
+      if (hasLiveCard(mountEl)) { finish(); return; }
       left -= 1;
       if (left <= 0) return;
       id = raf(step);

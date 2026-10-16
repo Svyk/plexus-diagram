@@ -1,9 +1,20 @@
+import { lodFonts } from "../model/geometry.js";
+
 // While the camera moves on a big board, no shell or edge joins the DOM: each attach dirtied the board for a style
 // recalc of 1,000-3,500 elements and a page hit test (PhD main board at map zoom: pan p95 184-215 ms; with no
 // attach in the gesture frames, 33 ms). Items that are not in the DOM yet show as plain boxes and their edges as
 // hairlines on one canvas inside the world, drawn once when the gesture starts; the world transform carries it.
 // The settle attaches the real shells over the boxes.
 const MAX_SIDE = 2048;
+// E2-1 (perf2): with `view`, only a window around the view is drawn (the view plus VIEW_PAD of it on each side), so the
+// bitmap keeps the zoom's resolution: a whole PhD board at zoom 0.3 is ~5,000 screen px across, and capped at
+// MAX_SIDE it was upscaled 2.5x (blurry blocks while zooming toward the map tier). covers() tells the view when the
+// camera has left that window or zoomed past what the bitmap can show sharply, and it draws again (fills only).
+const VIEW_PAD = 0.5;
+const SHARP_UPSCALE = 1.35;
+// Card titles on the map and detail looks: only at a readable size, at most this many cards (the ones in view).
+const TITLE_MIN_PX = 8;
+const TITLE_MAX_CARDS = 400;
 const PALETTE = ["gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
 
 export function createGestureUnderlay({ doc, world, root, before = null } = {}) {
@@ -12,6 +23,7 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
   let colorCache = null;
   let lastItems = [];
   let lastUids = null;
+  let drawn = null;
 
   const colors = () => {
     if (colorCache) return colorCache;
@@ -49,6 +61,12 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
     c.accent = read("--pxd-accent", "hsl(175 80% 30%)");
     c.border = read("--pxd-border", c.line);
     c.borderStrong = read("--pxd-border-strong", c.border);
+    c.text = read("--pxd-text", "#1f2937");
+    c.texts = {};
+    for (const name of PALETTE) c.texts[name] = read(`--pxd-${name}-text`, c.text);
+    let family = "";
+    try { family = doc.defaultView?.getComputedStyle?.(root)?.fontFamily || ""; } catch { family = ""; }
+    c.family = family || "sans-serif";
     return c;
   };
 
@@ -60,13 +78,27 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
   // items: [{ uid, rect }] that have no shell in the DOM; edges: [[rectA, rectB]] for edges not in the DOM.
   // styled + tier (E, styledUnderlay): the boxes are drawn the way the cards look on that tier, so a shell that
   // attaches over its box does not change colour (the plain grey boxes read as cards vanishing on a coloured board).
-  const draw = ({ items = [], edges = [], zoom = 1, dpr = 1, styled = false, tier = "overview" } = {}) => {
+  const draw = ({ items = [], edges = [], zoom = 1, dpr = 1, styled = false, tier = "overview", view = null } = {}) => {
     if (!items.length && !edges.length) { hide(); return 0; }
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const { rect: r } of items) { x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y); x1 = Math.max(x1, r.x + r.w); y1 = Math.max(y1, r.y + r.h); }
     for (const [a, b] of edges) for (const r of [a, b]) { x0 = Math.min(x0, r.x + r.w / 2); y0 = Math.min(y0, r.y + r.h / 2); x1 = Math.max(x1, r.x + r.w / 2); y1 = Math.max(y1, r.y + r.h / 2); }
+    const want = zoom * Math.min(dpr, 1.25);
+    // E2-1: a board bigger than the bitmap at this zoom draws the window around the view only.
+    if (view && ((x1 - x0) * want > MAX_SIDE || (y1 - y0) * want > MAX_SIDE)) {
+      const px = view.w * VIEW_PAD, py = view.h * VIEW_PAD;
+      x0 = Math.max(x0, view.x - px); y0 = Math.max(y0, view.y - py);
+      x1 = Math.min(x1, view.x + view.w + px); y1 = Math.min(y1, view.y + view.h + py);
+      if (!(x1 > x0 && y1 > y0)) { x0 = view.x; y0 = view.y; x1 = view.x + view.w; y1 = view.y + view.h; }
+      const box = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      items = items.filter(({ rect: r }) => r.x < box.x + box.w && r.x + r.w > box.x && r.y < box.y + box.h && r.y + r.h > box.y);
+      edges = edges.filter(([a, b]) => {
+        const ax = a.x + a.w / 2, ay = a.y + a.h / 2, bx = b.x + b.w / 2, by = b.y + b.h / 2;
+        return Math.max(ax, bx) >= box.x && Math.min(ax, bx) <= box.x + box.w && Math.max(ay, by) >= box.y && Math.min(ay, by) <= box.y + box.h;
+      });
+    }
     const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
-    const scale = Math.max(0.01, Math.min(zoom * Math.min(dpr, 1.25), MAX_SIDE / w, MAX_SIDE / h));
+    const scale = Math.max(0.01, Math.min(want, MAX_SIDE / w, MAX_SIDE / h));
     // Colours before the canvas exists. getComputedStyle after create/insert/size forced layout in the shell frame.
     const c = styled ? paletteColors() : colors();
     if (!canvas) {
@@ -83,7 +115,7 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
     try { ctx = canvas.getContext?.("2d") || null; } catch { ctx = null; }
     if (!ctx) { hide(); return 0; }
     try {
-      paint(ctx, { items, edges, c, scale, x0, y0, bw, bh, styled, tier });
+      paint(ctx, { items, edges, c, scale, x0, y0, bw, bh, styled, tier, zoom, view });
     } catch {
       // A context that cannot draw shows nothing, the way the board looked before the underlay.
       hide();
@@ -93,7 +125,16 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
     shown = true;
     lastItems = items;
     lastUids = null;
+    drawn = { x: x0, y: y0, w, h, scale, whole: !view || (w * want <= MAX_SIDE && h * want <= MAX_SIDE) };
     return items.length;
+  };
+  // E2-1: whether the bitmap still shows `view` at `zoom` sharply (inside the drawn window, not upscaled past
+  // SHARP_UPSCALE). A whole-board bitmap drawn at the zoom's own resolution covers any pan.
+  const covers = (view, zoom, dpr = 1) => {
+    if (!shown || !drawn || !view) return shown;
+    if (zoom * Math.min(dpr, 1.25) > drawn.scale * SHARP_UPSCALE) return false;
+    if (drawn.whole) return true;
+    return view.x >= drawn.x && view.y >= drawn.y && view.x + view.w <= drawn.x + drawn.w && view.y + view.h <= drawn.y + drawn.h;
   };
   // The uids of the boxes on the canvas now (the paint audit).
   const drawnUids = () => {
@@ -104,14 +145,14 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
 
   // C2, the overview tier: items [{ uid, rect, color, dim, hit, selected }] (cards with no shell in the DOM), edges
   // [[rectA, rectB]] (edges not in the DOM). One fill per colour group, one stroke per outline kind, hairline edges.
-  const drawOverview = ({ items = [], edges = [], zoom = 1, dpr = 1 } = {}) => {
+  const drawOverview = ({ items = [], edges = [], zoom = 1, dpr = 1, view = null } = {}) => {
     if (!items.length && !edges.length) { hide(); return 0; }
-    return draw({ items, edges, zoom, dpr, styled: true, tier: "overview" });
+    return draw({ items, edges, zoom, dpr, styled: true, tier: "overview", view });
   };
 
   // Map and detail tiers: a card is --pxd-card under its palette fill, with a 1px border in its line colour
   // (--pxd-border-strong for an uncoloured card) and an 8px radius (extension.css .pxd-item).
-  const paintCards = (ctx, { items, c, scale }) => {
+  const paintCards = (ctx, { items, c, scale, tier = "detail", zoom = 1, view = null }) => {
     const round = typeof ctx.roundRect === "function";
     const shape = (r) => { if (round) ctx.roundRect(r.x, r.y, r.w, r.h, 8); else ctx.rect(r.x, r.y, r.w, r.h); };
     ctx.globalAlpha = 1;
@@ -129,12 +170,15 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
       if (!lines.has(line)) lines.set(line, []);
       lines.get(line).push(item.rect);
     }
+    // The map tile fades its palette fill in from the top (extension.css map tier gradient); half reads the same.
     for (const [fill, rects] of fills) {
       ctx.fillStyle = fill;
+      ctx.globalAlpha = tier === "map" ? 0.5 : 1;
       ctx.beginPath();
       for (const r of rects) shape(r);
       ctx.fill();
     }
+    ctx.globalAlpha = 1;
     ctx.lineWidth = 1;
     for (const [line, rects] of lines) {
       ctx.strokeStyle = line;
@@ -142,7 +186,85 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
       for (const r of rects) shape(r);
       ctx.stroke();
     }
+    paintTitles(ctx, { items, c, tier, zoom, view });
     ctx.lineWidth = 1 / scale;
+  };
+  // The card header a shell shows on this tier (extension.css): 600 weight, 12 px side and 6 px top padding, the
+  // palette's text colour; the map tile wraps up to three lines at --pxd-map-font, detail is one 13 px line.
+  // Below a readable size the title and a detail card's body are drawn as text-coloured bars ("greeked"): a zoom-out
+  // burst at detail drew dark boxes with a faint border on a dark board, which read as a blank frame (QA3 C #9-#26).
+  const paintTitles = (ctx, { items, c, tier, zoom, view }) => {
+    const font = tier === "map" ? lodFonts(zoom).map : 13;
+    const lines = tier === "map" ? 3 : 1;
+    const lineH = font * 1.2;
+    if (font * zoom < TITLE_MIN_PX || typeof ctx.fillText !== "function") { paintGreek(ctx, { items, c, tier, font, lines, lineH }); return; }
+    if (tier === "detail") paintGreek(ctx, { items, c, tier, font, lines, lineH, bodyOnly: true });
+    ctx.font = `600 ${font}px ${c.family}`;
+    ctx.textBaseline = "top";
+    const fit = (text, width) => {
+      if (typeof ctx.measureText !== "function" || ctx.measureText(text).width <= width) return text;
+      let lo = 0, hi = text.length;
+      while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (ctx.measureText(`${text.slice(0, mid)}…`).width <= width) lo = mid; else hi = mid - 1; }
+      return `${text.slice(0, lo)}…`;
+    };
+    let n = 0;
+    for (const item of items) {
+      const title = String(item.title || "").trim();
+      if (!title) continue;
+      const r = item.rect;
+      if (view && !(r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y)) continue;
+      if (++n > TITLE_MAX_CARDS) break;
+      const width = r.w - 24;
+      if (width <= font) continue;
+      const name = item.color && c.texts?.[item.color] ? item.color : "";
+      ctx.fillStyle = name ? c.texts[name] : c.text;
+      const room = Math.max(1, Math.min(lines, Math.floor((r.h - 12) / lineH)));
+      const words = title.split(/\s+/);
+      let row = 0;
+      let line = "";
+      for (let i = 0; i < words.length && row < room; i += 1) {
+        const next = line ? `${line} ${words[i]}` : words[i];
+        if (!line || typeof ctx.measureText !== "function" || ctx.measureText(next).width <= width) { line = next; continue; }
+        const last = row === room - 1;
+        ctx.fillText(last ? fit(`${line} ${words.slice(i).join(" ")}`, width) : line, r.x + 12, r.y + 6 + row * lineH);
+        row += 1;
+        line = last ? "" : words[i];
+        if (last) break;
+      }
+      if (line && row < room) ctx.fillText(fit(line, width), r.x + 12, r.y + 6 + row * lineH);
+    }
+  };
+
+  const paintGreek = (ctx, { items, c, tier, font, lines, lineH, bodyOnly = false }) => {
+    const charW = font * 0.55;
+    for (const item of items) {
+      const r = item.rect;
+      const width = r.w - 24;
+      if (width <= 0) continue;
+      const name = item.color && c.texts?.[item.color] ? item.color : "";
+      ctx.fillStyle = name ? c.texts[name] : c.text;
+      if (!bodyOnly) {
+        const title = String(item.title || "").trim();
+        if (title) {
+          ctx.globalAlpha = 0.55;
+          const room = Math.max(1, Math.min(lines, Math.floor((r.h - 12) / lineH)));
+          let left = title.length * charW;
+          for (let row = 0; row < room && left > 0; row += 1) {
+            const bar = Math.min(width, left);
+            ctx.fillRect(r.x + 12, r.y + 6 + row * lineH + font * 0.25, bar, font * 0.6);
+            left -= width;
+          }
+        }
+      }
+      // A detail card shows its body under a ~32 px header: a few faint lines.
+      if (tier === "detail" && r.h > 56) {
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle = c.text;
+        const rows = Math.min(4, Math.floor((r.h - 44) / 19));
+        for (let row = 0; row < rows; row += 1) ctx.fillRect(r.x + 12, r.y + 40 + row * 19, width * (row === rows - 1 ? 0.6 : 0.9 - (row % 2) * 0.08), 6.5);
+      }
+    }
+    ctx.globalAlpha = 1;
   };
 
   const paintStyled = (ctx, { items, c, scale }) => {
@@ -182,7 +304,7 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
     ctx.globalAlpha = 1;
   };
 
-  const paint = (ctx, { items, edges, c, scale, x0, y0, bw, bh, styled = false, tier = "overview" }) => {
+  const paint = (ctx, { items, edges, c, scale, x0, y0, bw, bh, styled = false, tier = "overview", zoom = 1, view = null }) => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, bw, bh);
     ctx.setTransform(scale, 0, 0, scale, -x0 * scale, -y0 * scale);
@@ -199,7 +321,7 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
     }
     ctx.globalAlpha = 1;
     if (styled && tier === "overview") { paintStyled(ctx, { items, c, scale }); return; }
-    if (styled) { paintCards(ctx, { items, c, scale }); return; }
+    if (styled) { paintCards(ctx, { items, c, scale, tier, zoom, view }); return; }
     ctx.fillStyle = c.card;
     for (const { rect: r } of items) ctx.fillRect(r.x, r.y, r.w, r.h);
   };
@@ -211,5 +333,5 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
   };
   const dropColors = () => { colorCache = null; };
 
-  return { draw, drawOverview, hide, dispose, dropColors, drawnUids, isShown: () => shown, element: () => canvas };
+  return { draw, drawOverview, hide, dispose, dropColors, drawnUids, covers, isShown: () => shown, element: () => canvas };
 }

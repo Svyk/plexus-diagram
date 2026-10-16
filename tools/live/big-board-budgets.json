@@ -11,5 +11,7 @@
   "swapFramesMissingCards": 0,
   "edgeChurnPerCrumbBack": 0,
   "shellsAtZoomInFlip": 120,
-  "edgesPlacedPerDragFrame": 300
+  "edgesPlacedPerDragFrame": 300,
+  "shellsAttachedAtResume": 120,
+  "shellTransformsPerDragFrame": 0
 }

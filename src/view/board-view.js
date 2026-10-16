@@ -11,6 +11,7 @@ import { createPartSizer } from "../part-sizer.js";
 import { sharedBgBudget } from "../bg-budget.js";
 import { createHitShield } from "./hit-shield.js";
 import { createGestureUnderlay } from "./gesture-underlay.js";
+import { sharedTaskProbe } from "../long-tasks.js";
 import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, readPlexus, semanticRef, plainText } from "../model/schema.js";
 import { TABLE_SIZE, keyGate, ownershipOf, tablePointerTarget } from "../model/roam-table.js";
 import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../model/drawing-card.js";
@@ -388,35 +389,38 @@ export function toggleTodoAt(string, index = 0) {
 const BADGE_MAX = 60;
 const NOTE_KINDS = ["note", "block", "page"];
 
-function createTimers() {
+// E2-5: every frame and timer callback runs inside a long-task probe span named by its caller (view.longTasks()).
+function createTimers({ phase = () => "" } = {}) {
   const active = new Set();
-  const later = (fn, ms) => {
-    const id = setTimeout(() => { active.delete(entry); fn(); }, ms);
+  const probe = sharedTaskProbe();
+  const run = (label, fn, arg) => probe.span(label, () => fn(arg), phase());
+  const later = (fn, ms, label = "timer") => {
+    const id = setTimeout(() => { active.delete(entry); run(label, fn); }, ms);
     const entry = () => { clearTimeout(id); active.delete(entry); };
     active.add(entry);
     return entry;
   };
-  const frame = (fn) => {
+  const frame = (fn, label = "frame") => {
     const raf = globalThis.requestAnimationFrame;
     let entry;
     if (typeof raf === "function") {
-      const id = raf((t) => { active.delete(entry); fn(t); });
+      const id = raf((t) => { active.delete(entry); run(label, fn, t); });
       entry = () => { globalThis.cancelAnimationFrame?.(id); active.delete(entry); };
     } else {
-      const id = setTimeout(() => { active.delete(entry); fn(Date.now()); }, 16);
+      const id = setTimeout(() => { active.delete(entry); run(label, fn, Date.now()); }, 16);
       entry = () => { clearTimeout(id); active.delete(entry); };
     }
     active.add(entry);
     return entry;
   };
-  const idle = (fn) => {
+  const idle = (fn, label = "idle") => {
     const ric = globalThis.requestIdleCallback;
     let entry;
     if (typeof ric === "function") {
-      const id = ric((d) => { active.delete(entry); fn(d); });
+      const id = ric((d) => { active.delete(entry); run(label, fn, d); });
       entry = () => { globalThis.cancelIdleCallback?.(id); active.delete(entry); };
     } else {
-      const id = setTimeout(() => { active.delete(entry); fn({ timeRemaining: () => 8, didTimeout: true }); }, 0);
+      const id = setTimeout(() => { active.delete(entry); run(label, fn, { timeRemaining: () => 8, didTimeout: true }); }, 0);
       entry = () => { clearTimeout(id); active.delete(entry); };
     }
     active.add(entry);
@@ -975,7 +979,10 @@ function buildBoardView(onFail, {
   try { motionMq = win?.matchMedia?.("(prefers-reduced-motion: reduce)") || null; } catch { motionMq = null; }
   const prefersReducedMotion = () => Boolean(motionMq?.matches);
   const currentMotion = () => resolveMotion(setting("motion", "full"), prefersReducedMotion());
-  const timers = createTimers();
+  // What the board is doing when a long task lands (view.longTasks()). Read late: the state is declared further down.
+  // eslint-disable-next-line no-use-before-define
+  const taskPhase = () => { try { return boardPhase(); } catch { return ""; } };
+  const timers = createTimers({ phase: taskPhase });
   const listeners = [];
   const observers = [];
   const subs = [];
@@ -1769,6 +1776,9 @@ function buildBoardView(onFail, {
     return node;
   } : null;
   let paintOverviewCover = () => {};
+  // E2-2: the cover on the underlay holds boxes for in-view cards with no shell in the DOM (refreshGapCover).
+  let gapCover = false;
+  let refreshGapCover = () => {};
   itemsR = createItemRenderer({
     doc,
     host,
@@ -1778,7 +1788,11 @@ function buildBoardView(onFail, {
     timers,
     adoptShell,
     onOverviewQueue: () => paintOverviewCover(),
-    onShells: () => { try { edgesR.flushWaiting?.(); } catch { /* the edge layer follows the shells */ } },
+    onShells: () => {
+      try { edgesR.flushWaiting?.(); } catch { /* the edge layer follows the shells */ }
+      // E2-2: boxes stood in for in-view cards still queued; the ones just built drop off the canvas.
+      if (gapCover) refreshGapCover();
+    },
     tableThumb,
     onTableShown,
     onEditChange: (uid) => {
@@ -3814,7 +3828,7 @@ function buildBoardView(onFail, {
 
   const schedule = () => {
     if (disposed || suspended || frameHandle) return;
-    frameHandle = timers.frame(() => { frameHandle = null; renderFrame(); });
+    frameHandle = timers.frame(() => { frameHandle = null; renderFrame(); }, "render");
   };
   // RF-4: the hover toolbar waits HOVER_GRACE ms before it hides or switches to another card, so the pointer can
   // travel from the card to the bar. Declared here because setViewport (pan/zoom) hides it at once.
@@ -4127,11 +4141,15 @@ function buildBoardView(onFail, {
   };
   const beginDragRide = (b, set) => {
     const shells = [];
-    for (const uid of set) {
-      const el = itemsR.shellOf(uid);
-      if (el?.style) { el.style.willChange = "transform"; shells.push(el); }
+    // E2-6: the moving shells ride one group per layer (cards.js beginDragGroup); per-shell layers otherwise.
+    const grouped = Boolean(itemsR.beginDragGroup?.(set));
+    if (!grouped) {
+      for (const uid of set) {
+        const el = itemsR.shellOf(uid);
+        if (el?.style) { el.style.willChange = "transform"; shells.push(el); }
+      }
     }
-    dragRide = { shells, edges: edgesR.beginDrag(b, set), turn: 0 };
+    dragRide = { shells, grouped, edges: edgesR.beginDrag(b, set), turn: 0 };
   };
   // The edges that cross the moving set and have an end near the view, at most DRAG_EDGE_BUDGET a frame (the rest of
   // them in turn on the next frames). An edge far from the view is placed by the drop's commit (or stays where it
@@ -4162,6 +4180,7 @@ function buildBoardView(onFail, {
     const ride = dragRide;
     dragRide = null;
     for (const el of ride.shells) { try { el.style.willChange = ""; } catch { /* gone */ } }
+    if (ride.grouped) { try { itemsR.endDragGroup?.(); } catch { /* renderer */ } }
     const b = board();
     edgesR.endDrag(b ? { board: b, rects: paintRects(), zoom: vp.zoom } : null);
   };
@@ -4178,8 +4197,11 @@ function buildBoardView(onFail, {
   // The tier the boxes were drawn for: a burst canvas kept through a settle that flipped the tier is drawn again.
   let underlayTier = "";
   const showUnderlay = () => {
-    // C2: the overview canvas is the underlay already. A pan or a zoom burst does not redraw it.
+    // C2: the overview canvas is the underlay already. A pan or a zoom burst does not redraw it (unless it no longer
+    // covers the view sharply, E2-1).
     if (overviewCanvasOn() && paintOverviewCanvas({ band: false })) return;
+    // E2-1: a burst canvas that the camera has left, or zoomed past its resolution, is drawn again (fills only).
+    if (underlayDrawn && underlayKind === "burst" && size.width && !underlay.covers(visibleWorldRect(vp, size, 0), vp.zoom, win?.devicePixelRatio || 1)) underlayDrawn = false;
     if (underlayDrawn) return;
     underlayDrawn = true;
     underlayKind = "burst";
@@ -4190,7 +4212,7 @@ function buildBoardView(onFail, {
     for (const item of b.items.values()) {
       if (item.type === "section") continue;
       const rect = r.get(item.uid);
-      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect, color: item.color || "" });
+      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect, color: item.color || "", title: item.title || "" });
     }
     const edges = [];
     if (edgesR.isVirtual?.(b)) {
@@ -4201,8 +4223,10 @@ function buildBoardView(onFail, {
       }
     }
     underlayTier = tier;
-    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: styledUnderlay(), tier });
+    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: styledUnderlay(), tier, view: underlayView() });
   };
+  // E2-1: the camera's world rect, for the underlay's window and titles (null before the first measure).
+  const underlayView = () => (size.width ? visibleWorldRect(vp, size, 0) : null);
   const endUnderlay = () => { underlayDrawn = false; };
   // Live at map zoom drops the snapshot while shells are still queued. Those cards stay as boxes on the
   // gesture underlay (pointer-events none) until the pump or a hit builds them. A gesture hides that canvas
@@ -4228,14 +4252,16 @@ function buildBoardView(onFail, {
       return;
     }
     if (underlayDrawn) return;
-    try { if (notedSpeedFlags().overviewFast === false) { coverUids = new Set(); return; } } catch { coverUids = new Set(); return; }
+    gapCover = false;
+    try { if (notedSpeedFlags().overviewFast === false) { coverUids = new Set(); if (!paintGapCover()) underlay.hide(); return; } } catch { coverUids = new Set(); return; }
     if (tier === "detail" && itemsR.coverHeld?.() !== true) {
-      const pending = itemsR.pendingBoxes?.() || [];
       coverUids = new Set();
-      if (!pending.length) underlay.hide();
+      if (!paintGapCover()) underlay.hide();
       return;
     }
     const items = itemsR.pendingBoxes?.() || [];
+    // E2-2: a built shell that is not in the DOM yet (a slice still to come) keeps its box as well.
+    if (styledUnderlay()) items.push(...gapBoxes(new Set(items.map((item) => item.uid))));
     if (!items.length) { coverUids = new Set(); underlay.hide(); return; }
     coverUids = new Set(items.map((item) => item.uid));
     underlayKind = "cover";
@@ -4251,11 +4277,45 @@ function buildBoardView(onFail, {
       }
     }
     underlayTier = tier;
-    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: styledUnderlay(), tier });
+    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: styledUnderlay(), tier, view: underlayView() });
   };
   const releaseUnderlay = () => {
     if (overviewCanvasOn() && paintOverviewCanvas()) return;
+    // E2-2: the cover that follows is drawn here; with underlayDrawn still set it returned at once, and an in-view card
+    // still queued for its shell (a zoom into a part of the board the open had not built yet) showed nothing until the
+    // pump built it (QA3 zoom-in: 123 of 139 cards for ~0.6 s).
+    underlayDrawn = false;
     underlay.hide();
+    paintOverviewCover();
+  };
+  // E2-2 (styledUnderlay): the in-view cards with no shell in the DOM (queued for a build, or built and not attached
+  // yet), as boxes. Drawn after a settle hands off at detail, and redrawn as shells are built until none is left.
+  const gapBoxes = (skip = null) => {
+    const b = board();
+    if (!b || !size.width || !itemsR.isVirtual?.()) return [];
+    const view = visibleWorldRect(vp, size, 0);
+    const r = paintRects();
+    const out = [];
+    for (const item of b.items.values()) {
+      if (item.type === "section" || skip?.has(item.uid)) continue;
+      const rect = r.get(item.uid);
+      if (!rect || !rectsIntersect(rect, view) || itemsR.attachedUid(item.uid)) continue;
+      out.push({ uid: item.uid, rect, color: item.color || "", title: item.title || "" });
+    }
+    return out;
+  };
+  const paintGapCover = () => {
+    if (!styledUnderlay()) return false;
+    const items = gapBoxes();
+    if (!items.length) return false;
+    gapCover = true;
+    underlayKind = "cover";
+    underlayTier = tier;
+    underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: true, tier, view: underlayView() });
+    return true;
+  };
+  refreshGapCover = () => {
+    if (disposed || suspended || underlayDrawn || gesturing || wheelLayer || slicing || underlayKind !== "cover") return;
     paintOverviewCover();
   };
   // C2. Overview tier of a big board on the underlay canvas (speed flag overviewCanvas, off by default this round).
@@ -4290,7 +4350,8 @@ function buildBoardView(onFail, {
     const model = rects();
     const attached = itemsR.attachedCount?.() ?? 0;
     if (b !== ovModel || model !== ovRects || attached !== ovAttached) ovDirty = true;
-    if (shown && !ovDirty && (!band || nextBand === ovBand)) { underlayDrawn = true; return true; }
+    const sharp = !size.width || underlay.covers(visibleWorldRect(vp, size, 0), vp.zoom, win?.devicePixelRatio || 1);
+    if (shown && !ovDirty && sharp && (!band || nextBand === ovBand)) { underlayDrawn = true; return true; }
     ovDirty = false;
     ovBand = nextBand;
     ovModel = b;
@@ -4319,7 +4380,7 @@ function buildBoardView(onFail, {
     coverUids = new Set();
     ovDraws += 1;
     ovItems = items.length;
-    underlay.drawOverview({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
+    underlay.drawOverview({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, view: underlayView() });
     return true;
   };
   // C1. The settle after a fit or a zoom out on a big board attached every near shell and edge in one task (PhD MAIN
@@ -4332,6 +4393,49 @@ function buildBoardView(onFail, {
   const SETTLE_SLICE_MS = 6;
   let sliceFrame = null;
   let slicing = false;
+  const resumeView = () => {
+    suspended = false;
+    resumeObservers();
+    try { itemsR.resumeShells?.(); } catch { /* shells */ }
+    timers.resumeBg();
+    armCoverWarm();
+    // The DOM was kept while parked. Only a board that changed meanwhile needs the full pass (a change that lands
+    // later arrives through the session as usual); otherwise the camera, selection and minimap are enough.
+    // A shell queue still open has to sync before the pump arms again, even when the board object is the same.
+    // E1 (perf2): the same board with shells still queued syncs its shells only. The full pass also re-placed every
+    // edge (PhD main board crumb back: ~2,000 edges re-pathed, 1,936 `d` rewrites per edge part) though no edge moved.
+    if (board() !== suspendedBoard || (itemsR.queuedCount?.() > 0 && notedSpeedFlags().keepFullscreen === false)) {
+    dirty.all = true;
+    dirty.structural = true;
+    } else if (itemsR.queuedCount?.() > 0) {
+    dirty.resync = true;
+    dirty.viewport = true;
+    dirty.selection = true;
+    dirty.minimap = true;
+    } else {
+    dirty.viewport = true;
+    dirty.selection = true;
+    dirty.minimap = true;
+    }
+    suspendedBoard = null;
+    if (!dirty.all) sliceResume();
+    schedule();
+  };
+  // E2-5 (perf2, speed flag slicedResume): a kept big board comes back with its RESUME_SHELLS shells nearest the view
+  // centre; the rest leave the DOM before it un-parks and come back in the settle's slices over styled boxes (the
+  // bridge snapshot fades out on top). Crumb back to PhD MAIN at fit rendered ~1,500 shells in one 514-595 ms task.
+  const RESUME_SHELLS = 96;
+  const sliceResume = () => {
+    try { if (notedSpeedFlags().slicedResume === false) return; } catch { return; }
+    if (!sliceWanted() || (itemsR.attachedCount?.() || 0) <= RESUME_SHELLS * 2) return;
+    const rect = visibleWorldRect(vp, size, ATTACH_MARGIN);
+    if (!itemsR.keepNearest?.(rect, RESUME_SHELLS)) return;
+    underlayDrawn = false;
+    showUnderlay();
+    beginSlice();
+    settleAttach();
+  };
+  const boardPhase = () => (suspended ? "parked" : wheelLayer ? "wheel" : gesturing ? (ctl.gestureKind?.() || "zoom") : slicing ? "slice" : settleTimer ? "settling" : "idle");
   const slicedSettleOn = () => { try { return notedSpeedFlags().slicedSettle !== false; } catch { return true; } };
   const sliceWanted = () => slicedSettleOn() && Boolean(size.width) && Boolean(itemsR.isVirtual?.());
   const endSlice = () => {
@@ -4360,7 +4464,7 @@ function buildBoardView(onFail, {
     const rect = visibleWorldRect(vp, size, ATTACH_MARGIN);
     if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, SETTLE_SHELLS, SETTLE_SLICE_MS);
     const edgesLeft = sliceEdges(rect);
-    if (edgesLeft || (itemsR.attachLeft?.() || 0) > 0) { sliceFrame = timers.frame(sliceStep); return; }
+    if (edgesLeft || (itemsR.attachLeft?.() || 0) > 0) { sliceFrame = timers.frame(sliceStep, "slice"); return; }
     endSlice();
     releaseUnderlay();
   };
@@ -4377,12 +4481,14 @@ function buildBoardView(onFail, {
     if (!edgesLeft && !((itemsR.attachLeft?.() || 0) > 0)) { endSlice(); releaseUnderlay(); return; }
     // A burst's canvas (or the overview canvas being left) already shows every box that is not attached; a fit (no
     // burst) or the overview cover draws it.
-    const stale = underlayKind === "burst" && styledUnderlay() && underlayTier !== tier;
+    // E2-1: the overview canvas being left is drawn again in the new tier's card look (fill, border, radius, title), so
+    // a map shell that attaches over its box changes nothing (it was a flat line-colour block: the pop at ~0.3).
+    const stale = styledUnderlay() && ((underlayKind === "burst" && underlayTier !== tier) || (underlayKind === "overview" && tier !== "overview"));
     if (underlay.isShown() && !stale && (underlayKind === "burst" || underlayKind === "overview")) underlayDrawn = true;
     else { underlayDrawn = false; showUnderlay(); }
     slicing = true;
     sliceFrame?.();
-    sliceFrame = timers.frame(sliceStep);
+    sliceFrame = timers.frame(sliceStep, "slice");
   };
   const revealNear = () => {
     if (!size.width) return;
@@ -4469,7 +4575,7 @@ function buildBoardView(onFail, {
       // warm pass never runs. Look again once the viewport has settled.
       considerCoverWarm();
       if (typeof onSettled === "function") { try { onSettled(); } catch { /* the owner's hook */ } }
-    }, RESUME_MS);
+    }, RESUME_MS, "settle");
   };
   const refreshThumbnails = () => {
     if (disposed || gesturing || !board()) return;
@@ -7831,7 +7937,7 @@ function buildBoardView(onFail, {
           refreshBadges();
           considerCoverWarm();
           scheduleSharpCovers();
-        }, RESUME_MS);
+        }, RESUME_MS, "gesture-end");
       }
     },
     showMarquee: (rect, kind) => edgesR.setMarquee(rect, kind),
@@ -7841,13 +7947,14 @@ function buildBoardView(onFail, {
     previewMove: (uids, dx, dy) => {
       const b = board();
       if (!b) return;
+      const set = new Set(uids);
+      for (const u of uids) for (const d of descendantsOf(b, u)) set.add(d);
+      // E6: a big moving set rides one layer (edges.js beginDrag); its shells ride one group per layer (E2-6), from the
+      // first moving frame on.
+      if ((dx || dy) && !dragRide && dragLayerWanted(set)) beginDragRide(b, set);
       liveRects = itemsR.previewMove(uids, dx, dy, b, rects());
       // C2: selected cards with no shell move on the overview canvas (the frame redraws it).
       if (overviewCanvasOn()) ovDirty = true;
-      const set = new Set(uids);
-      for (const u of uids) for (const d of descendantsOf(b, u)) set.add(d);
-      // E6: a big moving set rides one layer (edges.js beginDrag); its shells get their own compositor layers.
-      if ((dx || dy) && !dragRide && dragLayerWanted(set)) beginDragRide(b, set);
       if (dragRide) edgesR.dragBy(dx, dy);
       // A moved item joins the section under its center; that section grows around it (preview only).
       const top = new Set(uids);
@@ -10430,34 +10537,19 @@ function buildBoardView(onFail, {
     },
     resume() {
       if (disposed || !suspended) return;
-      suspended = false;
-      resumeObservers();
-      try { itemsR.resumeShells?.(); } catch { /* shells */ }
-      timers.resumeBg();
-      armCoverWarm();
-      // The DOM was kept while parked. Only a board that changed meanwhile needs the full pass (a change that lands
-      // later arrives through the session as usual); otherwise the camera, selection and minimap are enough.
-      // A shell queue still open has to sync before the pump arms again, even when the board object is the same.
-      // E1 (perf2): the same board with shells still queued syncs its shells only. The full pass also re-placed every
-      // edge (PhD main board crumb back: ~2,000 edges re-pathed, 1,936 `d` rewrites per edge part) though no edge moved.
-      if (board() !== suspendedBoard || (itemsR.queuedCount?.() > 0 && notedSpeedFlags().keepFullscreen === false)) {
-        dirty.all = true;
-        dirty.structural = true;
-      } else if (itemsR.queuedCount?.() > 0) {
-        dirty.resync = true;
-        dirty.viewport = true;
-        dirty.selection = true;
-        dirty.minimap = true;
-      } else {
-        dirty.viewport = true;
-        dirty.selection = true;
-        dirty.minimap = true;
-      }
-      suspendedBoard = null;
-      schedule();
+      sharedTaskProbe().span("resume", resumeView, "resume");
     },
     cameraRect() {
       return cameraRectOf({ x: vp.x, y: vp.y, zoom: vp.zoom }, viewSize());
+    },
+    // E2-5 probe: the long tasks seen since load (PerformanceObserver "longtask"), each with the Plexus job time inside
+    // it by job name (render, settle, gesture-end, slice, resume, shells, bg:<label>...) and the board's phase.
+    longTasks() {
+      return sharedTaskProbe().longTasks();
+    },
+    // Card bodies that took 50 ms or more to mount ({ uid, kind, ms, at }), to name a long "content" task.
+    slowMounts() {
+      return itemsR.slowMounts?.() || [];
     },
     applyShow(region) {
       if (disposed || !region) return;

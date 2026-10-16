@@ -33,7 +33,9 @@ function mount(vp, flags = { overviewCanvas: true }) {
   const mountEl = stub.document.createElement("div");
   stub.document.body.append(mountEl);
   const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "1.0.0" });
-  const cards = () => view.root.querySelectorAll(".pxd-item--card[data-uid]").length;
+  // E2-1: board cards stay real shells on the canvas tier (they open their board on a click); count the rest.
+  const cards = () => view.root.querySelectorAll(".pxd-item--card[data-uid]").filter((el) => !el.classList.contains("pxd-item--board")).length;
+  const boardCards = () => view.root.querySelectorAll(".pxd-item--board[data-uid]").length;
   const shells = () => view.stats().shells;
   const underlay = () => view.root.querySelector(".pxd-underlay");
   const shown = () => Boolean(underlay() && underlay().style.display !== "none");
@@ -47,7 +49,7 @@ function mount(vp, flags = { overviewCanvas: true }) {
   };
   const settle = async () => { await tick(160); await pump(4); };
   const done = () => { view.dispose(); restore(); noteSpeedFlags(null); };
-  return { stub, view, cards, shells, shown, draws, cam, pump, settle, done, board };
+  return { stub, view, cards, boardCards, shells, shown, draws, cam, pump, settle, done, board };
 }
 
 const withFrozenClock = async (fn) => {
@@ -65,7 +67,9 @@ test("an overview open with overviewCanvas builds no card shell and draws the ca
       assert.equal(m.view.state().lod, "overview");
       assert.equal(m.view.overviewCanvasStats().on, true);
       assert.equal(m.cards(), 0, "no card shell in the DOM");
-      assert.ok(m.shells() <= 46, `only the 46 sections are built (${m.shells()})`);
+      const boards = [...m.board.items.values()].filter((item) => item.kind === "board").length;
+      assert.equal(m.boardCards(), boards, "every board card is a real shell (a click enters it)");
+      assert.ok(m.shells() <= 46 + boards, `only the 46 sections and the board cards are built (${m.shells()})`);
       assert.ok(m.shown(), "the canvas shows the cards");
       assert.ok(m.draws() >= 1 && m.draws() <= 4, `drawn once or a few times at open (${m.draws()})`);
       assert.equal(m.view.root.querySelectorAll(".pxd-edge").length, 0, "edges are hairlines on the canvas");
@@ -293,7 +297,8 @@ test("zooming out from the map band to overview detaches the card shells and dra
       assert.equal(m.view.state().lod, "overview");
       assert.equal(m.cards(), 0, "the card shells left the DOM");
       assert.ok(m.shown());
-      assert.equal(m.view.overviewCanvasStats().items, 1524, "every card is on the canvas");
+      assert.equal(m.view.overviewCanvasStats().items, 1500, "every card but the 24 board cards (real shells) is on the canvas");
+      assert.equal(m.boardCards(), 24);
       assert.equal(m.view.root.querySelectorAll(".pxd-edge").length, 0);
     } finally { m.done(); }
   });

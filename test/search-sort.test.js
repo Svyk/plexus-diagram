@@ -165,7 +165,12 @@ test("librarySearch with a sort reads the numbers once for the candidates and or
   assert.equal(seen.filter((x) => x === META_PULL).length, 1, "the second sort used the uid cache");
   assert.deepEqual(host.librarySearch({ text: "plexus", types: ["page"], createdBy: "Ann" }, 40).rows.map((r) => r.string), ["[[Plexus two]]"]);
   assert.deepEqual(host.librarySearch({ text: "plexus", types: ["page"], children: true }, 40).rows.map((r) => r.string), ["[[Plexus one]]", "[[Plexus three]]"]);
-  assert.deepEqual(host.librarySearch({ text: "plexus", types: ["page"], days: 7, dayMode: "created" }, 40).rows.map((r) => r.string), ["[[Plexus two]]"]);
+  // The day window counts back from now: the fixture's dates are pinned to NOW, so is the clock here.
+  const realNow = Date.now;
+  Date.now = () => NOW;
+  try {
+    assert.deepEqual(host.librarySearch({ text: "plexus", types: ["page"], days: 7, dayMode: "created" }, 40).rows.map((r) => r.string), ["[[Plexus two]]"]);
+  } finally { Date.now = realNow; }
 });
 
 test("browse (no text) lists pages by the sort from one page-level query; user names for the filters", () => {

@@ -10,7 +10,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 // renderMs: each card body render spins this long (Roam's renderString/renderBlock cost per card). With 0 the stub
 // builds a whole view of shells in one pump chunk, which hid the live zoom-in gap (QA3: 2-3 shells per pump frame).
 const spin = (ms) => { if (!(ms > 0)) return; const t0 = performance.now(); while (performance.now() - t0 < ms) { /* render */ } };
-export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, prep = null, renderMs = 0 } = {}) {
+export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, prep = null, renderMs = 0, unmountMs = 0, slowUids = null } = {}) {
   noteSpeedFlags(flags);
   const stub = createDomStub({ width: 1400, height: 900 });
   const restore = stub.install();
@@ -21,8 +21,9 @@ export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, pre
   const host = {
     stats: {}, graph: "Svy",
     renderString(el, string) { spin(renderMs); el.textContent = string; },
-    renderBlock(el, uid) { spin(renderMs); el.textContent = uid; },
-    unmount() {},
+    // slowUids: these bodies cost 60 ms to render and to unmount (a big Roam outline).
+    renderBlock(el, uid) { spin(slowUids?.has(uid) ? 60 : renderMs); el.textContent = uid; el.__pxdUid = uid; },
+    unmount(el) { host.stats.unmounts = (host.stats.unmounts || 0) + 1; spin(slowUids?.has(el?.__pxdUid) ? 60 : unmountMs); },
     pagePreview: () => ({ exists: false, blocks: [] }), pullTree: () => [], blockString: () => null,
     openBlock() {}, openInSidebar() {}, searchPages: () => [], searchBlocks: () => [], related: () => [],
   };
@@ -53,7 +54,7 @@ export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, pre
   };
   const settle = async () => { await tick(160); await pump(4); };
   const done = () => { try { view.dispose(); } catch { /* gone */ } restore(); noteSpeedFlags(null); };
-  return { stub, view, mountEl, pump, settle, done, board, session, commits };
+  return { stub, view, mountEl, pump, settle, done, board, session, commits, unmounts: () => host.stats.unmounts || 0 };
 }
 
 export const withFrozenClock = async (fn) => {
@@ -100,3 +101,42 @@ export async function dragSelection(flags) {
   return { m, root, sel, el: els.get(pick), p };
 }
 export const riders = (root) => root.querySelector(".pxd-edges--drag");
+
+// E3 (perf2): a ledger of the tasks the stub runs (frames, timers, idle callbacks): DOM nodes added or removed under the
+// board root, underlay redraws, and whether the task was a background-budget slice (its outer probe span is `bg:*`).
+// The browser's share of a task follows what it changed; the stub has no layout, so this is the fixture's stand-in.
+export async function taskLedger(m) {
+  const { sharedTaskProbe } = await import("../../src/long-tasks.js");
+  const S = m.stub;
+  const root = m.view.root;
+  const mo = new S.window.MutationObserver(() => {});
+  mo.observe(root, { childList: true, subtree: true });
+  const probe = sharedTaskProbe();
+  const span = probe.span;
+  let outer = "";
+  probe.span = (name, fn, phase) => { if (!outer) outer = typeof name === "function" ? String(name()) : name; return span(name, fn, phase); };
+  const tasks = [];
+  const draws = () => m.view.underlayStats?.().draws || 0;
+  const run = (kind, fn, arg) => {
+    mo.takeRecords();
+    outer = "";
+    const d0 = draws();
+    try { return fn(arg); } finally {
+      let nodes = 0;
+      for (const r of mo.takeRecords()) nodes += (r.addedNodes?.length || 0) + (r.removedNodes?.length || 0);
+      tasks.push({ kind, nodes, draws: draws() - d0, name: outer, bg: outer.startsWith("bg:") });
+      outer = "";
+    }
+  };
+  const flushFrames = S.flushFrames, flushIdle = S.flushIdle, flushTimers = S.flushTimers;
+  S.flushFrames = () => { const p = S.frames.splice(0, S.frames.length); p.forEach((f) => run("frame", f.fn, 16)); return p.length; };
+  S.flushIdle = () => { const p = S.idle.splice(0, S.idle.length); p.forEach((f) => run("idle", f.fn, { timeRemaining: () => 8, didTimeout: false })); return p.length; };
+  S.flushTimers = () => { const p = [...S.timers]; S.timers.clear(); p.forEach((t) => run("timer", t.fn)); return p.length; };
+  return {
+    tasks,
+    reset: () => { tasks.length = 0; },
+    // Foreground tasks that changed 50+ nodes: the ones that cost the browser a style/layout pass over many elements.
+    churn: (min = 50) => tasks.filter((t) => !t.bg && t.nodes >= min),
+    stop: () => { S.flushFrames = flushFrames; S.flushIdle = flushIdle; S.flushTimers = flushTimers; probe.span = span; mo.disconnect(); },
+  };
+}

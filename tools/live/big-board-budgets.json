@@ -13,5 +13,8 @@
   "shellsAtZoomInFlip": 120,
   "edgesPlacedPerDragFrame": 300,
   "shellsAttachedAtResume": 120,
-  "shellTransformsPerDragFrame": 0
+  "shellTransformsPerDragFrame": 0,
+  "zoomInChurnTasks": 0,
+  "zoomInChurnTasksSecondRun": 4,
+  "zoomInUnderlayDraws": 14
 }

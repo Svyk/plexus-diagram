@@ -11,6 +11,8 @@ const MAX_SIDE = 2048;
 // MAX_SIDE it was upscaled 2.5x (blurry blocks while zooming toward the map tier). covers() tells the view when the
 // camera has left that window or zoomed past what the bitmap can show sharply, and it draws again (fills only).
 const VIEW_PAD = 0.5;
+const VIEW_PAD_MIN = 0.15;
+const REUSE_MIN = 0.3;
 const SHARP_UPSCALE = 1.35;
 // Card titles on the map and detail looks: only at a readable size, at most this many cards (the ones in view).
 const TITLE_MIN_PX = 8;
@@ -24,6 +26,8 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
   let lastItems = [];
   let lastUids = null;
   let drawn = null;
+  // Probe (E3): bitmap redraws and reallocations (each one is a raster and an upload in the browser).
+  const counts = { draws: 0, resizes: 0 };
 
   const colors = () => {
     if (colorCache) return colorCache;
@@ -85,20 +89,35 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
     for (const [a, b] of edges) for (const r of [a, b]) { x0 = Math.min(x0, r.x + r.w / 2); y0 = Math.min(y0, r.y + r.h / 2); x1 = Math.max(x1, r.x + r.w / 2); y1 = Math.max(y1, r.y + r.h / 2); }
     const want = zoom * Math.min(dpr, 1.25);
     // E2-1: a board bigger than the bitmap at this zoom draws the window around the view only.
-    if (view && ((x1 - x0) * want > MAX_SIDE || (y1 - y0) * want > MAX_SIDE)) {
-      const px = view.w * VIEW_PAD, py = view.h * VIEW_PAD;
+    const windowed = Boolean(view) && ((x1 - x0) * want > MAX_SIDE || (y1 - y0) * want > MAX_SIDE);
+    if (windowed) {
+      // E3-1: the pad shrinks (to VIEW_PAD_MIN) so the window fits MAX_SIDE at the zoom's resolution. With the full pad a
+      // 1,400 px view was 3,066 bitmap px wide, capped to 2,048: upscaled 1.5x at once, so covers() said "not sharp"
+      // on every frame and a zoom burst redrew the whole bitmap each frame (QA4 B zoom-in: a 2,048 px raster per tick).
+      const padOf = (side) => Math.max(VIEW_PAD_MIN, Math.min(VIEW_PAD, (MAX_SIDE / want / side - 1) / 2));
+      const px = view.w * padOf(view.w), py = view.h * padOf(view.h);
       x0 = Math.max(x0, view.x - px); y0 = Math.max(y0, view.y - py);
       x1 = Math.min(x1, view.x + view.w + px); y1 = Math.min(y1, view.y + view.h + py);
       if (!(x1 > x0 && y1 > y0)) { x0 = view.x; y0 = view.y; x1 = view.x + view.w; y1 = view.y + view.h; }
-      const box = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    }
+    let w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
+    const scale = Math.max(0.01, Math.min(want, MAX_SIDE / w, MAX_SIDE / h));
+    // E3-1: a bitmap that already holds this window at this scale is reused (the window grows to fill it, which only
+    // covers more). Reallocating a 2,048 px bitmap at each zoom step was a fresh texture each time.
+    let reuse = false;
+    if (canvas && canvas.width >= w * scale && canvas.height >= h * scale && w * scale * h * scale >= REUSE_MIN * canvas.width * canvas.height) {
+      reuse = true;
+      const gw = canvas.width / scale - w, gh = canvas.height / scale - h;
+      x0 -= gw / 2; y0 -= gh / 2; w += gw; h += gh;
+    }
+    if (windowed) {
+      const box = { x: x0, y: y0, w, h };
       items = items.filter(({ rect: r }) => r.x < box.x + box.w && r.x + r.w > box.x && r.y < box.y + box.h && r.y + r.h > box.y);
       edges = edges.filter(([a, b]) => {
         const ax = a.x + a.w / 2, ay = a.y + a.h / 2, bx = b.x + b.w / 2, by = b.y + b.h / 2;
         return Math.max(ax, bx) >= box.x && Math.min(ax, bx) <= box.x + box.w && Math.max(ay, by) >= box.y && Math.min(ay, by) <= box.y + box.h;
       });
     }
-    const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
-    const scale = Math.max(0.01, Math.min(want, MAX_SIDE / w, MAX_SIDE / h));
     // Colours before the canvas exists. getComputedStyle after create/insert/size forced layout in the shell frame.
     const c = styled ? paletteColors() : colors();
     if (!canvas) {
@@ -107,7 +126,8 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
       canvas.setAttribute("aria-hidden", "true");
       world.insertBefore(canvas, (typeof before === "function" ? before() : before) || world.firstChild);
     }
-    const bw = Math.max(1, Math.ceil(w * scale)), bh = Math.max(1, Math.ceil(h * scale));
+    const bw = reuse ? canvas.width : Math.max(1, Math.ceil(w * scale)), bh = reuse ? canvas.height : Math.max(1, Math.ceil(h * scale));
+    if (canvas.width !== bw || canvas.height !== bh) counts.resizes += 1;
     if (canvas.width !== bw) canvas.width = bw;
     if (canvas.height !== bh) canvas.height = bh;
     canvas.style.cssText = `position:absolute;left:${x0}px;top:${y0}px;width:${w}px;height:${h}px;pointer-events:none;`;
@@ -121,18 +141,21 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
       hide();
       return 0;
     }
+    counts.draws += 1;
     canvas.style.display = "";
     shown = true;
     lastItems = items;
     lastUids = null;
-    drawn = { x: x0, y: y0, w, h, scale, whole: !view || (w * want <= MAX_SIDE && h * want <= MAX_SIDE) };
+    drawn = { x: x0, y: y0, w, h, scale, want, whole: !windowed };
     return items.length;
   };
   // E2-1: whether the bitmap still shows `view` at `zoom` sharply (inside the drawn window, not upscaled past
   // SHARP_UPSCALE). A whole-board bitmap drawn at the zoom's own resolution covers any pan.
   const covers = (view, zoom, dpr = 1) => {
     if (!shown || !drawn || !view) return shown;
-    if (zoom * Math.min(dpr, 1.25) > drawn.scale * SHARP_UPSCALE) return false;
+    // Measured against the resolution it was drawn for: a view wider than MAX_SIDE device px is capped whatever we do,
+    // and redrawing it each frame gains nothing.
+    if (zoom * Math.min(dpr, 1.25) > drawn.want * SHARP_UPSCALE) return false;
     if (drawn.whole) return true;
     return view.x >= drawn.x && view.y >= drawn.y && view.x + view.w <= drawn.x + drawn.w && view.y + view.h <= drawn.y + drawn.h;
   };
@@ -145,9 +168,10 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
 
   // C2, the overview tier: items [{ uid, rect, color, dim, hit, selected }] (cards with no shell in the DOM), edges
   // [[rectA, rectB]] (edges not in the DOM). One fill per colour group, one stroke per outline kind, hairline edges.
-  const drawOverview = ({ items = [], edges = [], zoom = 1, dpr = 1, view = null } = {}) => {
+  // look (E3-4): the tier the zoom shows; map or detail draws the card look (fill, border, radius, titles).
+  const drawOverview = ({ items = [], edges = [], zoom = 1, dpr = 1, view = null, look = "overview" } = {}) => {
     if (!items.length && !edges.length) { hide(); return 0; }
-    return draw({ items, edges, zoom, dpr, styled: true, tier: "overview", view });
+    return draw({ items, edges, zoom, dpr, styled: true, tier: look === "map" || look === "detail" ? look : "overview", view });
   };
 
   // Map and detail tiers: a card is --pxd-card under its palette fill, with a 1px border in its line colour
@@ -333,5 +357,5 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
   };
   const dropColors = () => { colorCache = null; };
 
-  return { draw, drawOverview, hide, dispose, dropColors, drawnUids, covers, isShown: () => shown, element: () => canvas };
+  return { draw, drawOverview, hide, dispose, dropColors, drawnUids, covers, stats: () => ({ ...counts }), isShown: () => shown, element: () => canvas };
 }

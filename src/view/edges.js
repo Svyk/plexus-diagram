@@ -39,7 +39,7 @@ const setClass = (el, name) => {
   if (el.classList && !el.classList.contains(name.split(" ")[0])) el.className = name;
 };
 
-export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText, onHover, virtualOff = () => false } = {}) {
+export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText, onHover, virtualOff = () => false, deferPark = () => false, onParkDue = null } = {}) {
   const edgeEls = new Map(); // uid → {g, hit, line, head, tail, dot, label}
   const laneHidden = new Set();
   const linkEls = new Map(); // key → {g, hit, line, head, label}
@@ -121,10 +121,27 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     rec.label.remove();
     for (const end of ["from", "to"]) dropInner(rec, end);
   };
+  // E3-1 (perf2, speed flag idlePark): a far edge that leaves the view at a settle is not removed in the settle's tasks
+  // (a zoom-in to detail parked ~1,500 edges in two of them); it is marked stale, kept as it was (off the view), and
+  // parked later in background slices (parkSome). It is placed again if the camera brings it back first.
+  const parkDue = new Set();
+  let parkNoted = false;
+  const parkLater = (uid, rec) => {
+    let later = false;
+    try { later = deferPark() === true; } catch { later = false; }
+    if (!later) { parkEdge(rec); return; }
+    rec.stale = true;
+    if (parkDue.has(uid)) return;
+    parkDue.add(uid);
+    if (!parkNoted) {
+      parkNoted = true;
+      queueMicrotask(() => { parkNoted = false; if (parkDue.size) { try { onParkDue?.(); } catch { /* the view parks them */ } } });
+    }
+  };
   const unparkEdge = (rec) => {
     if (!rec.parked) return;
     rec.parked = false;
-    (drag?.recs.has(rec) ? drag.layer : svg)?.append(rec.g);
+    (drag?.recs.has(rec) ? drag.layer : drag?.crossing?.has(rec) ? drag.cross : svg)?.append(rec.g);
     labelsLayer?.append(rec.label);
   };
 
@@ -143,15 +160,33 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     svg.after?.(layer);
     if (!layer.parentElement) svg.parentElement.append(layer);
     const recs = new Map();
+    // E3-6: the edges with one end in the moving set are re-pathed every frame. In the edges <svg> each `d` write
+    // repainted the whole layer (PhD main board: ~2,000 paths, a 125-card drag p50 232 ms with or without the group).
+    // They sit in their own layer for the drag, so a frame repaints those paths only.
+    const cross = doc.createElementNS(SVG_NS, "svg");
+    setClass(cross, "pxd-edges pxd-edges--cross");
+    cross.setAttribute("aria-hidden", "true");
+    cross.style.willChange = "transform";
+    const crossing = new Set();
     for (const edge of board.edges.values()) {
-      if (!moving.has(edge.from) || !moving.has(edge.to)) continue;
+      const a = moving.has(edge.from), b = moving.has(edge.to);
+      if (!a && !b) continue;
       const rec = edgeEls.get(edge.uid);
       if (!rec || rec.parked) continue;
+      if (a !== b) { crossing.add(rec); cross.append(rec.g); continue; }
       const label = rec.label?.style?.transform || "";
       recs.set(rec, label);
       layer.append(rec.g);
     }
-    drag = { layer, recs, inner: new Set([...recs.keys()].map((rec) => rec.uid)) };
+    // Derived links touching the moving set are re-placed every frame too (all of them): same layer.
+    const links = [];
+    for (const rec of linkEls.values()) {
+      if (!moving.has(rec.from) && !moving.has(rec.to)) continue;
+      links.push(rec);
+      cross.append(rec.g);
+    }
+    if (crossing.size || links.length) layer.parentElement?.insertBefore?.(cross, layer);
+    drag = { layer, recs, cross, crossing, links, inner: new Set([...recs.keys()].map((rec) => rec.uid)) };
     return recs.size;
   };
   const dragBy = (dx, dy) => {
@@ -164,8 +199,11 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   // them, a cancel did not), in the task that puts them back, so no frame shows them at the pre-drag spot.
   const endDrag = (ctx) => {
     if (!drag) return;
-    const { layer, recs } = drag;
+    const { layer, recs, cross, crossing, links } = drag;
     drag = null;
+    for (const rec of crossing || []) if (!rec.parked && edgeEls.has(rec.uid) && rec.g.parentElement === cross) svg.append(rec.g);
+    for (const rec of links || []) if (rec.g.parentElement === cross) svg.append(rec.g);
+    cross?.remove();
     for (const [rec, base] of recs) {
       if (rec.parked || !edgeEls.has(rec.uid)) continue;
       svg.append(rec.g);
@@ -699,6 +737,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   };
 
   const removeEdge = (uid) => {
+    parkDue.delete(uid);
     const rec = edgeEls.get(uid);
     if (!rec) return;
     rec.g.remove();
@@ -768,9 +807,11 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         const attached = rec && !rec.parked;
         if (attached ? edgeFar(board, edge, rects) : !edgeNear(board, edge, rects)) {
           waiting.delete(edge.uid);
-          if (rec) parkEdge(rec);
+          if (attached) parkLater(edge.uid, rec);
+          else if (rec) parkEdge(rec);
           continue;
         }
+        parkDue.delete(edge.uid);
       }
       // A slice names the edges for this frame. An edge with no element, or one that was hidden
       // until its cards counted as drawn, stays waiting when this frame did not name it.
@@ -847,8 +888,9 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     let built = 0;
     let left = 0;
     let parks = budget < Infinity ? PARK_SLICE : Infinity;
-    const park = (rec) => {
+    const park = (rec, uid) => {
       if (rec.parked) return;
+      if (deferPark() === true) { parkLater(uid, rec); return; }
       if (parks <= 0) { left += 1; return; }
       parks -= 1;
       parkEdge(rec);
@@ -867,9 +909,9 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         const pinnedWait = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
         const waitNear = pinnedWait || (rec && !rec.parked ? !edgeFar(board, edge, rects) : edgeNear(board, edge, rects));
         if (!waitNear) {
-          if (rec && !rec.parked && parks <= 0) { left += 1; continue; }
+          if (rec && !rec.parked && parks <= 0 && deferPark() !== true) { left += 1; continue; }
           waiting.delete(edge.uid);
-          if (rec) park(rec);
+          if (rec) park(rec, edge.uid);
         }
         continue;
       }
@@ -877,9 +919,10 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       const pinned = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
       const near = pinned || (rec && !rec.parked ? !edgeFar(board, edge, rects) : edgeNear(board, edge, rects));
       if (!near) {
-        if (rec) park(rec);
+        if (rec) park(rec, edge.uid);
         continue;
       }
+      parkDue.delete(edge.uid);
       if (rec && !rec.parked && !rec.stale) continue;
       if (!pinned && (built >= budget || (t0 && built % 16 === 0 && built && now() - t0 > ms))) { left += 1; continue; }
       const live = rec || buildEdge(edge);
@@ -893,10 +936,20 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   };
 
   // Re-place only the given edges (drag preview): rects may be an override map.
+  // E3-6: during a drag ride, an edge or link re-placed here (it touches the moving set) leaves the edges <svg> for the
+  // crossing layer first, also when it was attached after the drag began.
+  const toCross = (rec) => {
+    if (!drag?.cross || rec.g.parentElement !== svg || drag.recs.has(rec)) return;
+    if (!drag.cross.parentElement) drag.layer.parentElement?.insertBefore?.(drag.cross, drag.layer);
+    drag.cross.append(rec.g);
+    if (rec.uid != null && edgeEls.get(rec.uid) === rec) drag.crossing.add(rec);
+    else if (!drag.links.includes(rec)) drag.links.push(rec);
+  };
   const update = ({ board, edgeUids, rects, zoom = zoomCache, linkKeys = null, links = [] }) => {
     for (const uid of edgeUids) {
       const edge = board.edges.get(uid);
       const rec = edgeEls.get(uid);
+      if (rec && !rec.parked) toCross(rec);
       if (edge && rec && !rec.parked) placeEdge(board, edge, rec, rects, zoom);
       else if (rec?.parked) rec.stale = true;
     }
@@ -904,6 +957,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       for (const link of links) {
         if (!linkKeys.has(link.key)) continue;
         const rec = linkEls.get(link.key);
+        if (rec) toCross(rec);
         if (rec) placeLink(link, rec, rects, zoom, rec.g.getAttribute("class")?.includes("--selected"));
       }
     }
@@ -1157,6 +1211,23 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     editingLabel = null;
   };
 
+  // One background slice of the deferred parks: the ones still far are parked, a near one is left to the next pass.
+  // Returns true when none is left.
+  const PARK_PART = 100;
+  const parkSome = (deadline = null) => {
+    if (!lastPass) { parkDue.clear(); return true; }
+    const { board, rects, selection } = lastPass;
+    let n = 0;
+    for (const uid of [...parkDue]) {
+      if (n >= PARK_PART || (n && deadline && deadline.timeRemaining() < 1)) break;
+      parkDue.delete(uid);
+      const rec = edgeEls.get(uid);
+      const edge = board.edges.get(uid);
+      if (!rec || rec.parked || !edge || selection.edge === uid || editingLabel?.uid === uid || drag?.recs.has(rec)) continue;
+      if (!view || edgeFar(board, edge, rects)) { parkEdge(rec); n += 1; }
+    }
+    return parkDue.size === 0;
+  };
   // The gesture underlay draws a hairline for every edge that is not in the DOM.
   const edgeShown = (uid) => { const rec = edgeEls.get(uid); return Boolean(rec && !rec.parked); };
   return {
@@ -1181,6 +1252,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     dragInner: () => drag?.inner ?? null,
     flushWaiting,
     waitingLeft: () => waiting.size,
+    parkSome,
+    parkDueCount: () => parkDue.size,
     setSelection,
     setHover,
     setTempWire,

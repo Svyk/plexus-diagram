@@ -451,7 +451,7 @@ test("E2-6: no background-budget slice runs inside a wheel burst while the board
   const orig = probe.span;
   const seen = { open: 0, burst: 0, after: 0 };
   let phase = "open";
-  probe.span = (name, fn, ph) => { if (name.startsWith("bg:")) seen[phase] += 1; return orig(name, fn, ph); };
+  probe.span = (name, fn, ph) => { if (typeof name === "string" && name.startsWith("bg:")) seen[phase] += 1; return orig(name, fn, ph); };
   try {
     const run = async (ms, step) => { const end = Date.now() + ms; while (Date.now() < end) { step?.(); m.stub.flushFrames(); m.stub.flushIdle(); m.stub.flushTimers(); await tick(16); } };
     await run(300);

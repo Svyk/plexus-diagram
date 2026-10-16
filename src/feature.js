@@ -4326,6 +4326,8 @@ export async function installPlexusDiagram({
       connected: rec.native.isConnected !== false && rec.mountEl.isConnected !== false,
       state: rec.view?.state?.() ?? null,
     })),
+    // Debug probes for live QA: each mount's current view (paintAudit, flipStats, longTasks, overviewCanvasStats).
+    views: () => [...mounts.values()].map((rec) => rec.view).filter(Boolean),
     // "Open on board" for a connection (RF-3).
     openConnection: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid),
     cardCacheMs: () => cacheLoadMs,

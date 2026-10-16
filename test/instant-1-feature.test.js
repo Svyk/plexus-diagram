@@ -491,6 +491,23 @@ test("the hand-off to the live board cross-fades the snapshot out instead of cut
   }
 });
 
+// E2 (perf2): live QA reads paintAudit()/flipStats()/longTasks() through this hook instead of patching the bundle.
+test("window.__plexusDiagram.views() hands out each mount's live view (debug probes)", async () => {
+  const idb = await seededIdb();
+  const env = installEnv({ idb });
+  try {
+    await env.install();
+    await tick(20);
+    env.seen[0].args.onFirstPaint();
+    const views = env.win.__plexusDiagram.views();
+    assert.equal(views.length, 1);
+    assert.equal(views[0].root, env.doc.querySelector(".pxd-mount").querySelector(".pxd-root"), "the mounted live view");
+  } finally {
+    await env.lifecycle.dispose().catch(() => {});
+    env.restore();
+  }
+});
+
 test("a sidebar copy paints its snapshot while dormant; the viewport watcher brings the live board", async () => {
   const idb = await seededIdb();
   const env = installEnv({ idb, sidebar: true });

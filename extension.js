@@ -30277,6 +30277,18 @@ function createItemRenderer({
   };
   let lod = "detail";
   const cardFocus = /* @__PURE__ */ new Map();
+  const revealCards = /* @__PURE__ */ new Set();
+  const REVEAL_H = 160;
+  const revealing = (item) => Boolean(item?.uid && revealCards.has(item.uid));
+  const needsRevealRoom = (item) => Boolean(
+    item && (item.collapsed || item.open === false || isKidsCard(item) && !item.kids)
+  );
+  const revealHeight = (item, shownH) => {
+    const base = Number(shownH) > 0 ? Number(shownH) : 0;
+    if (!needsRevealRoom(item)) return base;
+    const stored = Number(item?.h) > 0 ? Number(item.h) : 0;
+    return Math.max(base, stored, REVEAL_H);
+  };
   let hotRow = null;
   let peekBlocked = false;
   let focusSet = null;
@@ -31250,7 +31262,7 @@ function createItemRenderer({
     const base = item.type === "section" ? "pxd-section" : `pxd-item pxd-item--${item.type} pxd-item--${item.kind}`;
     const cls = [base];
     if (PALETTE.includes(item.color)) cls.push(`pxd-c-${item.color}`);
-    if (item.collapsed && item.type !== "section") cls.push("pxd-item--collapsed");
+    if (item.collapsed && item.type !== "section" && !revealing(item)) cls.push("pxd-item--collapsed");
     if (item.type === "section" && item.collapsed) cls.push("pxd-section--collapsed");
     if (item.type === "section" && item.look === "lane") cls.push("pxd-section--lane", item.axis === "vertical" ? "pxd-lane-v" : "pxd-lane-h");
     if (!item.string?.trim()) cls.push("pxd-item--empty");
@@ -31411,7 +31423,9 @@ function createItemRenderer({
     rec.rect = rect;
     if (editing?.uid === rec.uid && prev && prev.x === rect.x && prev.y === rect.y && prev.w === rect.w && prev.h === rect.h) return;
     const shown = shownRect(rec.uid, rect);
-    const nextH = rec.peekH > 0 ? rec.peekH : shown.h;
+    const item = lastBoard?.items.get(rec.uid);
+    const baseH = item && revealing(item) ? revealHeight(item, shown.h) : shown.h;
+    const nextH = rec.peekH > 0 ? rec.peekH : baseH;
     rec.el.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
     rec.el.style.width = `${shown.w}px`;
     if (rec.kidsAnim) void rec.el.offsetHeight;
@@ -31820,6 +31834,7 @@ function createItemRenderer({
     lastBoard = board2;
     if (prevBoardUid && board2?.uid && prevBoardUid !== board2.uid) {
       cardFocus.clear();
+      revealCards.clear();
       hotRow = null;
       closeCardPeek();
     }
@@ -32195,9 +32210,13 @@ function createItemRenderer({
         stopPress(event);
         if (!focusId) {
           cardFocus.delete(item.uid);
+          revealCards.delete(item.uid);
           const rec = shells.get(item.uid);
           if (rec?.peekOpen) rerenderPeek(rec);
-          else if (rec) remountCard(rec);
+          else if (rec) {
+            remountCard(rec);
+            settleReveal(rec, item.uid);
+          }
           return;
         }
         focusInside(item.uid, focusId);
@@ -32235,12 +32254,41 @@ function createItemRenderer({
     mounted.delete(rec.uid);
     mountContent(rec, item);
   };
+  const rowReady = (rec, blockUid3) => Boolean(
+    rec?.el?.querySelector?.(`[data-pxd-row="${blockUid3}"]`) && rec.el.querySelector?.(".pxd-focus__crumb")
+  );
+  const bumpRevealHeight = (rec, item) => {
+    if (!rec?.el || !item || rec.peekH > 0) return;
+    const shown = shownRect(rec.uid, rec.rect || lastRects?.get(rec.uid));
+    if (!shown) return;
+    rec.el.style.height = `${revealHeight(item, shown.h)}px`;
+  };
+  const settleReveal = (rec, uid) => {
+    const item = lastBoard?.items.get(uid);
+    if (item && rec) paintShell(rec, item);
+    if (!rec?.el || rec.peekH > 0) return;
+    const shown = shownRect(uid, rec.rect || lastRects?.get(uid));
+    if (shown?.h > 0) rec.el.style.height = `${shown.h}px`;
+  };
+  const openForFocus = (item) => {
+    if (!item || item.open !== false) return;
+    if (item.kind === "note" || item.kind === "block") return;
+    const rec = shells.get(item.uid);
+    if (!rec || rec.blockOpened) return;
+    rec.blockOpened = true;
+    try {
+      void session?.setBlockOpen?.(item.uid, true);
+    } catch {
+    }
+  };
   const focusInside = (cardUid, blockUid3) => {
     if (!cardUid || !blockUid3) return false;
     cardFocus.set(cardUid, blockUid3);
+    revealCards.add(cardUid);
     hotRow = { card: cardUid, uid: blockUid3 };
     const rec = shells.get(cardUid);
-    if (!rec || disposed) return true;
+    const item = lastBoard?.items.get(cardUid);
+    if (!rec || disposed) return false;
     if (rec.peekOpen) {
       rec.peekPinned = true;
       rec.peekLeave?.();
@@ -32250,8 +32298,48 @@ function createItemRenderer({
       return true;
     }
     if (editing?.uid === cardUid) return true;
+    rec.el.classList.remove("pxd-item--collapsed");
+    if (rowReady(rec, blockUid3)) {
+      bumpRevealHeight(rec, item);
+      return true;
+    }
+    if (rec.revealPending && rec.revealDeep) return false;
+    if (item) openForFocus(item);
     remountCard(rec);
+    if (item) bumpRevealHeight(rec, item);
+    return rowReady(rec, blockUid3);
+  };
+  const unfoldForFocus = (cardUid, blockUid3) => {
+    if (!cardUid) return false;
+    if (blockUid3 && blockUid3 !== cardUid) return focusInside(cardUid, blockUid3);
+    revealCards.add(cardUid);
+    const rec = shells.get(cardUid);
+    const item = lastBoard?.items.get(cardUid);
+    if (!rec || !item || disposed) return false;
+    if (rec.peekOpen || editing?.uid === cardUid) return true;
+    if (rec.revealPending && rec.revealDeep) return true;
+    rec.el.classList.remove("pxd-item--collapsed");
+    openForFocus(item);
+    if (needsRevealRoom(item)) {
+      remountCard(rec);
+      bumpRevealHeight(rec, item);
+    }
     return true;
+  };
+  const rowMounted = (cardUid, blockUid3) => {
+    const rec = shells.get(cardUid);
+    if (!rec?.el || !blockUid3) return false;
+    if (blockUid3 === cardUid) return true;
+    return rowReady(rec, blockUid3);
+  };
+  const cardWorldRect = (uid) => {
+    const shown = lastRects?.get(uid);
+    if (!shown) return null;
+    const item = lastBoard?.items.get(uid);
+    if (!item || !needsRevealRoom(item)) return shown;
+    const h = revealHeight(item, shown.h);
+    if (!(h > shown.h)) return shown;
+    return { ...shown, h };
   };
   const stepFocus = () => {
     if (disposed || cardFocus.size === 0) return false;
@@ -32268,9 +32356,13 @@ function createItemRenderer({
     const step = focusStep(hit?.trail);
     if (step.uid) return focusInside(cardUid, step.uid);
     cardFocus.delete(cardUid);
+    revealCards.delete(cardUid);
     if (hotRow?.card === cardUid) hotRow = null;
     if (rec?.peekOpen) rerenderPeek(rec);
-    else if (rec) remountCard(rec);
+    else if (rec) {
+      remountCard(rec);
+      settleReveal(rec, cardUid);
+    }
     return true;
   };
   const peekLive = /* @__PURE__ */ new Set();
@@ -34542,6 +34634,8 @@ function createItemRenderer({
     };
   };
   const mountContentBody = (rec, item) => {
+    rec.pullGen = (rec.pullGen || 0) + 1;
+    const gen = rec.pullGen;
     startRows();
     noteRender(item.uid);
     rec.kidCount = 0;
@@ -34559,7 +34653,8 @@ function createItemRenderer({
     rec.el.classList.remove("pxd-item--thumb");
     rec.el.classList.remove("pxd-item--roam-table");
     const budget = { n: 0, roots: [] };
-    if (item.collapsed) {
+    if (item.collapsed && !revealing(item)) {
+      rec.revealPending = false;
       rec.contentKey = contentKeyFor(item);
       rec.roots = [];
       return;
@@ -34574,7 +34669,8 @@ function createItemRenderer({
     } else if (item.kind === "board") {
       mountBoardBody(body, item);
     } else if (item.kind === "page") {
-      if (item.open === false) {
+      if (item.open === false && !revealing(item)) {
+        rec.revealPending = false;
         rec.roots = [];
         rec.contentKey = contentKeyFor(item);
         return;
@@ -34590,6 +34686,7 @@ function createItemRenderer({
       const mountedAt = now2();
       const preview = fetchPage(item.title);
       const apply = (p, sync2 = false) => {
+        if (gen !== rec.pullGen) return;
         if (disposed || !holder.parentElement || !sync2 && rec.contentKey !== contentKeyFor(item)) return;
         const roots = paintPage(rec, holder, p);
         rec.mountStat = notePageMount(item.title, now2() - mountedAt, rec.rowTable ? rec.rowTable.size : 0, outlineCache.get(item.title) === p);
@@ -34597,9 +34694,22 @@ function createItemRenderer({
         if (sync2) budget.roots.push(...roots);
         else rec.roots.push(...roots);
       };
-      if (preview && typeof preview.then === "function") preview.then((p) => apply(p)).catch(() => {
-      });
-      else apply(preview, true);
+      if (preview && typeof preview.then === "function") {
+        if (revealing(item)) {
+          rec.revealPending = true;
+          rec.revealDeep = true;
+        }
+        preview.then((p) => {
+          if (gen !== rec.pullGen) return;
+          rec.revealPending = false;
+          apply(p);
+        }).catch(() => {
+          if (gen === rec.pullGen) rec.revealPending = false;
+        });
+      } else {
+        rec.revealPending = false;
+        apply(preview, true);
+      }
       mountLinkedRefs(body, rec, item);
       armPageWatch(rec, item, holder);
     } else if (item.kind === "region-ref") {
@@ -34627,7 +34737,8 @@ function createItemRenderer({
       if (blockPoster) rec.refTitle = blockPoster;
       if (editing?.uid !== item.uid) rec.header.textContent = String(rec.refTitle || item.title || "").slice(0, HEADER_TEXT_MAX);
       if (isBoardRef) {
-        if (item.open === false) {
+        if (item.open === false && !revealing(item)) {
+          rec.revealPending = false;
           rec.roots = budget.roots;
           rec.contentKey = contentKeyFor(item);
           return;
@@ -34660,15 +34771,17 @@ function createItemRenderer({
           rec.blockStringNode = node2;
           budget.roots.push(node2);
         }
-        const tree = host?.pullTree?.(ref, item.kids || imageRef ? CONTENT_DEPTH : 1, 200);
+        const deep = Boolean(item.kids || imageRef || revealing(item));
+        const tree = host?.pullTree?.(ref, deep ? CONTENT_DEPTH : 1, 200);
         const apply = (blocks, sync2 = false) => {
+          if (gen !== rec.pullGen) return;
           if (disposed || !body.isConnected || !sync2 && rec.contentKey !== contentKeyFor(item)) return;
           startRows();
           if (!refString?.trim() && !blocks?.length) el2("div", "pxd-item__placeholder", body).textContent = "Empty card";
           rec.kidCount = visibleKids(blocks).length;
           rec.kidRows = kidRowsOf(blocks);
           if (imageRef) syncEndpointHits(rec, blocks);
-          if (item.kids) {
+          if (item.kids || revealing(item)) {
             const b = { n: 0, roots: [] };
             paintCardKids(body, item, b, blocks || []);
             if (sync2) budget.roots.push(...b.roots);
@@ -34694,9 +34807,22 @@ function createItemRenderer({
           }
           paintPinChip(body, blocks);
         };
-        if (tree && typeof tree.then === "function") tree.then((t) => apply(t)).catch(() => {
-        });
-        else apply(tree, true);
+        if (tree && typeof tree.then === "function") {
+          if (revealing(item)) {
+            rec.revealPending = true;
+            rec.revealDeep = deep;
+          }
+          tree.then((t) => {
+            if (gen !== rec.pullGen) return;
+            rec.revealPending = false;
+            apply(t);
+          }).catch(() => {
+            if (gen === rec.pullGen) rec.revealPending = false;
+          });
+        } else {
+          rec.revealPending = false;
+          apply(tree, true);
+        }
         armBlockWatch(rec, item);
       }
     } else if (isQueryString(item.string) && host?.renderBlock) {
@@ -34718,7 +34844,7 @@ function createItemRenderer({
       if (item.string?.trim()) budget.roots.push(taskBlockOn(item) ? mountTaskLine(body, item) : renderRoot(body, item.string, "pxd-rs pxd-item__string", item.uid));
       rec.kidCount = visibleKids(item.content).length;
       rec.kidRows = kidRowsOf(item.content);
-      if (item.kids) paintCardKids(body, item, budget, item.content || []);
+      if (item.kids || revealing(item)) paintCardKids(body, item, budget, item.content || []);
       if (!item.string?.trim() && !(item.content || []).length) {
         el2("div", "pxd-item__placeholder", body).textContent = "Empty card";
       }
@@ -36429,6 +36555,7 @@ function createItemRenderer({
     closePeek();
     closeCardPeek();
     cardFocus.clear();
+    revealCards.clear();
     hotRow = null;
     if (outsidePeekOn) {
       doc.removeEventListener?.("pointerdown", onOutsidePeek, true);
@@ -36506,6 +36633,9 @@ function createItemRenderer({
     measureContent,
     toggleKids,
     focusInside,
+    unfoldForFocus,
+    rowMounted,
+    cardWorldRect,
     stepFocus,
     cancelCardPeek,
     closeCardPeek,
@@ -55272,6 +55402,125 @@ function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win
 init_avoid();
 init_query();
 init_geometry();
+
+// src/model/zoom-open.js
+var READABLE_PX = 96;
+var DETAIL_ZOOM = 0.5;
+var ZOOM_BUDGET_MS = 2e3;
+var ZOOM_TICK_MS = 50;
+var MAX_ZOOM = 4;
+function cameraForCard(vp, rect, size, opts = {}) {
+  const minPx = Number(opts.minPx) > 0 ? Number(opts.minPx) : READABLE_PX;
+  const detail = Number(opts.detail) > 0 ? Number(opts.detail) : DETAIL_ZOOM;
+  const maxZoom = Number(opts.maxZoom) > 0 ? Number(opts.maxZoom) : MAX_ZOOM;
+  const width = Number(size?.width);
+  const height = Number(size?.height);
+  const w = Number(rect?.w);
+  const h = Number(rect?.h);
+  const zoom0 = Number(vp?.zoom) > 0 ? Number(vp.zoom) : 1;
+  if (!(width > 0) || !(height > 0) || !(w > 0) || !(h > 0)) return null;
+  const cx = Number(rect.x) + w / 2;
+  const cy = Number(rect.y) + h / 2;
+  const readable = w * zoom0 >= minPx - 0.5 && h * zoom0 >= minPx - 0.5 && zoom0 >= detail - 1e-9;
+  const zoom = readable ? zoom0 : Math.min(maxZoom, Math.max(zoom0, detail, minPx / h, minPx / w));
+  const x = width / 2 - cx * zoom;
+  const y = height / 2 - cy * zoom;
+  const dx = Math.abs(x - (Number(vp?.x) || 0));
+  const dy = Math.abs(y - (Number(vp?.y) || 0));
+  if (zoom === zoom0 && dx < 1 && dy < 1) return null;
+  return { x, y, zoom };
+}
+var aimCard = (io, cardUid) => {
+  let vp = null;
+  let rect = null;
+  let box2 = null;
+  try {
+    vp = io.camera?.() || null;
+  } catch {
+    vp = null;
+  }
+  try {
+    rect = io.cardRect?.(cardUid) || null;
+  } catch {
+    rect = null;
+  }
+  try {
+    box2 = io.size?.() || null;
+  } catch {
+    box2 = null;
+  }
+  const next = cameraForCard(vp, rect, box2);
+  if (!next) return;
+  try {
+    io.applyCamera?.(next);
+  } catch {
+  }
+};
+async function revealZoomedBlock(target, io = {}) {
+  const boardUid = target?.boardUid;
+  const cardUid = target?.cardUid;
+  const blockUid3 = String(target?.blockUid || "") || cardUid;
+  if (!boardUid || !cardUid || !blockUid3) return false;
+  const now4 = typeof io.now === "function" ? io.now : () => Date.now();
+  const budget = Number(io.budgetMs) > 0 ? Number(io.budgetMs) : ZOOM_BUDGET_MS;
+  const tick = Number(io.tickMs) > 0 ? Number(io.tickMs) : ZOOM_TICK_MS;
+  let mounted = "";
+  try {
+    mounted = typeof io.mountedBoard === "function" ? io.mountedBoard() : boardUid;
+  } catch {
+    mounted = "";
+  }
+  if (mounted !== boardUid) {
+    try {
+      await io.openBoard?.(boardUid);
+    } catch {
+      return false;
+    }
+    if (io.stopped?.()) return false;
+  }
+  aimCard(io, cardUid);
+  if (io.stopped?.()) return false;
+  const child = blockUid3 !== cardUid;
+  if (child) {
+    const start = now4();
+    let seen = false;
+    while (true) {
+      if (io.stopped?.()) return false;
+      try {
+        io.unfold?.(cardUid, blockUid3);
+      } catch {
+      }
+      let ready = false;
+      try {
+        ready = io.rowMounted?.(cardUid, blockUid3) === true;
+      } catch {
+        ready = false;
+      }
+      if (ready) {
+        seen = true;
+        break;
+      }
+      if (now4() - start >= budget || typeof io.wait !== "function") break;
+      await io.wait(tick);
+    }
+    if (!seen) return false;
+  } else {
+    try {
+      io.unfold?.(cardUid, blockUid3);
+    } catch {
+    }
+    if (io.stopped?.()) return false;
+  }
+  try {
+    io.focus?.(cardUid, blockUid3);
+  } catch {
+  }
+  try {
+    io.centre?.(cardUid);
+  } catch {
+  }
+  return true;
+}
 
 // src/model/export.js
 init_geometry();
@@ -104060,6 +104309,50 @@ ${url}`;
       if (disposed) return false;
       return itemsR.focusInside?.(cardUid, blockUid3) === true;
     },
+    // Folded card: session reveal, then the row. A closed page or board card uses setBlockOpen.
+    unfoldForFocus(cardUid, blockUid3) {
+      if (disposed) return false;
+      itemsR.ensureShell?.(cardUid);
+      return itemsR.unfoldForFocus?.(cardUid, blockUid3) === true;
+    },
+    rowMounted(cardUid, blockUid3) {
+      if (disposed) return false;
+      if (!blockUid3 || blockUid3 === cardUid) return Boolean(itemsR.shellOf?.(cardUid));
+      return itemsR.rowMounted?.(cardUid, blockUid3) === true;
+    },
+    cardWorldRect(uid) {
+      if (disposed) return null;
+      return itemsR.cardWorldRect?.(uid) || rects().get(uid) || null;
+    },
+    // Readable zoom, then centre. Zoom only increases. The board on a long page scrolls into view.
+    centerCard(cardUid) {
+      if (disposed || !cardUid || !board2()?.items.has(cardUid)) return false;
+      itemsR.ensureShell?.(cardUid);
+      ctl.select([cardUid]);
+      const rect = itemsR.cardWorldRect?.(cardUid) || rects().get(cardUid);
+      const next = cameraForCard(vp, rect, size);
+      if (next) {
+        moveViewport(next);
+        applyLod();
+        scheduleContent();
+      }
+      if (!isFullscreen) {
+        try {
+          mountEl?.scrollIntoView?.({ block: "center" });
+        } catch {
+        }
+      }
+      return true;
+    },
+    showAt(next) {
+      if (disposed || !next) return false;
+      const zoom = Number(next.zoom);
+      if (!Number.isFinite(next.x) || !Number.isFinite(next.y) || !(zoom > 0)) return false;
+      moveViewport({ x: next.x, y: next.y, zoom });
+      applyLod();
+      scheduleContent();
+      return true;
+    },
     viewport: () => ({ x: vp.x, y: vp.y, zoom: vp.zoom }),
     restoreViewport(next) {
       if (disposed || !next) return;
@@ -112035,9 +112328,14 @@ async function installPlexusDiagram({
       height: Number(box2.height) || Number(rec?.mountEl?.clientHeight) || 0
     };
   }
+  function mountConnected(rec) {
+    if (rec?.mountEl?.isConnected === false) return false;
+    if (rec?.native?.isConnected === false) return false;
+    return true;
+  }
   function findOpenMount(boardUid, sidebar) {
     for (const rec of mounts.values()) {
-      if (!rec?.view || rec.dormant) continue;
+      if (!rec?.view || rec.dormant || !mountConnected(rec)) continue;
       if (rec.uid !== boardUid && currentUid(rec) !== boardUid) continue;
       if (sidebar ? isSidebarMount(rec) : !isSidebarMount(rec)) return rec;
     }
@@ -112094,25 +112392,41 @@ async function installPlexusDiagram({
       kick(20);
     }
   }
+  function liveBoard(boardUid) {
+    return findOpenMount(boardUid, false) || findOpenMount(boardUid, true);
+  }
   function openZoomedCard(target) {
     const boardUid = target?.boardUid;
     const cardUid = target?.cardUid;
-    const blockUid3 = String(target?.blockUid || "");
+    const blockUid3 = String(target?.blockUid || "") || cardUid;
     if (!boardUid || !cardUid) return;
-    void openPublic(boardUid, { card: cardUid }).then((ok) => {
-      if (!ok || stopped || !blockUid3 || blockUid3 === cardUid) return;
-      const focus = (left) => {
-        if (stopped) return;
-        const rec = findOpenMount(boardUid, false) || findOpenMount(boardUid, true);
-        let done3 = false;
-        try {
-          done3 = rec?.view?.focusInside?.(cardUid, blockUid3) === true;
-        } catch {
-          done3 = false;
-        }
-        if (!done3 && left > 0) lifecycle.timeout(() => focus(left - 1), 50);
-      };
-      focus(40);
+    void revealZoomedBlock({ boardUid, cardUid, blockUid: blockUid3 }, {
+      now: () => Date.now(),
+      wait: (ms) => new Promise((resolve) => {
+        lifecycle.timeout(resolve, ms);
+      }),
+      stopped: () => stopped,
+      mountedBoard: () => liveBoard(boardUid) ? boardUid : "",
+      openBoard: (uid) => openPublic(uid, { card: cardUid }),
+      unfold: (card2, block) => {
+        liveBoard(boardUid)?.view?.unfoldForFocus?.(card2, block);
+      },
+      rowMounted: (card2, block) => liveBoard(boardUid)?.view?.rowMounted?.(card2, block) === true,
+      focus: (card2, block) => {
+        if (block && block !== card2) liveBoard(boardUid)?.view?.focusInside?.(card2, block);
+      },
+      centre: (card2) => {
+        liveBoard(boardUid)?.view?.centerCard?.(card2);
+      },
+      camera: () => liveBoard(boardUid)?.view?.viewport?.() || null,
+      cardRect: (card2) => liveBoard(boardUid)?.view?.cardWorldRect?.(card2) || null,
+      size: () => {
+        const rec = liveBoard(boardUid);
+        return rec ? mountSize(rec) : null;
+      },
+      applyCamera: (next) => {
+        liveBoard(boardUid)?.view?.showAt?.(next);
+      }
     });
   }
   function openPublic(boardUid, opts = {}) {
@@ -112123,7 +112437,7 @@ async function installPlexusDiagram({
       } catch {
       }
     } else if (!findOpenMount(boardUid, false)) {
-      const asleep = [...mounts.values()].find((rec) => !isSidebarMount(rec) && (rec.uid === boardUid || currentUid(rec) === boardUid));
+      const asleep = [...mounts.values()].find((rec) => !isSidebarMount(rec) && mountConnected(rec) && (rec.uid === boardUid || currentUid(rec) === boardUid));
       if (asleep?.mountEl) {
         try {
           asleep.mountEl.scrollIntoView?.({ block: "center" });

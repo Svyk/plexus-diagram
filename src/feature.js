@@ -25,6 +25,7 @@ import { applyFullscreenChrome } from "./view/fullscreen.js";
 import { installRoamStack, syncBoardClass } from "./view/roam-stack.js";
 import { focusOpenBlock } from "./model/card-children.js";
 import { zoomBoardTarget } from "./model/zoom-board.js";
+import { revealZoomedBlock } from "./model/zoom-open.js";
 import { hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
 import { createRelChips } from "./relchips.js";
@@ -4151,9 +4152,15 @@ export async function installPlexusDiagram({
     };
   }
 
+  function mountConnected(rec) {
+    if (rec?.mountEl?.isConnected === false) return false;
+    if (rec?.native?.isConnected === false) return false;
+    return true;
+  }
+
   function findOpenMount(boardUid, sidebar) {
     for (const rec of mounts.values()) {
-      if (!rec?.view || rec.dormant) continue;
+      if (!rec?.view || rec.dormant || !mountConnected(rec)) continue;
       if (rec.uid !== boardUid && currentUid(rec) !== boardUid) continue;
       if (sidebar ? isSidebarMount(rec) : !isSidebarMount(rec)) return rec;
     }
@@ -4198,23 +4205,37 @@ export async function installPlexusDiagram({
     }
   }
 
-  // Roam's zoom stays. The chip opens the board focused on the card, and on the
-  // zoomed block when that block is not the card itself. Nothing is written.
+  function liveBoard(boardUid) {
+    return findOpenMount(boardUid, false) || findOpenMount(boardUid, true);
+  }
+
+  // Roam's zoom stays. The chip opens the board, session-unfolds a folded card, waits
+  // for the child row, then focuses it and centres the card. A closed page or board
+  // card still writes :block/open, the same path as its own unfold.
   function openZoomedCard(target) {
     const boardUid = target?.boardUid;
     const cardUid = target?.cardUid;
-    const blockUid = String(target?.blockUid || "");
+    const blockUid = String(target?.blockUid || "") || cardUid;
     if (!boardUid || !cardUid) return;
-    void openPublic(boardUid, { card: cardUid }).then((ok) => {
-      if (!ok || stopped || !blockUid || blockUid === cardUid) return;
-      const focus = (left) => {
-        if (stopped) return;
-        const rec = findOpenMount(boardUid, false) || findOpenMount(boardUid, true);
-        let done = false;
-        try { done = rec?.view?.focusInside?.(cardUid, blockUid) === true; } catch { done = false; }
-        if (!done && left > 0) lifecycle.timeout(() => focus(left - 1), 50);
-      };
-      focus(40);
+    void revealZoomedBlock({ boardUid, cardUid, blockUid }, {
+      now: () => Date.now(),
+      wait: (ms) => new Promise((resolve) => { lifecycle.timeout(resolve, ms); }),
+      stopped: () => stopped,
+      mountedBoard: () => (liveBoard(boardUid) ? boardUid : ""),
+      openBoard: (uid) => openPublic(uid, { card: cardUid }),
+      unfold: (card, block) => { liveBoard(boardUid)?.view?.unfoldForFocus?.(card, block); },
+      rowMounted: (card, block) => liveBoard(boardUid)?.view?.rowMounted?.(card, block) === true,
+      focus: (card, block) => {
+        if (block && block !== card) liveBoard(boardUid)?.view?.focusInside?.(card, block);
+      },
+      centre: (card) => { liveBoard(boardUid)?.view?.centerCard?.(card); },
+      camera: () => liveBoard(boardUid)?.view?.viewport?.() || null,
+      cardRect: (card) => liveBoard(boardUid)?.view?.cardWorldRect?.(card) || null,
+      size: () => {
+        const rec = liveBoard(boardUid);
+        return rec ? mountSize(rec) : null;
+      },
+      applyCamera: (next) => { liveBoard(boardUid)?.view?.showAt?.(next); },
     });
   }
 
@@ -4223,7 +4244,7 @@ export async function installPlexusDiagram({
     if (sidebar) {
       try { void host.openInSidebar?.(boardUid, "block"); } catch { /* host unavailable */ }
     } else if (!findOpenMount(boardUid, false)) {
-      const asleep = [...mounts.values()].find((rec) => !isSidebarMount(rec) && (rec.uid === boardUid || currentUid(rec) === boardUid));
+      const asleep = [...mounts.values()].find((rec) => !isSidebarMount(rec) && mountConnected(rec) && (rec.uid === boardUid || currentUid(rec) === boardUid));
       if (asleep?.mountEl) {
         try { asleep.mountEl.scrollIntoView?.({ block: "center" }); } catch { /* no layout */ }
       } else {

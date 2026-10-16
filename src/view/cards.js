@@ -849,6 +849,19 @@ export function createItemRenderer({
   };
   let lod = "detail";
   const cardFocus = new Map();
+  // Session-only. A zoom chip unfolds a folded card without writing kids or collapsed.
+  const revealCards = new Set();
+  const REVEAL_H = 160;
+  const revealing = (item) => Boolean(item?.uid && revealCards.has(item.uid));
+  const needsRevealRoom = (item) => Boolean(
+    item && (item.collapsed || item.open === false || (isKidsCard(item) && !item.kids)),
+  );
+  const revealHeight = (item, shownH) => {
+    const base = Number(shownH) > 0 ? Number(shownH) : 0;
+    if (!needsRevealRoom(item)) return base;
+    const stored = Number(item?.h) > 0 ? Number(item.h) : 0;
+    return Math.max(base, stored, REVEAL_H);
+  };
   let hotRow = null;
   let peekBlocked = false;
   let focusSet = null;
@@ -1733,7 +1746,7 @@ export function createItemRenderer({
     const base = item.type === "section" ? "pxd-section" : `pxd-item pxd-item--${item.type} pxd-item--${item.kind}`;
     const cls = [base];
     if (PALETTE.includes(item.color)) cls.push(`pxd-c-${item.color}`);
-    if (item.collapsed && item.type !== "section") cls.push("pxd-item--collapsed");
+    if (item.collapsed && item.type !== "section" && !revealing(item)) cls.push("pxd-item--collapsed");
     if (item.type === "section" && item.collapsed) cls.push("pxd-section--collapsed");
     if (item.type === "section" && item.look === "lane") cls.push("pxd-section--lane", item.axis === "vertical" ? "pxd-lane-v" : "pxd-lane-h");
     if (!item.string?.trim()) cls.push("pxd-item--empty");
@@ -1892,7 +1905,9 @@ export function createItemRenderer({
     // Same rect while editing: leave the first-frame lock alone. A later rect write must not put it back.
     if (editing?.uid === rec.uid && prev && prev.x === rect.x && prev.y === rect.y && prev.w === rect.w && prev.h === rect.h) return;
     const shown = shownRect(rec.uid, rect);
-    const nextH = rec.peekH > 0 ? rec.peekH : shown.h;
+    const item = lastBoard?.items.get(rec.uid);
+    const baseH = item && revealing(item) ? revealHeight(item, shown.h) : shown.h;
+    const nextH = rec.peekH > 0 ? rec.peekH : baseH;
     rec.el.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
     rec.el.style.width = `${shown.w}px`;
     if (rec.kidsAnim) void rec.el.offsetHeight;
@@ -2299,6 +2314,7 @@ export function createItemRenderer({
     lastBoard = board;
     if (prevBoardUid && board?.uid && prevBoardUid !== board.uid) {
       cardFocus.clear();
+      revealCards.clear();
       hotRow = null;
       closeCardPeek();
     }
@@ -2668,9 +2684,13 @@ export function createItemRenderer({
         stopPress(event);
         if (!focusId) {
           cardFocus.delete(item.uid);
+          revealCards.delete(item.uid);
           const rec = shells.get(item.uid);
           if (rec?.peekOpen) rerenderPeek(rec);
-          else if (rec) remountCard(rec);
+          else if (rec) {
+            remountCard(rec);
+            settleReveal(rec, item.uid);
+          }
           return;
         }
         focusInside(item.uid, focusId);
@@ -2708,12 +2728,39 @@ export function createItemRenderer({
     mounted.delete(rec.uid);
     mountContent(rec, item);
   };
+  const rowReady = (rec, blockUid) => Boolean(
+    rec?.el?.querySelector?.(`[data-pxd-row="${blockUid}"]`) && rec.el.querySelector?.(".pxd-focus__crumb"),
+  );
+  const bumpRevealHeight = (rec, item) => {
+    if (!rec?.el || !item || rec.peekH > 0) return;
+    const shown = shownRect(rec.uid, rec.rect || lastRects?.get(rec.uid));
+    if (!shown) return;
+    rec.el.style.height = `${revealHeight(item, shown.h)}px`;
+  };
+  const settleReveal = (rec, uid) => {
+    const item = lastBoard?.items.get(uid);
+    if (item && rec) paintShell(rec, item);
+    if (!rec?.el || rec.peekH > 0) return;
+    const shown = shownRect(uid, rec.rect || lastRects?.get(uid));
+    if (shown?.h > 0) rec.el.style.height = `${shown.h}px`;
+  };
+  // A page or board card that Roam closed uses the same :block/open write as the card's own unfold.
+  const openForFocus = (item) => {
+    if (!item || item.open !== false) return;
+    if (item.kind === "note" || item.kind === "block") return;
+    const rec = shells.get(item.uid);
+    if (!rec || rec.blockOpened) return;
+    rec.blockOpened = true;
+    try { void session?.setBlockOpen?.(item.uid, true); } catch { /* host */ }
+  };
   const focusInside = (cardUid, blockUid) => {
     if (!cardUid || !blockUid) return false;
     cardFocus.set(cardUid, blockUid);
+    revealCards.add(cardUid);
     hotRow = { card: cardUid, uid: blockUid };
     const rec = shells.get(cardUid);
-    if (!rec || disposed) return true;
+    const item = lastBoard?.items.get(cardUid);
+    if (!rec || disposed) return false;
     if (rec.peekOpen) {
       rec.peekPinned = true;
       rec.peekLeave?.();
@@ -2723,8 +2770,49 @@ export function createItemRenderer({
       return true;
     }
     if (editing?.uid === cardUid) return true;
+    rec.el.classList.remove("pxd-item--collapsed");
+    if (rowReady(rec, blockUid)) {
+      bumpRevealHeight(rec, item);
+      return true;
+    }
+    if (rec.revealPending && rec.revealDeep) return false;
+    if (item) openForFocus(item);
     remountCard(rec);
+    if (item) bumpRevealHeight(rec, item);
+    return rowReady(rec, blockUid);
+  };
+  // The card block itself has no child row. A child waits until its row is actually in the DOM.
+  const unfoldForFocus = (cardUid, blockUid) => {
+    if (!cardUid) return false;
+    if (blockUid && blockUid !== cardUid) return focusInside(cardUid, blockUid);
+    revealCards.add(cardUid);
+    const rec = shells.get(cardUid);
+    const item = lastBoard?.items.get(cardUid);
+    if (!rec || !item || disposed) return false;
+    if (rec.peekOpen || editing?.uid === cardUid) return true;
+    if (rec.revealPending && rec.revealDeep) return true;
+    rec.el.classList.remove("pxd-item--collapsed");
+    openForFocus(item);
+    if (needsRevealRoom(item)) {
+      remountCard(rec);
+      bumpRevealHeight(rec, item);
+    }
     return true;
+  };
+  const rowMounted = (cardUid, blockUid) => {
+    const rec = shells.get(cardUid);
+    if (!rec?.el || !blockUid) return false;
+    if (blockUid === cardUid) return true;
+    return rowReady(rec, blockUid);
+  };
+  const cardWorldRect = (uid) => {
+    const shown = lastRects?.get(uid);
+    if (!shown) return null;
+    const item = lastBoard?.items.get(uid);
+    if (!item || !needsRevealRoom(item)) return shown;
+    const h = revealHeight(item, shown.h);
+    if (!(h > shown.h)) return shown;
+    return { ...shown, h };
   };
   const stepFocus = () => {
     if (disposed || cardFocus.size === 0) return false;
@@ -2741,9 +2829,13 @@ export function createItemRenderer({
     const step = focusStep(hit?.trail);
     if (step.uid) return focusInside(cardUid, step.uid);
     cardFocus.delete(cardUid);
+    revealCards.delete(cardUid);
     if (hotRow?.card === cardUid) hotRow = null;
     if (rec?.peekOpen) rerenderPeek(rec);
-    else if (rec) remountCard(rec);
+    else if (rec) {
+      remountCard(rec);
+      settleReveal(rec, cardUid);
+    }
     return true;
   };
   const peekLive = new Set();
@@ -4811,6 +4903,8 @@ export function createItemRenderer({
   };
 
   const mountContentBody = (rec, item) => {
+    rec.pullGen = (rec.pullGen || 0) + 1;
+    const gen = rec.pullGen;
     startRows();
     noteRender(item.uid);
     rec.kidCount = 0;
@@ -4828,7 +4922,8 @@ export function createItemRenderer({
     rec.el.classList.remove("pxd-item--thumb");
     rec.el.classList.remove("pxd-item--roam-table");
     const budget = { n: 0, roots: [] };
-    if (item.collapsed) {
+    if (item.collapsed && !revealing(item)) {
+      rec.revealPending = false;
       rec.contentKey = contentKeyFor(item);
       rec.roots = [];
       return;
@@ -4843,7 +4938,8 @@ export function createItemRenderer({
     } else if (item.kind === "board") {
       mountBoardBody(body, item);
     } else if (item.kind === "page") {
-      if (item.open === false) {
+      if (item.open === false && !revealing(item)) {
+        rec.revealPending = false;
         rec.roots = [];
         rec.contentKey = contentKeyFor(item);
         return;
@@ -4860,6 +4956,7 @@ export function createItemRenderer({
       const preview = fetchPage(item.title);
       // contentKey is stamped after mountContent returns, so only the async path can be stale.
       const apply = (p, sync = false) => {
+        if (gen !== rec.pullGen) return;
         if (disposed || !holder.parentElement || (!sync && rec.contentKey !== contentKeyFor(item))) return;
         const roots = paintPage(rec, holder, p);
         rec.mountStat = notePageMount(item.title, now() - mountedAt, rec.rowTable ? rec.rowTable.size : 0, outlineCache.get(item.title) === p);
@@ -4867,8 +4964,22 @@ export function createItemRenderer({
         if (sync) budget.roots.push(...roots);
         else rec.roots.push(...roots);
       };
-      if (preview && typeof preview.then === "function") preview.then((p) => apply(p)).catch(() => {});
-      else apply(preview, true);
+      if (preview && typeof preview.then === "function") {
+        if (revealing(item)) {
+          rec.revealPending = true;
+          rec.revealDeep = true;
+        }
+        preview.then((p) => {
+          if (gen !== rec.pullGen) return;
+          rec.revealPending = false;
+          apply(p);
+        }).catch(() => {
+          if (gen === rec.pullGen) rec.revealPending = false;
+        });
+      } else {
+        rec.revealPending = false;
+        apply(preview, true);
+      }
       mountLinkedRefs(body, rec, item);
       armPageWatch(rec, item, holder);
     } else if (item.kind === "region-ref") {
@@ -4896,7 +5007,8 @@ export function createItemRenderer({
       if (blockPoster) rec.refTitle = blockPoster;
       if (editing?.uid !== item.uid) rec.header.textContent = String(rec.refTitle || item.title || "").slice(0, HEADER_TEXT_MAX);
       if (isBoardRef) {
-        if (item.open === false) {
+        if (item.open === false && !revealing(item)) {
+          rec.revealPending = false;
           rec.roots = budget.roots;
           rec.contentKey = contentKeyFor(item);
           return;
@@ -4930,15 +5042,17 @@ export function createItemRenderer({
           rec.blockStringNode = node;
           budget.roots.push(node);
         }
-        const tree = host?.pullTree?.(ref, item.kids || imageRef ? CONTENT_DEPTH : 1, 200);
+        const deep = Boolean(item.kids || imageRef || revealing(item));
+        const tree = host?.pullTree?.(ref, deep ? CONTENT_DEPTH : 1, 200);
         const apply = (blocks, sync = false) => {
+          if (gen !== rec.pullGen) return;
           if (disposed || !body.isConnected || (!sync && rec.contentKey !== contentKeyFor(item))) return;
           startRows();
           if (!refString?.trim() && !blocks?.length) el("div", "pxd-item__placeholder", body).textContent = "Empty card";
           rec.kidCount = visibleKids(blocks).length;
           rec.kidRows = kidRowsOf(blocks);
           if (imageRef) syncEndpointHits(rec, blocks);
-          if (item.kids) {
+          if (item.kids || revealing(item)) {
             const b = { n: 0, roots: [] };
             paintCardKids(body, item, b, blocks || []);
             if (sync) budget.roots.push(...b.roots);
@@ -4959,8 +5073,22 @@ export function createItemRenderer({
           }
           paintPinChip(body, blocks);
         };
-        if (tree && typeof tree.then === "function") tree.then((t) => apply(t)).catch(() => {});
-        else apply(tree, true);
+        if (tree && typeof tree.then === "function") {
+          if (revealing(item)) {
+            rec.revealPending = true;
+            rec.revealDeep = deep;
+          }
+          tree.then((t) => {
+            if (gen !== rec.pullGen) return;
+            rec.revealPending = false;
+            apply(t);
+          }).catch(() => {
+            if (gen === rec.pullGen) rec.revealPending = false;
+          });
+        } else {
+          rec.revealPending = false;
+          apply(tree, true);
+        }
         armBlockWatch(rec, item);
       }
     } else if (isQueryString(item.string) && host?.renderBlock) {
@@ -4977,7 +5105,7 @@ export function createItemRenderer({
       if (item.string?.trim()) budget.roots.push(taskBlockOn(item) ? mountTaskLine(body, item) : renderRoot(body, item.string, "pxd-rs pxd-item__string", item.uid));
       rec.kidCount = visibleKids(item.content).length;
       rec.kidRows = kidRowsOf(item.content);
-      if (item.kids) paintCardKids(body, item, budget, item.content || []);
+      if (item.kids || revealing(item)) paintCardKids(body, item, budget, item.content || []);
       if (!item.string?.trim() && !(item.content || []).length) {
         el("div", "pxd-item__placeholder", body).textContent = "Empty card";
       }
@@ -6569,6 +6697,7 @@ export function createItemRenderer({
     closePeek();
     closeCardPeek();
     cardFocus.clear();
+    revealCards.clear();
     hotRow = null;
     if (outsidePeekOn) {
       doc.removeEventListener?.("pointerdown", onOutsidePeek, true);
@@ -6638,6 +6767,9 @@ export function createItemRenderer({
     measureContent,
     toggleKids,
     focusInside,
+    unfoldForFocus,
+    rowMounted,
+    cardWorldRect,
     stepFocus,
     cancelCardPeek,
     closeCardPeek,

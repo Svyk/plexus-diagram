@@ -416,8 +416,12 @@ export function readPaneKey(graph) {
   return `plexus-diagram:read:${typeof graph === "string" ? graph : ""}`;
 }
 
-// Side pane is 42% of the mount, clamped to 360–720. Under 720px of mount width it stacks.
-// A missing mount (0) does not stack: the stored width, or 360, stays in range.
+// Gap left for the board (and for Roam's main column) when a PDF window is dragged wide.
+export const READ_EDGE = 48;
+
+// Side pane starts at 42% of the mount. It can grow to the mount minus READ_EDGE.
+// Under 720px of mount width it stacks. A missing mount (0) does not invent a cap:
+// the stored width, or 360, stays.
 export function readPaneWidth(mountWidth, stored) {
   const mount = typeof mountWidth === "number" && Number.isFinite(mountWidth) ? mountWidth : 0;
   const stacked = mount > 0 && mount < 720;
@@ -425,8 +429,7 @@ export function readPaneWidth(mountWidth, stored) {
   const hasStored = Number.isFinite(given) && given > 0;
   if (stacked) return { stacked: true, width: Math.round(mount) };
   const raw = hasStored ? given : (mount > 0 ? Math.round(mount * 0.42) : 360);
-  // Beside the board, the board keeps at least 360 px: a width stored on a wider window must not leave a sliver.
-  const room = mount > 0 ? Math.max(360, mount - 360) : 720;
-  const width = Math.min(720, room, Math.max(360, Math.round(raw)));
+  const room = mount > 0 ? Math.max(360, mount - READ_EDGE) : Infinity;
+  const width = Math.min(room, Math.max(360, Math.round(raw)));
   return { stacked: false, width };
 }

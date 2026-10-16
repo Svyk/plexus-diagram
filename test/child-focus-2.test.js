@@ -248,3 +248,63 @@ test("F2: a grandchild bullet inside a child focus remounts, then Escape steps b
     f.restore();
   }
 });
+
+function cmdPeriod(stub) {
+  stub.dispatch(stub.window, "keydown", { key: ".", code: "Period", metaKey: true });
+  stub.flushFrames();
+}
+
+test("F3: a hovered row wins Cmd+. when another card is selected", async () => {
+  const f = mount();
+  try {
+    await show(f);
+    f.view.controller.select(["cardBBBB2"]);
+    f.stub.dispatch(f.view.root, "pointerenter");
+    const card = f.view.root.querySelector("[data-uid=cardAAAA1]");
+    const bullet = card.querySelector("[data-pxd-row=kidA10001] .pxd-outline__bullet");
+    assert.ok(bullet);
+    f.stub.dispatch(bullet, "pointerover");
+    cmdPeriod(f.stub);
+    assert.deepEqual(crumbLabels(card), ["Parent card", "Child block", "Grandchild block"]);
+    assert.deepEqual(crumbLabels(f.view.root.querySelector("[data-uid=cardBBBB2]")), []);
+    assert.equal(f.session.mutations.length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F3: Cmd+. with a selected card and no hover focuses nothing", async () => {
+  const f = mount();
+  try {
+    await show(f);
+    f.view.controller.select(["cardAAAA1"]);
+    f.stub.dispatch(f.view.root, "pointerenter");
+    cmdPeriod(f.stub);
+    assert.deepEqual(crumbLabels(f.view.root.querySelector("[data-uid=cardAAAA1]")), []);
+    assert.deepEqual(crumbLabels(f.view.root.querySelector("[data-uid=cardBBBB2]")), []);
+    assert.equal(f.session.mutations.length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F3: Cmd+. on the selected card's hovered row still focuses that row", async () => {
+  const f = mount();
+  try {
+    await show(f);
+    f.view.controller.select(["cardAAAA1"]);
+    f.stub.dispatch(f.view.root, "pointerenter");
+    const card = f.view.root.querySelector("[data-uid=cardAAAA1]");
+    const bullet = card.querySelector("[data-pxd-row=kidA00001] .pxd-outline__bullet");
+    assert.ok(bullet);
+    f.stub.dispatch(bullet, "pointerover");
+    cmdPeriod(f.stub);
+    assert.deepEqual(crumbLabels(card), ["Parent card", "Child block"]);
+    assert.equal(f.session.mutations.length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});

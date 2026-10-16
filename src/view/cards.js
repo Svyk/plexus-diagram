@@ -2012,6 +2012,9 @@ export function createItemRenderer({
   // mounted and focused cards. The queue waits until the tier is left.
   let canvasOn = false;
   const canvasCards = () => canvasOn && virtual();
+  // E2-1 (perf2): board cards stay real shells on the overview canvas tier, like sections: a click on one enters the
+  // nested board there as it does on the DOM tiers (QA3: the canvas arm could not start a nested enter at overview).
+  const keepOnCanvas = (item) => item?.type === "section" || (item?.type === "card" && item.kind === "board");
   const isAttached = (rec) => Boolean(rec?.el?.parentElement);
   const activeShellUid = () => {
     const active = doc.activeElement;
@@ -2022,7 +2025,7 @@ export function createItemRenderer({
     || editing?.uid === uid || mounted.has(uid) || uid === active;
   const farRect = () => (cullRect ? { x: cullRect.x - cullRect.w * 0.125, y: cullRect.y - cullRect.h * 0.125, w: cullRect.w * 1.25, h: cullRect.h * 1.25 } : null);
   const nearView = (uid, rect = cullRect) => {
-    if (canvasCards() && lastBoard?.items.get(uid)?.type !== "section") return false;
+    if (canvasCards() && !keepOnCanvas(lastBoard?.items.get(uid))) return false;
     if (!rect) return true;
     const r = drawnRect(uid, lastRects?.get(uid));
     return !r || rectsIntersect(r, rect);
@@ -2399,7 +2402,7 @@ export function createItemRenderer({
       const later = [];
       for (const uid of board.order) {
         const item = board.items.get(uid);
-        if (item?.type === "section" || uid === selectedPrimary) now.push(uid);
+        if (keepOnCanvas(item) || uid === selectedPrimary) now.push(uid);
         else later.push(uid);
       }
       if (view) {
@@ -5624,7 +5627,11 @@ export function createItemRenderer({
     // Leaving the canvas tier: the queue that waited there builds again, the cards in view first.
     // The view promotes the cards in the new view (promoteQueue) right after.
     if (canvasWas && !canvasOn && shellQueue.length && !priorityFrame) armShellPump();
-    if (!canvasWas && canvasOn) stopShellBg();
+    if (!canvasWas && canvasOn) {
+      stopShellBg();
+      // The board cards still queued are built now (a handful); the canvas draws every other card.
+      if (virtual()) for (const uid of shellQueue.filter((u) => keepOnCanvas(lastBoard?.items.get(u)))) ensureShell(uid);
+    }
     setZoom(zoom);
     closePeek();
     if (lod !== "detail") closeCardPeek();

@@ -63,11 +63,12 @@ test("a trapped overlay is not moved; a topbar search stays; a body portal keeps
   }
 });
 
-test("hovering a block ref lifts the portal that appears after the pointer; a plain card hover does not", () => {
+test("a host added inside a card raises that card; a plain hover and a body portal do not", () => {
   const stub = createDomStub();
   const restore = stub.install();
   try {
     const doc = stub.document;
+    doc.body.classList.add("pxd-has-board");
     const root = doc.createElement("div");
     root.className = "pxd-root";
     const ref = doc.createElement("span");
@@ -81,9 +82,11 @@ test("hovering a block ref lifts the portal that appears after the pointer; a pl
     const ignored = doc.createElement("div");
     ignored.className = "bp3-portal";
     root.append(ignored);
-    stub.flushFrames();
-    assert.equal(ignored.parentElement, root, "a card hover does not lift");
+    stub.flushMutations();
+    assert.equal(ignored.parentElement, root, "a portal with no card stays put");
+    assert.equal(plain.classList.contains("pxd-item--pop"), false);
     stub.dispatch(ref, "pointerover");
+    stub.flushFrames();
     const card = doc.createElement("div");
     card.className = "pxd-item";
     const portal = doc.createElement("div");
@@ -93,7 +96,7 @@ test("hovering a block ref lifts the portal that appears after the pointer; a pl
     portal.append(date);
     card.append(portal);
     root.append(card);
-    stub.flushFrames();
+    stub.flushMutations();
     assert.equal(portal.parentElement, card);
     assert.equal(card.classList.contains("pxd-item--pop"), true);
     assert.equal(portal.style["z-index"], undefined);
@@ -101,7 +104,6 @@ test("hovering a block ref lifts the portal that appears after the pointer; a pl
     late.className = "bp3-portal";
     doc.body.append(late);
     stub.flushMutations();
-    stub.flushFrames();
     assert.equal(late.parentElement, doc.body);
     assert.equal(late.style["z-index"], undefined);
     off();
@@ -110,8 +112,8 @@ test("hovering a block ref lifts the portal that appears after the pointer; a pl
     after.className = "bp3-portal";
     doc.body.append(after);
     stub.flushMutations();
-    stub.flushFrames();
     assert.equal(after.style["z-index"], undefined);
+    assert.equal(after.parentElement, doc.body);
   } finally {
     restore();
   }
@@ -151,6 +153,89 @@ test("a trapped overlay stays in its card, the card rises, and uninstall lowers 
     off();
     assert.equal(card.classList.contains("pxd-item--pop"), false);
     assert.equal(portal.parentElement, card);
+  } finally {
+    restore();
+  }
+});
+
+test("pointerover does not scan the document; only an added host on a mounted board raises its card", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const doc = stub.document;
+    doc.body.classList.add("pxd-has-board");
+    const root = doc.createElement("div");
+    root.className = "pxd-root";
+    const card = doc.createElement("div");
+    card.className = "pxd-item";
+    const input = doc.createElement("div");
+    input.className = "rm-block__input";
+    card.append(input);
+    root.append(card);
+    doc.body.append(root);
+    const off = installRoamStack(doc);
+    let scans = 0;
+    const orig = doc.querySelectorAll.bind(doc);
+    doc.querySelectorAll = (sel) => {
+      scans += 1;
+      return orig(sel);
+    };
+    stub.dispatch(input, "pointerover");
+    stub.dispatch(input, "focusin");
+    stub.dispatch(input, "pointerdown");
+    stub.flushFrames();
+    assert.equal(scans, 0, "pointerover must not query the document");
+    assert.equal(card.classList.contains("pxd-item--pop"), false);
+
+    const noise = doc.createElement("div");
+    noise.className = "rm-block";
+    doc.body.append(noise);
+    stub.flushMutations();
+    assert.equal(scans, 0, "a non-host added outside the board must not scan");
+
+    const portal = doc.createElement("div");
+    portal.className = "bp3-portal";
+    const date = doc.createElement("div");
+    date.className = "bp3-datepicker";
+    portal.append(date);
+    card.append(portal);
+    stub.flushMutations();
+    assert.equal(scans, 0, "an added host is claimed without a document scan");
+    assert.equal(portal.parentElement, card);
+    assert.equal(card.classList.contains("pxd-item--pop"), true);
+    assert.equal(portal.style["z-index"], undefined);
+
+    const menu = doc.createElement("div");
+    menu.className = "bp3-menu";
+    card.append(menu);
+    stub.flushMutations();
+    assert.equal(card.classList.contains("pxd-item--pop"), true);
+    portal.remove();
+    stub.flushMutations();
+    assert.equal(card.classList.contains("pxd-item--pop"), true, "the other host still holds the card up");
+    menu.remove();
+    stub.flushMutations();
+    assert.equal(card.classList.contains("pxd-item--pop"), false);
+
+    const wrap = doc.createElement("div");
+    const inner = doc.createElement("div");
+    inner.className = "rm-autocomplete__results";
+    wrap.append(inner);
+    card.append(wrap);
+    stub.flushMutations();
+    assert.equal(scans, 0);
+    assert.equal(card.classList.contains("pxd-item--pop"), true, "a wrapper's host still raises the card");
+    wrap.remove();
+    stub.flushMutations();
+    assert.equal(card.classList.contains("pxd-item--pop"), false);
+
+    doc.body.classList.remove("pxd-has-board");
+    card.append(portal);
+    stub.flushMutations();
+    assert.equal(scans, 0);
+    assert.equal(card.classList.contains("pxd-item--pop"), false, "no board class, no raise");
+    off();
+    assert.equal(card.classList.contains("pxd-item--pop"), false);
   } finally {
     restore();
   }

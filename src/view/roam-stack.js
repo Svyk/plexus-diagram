@@ -5,6 +5,9 @@
 // (inline popover, autocomplete) raises that card above its siblings until the overlay
 // is gone. .pxd-root overflow:clip still cuts that popover at the board edge.
 // Fullscreen is a fixed layer at z-index 40. CSS lifts body portals above it.
+// Nothing here listens for pointer movement. A pan must not walk the document.
+// The body observer reads added and removed nodes only, and only while
+// body.pxd-has-board is set.
 
 const HOSTS = [
   ".bp3-portal",
@@ -19,21 +22,10 @@ const HOSTS = [
   ".bp3-context-menu",
 ];
 
-const TRIGGERS = [
-  ".rm-block-ref",
-  ".rm-page-ref",
-  ".bp3-icon-calendar",
-  "#find-or-create-input",
-  ".rm-block__input",
-  ".bp3-popover-target",
-  ".bp3-menu",
-];
-
-const LIFT_FRAMES = 12;
-
 // card element -> how many overlay hosts inside it are still open.
 const raised = new Map();
 let hostCard = new WeakMap();
+const liveHosts = new Set();
 
 const isHost = (node) => {
   if (!node || node.nodeType !== 1 || typeof node.matches !== "function") return false;
@@ -64,9 +56,24 @@ const claim = (host) => {
   try { card = host.closest?.(".pxd-item") || null; } catch { card = null; }
   if (!card || card === host) return false;
   hostCard.set(host, card);
+  liveHosts.add(host);
   raised.set(card, (raised.get(card) || 0) + 1);
   try { card.classList.add("pxd-item--pop"); } catch { /* class */ }
   return true;
+};
+
+const unclaim = (host) => {
+  const card = hostCard.get(host);
+  if (!card) return;
+  hostCard.delete(host);
+  liveHosts.delete(host);
+  const next = (raised.get(card) || 1) - 1;
+  if (next > 0) {
+    raised.set(card, next);
+    return;
+  }
+  raised.delete(card);
+  try { card.classList?.remove("pxd-item--pop"); } catch { /* gone */ }
 };
 
 const releaseRaised = () => {
@@ -74,6 +81,7 @@ const releaseRaised = () => {
     try { card.classList?.remove("pxd-item--pop"); } catch { /* gone */ }
   }
   raised.clear();
+  liveHosts.clear();
   hostCard = new WeakMap();
 };
 
@@ -84,74 +92,57 @@ export function liftRoamOverlay(node, doc) {
   return claim(host);
 }
 
-export function liftRoamOverlays(doc) {
-  if (!doc?.querySelectorAll) return 0;
-  const seen = new Set();
-  const hosts = [];
+const hostsInside = (node) => {
+  if (!node || typeof node.querySelectorAll !== "function") return [];
+  const out = [];
   for (const sel of HOSTS) {
     let list = [];
-    try { list = doc.querySelectorAll(sel) || []; } catch { list = []; }
-    for (const node of list) {
-      const host = overlayHost(node);
-      if (!host || seen.has(host)) continue;
-      seen.add(host);
-      hosts.push(host);
-    }
+    try { list = node.querySelectorAll(sel) || []; } catch { list = []; }
+    for (const hit of list) out.push(hit);
   }
-  let n = 0;
-  for (const host of hosts) if (liftRoamOverlay(host, doc)) n += 1;
-  return n;
-}
+  return out;
+};
 
-const triggered = (target) => {
-  if (!target || typeof target.closest !== "function") return false;
-  for (const sel of TRIGGERS) {
-    try { if (target.closest(sel)) return true; } catch { /* selector */ }
+// The added node only. A portal Blueprint appends to the body is not inside a card.
+// A wrapper appended inside a card is, and the host may be a child of that wrapper.
+const considerAdded = (node, doc) => {
+  if (!node || node.nodeType !== 1) return;
+  if (isHost(node)) liftRoamOverlay(node, doc);
+  if (!trappedInBoard(node)) return;
+  for (const hit of hostsInside(node)) liftRoamOverlay(hit, doc);
+};
+
+// remove() clears parentElement before the record is delivered, so closest() cannot
+// find the card. The host set is the only way back.
+const considerRemoved = (node) => {
+  if (!node || node.nodeType !== 1 || liveHosts.size === 0) return;
+  const hit = [];
+  for (const host of liveHosts) {
+    if (host === node || node.contains?.(host)) hit.push(host);
   }
-  return false;
+  for (const host of hit) unclaim(host);
 };
 
 export function installRoamStack(doc) {
   if (!doc?.body || typeof doc.addEventListener !== "function") return () => {};
-  let framesLeft = 0;
-  let raf = 0;
-  const view = doc.defaultView || globalThis;
-  const pump = () => {
-    raf = 0;
-    try { liftRoamOverlays(doc); } catch { /* overlay */ }
-    if (framesLeft <= 0) return;
-    framesLeft -= 1;
-    if (typeof view.requestAnimationFrame === "function") raf = view.requestAnimationFrame(pump) || 0;
-  };
-  const kick = () => {
-    framesLeft = LIFT_FRAMES;
-    if (raf) return;
-    if (typeof view.requestAnimationFrame === "function") raf = view.requestAnimationFrame(pump) || 0;
-    if (!raf) pump();
-  };
-  const onTrigger = (event) => {
-    if (!triggered(event?.target)) return;
-    kick();
-  };
-  doc.addEventListener("pointerover", onTrigger, true);
-  doc.addEventListener("focusin", onTrigger, true);
-  doc.addEventListener("pointerdown", onTrigger, true);
   let obs = null;
+  const view = doc.defaultView || globalThis;
   const Observer = view.MutationObserver || globalThis.MutationObserver;
+  const onMut = (records) => {
+    if (!doc.body?.classList?.contains?.("pxd-has-board")) return;
+    for (const rec of records || []) {
+      for (const node of rec.removedNodes || []) considerRemoved(node);
+      for (const node of rec.addedNodes || []) considerAdded(node, doc);
+    }
+  };
   if (typeof Observer === "function") {
     try {
-      obs = new Observer(() => kick());
-      obs.observe(doc.body, { childList: true });
+      obs = new Observer(onMut);
+      obs.observe(doc.body, { childList: true, subtree: true });
     } catch { obs = null; }
   }
   return () => {
-    try { doc.removeEventListener("pointerover", onTrigger, true); } catch { /* gone */ }
-    try { doc.removeEventListener("focusin", onTrigger, true); } catch { /* gone */ }
-    try { doc.removeEventListener("pointerdown", onTrigger, true); } catch { /* gone */ }
     try { obs?.disconnect?.(); } catch { /* gone */ }
-    if (raf && typeof view.cancelAnimationFrame === "function") view.cancelAnimationFrame(raf);
-    raf = 0;
-    framesLeft = 0;
     releaseRaised();
   };
 }

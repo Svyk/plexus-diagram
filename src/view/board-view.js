@@ -10072,6 +10072,8 @@ function buildBoardView(onFail, {
 
   // ------------------------------------------------------------ render frame
   let firstPainted = false;
+  // R4: the camera last written to the world transform, i.e. the one the next painted frame shows.
+  let paintedVp = null;
   const renderFrame = () => {
     if (disposed || suspended) return;
     const b = board();
@@ -10170,6 +10172,7 @@ function buildBoardView(onFail, {
     }
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
+      paintedVp = { x: vp.x, y: vp.y, zoom: vp.zoom };
       // Big boards keep far shells and edges out of the DOM: put back what this camera brings near.
       if (size.width && !deferReveal()) {
         // This frame already sliced the edge render. reveal() would build another batch of the same edges.
@@ -11030,7 +11033,8 @@ function buildBoardView(onFail, {
     paintAudit() {
       const b = board();
       if (!b || !size.width) return { inView: 0, attached: 0, covered: 0, missing: 0, lod: tier };
-      const view = visibleWorldRect(vp, size, 0);
+      // R4: the camera the DOM shows. A wheel moves vp at once; its render frame applies it with the reveal.
+      const view = visibleWorldRect(paintedVp || vp, size, 0);
       const r = paintRects();
       const under = underlay.isShown() ? underlay.drawnUids() : null;
       let inView = 0, attached = 0, covered = 0;

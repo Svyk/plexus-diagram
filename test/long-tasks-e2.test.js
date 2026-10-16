@@ -13,7 +13,7 @@ test("E2-5: a browser long task is attributed to the Plexus spans inside it, by 
   let push = null;
   class FakeObserver { constructor(cb) { push = (entries) => cb({ getEntries: () => entries }); } observe() {} disconnect() {} }
   const probe = createTaskProbe({ now: () => t, win: { PerformanceObserver: FakeObserver } });
-  probe.observe();
+  assert.deepEqual(probe.longTasks(), [], "the first read arms the observer");
   probe.span("settle", () => { t += 40; probe.span("inner", () => { t += 30; }); }, "settling");
   probe.span("bg:shells", () => { t += 20; }, "bg");
   t += 300;

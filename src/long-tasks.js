@@ -1,7 +1,8 @@
 // E2-5 (perf2): which Plexus job ran inside each long task. Plexus code that can take a while runs through `span(name,
 // fn)` (the view's frame, settle, resume and slices, the shell pump, the content frames, every background-budget job by
 // its label). The browser's long tasks (PerformanceObserver "longtask") are matched against those spans; where the
-// observer does not exist, a span of LONG_MS or more stands in for its task. Read with view.longTasks().
+// observer does not exist (or before the first read arms it), a span of LONG_MS or more stands in for its task. Read
+// with view.longTasks(); call it once before the gesture to arm the observer.
 export const LONG_MS = 100;
 const SPAN_MIN_MS = 2;
 const MAX_SPANS = 600;
@@ -44,7 +45,9 @@ export function createTaskProbe({ now = () => (globalThis.performance?.now ? glo
   };
   // [{ start, ms, jobs: [{ name, ms }], phase, plexusMs }] newest last. `jobs` is Plexus time inside the task by job;
   // the rest of the task is the browser (style, layout, paint), Roam or another extension.
+  // The first call arms the browser's long-task observer (no page observer until a probe asks; spans are always kept).
   const longTasks = () => {
+    observe();
     const source = observer && tasks.length ? tasks : spans.filter((s) => s.ms >= LONG_MS).map((s) => ({ start: s.start, ms: s.ms }));
     return source.map((t) => {
       const by = new Map();
@@ -69,7 +72,7 @@ export function createTaskProbe({ now = () => (globalThis.performance?.now ? glo
 
 let shared = null;
 export function sharedTaskProbe() {
-  if (!shared) { shared = createTaskProbe(); shared.observe(); }
+  if (!shared) shared = createTaskProbe();
   return shared;
 }
 export function resetSharedTaskProbe() {

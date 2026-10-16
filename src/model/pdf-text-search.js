@@ -105,6 +105,17 @@ function termHit(page, term) {
   return null;
 }
 
+// The pin box for a query, from a page that still has pdf.js spans. Null when the page is text only.
+export function boxForQuery(page, text) {
+  const needle = String(text ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
+  if (!needle || !page) return null;
+  const lower = page.lower || String(page.text || "").toLowerCase();
+  const terms = queryTerms(needle);
+  const term = terms[0] || needle;
+  const fuzzy = term.length >= 4 && !lower.includes(term) && !/\s/.test(term);
+  return flashFrac({ ...page, lower }, fuzzy ? term : needle, fuzzy ? term : "");
+}
+
 function flashFrac(page, needle, fuzzyWord) {
   const spans = Array.isArray(page.spans) ? page.spans : [];
   const want = String(fuzzyWord || needle || "").toLowerCase();
@@ -170,6 +181,59 @@ export function searchPdfText(docs, { text = "", pages = "" } = {}, limit = 40) 
     exact: hit.exact,
     fuzzy: hit.fuzzy,
   }));
+}
+
+function exactOf(hit, phrase) {
+  if (typeof hit.exact === "boolean") return hit.exact;
+  const lower = hit.page?.lower ?? hit.lower ?? "";
+  const exact = lower.includes(phrase);
+  hit.exact = exact;
+  return exact;
+}
+
+// Candidates are page postings ({ doc, page, n, count, seq, fuzzy }). A single word never reads `.lower`.
+// A phrase reads it only until `limit` exact pages are in hand: a later exact page sorts worse.
+export function rankPostingHits(candidates, { text = "", pages = "" } = {}, limit = 40) {
+  const terms = queryTerms(text);
+  if (!terms.length) return [];
+  const phrase = String(text ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
+  const range = parsePageRange(pages);
+  const cap = Math.max(1, Math.floor(Number(limit) || 40));
+  const phraseMatters = Boolean(phrase) && (terms.length > 1 || phrase.includes(" "));
+  const rows = [];
+  for (const hit of Array.isArray(candidates) ? candidates : []) {
+    const n = Number(hit?.n) || 0;
+    if (range && (n < range.from || n > range.to)) continue;
+    rows.push(hit);
+  }
+  rows.sort((a, b) => Number(a.fuzzy) - Number(b.fuzzy) || (b.count || 0) - (a.count || 0) || (a.seq || 0) - (b.seq || 0));
+  const chosen = [];
+  let exacts = 0;
+  for (const hit of rows) {
+    const exact = phraseMatters ? exactOf(hit, phrase) : false;
+    if (exact) exacts += 1;
+    chosen.push(exact ? { ...hit, exact: true } : hit);
+    if (!phraseMatters && chosen.length >= cap) break;
+    if (phraseMatters && exacts >= cap) break;
+  }
+  chosen.sort((a, b) => Number(Boolean(b.exact)) - Number(Boolean(a.exact)) || Number(a.fuzzy) - Number(b.fuzzy) || (b.count || 0) - (a.count || 0) || (a.seq || 0) - (b.seq || 0));
+  const needle = phraseMatters ? phrase : (terms[0] || "");
+  return chosen.slice(0, cap).map((hit) => {
+    const page = hit.page || {};
+    const fuzzyWord = hit.fuzzy ? (terms[0] || "") : "";
+    return {
+      hash: hit.doc?.hash || "",
+      url: hit.doc?.url || "",
+      pdfUid: hit.doc?.pdfUid || "",
+      title: hit.doc?.title || "",
+      page: Number(hit.n) || 0,
+      text: page.text || "",
+      snippet: partSnippet(page.text || "", text),
+      frac: Array.isArray(page.spans) && page.spans.length ? flashFrac(page, hit.exact ? phrase : (hit.fuzzyWord || needle), fuzzyWord) : null,
+      exact: Boolean(hit.exact),
+      fuzzy: Boolean(hit.fuzzy),
+    };
+  });
 }
 
 // The reader open() detail a pin already flashes. Null when the PDF is not a card on this board.

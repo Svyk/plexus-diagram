@@ -132,8 +132,15 @@ test("the default pause timer does not re-arm the feed in the same turn", async 
 
 function memoryIdb() {
   const databases = new Map();
+  const written = [];
+  let opens = 0;
+  let closes = 0;
   return {
+    written,
+    opens: () => opens,
+    closes: () => closes,
     open(name) {
+      opens += 1;
       const req = {};
       let db = databases.get(name);
       const fresh = !db;
@@ -148,7 +155,9 @@ function memoryIdb() {
               objectStore() {
                 return {
                   put(value, key) {
-                    data.set(key, structuredClone(value));
+                    const copy = structuredClone(value);
+                    data.set(key, copy);
+                    written.push(copy);
                     const out = {};
                     queueMicrotask(() => out.onsuccess?.());
                     return out;
@@ -167,7 +176,7 @@ function memoryIdb() {
               },
             };
           },
-          close() {},
+          close() { closes += 1; },
         };
         databases.set(name, db);
       }
@@ -188,11 +197,22 @@ test("a finished read is cached by hash and the next index does not open the fil
   const first = createPdfTextIndex({ budget, openPdf: pdf.open, indexedDB: idb });
   first.enqueue([{ url: "https://x.test/a.pdf", title: "Cohort" }]);
   await drain(budget, 12);
-  await first.whenLoaded();
+  const firstReady = first.whenLoaded();
+  for (let i = 0; i < 8; i += 1) {
+    budget.flush();
+    await tick();
+  }
+  await firstReady;
   await tick();
   const secondPdf = pdfOf();
-  const second = createPdfTextIndex({ budget: budgetOf(), openPdf: secondPdf.open, indexedDB: idb });
-  await second.whenLoaded();
+  const secondBudget = budgetOf();
+  const second = createPdfTextIndex({ budget: secondBudget, openPdf: secondPdf.open, indexedDB: idb });
+  const ready = second.whenLoaded();
+  for (let i = 0; i < 12; i += 1) {
+    secondBudget.flush();
+    await tick();
+  }
+  await ready;
   const hits = second.search({ text: "brain" });
   assert.equal(hits[0]?.page, 1);
   assert.equal(hits[0]?.hash, "filehash");
@@ -233,6 +253,10 @@ test("a finished read closes the document, and an already cached file is closed 
   });
   cached.noteParsed([{ kind: "paragraph", text: "brain age", sha256: "known", url: "https://x.test/old.pdf", page: 2, pdfUid: "u", docTitle: "Old" }]);
   cached.enqueue([{ url: "https://x.test/old.pdf" }]);
+  await drain(again, 4);
+  assert.equal(readsAgain, 0);
+  assert.equal(closedAgain, 0);
+  cached.enqueue([{ url: "https://x.test/other.pdf" }]);
   await drain(again, 6);
   assert.equal(readsAgain, 0);
   assert.equal(closedAgain, 1);
@@ -269,4 +293,97 @@ test("stop closes the open document after openPdf resolves and before the last p
   await drain(budget, 8);
   assert.equal(reads, 0);
   assert.equal(closed, 1);
+});
+
+test("a cached page keeps the text and drops the glyph boxes", async () => {
+  const idb = memoryIdb();
+  const budget = budgetOf();
+  const index = createPdfTextIndex({ budget, openPdf: pdfOf().open, indexedDB: idb });
+  index.enqueue([{ url: "https://x.test/a.pdf", title: "Cohort" }]);
+  await drain(budget, 12);
+  await tick();
+  const page = idb.written.at(-1)?.pages?.[0];
+  assert.equal(page?.text, "Brain age cohort");
+  assert.equal(page?.spans, undefined);
+});
+
+test("a PDF with no text is remembered and the next index does not open it", async () => {
+  const idb = memoryIdb();
+  let opens = 0;
+  const openPdf = async () => {
+    opens += 1;
+    return {
+      hash: "blank",
+      pageCount: 1,
+      readPage: async () => ({ n: 1, text: "   ", lower: "", spans: [{ str: "", frac: [0, 0, 1, 1] }] }),
+      close: async () => {},
+    };
+  };
+  const budget = budgetOf();
+  const reading = createPdfTextIndex({ budget, openPdf, indexedDB: idb });
+  reading.enqueue([{ url: "https://x.test/blank.pdf" }]);
+  await drain(budget, 8);
+  assert.equal(opens, 1);
+  const againBudget = budgetOf();
+  const again = createPdfTextIndex({ budget: againBudget, openPdf, indexedDB: idb });
+  const ready = again.whenLoaded();
+  for (let i = 0; i < 12; i += 1) {
+    againBudget.flush();
+    await tick();
+  }
+  await ready;
+  again.enqueue([{ url: "https://x.test/blank.pdf" }]);
+  await drain(againBudget, 6);
+  assert.equal(opens, 1);
+});
+
+test("two indexes share one database and the last stop closes it", async () => {
+  const idb = memoryIdb();
+  const a = createPdfTextIndex({ budget: budgetOf(), indexedDB: idb, openPdf: async () => null });
+  const b = createPdfTextIndex({ budget: budgetOf(), indexedDB: idb, openPdf: async () => null });
+  await a.whenLoaded();
+  await b.whenLoaded();
+  await tick();
+  assert.equal(idb.opens(), 1);
+  a.noteParsed([{ sha256: "mem", url: "https://x.test/m.pdf", pdfUid: "p", docTitle: "M", page: 2, kind: "paragraph", text: "brain age" }]);
+  a.stop();
+  assert.equal(idb.closes(), 0);
+  assert.equal(a.search({ text: "brain" })[0]?.page, 2);
+  b.stop();
+  assert.equal(idb.closes(), 1);
+  assert.equal(a.search({ text: "brain" })[0]?.page, 2);
+});
+
+test("loaded postings are built one document per idle slice", async () => {
+  const idb = memoryIdb();
+  const budget = budgetOf();
+  const openPdf = async (url) => ({
+    hash: url.endsWith("b.pdf") ? "hb" : "ha",
+    pageCount: 1,
+    readPage: async () => ({
+      n: 1,
+      text: url.endsWith("b.pdf") ? "beta particle" : "alpha particle",
+      lower: url.endsWith("b.pdf") ? "beta particle" : "alpha particle",
+      spans: [{ str: "box", frac: [0, 0, 1, 1] }],
+    }),
+    close: async () => {},
+  });
+  const first = createPdfTextIndex({ budget, openPdf, indexedDB: idb });
+  first.enqueue([{ url: "https://x.test/a.pdf" }, { url: "https://x.test/b.pdf" }]);
+  await drain(budget, 16);
+  const secondBudget = budgetOf();
+  const second = createPdfTextIndex({ budget: secondBudget, openPdf: async () => { throw new Error("cached"); }, indexedDB: idb });
+  let settled = false;
+  const ready = second.whenLoaded().then(() => { settled = true; });
+  for (let i = 0; i < 20 && secondBudget.pending() === 0 && !settled; i += 1) await tick();
+  assert.equal(settled, false, "postings wait for an idle slice");
+  secondBudget.flush();
+  await tick();
+  assert.equal(second.search({ text: "alpha" }).length, 1);
+  assert.equal(second.search({ text: "beta" }).length, 0);
+  assert.equal(settled, false);
+  secondBudget.flush();
+  await tick();
+  await ready;
+  assert.equal(second.search({ text: "beta" }).length, 1);
 });

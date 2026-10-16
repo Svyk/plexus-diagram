@@ -2,14 +2,50 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  boxForQuery,
   docsFromPartRows,
   editDistance1,
   pageFromTextContent,
   pdfHitOpenDetail,
+  rankPostingHits,
   searchPdfText,
 } from "../src/model/pdf-text-search.js";
 
 const page = (n, text, spans = []) => ({ n, text, lower: text.toLowerCase(), spans });
+
+test("rank stops at the limit and reads a page only while a phrase can still win", () => {
+  let reads = 0;
+  const doc = { hash: "h", url: "https://x.test/a.pdf", pdfUid: "p", title: "T" };
+  const candidates = [];
+  for (let i = 0; i < 80; i += 1) {
+    const text = i < 5 ? "brain age cohort" : "brain other words here";
+    const page = { n: i + 1, text, spans: [] };
+    Object.defineProperty(page, "lower", { get() { reads += 1; return text; }, enumerable: true });
+    candidates.push({ doc, page, n: i + 1, count: 2, seq: i + 1, fuzzy: false });
+  }
+  const hits = rankPostingHits(candidates, { text: "brain age" }, 5);
+  assert.equal(hits.length, 5);
+  assert.equal(hits[0].page, 1);
+  assert.equal(hits[0].exact, true);
+  assert.ok(reads <= 5, `read ${reads} pages`);
+  reads = 0;
+  const one = rankPostingHits(candidates, { text: "brain" }, 5);
+  assert.equal(one.length, 5);
+  assert.equal(reads, 0);
+});
+
+test("a hit open can recompute the flash box from a pdf.js page", () => {
+  const got = pageFromTextContent({
+    n: 1,
+    width: 100,
+    height: 200,
+    items: [{ str: "Brain age", transform: [1, 0, 0, 12, 10, 150], width: 40, height: 12 }],
+  });
+  const frac = boxForQuery(got, "brain");
+  assert.ok(Array.isArray(frac) && frac.length >= 4);
+  assert.ok(Math.abs(frac[0] - 0.1) < 0.001);
+  assert.equal(boxForQuery({ ...got, spans: [] }, "brain"), null);
+});
 
 test("pdf.js text items become a page with a top-left flash box", () => {
   const got = pageFromTextContent({

@@ -123,7 +123,7 @@ import { createImageIndex, localImagePath } from "../host/image-index.js";
 import { createPdfTextIndex } from "../host/pdf-text-index.js";
 import { openPdfDocument, unparsedPdfJobs } from "../host/pdf-text-open.js";
 import { createHelperClient } from "../host/parse-helper-client.js";
-import { pdfHitOpenDetail } from "../model/pdf-text-search.js";
+import { boxForQuery, pdfHitOpenDetail } from "../model/pdf-text-search.js";
 import { searchImages, similarImages } from "../model/image-search.js";
 import { createFigureImages, getFigureImages, setFigureImages, shrinkImage } from "../host/figure-image.js";
 import { imageDoc } from "../model/ai-context.js";
@@ -6607,9 +6607,32 @@ function buildBoardView(onFail, {
       openPdfHit: (hit) => {
         const uid = pdfCardUidFor(hit?.pdfUid || "", hit?.url || "");
         const item = uid ? board()?.items.get(uid) : null;
-        const detail = pdfHitOpenDetail(hit, item);
-        if (!detail) return false;
-        try { ensureReadPane().open?.(detail); } catch { return false; }
+        const openAt = (next) => {
+          if (disposed) return false;
+          const detail = pdfHitOpenDetail(next, item);
+          if (!detail) return false;
+          try { ensureReadPane().open?.(detail); } catch { return false; }
+          return true;
+        };
+        const hasFrac = Array.isArray(hit?.frac) && hit.frac.length >= 4;
+        const found = !hasFrac && hit?.url ? detectPdfjs(win) : null;
+        if (hasFrac || !found?.workerReady) return openAt(hit);
+        // The cache keeps page text only. The box is read from this one page, then the document is closed.
+        void (async () => {
+          let handle = null;
+          try {
+            handle = await openPdfDocument(found.lib, hit.url, { allow: firstPageAllowed });
+            if (disposed || !handle) { openAt(hit); return; }
+            const page = await handle.readPage(Number(hit.page) || 1);
+            if (disposed) return;
+            const frac = boxForQuery(page, hit?.snippet?.hit || "");
+            openAt(frac ? { ...hit, frac } : hit);
+          } catch {
+            openAt(hit);
+          } finally {
+            try { await handle?.close?.(); } catch { /* gone */ }
+          }
+        })();
         return true;
       },
       searchParts: async (query, limit) => {

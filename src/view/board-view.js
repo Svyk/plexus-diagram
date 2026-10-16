@@ -124,7 +124,7 @@ import { createPdfTextIndex } from "../host/pdf-text-index.js";
 import { openPdfDocument, unparsedPdfJobs } from "../host/pdf-text-open.js";
 import { openPdfForText, pdfJsForText } from "./pdf-js-for-text.js";
 import { createHelperClient } from "../host/parse-helper-client.js";
-import { boxForQuery, pdfHitOpenDetail } from "../model/pdf-text-search.js";
+import { boxForQuery, pdfTextActivate } from "../model/pdf-text-search.js";
 import { searchImages, similarImages } from "../model/image-search.js";
 import { createFigureImages, getFigureImages, setFigureImages, shrinkImage } from "../host/figure-image.js";
 import { imageDoc } from "../model/ai-context.js";
@@ -6383,7 +6383,12 @@ function buildBoardView(onFail, {
           found: pdfJsForText(win, doc),
           open: (lib) => openPdfDocument(lib, url, { allow: firstPageAllowed }),
         }),
-        onReady: () => { try { panel?.refreshSearch?.(); } catch { /* panel gone */ } },
+        onReady: () => {
+          try {
+            if (pdfText?.paused?.()) return;
+            panel?.refreshSearch?.();
+          } catch { /* panel gone */ }
+        },
       });
     }
     return pdfText;
@@ -6528,6 +6533,62 @@ function buildBoardView(onFail, {
     const exclude = target.kind === "page" ? `[[${target.title}]]` : `((${target.uid}))`;
     panel.findRelated({ query, label: item.title || target.title || "this card", exclude });
   };
+  const openPdfTextHit = (hit, { add = false, needle = "" } = {}) => {
+    if (!hit || disposed) return false;
+    const boardUid = pdfCardUidFor(hit.pdfUid || "", hit.url || "");
+    const item = boardUid ? board()?.items.get(boardUid) : null;
+    let next = hit;
+    if (!item && !hit.pdfUid && !hit.blockUid && hit.url) {
+      const block = (pdfBlocks() || []).find((row) => row && row.url === hit.url);
+      if (block?.uid) next = { ...hit, pdfUid: block.uid };
+    }
+    const plan = pdfTextActivate(next, { add: add === true, item });
+    if (!plan) return false;
+    if (plan.action === "add") {
+      if (hit.blockId) {
+        void parseActions().sendParsedToBoard({
+          sha256: hit.sha256, engine: hit.engine || "builtin", optsHash: hit.optsHash || "", ids: [hit.blockId],
+          pdfUid: hit.pdfUid || "", pdfBlockUid: hit.pdfUid || "",
+          kind: hit.kind === "table" || hit.kind === "figure" || hit.kind === "formula" ? hit.kind : "blocks",
+        });
+        return true;
+      }
+      const uid = next.pdfUid || hit.pdfUid || "";
+      if (!uid) return false;
+      addStringsBeside([`((${uid}))`]);
+      return true;
+    }
+    if (plan.action === "sidebar") {
+      const uid = next.pdfUid || hit.pdfUid || "";
+      if (!uid) return false;
+      try { host?.openInSidebar?.(uid, "block"); } catch { return false; }
+      return true;
+    }
+    const openReader = (detail) => {
+      if (disposed) return false;
+      try { ensureReadPane().open?.(detail); } catch { return false; }
+      return true;
+    };
+    const opened = openReader(plan);
+    const hasFrac = Array.isArray(plan.frac) && plan.frac.length >= 4;
+    const query = needle || hit.needle || hit.snippet?.hit || hit.text || "";
+    const found = !hasFrac && hit.url ? detectPdfjs(win) : null;
+    if (!hasFrac && found?.workerReady && query) {
+      void (async () => {
+        let handle = null;
+        try {
+          handle = await openPdfDocument(found.lib, hit.url, { allow: firstPageAllowed });
+          if (disposed || !handle) return;
+          const page = await handle.readPage(Number(hit.page) || 1);
+          if (disposed) return;
+          const frac = boxForQuery(page, hit.snippet?.hit || query);
+          if (frac) openReader({ ...plan, frac });
+        } catch { /* the page stays open */ }
+        finally { try { await handle?.close?.(); } catch { /* gone */ } }
+      })();
+    }
+    return opened;
+  };
   let panelWidth = PANEL_WIDTH_DEFAULT;
   try {
     const stored = Number(storage?.getItem?.(PANEL_WIDTH_KEY));
@@ -6608,37 +6669,8 @@ function buildBoardView(onFail, {
       searchPdfText: (query, limit) => {
         try { return pdfTextIndex().search(query, limit); } catch { return []; }
       },
-      openPdfHit: (hit) => {
-        const uid = pdfCardUidFor(hit?.pdfUid || "", hit?.url || "");
-        const item = uid ? board()?.items.get(uid) : null;
-        const openAt = (next) => {
-          if (disposed) return false;
-          const detail = pdfHitOpenDetail(next, item);
-          if (!detail) return false;
-          try { ensureReadPane().open?.(detail); } catch { return false; }
-          return true;
-        };
-        const hasFrac = Array.isArray(hit?.frac) && hit.frac.length >= 4;
-        const found = !hasFrac && hit?.url ? detectPdfjs(win) : null;
-        if (hasFrac || !found?.workerReady) return openAt(hit);
-        // The cache keeps page text only. The box is read from this one page, then the document is closed.
-        void (async () => {
-          let handle = null;
-          try {
-            handle = await openPdfDocument(found.lib, hit.url, { allow: firstPageAllowed });
-            if (disposed || !handle) { openAt(hit); return; }
-            const page = await handle.readPage(Number(hit.page) || 1);
-            if (disposed) return;
-            const frac = boxForQuery(page, hit?.snippet?.hit || "");
-            openAt(frac ? { ...hit, frac } : hit);
-          } catch {
-            openAt(hit);
-          } finally {
-            try { await handle?.close?.(); } catch { /* gone */ }
-          }
-        })();
-        return true;
-      },
+      openPdfHit: (hit) => openPdfTextHit(hit, { add: false }),
+      openPdfText: (hit, opts) => openPdfTextHit(hit, opts || {}),
       searchParts: async (query, limit) => {
         if (typeof host?.listPdfBlocks !== "function") return [];
         const rows = await partsIndex().get();
@@ -6647,10 +6679,8 @@ function buildBoardView(onFail, {
       },
       addPart: (payload) => { void parseActions().sendParsedToBoard(payload); },
       openPart: (row) => {
-        const uid = pdfCardUidFor(row?.pdfUid || "", row?.url || "");
-        if (!uid || typeof itemsR?.openPdfAt !== "function") return false;
-        void itemsR.openPdfAt(uid, row.page || 1);
-        return true;
+        if (!row || row.kind === "figure") return false;
+        return openPdfTextHit(row, { add: false }) === true;
       },
       askPart: (row) => {
         void askAboutParsed({ pdfUid: pdfCardUidFor(row?.pdfUid || "", row?.url || "") || row?.pdfUid || "", url: row?.url || "", sha256: row?.sha256 || "", engine: row?.engine || "builtin", optsHash: row?.optsHash || "", blockId: row?.blockId || "", page: row?.page ?? null });

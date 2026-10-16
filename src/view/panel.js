@@ -9,6 +9,7 @@ import { LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, PARSE_PART_TYPES, libraryCard, l
 import { markTerms } from "../model/pdf-ident.js";
 import { mergeSemantic } from "../model/semantic.js";
 import { PART_LABELS, partSnippet } from "../model/parts-search.js";
+import { PDF_TEXT_OPEN_TIP } from "../model/pdf-text-search.js";
 import { COLOR_ANCHORS, COLOR_NAMES } from "../model/color.js";
 import { CARD_MIME, PARSE_MIME, parseDropPayload } from "../model/drop.js";
 import { dailyTitle, startOfDay, stepDay } from "../model/journal.js";
@@ -644,13 +645,33 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       img.setAttribute("alt", "");
       img.setAttribute("loading", "lazy");
     }
-    const open = (event) => {
+    r.setAttribute("title", PDF_TEXT_OPEN_TIP);
+    if (hit.pdfUid) {
+      r.setAttribute("draggable", "true");
+      r.draggable = true;
+    }
+    const activate = (event) => {
       event.stopPropagation();
-      try { on.openPdfHit?.(hit); } catch { /* host */ }
+      const add = event.shiftKey === true;
+      try {
+        if (typeof on.openPdfText === "function") on.openPdfText(hit, { add, needle: input.value });
+        else on.openPdfHit?.(hit);
+      } catch { /* host */ }
       r.classList.add("pxd-panel__row--on");
     };
-    listenRow(chip, "click", open);
-    listenRow(r, "click", open);
+    r.pxdActivate = activate;
+    listenRow(chip, "click", activate);
+    listenRow(r, "click", activate);
+    if (hit.pdfUid) {
+      listenRow(r, "dragstart", (event) => {
+        try {
+          const ref = `((${hit.pdfUid}))`;
+          event.dataTransfer?.setData?.(CARD_MIME, ref);
+          event.dataTransfer?.setData?.("text/plain", ref);
+          if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+        } catch { /* stub */ }
+      });
+    }
     return r;
   };
 
@@ -706,11 +727,18 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       pdfUid: part.pdfUid || "", pdfBlockUid: part.pdfUid || "",
       kind: part.kind === "table" || part.kind === "figure" || part.kind === "formula" ? part.kind : "blocks",
     };
+    const textHit = part.kind !== "figure";
+    if (textHit) r.setAttribute("title", PDF_TEXT_OPEN_TIP);
     const openThis = (event) => {
       event.stopPropagation();
-      if (on.openPart?.(part) !== true) on.addPart?.(payload);
+      if (textHit && typeof on.openPdfText === "function") {
+        try {
+          on.openPdfText({ ...part, title: part.docTitle || part.title || "", needle: input.value }, { add: event.shiftKey === true, needle: input.value });
+        } catch { /* host */ }
+      } else if (on.openPart?.(part) !== true) on.addPart?.(payload);
       r.classList.add("pxd-panel__row--on");
     };
+    if (textHit && typeof on.openPdfText === "function") r.pxdActivate = openThis;
     listenRow(chip, "click", openThis);
     listenRow(r, "click", openThis);
     listenRow(r, "dragstart", (event) => {
@@ -1168,7 +1196,16 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      if (activeRow && results.contains?.(activeRow)) { try { activeRow.click(); } catch { /* stub */ } return; }
+      if (activeRow && results.contains?.(activeRow)) {
+        if (typeof activeRow.pxdActivate === "function") {
+          try {
+            activeRow.pxdActivate({ shiftKey: event.shiftKey === true, stopPropagation() {}, preventDefault() {} });
+          } catch { /* stub */ }
+          return;
+        }
+        try { activeRow.click(); } catch { /* stub */ }
+        return;
+      }
       searchNow();
     }
   });

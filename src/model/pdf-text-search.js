@@ -250,3 +250,29 @@ export function pdfHitOpenDetail(hit, item) {
     title: hit.title || "",
   };
 }
+
+export const PDF_TEXT_OPEN_TIP = "Opens this page. Shift+Enter or drag adds it to the board.";
+
+// Click and Enter open the page. Shift+Enter and drag add a card. Off-board hits still open:
+// the block uid is enough for the reader, and a missing uid is a sidebar lookup.
+export function pdfTextActivate(hit, { add = false, item = null } = {}) {
+  if (!hit || typeof hit !== "object") return null;
+  if (add) return { action: "add", hit };
+  const onBoard = Boolean(item?.uid);
+  const blockUid = onBoard
+    ? (item.target?.kind === "block" && item.target.uid ? item.target.uid : item.uid)
+    : String(hit.pdfUid || hit.blockUid || "");
+  const page = Number(hit.page) || 1;
+  const frac = Array.isArray(hit.frac) && hit.frac.length >= 4 ? hit.frac.slice(0, 4) : null;
+  if (!blockUid) return { action: "sidebar", page, url: String(hit.url || ""), frac, hit };
+  return {
+    action: "reader",
+    cardUid: onBoard ? item.uid : "",
+    blockUid,
+    page,
+    frac,
+    source: onBoard ? (item.string || "") : (hit.url ? `{{[[pdf]]: ${hit.url}}}` : ""),
+    title: hit.title || hit.docTitle || "",
+    hit,
+  };
+}

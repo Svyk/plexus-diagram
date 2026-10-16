@@ -7,6 +7,8 @@ import test from "node:test";
 import { createHost } from "../src/host/roam.js";
 import { matchParsedBlock, pageFracFromBbox } from "../src/model/pdf-pin.js";
 import { acquireSession } from "../src/session.js";
+import { createSettingsPanel } from "../src/settings.js";
+import { applyPdfReaderDark } from "../src/view/pdf-reader-dark.js";
 import { jumpSidebarPdf, pdfTargetsMatch, waitForSidebarPdf, watchNodeGone } from "../src/view/pin-reveal.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
@@ -266,4 +268,147 @@ test("a figure copy undoes the upload and the pin together", async () => {
   const menu = readFileSync(new URL("../src/view/parse-view.js", import.meta.url), "utf8");
   assert.match(menu, /copyFigureFile\(/);
   assert.match(menu, /figureCardMarkdown\(live, parsed\)/);
+});
+
+test("PDF dark mode leaves the board reader alone and paints page photos back", async () => {
+  const { photoFracs, shouldRestoreContainer } = await import("../src/view/pdf-photo-restore.js");
+  const id = [1, 0, 0, 1, 0, 0];
+  const view = { transform: id, width: 100, height: 100 };
+  assert.deepEqual(
+    photoFracs({ fnArray: [12, 85], argsArray: [[50, 0, 0, 40, 10, 20], ["Im1"]] }, view),
+    [[0.1, 0.2, 0.5, 0.4]],
+  );
+  assert.deepEqual(
+    photoFracs({
+      fnArray: [10, 12, 83, 11, 12, 85],
+      argsArray: [[], [80, 0, 0, 80, 0, 0], ["Mask"], [], [50, 0, 0, 40, 10, 20], ["Im1"]],
+    }, view),
+    [[0.1, 0.2, 0.5, 0.4]],
+  );
+  assert.deepEqual(
+    photoFracs({ fnArray: [12, 85], argsArray: [[4, 0, 0, 4, 10, 20], ["ImTiny"]] }, view),
+    [],
+  );
+
+  const row = createSettingsPanel().settings.find((entry) => entry.id === "pdf-reader-dark");
+  assert.equal(row.description.includes("stay natural"), false);
+  assert.match(row.description, /invert with the text/);
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  assert.equal(readme.includes("stay natural"), false);
+  assert.match(readme, /invert with the text/);
+  assert.match(readme, /\| PDF reader \| PDF dark mode \|/);
+  const css = readFileSync(new URL("../src/css/read-pane.css", import.meta.url), "utf8");
+  assert.match(css, /canvas:not\(\.pxd-pdf-photo\)/);
+  const paneAt = css.indexOf("html.pxd-pdf-reader-dark .pxd-read .rm-pdf-container .page > canvas");
+  assert.ok(paneAt > css.indexOf("html.pxd-pdf-reader-dark .rm-pdf-container .page > canvas"));
+  assert.match(css.slice(paneAt, css.indexOf("}", paneAt)), /filter:\s*none/);
+
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const doc = stub.document;
+    const orig = doc.createElement.bind(doc);
+    doc.createElement = (tag) => {
+      const el = orig(tag);
+      if (String(tag).toLowerCase() === "canvas") {
+        el.getContext = () => ({
+          drawImage() { el._drew = (el._drew || 0) + 1; },
+          clearRect() {},
+        });
+      }
+      return el;
+    };
+    const read = orig("div");
+    read.className = "pxd-read";
+    const inside = orig("div");
+    read.append(inside);
+    const root = orig("div");
+    root.className = "pxd-root";
+    const insideRoot = orig("div");
+    root.append(insideRoot);
+    assert.equal(shouldRestoreContainer(inside), false);
+    assert.equal(shouldRestoreContainer(insideRoot), false);
+    assert.equal(shouldRestoreContainer(orig("div")), true);
+
+    let calls = 0;
+    const pdfPage = {
+      fingerprints: ["abc"],
+      getViewport: () => ({ transform: id, width: 100, height: 100 }),
+      getOperatorList() {
+        calls += 1;
+        return { fnArray: [12, 85], argsArray: [[50, 0, 0, 40, 10, 20], ["Im1"]] };
+      },
+    };
+    const box = doc.createElement("div");
+    box.className = "rm-pdf-container";
+    const page = doc.createElement("div");
+    page.className = "page";
+    page.setAttribute("data-page-number", "1");
+    page.pdfPage = pdfPage;
+    const canvas = doc.createElement("canvas");
+    canvas.width = 100;
+    canvas.height = 100;
+    page.append(canvas);
+    box.append(page);
+    applyPdfReaderDark(doc, true);
+    doc.body.append(box);
+    stub.flushMutations();
+    await new Promise((r) => setTimeout(r, 0));
+    const photo = page.querySelector(".pxd-pdf-photo");
+    assert.ok(photo);
+    assert.equal(canvas.nextElementSibling, photo);
+    assert.ok(photo._drew >= 1);
+    assert.equal(calls, 1);
+
+    const seen = calls;
+    page.append(canvas);
+    stub.flushMutations();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls, seen);
+
+    let readCalls = 0;
+    const readBox = doc.createElement("div");
+    readBox.className = "rm-pdf-container";
+    const readPage = doc.createElement("div");
+    readPage.className = "page";
+    readPage.pdfPage = {
+      fingerprints: ["read"],
+      getViewport: () => ({ transform: id, width: 100, height: 100 }),
+      getOperatorList() {
+        readCalls += 1;
+        return { fnArray: [12, 85], argsArray: [[50, 0, 0, 40, 10, 20], ["Im1"]] };
+      },
+    };
+    const readCanvas = doc.createElement("canvas");
+    readCanvas.width = 100;
+    readCanvas.height = 100;
+    readPage.append(readCanvas);
+    readBox.append(readPage);
+    read.append(readBox);
+    doc.body.append(read);
+    stub.flushMutations();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(readBox.querySelector(".pxd-pdf-photo"), null);
+    assert.equal(readCalls, 0);
+
+    applyPdfReaderDark(doc, false);
+    assert.equal(doc.querySelectorAll(".pxd-pdf-photo").length, 0);
+    const later = doc.createElement("div");
+    later.className = "rm-pdf-container";
+    const laterPage = doc.createElement("div");
+    laterPage.className = "page";
+    laterPage.pdfPage = pdfPage;
+    const laterCanvas = doc.createElement("canvas");
+    laterCanvas.width = 100;
+    laterCanvas.height = 100;
+    laterPage.append(laterCanvas);
+    later.append(laterPage);
+    doc.body.append(later);
+    stub.flushMutations();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(later.querySelector(".pxd-pdf-photo"), null);
+    assert.equal(calls, seen);
+  } finally {
+    restore();
+  }
 });

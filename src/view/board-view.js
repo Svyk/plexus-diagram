@@ -1329,6 +1329,7 @@ function buildBoardView(onFail, {
   let searchQuery = "";
   let frameHandle = null;
   let fsDispose = () => {};
+  let fsParked = false;
   let routeOff = () => {};
   const dirty = { viewport: false, items: new Set(), edges: new Set(), structural: false, all: true, selection: false, links: false, ctx: false, minimap: false };
 
@@ -10264,16 +10265,28 @@ function buildBoardView(onFail, {
     // Crumbs and board history: keep a parked root in its mount, unrendered (content-visibility:hidden keeps its
     // style and layout). Removing it dropped every computed style, and the way back restyled the whole board before
     // the first paint (PhD main board: 13,762 elements, 166 ms, plus 33 ms of layout).
+    // E1 (perf2): a fullscreen board parks too (keepFullscreen). The mount's chrome belongs to whichever board shows:
+    // a parked board lets go of its placement observers and takes them back when it shows again, and disposing it
+    // while parked leaves the mount's fullscreen alone.
     park() {
       if (disposed || !root.parentElement || !(size.width > 0)) return false;
       root.style.width = `${size.width}px`;
       root.setAttribute("data-pxd-parked", "");
+      if (isFullscreen) {
+        try { fsDispose(); } catch { /* no chrome applied */ }
+        fsDispose = () => {};
+        fsParked = true;
+      }
       return true;
     },
     unpark() {
       if (!root.hasAttribute?.("data-pxd-parked")) return;
       root.removeAttribute("data-pxd-parked");
       root.style.width = "";
+      if (fsParked) {
+        fsParked = false;
+        if (isFullscreen && !disposed) fsDispose = applyFullscreenChrome(mountEl, true, doc);
+      }
     },
     rebind(nextMount) {
       if (disposed || !nextMount) return;
@@ -10605,7 +10618,7 @@ function buildBoardView(onFail, {
       step(() => subs.splice(0).forEach((off) => { try { off?.(); } catch { /* already off */ } }));
       step(() => routeOff());
       step(() => fsDispose());
-      step(() => applyFullscreenChrome(mountEl, false, doc));
+      step(() => { if (!root.hasAttribute?.("data-pxd-parked")) applyFullscreenChrome(mountEl, false, doc); });
       step(() => { try { vpStore.set(vpId, vp); } catch { /* the store can refuse a write */ } });
       step(() => vpStore.flush?.());
       step(() => resumeTimer?.());

@@ -112,7 +112,7 @@ function addNative(doc, uid, { parent = doc.app } = {}) {
   return { native, panel };
 }
 
-function setup({ enhanced = [], speedLog = false } = {}) {
+function setup({ enhanced = [], speedLog = false, flags = null } = {}) {
   const saved = {};
   const globals = ["document", "window", "location", "MutationObserver", "IntersectionObserver", "PerformanceObserver", "setInterval", "clearInterval"];
   for (const key of globals) saved[key] = Object.getOwnPropertyDescriptor(globalThis, key);
@@ -318,6 +318,7 @@ function setup({ enhanced = [], speedLog = false } = {}) {
     "collapse-outline": false,
     "fullscreen-on-zoom": false,
     "speed-log": speedLog,
+    ...(flags ? { "speed-flags": JSON.stringify(flags) } : {}),
   };
   const extensionAPI = {
     settings: { get: (id) => (Object.hasOwn(values, id) ? values[id] : null) },
@@ -360,8 +361,8 @@ async function withEnv(options, fn) {
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 const BOARDS = ["boardAAA1", "boardBBB2", "boardCCC3", "boardDDD4"];
 
-async function openBoards() {
-  const ctx = setup({ enhanced: BOARDS });
+async function openBoards(opts = {}) {
+  const ctx = setup({ enhanced: BOARDS, ...opts });
   addNative(ctx.doc, "boardAAA1");
   await ctx.install();
   return ctx;
@@ -589,8 +590,9 @@ test("detach and reattach do not change :edit/time", async () => {
   }
 });
 
-test("a fullscreen mount and a mount with a text entry in progress are disposed instead of detached", async () => {
-  const t = await openBoards();
+// E1 (perf2): keepFullscreen off is the 3.34.0 rule (a fullscreen board is disposed). On, it is kept: test below.
+test("keepFullscreen off: a fullscreen mount and a mount with a text entry in progress are disposed instead of detached", async () => {
+  const t = await openBoards({ flags: { keepFullscreen: false } });
   try {
     t.views[0].args.onRequestFullscreen(true);
     await go(t.views[0], "boardBBB2");
@@ -604,6 +606,32 @@ test("a fullscreen mount and a mount with a text entry in progress are disposed 
     await go(t.views[1], "boardCCC3");
     assert.equal(t.views[1].disposed, 1);
     assert.equal(t.views[1].root.isConnected, false);
+  } finally {
+    await t.lifecycle.dispose().catch(() => {});
+    t.restore();
+  }
+});
+
+// E1 (perf2): crumb back to a fullscreen PhD MAIN rebuilt it (snapshot, then ~1.4 s of shells popping in, every edge
+// element made again). A fullscreen board is kept and reattached like any other, with the mount's fullscreen state.
+test("a fullscreen board is kept on a nested open and comes back as the same view, still fullscreen", async () => {
+  const t = await openBoards();
+  try {
+    t.views[0].args.onRequestFullscreen(true);
+    const rootA = t.views[0].root;
+    await go(t.views[0], "boardBBB2");
+    assert.equal(t.views[0].disposed, 0, "the fullscreen board is not disposed");
+    assert.equal(t.views[0].suspended, true);
+    assert.equal(t.releases.length, 0);
+    t.views[1].args.onOpenBoard("boardAAA1");
+    await settle();
+    await new Promise((resolve) => setTimeout(resolve, 520));
+    assert.equal(t.views.length, 2, "no new view for the way back");
+    assert.equal(t.views[0].root, rootA);
+    assert.equal(rootA.isConnected, true);
+    assert.equal(t.views[0].suspended, false);
+    assert.equal(t.views[0].fullscreenCalls.at(-1), true, "the kept board shows fullscreen");
+    assert.equal(t.created.filter((uid) => uid === "boardAAA1").length, 1, "the session is not created again");
   } finally {
     await t.lifecycle.dispose().catch(() => {});
     t.restore();

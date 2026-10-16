@@ -1950,7 +1950,9 @@ export async function installPlexusDiagram({
     if (speedFlags().keepAlive === false) return false;
     const view = rec?.view;
     if (!view || view.sketchStandIn === true) return false;
-    if (rec.fullscreen) return false;
+    // E1 (perf2): a fullscreen board is kept too. Disposing it rebuilt the PhD main board on every crumb back from a
+    // nested board (snapshot, then ~1.4 s of shells popping in under grey boxes, every edge element made again).
+    if (rec.fullscreen && speedFlags().keepFullscreen === false) return false;
     if (holdsFocus(rec)) {
       // The crumb, tab or card the user just clicked holds focus; parking drops it anyway. Only a text entry in
       // progress keeps the view out of the pool.
@@ -2289,6 +2291,8 @@ export async function installPlexusDiagram({
     rec.view = view;
     try { view?.setCrumbs?.(rec.crumbs); } catch { /* the parked view keeps the path it painted */ }
     resumeView(rec, view);
+    // Fullscreen may have been entered or left on the board shown meanwhile; the mount's state wins.
+    try { view?.setFullscreen?.(Boolean(rec.fullscreen)); } catch { /* the view keeps its chrome */ }
     const session = rec.session;
     const rest = () => {
       if (stopped || rec.view !== view || rec.session !== session) return;

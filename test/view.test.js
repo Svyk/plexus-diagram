@@ -2439,7 +2439,7 @@ test("ED-3: a taller edit previews the section and Esc writes the card height on
   }
 });
 
-test("ED-4: editing pins a page menu to the textarea and lifts it out of the board", async () => {
+test("ED-4: editing leaves a page menu in the card", async () => {
   const f = mountFixture();
   try {
     await f.flush();
@@ -2455,14 +2455,12 @@ test("ED-4: editing pins a page menu to the textarea and lifts it out of the boa
     // Hydrate resolves on a microtask after the last flushed frame. Yield once so the watcher starts.
     await tick();
     f.stub.flushFrames();
-    assert.equal(menu.parentElement === f.stub.document.body, true);
-    assert.equal(menu.closest(".pxd-viewport") === null, true);
-    assert.equal(menu.style.position, "fixed");
-    assert.equal(menu.style.transform, "none");
-    assert.equal(menu.style.left, "100px");
-    assert.equal(menu.style.top, "226px");
+    assert.equal(menu.parentElement === editor, true, "the autocomplete stays in the card");
+    assert.equal(menu.closest(".pxd-viewport") !== null, true);
+    assert.equal(menu.style.position || "", "");
+    assert.equal(menu.style.left || "", "");
     f.stub.flushFrames();
-    assert.equal(f.host.calls.renderBlock, renders, "pinning a menu does not re-render the card");
+    assert.equal(f.host.calls.renderBlock, renders, "leaving the menu in place does not re-render the card");
     menu.remove();
     input.focus();
     f.stub.dispatch(input, "keydown", { key: "Escape" });

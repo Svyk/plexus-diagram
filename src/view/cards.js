@@ -5530,7 +5530,9 @@ export function createItemRenderer({
       return;
     }
     contentSched?.hold(false);
-    if (lastContent) fillContent(lastContent);
+    // lastContent.zoom is the last content pass. setZoom during the edit is the live camera,
+    // and a replay of the old pass would drop the note editor's counter-scale.
+    if (lastContent) fillContent({ ...lastContent, zoom: zoomCache });
   };
   // Held for the whole edit. quiet(false) from the 700 ms outside-typing timer cannot release it.
   // Exit mounts the quieted bodies before it returns. The idle pump would leave them blank for a turn.
@@ -5578,6 +5580,7 @@ export function createItemRenderer({
     const next = Number(zoom);
     const prevZoom = zoomCache;
     zoomCache = next > 0 && Number.isFinite(next) ? next : 1;
+    if (lastContent && lastContent.zoom !== zoomCache) lastContent = { ...lastContent, zoom: zoomCache };
     if (zoomCache !== prevZoom) {
       closePeek();
       refreshRegionLayers();

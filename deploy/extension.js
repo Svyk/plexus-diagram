@@ -19286,7 +19286,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, slicedResume: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, slicedResume: true, idlePark: true, quietBodies: true, adaptiveSlices: true };
 }
 function parseSpeedFlags(raw) {
   const base = defaultSpeedFlags();
@@ -19740,7 +19740,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "slicedResume"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "slicedResume", "idlePark", "quietBodies", "adaptiveSlices"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -35527,12 +35527,46 @@ function createItemRenderer({
   };
   const SLOW_MOUNT_MS = 50;
   const slowMounts = [];
+  const heavyQueue = /* @__PURE__ */ new Set();
+  let heavyJob = null;
+  let heavyNow = false;
+  const queueHeavy = (uid) => {
+    heavyQueue.add(uid);
+    if (heavyJob || disposed) return;
+    heavyJob = timers.bgRun(() => {
+      for (const uid2 of heavyQueue) {
+        heavyQueue.delete(uid2);
+        if (mounted.has(uid2)) continue;
+        if (!wanted.has(uid2)) {
+          contentSched?.drop(uid2);
+          continue;
+        }
+        heavyNow = true;
+        try {
+          timedMount(uid2);
+        } finally {
+          heavyNow = false;
+        }
+        break;
+      }
+      if (heavyQueue.size) return false;
+      heavyJob = null;
+      return true;
+    }, { label: "body:slow", partMs: 1e3 });
+  };
   const timedMount = (uid) => {
+    if (!heavyNow && quietBodies() && slowBodies.has(uid) && wanted.has(uid) && !mounted.has(uid) && editing?.uid !== uid) {
+      queueHeavy(uid);
+      return true;
+    }
     const t0 = now2();
+    let did = false;
     try {
-      return mountScheduled(uid);
+      did = mountScheduled(uid);
+      return did;
     } finally {
       const ms = now2() - t0;
+      if (did && mounted.has(uid)) noteBodyMs(uid, ms);
       if (ms >= SLOW_MOUNT_MS) {
         slowMounts.push({ uid, kind: lastBoard?.items.get(uid)?.kind || "", ms: Math.round(ms), at: Math.round(t0) });
         if (slowMounts.length > 30) slowMounts.shift();
@@ -35582,6 +35616,30 @@ function createItemRenderer({
       if (contentSched.pending() > 0) armFrames();
     });
   };
+  const quietBodies = () => {
+    try {
+      return speedOf().quietBodies !== false && typeof timers?.bgRun === "function";
+    } catch {
+      return false;
+    }
+  };
+  const unmountQueue = /* @__PURE__ */ new Set();
+  let unmountJob = null;
+  const queueUnmount = (uid) => {
+    unmountQueue.add(uid);
+    if (unmountJob || disposed) return;
+    unmountJob = timers.bgRun(() => {
+      for (const uid2 of unmountQueue) {
+        unmountQueue.delete(uid2);
+        if (!mounted.has(uid2) || wanted.has(uid2)) continue;
+        unmountContent(uid2);
+        break;
+      }
+      if (unmountQueue.size) return false;
+      unmountJob = null;
+      return true;
+    }, { label: "unmount", partMs: 8 });
+  };
   const evict = () => {
     if (mounted.size <= LRU_CAP) return;
     const victims = [];
@@ -35593,6 +35651,11 @@ function createItemRenderer({
       if (mounted.size - victims.length <= LRU_CAP) break;
       if (!victims.includes(uid)) victims.push(uid);
     }
+    if (quietBodies()) {
+      for (const uid of victims) if (!wanted.has(uid)) queueUnmount(uid);
+      else unmountContent(uid);
+      return;
+    }
     victims.forEach(unmountContent);
   };
   let unmountTimer = null;
@@ -35602,11 +35665,15 @@ function createItemRenderer({
       unmountTimer = null;
       if (disposed) return;
       const t = now2();
+      const sliced = quietBodies();
       for (const [uid, seen] of [...mounted]) {
-        if (!wanted.has(uid) && unmountDue(seen, t, UNMOUNT_AFTER_MS - 1)) unmountContent(uid);
+        if (!wanted.has(uid) && unmountDue(seen, t, UNMOUNT_AFTER_MS - 1)) {
+          if (sliced) queueUnmount(uid);
+          else unmountContent(uid);
+        }
       }
-      if ([...mounted.keys()].some((u) => !wanted.has(u))) scheduleUnmounts();
-    }, UNMOUNT_AFTER_MS);
+      if ([...mounted.keys()].some((u) => !wanted.has(u) && !unmountQueue.has(u))) scheduleUnmounts();
+    }, UNMOUNT_AFTER_MS, "unmount-due");
   };
   let lastContent = null;
   let quieted = false;
@@ -37340,7 +37407,7 @@ function createItemRenderer({
     dispose
   };
 }
-var SIDES3, CHUNK_MS, LRU_CAP, UNMOUNT_AFTER_MS, HYDRATE_CAP_MS, CONTENT_LIMIT, CONTENT_DEPTH, OUTLINE_CAP, OUTLINE_FETCH, PAGE_WATCH_MAX, PAGE_REFRESH_MS, BLOCK_REFRESH_MS, GROW_CAP, HEADER_H, META_H, REF_TITLE_MAX, HEADER_TEXT_MAX, TINY_MINI_PX, ATTR_CHIPS_MAX, SVG_NS3, ROW_BOARD_W, ROW_BOARD_H, ROW_BOARD_THUMBS, BOARD_KEY_DEPTH, BOARD_KEY_NODES, KID_ROW_H, PEEK_DELAY_MS, PEEK_TOP, PEEK_SUB, PEEK_TEXT_MAX, now2, HL_NAMES2, NOTE_CARET_SKIP, childString4, childKids, childUid, childProps, KIDS_KINDS, isKidsCard, isSticky, STICKY_TITLE_MAX, stickyTitleOf, isTaskAttrString, skipChildString, visibleKids, taskBlockOn, statusSig, TASK_MARK, isTaskCard, regionHubs;
+var SIDES3, CHUNK_MS, LRU_CAP, SLOW_BODY_MS, slowBodies, noteBodyMs, UNMOUNT_AFTER_MS, HYDRATE_CAP_MS, CONTENT_LIMIT, CONTENT_DEPTH, OUTLINE_CAP, OUTLINE_FETCH, PAGE_WATCH_MAX, PAGE_REFRESH_MS, BLOCK_REFRESH_MS, GROW_CAP, HEADER_H, META_H, REF_TITLE_MAX, HEADER_TEXT_MAX, TINY_MINI_PX, ATTR_CHIPS_MAX, SVG_NS3, ROW_BOARD_W, ROW_BOARD_H, ROW_BOARD_THUMBS, BOARD_KEY_DEPTH, BOARD_KEY_NODES, KID_ROW_H, PEEK_DELAY_MS, PEEK_TOP, PEEK_SUB, PEEK_TEXT_MAX, now2, HL_NAMES2, NOTE_CARET_SKIP, childString4, childKids, childUid, childProps, KIDS_KINDS, isKidsCard, isSticky, STICKY_TITLE_MAX, stickyTitleOf, isTaskAttrString, skipChildString, visibleKids, taskBlockOn, statusSig, TASK_MARK, isTaskCard, regionHubs;
 var init_cards = __esm({
   "src/view/cards.js"() {
     init_card_face();
@@ -37386,6 +37453,15 @@ var init_cards = __esm({
     SIDES3 = ["top", "right", "bottom", "left"];
     CHUNK_MS = 8;
     LRU_CAP = 80;
+    SLOW_BODY_MS = 50;
+    slowBodies = /* @__PURE__ */ new Map();
+    noteBodyMs = (uid, ms) => {
+      if (ms >= SLOW_BODY_MS) {
+        slowBodies.delete(uid);
+        slowBodies.set(uid, ms);
+        if (slowBodies.size > 500) slowBodies.delete(slowBodies.keys().next().value);
+      } else slowBodies.delete(uid);
+    };
     UNMOUNT_AFTER_MS = UNMOUNT_GRACE_MS;
     HYDRATE_CAP_MS = 900;
     CONTENT_LIMIT = 12;
@@ -42916,7 +42992,15 @@ function createTaskProbe({ now: now5 = () => globalThis.performance?.now ? globa
       depth -= 1;
       const ms = now5() - t0;
       if (ms >= SPAN_MIN_MS) {
-        spans.push({ name, start: t0, ms, phase });
+        let label = name;
+        if (typeof name === "function") {
+          try {
+            label = String(name());
+          } catch {
+            label = "?";
+          }
+        }
+        spans.push({ name: label, start: t0, ms, phase });
         if (spans.length > MAX_SPANS) spans.shift();
       }
     }
@@ -53536,6 +53620,8 @@ function createHitShield({ doc, root, onWheel, onPress: onPress2, enabled = () =
 init_geometry();
 var MAX_SIDE = 2048;
 var VIEW_PAD2 = 0.5;
+var VIEW_PAD_MIN = 0.15;
+var REUSE_MIN = 0.3;
 var SHARP_UPSCALE = 1.35;
 var TITLE_MIN_PX = 8;
 var TITLE_MAX_CARDS = 400;
@@ -53547,6 +53633,7 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
   let lastItems = [];
   let lastUids = null;
   let drawn = null;
+  const counts = { draws: 0, resizes: 0 };
   const colors = () => {
     if (colorCache) return colorCache;
     const read2 = (name, fallback) => {
@@ -53632,8 +53719,10 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       y1 = Math.max(y1, r.y + r.h / 2);
     }
     const want = zoom * Math.min(dpr, 1.25);
-    if (view && ((x1 - x0) * want > MAX_SIDE || (y1 - y0) * want > MAX_SIDE)) {
-      const px = view.w * VIEW_PAD2, py = view.h * VIEW_PAD2;
+    const windowed = Boolean(view) && ((x1 - x0) * want > MAX_SIDE || (y1 - y0) * want > MAX_SIDE);
+    if (windowed) {
+      const padOf = (side2) => Math.max(VIEW_PAD_MIN, Math.min(VIEW_PAD2, (MAX_SIDE / want / side2 - 1) / 2));
+      const px = view.w * padOf(view.w), py = view.h * padOf(view.h);
       x0 = Math.max(x0, view.x - px);
       y0 = Math.max(y0, view.y - py);
       x1 = Math.min(x1, view.x + view.w + px);
@@ -53644,15 +53733,26 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
         x1 = view.x + view.w;
         y1 = view.y + view.h;
       }
-      const box2 = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    }
+    let w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
+    const scale = Math.max(0.01, Math.min(want, MAX_SIDE / w, MAX_SIDE / h));
+    let reuse = false;
+    if (canvas && canvas.width >= w * scale && canvas.height >= h * scale && w * scale * h * scale >= REUSE_MIN * canvas.width * canvas.height) {
+      reuse = true;
+      const gw = canvas.width / scale - w, gh = canvas.height / scale - h;
+      x0 -= gw / 2;
+      y0 -= gh / 2;
+      w += gw;
+      h += gh;
+    }
+    if (windowed) {
+      const box2 = { x: x0, y: y0, w, h };
       items = items.filter(({ rect: r }) => r.x < box2.x + box2.w && r.x + r.w > box2.x && r.y < box2.y + box2.h && r.y + r.h > box2.y);
       edges = edges.filter(([a, b]) => {
         const ax = a.x + a.w / 2, ay = a.y + a.h / 2, bx = b.x + b.w / 2, by2 = b.y + b.h / 2;
         return Math.max(ax, bx) >= box2.x && Math.min(ax, bx) <= box2.x + box2.w && Math.max(ay, by2) >= box2.y && Math.min(ay, by2) <= box2.y + box2.h;
       });
     }
-    const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
-    const scale = Math.max(0.01, Math.min(want, MAX_SIDE / w, MAX_SIDE / h));
     const c = styled ? paletteColors() : colors();
     if (!canvas) {
       canvas = doc.createElement("canvas");
@@ -53660,7 +53760,8 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       canvas.setAttribute("aria-hidden", "true");
       world.insertBefore(canvas, (typeof before === "function" ? before() : before) || world.firstChild);
     }
-    const bw = Math.max(1, Math.ceil(w * scale)), bh = Math.max(1, Math.ceil(h * scale));
+    const bw = reuse ? canvas.width : Math.max(1, Math.ceil(w * scale)), bh = reuse ? canvas.height : Math.max(1, Math.ceil(h * scale));
+    if (canvas.width !== bw || canvas.height !== bh) counts.resizes += 1;
     if (canvas.width !== bw) canvas.width = bw;
     if (canvas.height !== bh) canvas.height = bh;
     canvas.style.cssText = `position:absolute;left:${x0}px;top:${y0}px;width:${w}px;height:${h}px;pointer-events:none;`;
@@ -53680,16 +53781,17 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       hide();
       return 0;
     }
+    counts.draws += 1;
     canvas.style.display = "";
     shown = true;
     lastItems = items;
     lastUids = null;
-    drawn = { x: x0, y: y0, w, h, scale, whole: !view || w * want <= MAX_SIDE && h * want <= MAX_SIDE };
+    drawn = { x: x0, y: y0, w, h, scale, want, whole: !windowed };
     return items.length;
   };
   const covers2 = (view, zoom, dpr = 1) => {
     if (!shown || !drawn || !view) return shown;
-    if (zoom * Math.min(dpr, 1.25) > drawn.scale * SHARP_UPSCALE) return false;
+    if (zoom * Math.min(dpr, 1.25) > drawn.want * SHARP_UPSCALE) return false;
     if (drawn.whole) return true;
     return view.x >= drawn.x && view.y >= drawn.y && view.x + view.w <= drawn.x + drawn.w && view.y + view.h <= drawn.y + drawn.h;
   };
@@ -53698,12 +53800,12 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     if (!lastUids) lastUids = new Set(lastItems.map((item) => item.uid));
     return lastUids;
   };
-  const drawOverview = ({ items = [], edges = [], zoom = 1, dpr = 1, view = null } = {}) => {
+  const drawOverview = ({ items = [], edges = [], zoom = 1, dpr = 1, view = null, look = "overview" } = {}) => {
     if (!items.length && !edges.length) {
       hide();
       return 0;
     }
-    return draw({ items, edges, zoom, dpr, styled: true, tier: "overview", view });
+    return draw({ items, edges, zoom, dpr, styled: true, tier: look === "map" || look === "detail" ? look : "overview", view });
   };
   const paintCards = (ctx, { items, c, scale, tier = "detail", zoom = 1, view = null }) => {
     const round6 = typeof ctx.roundRect === "function";
@@ -53905,7 +54007,7 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
   const dropColors = () => {
     colorCache = null;
   };
-  return { draw, drawOverview, hide, dispose, dropColors, drawnUids, covers: covers2, isShown: () => shown, element: () => canvas };
+  return { draw, drawOverview, hide, dispose, dropColors, drawnUids, covers: covers2, stats: () => ({ ...counts }), isShown: () => shown, element: () => canvas };
 }
 
 // src/view/board-view.js
@@ -82773,7 +82875,7 @@ var setClass = (el2, name) => {
   el2.setAttribute("class", name);
   if (el2.classList && !el2.classList.contains(name.split(" ")[0])) el2.className = name;
 };
-function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText: blockText3, onHover, virtualOff = () => false } = {}) {
+function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText: blockText3, onHover, virtualOff = () => false, deferPark = () => false, onParkDue = null } = {}) {
   const edgeEls = /* @__PURE__ */ new Map();
   const laneHidden = /* @__PURE__ */ new Set();
   const linkEls = /* @__PURE__ */ new Map();
@@ -82850,10 +82952,39 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     rec.label.remove();
     for (const end of ["from", "to"]) dropInner(rec, end);
   };
+  const parkDue = /* @__PURE__ */ new Set();
+  let parkNoted = false;
+  const parkLater = (uid, rec) => {
+    let later = false;
+    try {
+      later = deferPark() === true;
+    } catch {
+      later = false;
+    }
+    if (!later) {
+      parkEdge(rec);
+      return;
+    }
+    rec.stale = true;
+    if (parkDue.has(uid)) return;
+    parkDue.add(uid);
+    if (!parkNoted) {
+      parkNoted = true;
+      queueMicrotask(() => {
+        parkNoted = false;
+        if (parkDue.size) {
+          try {
+            onParkDue?.();
+          } catch {
+          }
+        }
+      });
+    }
+  };
   const unparkEdge = (rec) => {
     if (!rec.parked) return;
     rec.parked = false;
-    (drag?.recs.has(rec) ? drag.layer : svg)?.append(rec.g);
+    (drag?.recs.has(rec) ? drag.layer : drag?.crossing?.has(rec) ? drag.cross : svg)?.append(rec.g);
     labelsLayer?.append(rec.label);
   };
   let drag = null;
@@ -82867,15 +82998,33 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     svg.after?.(layer);
     if (!layer.parentElement) svg.parentElement.append(layer);
     const recs = /* @__PURE__ */ new Map();
+    const cross = doc.createElementNS(SVG_NS5, "svg");
+    setClass(cross, "pxd-edges pxd-edges--cross");
+    cross.setAttribute("aria-hidden", "true");
+    cross.style.willChange = "transform";
+    const crossing = /* @__PURE__ */ new Set();
     for (const edge of board2.edges.values()) {
-      if (!moving.has(edge.from) || !moving.has(edge.to)) continue;
+      const a = moving.has(edge.from), b = moving.has(edge.to);
+      if (!a && !b) continue;
       const rec = edgeEls.get(edge.uid);
       if (!rec || rec.parked) continue;
+      if (a !== b) {
+        crossing.add(rec);
+        cross.append(rec.g);
+        continue;
+      }
       const label = rec.label?.style?.transform || "";
       recs.set(rec, label);
       layer.append(rec.g);
     }
-    drag = { layer, recs, inner: new Set([...recs.keys()].map((rec) => rec.uid)) };
+    const links = [];
+    for (const rec of linkEls.values()) {
+      if (!moving.has(rec.from) && !moving.has(rec.to)) continue;
+      links.push(rec);
+      cross.append(rec.g);
+    }
+    if (crossing.size || links.length) layer.parentElement?.insertBefore?.(cross, layer);
+    drag = { layer, recs, cross, crossing, links, inner: new Set([...recs.keys()].map((rec) => rec.uid)) };
     return recs.size;
   };
   const dragBy = (dx, dy) => {
@@ -82885,8 +83034,11 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   };
   const endDrag = (ctx) => {
     if (!drag) return;
-    const { layer, recs } = drag;
+    const { layer, recs, cross, crossing, links } = drag;
     drag = null;
+    for (const rec of crossing || []) if (!rec.parked && edgeEls.has(rec.uid) && rec.g.parentElement === cross) svg.append(rec.g);
+    for (const rec of links || []) if (rec.g.parentElement === cross) svg.append(rec.g);
+    cross?.remove();
     for (const [rec, base] of recs) {
       if (rec.parked || !edgeEls.has(rec.uid)) continue;
       svg.append(rec.g);
@@ -83416,6 +83568,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     rec.label.style.transform = `translate(${geo.mid.x}px, ${geo.mid.y}px) translate(-50%, -50%)`;
   };
   const removeEdge = (uid) => {
+    parkDue.delete(uid);
     const rec = edgeEls.get(uid);
     if (!rec) return;
     rec.g.remove();
@@ -83480,9 +83633,11 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
         const attached = rec && !rec.parked;
         if (attached ? edgeFar(board2, edge, rects) : !edgeNear(board2, edge, rects)) {
           waiting.delete(edge.uid);
-          if (rec) parkEdge(rec);
+          if (attached) parkLater(edge.uid, rec);
+          else if (rec) parkEdge(rec);
           continue;
         }
+        parkDue.delete(edge.uid);
       }
       const fresh = !rec;
       const wasHidden = Boolean(rec && !rec.parked && rec.g.getAttribute("display") === "none");
@@ -83552,8 +83707,12 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     let built = 0;
     let left = 0;
     let parks = budget < Infinity ? PARK_SLICE : Infinity;
-    const park = (rec) => {
+    const park = (rec, uid) => {
       if (rec.parked) return;
+      if (deferPark() === true) {
+        parkLater(uid, rec);
+        return;
+      }
       if (parks <= 0) {
         left += 1;
         return;
@@ -83572,12 +83731,12 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
         const pinnedWait = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
         const waitNear = pinnedWait || (rec && !rec.parked ? !edgeFar(board2, edge, rects) : edgeNear(board2, edge, rects));
         if (!waitNear) {
-          if (rec && !rec.parked && parks <= 0) {
+          if (rec && !rec.parked && parks <= 0 && deferPark() !== true) {
             left += 1;
             continue;
           }
           waiting.delete(edge.uid);
-          if (rec) park(rec);
+          if (rec) park(rec, edge.uid);
         }
         continue;
       }
@@ -83585,9 +83744,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       const pinned2 = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
       const near2 = pinned2 || (rec && !rec.parked ? !edgeFar(board2, edge, rects) : edgeNear(board2, edge, rects));
       if (!near2) {
-        if (rec) park(rec);
+        if (rec) park(rec, edge.uid);
         continue;
       }
+      parkDue.delete(edge.uid);
       if (rec && !rec.parked && !rec.stale) continue;
       if (!pinned2 && (built >= budget || t0 && built % 16 === 0 && built && now4() - t0 > ms)) {
         left += 1;
@@ -83602,10 +83762,18 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     }
     return left;
   };
+  const toCross = (rec) => {
+    if (!drag?.cross || rec.g.parentElement !== svg || drag.recs.has(rec)) return;
+    if (!drag.cross.parentElement) drag.layer.parentElement?.insertBefore?.(drag.cross, drag.layer);
+    drag.cross.append(rec.g);
+    if (rec.uid != null && edgeEls.get(rec.uid) === rec) drag.crossing.add(rec);
+    else if (!drag.links.includes(rec)) drag.links.push(rec);
+  };
   const update = ({ board: board2, edgeUids, rects, zoom = zoomCache, linkKeys = null, links = [] }) => {
     for (const uid of edgeUids) {
       const edge = board2.edges.get(uid);
       const rec = edgeEls.get(uid);
+      if (rec && !rec.parked) toCross(rec);
       if (edge && rec && !rec.parked) placeEdge(board2, edge, rec, rects, zoom);
       else if (rec?.parked) rec.stale = true;
     }
@@ -83613,6 +83781,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       for (const link of links) {
         if (!linkKeys.has(link.key)) continue;
         const rec = linkEls.get(link.key);
+        if (rec) toCross(rec);
         if (rec) placeLink(link, rec, rects, zoom, rec.g.getAttribute("class")?.includes("--selected"));
       }
     }
@@ -83863,6 +84032,27 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     listeners3.splice(0).forEach((off) => off());
     editingLabel = null;
   };
+  const PARK_PART = 100;
+  const parkSome = (deadline = null) => {
+    if (!lastPass) {
+      parkDue.clear();
+      return true;
+    }
+    const { board: board2, rects, selection } = lastPass;
+    let n3 = 0;
+    for (const uid of [...parkDue]) {
+      if (n3 >= PARK_PART || n3 && deadline && deadline.timeRemaining() < 1) break;
+      parkDue.delete(uid);
+      const rec = edgeEls.get(uid);
+      const edge = board2.edges.get(uid);
+      if (!rec || rec.parked || !edge || selection.edge === uid || editingLabel?.uid === uid || drag?.recs.has(rec)) continue;
+      if (!view || edgeFar(board2, edge, rects)) {
+        parkEdge(rec);
+        n3 += 1;
+      }
+    }
+    return parkDue.size === 0;
+  };
   const edgeShown = (uid) => {
     const rec = edgeEls.get(uid);
     return Boolean(rec && !rec.parked);
@@ -83891,6 +84081,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     dragInner: () => drag?.inner ?? null,
     flushWaiting,
     waitingLeft: () => waiting.size,
+    parkSome,
+    parkDueCount: () => parkDue.size,
     setSelection,
     setHover,
     setTempWire,
@@ -93988,11 +94180,31 @@ function toggleTodoAt(string, index = 0) {
 }
 var BADGE_MAX = 60;
 var NOTE_KINDS2 = ["note", "block", "page"];
+var siteLabel = (kind) => {
+  const keep = Error.stackTraceLimit;
+  let err = null;
+  try {
+    Error.stackTraceLimit = 5;
+    err = new Error();
+  } catch {
+    return kind;
+  } finally {
+    Error.stackTraceLimit = keep;
+  }
+  return () => {
+    const lines = String(err?.stack || "").split("\n").slice(3);
+    for (const line of lines) {
+      const name = /at (?:Object\.|async )?([\w$.]+) /.exec(line.trim())?.[1] || "";
+      if (name && !/^(later|frame|idle|bgIdle|bgRun|setTimer|setTimeout|Object|Array|Promise)$/.test(name)) return `${kind}@${name}`;
+    }
+    return kind;
+  };
+};
 function createTimers({ phase = () => "" } = {}) {
   const active2 = /* @__PURE__ */ new Set();
   const probe = sharedTaskProbe();
   const run = (label, fn, arg) => probe.span(label, () => fn(arg), phase());
-  const later = (fn, ms, label = "timer") => {
+  const later = (fn, ms, label = siteLabel("timer")) => {
     const id = setTimeout(() => {
       active2.delete(entry);
       run(label, fn);
@@ -94004,7 +94216,7 @@ function createTimers({ phase = () => "" } = {}) {
     active2.add(entry);
     return entry;
   };
-  const frame2 = (fn, label = "frame") => {
+  const frame2 = (fn, label = siteLabel("frame")) => {
     const raf2 = globalThis.requestAnimationFrame;
     let entry;
     if (typeof raf2 === "function") {
@@ -94029,7 +94241,7 @@ function createTimers({ phase = () => "" } = {}) {
     active2.add(entry);
     return entry;
   };
-  const idle = (fn, label = "idle") => {
+  const idle = (fn, label = siteLabel("idle")) => {
     const ric = globalThis.requestIdleCallback;
     let entry;
     if (typeof ric === "function") {
@@ -95567,7 +95779,7 @@ function buildBoardView(onFail, {
     sectionsLayer,
     timers,
     adoptShell,
-    onOverviewQueue: () => paintOverviewCover(),
+    onOverviewQueue: () => paintOverviewCover({ quiet: true }),
     onShells: () => {
       try {
         edgesR.flushWaiting?.();
@@ -97630,11 +97842,28 @@ function buildBoardView(onFail, {
         return false;
       }
     },
+    deferPark: () => {
+      try {
+        return notedSpeedFlags().idlePark !== false;
+      } catch {
+        return false;
+      }
+    },
+    onParkDue: () => armEdgePark(),
     onLabelCommit: (uid, label) => session.updateEdge?.(uid, { label }),
     blockText: (uid) => host?.blockString?.(uid),
     onHover: (uid, on) => hoverRows(uid, on)
   });
   edgesR.setCanvasTier?.(() => overviewCanvasOn());
+  let edgeParkJob = null;
+  function armEdgePark() {
+    if (edgeParkJob || disposed) return;
+    edgeParkJob = timers.bgRun((d) => {
+      const done3 = edgesR.parkSome(d);
+      if (done3) edgeParkJob = null;
+      return done3;
+    }, { label: "edge-park", partMs: 1e3 });
+  }
   const timelineTargetUid = (item) => {
     if (!item || item.type === "section" || item.type === "text") return "";
     if (item.target?.kind === "page") {
@@ -98471,6 +98700,7 @@ function buildBoardView(onFail, {
   const syncShellHold = () => {
     const hold = deferReveal();
     if (hold) cancelSlice();
+    else if (dirty.edges.size && !disposed && !suspended) schedule();
     try {
       itemsR.holdShells?.(hold);
     } catch {
@@ -98518,7 +98748,17 @@ function buildBoardView(onFail, {
     if (itemsR.shellOf?.(uid)) return true;
     return tier === "overview" && coverUids.has(uid);
   };
-  paintOverviewCover = () => {
+  let coverRects = null;
+  const coverStamp = () => ({ b: board2(), r: rects(), live: liveRects });
+  const sameCoverStamp = (k) => Boolean(k) && k.b === board2() && k.r === rects() && k.live === liveRects;
+  const coverCurrent = (items) => {
+    if (!underlay.isShown() || underlayKind !== "cover" || !sameCoverStamp(coverRects) || underlayTier !== tier || !size.width) return false;
+    const view2 = visibleWorldRect(vp, size, 0);
+    const drawn = underlay.drawnUids();
+    for (const item of items) if (!drawn.has(item.uid) && rectsIntersect(item.rect, view2)) return false;
+    return true;
+  };
+  paintOverviewCover = ({ quiet = false } = {}) => {
     if (disposed) return;
     if (overviewCanvasOn()) {
       ovDirty = true;
@@ -98530,7 +98770,7 @@ function buildBoardView(onFail, {
     try {
       if (notedSpeedFlags().overviewFast === false) {
         coverUids = /* @__PURE__ */ new Set();
-        if (!paintGapCover()) underlay.hide();
+        if (!paintGapCover(quiet)) underlay.hide();
         return;
       }
     } catch {
@@ -98539,7 +98779,7 @@ function buildBoardView(onFail, {
     }
     if (tier === "detail" && itemsR.coverHeld?.() !== true) {
       coverUids = /* @__PURE__ */ new Set();
-      if (!paintGapCover()) underlay.hide();
+      if (!paintGapCover(quiet)) underlay.hide();
       return;
     }
     const items = itemsR.pendingBoxes?.() || [];
@@ -98549,7 +98789,9 @@ function buildBoardView(onFail, {
       underlay.hide();
       return;
     }
+    if (quiet && coverCurrent(items)) return;
     coverUids = new Set(items.map((item) => item.uid));
+    coverRects = coverStamp();
     underlayKind = "cover";
     const edges = [];
     const b = styledUnderlay() ? board2() : null;
@@ -98584,11 +98826,13 @@ function buildBoardView(onFail, {
     }
     return out;
   };
-  const paintGapCover = () => {
+  const paintGapCover = (quiet = false) => {
     if (!styledUnderlay()) return false;
     const items = gapBoxes();
     if (!items.length) return false;
     gapCover = true;
+    if (quiet && coverCurrent(items)) return true;
+    coverRects = coverStamp();
     underlayKind = "cover";
     underlayTier = tier;
     underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1, styled: true, tier, view: underlayView() });
@@ -98596,9 +98840,11 @@ function buildBoardView(onFail, {
   };
   refreshGapCover = () => {
     if (disposed || suspended || underlayDrawn || gesturing || wheelLayer || slicing || underlayKind !== "cover") return;
-    paintOverviewCover();
+    paintOverviewCover({ quiet: true });
   };
   let ovDirty = true;
+  let ovLook = "overview";
+  const canvasLook = () => styledUnderlay() ? lodTier(vp.zoom, "detail", { threshold: mapThreshold() }) : "overview";
   let ovBand = null;
   let ovModel = null;
   let ovRects = null;
@@ -98619,11 +98865,13 @@ function buildBoardView(onFail, {
     const attached = itemsR.attachedCount?.() ?? 0;
     if (b !== ovModel || model !== ovRects || attached !== ovAttached) ovDirty = true;
     const sharp = !size.width || underlay.covers(visibleWorldRect(vp, size, 0), vp.zoom, win2?.devicePixelRatio || 1);
-    if (shown && !ovDirty && sharp && (!band || nextBand === ovBand)) {
+    const look = canvasLook();
+    if (shown && !ovDirty && sharp && look === ovLook && (!band || nextBand === ovBand)) {
       underlayDrawn = true;
       return true;
     }
     ovDirty = false;
+    ovLook = look;
     ovBand = nextBand;
     ovModel = b;
     ovRects = model;
@@ -98638,7 +98886,7 @@ function buildBoardView(onFail, {
       if (!rect || itemsR.attachedUid(uid)) continue;
       const hit = Boolean(canvasSearch?.has(uid));
       const dim = Boolean(canvasSearch && !hit || canvasFocus && !canvasFocus.has(uid));
-      items.push({ uid, rect, color: item.color || "", dim, hit, selected: sel.has(uid) });
+      items.push({ uid, rect, color: item.color || "", title: item.title || "", dim, hit, selected: sel.has(uid) });
     }
     const edges = [];
     for (const e2 of b.edges.values()) {
@@ -98651,12 +98899,35 @@ function buildBoardView(onFail, {
     coverUids = /* @__PURE__ */ new Set();
     ovDraws += 1;
     ovItems = items.length;
-    underlay.drawOverview({ items, edges, zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1, view: underlayView() });
+    underlay.drawOverview({ items, edges, zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1, view: underlayView(), look });
     return true;
   };
   const SETTLE_SHELLS = 48;
   const SETTLE_EDGES = 120;
   const SETTLE_SLICE_MS = 6;
+  const SLICE_MIN_SHELLS = 12;
+  const RESUME_SLICE_SHELLS = 24;
+  const SLICE_LONG_MS = 50;
+  const SLICE_SHORT_MS = 24;
+  let sliceShells = SETTLE_SHELLS;
+  let sliceAt = 0;
+  const sliceLog = [];
+  const adaptiveOn = () => {
+    try {
+      return notedSpeedFlags().adaptiveSlices !== false;
+    } catch {
+      return false;
+    }
+  };
+  const sliceEdgeBudget = () => adaptiveOn() ? Math.round(SETTLE_EDGES * sliceShells / SETTLE_SHELLS) : SETTLE_EDGES;
+  const adaptSlice = () => {
+    const gap = sliceAt ? perfNow3() - sliceAt : 0;
+    if (!adaptiveOn()) sliceShells = SETTLE_SHELLS;
+    else if (gap > SLICE_LONG_MS) sliceShells = Math.max(SLICE_MIN_SHELLS, Math.floor(sliceShells / 2));
+    else if (gap && gap < SLICE_SHORT_MS) sliceShells = Math.min(SETTLE_SHELLS, sliceShells * 2);
+    sliceLog.push(sliceShells);
+    if (sliceLog.length > 60) sliceLog.shift();
+  };
   let sliceFrame = null;
   let slicing = false;
   const resumeView = () => {
@@ -98685,19 +98956,27 @@ function buildBoardView(onFail, {
     if (!dirty.all) sliceResume();
     schedule();
   };
-  const RESUME_SHELLS = 96;
-  const sliceResume = () => {
+  const RESUME_SHELLS = 48;
+  let resumeTrimmed = false;
+  const trimForResume = () => {
+    resumeTrimmed = false;
     try {
-      if (notedSpeedFlags().slicedResume === false) return;
+      if (notedSpeedFlags().slicedResume === false) return false;
     } catch {
-      return;
+      return false;
     }
-    if (!sliceWanted() || (itemsR.attachedCount?.() || 0) <= RESUME_SHELLS * 2) return;
+    if (!sliceWanted() || (itemsR.attachedCount?.() || 0) <= RESUME_SHELLS * 2) return false;
     const rect = visibleWorldRect(vp, size, ATTACH_MARGIN);
-    if (!itemsR.keepNearest?.(rect, RESUME_SHELLS)) return;
+    resumeTrimmed = Boolean(itemsR.keepNearest?.(rect, RESUME_SHELLS));
+    return resumeTrimmed;
+  };
+  const sliceResume = () => {
+    const trimmed = resumeTrimmed || trimForResume();
+    resumeTrimmed = false;
+    if (!trimmed) return;
     underlayDrawn = false;
     showUnderlay();
-    beginSlice();
+    beginSlice(RESUME_SLICE_SHELLS);
     settleAttach();
   };
   const boardPhase = () => suspended ? "parked" : wheelLayer ? "wheel" : gesturing ? ctl.gestureKind?.() || "zoom" : slicing ? "slice" : settleTimer ? "settling" : "idle";
@@ -98720,11 +98999,17 @@ function buildBoardView(onFail, {
     endSlice();
     underlayDrawn = false;
   };
-  const beginSlice = () => {
-    if (sliceWanted()) itemsR.sliceAttach?.({ budget: SETTLE_SHELLS, ms: SETTLE_SLICE_MS });
-    else endSlice();
+  const beginSlice = (start = 0) => {
+    if (!slicing) sliceShells = start || SETTLE_SHELLS;
+    if (!adaptiveOn()) sliceShells = SETTLE_SHELLS;
+    sliceAt = 0;
+    if (sliceWanted()) {
+      sliceLog.push(sliceShells);
+      if (sliceLog.length > 60) sliceLog.shift();
+      itemsR.sliceAttach?.({ budget: sliceShells, ms: SETTLE_SLICE_MS });
+    } else endSlice();
   };
-  const sliceEdges = (rect) => rect ? edgesR.cull?.(rect, { budget: SETTLE_EDGES, ms: SETTLE_SLICE_MS }) || 0 : 0;
+  const sliceEdges = (rect) => rect ? edgesR.cull?.(rect, { budget: sliceEdgeBudget(), ms: SETTLE_SLICE_MS }) || 0 : 0;
   const sliceStep = () => {
     sliceFrame = null;
     if (!slicing) return;
@@ -98737,8 +99022,10 @@ function buildBoardView(onFail, {
       return;
     }
     const rect = visibleWorldRect(vp, size, ATTACH_MARGIN);
-    if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, SETTLE_SHELLS, SETTLE_SLICE_MS);
+    adaptSlice();
+    if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, sliceShells, SETTLE_SLICE_MS);
     const edgesLeft = sliceEdges(rect);
+    sliceAt = perfNow3();
     if (edgesLeft || (itemsR.attachLeft?.() || 0) > 0) {
       sliceFrame = timers.frame(sliceStep, "slice");
       return;
@@ -98767,6 +99054,7 @@ function buildBoardView(onFail, {
       showUnderlay();
     }
     slicing = true;
+    sliceAt = perfNow3();
     sliceFrame?.();
     sliceFrame = timers.frame(sliceStep, "slice");
   };
@@ -98827,8 +99115,9 @@ function buildBoardView(onFail, {
         propsPanel.place();
       }
       syncShellHold();
+      const fromCanvas = tier === "overview" && underlayKind === "overview" && underlay.isShown();
       applyLod();
-      beginSlice();
+      beginSlice(fromCanvas && tier !== "overview" && adaptiveOn() ? RESUME_SLICE_SHELLS : 0);
       scheduleContent();
       vpStore.set(vpId, vp);
       if (vp.zoom !== edgesZoomAt) {
@@ -105207,9 +105496,14 @@ ${url}`;
     const edgesDue = dirty.all || dirty.structural || dirty.links || dirty.edges.size;
     const itemsMoveEdges = dirty.items.size && !dirty.all && !dirty.structural;
     let edgeRest = null;
-    if (edgesDue || itemsMoveEdges) {
+    let edgesHeld = false;
+    if (edgesDue && !dirty.all && !dirty.structural && !dirty.links && dirty.edges.size > EDGE_SLICE && deferReveal()) {
+      edgesHeld = true;
+      edgeRest = dirty.edges;
+    }
+    if (edgesDue && !edgesHeld || itemsMoveEdges) {
       const shown = paintRects();
-      if (edgesDue) {
+      if (edgesDue && !edgesHeld) {
         const links = paintedLinks();
         let part = dirty.all || dirty.structural || dirty.links && !dirty.edges.size ? null : dirty.edges;
         const sliceSource = part || (queuedOverview() && b.edges.size > EDGE_SLICE ? b.edges.keys() : null);
@@ -105313,8 +105607,8 @@ ${url}`;
     dirty.resync = false;
     dirty.selection = false;
     dirty.links = false;
-    edgeSlicing = Boolean(edgeRest);
-    if (edgeRest) schedule();
+    edgeSlicing = Boolean(edgeRest) && !edgesHeld;
+    if (edgeRest && !edgesHeld) schedule();
   };
   let edgeSlicing = false;
   const pulseItem = (uid) => {
@@ -105914,6 +106208,13 @@ ${url}`;
     },
     unpark() {
       if (!root.hasAttribute?.("data-pxd-parked")) return;
+      if (suspended && board2() === suspendedBoard && !(itemsR.queuedCount?.() > 0)) {
+        try {
+          trimForResume();
+        } catch {
+          resumeTrimmed = false;
+        }
+      }
       root.removeAttribute("data-pxd-parked");
       root.style.width = "";
       if (fsParked) {
@@ -106255,6 +106556,14 @@ ${url}`;
     // C2 probe: whether the overview canvas tier is on, and how many times it was drawn.
     flipStats() {
       return { flips: flipStats.flips, attachedAtFlip: flipStats.attachedAtFlip.slice() };
+    },
+    // E3 probe: underlay bitmap redraws and reallocations since the mount.
+    underlayStats() {
+      return underlay.stats();
+    },
+    // E3-5 probe: the shell budget of each recent settle slice (adaptiveSlices).
+    sliceStats() {
+      return { budgets: sliceLog.slice(), shells: sliceShells };
     },
     overviewCanvasStats() {
       return { on: overviewCanvasOn(), draws: ovDraws, items: ovItems, shown: underlay.isShown() && underlayKind === "overview" };

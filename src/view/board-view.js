@@ -11,6 +11,7 @@ import { createPartSizer } from "../part-sizer.js";
 import { sharedBgBudget } from "../bg-budget.js";
 import { createHitShield } from "./hit-shield.js";
 import { createGestureUnderlay } from "./gesture-underlay.js";
+import { sharedTaskProbe } from "../long-tasks.js";
 import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, readPlexus, semanticRef, plainText } from "../model/schema.js";
 import { TABLE_SIZE, keyGate, ownershipOf, tablePointerTarget } from "../model/roam-table.js";
 import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../model/drawing-card.js";
@@ -388,35 +389,38 @@ export function toggleTodoAt(string, index = 0) {
 const BADGE_MAX = 60;
 const NOTE_KINDS = ["note", "block", "page"];
 
-function createTimers() {
+// E2-5: every frame and timer callback runs inside a long-task probe span named by its caller (view.longTasks()).
+function createTimers({ phase = () => "" } = {}) {
   const active = new Set();
-  const later = (fn, ms) => {
-    const id = setTimeout(() => { active.delete(entry); fn(); }, ms);
+  const probe = sharedTaskProbe();
+  const run = (label, fn, arg) => probe.span(label, () => fn(arg), phase());
+  const later = (fn, ms, label = "timer") => {
+    const id = setTimeout(() => { active.delete(entry); run(label, fn); }, ms);
     const entry = () => { clearTimeout(id); active.delete(entry); };
     active.add(entry);
     return entry;
   };
-  const frame = (fn) => {
+  const frame = (fn, label = "frame") => {
     const raf = globalThis.requestAnimationFrame;
     let entry;
     if (typeof raf === "function") {
-      const id = raf((t) => { active.delete(entry); fn(t); });
+      const id = raf((t) => { active.delete(entry); run(label, fn, t); });
       entry = () => { globalThis.cancelAnimationFrame?.(id); active.delete(entry); };
     } else {
-      const id = setTimeout(() => { active.delete(entry); fn(Date.now()); }, 16);
+      const id = setTimeout(() => { active.delete(entry); run(label, fn, Date.now()); }, 16);
       entry = () => { clearTimeout(id); active.delete(entry); };
     }
     active.add(entry);
     return entry;
   };
-  const idle = (fn) => {
+  const idle = (fn, label = "idle") => {
     const ric = globalThis.requestIdleCallback;
     let entry;
     if (typeof ric === "function") {
-      const id = ric((d) => { active.delete(entry); fn(d); });
+      const id = ric((d) => { active.delete(entry); run(label, fn, d); });
       entry = () => { globalThis.cancelIdleCallback?.(id); active.delete(entry); };
     } else {
-      const id = setTimeout(() => { active.delete(entry); fn({ timeRemaining: () => 8, didTimeout: true }); }, 0);
+      const id = setTimeout(() => { active.delete(entry); run(label, fn, { timeRemaining: () => 8, didTimeout: true }); }, 0);
       entry = () => { clearTimeout(id); active.delete(entry); };
     }
     active.add(entry);
@@ -975,7 +979,10 @@ function buildBoardView(onFail, {
   try { motionMq = win?.matchMedia?.("(prefers-reduced-motion: reduce)") || null; } catch { motionMq = null; }
   const prefersReducedMotion = () => Boolean(motionMq?.matches);
   const currentMotion = () => resolveMotion(setting("motion", "full"), prefersReducedMotion());
-  const timers = createTimers();
+  // What the board is doing when a long task lands (view.longTasks()). Read late: the state is declared further down.
+  // eslint-disable-next-line no-use-before-define
+  const taskPhase = () => { try { return boardPhase(); } catch { return ""; } };
+  const timers = createTimers({ phase: taskPhase });
   const listeners = [];
   const observers = [];
   const subs = [];
@@ -3814,7 +3821,7 @@ function buildBoardView(onFail, {
 
   const schedule = () => {
     if (disposed || suspended || frameHandle) return;
-    frameHandle = timers.frame(() => { frameHandle = null; renderFrame(); });
+    frameHandle = timers.frame(() => { frameHandle = null; renderFrame(); }, "render");
   };
   // RF-4: the hover toolbar waits HOVER_GRACE ms before it hides or switches to another card, so the pointer can
   // travel from the card to the bar. Declared here because setViewport (pan/zoom) hides it at once.
@@ -4332,6 +4339,34 @@ function buildBoardView(onFail, {
   const SETTLE_SLICE_MS = 6;
   let sliceFrame = null;
   let slicing = false;
+  const resumeView = () => {
+    suspended = false;
+    resumeObservers();
+    try { itemsR.resumeShells?.(); } catch { /* shells */ }
+    timers.resumeBg();
+    armCoverWarm();
+    // The DOM was kept while parked. Only a board that changed meanwhile needs the full pass (a change that lands
+    // later arrives through the session as usual); otherwise the camera, selection and minimap are enough.
+    // A shell queue still open has to sync before the pump arms again, even when the board object is the same.
+    // E1 (perf2): the same board with shells still queued syncs its shells only. The full pass also re-placed every
+    // edge (PhD main board crumb back: ~2,000 edges re-pathed, 1,936 `d` rewrites per edge part) though no edge moved.
+    if (board() !== suspendedBoard || (itemsR.queuedCount?.() > 0 && notedSpeedFlags().keepFullscreen === false)) {
+    dirty.all = true;
+    dirty.structural = true;
+    } else if (itemsR.queuedCount?.() > 0) {
+    dirty.resync = true;
+    dirty.viewport = true;
+    dirty.selection = true;
+    dirty.minimap = true;
+    } else {
+    dirty.viewport = true;
+    dirty.selection = true;
+    dirty.minimap = true;
+    }
+    suspendedBoard = null;
+    schedule();
+  };
+  const boardPhase = () => (suspended ? "parked" : wheelLayer ? "wheel" : gesturing ? (ctl.gestureKind?.() || "zoom") : slicing ? "slice" : settleTimer ? "settling" : "idle");
   const slicedSettleOn = () => { try { return notedSpeedFlags().slicedSettle !== false; } catch { return true; } };
   const sliceWanted = () => slicedSettleOn() && Boolean(size.width) && Boolean(itemsR.isVirtual?.());
   const endSlice = () => {
@@ -4360,7 +4395,7 @@ function buildBoardView(onFail, {
     const rect = visibleWorldRect(vp, size, ATTACH_MARGIN);
     if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, SETTLE_SHELLS, SETTLE_SLICE_MS);
     const edgesLeft = sliceEdges(rect);
-    if (edgesLeft || (itemsR.attachLeft?.() || 0) > 0) { sliceFrame = timers.frame(sliceStep); return; }
+    if (edgesLeft || (itemsR.attachLeft?.() || 0) > 0) { sliceFrame = timers.frame(sliceStep, "slice"); return; }
     endSlice();
     releaseUnderlay();
   };
@@ -4382,7 +4417,7 @@ function buildBoardView(onFail, {
     else { underlayDrawn = false; showUnderlay(); }
     slicing = true;
     sliceFrame?.();
-    sliceFrame = timers.frame(sliceStep);
+    sliceFrame = timers.frame(sliceStep, "slice");
   };
   const revealNear = () => {
     if (!size.width) return;
@@ -4469,7 +4504,7 @@ function buildBoardView(onFail, {
       // warm pass never runs. Look again once the viewport has settled.
       considerCoverWarm();
       if (typeof onSettled === "function") { try { onSettled(); } catch { /* the owner's hook */ } }
-    }, RESUME_MS);
+    }, RESUME_MS, "settle");
   };
   const refreshThumbnails = () => {
     if (disposed || gesturing || !board()) return;
@@ -7831,7 +7866,7 @@ function buildBoardView(onFail, {
           refreshBadges();
           considerCoverWarm();
           scheduleSharpCovers();
-        }, RESUME_MS);
+        }, RESUME_MS, "gesture-end");
       }
     },
     showMarquee: (rect, kind) => edgesR.setMarquee(rect, kind),
@@ -10430,34 +10465,15 @@ function buildBoardView(onFail, {
     },
     resume() {
       if (disposed || !suspended) return;
-      suspended = false;
-      resumeObservers();
-      try { itemsR.resumeShells?.(); } catch { /* shells */ }
-      timers.resumeBg();
-      armCoverWarm();
-      // The DOM was kept while parked. Only a board that changed meanwhile needs the full pass (a change that lands
-      // later arrives through the session as usual); otherwise the camera, selection and minimap are enough.
-      // A shell queue still open has to sync before the pump arms again, even when the board object is the same.
-      // E1 (perf2): the same board with shells still queued syncs its shells only. The full pass also re-placed every
-      // edge (PhD main board crumb back: ~2,000 edges re-pathed, 1,936 `d` rewrites per edge part) though no edge moved.
-      if (board() !== suspendedBoard || (itemsR.queuedCount?.() > 0 && notedSpeedFlags().keepFullscreen === false)) {
-        dirty.all = true;
-        dirty.structural = true;
-      } else if (itemsR.queuedCount?.() > 0) {
-        dirty.resync = true;
-        dirty.viewport = true;
-        dirty.selection = true;
-        dirty.minimap = true;
-      } else {
-        dirty.viewport = true;
-        dirty.selection = true;
-        dirty.minimap = true;
-      }
-      suspendedBoard = null;
-      schedule();
+      sharedTaskProbe().span("resume", resumeView, "resume");
     },
     cameraRect() {
       return cameraRectOf({ x: vp.x, y: vp.y, zoom: vp.zoom }, viewSize());
+    },
+    // E2-5 probe: the long tasks seen since load (PerformanceObserver "longtask"), each with the Plexus job time inside
+    // it by job name (render, settle, gesture-end, slice, resume, shells, bg:<label>...) and the board's phase.
+    longTasks() {
+      return sharedTaskProbe().longTasks();
     },
     applyShow(region) {
       if (disposed || !region) return;

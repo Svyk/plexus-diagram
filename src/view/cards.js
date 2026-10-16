@@ -2235,7 +2235,7 @@ export function createItemRenderer({
   const pumpShells = () => {
     if (shellsHeld || canvasCards()) return;
     if (pumpChunk()) return;
-    if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
+    if (shellQueue.length && timers?.frame) timers.frame(pumpShells, "shells");
   };
   // The rAF pump ran on nearly every frame from first paint until live (~1 s of main-thread time on top of
   // the 25% budget). At map or overview, with overviewFast, priority shells finish a chunk per frame and the
@@ -2260,7 +2260,7 @@ export function createItemRenderer({
     pumpChunk({ limit: OPEN_CHUNK, priority: true });
     if (!shellsLive || shellsHeld) return;
     if (priorityLeft > 0 && shellQueue.length && timers?.frame) {
-      priorityFrame = timers.frame(pumpPriorityFrame);
+      priorityFrame = timers.frame(pumpPriorityFrame, "shells");
       return;
     }
     armShellPump();
@@ -2271,7 +2271,7 @@ export function createItemRenderer({
     stopShellBg();
     if (!shellQueue.length) return;
     if (priorityLeft > 0 && timers?.frame) {
-      priorityFrame = timers.frame(pumpPriorityFrame);
+      priorityFrame = timers.frame(pumpPriorityFrame, "shells");
       return;
     }
     let fast = false;
@@ -2280,7 +2280,7 @@ export function createItemRenderer({
       shellBg = timers.bgRun(() => pumpChunk(), { label: "shells", partMs: 4 });
       return;
     }
-    if (timers?.frame) timers.frame(pumpShells);
+    if (timers?.frame) timers.frame(pumpShells, "shells");
   };
   // Park cancels the priority rAF. Resume turns the flag back on and lets the next sync arm the pump.
   const pauseShells = () => {
@@ -5387,7 +5387,7 @@ export function createItemRenderer({
     return true;
   };
   contentSched = createRowScheduler({
-    idle: (fn) => idle(fn),
+    idle: (fn) => (timers?.idle ? timers.idle(fn, "content") : idle(fn)),
     now,
     budgetMs: CHUNK_MS,
     render: (uid) => mountScheduled(uid),

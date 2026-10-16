@@ -33,6 +33,48 @@ function rectOf(frac) {
   return { x: Number(frac.x), y: Number(frac.y), w: Number(frac.w), h: Number(frac.h) };
 }
 
+function finiteRect(frac) {
+  const box = rectOf(frac);
+  if (!box || ![box.x, box.y, box.w, box.h].every(Number.isFinite) || !(box.w > 0) || !(box.h > 0)) return null;
+  return box;
+}
+
+function rectArea(frac) {
+  const box = finiteRect(frac);
+  return box ? box.w * box.h : 0;
+}
+
+function overlapArea(a, b) {
+  const A = finiteRect(a);
+  const B = finiteRect(b);
+  if (!A || !B) return 0;
+  const iw = Math.min(A.x + A.w, B.x + B.w) - Math.max(A.x, B.x);
+  const ih = Math.min(A.y + A.h, B.y + B.h) - Math.max(A.y, B.y);
+  if (iw <= 0 || ih <= 0) return 0;
+  return iw * ih;
+}
+
+function centreInside(hit, block) {
+  const H = finiteRect(hit);
+  const B = finiteRect(block);
+  if (!H || !B) return false;
+  const cx = H.x + H.w / 2;
+  const cy = H.y + H.h / 2;
+  return cx >= B.x && cx <= B.x + B.w && cy >= B.y && cy <= B.y + B.h;
+}
+
+// A page-sized hit covers every block. Coverage counts only when the two areas are in the same neighbourhood.
+const COVER_AREA_SLACK = 4;
+
+function smallerMostlyCovered(hit, block, min) {
+  const inter = overlapArea(hit, block);
+  const hitArea = rectArea(hit);
+  const blockArea = rectArea(block);
+  const smaller = Math.min(hitArea, blockArea);
+  if (!(inter > 0) || !(smaller > 0) || !(inter / smaller > min)) return false;
+  return Math.max(hitArea, blockArea) <= smaller * COVER_AREA_SLACK;
+}
+
 function tableSize(block) {
   const grid = block?.grid;
   let rows = Number(block?.rows) || (Array.isArray(grid?.ys) ? grid.ys.length - 1 : 0);
@@ -103,13 +145,18 @@ export function isSourceAttrString(text) {
 }
 
 // The parsed block a pin's page and fraction land on. Captions are the figure's label, not a part.
+// Two similar boxes still need IoU above `min`. A word-sized hit matches the tightest block whose
+// box holds the hit centre, or the block when the smaller rect is mostly covered.
 export function matchParsedBlock(doc, { page, frac } = {}, min = 0.5) {
   const pg = Number(page);
   if (!Number.isInteger(pg) || pg < 1 || !Array.isArray(frac) || frac.length < 4) return null;
   const info = (doc?.pages || []).find((row) => Number(row?.n) === pg) || { n: pg, w: 612, h: 792, rotation: 0 };
+  let floor = Number(min);
+  if (!Number.isFinite(floor)) floor = 0.5;
   let best = null;
-  let score = Number(min);
-  if (!Number.isFinite(score)) score = 0.5;
+  let score = floor;
+  let tight = null;
+  let tightArea = Infinity;
   const ids = Array.isArray(doc?.order) && doc.order.length ? doc.order : Object.keys(doc?.blocks || {});
   for (const id of ids) {
     const block = doc?.blocks?.[id];
@@ -121,20 +168,21 @@ export function matchParsedBlock(doc, { page, frac } = {}, min = 0.5) {
       score = iou;
       best = block;
     }
+    const area = rectArea(box);
+    if (!(area > 0) || area >= tightArea) continue;
+    if (centreInside(frac, box) || smallerMostlyCovered(frac, box, floor)) {
+      tight = block;
+      tightArea = area;
+    }
   }
-  return best;
+  if (best) return best;
+  return tight;
 }
 
 export function rectIou(a, b) {
-  const A = rectOf(a);
-  const B = rectOf(b);
-  if (!A || !B) return 0;
-  if (![A.x, A.y, A.w, A.h, B.x, B.y, B.w, B.h].every(Number.isFinite)) return 0;
-  const iw = Math.min(A.x + A.w, B.x + B.w) - Math.max(A.x, B.x);
-  const ih = Math.min(A.y + A.h, B.y + B.h) - Math.max(A.y, B.y);
-  if (iw <= 0 || ih <= 0) return 0;
-  const inter = iw * ih;
-  const union = A.w * A.h + B.w * B.h - inter;
+  const inter = overlapArea(a, b);
+  if (!(inter > 0)) return 0;
+  const union = rectArea(a) + rectArea(b) - inter;
   return union > 0 ? inter / union : 0;
 }
 

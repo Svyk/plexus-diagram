@@ -86,6 +86,14 @@ test("buildBoard: not enhanced without plexus v2", () => {
   assert.equal(bare.title, "");
 });
 
+test("buildBoard keeps the page uid the pull already carried", () => {
+  const p = fixture();
+  const card = p[":block/children"].find((c) => c[":block/uid"] === "c1");
+  card[":block/refs"] = [{ ":node/title": "Page One", ":block/uid": "pageUid01" }];
+  const b = buildBoard(p);
+  assert.deepEqual(b.items.get("c1").target, { kind: "page", title: "Page One", uid: "pageUid01" });
+});
+
 test("buildBoard: items, kinds, targets, titles", () => {
   const b = build();
   const c1 = b.items.get("c1");

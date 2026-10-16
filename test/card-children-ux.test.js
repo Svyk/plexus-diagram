@@ -594,6 +594,43 @@ test("a block uid addresses the card that contains it and opening the card itsel
   assert.equal(calls.length, 1);
 });
 
+test("openBlock on a child of a page card focuses that card", () => {
+  const page = {
+    uid: "pagecard1",
+    type: "card",
+    kind: "page",
+    target: { kind: "page", title: "Notes", uid: "pageUid01" },
+    content: [],
+  };
+  const items = new Map([["pagecard1", page]]);
+  const parents = { grand0001: "kid000001", kid000001: "pageUid01" };
+  const parentOf = (uid) => ({ parentUid: parents[uid] || "" });
+  assert.deepEqual(
+    cardOwningByParent(items, "kid000001", parentOf),
+    { cardUid: "pagecard1", blockUid: "kid000001" },
+  );
+  assert.deepEqual(
+    cardOwningByParent(items, "grand0001", parentOf),
+    { cardUid: "pagecard1", blockUid: "grand0001" },
+  );
+  assert.equal(cardOwningByParent(items, "pageUid01", () => ({ parentUid: "higher001" })), null);
+  const bare = new Map([["pagecard1", {
+    uid: "pagecard1",
+    type: "card",
+    kind: "page",
+    target: { kind: "page", title: "Notes" },
+    content: [],
+  }]]);
+  assert.deepEqual(
+    cardOwningByParent(bare, "kid000001", parentOf, (title) => (title === "Notes" ? "pageUid01" : "")),
+    { cardUid: "pagecard1", blockUid: "kid000001" },
+  );
+  const calls = [];
+  const records = [{ items, focusInside: (cardUid, blockUid) => calls.push([cardUid, blockUid]) }];
+  assert.equal(focusOpenBlock(records, "grand0001", parentOf), true);
+  assert.deepEqual(calls, [["pagecard1", "grand0001"]]);
+});
+
 test("a grandchild bullet focuses card › parent › child; stepFocus walks back and writes nothing", (t) => {
   const h = harness({ children: [blk("noteAAAA1", "alpha", { ":x": 0, ":y": 0, ":w": 240, ":h": 100, ":kids": true }, 0, alpha)] });
   t.after(h.restore);

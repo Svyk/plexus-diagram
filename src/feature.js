@@ -2134,6 +2134,10 @@ export async function installPlexusDiagram({
     const parentOf = (id) => {
       try { return host.blockLocation?.(id) ?? null; } catch { return null; }
     };
+    // A big-board pull does not carry :block/refs, so the page uid is not on the target yet.
+    const pageUidOf = (title) => {
+      try { return host.pageUid?.(title) || ""; } catch { return ""; }
+    };
     const records = [];
     for (const rec of mounts.values()) {
       const items = rec.session?.board?.items;
@@ -2141,7 +2145,7 @@ export async function installPlexusDiagram({
       if (!items || typeof focusInside !== "function") continue;
       records.push({ items, focusInside });
     }
-    focusOpenBlock(records, blockUid, parentOf);
+    focusOpenBlock(records, blockUid, parentOf, pageUidOf);
   }
   function bindExternalNav() {
     const mw = host.api?.ui?.mainWindow;

@@ -105,7 +105,24 @@ export function cardOwningBlock(items, blockUid) {
   return null;
 }
 
-const cardForParent = (items, parentUid, blockUid) => {
+const pageUidMemo = new WeakMap();
+
+// A page card's target is the page, not the board block. The pull may already
+// carry the page uid. Otherwise one lookup per card, remembered on the item.
+const pageTargetUid = (item, pageUidOf) => {
+  const target = item?.target;
+  if (!target || target.kind !== "page") return "";
+  if (target.uid) return String(target.uid);
+  if (typeof pageUidOf !== "function") return "";
+  const cached = pageUidMemo.get(item);
+  if (cached !== undefined) return cached;
+  let uid = "";
+  try { uid = String(pageUidOf(target.title) || ""); } catch { uid = ""; }
+  pageUidMemo.set(item, uid);
+  return uid;
+};
+
+const cardForParent = (items, parentUid, blockUid, pageUidOf) => {
   if (!parentUid) return null;
   for (const item of eachItem(items)) {
     if (!item || item.type === "section") continue;
@@ -114,12 +131,16 @@ const cardForParent = (items, parentUid, blockUid) => {
     if (target?.kind === "block" && target.uid === parentUid && blockUid !== target.uid) {
       return { cardUid: item.uid, blockUid };
     }
+    if (target?.kind === "page") {
+      const uid = pageTargetUid(item, pageUidOf);
+      if (uid && uid === parentUid && blockUid !== uid) return { cardUid: item.uid, blockUid };
+    }
   }
   return null;
 };
 
 // Walk Roam's parent pointer until a card on this board. Opening the card block itself is not a child focus.
-export function cardOwningByParent(items, blockUid, parentOf) {
+export function cardOwningByParent(items, blockUid, parentOf, pageUidOf) {
   const want = String(blockUid || "");
   if (!want || typeof parentOf !== "function") return null;
   for (const item of eachItem(items)) {
@@ -136,7 +157,7 @@ export function cardOwningByParent(items, blockUid, parentOf) {
       parent = typeof loc === "string" ? loc : String(loc?.parentUid || "");
     } catch { return null; }
     if (!parent) return null;
-    const hit = cardForParent(items, parent, want);
+    const hit = cardForParent(items, parent, want, pageUidOf);
     if (hit) return hit;
     uid = parent;
   }
@@ -144,14 +165,14 @@ export function cardOwningByParent(items, blockUid, parentOf) {
 }
 
 // Session focus only. The caller still lets Roam open the block.
-export function focusOpenBlock(records, blockUid, parentOf) {
+export function focusOpenBlock(records, blockUid, parentOf, pageUidOf) {
   const want = String(blockUid || "");
   if (!want) return false;
   let hit = false;
   for (const rec of records || []) {
     const items = rec?.items;
     if (!items || typeof rec.focusInside !== "function") continue;
-    const owned = cardOwningBlock(items, want) || cardOwningByParent(items, want, parentOf);
+    const owned = cardOwningBlock(items, want) || cardOwningByParent(items, want, parentOf, pageUidOf);
     if (!owned || !owned.cardUid || owned.blockUid === owned.cardUid) continue;
     try {
       rec.focusInside(owned.cardUid, owned.blockUid);

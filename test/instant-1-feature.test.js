@@ -469,7 +469,9 @@ test("a nested board with no stored camera paints its snapshot fitted to the mou
 test("the hand-off to the live board cross-fades the snapshot out instead of cutting it", async () => {
   const idb = await seededIdb();
   const env = installEnv({ idb });
-  env.win.requestAnimationFrame = (fn) => setTimeout(fn, 0);
+  const frames = [];
+  env.win.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
+  const step = () => { const due = frames.splice(0); for (const fn of due) fn(); };
   try {
     await env.install();
     await tick(20);
@@ -480,11 +482,41 @@ test("the hand-off to the live board cross-fades the snapshot out instead of cut
     assert.equal(mount.querySelector(".pxd-snap-root"), null, "no longer the snapshot");
     assert.ok(snapRoot.parentElement, "still painted while it fades");
     assert.equal(snapRoot.style.pointerEvents, "none");
+    // R4 (mainFade): no compositor transition. Two frames at full opacity while the live board rasters, then main-
+    // thread steps (QA5 nested enter: the compositor faded the snapshot over arrows with no cards for 3 frames).
+    assert.doesNotMatch(String(snapRoot.style.transition || ""), /opacity/);
+    step();
+    step();
+    assert.ok(!snapRoot.style.opacity || snapRoot.style.opacity === "1", `held: ${snapRoot.style.opacity}`);
+    step();
+    await tick(70);
+    step();
+    const mid = Number(snapRoot.style.opacity);
+    assert.ok(mid > 0 && mid < 1, `stepping: ${snapRoot.style.opacity}`);
+    await tick(120);
+    step();
+    assert.equal(snapRoot.parentElement, null, "gone after the fade");
+  } finally {
+    await env.lifecycle.dispose().catch(() => {});
+    env.restore();
+  }
+});
+
+test("mainFade off keeps the 140 ms CSS opacity transition", async () => {
+  const idb = await seededIdb();
+  const env = installEnv({ idb, flags: '{"mainFade":false}' });
+  env.win.requestAnimationFrame = (fn) => setTimeout(fn, 0);
+  try {
+    await env.install();
+    await tick(20);
+    const mount = env.doc.querySelector(".pxd-mount");
+    const snapRoot = mount.querySelector(".pxd-snap-root");
+    env.seen[0].args.onFirstPaint();
     assert.match(snapRoot.style.transition, /opacity/);
     await tick(10);
     assert.equal(snapRoot.style.opacity, "0");
     await tick(260);
-    assert.equal(snapRoot.parentElement, null, "gone after the fade");
+    assert.equal(snapRoot.parentElement, null);
   } finally {
     await env.lifecycle.dispose().catch(() => {});
     env.restore();

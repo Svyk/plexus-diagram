@@ -6,6 +6,7 @@
 
 import { lodFonts, lodTier, invZoom, screenPx, gridBackground, fitViewport } from "../model/geometry.js";
 import { boundsOf } from "../model/board.js";
+import { notedSpeedFlags } from "../settings.js";
 import {
   SNAP_VERSION,
   SNAP_MAX_ITEMS,
@@ -262,6 +263,28 @@ function el(doc, tag, cls, parent) {
 // snapshot at once (class, attribute, input) and fades out over FADE_MS (opacity only), so the swap to the live board
 // is a cross-fade, not a cut. Reduced motion, or no frames: removed at once.
 export const SNAP_FADE_MS = 140;
+// R4 (speed flag mainFade): the fade waits SNAP_FADE_HOLD frames, then steps opacity from rAF on the main thread. A CSS
+// transition ran on the compositor over a live board whose tiles were not rastered yet: frames with the arrows and no
+// cards (QA5 nested enter, B #39-#41 and C #85-#87, 3 ms apart). A main-thread opacity commits with the content under it.
+export const SNAP_FADE_HOLD = 2;
+const mainFadeOn = () => { try { return notedSpeedFlags().mainFade !== false; } catch { return false; } };
+function fadeOnMain(node, raf, nowMs) {
+  let held = 0;
+  let t0 = 0;
+  const step = () => {
+    if (!node.parentElement) return;
+    if (held < SNAP_FADE_HOLD) { held += 1; raf(step); return; }
+    const t = nowMs();
+    if (!t0) t0 = t;
+    const k = Math.min(1, (t - t0) / SNAP_FADE_MS);
+    node.style.opacity = String(Math.round((1 - k) * 1000) / 1000);
+    if (k >= 1) { try { node.remove(); } catch { /* already gone */ } return; }
+    raf(step);
+  };
+  raf(step);
+  // A tab in the background stops rAF: the snapshot still leaves.
+  setTimeout(() => { try { node.remove(); } catch { /* already gone */ } }, SNAP_FADE_MS + 2000);
+}
 export function removeBoardSnap(mountEl, { fade = false } = {}) {
   const nodes = mountEl?.querySelectorAll?.(`.${SNAP_ROOT_CLASS}`);
   const win = mountEl?.ownerDocument?.defaultView || globalThis.window;
@@ -276,6 +299,11 @@ export function removeBoardSnap(mountEl, { fade = false } = {}) {
         node.removeAttribute?.("data-pxd-snap");
         node.setAttribute?.("aria-hidden", "true");
         node.style.pointerEvents = "none";
+        if (mainFadeOn()) {
+          const clock = win?.performance || globalThis.performance;
+          fadeOnMain(node, raf, () => (typeof clock?.now === "function" ? clock.now() : Date.now()));
+          continue;
+        }
         node.style.transition = `opacity ${SNAP_FADE_MS}ms linear`;
         raf(() => { node.style.opacity = "0"; });
         setTimeout(() => { try { node.remove(); } catch { /* already gone */ } }, SNAP_FADE_MS + 60);

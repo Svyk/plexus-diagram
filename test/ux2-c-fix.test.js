@@ -5,11 +5,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createHost } from "../src/host/roam.js";
-import { cardJsonPayload, figureCopySize, matchParsedBlock, pageFracFromBbox, pasteCardPlan } from "../src/model/pdf-pin.js";
+import { cardJsonPayload, figureCopySize, matchParsedBlock, pageFracFromBbox, pasteCardPlan, sourceOpenPlan } from "../src/model/pdf-pin.js";
 import { acquireSession } from "../src/session.js";
 import { createSettingsPanel } from "../src/settings.js";
 import { applyPdfReaderDark } from "../src/view/pdf-reader-dark.js";
-import { jumpSidebarPdf, pdfTargetsMatch, waitForSidebarPdf, watchNodeGone } from "../src/view/pin-reveal.js";
+import { jumpSidebarPdf, pdfTargetsMatch, sidebarPdfContainer, waitForSidebarPdf, watchNodeGone } from "../src/view/pin-reveal.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
 
@@ -360,6 +360,74 @@ test("a copied table pastes as a folded caption over the table", async () => {
   assert.match(menu, /table:\s*block/);
   const board = readFileSync(new URL("../src/view/board-view.js", import.meta.url), "utf8");
   assert.match(board, /insertParsedTable\?\.\(\{/);
+});
+
+test("Source opens the sidebar PDF when it is already there, else the reader, else Roam", async () => {
+  assert.equal(sourceOpenPlan({ sidebar: true, card: true }), "sidebar");
+  assert.equal(sourceOpenPlan({ sidebar: false, card: true }), "reader");
+  assert.equal(sourceOpenPlan({ sidebar: false, card: false }), "roam");
+  const file = "https://firebasestorage.googleapis.com/v0/b/app/o/report.pdf";
+  assert.equal(pdfTargetsMatch(
+    { uid: "", url: `${file}?alt=media&token=new` },
+    { uid: "pdfblock1", url: `${file}?alt=media&token=old` },
+  ), true);
+  assert.equal(pdfTargetsMatch(
+    { uid: "otherpdf1", url: "https://files.test/other.pdf?token=1" },
+    { uid: "pdfblock1", url: "https://files.test/pin.pdf?token=2" },
+  ), false);
+  assert.equal(pdfTargetsMatch(
+    { uid: "", windowId: "rm-sidebar-pinpdf01", url: "" },
+    { uid: "pinpdf01", url: "https://files.test/pin.pdf" },
+  ), true);
+  assert.equal(pdfTargetsMatch(
+    { uid: "", windowId: "sidebar-window-notes", url: "" },
+    { uid: "pinpdf01", url: "https://files.test/pin.pdf" },
+  ), false);
+
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const doc = globalThis.document;
+    const side = doc.createElement("div");
+    side.id = "right-sidebar";
+    const win = doc.createElement("div");
+    win.className = "rm-sidebar-window";
+    win.id = "rm-sidebar-window-pinpdf01";
+    const box = doc.createElement("div");
+    box.className = "rm-pdf-container";
+    const frame = doc.createElement("iframe");
+    frame.setAttribute("src", `${file}?alt=media&token=live`);
+    const input = doc.createElement("input");
+    input.value = "2";
+    box.append(frame, input);
+    win.append(box);
+    side.append(win);
+    doc.body.append(side);
+    const want = { uid: "pinpdf01", url: `${file}?alt=media&token=pin` };
+    assert.equal(sidebarPdfContainer(doc, want, () => ""), box);
+    assert.equal(jumpSidebarPdf(doc, 2, want, () => ""), true);
+    assert.equal(input.value, "2");
+    const other = doc.createElement("div");
+    other.className = "rm-pdf-container";
+    const otherInput = doc.createElement("input");
+    otherInput.value = "1";
+    other.append(otherInput);
+    const otherWin = doc.createElement("div");
+    otherWin.className = "rm-sidebar-window";
+    otherWin.id = "sidebar-window-notes";
+    otherWin.append(other);
+    side.append(otherWin);
+    assert.equal(jumpSidebarPdf(doc, 8, { uid: "missingpdf", url: "https://files.test/missing.pdf" }, () => ""), false);
+    assert.equal(otherInput.value, "1");
+  } finally {
+    restore();
+  }
+
+  const board = readFileSync(new URL("../src/view/board-view.js", import.meta.url), "utf8");
+  const revealAt = board.indexOf("async function revealSidebarPin");
+  const reveal = board.slice(revealAt, board.indexOf("function openPin", revealAt));
+  assert.match(reveal, /loadParsedFor\(/);
+  assert.match(board, /sourceOpenPlan\(/);
 });
 
 test("PDF dark mode leaves the board reader alone and paints page photos back", async () => {

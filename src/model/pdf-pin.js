@@ -482,6 +482,13 @@ export function pinClickMode({ shiftKey = false, metaKey = false, ctrlKey = fals
   return "popover";
 }
 
+// A Source click. The sidebar wins when that PDF is already open there.
+export function sourceOpenPlan({ sidebar = false, card = false } = {}) {
+  if (sidebar) return "sidebar";
+  if (card) return "reader";
+  return "roam";
+}
+
 export function pinOpenPlan(region) {
   if (!region || region.kind !== "pdf" || region.supported === false) return null;
   const pdfUid = String(region.drawingUid || "").trim();

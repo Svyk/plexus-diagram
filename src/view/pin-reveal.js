@@ -29,30 +29,66 @@ function sidebarPdfBoxes(doc) {
   return out;
 }
 
+function windowOf(box) {
+  return box?.closest?.(".rm-sidebar-window") || null;
+}
+
 function uidFromWindow(box) {
-  const win = box?.closest?.(".rm-sidebar-window");
-  const id = String(win?.id || "");
+  const id = String(windowOf(box)?.id || "");
   const mark = "sidebar-block-";
   const at = id.lastIndexOf(mark);
   if (at < 0) return "";
   return id.slice(at + mark.length).split(/[^\w-]/)[0] || "";
 }
 
-// The sidebar block's uid (window id or data-block-uid) and the PDF url when one is readable.
+function uidInWindow(box) {
+  const win = windowOf(box) || box;
+  const node = win?.querySelector?.("[data-block-uid], [data-uid]");
+  return String(node?.getAttribute?.("data-block-uid") || node?.getAttribute?.("data-uid") || "").trim();
+}
+
+function urlPath(url) {
+  const text = String(url || "").trim();
+  if (!text) return "";
+  try {
+    const parsed = new URL(text);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return text.split("#")[0].split("?")[0];
+  }
+}
+
+function idEndsWithUid(id, uid) {
+  const text = String(id || "");
+  const want = String(uid || "");
+  if (!text || want.length < 4) return false;
+  if (text === want) return true;
+  const at = text.lastIndexOf(want);
+  if (at < 0 || at + want.length !== text.length) return false;
+  const prev = text[at - 1];
+  return prev === "-" || prev === "_" || /[^\w]/.test(prev);
+}
+
+// The sidebar block's uid (window id, a child uid, or data-block-uid) and the PDF url when one is readable.
 export function sidebarPdfTarget(box, readString) {
   const marked = box?.closest?.("[data-block-uid]")?.getAttribute?.("data-block-uid")
     || box?.getAttribute?.("data-block-uid")
     || "";
-  const uid = String(marked || uidFromWindow(box) || "").trim();
+  const uid = String(marked || uidFromWindow(box) || uidInWindow(box) || "").trim();
   const stamped = String(box?.getAttribute?.("data-pdf-url") || box?.closest?.("[data-pdf-url]")?.getAttribute?.("data-pdf-url") || "").trim();
   let url = stamped;
+  if (!url) {
+    const src = String(box?.querySelector?.("iframe")?.getAttribute?.("src") || "").trim();
+    if (/^https?:\/\//.test(src)) url = src.split("#")[0];
+  }
   if (!url && uid && typeof readString === "function") {
     try { url = pdfMacroUrl(readString(uid) || "") || ""; } catch { url = ""; }
   }
-  return { uid, url };
+  return { uid, url, windowId: String(windowOf(box)?.id || "") };
 }
 
-// True when the uid matches, or when the urls match. A wanted PDF with nothing to compare against is not a match.
+// True when the uid matches, or when the urls match (a token query does not make them different).
+// A wanted PDF with nothing to compare against is not a match.
 export function pdfTargetsMatch(found, want) {
   const wantUid = String(want?.uid || "").trim();
   const wantUrl = String(want?.url || "").trim();
@@ -60,7 +96,8 @@ export function pdfTargetsMatch(found, want) {
   const foundUid = String(found?.uid || "").trim();
   const foundUrl = String(found?.url || "").trim();
   if (wantUid && foundUid && wantUid === foundUid) return true;
-  if (wantUrl && foundUrl && wantUrl === foundUrl) return true;
+  if (wantUid && idEndsWithUid(found?.windowId, wantUid)) return true;
+  if (wantUrl && foundUrl && (wantUrl === foundUrl || urlPath(wantUrl) === urlPath(foundUrl))) return true;
   return false;
 }
 

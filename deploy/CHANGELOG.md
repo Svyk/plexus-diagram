@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.34.0 — 2026-10-16
+
+PDF sources, dark PDFs, searching inside PDFs, and Roam popups that stay on top.
+
+- **Copy with source, cleaner.** A copied figure pastes as one card: the image, the full caption, and the Source chip under it. A copied table pastes as a folded table card, not raw text. One undo removes it. Clicking Source opens the PDF at the page with Show parsed on and the part outlined: in the sidebar if the PDF is open there, else the card's reader, else Roam opens it. A PDF card with no parse loaded loads its kept parse first.
+- **PDF dark mode.** Settings → PDF reader → PDF dark mode: Off, Follow Roam (default) or On. Roam's PDF windows invert the page; photos on the page are painted back in their real colours. Highlights and parsed outlines keep their colours. The board's own reader keeps its own setting.
+- **Focus a child block.** Click a child's or grandchild's bullet (or Cmd+.) and the card focuses it, with a crumb (card › parent › child); Escape steps back. Zoom into that block in Roam and an "Open on board" button opens the board with the card unfolded and focused on it. Nothing is written.
+- **Roam popups stay above the board.** The calendar, Find or Create results, `[[` autocomplete, the slash menu, hover previews and dialog dropdowns now paint over the board, in fullscreen too. Menus inside a Roam dialog open above the dialog.
+- **Search inside PDFs and images.** Results are grouped into Cards, PDF text and Images, with the match marked and a p. N chip. PDFs you have not parsed are indexed in the background, a little at a time, so their words are found too. Enter or click opens the PDF at that page, even if it is not on the board; Shift+Enter or drag adds it as a card. Text in pictures stored on your Mac is read through the parse helper. The filters sit on two rows.
+- **Wider PDF reader.** The board's PDF reader can be dragged almost to the full window width (it stopped at 720 px).
+
 ## 3.33.0 — 2026-10-15
 
 Boards inside boards, card children and sources feel like Roam.

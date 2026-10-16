@@ -19279,7 +19279,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, storedDerived: true };
 }
 function parseSpeedFlags(raw) {
   const base = defaultSpeedFlags();
@@ -19733,7 +19733,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "storedDerived"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -41267,6 +41267,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
 
 // src/host/roam.js
 init_settings();
+init_board();
 
 // src/host/sliced-read.js
 var SLICED_LEVEL_PATTERN = "[:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props {(limit :block/children nil) [:db/id]}]";
@@ -41486,6 +41487,9 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
     }
   };
 }
+
+// src/host/model-store.js
+init_schema();
 
 // src/model/boardsnap.js
 var SNAP_VERSION = 1;
@@ -42489,6 +42493,100 @@ function createTreeDecoder(model) {
     }
   };
 }
+var DERIVED_MAX = 18e4;
+var DERIVED_V = 1;
+var DERIVED_UID = 64;
+var DERIVED_TITLE = 120;
+var DERIVED_SOURCES = 8;
+function clipId(value, max) {
+  return typeof value === "string" && value.length > 0 && value.length <= max ? value : "";
+}
+function packDerived(badges, links) {
+  const b = [];
+  if (badges && typeof badges.forEach === "function") {
+    badges.forEach((stat, key) => {
+      if (!stat || typeof key !== "string") return;
+      const nums = [stat.refs | 0, stat.boards | 0, stat.open | 0, stat.done | 0];
+      if (key.startsWith("page:")) {
+        const title = clipId(key.slice(5), DERIVED_TITLE);
+        if (title) b.push(["p", title, ...nums]);
+      } else if (key.startsWith("uid:")) {
+        const uid = clipId(key.slice(4), DERIVED_UID);
+        if (uid) b.push(["u", uid, ...nums]);
+      }
+    });
+  }
+  const packLink = (link, keepSources) => {
+    const from = clipId(link?.from, DERIVED_UID);
+    const to = clipId(link?.to, DERIVED_UID);
+    if (!from || !to || from === to) return null;
+    const sources = [];
+    if (keepSources) {
+      for (const src of link.sources || []) {
+        if (sources.length >= DERIVED_SOURCES) break;
+        const uid = clipId(src?.uid, DERIVED_UID);
+        if (uid && !sources.includes(uid)) sources.push(uid);
+      }
+    }
+    const label = Array.isArray(link.labels) ? link.labels.find((item) => item && item !== "mentions") : null;
+    if (link.kind === "attr" && typeof label === "string" && label) return [from, to, 1, label.slice(0, 60), sources];
+    return [from, to, 0, sources];
+  };
+  const fit3 = (linkRows) => {
+    const packed2 = { v: DERIVED_V, b, l: linkRows };
+    return JSON.stringify(packed2).length <= DERIVED_MAX ? packed2 : null;
+  };
+  let rows = [];
+  for (const link of links || []) {
+    const row4 = packLink(link, true);
+    if (row4) rows.push(row4);
+  }
+  let packed = fit3(rows);
+  if (packed) return packed;
+  rows = [];
+  for (const link of links || []) {
+    const row4 = packLink(link, false);
+    if (row4) rows.push(row4);
+  }
+  packed = fit3(rows);
+  if (packed) return packed;
+  while (rows.length) {
+    rows.pop();
+    packed = fit3(rows);
+    if (packed) return packed;
+  }
+  return fit3([]);
+}
+function unpackDerived(raw) {
+  if (!raw || raw.v !== DERIVED_V || !Array.isArray(raw.b) || !Array.isArray(raw.l)) return null;
+  const badges = /* @__PURE__ */ new Map();
+  for (const row4 of raw.b) {
+    if (!Array.isArray(row4) || row4[0] !== "u" && row4[0] !== "p" || typeof row4[1] !== "string" || !row4[1]) continue;
+    const stat = { refs: row4[2] | 0, boards: row4[3] | 0, open: row4[4] | 0, done: row4[5] | 0 };
+    badges.set(row4[0] === "p" ? `page:${row4[1]}` : `uid:${row4[1]}`, stat);
+  }
+  const links = [];
+  for (const row4 of raw.l) {
+    if (!Array.isArray(row4) || typeof row4[0] !== "string" || typeof row4[1] !== "string") continue;
+    const attr = row4[2] === 1;
+    const label = attr && typeof row4[3] === "string" && row4[3] ? row4[3] : "mentions";
+    const srcs = attr ? row4[4] : row4[3];
+    const sources = [];
+    if (Array.isArray(srcs)) {
+      for (const uid of srcs) if (typeof uid === "string" && uid) sources.push({ uid, string: "" });
+    }
+    links.push({
+      key: `${row4[0]}->${row4[1]}`,
+      from: row4[0],
+      to: row4[1],
+      kind: attr ? "attr" : "ref",
+      labels: [label],
+      sources,
+      color: colorForLabel(label)
+    });
+  }
+  return { badges, links };
+}
 function request2(req) {
   return new Promise((resolve) => {
     if (!req) {
@@ -42602,7 +42700,7 @@ function createModelStore({ indexedDB = globalThis.indexedDB, graph = "", now: n
         }
         try {
           const boards = tx.objectStore(SNAP_STORE_BOARDS);
-          if (fits) boards.put({ v: MODEL_VERSION, uid, stamp: stamp2, n: model.n, size: model.size, parts: model.parts }, modelKey2(uid));
+          if (fits) boards.put({ v: MODEL_VERSION, uid, stamp: stamp2, n: model.n, size: model.size, parts: model.parts, derived: model.derived ?? null }, modelKey2(uid));
           else boards.delete(modelKey2(uid));
           for (const row4 of dropped) boards.delete(modelKey2(row4.uid));
           tx.objectStore(SNAP_STORE_META).put(keepRows, metaKey2());
@@ -42615,6 +42713,42 @@ function createModelStore({ indexedDB = globalThis.indexedDB, graph = "", now: n
         }
         list = keepRows;
         return await done2(tx) && fits;
+      };
+      writing = writing.then(job, job).catch(() => false);
+      return writing;
+    },
+    // Same row, same stamp, same budgeted size. A second transaction: the read transaction closes on await.
+    putDerived(uid, stamp2, derived) {
+      if (!allow() || !uid || typeof stamp2 !== "string") return Promise.resolve(false);
+      const job = async () => {
+        const handle = await db();
+        if (!handle) return false;
+        const want = (await readList()).find((row4) => row4.uid === uid);
+        if (!want || want.stamp !== stamp2) return false;
+        let readTx;
+        try {
+          readTx = handle.transaction([SNAP_STORE_BOARDS], "readonly");
+        } catch {
+          return false;
+        }
+        const got = await request2(readTx.objectStore(SNAP_STORE_BOARDS).get(modelKey2(uid)));
+        if (!got || got.v !== MODEL_VERSION || got.stamp !== stamp2 || !Array.isArray(got.parts)) return false;
+        let tx;
+        try {
+          tx = handle.transaction([SNAP_STORE_BOARDS], "readwrite");
+        } catch {
+          return false;
+        }
+        try {
+          tx.objectStore(SNAP_STORE_BOARDS).put({ ...got, derived: derived ?? null }, modelKey2(uid));
+        } catch {
+          try {
+            tx.abort();
+          } catch {
+          }
+          return false;
+        }
+        return done2(tx);
       };
       writing = writing.then(job, job).catch(() => false);
       return writing;
@@ -43754,7 +43888,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     holdSplit(uid, split);
     if (offered.trusted) unverified.set(uid, offered.stamp);
     else if (modelStore && trustOn() && modelStore.stampOf(uid) !== offered.stamp) keepModel(uid, tree, offered.stamp);
-    adoptedTrees.set(uid, { node: tree, found: offered.found, stamp: offered.stamp, at: Date.now(), split, trusted: offered.trusted === true });
+    adoptedTrees.set(uid, { node: tree, found: offered.found, stamp: offered.stamp, at: Date.now(), split, trusted: offered.trusted === true, derived: offered.derived ?? null });
     return true;
   };
   const pageStampOf = (uid) => {
@@ -43783,6 +43917,101 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       return true;
     }
   };
+  const derivedOn = () => {
+    try {
+      return notedSpeedFlags().storedDerived !== false;
+    } catch {
+      return true;
+    }
+  };
+  const derivedLive = /* @__PURE__ */ new Map();
+  const seedDerived = (uid, stamp2, raw) => {
+    if (!derivedOn()) return false;
+    const unpacked = unpackDerived(raw);
+    if (!unpacked) return false;
+    derivedLive.set(uid, { stamp: stamp2, badges: unpacked.badges, links: unpacked.links });
+    return true;
+  };
+  function linksFromTree(uid, tree) {
+    let board2 = null;
+    try {
+      board2 = buildBoard(tree, {
+        resolve: (id) => {
+          try {
+            const text4 = host.blockString?.(id);
+            return typeof text4 === "string" ? text4 : null;
+          } catch {
+            return null;
+          }
+        }
+      });
+    } catch {
+      return [];
+    }
+    if (!board2) return [];
+    const resolved = /* @__PURE__ */ new Map();
+    const resolveOnce = (ref) => {
+      const key = ref.title != null ? `title:${ref.title}` : `uid:${ref.uid}`;
+      if (resolved.has(key)) return resolved.get(key);
+      let eid = null;
+      try {
+        eid = host.resolveEid(ref);
+      } catch {
+        eid = null;
+      }
+      resolved.set(key, eid);
+      return eid;
+    };
+    const boardEid = resolveOnce({ uid });
+    const eidToItems = /* @__PURE__ */ new Map();
+    for (const item of board2.items.values()) {
+      if (item.type !== "card" || !item.target) continue;
+      const t = item.target;
+      const ref = t.kind === "page" ? { title: t.title } : { uid: t.uid };
+      const eid = resolveOnce(ref);
+      if (eid == null || eid === boardEid) continue;
+      if (!eidToItems.has(eid)) eidToItems.set(eid, []);
+      eidToItems.get(eid).push(item.uid);
+    }
+    const eids = [...eidToItems.keys()];
+    if (!eids.length || boardEid == null) return [];
+    let rows = [];
+    try {
+      rows = host.linkRows(boardEid, new Set(eids), eids) || [];
+    } catch {
+      return [];
+    }
+    const parentStrings = /* @__PURE__ */ new Map();
+    for (const row4 of rows) {
+      if (row4.length > 4 && row4[4] != null) parentStrings.set(row4[2], row4[4]);
+    }
+    try {
+      return reduceLinks(rows, { eidToItems, parentStrings });
+    } catch {
+      return [];
+    }
+  }
+  function recomputeDerived(uid, tree) {
+    const badges = /* @__PURE__ */ new Map();
+    try {
+      const found = collectTargets(tree);
+      const res = host.cardStats(found.stats, { boardUid: uid });
+      if (res instanceof Map) for (const [key, stat] of res) badges.set(key, stat);
+    } catch {
+    }
+    let links = [];
+    try {
+      links = linksFromTree(uid, tree) || [];
+    } catch {
+      links = [];
+    }
+    derivedLive.set(uid, { stamp: null, badges, links });
+    try {
+      return packDerived(badges, links);
+    } catch {
+      return null;
+    }
+  }
   let modelStore = null;
   const unverified = /* @__PURE__ */ new Map();
   const verifyListeners = /* @__PURE__ */ new Map();
@@ -43808,7 +44037,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       }
     }
   };
-  const keepModel = (uid, tree, stamp2) => {
+  const keepModel = (uid, tree, stamp2, derived) => {
     if (!modelStore || !trustOn() || !tree?.[":block/uid"] || typeof stamp2 !== "string") return;
     keeps.get(uid)?.();
     const enc = createTreeEncoder(tree);
@@ -43817,7 +44046,18 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (!enc.step(Math.max(1, deadline.timeRemaining() - 2), clock)) return false;
       if (keeps.get(uid) === cancel) keeps.delete(uid);
       const model = enc.result();
-      if (model) void modelStore.put(uid, stamp2, model);
+      if (model) {
+        let packed = derived;
+        if (packed === void 0 && derivedOn()) {
+          try {
+            packed = recomputeDerived(uid, tree);
+          } catch {
+            packed = null;
+          }
+        }
+        if (packed !== void 0) model.derived = packed;
+        void modelStore.put(uid, stamp2, model);
+      }
       stats.modelsKept = (stats.modelsKept || 0) + 1;
       return true;
     }, { label: "model-keep", partMs: 4, firstQuiet: 1e3 });
@@ -43962,8 +44202,17 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (split && !split.disposed) changed2 = split.reseed(tree, { contents: true }) !== false;
       stats.checks = (stats.checks || 0) + 1;
       if (changed2) stats.checkChanges = (stats.checkChanges || 0) + 1;
+      let packed;
+      if (derivedOn()) {
+        try {
+          packed = recomputeDerived(uid, tree);
+        } catch {
+          packed = null;
+        }
+      }
       markVerified(uid);
-      if (changed2 || modelStore?.stampOf(uid) !== stamp2) keepModel(uid, tree, stamp2);
+      if (changed2 || modelStore?.stampOf(uid) !== stamp2) keepModel(uid, tree, stamp2, packed);
+      else if (derivedOn()) void modelStore?.putDerived(uid, stamp2, packed ?? null);
     }, {
       prepare: (tree) => absorb(uid, tree, false),
       stopIf: () => {
@@ -44728,6 +44977,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       let honored = false;
       let big = false;
       let found = null;
+      let derivedHit = false;
       let adopted = adoptedTrees.get(uid) || null;
       if (adopted) adoptedTrees.delete(uid);
       if (adopted && !adopted.trusted && pageStampOf(uid) !== adopted.stamp) {
@@ -44750,6 +45000,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         if (adopted.trusted) {
           stats.trustedOpens = (stats.trustedOpens || 0) + 1;
           scheduleCheck(uid);
+          derivedHit = seedDerived(uid, adopted.stamp, adopted.derived);
         } else stats.slicedReads = (stats.slicedReads || 0) + 1;
       } else {
         if (adopted && unverified.has(uid)) scheduleCheck(uid);
@@ -44818,6 +45069,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           if (trustedOpen) {
             unverified.set(uid, readStamp);
             scheduleCheck(uid);
+            derivedHit = seedDerived(uid, readStamp, offered?.derived);
           } else if (node2 === plain2 && modelStore && trustOn()) {
             readStamp ?? (readStamp = pageStampOf(uid));
             if (readStamp && modelStore.stampOf(uid) !== readStamp) keepModel(uid, plain2, readStamp);
@@ -44928,12 +45180,12 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         if (si < found.stats.length) later(step);
       };
       if (!light) {
-        if (doPrime) prime();
+        if (doPrime && !derivedHit) prime();
       } else {
         const idle = globalThis.requestIdleCallback;
         const later = (fn) => idleLater(idle, fn);
-        const titles = big ? [] : found.titles;
-        const targets = big ? [] : found.stats;
+        const titles = big || derivedHit ? [] : found.titles;
+        const targets = big || derivedHit ? [] : found.stats;
         const statsPart = statsInParts(node2, targets) ? STATS_CHUNK : Infinity;
         const pulledAt = ++pullSeq;
         let ti = 0;
@@ -44961,7 +45213,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
             }
             if (!dropped) {
               dropped = true;
-              dropStats(uid);
+              if (!derivedHit) dropStats(uid);
             }
             if (ti < titles.length) {
               try {
@@ -45047,6 +45299,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       let decoder = null;
       let tree = null;
       let walk3 = null;
+      let derivedRaw = null;
       let cancelled = false;
       let ms = 0;
       const fallback = () => {
@@ -45061,6 +45314,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           fallback();
           return;
         }
+        derivedRaw = model.derived ?? null;
         decoder = createTreeDecoder(model);
         phase = "decode";
       }, () => {
@@ -45113,7 +45367,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
               fallback();
               return false;
             }
-            offeredTrees.set(id, { tree, found: walk3.result(), stamp: stamp2, at: Date.now(), trusted: true });
+            offeredTrees.set(id, { tree, found: walk3.result(), stamp: stamp2, at: Date.now(), trusted: true, derived: derivedRaw });
             tree = null;
             walk3 = null;
             phase = "adopt";
@@ -45296,6 +45550,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // what it shows. onBoardVerified(uid, fn) calls fn once when that read lands (at once when already verified).
     boardUnverified(uid) {
       return unverified.has(String(uid ?? ""));
+    },
+    // Stored badge counts and derived links for a trusted hit, or null when the flag is off or this open had none.
+    storedDerived(uid) {
+      if (!derivedOn()) return null;
+      const live2 = derivedLive.get(String(uid ?? ""));
+      if (!live2) return null;
+      return { badges: live2.badges, links: live2.links };
     },
     onBoardVerified(uid, fn) {
       const id = String(uid ?? "");
@@ -49337,8 +49598,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   const rawPlexus = (id) => readPlexus(rawNode(id)?.[PROPS]) ?? {};
   function hasStoredLayout() {
     for (const item of board2.items.values()) {
-      const stored = readPlexus(rawNode(item.uid)?.[PROPS]);
-      if (stored && Number.isFinite(stored.x) && Number.isFinite(stored.y)) return true;
+      const stored2 = readPlexus(rawNode(item.uid)?.[PROPS]);
+      if (stored2 && Number.isFinite(stored2.x) && Number.isFinite(stored2.y)) return true;
     }
     return false;
   }
@@ -49578,8 +49839,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         const mr = rects.get(m);
         const nx = round14(mr.x - r.x);
         const ny = round14(mr.y - r.y);
-        const stored = rawPlexus(m);
-        if (stored.x === nx && stored.y === ny) continue;
+        const stored2 = rawPlexus(m);
+        if (stored2.x === nx && stored2.y === ny) continue;
         t.props(m, itemPlexus(m, { x: nx, y: ny }));
       }
     }
@@ -52025,7 +52286,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
     return sectionUid;
   }
-  if (linkMode !== "off" && board2) refreshLinks();
+  const stored = host.storedDerived?.(uid);
+  if (stored?.links && linkMode !== "off" && board2) {
+    allLinks = stored.links;
+    recomputeLinks(true);
+    host.onBoardVerified?.(uid, () => {
+      const next = host.storedDerived?.(uid);
+      if (destroyed || !next?.links) return;
+      allLinks = next.links;
+      recomputeLinks(false);
+    });
+  } else if (linkMode !== "off" && board2) refreshLinks();
   const api3 = {
     uid,
     host,
@@ -93297,12 +93568,8 @@ function createCoverRepaintJob({ takeUrls, repaint, count, partSize = COVER_PART
       uids = [...takeUrls?.() || []];
       at = 0;
       if (!uids.length) {
-        try {
-          count?.();
-        } catch {
-        }
-        uids = null;
-        return true;
+        counting = true;
+        return false;
       }
     }
     const part = uids.slice(at, at + partSize);
@@ -96429,6 +96696,35 @@ function buildBoardView(onFail, {
   };
   let coverRepaint = null;
   let coverJob = null;
+  let coverRepaintCalls = 0;
+  const coverRepaintUids = [];
+  const coverCullOn = () => {
+    try {
+      return notedSpeedFlags().storedDerived !== false;
+    } catch {
+      return true;
+    }
+  };
+  const coverBodyOnScreen = (item) => {
+    if (tier === "overview") return false;
+    if (itemsR.attachedUid?.(item.uid) !== true) return false;
+    if (!(size.width > 0) || !(size.height > 0)) return true;
+    const rect = rects().get(item.uid);
+    if (!rect || !(rect.w > 0) || !(rect.h > 0)) return false;
+    return rectsIntersect(rect, visibleWorldRect(vp, size, ATTACH_MARGIN));
+  };
+  const takeCoverUids = (urls2) => {
+    const uids = [];
+    const cull = coverCullOn();
+    for (const item of board2()?.items.values() || []) {
+      if (item?.kind !== "pdf" || !urls2?.has(coverUrlOf(item))) continue;
+      if (cull && !coverBodyOnScreen(item)) continue;
+      uids.push(item.uid);
+    }
+    coverRepaintCalls += 1;
+    coverRepaintUids.push(...uids);
+    return uids;
+  };
   const repaintForCover = (url) => {
     if (disposed) return;
     if (notedSpeedFlags().bgBudget !== false) {
@@ -96438,11 +96734,7 @@ function buildBoardView(onFail, {
           takeUrls: () => {
             const urls2 = coverRepaint;
             coverRepaint = null;
-            const uids = [];
-            for (const item of board2()?.items.values() || []) {
-              if (item?.kind === "pdf" && urls2?.has(coverUrlOf(item))) uids.push(item.uid);
-            }
-            return uids;
+            return takeCoverUids(urls2);
           },
           repaint: (part) => itemsR.repaintItems(part),
           count: () => {
@@ -96472,10 +96764,7 @@ function buildBoardView(onFail, {
         const urls2 = coverRepaint;
         coverRepaint = null;
         if (disposed || !urls2?.size) return;
-        const uids = [];
-        for (const item of board2()?.items.values() || []) {
-          if (item?.kind === "pdf" && urls2.has(coverUrlOf(item))) uids.push(item.uid);
-        }
+        const uids = takeCoverUids(urls2);
         if (uids.length) itemsR.repaintItems(uids);
         try {
           refreshPdfHighlightCounts();
@@ -97655,6 +97944,33 @@ function buildBoardView(onFail, {
       seeded += 1;
     }
     if (seeded) applyBadges();
+  };
+  const seedStoredBadges = () => {
+    if (disposed) return;
+    try {
+      if (notedSpeedFlags().storedDerived === false) return;
+    } catch {
+    }
+    if (typeof host?.storedDerived !== "function") return;
+    let got = null;
+    try {
+      got = host.storedDerived(boardUid);
+    } catch {
+      got = null;
+    }
+    const badges = got?.badges;
+    if (!badges || typeof badges.get !== "function") return;
+    const b = board2();
+    if (!b) return;
+    const at = Date.now();
+    const zero = { refs: 0, boards: 0, open: 0, done: 0 };
+    for (const item of b.items.values()) {
+      if (item.type !== "card" || !item.target) continue;
+      const key = badgeKeyOf(item);
+      const stats = badges.get(key) || zero;
+      badgeCache.set(key, { at, stats: { ...zero, ...stats } });
+    }
+    applyBadges();
   };
   const badgeStatsByUid = () => {
     const out = /* @__PURE__ */ new Map();
@@ -104638,6 +104954,13 @@ ${url}`;
   applyLod();
   itemsR.setShowBadges(flag("show-card-badges", true));
   seedSnapshotBadges();
+  seedStoredBadges();
+  try {
+    host.onBoardVerified?.(boardUid, () => {
+      if (!disposed) seedStoredBadges();
+    });
+  } catch {
+  }
   dirty.viewport = true;
   markAll();
   consumeDeepLink();
@@ -105172,7 +105495,7 @@ ${url}`;
       };
     },
     stats() {
-      return { timers: timers.count(), listeners: listeners3.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount(), edgePlacements: edgesR.placements?.() ?? 0, edgesAttached: edgesR.attachedCount?.() ?? 0 };
+      return { timers: timers.count(), listeners: listeners3.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount(), edgePlacements: edgesR.placements?.() ?? 0, edgesAttached: edgesR.attachedCount?.() ?? 0, coverRepaints: coverRepaintUids.length, coverRepaintUids: coverRepaintUids.slice(), coverRepaintCalls };
     },
     // P32 live probes: cover source (pdf.js or hidden reader) and the pane's fit path. Read-only.
     pdfProbe() {

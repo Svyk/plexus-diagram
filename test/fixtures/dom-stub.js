@@ -260,12 +260,19 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
       focus() { document.activeElement = el; },
       blur() { if (document.activeElement === el) document.activeElement = document.body; },
       click() { dispatch(el, "click", { button: 0 }); },
+      // One context per canvas. ops records [op, style] for fills and strokes (tests read canvas.__ctx.ops).
       getContext() {
-        return {
-          clearRect() {}, fillRect() {}, strokeRect() {}, beginPath() {}, rect() {}, fill() {}, stroke() {},
-          save() {}, restore() {}, scale() {}, translate() {}, setTransform() {},
-          fillStyle: "", strokeStyle: "", lineWidth: 1,
+        if (el.__ctx) return el.__ctx;
+        const ops = [];
+        const ctx = {
+          ops,
+          clearRect() { ops.length = 0; }, fillRect() { ops.push(["fillRect", ctx.fillStyle]); }, strokeRect() {}, beginPath() {}, rect() {}, roundRect() {},
+          fill() { ops.push(["fill", ctx.fillStyle]); }, stroke() { ops.push(["stroke", ctx.strokeStyle]); },
+          save() {}, restore() {}, scale() {}, translate() {}, setTransform() {}, moveTo() {}, lineTo() {},
+          fillStyle: "", strokeStyle: "", lineWidth: 1, globalAlpha: 1,
         };
+        el.__ctx = ctx;
+        return ctx;
       },
       textContent: "",
       parentElement: null,

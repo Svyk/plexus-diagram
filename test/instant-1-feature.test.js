@@ -431,6 +431,66 @@ test("a nested board with a snapshot paints it before its session is read", asyn
   }
 });
 
+// E4 (perf2): no stored camera. The snapshot fitted to 800x560 and the live board refitted to the measured mount a frame
+// later, a ~200 ms jump right after a nested board appeared (PhD MAIN, fullscreen). Both start at the mount's own fit now.
+test("a nested board with no stored camera paints its snapshot fitted to the mount, and the live board starts there", async () => {
+  const { vp: _drop, ...noVp } = SNAP;
+  const child = {
+    ...noVp,
+    uid: "childBBB2",
+    items: [{ ...SNAP.items[0], uid: "cardCCCC3", x: 0, y: 0, w: 400, h: 300, face: { t: "div", k: [{ t: "div", c: "pxd-item__header", k: ["Child snap"] }] } }],
+  };
+  const idb = await seededIdb(SNAP, [child]);
+  const env = installEnv({ idb });
+  const proto = Object.getPrototypeOf(env.doc.body);
+  proto.getBoundingClientRect = function () { return { left: 0, top: 0, width: 1400, height: 900 }; };
+  try {
+    await env.install();
+    await tick(20);
+    env.seen[0].args.onFirstPaint();
+    env.seen[0].args.onOpenBoard("childBBB2");
+    await tick(0);
+    const mount = env.doc.querySelector(".pxd-mount");
+    const world = mount.querySelector(".pxd-snap-root").querySelector(".pxd-world");
+    // fitViewport(0,0,400,300 in 1400x900, padding 64, maxZoom 1): zoom 1, centred.
+    assert.equal(world.style.transform, "translate(500px, 300px) scale(1)", "the snapshot is fitted to the mount, not 800x560");
+    await tick(20);
+    assert.equal(env.acquired[1]?.uid, "childBBB2");
+    assert.deepEqual(env.seen[1].args.initialViewport, { x: 500, y: 300, zoom: 1 }, "the live board starts at the snapshot's camera");
+  } finally {
+    delete proto.getBoundingClientRect;
+    await env.lifecycle.dispose().catch(() => {});
+    env.restore();
+  }
+});
+
+// E1 (perf2): the snapshot was cut away the moment the live board took over. It now stops being the snapshot at once
+// (no class, no input) and fades out over ~140 ms on top of the live board, then leaves the DOM.
+test("the hand-off to the live board cross-fades the snapshot out instead of cutting it", async () => {
+  const idb = await seededIdb();
+  const env = installEnv({ idb });
+  env.win.requestAnimationFrame = (fn) => setTimeout(fn, 0);
+  try {
+    await env.install();
+    await tick(20);
+    const mount = env.doc.querySelector(".pxd-mount");
+    const snapRoot = mount.querySelector(".pxd-snap-root");
+    assert.ok(snapRoot);
+    env.seen[0].args.onFirstPaint();
+    assert.equal(mount.querySelector(".pxd-snap-root"), null, "no longer the snapshot");
+    assert.ok(snapRoot.parentElement, "still painted while it fades");
+    assert.equal(snapRoot.style.pointerEvents, "none");
+    assert.match(snapRoot.style.transition, /opacity/);
+    await tick(10);
+    assert.equal(snapRoot.style.opacity, "0");
+    await tick(260);
+    assert.equal(snapRoot.parentElement, null, "gone after the fade");
+  } finally {
+    await env.lifecycle.dispose().catch(() => {});
+    env.restore();
+  }
+});
+
 test("a sidebar copy paints its snapshot while dormant; the viewport watcher brings the live board", async () => {
   const idb = await seededIdb();
   const env = installEnv({ idb, sidebar: true });

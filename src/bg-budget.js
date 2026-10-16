@@ -10,6 +10,10 @@ export const BG_QUIET_MS = 300;
 // (any job) waits X * (1 - BG_DUTY) / BG_DUTY ms (3X).
 export const BG_DUTY = 0.25;
 export const BG_GAP_MIN_MS = 5;
+// E5 (perf2, speed flag gestureQuiet): no background slice while a board gesture is held (wheel burst, drag pan,
+// pinch, card drag; the view holds it until its settle) or until the camera has been still this long. The open
+// tail's reader, captures and primes ran inside pan bursts and the first seconds after live on the PhD main board.
+export const BG_CAMERA_QUIET_MS = 500;
 const INPUT_EVENTS = ["wheel", "pointerdown", "pointermove", "keydown", "touchstart", "touchmove"];
 
 export function createBgBudget({
@@ -23,8 +27,19 @@ export function createBgBudget({
   quietMs = BG_QUIET_MS,
   duty = BG_DUTY,
   enabled = () => true,
+  gestureQuiet = () => false,
+  cameraQuietMs = BG_CAMERA_QUIET_MS,
 } = {}) {
   let lastInput = -Infinity;
+  let lastCamera = -Infinity;
+  const holds = new Set();
+  const quietOn = () => { try { return gestureQuiet() === true; } catch { return false; } };
+  // How long the gesture rules still hold background work back (0 = free to run).
+  const gestureWait = () => {
+    if (!quietOn()) return 0;
+    if (holds.size) return quietMs;
+    return Math.max(0, cameraQuietMs - (now() - lastCamera));
+  };
   let listening = false;
   // A hover is not a gesture: pointermove counts only with a button down.
   const onInput = (ev) => {
@@ -67,7 +82,7 @@ export function createBgBudget({
     const run = (d) => {
       idleId = null;
       if (cancelled) return;
-      const wait = Math.max(quiet - Math.min(quietFor(), now() - since), urgent ? 0 : nextAt - now());
+      const wait = Math.max(quiet - Math.min(quietFor(), now() - since), urgent ? 0 : nextAt - now(), gestureWait());
       if (wait > 0) {
         timerId = setTimer(() => { timerId = null; arm(); }, Math.ceil(wait));
         try { timerId?.unref?.(); } catch { /* fake timer */ }
@@ -78,7 +93,7 @@ export function createBgBudget({
       const deadline = {
         didTimeout: false,
         timeRemaining: () => {
-          if (quietFor() < quietMs) return 0;
+          if (quietFor() < quietMs || gestureWait() > 0) return 0;
           const left = sliceMs - (now() - t0);
           const idleLeft = real ? (d.didTimeout ? 0 : real.timeRemaining()) : left;
           return Math.max(0, Math.min(left, idleLeft));
@@ -129,6 +144,14 @@ export function createBgBudget({
     idle,
     run,
     noteInput: () => { lastInput = now(); },
+    // The camera moved (any cause: wheel, drag, Fit, zoom buttons, an eased move).
+    noteCamera: () => { lastCamera = now(); },
+    // hold(key, true) while a gesture runs; hold(key, false) at its settle starts the input quiet from there.
+    hold: (key, on) => {
+      if (on) holds.add(key);
+      else if (holds.delete(key) && quietOn()) lastInput = now();
+    },
+    held: () => holds.size > 0,
     quietFor,
     overruns,
     dispose() {
@@ -144,9 +167,11 @@ export function createBgBudget({
 // The one budget every board on the page shares.
 let shared = null;
 let flagOn = () => true;
+let quietFlag = () => false;
 export function bindBgBudgetFlag(fn) { flagOn = typeof fn === "function" ? fn : () => true; }
+export function bindBgGestureFlag(fn) { quietFlag = typeof fn === "function" ? fn : () => false; }
 export function sharedBgBudget() {
-  if (!shared) shared = createBgBudget({ enabled: () => flagOn() });
+  if (!shared) shared = createBgBudget({ enabled: () => flagOn(), gestureQuiet: () => quietFlag() });
   return shared;
 }
 export function resetSharedBgBudget() {

@@ -1,7 +1,7 @@
 import pkg from "../package.json" with { type: "json" };
 import { createHost } from "./host/roam.js";
 import { acquireSession as acquireSessionDefault, hasSession } from "./session.js";
-import { bindBgBudgetFlag, resetSharedBgBudget, sharedBgBudget } from "./bg-budget.js";
+import { bindBgBudgetFlag, bindBgGestureFlag, resetSharedBgBudget, sharedBgBudget } from "./bg-budget.js";
 import { clearPinnedToast, mountBoardView, viewportStorageId } from "./view/board-view.js";
 import {
   captureSketch,
@@ -300,6 +300,7 @@ export async function installPlexusDiagram({
   try { host.useModelStore?.(modelStore); } catch { /* a host without stored models */ }
   const speedFlags = () => notedSpeedFlags();
   bindBgBudgetFlag(() => speedFlags().bgBudget !== false);
+  bindBgGestureFlag(() => speedFlags().gestureQuiet !== false);
   // Sessions outlive a settings change (they are ref-counted and kept), so they read through this accessor.
   const liveSettings = { get: (id) => settings[id] };
   let stopped = false;
@@ -918,6 +919,7 @@ export async function installPlexusDiagram({
 
   // ---------------------------------------------------------------- INSTANT-1 open snapshots
   const snapAllowed = () => speedFlags().snapshot !== false;
+  const steadyCamera = () => speedFlags().steadyCamera !== false;
   const readsNow = () => Number(host.stats?.reads) || 0;
   const runIdle = (fn) => {
     // P8 U2: snapshot captures, table thumbnails and the query nudge wait for a quiet idle slice on the shared budget.
@@ -1199,13 +1201,23 @@ export async function installPlexusDiagram({
         stored = host.viewports?.get?.(id) || null;
         if (!stored && id !== uid) stored = host.viewports?.get?.(uid) || null;
       } catch { stored = null; }
-      const vp = resolveSnapViewport({ initial: initialViewport, stored, snap });
       anchorMount(rec.mountEl);
       if (rec.fullscreen) fsOff = applyFullscreenChrome(rec.mountEl, true, doc);
       else if (snap.height) {
         rec.mountEl.style.height = `${snap.height}px`;
         rec.mountEl.style.minHeight = `${snap.height}px`;
       }
+      // E4. A board with no stored camera fitted the snapshot to 800x560 and the live board refitted to the measured
+      // mount one frame later: a ~200 ms jump after the nested board appeared (PhD MAIN, fullscreen). Fit to the mount
+      // as it is (one layout read in the click's task); the live board starts at this same camera (mountSnapView).
+      let size = null;
+      if (steadyCamera() && !initialViewport && !stored && !snap.vp) {
+        try {
+          const box = rec.mountEl.getBoundingClientRect?.();
+          if (box?.width > 0 && box?.height > 0) size = { width: box.width, height: box.height };
+        } catch { size = null; }
+      }
+      const vp = resolveSnapViewport({ initial: initialViewport, stored, snap, size });
       const painted = paintBoardSnap(doc, rec.mountEl, snap, vp, { thumbs: snapStore.thumbs, fullscreen: rec.fullscreen });
       if (!painted) throw new Error("snapshot paint failed");
       painted.snap = snap;
@@ -1229,7 +1241,8 @@ export async function installPlexusDiagram({
     try { painted.fsOff?.(); } catch { /* observers already gone */ }
     painted.fsOff = null;
     if (!live && painted.fullscreen) { try { applyFullscreenChrome(rec.mountEl, false, doc); } catch { /* mount gone */ } }
-    try { removeBoardSnap(rec.mountEl); } catch { /* already gone */ }
+    // E1: the hand-off to a live board cross-fades (boardsnap-paint.js); a cancelled one leaves at once.
+    try { removeBoardSnap(rec.mountEl, { fade: live && speedFlags().styledUnderlay !== false }); } catch { /* already gone */ }
   }
 
   // Replay the one gesture made on the snapshot onto what is under it now.
@@ -1302,7 +1315,9 @@ export async function installPlexusDiagram({
   function mountSnapView(handoff, standIn, { autofocus, viewport, onLive, logging, t0 }, fail) {
     const rec = handoff.rec;
     const state = handoff.painted?.state;
-    const vpNow = state?.moved ? { ...state.vp } : viewport;
+    // E4: the live board takes the camera the snapshot painted at, so nothing moves when it takes over.
+    const painted = steadyCamera() && handoff.painted?.vp ? { ...handoff.painted.vp } : null;
+    const vpNow = state?.moved ? { ...state.vp } : (viewport || painted);
     let view;
     try {
       view = callMountView(rec, autofocus, vpNow, {
@@ -1937,7 +1952,9 @@ export async function installPlexusDiagram({
     if (speedFlags().keepAlive === false) return false;
     const view = rec?.view;
     if (!view || view.sketchStandIn === true) return false;
-    if (rec.fullscreen) return false;
+    // E1 (perf2): a fullscreen board is kept too. Disposing it rebuilt the PhD main board on every crumb back from a
+    // nested board (snapshot, then ~1.4 s of shells popping in under grey boxes, every edge element made again).
+    if (rec.fullscreen && speedFlags().keepFullscreen === false) return false;
     if (holdsFocus(rec)) {
       // The crumb, tab or card the user just clicked holds focus; parking drops it anyway. Only a text entry in
       // progress keeps the view out of the pool.
@@ -2276,6 +2293,8 @@ export async function installPlexusDiagram({
     rec.view = view;
     try { view?.setCrumbs?.(rec.crumbs); } catch { /* the parked view keeps the path it painted */ }
     resumeView(rec, view);
+    // Fullscreen may have been entered or left on the board shown meanwhile; the mount's state wins.
+    try { view?.setFullscreen?.(Boolean(rec.fullscreen)); } catch { /* the view keeps its chrome */ }
     const session = rec.session;
     const rest = () => {
       if (stopped || rec.view !== view || rec.session !== session) return;

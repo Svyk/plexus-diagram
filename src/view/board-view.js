@@ -1329,8 +1329,9 @@ function buildBoardView(onFail, {
   let searchQuery = "";
   let frameHandle = null;
   let fsDispose = () => {};
+  let fsParked = false;
   let routeOff = () => {};
-  const dirty = { viewport: false, items: new Set(), edges: new Set(), structural: false, all: true, selection: false, links: false, ctx: false, minimap: false };
+  const dirty = { viewport: false, items: new Set(), edges: new Set(), structural: false, all: true, selection: false, links: false, ctx: false, minimap: false, resync: false };
 
   const board = () => session.board;
 
@@ -3423,6 +3424,7 @@ function buildBoardView(onFail, {
     blockText: (uid) => host?.blockString?.(uid),
     onHover: (uid, on) => hoverRows(uid, on),
   });
+  edgesR.setCanvasTier?.(() => overviewCanvasOn());
 
   // NAV-3 / MEM-8. Queries run when Info opens or a lens turns on, not while the board is mounting.
   const timelineTargetUid = (item) => {
@@ -3833,6 +3835,7 @@ function buildBoardView(onFail, {
   const setViewport = (next) => {
     if (!next) return;
     vp = { x: next.x, y: next.y, zoom: next.zoom };
+    try { sharedBgBudget().noteCamera(); } catch { /* budget */ }
     if (hoverUid) hideHover();
     markViewport();
     // Buttons, Fit, search and edit-zoom change the viewport outside a gesture: re-evaluate LOD + content.
@@ -3899,7 +3902,18 @@ function buildBoardView(onFail, {
     if (name === "data-pxd-lod") root.setAttribute(name, value);
     else root.style.setProperty(name, value);
   };
+  // E probe: attached shells at each tier flip (the restyle the flip costs).
+  const flipStats = { flips: 0, attachedAtFlip: [] };
+  let paintedTier = null;
   const paintTier = () => {
+    if (paintedTier !== tier) {
+      if (paintedTier !== null) {
+        flipStats.flips += 1;
+        flipStats.attachedAtFlip.push(itemsR.attachedCount?.() ?? 0);
+        if (flipStats.attachedAtFlip.length > 20) flipStats.attachedAtFlip.shift();
+      }
+      paintedTier = tier;
+    }
     paintRoot("data-pxd-lod", tier);
     const f = lodFonts(vp.zoom);
     paintRoot("--pxd-map-font", `${f.map}px`);
@@ -3917,7 +3931,10 @@ function buildBoardView(onFail, {
   };
   const applyLod = () => {
     const was = tier;
-    tier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
+    const next = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
+    // E3: a held tier flips with the far shells already out of the DOM (the flip restyles what is attached).
+    if (next !== was && size.width && styledUnderlay()) itemsR.detachFar?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
+    tier = next;
     paintTier();
     paintInvZoom();
     // A tier held through a big-board gesture flips here, with what the frame-time flip does besides painting.
@@ -3925,6 +3942,8 @@ function buildBoardView(onFail, {
       pdfFlip?.setLod?.(tier);
       chrome.toolbar.scheduleDock?.();
       if (was !== "detail" && tier === "detail" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0));
+      // C2: the queue that waited on the overview canvas builds the new view first, nearest the centre.
+      if (was === "overview" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0), { nearest: true });
     }
   };
   const scheduleContent = () => {
@@ -4090,6 +4109,7 @@ function buildBoardView(onFail, {
   const underlay = createGestureUnderlay({ doc, world, root, before: () => edgesSvg });
   let underlayDrawn = false;
   const deferOn = () => { try { return notedSpeedFlags().deferReveal !== false; } catch { return true; } };
+  const styledUnderlay = () => { try { return notedSpeedFlags().styledUnderlay !== false; } catch { return true; } };
   const deferReveal = () => {
     if (!wheelLayer && !gesturing) return false;
     if (gesturing) { const kind = ctl.gestureKind?.(); if (kind && kind !== "pan" && kind !== "pinch") return false; }
@@ -4097,12 +4117,72 @@ function buildBoardView(onFail, {
   };
   // Shell builds follow the same burst as the reveal cull. The flag is on before the event's hit-test,
   // and off again when the burst ends, which rearms the priority frame and the background pump.
-  const syncShellHold = () => {
-    try { itemsR.holdShells?.(deferReveal()); } catch { /* renderer */ }
+  // E6 (perf2, speed flag dragLayer): a drag of DRAG_LAYER_MIN+ moving items. Their edges ride one layer and each moving
+  // shell is its own compositor layer for the drag (will-change), so a pointer frame is transforms only.
+  const DRAG_LAYER_MIN = 24;
+  let dragRide = null;
+  const dragLayerWanted = (set) => {
+    try { if (notedSpeedFlags().dragLayer === false) return false; } catch { return false; }
+    return gesturing && ctl.gestureKind?.() === "move" && set.size >= DRAG_LAYER_MIN;
   };
+  const beginDragRide = (b, set) => {
+    const shells = [];
+    for (const uid of set) {
+      const el = itemsR.shellOf(uid);
+      if (el?.style) { el.style.willChange = "transform"; shells.push(el); }
+    }
+    dragRide = { shells, edges: edgesR.beginDrag(b, set), turn: 0 };
+  };
+  // The edges that cross the moving set and have an end near the view, at most DRAG_EDGE_BUDGET a frame (the rest of
+  // them in turn on the next frames). An edge far from the view is placed by the drop's commit (or stays where it
+  // was on a cancel, which is where it belongs).
+  const DRAG_EDGE_BUDGET = 300;
+  const rideCrossing = (b, touching) => {
+    const inner = edgesR.dragInner() || new Set();
+    const view = size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null;
+    const r = paintRects();
+    const near = [];
+    for (const uid of touching) {
+      if (inner.has(uid)) continue;
+      const e = b.edges.get(uid);
+      if (!e) continue;
+      const a = r.get(e.from), c = r.get(e.to);
+      if (view && !(a && rectsIntersect(a, view)) && !(c && rectsIntersect(c, view))) continue;
+      near.push(uid);
+    }
+    if (near.length <= DRAG_EDGE_BUDGET) return near;
+    const start = dragRide.turn % near.length;
+    dragRide.turn += DRAG_EDGE_BUDGET;
+    const out = near.slice(start, start + DRAG_EDGE_BUDGET);
+    if (out.length < DRAG_EDGE_BUDGET) out.push(...near.slice(0, DRAG_EDGE_BUDGET - out.length));
+    return out;
+  };
+  const endDragRide = () => {
+    if (!dragRide) return;
+    const ride = dragRide;
+    dragRide = null;
+    for (const el of ride.shells) { try { el.style.willChange = ""; } catch { /* gone */ } }
+    const b = board();
+    edgesR.endDrag(b ? { board: b, rects: paintRects(), zoom: vp.zoom } : null);
+  };
+  const bgHoldKey = {};
+  const syncShellHold = () => {
+    const hold = deferReveal();
+    if (hold) cancelSlice();
+    try { itemsR.holdShells?.(hold); } catch { /* renderer */ }
+    // E5: no background slice while a gesture or a wheel burst is open; the quiet after it starts at its settle.
+    try { sharedBgBudget().hold(bgHoldKey, !disposed && !suspended && (gesturing || wheelLayer)); } catch { /* budget */ }
+  };
+  // "burst": every unattached item and edge (showUnderlay); "cover": only the overview-fast queue.
+  let underlayKind = "";
+  // The tier the boxes were drawn for: a burst canvas kept through a settle that flipped the tier is drawn again.
+  let underlayTier = "";
   const showUnderlay = () => {
+    // C2: the overview canvas is the underlay already. A pan or a zoom burst does not redraw it.
+    if (overviewCanvasOn() && paintOverviewCanvas({ band: false })) return;
     if (underlayDrawn) return;
     underlayDrawn = true;
+    underlayKind = "burst";
     const b = board();
     if (!b) return;
     const r = paintRects();
@@ -4110,7 +4190,7 @@ function buildBoardView(onFail, {
     for (const item of b.items.values()) {
       if (item.type === "section") continue;
       const rect = r.get(item.uid);
-      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect });
+      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect, color: item.color || "" });
     }
     const edges = [];
     if (edgesR.isVirtual?.(b)) {
@@ -4120,7 +4200,8 @@ function buildBoardView(onFail, {
         if (a && c) edges.push([a, c]);
       }
     }
-    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
+    underlayTier = tier;
+    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: styledUnderlay(), tier });
   };
   const endUnderlay = () => { underlayDrawn = false; };
   // Live at map zoom drops the snapshot while shells are still queued. Those cards stay as boxes on the
@@ -4140,7 +4221,13 @@ function buildBoardView(onFail, {
     return tier === "overview" && coverUids.has(uid);
   };
   paintOverviewCover = () => {
-    if (disposed || underlayDrawn) return;
+    if (disposed) return;
+    if (overviewCanvasOn()) {
+      ovDirty = true;
+      if (!wheelLayer) paintOverviewCanvas({ band: !gesturing });
+      return;
+    }
+    if (underlayDrawn) return;
     try { if (notedSpeedFlags().overviewFast === false) { coverUids = new Set(); return; } } catch { coverUids = new Set(); return; }
     if (tier === "detail" && itemsR.coverHeld?.() !== true) {
       const pending = itemsR.pendingBoxes?.() || [];
@@ -4151,11 +4238,151 @@ function buildBoardView(onFail, {
     const items = itemsR.pendingBoxes?.() || [];
     if (!items.length) { coverUids = new Set(); underlay.hide(); return; }
     coverUids = new Set(items.map((item) => item.uid));
-    underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
+    underlayKind = "cover";
+    // E1: the open snapshot drew the arrows; an arrow still held back for a queued end is a hairline here until then.
+    const edges = [];
+    const b = styledUnderlay() ? board() : null;
+    if (b && edgesR.isVirtual?.(b)) {
+      const r = paintRects();
+      for (const e of b.edges.values()) {
+        if (edgesR.edgeShown(e.uid) || !(coverUids.has(e.from) || coverUids.has(e.to))) continue;
+        const a = r.get(e.from), c = r.get(e.to);
+        if (a && c) edges.push([a, c]);
+      }
+    }
+    underlayTier = tier;
+    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: styledUnderlay(), tier });
   };
   const releaseUnderlay = () => {
+    if (overviewCanvasOn() && paintOverviewCanvas()) return;
     underlay.hide();
     paintOverviewCover();
+  };
+  // C2. Overview tier of a big board on the underlay canvas (speed flag overviewCanvas, off by default this round).
+  // Below zoom 0.2 a card is a coloured box of ~15x10 screen pixels with its header hidden (extension.css), and the
+  // PhD main board built ~1,558 shells there that the overview CSS then hid (~1 s of pump CPU at open). On this tier
+  // the card shells are not built or attached (cards.js canvasTier); one fillRect per card and hairline edges on the
+  // underlay instead. The canvas sits inside .pxd-world, so a pan is the world transform and never redraws it.
+  // Redraws: the zoom band (at the settle), the item set and rects, edges, colours (theme), selection, search and
+  // focus. Sections, the selected card and an edited card stay real shells. Presses resolve through the model
+  // (hitTest): a click selects on pointerup, a drag pans, a double click or a context menu builds that one shell.
+  // Not drawn on this tier: the dust lens, strength lens, lane marks and badges (they paint shells; there are none).
+  let ovDirty = true;
+  let ovBand = null;
+  let ovModel = null;
+  let ovRects = null;
+  let ovAttached = -1;
+  let ovDraws = 0;
+  let ovItems = 0;
+  let canvasSearch = null;
+  let canvasFocus = null;
+  const ovBandOf = (z) => Math.round(Math.log(z > 0 ? z : 1) / Math.log(1.5));
+  const overviewCanvasOn = () => tier === "overview" && Boolean(itemsR.canvasTier?.());
+  const paintOverviewCanvas = ({ band = true } = {}) => {
+    if (disposed || suspended) return false;
+    const b = board();
+    if (!b) return false;
+    const nextBand = ovBandOf(vp.zoom);
+    const shown = underlay.isShown() && underlayKind === "overview";
+    // The item set, rects and edges are one model: a new board or rects object is a change.
+    // A tier flip inside a camera frame draws before the settle detaches the card shells: the attached count is part
+    // of the key (selection changes, the other way a card attaches here, set ovDirty themselves).
+    const model = rects();
+    const attached = itemsR.attachedCount?.() ?? 0;
+    if (b !== ovModel || model !== ovRects || attached !== ovAttached) ovDirty = true;
+    if (shown && !ovDirty && (!band || nextBand === ovBand)) { underlayDrawn = true; return true; }
+    ovDirty = false;
+    ovBand = nextBand;
+    ovModel = b;
+    ovRects = model;
+    ovAttached = attached;
+    const r = paintRects();
+    const sel = new Set(selection.items);
+    const items = [];
+    for (const uid of b.order) {
+      const item = b.items.get(uid);
+      if (!item || item.type === "section") continue;
+      const rect = r.get(uid);
+      if (!rect || itemsR.attachedUid(uid)) continue;
+      const hit = Boolean(canvasSearch?.has(uid));
+      const dim = Boolean((canvasSearch && !hit) || (canvasFocus && !canvasFocus.has(uid)));
+      items.push({ uid, rect, color: item.color || "", dim, hit, selected: sel.has(uid) });
+    }
+    const edges = [];
+    for (const e of b.edges.values()) {
+      if (edgesR.edgeShown(e.uid)) continue;
+      const a = r.get(e.from), c = r.get(e.to);
+      if (a && c) edges.push([a, c]);
+    }
+    underlayDrawn = true;
+    underlayKind = "overview";
+    coverUids = new Set();
+    ovDraws += 1;
+    ovItems = items.length;
+    underlay.drawOverview({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
+    return true;
+  };
+  // C1. The settle after a fit or a zoom out on a big board attached every near shell and edge in one task (PhD MAIN
+  // at fit: ~1,500 shells and ~2,114 edges, 60-120 ms, most of the zoom-in tier flip). It attaches one slice per
+  // frame instead, nearest the view centre first (selected and editing cards before that), and the underlay boxes
+  // stay up until both queues are empty. A burst that starts meanwhile stops the slices; its own settle resumes them.
+  // Kill switch: speed flag slicedSettle.
+  const SETTLE_SHELLS = 48;
+  const SETTLE_EDGES = 120;
+  const SETTLE_SLICE_MS = 6;
+  let sliceFrame = null;
+  let slicing = false;
+  const slicedSettleOn = () => { try { return notedSpeedFlags().slicedSettle !== false; } catch { return true; } };
+  const sliceWanted = () => slicedSettleOn() && Boolean(size.width) && Boolean(itemsR.isVirtual?.());
+  const endSlice = () => {
+    sliceFrame?.();
+    sliceFrame = null;
+    slicing = false;
+    itemsR.sliceAttach?.(null);
+  };
+  // The canvas stays as it is; the next burst draws it again for what is attached by then.
+  const cancelSlice = () => {
+    if (!slicing) return;
+    endSlice();
+    underlayDrawn = false;
+  };
+  // Call before the settle's content pass: that pass then attaches one slice.
+  const beginSlice = () => {
+    if (sliceWanted()) itemsR.sliceAttach?.({ budget: SETTLE_SHELLS, ms: SETTLE_SLICE_MS });
+    else endSlice();
+  };
+  const sliceEdges = (rect) => (rect ? edgesR.cull?.(rect, { budget: SETTLE_EDGES, ms: SETTLE_SLICE_MS }) || 0 : 0);
+  const sliceStep = () => {
+    sliceFrame = null;
+    if (!slicing) return;
+    if (disposed || suspended) { endSlice(); return; }
+    if (gesturing || wheelLayer) { cancelSlice(); return; }
+    const rect = visibleWorldRect(vp, size, ATTACH_MARGIN);
+    if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, SETTLE_SHELLS, SETTLE_SLICE_MS);
+    const edgesLeft = sliceEdges(rect);
+    if (edgesLeft || (itemsR.attachLeft?.() || 0) > 0) { sliceFrame = timers.frame(sliceStep); return; }
+    endSlice();
+    releaseUnderlay();
+  };
+  // The settle's edge pass and underlay hand-off (after beginSlice and the content pass).
+  const settleAttach = () => {
+    const rect = size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null;
+    if (!sliceWanted()) {
+      endSlice();
+      if (rect) edgesR.cull?.(rect);
+      releaseUnderlay();
+      return;
+    }
+    const edgesLeft = sliceEdges(rect);
+    if (!edgesLeft && !((itemsR.attachLeft?.() || 0) > 0)) { endSlice(); releaseUnderlay(); return; }
+    // A burst's canvas (or the overview canvas being left) already shows every box that is not attached; a fit (no
+    // burst) or the overview cover draws it.
+    const stale = underlayKind === "burst" && styledUnderlay() && underlayTier !== tier;
+    if (underlay.isShown() && !stale && (underlayKind === "burst" || underlayKind === "overview")) underlayDrawn = true;
+    else { underlayDrawn = false; showUnderlay(); }
+    slicing = true;
+    sliceFrame?.();
+    sliceFrame = timers.frame(sliceStep);
   };
   const revealNear = () => {
     if (!size.width) return;
@@ -4198,7 +4425,10 @@ function buildBoardView(onFail, {
         if (perfNow() - settleWaitAt < SETTLE_WAIT_MS) { armSettle(); return; }
       }
       settleWaitAt = 0;
-      if (gesturing) return;
+      // A Ctrl/pinch wheel zoom is a gesture too (interactions.js ends it 160 ms after the last tick, this timer is
+      // 120 ms): returning here left the burst open for good (wheelLayer stuck on: the board stayed in burst mode, the
+      // overview canvas never redrew, the zoom's edge re-place and the snapshot capture never ran). Wait for it.
+      if (gesturing) { if (wheelLayer) armSettle(); return; }
       hitShield.drop();
       endUnderlay();
       paintGrid();
@@ -4210,6 +4440,7 @@ function buildBoardView(onFail, {
       }
       syncShellHold();
       applyLod();
+      beginSlice();
       scheduleContent();
       vpStore.set(vpId, vp);
       // Arrow sizes, link heads and the label cut-off follow the zoom: re-place every edge only when they change.
@@ -4225,9 +4456,8 @@ function buildBoardView(onFail, {
           for (const e of board()?.edges.values() || []) if (e.fromBlock || e.toBlock) dirty.edges.add(e.uid);
         }
       }
-      if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
-      // The shells and edges near the view are in the DOM again (both culls attach at once).
-      releaseUnderlay();
+      // The shells and edges near the view come back (a slice per frame on a big board), then the underlay hides.
+      settleAttach();
       dirty.minimap = true;
       schedule();
       updateBackToContent();
@@ -4910,6 +5140,8 @@ function buildBoardView(onFail, {
     focusKey = key;
     itemsR.setFocus(set);
     edgesR.setFocus(set);
+    canvasFocus = set ? new Set(set) : null;
+    if (overviewCanvasOn()) { ovDirty = true; paintOverviewCanvas(); }
   };
   const toggleFocus = () => {
     if (focusOn) { focusOn = false; applyFocus(); return; }
@@ -7205,6 +7437,8 @@ function buildBoardView(onFail, {
   };
   const paintSearch = (b, hits, q) => {
     const bright = new Set((hits || []).map((h) => h.focus));
+    canvasSearch = q ? bright : null;
+    if (overviewCanvasOn()) { ovDirty = true; paintOverviewCanvas(); }
     for (const item of b?.items.values() || []) {
       const shell = itemsR.shellOf(item.uid);
       const on = Boolean(q) && bright.has(item.uid);
@@ -7579,6 +7813,7 @@ function buildBoardView(onFail, {
         }
         liveRects = null;
         resetGrown();
+        endDragRide();
         resumeTimer = timers.later(() => {
           resumeTimer = null;
           itemsR.setPaused(false);
@@ -7586,9 +7821,9 @@ function buildBoardView(onFail, {
           propsPanel.place();
           paintGrid();
           chrome.toolbar.setZoom(vp.zoom);
+          beginSlice();
           scheduleContent();
-          if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
-          releaseUnderlay();
+          settleAttach();
           vpStore.set(vpId, vp);
           dirty.selection = true;
           schedule();
@@ -7607,8 +7842,13 @@ function buildBoardView(onFail, {
       const b = board();
       if (!b) return;
       liveRects = itemsR.previewMove(uids, dx, dy, b, rects());
+      // C2: selected cards with no shell move on the overview canvas (the frame redraws it).
+      if (overviewCanvasOn()) ovDirty = true;
       const set = new Set(uids);
       for (const u of uids) for (const d of descendantsOf(b, u)) set.add(d);
+      // E6: a big moving set rides one layer (edges.js beginDrag); its shells get their own compositor layers.
+      if ((dx || dy) && !dragRide && dragLayerWanted(set)) beginDragRide(b, set);
+      if (dragRide) edgesR.dragBy(dx, dy);
       // A moved item joins the section under its center; that section grows around it (preview only).
       const top = new Set(uids);
       const eff = effectiveRects();
@@ -7618,7 +7858,8 @@ function buildBoardView(onFail, {
       for (const u of grown) set.add(u);
       const links = paintedLinks();
       const linkKeys = new Set(links.filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
-      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: paintRects(), zoom: vp.zoom, linkKeys, links });
+      const touching = edgesTouching(b, set);
+      edgesR.update({ board: b, edgeUids: dragRide ? rideCrossing(b, touching) : touching, rects: paintRects(), zoom: vp.zoom, linkKeys, links });
       dirty.minimap = true;
       schedule();
     },
@@ -8085,7 +8326,8 @@ function buildBoardView(onFail, {
   };
   const promoteQueued = (hit) => {
     if (!hit?.uid) return null;
-    itemsR.ensureShell?.(hit.uid);
+    if (itemsR.attachNow) itemsR.attachNow(hit.uid);
+    else itemsR.ensureShell?.(hit.uid);
     if (hit.part === "title") return { kind: "section-title", uid: hit.uid };
     if (hit.part === "border") return { kind: "section-border", uid: hit.uid };
     return { kind: "item", uid: hit.uid };
@@ -8094,7 +8336,15 @@ function buildBoardView(onFail, {
     const screen = { x: (event.clientX || 0) - rootRect.left, y: (event.clientY || 0) - rootRect.top };
     const world = screenToWorld(vp, screen);
     let target = targetOf(event.target);
-    if (target.kind === "empty" && queuedOverview()) {
+    if (target.kind === "empty" && overviewCanvasOn() && (type === "pointerdown" || type === "dblclick" || type === "contextmenu")) {
+      // C2: a press on a canvas card is still empty space (a drag pans) and carries the card for the click.
+      const hit = hitTest(board(), world, rects());
+      if (hit?.uid && board()?.items.get(hit.uid)?.type !== "section") {
+        if (type === "pointerdown") target = { kind: "empty", canvasUid: hit.uid };
+        else target = promoteQueued(hit) || target;
+      }
+    }
+    if (target.kind === "empty" && !target.canvasUid && (queuedOverview() || slicing)) {
       const next = promoteQueued(hitTest(board(), world, rects()));
       if (next) target = next;
     }
@@ -8683,7 +8933,7 @@ function buildBoardView(onFail, {
     }
     const node = event.target?.closest?.(".pxd-item--card");
     let uid = node?.getAttribute?.("data-uid") || node?.dataset?.uid || null;
-    if (!uid && queuedOverview() && !event.target?.closest?.(".pxd-item, .pxd-section")) {
+    if (!uid && queuedOverview() && !overviewCanvasOn() && !event.target?.closest?.(".pxd-item, .pxd-section")) {
       const screen = { x: (event.clientX || 0) - (rootRect.left || 0), y: (event.clientY || 0) - (rootRect.top || 0) };
       const hit = hitTest(board(), screenToWorld(vp, screen), rects());
       if (hit?.part === "body") {
@@ -9416,8 +9666,18 @@ function buildBoardView(onFail, {
   if (typeof MO === "function") {
     try {
       let settle = null;
+      // E5: our own body class (fullscreen) and other extensions toggle html/body classes often; each applyTheme reads
+      // computed style (a forced recalc of the page: getPropertyValue 337 ms in the PhD open tail). Only a change
+      // outside the pxd- classes can change the theme.
+      const classKey = () => [doc.documentElement, doc.body].map((n) => String(n?.className?.baseVal ?? n?.className ?? "").split(/\s+/).filter((c) => c && !c.startsWith("pxd-")).sort().join(" ")).join("|");
+      let lastClassKey = classKey();
       const mo = trackObserver(new MO(() => {
         if (disposed || suspended) return;
+        if (notedSpeedFlags().gestureQuiet !== false) {
+          const key = classKey();
+          if (key === lastClassKey) return;
+          lastClassKey = key;
+        }
         applyTheme();
         settle?.(); // a host background may still be transitioning when its marker class flips: measure once more after it
         settle = timers.later(() => { settle = null; if (!disposed && !suspended) applyTheme(); }, 300);
@@ -9458,13 +9718,13 @@ function buildBoardView(onFail, {
       });
     }
     let itemsChanged = false;
-    if (dirty.all || dirty.structural || dirty.items.size) {
+    if (dirty.all || dirty.structural || dirty.items.size || dirty.resync) {
       // Live preview rects (edit growth, drag fit) ride along: a sync for a dirty card must not snap grown section shells back.
       itemsR.sync({
         board: b,
         rects: paintRects(),
-        dirty: dirty.all ? null : dirty.items,
-        structural: dirty.structural,
+        dirty: dirty.all || dirty.resync ? null : dirty.items,
+        structural: dirty.structural || dirty.resync,
         view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null,
         attachView: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null,
       });
@@ -9552,6 +9812,7 @@ function buildBoardView(onFail, {
         pdfFlip?.setLod?.(tier);
         chrome.toolbar.scheduleDock?.();
         if (prevTier !== "detail" && tier === "detail" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0));
+        if (prevTier === "overview" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0), { nearest: true });
       }
       // A moving grid is a repaint of the page every frame (PhD page: paint + layerize ~20 ms); with the world as
       // its own layer and nothing else written, a frame is a compositor move. The grid holds still during a drag
@@ -9586,14 +9847,14 @@ function buildBoardView(onFail, {
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLiftIdle();
     // During a wheel pan or zoom the minimap and landmark dots repaint at most every MINIMAP_WHEEL_MS (they rebuilt
     // their marks every frame, and every DOM write inside Roam's block re-runs its :has() checks); the settle paints them.
-    const wheelMinimap = wheelLayer && !itemsChanged && !dirty.minimap;
+    const wheelMinimap = (wheelLayer && !itemsChanged && !dirty.minimap) || (Boolean(dragRide) && !itemsChanged);
     if ((itemsChanged || dirty.minimap || (dirty.viewport && !gesturing)) && !(wheelMinimap && perfNow() - minimapAt < MINIMAP_WHEEL_MS)) {
       minimapAt = perfNow();
       const shown = paintRects();
       chrome.minimap.update({ board: b, rects: shown, vp, size });
       // The landmark dots are DOM inside the board: rebuilt mid-burst they cost a style recalc and layout per
       // rebuild. The minimap canvas follows the camera; the dots follow at the settle.
-      if (!(deferReveal() && !itemsChanged)) paintLandmarkDots(b, shown);
+      if (!(deferReveal() && !itemsChanged) && !dragRide) paintLandmarkDots(b, shown);
     }
     if (itemsChanged && !gesturing) {
       scheduleContent();
@@ -9607,12 +9868,18 @@ function buildBoardView(onFail, {
     }
     if (searchMatches.length || root.hasAttribute("data-pxd-searching")) panel.refreshMarks();
     if (itemsChanged || edgesDue || itemsMoveEdges) paintLenses();
+    // The open's sliced edge render and a settle's badge pass leave the model as it was: no redraw for those.
+    if (overviewCanvasOn()) {
+      if (dirty.selection) ovDirty = true;
+      if (!wheelLayer) paintOverviewCanvas({ band: false });
+    }
     dirty.minimap = false;
     dirty.viewport = false;
     dirty.items = new Set();
     dirty.edges = edgeRest || new Set();
     dirty.structural = false;
     dirty.all = false;
+    dirty.resync = false;
     dirty.selection = false;
     dirty.links = false;
     edgeSlicing = Boolean(edgeRest);
@@ -9929,6 +10196,8 @@ function buildBoardView(onFail, {
   applyBackground();
   applyMotion();
   applyLod();
+  // E5: an open is a camera change too: the post-open background jobs wait until it has been still for a while.
+  try { sharedBgBudget().noteCamera(); } catch { /* budget */ }
   itemsR.setShowBadges(flag("show-card-badges", true));
   seedSnapshotBadges();
   dirty.viewport = true;
@@ -10100,16 +10369,28 @@ function buildBoardView(onFail, {
     // Crumbs and board history: keep a parked root in its mount, unrendered (content-visibility:hidden keeps its
     // style and layout). Removing it dropped every computed style, and the way back restyled the whole board before
     // the first paint (PhD main board: 13,762 elements, 166 ms, plus 33 ms of layout).
+    // E1 (perf2): a fullscreen board parks too (keepFullscreen). The mount's chrome belongs to whichever board shows:
+    // a parked board lets go of its placement observers and takes them back when it shows again, and disposing it
+    // while parked leaves the mount's fullscreen alone.
     park() {
       if (disposed || !root.parentElement || !(size.width > 0)) return false;
       root.style.width = `${size.width}px`;
       root.setAttribute("data-pxd-parked", "");
+      if (isFullscreen) {
+        try { fsDispose(); } catch { /* no chrome applied */ }
+        fsDispose = () => {};
+        fsParked = true;
+      }
       return true;
     },
     unpark() {
       if (!root.hasAttribute?.("data-pxd-parked")) return;
       root.removeAttribute("data-pxd-parked");
       root.style.width = "";
+      if (fsParked) {
+        fsParked = false;
+        if (isFullscreen && !disposed) fsDispose = applyFullscreenChrome(mountEl, true, doc);
+      }
     },
     rebind(nextMount) {
       if (disposed || !nextMount) return;
@@ -10130,6 +10411,7 @@ function buildBoardView(onFail, {
       if (disposed || suspended) return;
       suspended = true;
       hitShield.drop();
+      try { sharedBgBudget().hold(bgHoldKey, false); } catch { /* budget */ }
       suspendedBoard = board();
       if (frameHandle) { const cancel = frameHandle; frameHandle = null; cancel(); }
       if (settleTimer) { settleTimer(); settleTimer = null; }
@@ -10156,9 +10438,16 @@ function buildBoardView(onFail, {
       // The DOM was kept while parked. Only a board that changed meanwhile needs the full pass (a change that lands
       // later arrives through the session as usual); otherwise the camera, selection and minimap are enough.
       // A shell queue still open has to sync before the pump arms again, even when the board object is the same.
-      if (board() !== suspendedBoard || itemsR.queuedCount?.() > 0) {
+      // E1 (perf2): the same board with shells still queued syncs its shells only. The full pass also re-placed every
+      // edge (PhD main board crumb back: ~2,000 edges re-pathed, 1,936 `d` rewrites per edge part) though no edge moved.
+      if (board() !== suspendedBoard || (itemsR.queuedCount?.() > 0 && notedSpeedFlags().keepFullscreen === false)) {
         dirty.all = true;
         dirty.structural = true;
+      } else if (itemsR.queuedCount?.() > 0) {
+        dirty.resync = true;
+        dirty.viewport = true;
+        dirty.selection = true;
+        dirty.minimap = true;
       } else {
         dirty.viewport = true;
         dirty.selection = true;
@@ -10365,6 +10654,32 @@ function buildBoardView(onFail, {
     stats() {
       return { timers: timers.count(), listeners: listeners.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount(), edgePlacements: edgesR.placements?.() ?? 0, edgesAttached: edgesR.attachedCount?.() ?? 0 };
     },
+    // E probe (perf2): what the view shows for the cards in the camera right now. A card is painted by its attached
+    // shell or by a box on the underlay; `missing` cards show nothing (a blank or partial frame when > 0).
+    paintAudit() {
+      const b = board();
+      if (!b || !size.width) return { inView: 0, attached: 0, covered: 0, missing: 0, lod: tier };
+      const view = visibleWorldRect(vp, size, 0);
+      const r = paintRects();
+      const under = underlay.isShown() ? underlay.drawnUids() : null;
+      let inView = 0, attached = 0, covered = 0;
+      for (const item of b.items.values()) {
+        if (item.type === "section") continue;
+        const rect = r.get(item.uid);
+        if (!rect || !rectsIntersect(rect, view)) continue;
+        inView += 1;
+        if (itemsR.attachedUid(item.uid)) attached += 1;
+        else if (under?.has(item.uid)) covered += 1;
+      }
+      return { inView, attached, covered, missing: inView - attached - covered, lod: tier, edges: edgesR.attachedCount?.() ?? 0 };
+    },
+    // C2 probe: whether the overview canvas tier is on, and how many times it was drawn.
+    flipStats() {
+      return { flips: flipStats.flips, attachedAtFlip: flipStats.attachedAtFlip.slice() };
+    },
+    overviewCanvasStats() {
+      return { on: overviewCanvasOn(), draws: ovDraws, items: ovItems, shown: underlay.isShown() && underlayKind === "overview" };
+    },
     // P32 live probes: cover source (pdf.js or hidden reader) and the pane's fit path. Read-only.
     pdfProbe() {
       return { covers: coverReport(), fit: readPane?.fitInfo?.() || null, inline: itemsR.inlineUid?.() || "" };
@@ -10381,6 +10696,7 @@ function buildBoardView(onFail, {
       if (disposing) return;
       disposing = true;
       disposed = true;
+      try { sharedBgBudget().hold(bgHoldKey, false); } catch { /* budget */ }
       if (pdfTitleJob) { const stop = pdfTitleJob; pdfTitleJob = null; stop(); }
       if (coverJob) { const stop = coverJob; coverJob = null; stop(); }
       hitShield.drop();
@@ -10437,7 +10753,7 @@ function buildBoardView(onFail, {
       step(() => subs.splice(0).forEach((off) => { try { off?.(); } catch { /* already off */ } }));
       step(() => routeOff());
       step(() => fsDispose());
-      step(() => applyFullscreenChrome(mountEl, false, doc));
+      step(() => { if (!root.hasAttribute?.("data-pxd-parked")) applyFullscreenChrome(mountEl, false, doc); });
       step(() => { try { vpStore.set(vpId, vp); } catch { /* the store can refuse a write */ } });
       step(() => vpStore.flush?.());
       step(() => resumeTimer?.());

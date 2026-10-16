@@ -16,6 +16,7 @@ import { paintSuggest } from "./suggest-lines.js";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const PAIR_OFFSET = 18;
 const LABEL_HIDE_ZOOM = 0.3;
+const now = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
 
 // Liang-Barsky clip of the segment (x1,y1)-(x2,y2) against rect r.
 export function segmentMeetsRect(x1, y1, x2, y2, r) {
@@ -100,7 +101,10 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     view = widen(keep, 0.125);
     try { return !edgeNear(board, edge, rects); } finally { view = keep; }
   };
+  // C2: at the overview canvas tier every edge is a hairline on the view's canvas; only a pinned one is DOM.
+  let canvasTier = () => false;
   const edgeNear = (board, edge, rects) => {
+    if (canvasTier()) return false;
     if (!view) return true;
     const a = rects.get(edgeAnchor(board, edge.from, edge.homeFrom));
     const b = rects.get(edgeAnchor(board, edge.to, edge.homeTo));
@@ -120,8 +124,56 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   const unparkEdge = (rec) => {
     if (!rec.parked) return;
     rec.parked = false;
-    svg?.append(rec.g);
+    (drag?.recs.has(rec) ? drag.layer : svg)?.append(rec.g);
     labelsLayer?.append(rec.label);
+  };
+
+  // E6 (perf2, speed flag dragLayer). A drag of a big selection re-pathed every edge touching it on every pointer
+  // frame and repainted the whole edges <svg> (PhD main board, 185 cards: p95 333 ms). The edges with both ends in
+  // the moving set go into one more <svg> (same class, so it sits where the edges layer sits) that is its own
+  // compositor layer; a frame moves it with one transform. Only the edges that cross the selection are placed.
+  let drag = null;
+  const beginDrag = (board, moving) => {
+    endDrag(null);
+    if (!svg?.parentElement || !moving?.size) return 0;
+    const layer = doc.createElementNS(SVG_NS, "svg");
+    setClass(layer, "pxd-edges pxd-edges--drag");
+    layer.setAttribute("aria-hidden", "true");
+    layer.style.willChange = "transform";
+    svg.after?.(layer);
+    if (!layer.parentElement) svg.parentElement.append(layer);
+    const recs = new Map();
+    for (const edge of board.edges.values()) {
+      if (!moving.has(edge.from) || !moving.has(edge.to)) continue;
+      const rec = edgeEls.get(edge.uid);
+      if (!rec || rec.parked) continue;
+      const label = rec.label?.style?.transform || "";
+      recs.set(rec, label);
+      layer.append(rec.g);
+    }
+    drag = { layer, recs, inner: new Set([...recs.keys()].map((rec) => rec.uid)) };
+    return recs.size;
+  };
+  const dragBy = (dx, dy) => {
+    if (!drag) return;
+    drag.layer.style.transform = dx || dy ? `translate(${dx}px, ${dy}px)` : "";
+    // Labels are divs over the board (hidden below 0.3): one transform each, from where the drag found them.
+    for (const [rec, base] of drag.recs) if (rec.label && base) rec.label.style.transform = `translate(${dx}px, ${dy}px) ${base}`;
+  };
+  // ctx { board, rects, zoom }: place the riders where the model has them now (the drop's commit already moved
+  // them, a cancel did not), in the task that puts them back, so no frame shows them at the pre-drag spot.
+  const endDrag = (ctx) => {
+    if (!drag) return;
+    const { layer, recs } = drag;
+    drag = null;
+    for (const [rec, base] of recs) {
+      if (rec.parked || !edgeEls.has(rec.uid)) continue;
+      svg.append(rec.g);
+      if (rec.label && base) rec.label.style.transform = base;
+      const edge = ctx?.board?.edges.get(rec.uid);
+      if (edge && ctx.rects) placeEdge(ctx.board, edge, rec, ctx.rects, ctx.zoom ?? zoomCache);
+    }
+    layer.remove();
   };
 
   // A measured end. A region enters the card and stops on the region edge. A folded pin stays on the card face.
@@ -547,6 +599,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   };
   let placements = 0;
   const placeEdge = (board, edge, rec, rects, zoom) => {
+    // E6: an edge riding the drag layer is placed once, when the drag ends (its layer carries it until then).
+    if (drag?.recs.has(rec)) { rec.stale = true; return; }
     placements += 1;
     const geo = geometryFor(board, edge, rects);
     rec.geo = geo;
@@ -779,11 +833,16 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   };
 
   // A settled camera after a pointer or wheel-zoom gesture: park what left the view, put back what came near.
-  const cull = (rect) => {
-    if (!rect || !lastPass) return;
+  // budget / ms (C1, a sliced settle): build or re-place at most that many near edges (a selected or edited edge does
+  // not count) and return how many near edges are still waiting for a later frame. Parking is never sliced.
+  const cull = (rect, { budget = Infinity, ms = Infinity } = {}) => {
+    if (!rect || !lastPass) return 0;
     view = rect;
     const { board, rects, coveredEdges, selection } = lastPass;
-    if (!virtualEdges(board)) return;
+    if (!virtualEdges(board)) return 0;
+    const t0 = ms < Infinity ? now() : 0;
+    let built = 0;
+    let left = 0;
     for (const edge of board.edges.values()) {
       const rec = edgeEls.get(edge.uid);
       if (!endsReady(board, edge)) {
@@ -811,12 +870,15 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         continue;
       }
       if (rec && !rec.parked && !rec.stale) continue;
+      if (!pinned && (built >= budget || (t0 && built % 16 === 0 && built && now() - t0 > ms))) { left += 1; continue; }
       const live = rec || buildEdge(edge);
       if (rec?.parked) unparkEdge(live);
       live.stale = false;
       paintEdge(board, edge, live, { covered: coveredEdges.has(edge.uid), selected: selection.edge === edge.uid });
       placeEdge(board, edge, live, rects, zoomCache);
+      if (!pinned) built += 1;
     }
+    return left;
   };
 
   // Re-place only the given edges (drag preview): rects may be an override map.
@@ -1069,6 +1131,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   };
 
   const dispose = () => {
+    endDrag(null);
     for (const uid of [...edgeEls.keys()]) removeEdge(uid);
     for (const key of [...linkEls.keys()]) removeLink(key);
     setTempWire(null);
@@ -1088,6 +1151,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   return {
     edgeShown,
     isVirtual: (board) => virtualEdges(board),
+    setCanvasTier: (on) => { canvasTier = typeof on === "function" ? on : () => Boolean(on); },
     render,
     update,
     reveal,
@@ -1100,6 +1164,10 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       return n;
     },
     placements: () => placements,
+    beginDrag,
+    dragBy,
+    endDrag,
+    dragInner: () => drag?.inner ?? null,
     flushWaiting,
     waitingLeft: () => waiting.size,
     setSelection,

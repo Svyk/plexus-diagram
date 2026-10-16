@@ -832,6 +832,8 @@ test("the overview cover stacks like the board, follows a dragged section, and d
         };
       };
       globalThis.getComputedStyle = stub.window.getComputedStyle;
+      // A theme class change (E5: a class record whose classes did not change is skipped).
+      stub.document.documentElement.className = `${stub.document.documentElement.className || ""} rm-theme-other`.trim();
       for (const obs of stub.observers) {
         if (!obs.queue || !obs.active) continue;
         obs.queue.push({ type: "attributes", attributeName: "class", target: stub.document.documentElement });

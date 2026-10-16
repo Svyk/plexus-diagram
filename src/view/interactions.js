@@ -492,10 +492,21 @@ export function createInteractions({ actions, settings } = {}) {
       && !ev.shift
       && setting("empty-drag", "pan") !== "select";
     if (emptyPans) {
-      begin({ kind: "pan", start: ev.screen, vp0: { ...vp() }, clearOnClick: true });
+      begin({ kind: "pan", start: ev.screen, vp0: { ...vp() }, clearOnClick: true, canvasUid: t.canvasUid || null, multi: Boolean(ev.meta || ev.ctrl) });
       return;
     }
-    begin({ kind: "marquee", start: ev.world, base: ev.shift ? new Set(state.selection) : new Set(), shift: ev.shift });
+    begin({ kind: "marquee", start: ev.world, base: ev.shift ? new Set(state.selection) : new Set(), shift: ev.shift, canvasUid: t.canvasUid || null, multi: Boolean(ev.meta || ev.ctrl) });
+  };
+  // C2: a click (no drag) on a card drawn on the overview canvas selects it on release; Cmd/Ctrl/Shift adds.
+  const clickCanvasCard = (g) => {
+    const uid = g.canvasUid;
+    if (!uid || !board()?.items.has(uid)) return false;
+    if (g.multi || g.shift) {
+      const next = new Set(state.selection);
+      if (next.has(uid)) next.delete(uid); else next.add(uid);
+      selectItems(next);
+    } else selectItems([uid]);
+    return true;
   };
 
   const onPointerMove = (ev) => {
@@ -701,7 +712,7 @@ export function createInteractions({ actions, settings } = {}) {
     const r = rects();
     switch (g.kind) {
       case "pan":
-        if (!g.moved && g.clearOnClick) clearSelection();
+        if (!g.moved && g.clearOnClick && !clickCanvasCard(g)) clearSelection();
         break;
       case "label": {
         if (!g.moved && g.edge) {
@@ -715,6 +726,7 @@ export function createInteractions({ actions, settings } = {}) {
       }
       case "marquee":
       case "lasso":
+        if (!g.moved && g.canvasUid && clickCanvasCard(g)) break;
         if (!g.moved && !g.shift) clearSelection();
         break;
       case "section-draw": {

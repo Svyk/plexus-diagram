@@ -162,6 +162,57 @@ test("no-flash counts: swap frames, edge churn on a crumb back, shells restyled 
   }
 });
 
+// perf2 E2: the live gaps the first fixture missed. A Ctrl-wheel zoom into cards the open had not built yet (fullscreen,
+// real render cost) and the overview-canvas hand-back count as swap frames too; a crumb back to a fully built board
+// shows at most RESUME_SHELLS shells at once; a grouped drag writes no shell transform per frame.
+test("no-flash counts, round 2: zoom into unbuilt cards, canvas hand-back, sliced crumb back, grouped drag", async () => {
+  let swap = 0;
+  for (const [flags, x, y, ticks] of [[{}, 1100, 120, 9], [{ overviewCanvas: true }, 700, 450, 6]]) {
+    const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, renderMs: 1, flags });
+    try {
+      await settledIn(m);
+      const audit = async () => { await null; await null; if (m.view.paintAudit().missing > 0) swap += 1; };
+      for (let i = 0; i < ticks; i += 1) {
+        m.stub.dispatch(m.view.root, "wheel", { deltaX: 0, deltaY: -20, ctrlKey: true, deltaMode: 0, clientX: x, clientY: y });
+        await tick(16);
+        m.stub.flushFrames();
+        await audit();
+      }
+      for (let i = 0; i < 40; i += 1) { await tick(16); m.stub.flushTimers(); m.stub.flushFrames(); await audit(); m.stub.flushIdle(); }
+    } finally { m.done(); }
+  }
+  counts.swapFramesMissingCards += swap;
+  {
+    const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true });
+    try {
+      await settledIn(m);
+      for (let k = 0; k < 40 && m.view.stats().shells < 1570; k += 1) { await tick(100); await m.pump(50); }
+      m.view.suspend();
+      m.view.park();
+      m.view.unpark();
+      m.view.resume();
+      counts.shellsAttachedAtResume = m.view.paintAudit().attached;
+    } finally { m.done(); }
+  }
+  {
+    const { m, root, el, p } = await dragSelection({});
+    try {
+      m.stub.dispatch(el, "pointerdown", { ...p, button: 0, buttons: 1, pointerId: 7 });
+      m.stub.dispatch(el, "pointermove", { clientX: p.clientX + 3, clientY: p.clientY + 2, buttons: 1, pointerId: 7 });
+      m.stub.flushFrames();
+      let most = 0;
+      for (let i = 2; i <= 8; i += 1) {
+        const before = new Map([...root.querySelectorAll(".pxd-item")].map((node) => [node, node.style.transform]));
+        m.stub.dispatch(el, "pointermove", { clientX: p.clientX + i * 3, clientY: p.clientY + i * 2, buttons: 1, pointerId: 7 });
+        m.stub.flushFrames();
+        most = Math.max(most, [...before].filter(([node, t]) => node.style.transform !== t).length);
+      }
+      m.stub.dispatch(el, "pointerup", { clientX: p.clientX + 24, clientY: p.clientY + 16, button: 0, buttons: 0, pointerId: 7 });
+      counts.shellTransformsPerDragFrame = most;
+    } finally { m.done(); }
+  }
+});
+
 test("every count is at or under its checked-in ceiling", () => {
   const budgets = readBigBudgets();
   for (const key of Object.keys(counts)) assert.equal(typeof budgets[key], "number", `ceiling for ${key}`);

@@ -7947,13 +7947,14 @@ function buildBoardView(onFail, {
     previewMove: (uids, dx, dy) => {
       const b = board();
       if (!b) return;
+      const set = new Set(uids);
+      for (const u of uids) for (const d of descendantsOf(b, u)) set.add(d);
+      // E6: a big moving set rides one layer (edges.js beginDrag); its shells ride one group per layer (E2-6), from the
+      // first moving frame on.
+      if ((dx || dy) && !dragRide && dragLayerWanted(set)) beginDragRide(b, set);
       liveRects = itemsR.previewMove(uids, dx, dy, b, rects());
       // C2: selected cards with no shell move on the overview canvas (the frame redraws it).
       if (overviewCanvasOn()) ovDirty = true;
-      const set = new Set(uids);
-      for (const u of uids) for (const d of descendantsOf(b, u)) set.add(d);
-      // E6: a big moving set rides one layer (edges.js beginDrag); its shells get their own compositor layers.
-      if ((dx || dy) && !dragRide && dragLayerWanted(set)) beginDragRide(b, set);
       if (dragRide) edgesR.dragBy(dx, dy);
       // A moved item joins the section under its center; that section grows around it (preview only).
       const top = new Set(uids);

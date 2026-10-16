@@ -79,7 +79,7 @@ import { coveredBy, filterLinks, linksQuery, reduceLinks } from "./model/links.j
 import { isQueryString } from "./model/query.js";
 import { autoEligibility, storedLayoutIn } from "./discovery.js";
 import { HOME_PULL, resolveArrowHomes, resolveOutsideArrows } from "./model/arrow-home.js";
-import { createEchoLedger, createWriteQueue } from "./host/roam.js";
+import { MAX_GROUP_WRITES, createEchoLedger, createWriteQueue } from "./host/roam.js";
 import { sharedBgBudget } from "./bg-budget.js";
 import { notedSpeedFlags } from "./settings.js";
 import { executeImport, planImport, readNative, readV06Entry } from "./host/migrate.js";
@@ -1312,14 +1312,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     }
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish();
-    if (custom) custom.forward = list;
+    // A drag's inverse is installed only past the native chunk size. Smaller moves stay native so one Cmd+Z still
+    // walks them with data.undo(). Fold and the other callers pass no `when` and stay one custom entry at any size.
+    const active = custom && (custom.when !== "over-native-limit" || list.length > MAX_GROUP_WRITES) ? custom : null;
+    if (active) active.forward = list;
     return queue.run(() => grouped(async () => {
-      if (custom) host.setCustomUndo?.(custom);
+      if (active) host.setCustomUndo?.(active);
       try {
-        return await execute(list, { hold: true, suspend: !custom });
+        // A custom entry cannot be suspended: closing the chunk here would push the inverse before the later writes.
+        return await execute(list, { hold: true, suspend: !active });
       } catch (err) {
         // The inverse covers the whole list, but only part of it ran: close as a native chunk of what did.
-        if (custom) host.setCustomUndo?.(null);
+        if (active) host.setCustomUndo?.(null);
         throw err;
       }
     })).then(() => result, (err) => { handleFailure(err); return result; });
@@ -2066,9 +2070,41 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
     commitMove(uids, dx, dy) {
       if (!board || (!dx && !dy)) return Promise.resolve();
+      // Pre-drag parent, sibling order, and plexus for every block this drag writes, including a section fit
+      // and the members it rebases. Captured on the first write, before that write changes the block.
+      const before = new Map();
+      const remember = (id) => {
+        if (before.has(id)) return;
+        const node = rawNode(id);
+        if (!node) return;
+        const hit = ix().get(id);
+        before.set(id, { parent: hit?.parent?.[UID] || uid, order: node[ORD], plexus: clone(rawPlexus(id)) });
+      };
+      const custom = {
+        when: "over-native-limit",
+        async undo() {
+          const moves = [];
+          const propsOps = [];
+          for (const [id, prev] of before) {
+            const parentNow = ix().get(id)?.parent?.[UID] || uid;
+            if (prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
+            if (stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
+          }
+          // Low original order first, per parent, so each card lands in the hole it left. Props come after the
+          // move: stored x/y are relative to the parent the card is going back to.
+          moves.sort((a, b) => (a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0)));
+          await execute([...moves, ...propsOps]);
+        },
+        async redo() { await execute(custom.forward); },
+      };
       return txn((t) => {
+        const move = t.move.bind(t);
+        const props = t.props.bind(t);
+        t.move = (id, parent, order) => { remember(id); move(id, parent, order); };
+        t.props = (id, plexus) => { remember(id); props(id, plexus); };
         const top = topLevelOf(board, uids).filter((id) => !board.items.get(id).pinned);
         if (!top.length) return;
+        for (const id of top) remember(id);
         const moved = new Map(rects);
         for (const id of top) {
           const r = rects.get(id);
@@ -2087,7 +2123,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         }
         applyFit(t, top);
         if (flag("space-out", false)) spaceOutAfter(t, top);
-      });
+      }, custom);
     },
 
     commitRects(list) {

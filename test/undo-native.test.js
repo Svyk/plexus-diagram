@@ -20,34 +20,35 @@ function setup() {
   return { fake, session, xs, uids, done: () => { resetSessions(); restore(); } };
 }
 
-test("a move over 45 writes undoes through Roam's native stack, one chunk per Cmd+Z", async () => {
+test("a move over 45 writes is one undo, and a second undo does not take a native step", async () => {
   const { fake, session, xs, uids, done } = setup();
   try {
     const orig = xs();
     await session.commitMove(uids, 7, 0);
     assert.notDeepEqual(xs(), orig);
-    await session.undo();
+    fake.calls.length = 0;
     await session.undo();
     assert.deepEqual(xs(), orig);
+    assert.equal(fake.calls.filter((c) => c[0] === "undo").length, 0);
+    await session.undo();
+    assert.deepEqual(xs(), orig);
+    assert.equal(fake.calls.filter((c) => c[0] === "undo").length, 0);
   } finally { done(); }
 });
 
-test("short move, long move, undo, undo reverts both and a third undo changes nothing", async () => {
+test("a long move undoes back to the previous step, and the next undo stops at the native floor", async () => {
   const { fake, session, xs, uids, done } = setup();
   try {
     const orig = xs();
     await session.commitMove(["c0"], 5, 0);
     const afterShort = xs();
     await session.commitMove(uids, 7, 0);
-    // The long move is chunked into native groups of 45: undo until the short move's state shows.
-    let guard = 0;
-    while (JSON.stringify(xs()) !== JSON.stringify(afterShort) && guard++ < 5) await session.undo();
+    await session.undo();
     assert.deepEqual(xs(), afterShort);
+    fake.calls.length = 0;
     await session.undo();
-    assert.deepEqual(xs(), orig);
-    const calls = fake.calls.length;
-    await session.undo();
-    assert.deepEqual(xs(), orig);
-    assert.ok(fake.calls.length >= calls);
+    assert.deepEqual(xs(), afterShort, "the short move stays: a custom undo drops the native entries under it");
+    assert.equal(fake.calls.filter((c) => c[0] === "undo").length, 0);
+    assert.notDeepEqual(afterShort, orig);
   } finally { done(); }
 });

@@ -134,7 +134,7 @@ test("a 600-write transaction with the dot always saving waits at most the cap i
   }
 });
 
-test("a held transaction closes its undo group while it waits, so another session's write is its own step", async () => {
+test("a held big drag stays one custom undo, and another session's write is not undone with it", async () => {
   const stub = createDomStub();
   const restore = stub.install();
   try {
@@ -151,21 +151,16 @@ test("a held transaction closes its undo group while it waits, so another sessio
     other = acquireSession("b2", { host, raf: (fn) => fn() });
     await session.commitMove(Array.from({ length: 205 }, (_, i) => `205c${i}`), 3, 0);
     await duringWait;
+    assert.equal(fake.props("3c0")?.plexus?.x, 18);
     fake.calls.length = 0;
-    // Newest first: the tail of the held run (5 writes), then the other board's single move, then the batches before it.
     await host.undo();
-    const first = fake.calls.filter((c) => c[0] === "undo").length;
-    assert.ok(first > 0 && first <= 45, `the first undo is one chunk of the held run (${first} native steps)`);
-    let steps = 0;
-    let moveUndone = false;
-    for (let i = 0; i < 12 && !moveUndone; i += 1) {
-      fake.calls.length = 0;
-      await host.undo();
-      steps += 1;
-      moveUndone = fake.props("3c0")?.plexus?.x !== 9 && fake.props("3c0")?.plexus?.x === 0;
-    }
-    assert.ok(moveUndone, "the other board's move is undone as a step of its own");
-    assert.equal(fake.calls.filter((c) => c[0] === "undo").length, 1, "its undo step is a single native undo");
+    assert.equal(fake.calls.filter((c) => c[0] === "undo").length, 0, "the drag is one custom entry, not a native chunk");
+    for (let i = 0; i < 205; i += 1) assert.equal(fake.props(`205c${i}`)?.plexus?.x, i * 10);
+    assert.equal(fake.props("3c0")?.plexus?.x, 18, "the other board's write is outside the drag's inverse");
+    fake.calls.length = 0;
+    await host.undo();
+    assert.equal(fake.calls.filter((c) => c[0] === "undo").length, 0, "the custom entry floors native undo");
+    assert.equal(fake.props("3c0")?.plexus?.x, 18);
   } finally {
     restore();
   }

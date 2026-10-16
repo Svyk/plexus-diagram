@@ -25,7 +25,23 @@ export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, pre
     pagePreview: () => ({ exists: false, blocks: [] }), pullTree: () => [], blockString: () => null,
     openBlock() {}, openInSidebar() {}, searchPages: () => [], searchBlocks: () => [], related: () => [],
   };
-  const session = { uid: board.uid, board, rects: worldRects(board), links: [], coveredEdges: new Set(), on() { return () => {}; }, release() {}, setLinkMode() {} };
+  const subs = new Map();
+  const commits = [];
+  const session = {
+    uid: board.uid, board, rects: worldRects(board), links: [], coveredEdges: new Set(), release() {}, setLinkMode() {},
+    on(name, fn) { if (!subs.has(name)) subs.set(name, new Set()); subs.get(name).add(fn); return () => subs.get(name)?.delete(fn); },
+    // The session's optimistic move (session.js commitMove): new rects for the moved items and their members, one change.
+    commitMove(uids, dx, dy) {
+      commits.push({ uids: [...uids], dx, dy });
+      const moved = new Set(uids);
+      for (const item of board.items.values()) { let p = item.parentUid; while (p && !moved.has(item.uid)) { if (moved.has(p)) moved.add(item.uid); p = board.items.get(p)?.parentUid; } }
+      const next = new Map(session.rects);
+      for (const uid of moved) { const r = next.get(uid); if (r) next.set(uid, { ...r, x: r.x + dx, y: r.y + dy }); }
+      session.rects = next;
+      for (const fn of subs.get("change") || []) fn({ dirty: moved });
+      return Promise.resolve();
+    },
+  };
   const mountEl = stub.document.createElement("div");
   stub.document.body.append(mountEl);
   const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "1.0.0", fullscreen });
@@ -36,7 +52,7 @@ export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, pre
   };
   const settle = async () => { await tick(160); await pump(4); };
   const done = () => { try { view.dispose(); } catch { /* gone */ } restore(); noteSpeedFlags(null); };
-  return { stub, view, mountEl, pump, settle, done, board, session };
+  return { stub, view, mountEl, pump, settle, done, board, session, commits };
 }
 
 export const withFrozenClock = async (fn) => {
@@ -227,4 +243,80 @@ test("E5: no background slice runs inside a wheel burst on the board; it runs on
       } else assert.equal(runs[0], true, "flag off: the 3.34.0 budget ran it inside the burst");
     } finally { m.done(); bindBgGestureFlag(() => false); resetSharedBgBudget(); }
   }
+});
+
+// QA1 Part B row 2: a drag of 185 selected cards at overview, p95 333 ms. The edges inside the moving set ride one
+// layer (one transform a frame), the moving shells get their own compositor layers, and only the crossing edges near
+// the view are placed (at most 300 a frame). The drop places the riders at the committed spot in the same task.
+async function dragSelection(flags) {
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags });
+  await m.pump(400);
+  await tick(300);
+  await m.pump(100);
+  const root = m.view.root;
+  // Shift-marquee from empty space over the top-left of the board.
+  m.stub.dispatch(root, "pointerdown", { clientX: 5, clientY: 5, button: 0, buttons: 1, shiftKey: true, pointerId: 5 });
+  m.stub.dispatch(root, "pointermove", { clientX: 700, clientY: 300, buttons: 1, shiftKey: true, pointerId: 5 });
+  m.stub.dispatch(root, "pointerup", { clientX: 700, clientY: 300, button: 0, buttons: 0, shiftKey: true, pointerId: 5 });
+  m.stub.flushFrames();
+  const sel = m.view.state().selection;
+  const els = new Map([...root.querySelectorAll(".pxd-item")].map((el) => [el.getAttribute("data-uid"), el]));
+  const pick = sel.find((u) => m.board.items.get(u)?.type === "card" && els.has(u));
+  const r = m.session.rects.get(pick);
+  const v = m.view.viewport();
+  const p = { clientX: v.x + (r.x + r.w / 2) * v.zoom, clientY: v.y + (r.y + r.h / 2) * v.zoom };
+  return { m, root, sel, el: els.get(pick), p };
+}
+const riders = (root) => root.querySelector(".pxd-edges--drag");
+
+test("E6: a big selection drags as one layer: inner edges ride it untouched, crossing edges are budgeted, the drop places everything in one task", async () => {
+  const { m, root, sel, el, p } = await dragSelection({});
+  try {
+    assert.ok(sel.length >= 24, `selected ${sel.length}`);
+    m.stub.dispatch(el, "pointerdown", { ...p, button: 0, buttons: 1, pointerId: 7 });
+    const perFrame = [];
+    let before = null;
+    let layerD = null;
+    for (let i = 1; i <= 10; i += 1) {
+      const p0 = m.view.stats().edgePlacements;
+      m.stub.dispatch(el, "pointermove", { clientX: p.clientX + i * 3, clientY: p.clientY + i * 2, buttons: 1, pointerId: 7 });
+      m.stub.flushFrames();
+      perFrame.push(m.view.stats().edgePlacements - p0);
+      const layer = riders(root);
+      if (layer && !before) {
+        before = [...layer.children].map((g) => [g, g.querySelector?.(".pxd-edge__line")?.getAttribute("d") ?? g.children?.[1]?.getAttribute?.("d")]);
+        layerD = before.map(([, d]) => d);
+      }
+    }
+    const layer = riders(root);
+    assert.ok(layer && layer.children.length > 0, "the inner edges ride the drag layer");
+    assert.match(layer.style.transform, /^translate\(/);
+    assert.deepEqual(before.map(([g]) => g.children?.[1]?.getAttribute?.("d")), layerD, "a riding edge is not re-pathed during the drag");
+    assert.ok(perFrame.slice(1).every((n) => n <= 300), `crossing edges placed per frame: ${perFrame}`);
+    assert.equal(el.style.willChange, "transform", "a moving shell is its own layer for the drag");
+    m.stub.dispatch(el, "pointerup", { clientX: p.clientX + 30, clientY: p.clientY + 20, button: 0, buttons: 0, pointerId: 7 });
+    assert.equal(riders(root), null, "the drag layer is gone in the drop's task");
+    assert.equal(m.commits.length, 1, "one commit (one undo entry) for the whole move");
+    assert.equal(el.style.willChange, "");
+    const moved = before.filter(([g, d]) => g.children?.[1]?.getAttribute?.("d") !== d).length;
+    assert.equal(moved, before.length, "every rider is placed at the committed spot before the frame paints");
+    assert.ok(before.every(([g]) => g.parentElement && g.parentElement.getAttribute("class")?.split(" ")[0] === "pxd-edges"), "riders are back in the edges layer");
+  } finally { m.done(); }
+});
+
+test("E6: dragLayer off keeps the 3.34.0 drag (every touching edge placed each frame, no layer)", async () => {
+  const { m, root, el, p } = await dragSelection({ dragLayer: false });
+  try {
+    m.stub.dispatch(el, "pointerdown", { ...p, button: 0, buttons: 1, pointerId: 7 });
+    let most = 0;
+    for (let i = 1; i <= 6; i += 1) {
+      const p0 = m.view.stats().edgePlacements;
+      m.stub.dispatch(el, "pointermove", { clientX: p.clientX + i * 3, clientY: p.clientY + i * 2, buttons: 1, pointerId: 7 });
+      m.stub.flushFrames();
+      most = Math.max(most, m.view.stats().edgePlacements - p0);
+      assert.equal(riders(root), null);
+    }
+    assert.ok(most > 300, `every touching edge per frame (${most})`);
+    m.stub.dispatch(el, "pointerup", { clientX: p.clientX + 18, clientY: p.clientY + 12, button: 0, buttons: 0, pointerId: 7 });
+  } finally { m.done(); }
 });

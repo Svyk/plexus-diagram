@@ -124,8 +124,56 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   const unparkEdge = (rec) => {
     if (!rec.parked) return;
     rec.parked = false;
-    svg?.append(rec.g);
+    (drag?.recs.has(rec) ? drag.layer : svg)?.append(rec.g);
     labelsLayer?.append(rec.label);
+  };
+
+  // E6 (perf2, speed flag dragLayer). A drag of a big selection re-pathed every edge touching it on every pointer
+  // frame and repainted the whole edges <svg> (PhD main board, 185 cards: p95 333 ms). The edges with both ends in
+  // the moving set go into one more <svg> (same class, so it sits where the edges layer sits) that is its own
+  // compositor layer; a frame moves it with one transform. Only the edges that cross the selection are placed.
+  let drag = null;
+  const beginDrag = (board, moving) => {
+    endDrag(null);
+    if (!svg?.parentElement || !moving?.size) return 0;
+    const layer = doc.createElementNS(SVG_NS, "svg");
+    setClass(layer, "pxd-edges pxd-edges--drag");
+    layer.setAttribute("aria-hidden", "true");
+    layer.style.willChange = "transform";
+    svg.after?.(layer);
+    if (!layer.parentElement) svg.parentElement.append(layer);
+    const recs = new Map();
+    for (const edge of board.edges.values()) {
+      if (!moving.has(edge.from) || !moving.has(edge.to)) continue;
+      const rec = edgeEls.get(edge.uid);
+      if (!rec || rec.parked) continue;
+      const label = rec.label?.style?.transform || "";
+      recs.set(rec, label);
+      layer.append(rec.g);
+    }
+    drag = { layer, recs, inner: new Set([...recs.keys()].map((rec) => rec.uid)) };
+    return recs.size;
+  };
+  const dragBy = (dx, dy) => {
+    if (!drag) return;
+    drag.layer.style.transform = dx || dy ? `translate(${dx}px, ${dy}px)` : "";
+    // Labels are divs over the board (hidden below 0.3): one transform each, from where the drag found them.
+    for (const [rec, base] of drag.recs) if (rec.label && base) rec.label.style.transform = `translate(${dx}px, ${dy}px) ${base}`;
+  };
+  // ctx { board, rects, zoom }: place the riders where the model has them now (the drop's commit already moved
+  // them, a cancel did not), in the task that puts them back, so no frame shows them at the pre-drag spot.
+  const endDrag = (ctx) => {
+    if (!drag) return;
+    const { layer, recs } = drag;
+    drag = null;
+    for (const [rec, base] of recs) {
+      if (rec.parked || !edgeEls.has(rec.uid)) continue;
+      svg.append(rec.g);
+      if (rec.label && base) rec.label.style.transform = base;
+      const edge = ctx?.board?.edges.get(rec.uid);
+      if (edge && ctx.rects) placeEdge(ctx.board, edge, rec, ctx.rects, ctx.zoom ?? zoomCache);
+    }
+    layer.remove();
   };
 
   // A measured end. A region enters the card and stops on the region edge. A folded pin stays on the card face.
@@ -551,6 +599,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   };
   let placements = 0;
   const placeEdge = (board, edge, rec, rects, zoom) => {
+    // E6: an edge riding the drag layer is placed once, when the drag ends (its layer carries it until then).
+    if (drag?.recs.has(rec)) { rec.stale = true; return; }
     placements += 1;
     const geo = geometryFor(board, edge, rects);
     rec.geo = geo;
@@ -1081,6 +1131,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   };
 
   const dispose = () => {
+    endDrag(null);
     for (const uid of [...edgeEls.keys()]) removeEdge(uid);
     for (const key of [...linkEls.keys()]) removeLink(key);
     setTempWire(null);
@@ -1113,6 +1164,10 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       return n;
     },
     placements: () => placements,
+    beginDrag,
+    dragBy,
+    endDrag,
+    dragInner: () => drag?.inner ?? null,
     flushWaiting,
     waitingLeft: () => waiting.size,
     setSelection,

@@ -4117,6 +4117,54 @@ function buildBoardView(onFail, {
   };
   // Shell builds follow the same burst as the reveal cull. The flag is on before the event's hit-test,
   // and off again when the burst ends, which rearms the priority frame and the background pump.
+  // E6 (perf2, speed flag dragLayer): a drag of DRAG_LAYER_MIN+ moving items. Their edges ride one layer and each moving
+  // shell is its own compositor layer for the drag (will-change), so a pointer frame is transforms only.
+  const DRAG_LAYER_MIN = 24;
+  let dragRide = null;
+  const dragLayerWanted = (set) => {
+    try { if (notedSpeedFlags().dragLayer === false) return false; } catch { return false; }
+    return gesturing && ctl.gestureKind?.() === "move" && set.size >= DRAG_LAYER_MIN;
+  };
+  const beginDragRide = (b, set) => {
+    const shells = [];
+    for (const uid of set) {
+      const el = itemsR.shellOf(uid);
+      if (el?.style) { el.style.willChange = "transform"; shells.push(el); }
+    }
+    dragRide = { shells, edges: edgesR.beginDrag(b, set), turn: 0 };
+  };
+  // The edges that cross the moving set and have an end near the view, at most DRAG_EDGE_BUDGET a frame (the rest of
+  // them in turn on the next frames). An edge far from the view is placed by the drop's commit (or stays where it
+  // was on a cancel, which is where it belongs).
+  const DRAG_EDGE_BUDGET = 300;
+  const rideCrossing = (b, touching) => {
+    const inner = edgesR.dragInner() || new Set();
+    const view = size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null;
+    const r = paintRects();
+    const near = [];
+    for (const uid of touching) {
+      if (inner.has(uid)) continue;
+      const e = b.edges.get(uid);
+      if (!e) continue;
+      const a = r.get(e.from), c = r.get(e.to);
+      if (view && !(a && rectsIntersect(a, view)) && !(c && rectsIntersect(c, view))) continue;
+      near.push(uid);
+    }
+    if (near.length <= DRAG_EDGE_BUDGET) return near;
+    const start = dragRide.turn % near.length;
+    dragRide.turn += DRAG_EDGE_BUDGET;
+    const out = near.slice(start, start + DRAG_EDGE_BUDGET);
+    if (out.length < DRAG_EDGE_BUDGET) out.push(...near.slice(0, DRAG_EDGE_BUDGET - out.length));
+    return out;
+  };
+  const endDragRide = () => {
+    if (!dragRide) return;
+    const ride = dragRide;
+    dragRide = null;
+    for (const el of ride.shells) { try { el.style.willChange = ""; } catch { /* gone */ } }
+    const b = board();
+    edgesR.endDrag(b ? { board: b, rects: paintRects(), zoom: vp.zoom } : null);
+  };
   const bgHoldKey = {};
   const syncShellHold = () => {
     const hold = deferReveal();
@@ -7765,6 +7813,7 @@ function buildBoardView(onFail, {
         }
         liveRects = null;
         resetGrown();
+        endDragRide();
         resumeTimer = timers.later(() => {
           resumeTimer = null;
           itemsR.setPaused(false);
@@ -7797,6 +7846,9 @@ function buildBoardView(onFail, {
       if (overviewCanvasOn()) ovDirty = true;
       const set = new Set(uids);
       for (const u of uids) for (const d of descendantsOf(b, u)) set.add(d);
+      // E6: a big moving set rides one layer (edges.js beginDrag); its shells get their own compositor layers.
+      if ((dx || dy) && !dragRide && dragLayerWanted(set)) beginDragRide(b, set);
+      if (dragRide) edgesR.dragBy(dx, dy);
       // A moved item joins the section under its center; that section grows around it (preview only).
       const top = new Set(uids);
       const eff = effectiveRects();
@@ -7806,7 +7858,8 @@ function buildBoardView(onFail, {
       for (const u of grown) set.add(u);
       const links = paintedLinks();
       const linkKeys = new Set(links.filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
-      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: paintRects(), zoom: vp.zoom, linkKeys, links });
+      const touching = edgesTouching(b, set);
+      edgesR.update({ board: b, edgeUids: dragRide ? rideCrossing(b, touching) : touching, rects: paintRects(), zoom: vp.zoom, linkKeys, links });
       dirty.minimap = true;
       schedule();
     },
@@ -9794,14 +9847,14 @@ function buildBoardView(onFail, {
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLiftIdle();
     // During a wheel pan or zoom the minimap and landmark dots repaint at most every MINIMAP_WHEEL_MS (they rebuilt
     // their marks every frame, and every DOM write inside Roam's block re-runs its :has() checks); the settle paints them.
-    const wheelMinimap = wheelLayer && !itemsChanged && !dirty.minimap;
+    const wheelMinimap = (wheelLayer && !itemsChanged && !dirty.minimap) || (Boolean(dragRide) && !itemsChanged);
     if ((itemsChanged || dirty.minimap || (dirty.viewport && !gesturing)) && !(wheelMinimap && perfNow() - minimapAt < MINIMAP_WHEEL_MS)) {
       minimapAt = perfNow();
       const shown = paintRects();
       chrome.minimap.update({ board: b, rects: shown, vp, size });
       // The landmark dots are DOM inside the board: rebuilt mid-burst they cost a style recalc and layout per
       // rebuild. The minimap canvas follows the camera; the dots follow at the settle.
-      if (!(deferReveal() && !itemsChanged)) paintLandmarkDots(b, shown);
+      if (!(deferReveal() && !itemsChanged) && !dragRide) paintLandmarkDots(b, shown);
     }
     if (itemsChanged && !gesturing) {
       scheduleContent();

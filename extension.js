@@ -9291,13 +9291,13 @@ function detectColumns(lines, { pageW, minLines = 4 } = {}) {
 function valueColumn(lines) {
   const list = lines || [];
   if (list.length < 3) return false;
-  const wordsOf4 = (l) => String(l.text || "").trim().split(/\s+/).filter(Boolean).length;
-  if (list.some((l) => wordsOf4(l) >= 12)) return false;
+  const wordsOf5 = (l) => String(l.text || "").trim().split(/\s+/).filter(Boolean).length;
+  if (list.some((l) => wordsOf5(l) >= 12)) return false;
   const digitShare = (l) => {
     const text4 = String(l.text || "").replace(/\s+/g, "");
     return text4.length ? (text4.match(/\d/g) || []).length / text4.length : 0;
   };
-  const valued = list.filter((l) => wordsOf4(l) <= 8 && digitShare(l) >= 0.3).length;
+  const valued = list.filter((l) => wordsOf5(l) <= 8 && digitShare(l) >= 0.3).length;
   return valued / list.length >= 0.6;
 }
 function shortColumnGutters(lines, pageW, minLines) {
@@ -17795,7 +17795,7 @@ function blockKind(string) {
 function libraryKind(row4) {
   if (row4?.kind === "board") return "board";
   if (row4?.kind === "part") return LIBRARY_PART_TYPES.includes(row4.part) ? row4.part : "paragraph";
-  if (row4?.kind === "block") return blockKind(row4.string ?? row4.text);
+  if (row4?.kind === "block") return row4.blockKind || blockKind(row4.string ?? row4.text);
   const title = row4?.title ?? "";
   if (row4?.kind === "daily" || isDailyTitle(title)) return "daily";
   return "page";
@@ -17819,7 +17819,7 @@ function narrowLibrary(rows, filter, now4 = Date.now()) {
       if (!tags.includes(f.tag)) return false;
     }
     if (terms.length) {
-      const hay = [row4?.title, row4?.string, row4?.text].filter((v) => v != null).join("\n").toLowerCase();
+      const hay = typeof row4?.lower === "string" ? row4.lower : [row4?.title, row4?.string, row4?.text].filter((v) => v != null).join("\n").toLowerCase();
       if (!terms.every((t) => hay.includes(t))) return false;
     }
     if (f.days && !editedSince(row4?.edited, f.days, now4)) return false;
@@ -19031,7 +19031,7 @@ function createPerfLog({ cap: cap4 = PERF_CAP } = {}) {
     tasks.count = longCount;
     return { open: open.summary(), click: click.summary(), fps: fps.summary(), longtask: tasks };
   };
-  const publish = () => {
+  const publish2 = () => {
     const snap = current3();
     if (stats) stats.perf = snap;
     publishLatest(snap);
@@ -19047,7 +19047,7 @@ function createPerfLog({ cap: cap4 = PERF_CAP } = {}) {
         const entries = typeof list?.getEntries === "function" ? list.getEntries() : [];
         let changed2 = false;
         for (const entry of entries) if (take(entry)) changed2 = true;
-        if (changed2) publish();
+        if (changed2) publish2();
       });
     } catch {
       return null;
@@ -19144,7 +19144,7 @@ function createPerfLog({ cap: cap4 = PERF_CAP } = {}) {
     on = true;
     if (events) armEvent(lifecycle);
     if (tasks) armLongTask(lifecycle);
-    publish();
+    publish2();
   };
   const beginPan = () => {
     if (!on || pan.deltas) return false;
@@ -19169,7 +19169,7 @@ function createPerfLog({ cap: cap4 = PERF_CAP } = {}) {
     const value = panFps(deltas);
     if (value == null) return null;
     fps.push(value);
-    publish();
+    publish2();
     return value;
   };
   const watchOpen = (mountEl, t0) => {
@@ -19178,7 +19178,7 @@ function createPerfLog({ cap: cap4 = PERF_CAP } = {}) {
     const finish = () => {
       const ms = perfNow() - t0;
       if (Number.isFinite(ms) && ms >= 0) open.push(ms);
-      publish();
+      publish2();
     };
     if (mountEl.querySelector?.(".pxd-item")) {
       finish();
@@ -24826,37 +24826,224 @@ function countHits(hay, needle) {
   }
   return n3;
 }
+function addPosting(map, key, i) {
+  let arr = map.get(key);
+  if (!arr) {
+    arr = [];
+    map.set(key, arr);
+  } else if (arr[arr.length - 1] === i) return;
+  arr.push(i);
+}
+function buildSearchIndex(rows) {
+  const n3 = rows.length;
+  const lowers = new Array(n3);
+  const tri = /* @__PURE__ */ new Map();
+  const bi = /* @__PURE__ */ new Map();
+  const ch = /* @__PURE__ */ new Map();
+  for (let i = 0; i < n3; i += 1) {
+    const raw = rows[i]?.lower;
+    const lower4 = typeof raw === "string" ? raw : String(rows[i]?.text ?? "").toLowerCase();
+    lowers[i] = lower4;
+    let start = 0;
+    for (let c = 0; c <= lower4.length; c += 1) {
+      if (c !== lower4.length && lower4.charCodeAt(c) > 32) continue;
+      const len = c - start;
+      if (len >= 3) {
+        for (let g = start; g <= c - 3; g += 1) addPosting(tri, lower4.slice(g, g + 3), i);
+      }
+      if (len >= 2) {
+        for (let g = start; g <= c - 2; g += 1) addPosting(bi, lower4.slice(g, g + 2), i);
+      }
+      if (len >= 1) {
+        for (let g = start; g < c; g += 1) addPosting(ch, lower4[g], i);
+      }
+      start = c + 1;
+    }
+  }
+  return {
+    lowers,
+    tri,
+    bi,
+    ch,
+    stamp: new Uint32Array(n3),
+    gen: 1,
+    hold: [],
+    pool: [],
+    ranked: [],
+    listBuf: []
+  };
+}
+function indexFor(rows) {
+  let ix = partIndexes.get(rows);
+  if (!ix) {
+    ix = buildSearchIndex(rows);
+    partIndexes.set(rows, ix);
+  }
+  return ix;
+}
+function warmPartsIndex(rows) {
+  if (Array.isArray(rows) && rows.length) indexFor(rows);
+}
+function wordsOf2(term) {
+  const words = [];
+  let start = 0;
+  for (let i = 0; i <= term.length; i += 1) {
+    if (i === term.length || term.charCodeAt(i) <= 32) {
+      if (i > start) words.push(term.slice(start, i));
+      start = i + 1;
+    }
+  }
+  return words;
+}
+function listsFor(ix, word) {
+  const buf = ix.listBuf;
+  buf.length = 0;
+  if (word.length >= 3) {
+    for (let i = 0; i <= word.length - 3; i += 1) {
+      const ids = ix.tri.get(word.slice(i, i + 3));
+      if (!ids) return null;
+      buf.push(ids);
+    }
+  } else if (word.length === 2) {
+    const ids = ix.bi.get(word);
+    if (!ids) return null;
+    buf.push(ids);
+  } else if (word.length === 1) {
+    const ids = ix.ch.get(word);
+    if (!ids) return null;
+    buf.push(ids);
+  } else return null;
+  return buf;
+}
+function bump(ix) {
+  ix.gen += 1;
+  if (ix.gen === 4294967295) {
+    ix.stamp.fill(0);
+    ix.gen = 1;
+  }
+  return ix.gen;
+}
+function takeWord2(ix, lists2, fresh) {
+  const stamp2 = ix.stamp;
+  const hold = ix.hold;
+  let g = bump(ix);
+  if (fresh) {
+    let best = lists2[0];
+    for (let i = 1; i < lists2.length; i += 1) if (lists2[i].length < best.length) best = lists2[i];
+    for (let i = 0; i < best.length; i += 1) stamp2[best[i]] = g;
+    for (let li = 0; li < lists2.length; li += 1) {
+      const list = lists2[li];
+      if (list === best) continue;
+      const g2 = bump(ix);
+      for (let i = 0; i < list.length; i += 1) {
+        const id = list[i];
+        if (stamp2[id] === g) stamp2[id] = g2;
+      }
+      g = g2;
+    }
+    hold.length = 0;
+    for (let i = 0; i < best.length; i += 1) if (stamp2[best[i]] === g) hold.push(best[i]);
+    return;
+  }
+  if (!hold.length) return;
+  for (let i = 0; i < hold.length; i += 1) stamp2[hold[i]] = g;
+  for (let li = 0; li < lists2.length; li += 1) {
+    const list = lists2[li];
+    const g2 = bump(ix);
+    for (let i = 0; i < list.length; i += 1) {
+      const id = list[i];
+      if (stamp2[id] === g) stamp2[id] = g2;
+    }
+    g = g2;
+  }
+  let w = 0;
+  for (let i = 0; i < hold.length; i += 1) if (stamp2[hold[i]] === g) hold[w++] = hold[i];
+  hold.length = w;
+}
+function publish(row4, hits) {
+  const out = { hits };
+  for (const key in row4) {
+    if (key === "lower") continue;
+    out[key] = row4[key];
+  }
+  return out;
+}
 function searchParts(rows, { text: text4 = "", kinds = [], pages = "" } = {}, limit = 40) {
+  const list = Array.isArray(rows) ? rows : [];
   const phrase = String(text4 ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
   const terms = queryTerms(text4);
   const kindSet = kinds && kinds.length ? new Set(kinds) : null;
   const range = parsePageRange(pages);
-  const hits = [];
-  let seq = 0;
-  for (const row4 of Array.isArray(rows) ? rows : []) {
-    seq += 1;
+  const take = Math.max(1, Math.floor(Number(limit) || 40));
+  if (!list.length) return [];
+  if (!terms.length) {
+    const out2 = [];
+    for (let i = 0; i < list.length && out2.length < take; i += 1) {
+      const row4 = list[i];
+      if (kindSet && !kindSet.has(row4.kind)) continue;
+      if (range && (row4.page < range.from || row4.page > range.to)) continue;
+      out2.push(publish(row4, 0));
+    }
+    return out2;
+  }
+  const ix = indexFor(list);
+  const specs = [];
+  for (let t = 0; t < terms.length; t += 1) {
+    const words = wordsOf2(terms[t]);
+    if (!words.length) return [];
+    for (let w = 0; w < words.length; w += 1) {
+      const lists2 = listsFor(ix, words[w]);
+      if (!lists2) return [];
+      const copy = lists2.slice();
+      let n4 = copy[0].length;
+      for (let i = 1; i < copy.length; i += 1) if (copy[i].length < n4) n4 = copy[i].length;
+      specs.push({ lists: copy, n: n4 });
+    }
+  }
+  specs.sort((a, b) => a.n - b.n);
+  takeWord2(ix, specs[0].lists, true);
+  for (let s = 1; s < specs.length; s += 1) {
+    if (!ix.hold.length) break;
+    takeWord2(ix, specs[s].lists, false);
+  }
+  const hold = ix.hold;
+  const ranked = ix.ranked;
+  const pool = ix.pool;
+  const lowers = ix.lowers;
+  ranked.length = 0;
+  for (let h = 0; h < hold.length; h += 1) {
+    const i = hold[h];
+    const row4 = list[i];
     if (kindSet && !kindSet.has(row4.kind)) continue;
     if (range && (row4.page < range.from || row4.page > range.to)) continue;
-    let count = 1;
-    let exact = 0;
-    if (terms.length) {
-      count = 0;
-      let all = true;
-      for (const t of terms) {
-        const n3 = countHits(row4.lower, t);
-        if (!n3) {
-          all = false;
-          break;
-        }
-        count += n3;
+    const hay = lowers[i];
+    let count = 0;
+    let all = true;
+    for (let t = 0; t < terms.length; t += 1) {
+      const n4 = countHits(hay, terms[t]);
+      if (!n4) {
+        all = false;
+        break;
       }
-      if (!all) continue;
-      if (terms.length > 1 && row4.lower.includes(phrase)) exact = 1;
+      count += n4;
     }
-    hits.push({ row: row4, count, seq, exact });
+    if (!all) continue;
+    let slot2 = pool[ranked.length];
+    if (!slot2) {
+      slot2 = { row: null, count: 0, seq: 0, exact: 0 };
+      pool[ranked.length] = slot2;
+    }
+    slot2.row = row4;
+    slot2.count = count;
+    slot2.seq = i + 1;
+    slot2.exact = terms.length > 1 && hay.includes(phrase) ? 1 : 0;
+    ranked.push(slot2);
   }
-  hits.sort((a, b) => b.exact - a.exact || b.count - a.count || a.seq - b.seq);
-  return hits.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map(({ row: row4, count }) => ({ ...row4, hits: terms.length ? count : 0 }));
+  ranked.sort((a, b) => b.exact - a.exact || b.count - a.count || a.seq - b.seq);
+  const out = [];
+  const n3 = Math.min(take, ranked.length);
+  for (let i = 0; i < n3; i += 1) out.push(publish(ranked[i].row, ranked[i].count));
+  return out;
 }
 function partSnippet(text4, needle, width = SNIPPET_W) {
   const t = squash2(text4);
@@ -24887,13 +25074,14 @@ function partSnippet(text4, needle, width = SNIPPET_W) {
     after: `${t.slice(at + n3.length, end)}${end < t.length ? "…" : ""}`
   };
 }
-var PART_OF, SNIPPET_W, squash2, PART_LABELS;
+var PART_OF, SNIPPET_W, squash2, partIndexes, PART_LABELS;
 var init_parts_search = __esm({
   "src/model/parts-search.js"() {
     init_library();
     PART_OF = { heading: "heading", para: "paragraph", list: "paragraph", footnote: "paragraph", code: "paragraph", table: "table", figure: "figure", formula: "formula", caption: "caption" };
     SNIPPET_W = 120;
     squash2 = (text4) => String(text4 ?? "").replace(/\s+/g, " ").trim();
+    partIndexes = /* @__PURE__ */ new WeakMap();
     PART_LABELS = { paragraph: "Paragraph", table: "Table", figure: "Figure", caption: "Caption", heading: "Heading", formula: "Formula" };
   }
 });
@@ -24946,7 +25134,7 @@ function pageFromTextContent({ n: n3 = 1, width = 0, height = 0, items = [] } = 
   const text4 = bits.join(" ").replace(/\s+/g, " ").trim();
   return { n: Number(n3) || 0, text: text4, lower: text4.toLowerCase(), spans };
 }
-function wordsOf2(lower4) {
+function wordsOf3(lower4) {
   return lower4.match(/[a-z0-9]+/g) || [];
 }
 function boxForQuery(page, text4) {
@@ -24968,7 +25156,7 @@ function flashFrac(page, needle, fuzzyWord) {
   }
   if (fuzzyWord) {
     for (const span of spans) {
-      for (const word of wordsOf2(String(span?.str || "").toLowerCase())) {
+      for (const word of wordsOf3(String(span?.str || "").toLowerCase())) {
         if (editDistance1(word, needle)) return span.frac || null;
       }
     }
@@ -44315,6 +44503,36 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     return kept;
   };
   let browsePages = null;
+  let pdfPrepFrom = null;
+  const pdfPrep = [];
+  const preparedPdfBlocks = (list) => {
+    if (list === pdfPrepFrom) return pdfPrep;
+    pdfPrepFrom = list;
+    pdfPrep.length = 0;
+    const src = Array.isArray(list) ? list : [];
+    for (let i = 0; i < src.length; i += 1) {
+      const row4 = src[i];
+      const string = typeof row4?.string === "string" ? row4.string : "";
+      const uid = row4?.uid;
+      if (!string || uid == null || uid === "") continue;
+      const pageTitle = typeof row4.pageTitle === "string" ? row4.pageTitle : "";
+      if (pageTitle.startsWith("roam/")) continue;
+      const knownUrl = typeof row4.url === "string" ? row4.url : "";
+      pdfPrep.push({
+        kind: "block",
+        blockKind: "pdf",
+        uid: String(uid),
+        string,
+        lower: string.toLowerCase(),
+        url: knownUrl || pdfMacroUrl(string),
+        pageTitle,
+        edited: null,
+        tags: [],
+        onBoard: false
+      });
+    }
+    return pdfPrep;
+  };
   const attachMeta = (rows) => {
     const uids = rows.map((r) => r.uid).filter(Boolean);
     if (!uids.length) return rows;
@@ -46270,50 +46488,84 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         queries.push({ name, ms: performance.now() - t0 });
         return out;
       };
+      const pdfCacheOn = !f.tag && since == null && typeof pdfList === "function" && (f.text && typeof pdfMatch === "function" && wantsType(f, "pdf") || f.types.includes("pdf"));
+      let pdfCached = null;
+      if (pdfCacheOn) {
+        try {
+          pdfCached = pdfList() || [];
+        } catch {
+          pdfCached = [];
+        }
+      }
       if (f.text && typeof pdfMatch === "function" && wantsType(f, "pdf")) {
         const terms = queryTerms(f.text);
-        const inputs = ["$", "?kind"];
-        const where2 = [];
-        const args = [BLOCK_KIND_PATTERNS.pdf];
-        if (f.tag) {
-          inputs.push("?name");
-          args.push(f.tag);
-          where2.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
-        }
-        where2.push("[?b :block/string ?s]", "[(re-pattern ?kind) ?kre]", "[(re-find ?kre ?s)]", "[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
-        const find = ["?s", "?u", "?t"];
-        if (since != null) {
-          inputs.push("?since");
-          args.push(since);
-          find.push("?e");
-          where2.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
-        }
-        const cached = !f.tag && since == null && typeof pdfList === "function" ? pdfList() : null;
-        const found = Array.isArray(cached) ? cached.map((r) => [r.string, r.uid, r.pageTitle]) : timed("pdf-names", () => host.q(`[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where2.join(" ")}]`, ...args));
-        for (const rec of found) {
-          const string = rec?.[0];
-          const uid = rec?.[1];
-          const pageTitle = rec?.[2];
-          if (typeof string !== "string" || !uid) continue;
-          if (typeof pageTitle === "string" && pageTitle.startsWith("roam/")) continue;
-          const url = pdfMacroUrl(string);
-          let hay = "";
-          try {
-            hay = url ? String(pdfMatch(url, terms) || "") : "";
-          } catch {
-            hay = "";
+        if (pdfCacheOn) {
+          const prepared2 = preparedPdfBlocks(pdfCached);
+          for (let i = 0; i < prepared2.length; i += 1) {
+            if (candidates2.length >= cap4) break;
+            const rec = prepared2[i];
+            let hay = "";
+            try {
+              hay = rec.url ? String(pdfMatch(rec.url, terms) || "") : "";
+            } catch {
+              hay = "";
+            }
+            if (!hay) continue;
+            push({
+              kind: "block",
+              blockKind: "pdf",
+              uid: rec.uid,
+              string: rec.string,
+              text: hay,
+              pageTitle: rec.pageTitle,
+              edited: null,
+              tags: [],
+              onBoard: false
+            });
           }
-          if (!hay) continue;
-          if (!push({
-            kind: "block",
-            uid: String(uid),
-            string,
-            text: hay,
-            pageTitle: typeof pageTitle === "string" ? pageTitle : "",
-            edited: since != null ? editedOf(rec?.[3]) : null,
-            tags: f.tag ? [f.tag] : [],
-            onBoard: false
-          })) break;
+        } else {
+          const inputs = ["$", "?kind"];
+          const where2 = [];
+          const args = [BLOCK_KIND_PATTERNS.pdf];
+          if (f.tag) {
+            inputs.push("?name");
+            args.push(f.tag);
+            where2.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
+          }
+          where2.push("[?b :block/string ?s]", "[(re-pattern ?kind) ?kre]", "[(re-find ?kre ?s)]", "[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
+          const find = ["?s", "?u", "?t"];
+          if (since != null) {
+            inputs.push("?since");
+            args.push(since);
+            find.push("?e");
+            where2.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
+          }
+          const found = timed("pdf-names", () => host.q(`[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where2.join(" ")}]`, ...args));
+          for (const rec of found) {
+            const string = rec?.[0];
+            const uid = rec?.[1];
+            const pageTitle = rec?.[2];
+            if (typeof string !== "string" || !uid) continue;
+            if (typeof pageTitle === "string" && pageTitle.startsWith("roam/")) continue;
+            const url = pdfMacroUrl(string);
+            let hay = "";
+            try {
+              hay = url ? String(pdfMatch(url, terms) || "") : "";
+            } catch {
+              hay = "";
+            }
+            if (!hay) continue;
+            if (!push({
+              kind: "block",
+              uid: String(uid),
+              string,
+              text: hay,
+              pageTitle: typeof pageTitle === "string" ? pageTitle : "",
+              edited: since != null ? editedOf(rec?.[3]) : null,
+              tags: f.tag ? [f.tag] : [],
+              onBoard: false
+            })) break;
+          }
         }
       }
       const wantPage = wantsType(f, "page");
@@ -46466,6 +46718,35 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       }
       for (const kind of ["pdf", "image", "web", "region", "pin"]) {
         if (!f.types.includes(kind)) continue;
+        if (kind === "pdf" && pdfCacheOn) {
+          queries.push({ name: "pdf-cache", ms: 0 });
+          const terms = f.text ? queryTerms(f.text) : [];
+          const prepared2 = preparedPdfBlocks(pdfCached);
+          for (let i = 0; i < prepared2.length; i += 1) {
+            if (candidates2.length >= cap4) break;
+            const rec = prepared2[i];
+            if (terms.length) {
+              let ok = true;
+              for (let t = 0; t < terms.length; t += 1) if (!rec.lower.includes(terms[t])) {
+                ok = false;
+                break;
+              }
+              if (!ok) continue;
+            }
+            push({
+              kind: "block",
+              blockKind: "pdf",
+              uid: rec.uid,
+              string: rec.string,
+              lower: rec.lower,
+              pageTitle: rec.pageTitle,
+              edited: null,
+              tags: [],
+              onBoard: false
+            });
+          }
+          continue;
+        }
         const find = ["?s", "?u", "?t"];
         const inputs = ["$", "?kind"];
         const where2 = [];
@@ -47941,7 +48222,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   const republishOutline = () => {
     if (!outlineRev.size) return;
     for (const id of outlineRev.keys()) outlineRev.set(id, (outlineRev.get(id) || 0) + 1);
-    publish();
+    publish2();
   };
   const rebuild = () => {
     rix = null;
@@ -48242,7 +48523,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       if (unconfirmed) dropped.then(() => repull());
     });
   }
-  const publish = () => {
+  const publish2 = () => {
     if (inPublish) return null;
     inPublish = true;
     try {
@@ -48258,7 +48539,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
             host.onBoardVerified?.(uid, () => {
               arrowHeld = false;
               arrowReady = false;
-              if (!destroyed) publish();
+              if (!destroyed) publish2();
             });
           } catch {
           }
@@ -48301,7 +48582,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
     raw = clone(fresh);
     propsCache.clear();
-    publish();
+    publish2();
   };
   function rebase(incoming) {
     const tracked = ledger.tracked();
@@ -48430,7 +48711,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       }
       return;
     }
-    const diff = publish();
+    const diff = publish2();
     if (diff && (diff.structural || diff.dirty.size) && !queue.pending) host.invalidateUndo?.();
   };
   const onBoard = (after) => {
@@ -48786,7 +49067,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     stampBoard(ops);
     if (!ops.length) return ops;
     for (const op of ops) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
-    publish();
+    publish2();
     return ops;
   }
   const stampedRun = (list, fn) => queue.run(() => grouped(async () => {
@@ -48827,7 +49108,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return Promise.resolve(void 0);
     }
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
-    publish();
+    publish2();
     if (custom) custom.forward = list;
     return queue.run(() => grouped(async () => {
       if (custom) host.setCustomUndo?.(custom);
@@ -50587,7 +50868,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       if (node2[OPEN] !== false === next) return Promise.resolve(false);
       node2[OPEN] = next;
       const stamp2 = stampList();
-      publish();
+      publish2();
       const write = async () => {
         await host.setOpen(id, next);
         return true;
@@ -50661,7 +50942,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       }
       if (!known2) return Promise.resolve(false);
       return commit([{ op: "open", uid: id, open: next }], true).then((ok) => {
-        if (ok && bumpOutline(ownerUid2)) publish();
+        if (ok && bumpOutline(ownerUid2)) publish2();
         return ok;
       });
     },
@@ -51443,7 +51724,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     allowVirtual() {
       if (destroyed) return;
       virtualAllowed = true;
-      publish();
+      publish2();
     },
     restoreNative() {
       return txn((t) => {
@@ -86959,7 +87240,7 @@ var PDF_TEXT_SLICE_MS = 16;
 var WORD_CHUNK = 80;
 var ROW_CHUNK = 24;
 var ITEM_CHUNK = 120;
-var wordsOf3 = (lower4) => String(lower4 || "").match(/[a-z0-9]+/g) || [];
+var wordsOf4 = (lower4) => String(lower4 || "").match(/[a-z0-9]+/g) || [];
 function timerLater(fn, ms) {
   const id = setTimeout(fn, ms);
   try {
@@ -87260,7 +87541,7 @@ function createPdfTextIndex({
       }
       const page = stored.pages[job.pageI];
       if (job.words == null || job.wordPage !== job.pageI) {
-        job.words = [...new Set(wordsOf3(page.lower || page.text || ""))];
+        job.words = [...new Set(wordsOf4(page.lower || page.text || ""))];
         job.wordI = 0;
         job.wordPage = job.pageI;
         seq += 1;
@@ -90641,7 +90922,10 @@ function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS } = {}
       }
       out.push(...part);
     }
-    if (mine === epoch) rows = out;
+    if (mine === epoch) {
+      warmPartsIndex(out);
+      if (mine === epoch) rows = out;
+    }
     return out;
   };
   const changed2 = /* @__PURE__ */ new Set();
@@ -100247,7 +100531,7 @@ function buildBoardView(onFail, {
     if (!partsIdx) {
       partsIdx = createPartsIndex({
         store: createParseStore({ indexedDB: doc.defaultView?.indexedDB }),
-        listPdfs: () => host?.listPdfBlocks?.() || []
+        listPdfs: () => pdfBlocks()
       });
       offPartsChange = partsIdx.onChange(() => {
         try {
@@ -103488,6 +103772,13 @@ ${url}`;
   onFail.unshift(() => clip7.dispose());
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {
     if (disposed || suspended) return;
+    if (structural) {
+      pdfBlockList = null;
+      try {
+        partsIdx?.invalidate();
+      } catch {
+      }
+    }
     const b = board2();
     const current3 = crumbList[crumbList.length - 1];
     if (current3 && b) {
@@ -107804,7 +108095,7 @@ function createShiftWatch() {
   let raf2 = 0;
   let frames = 0;
   const rows = [];
-  const publish = () => {
+  const publish2 = () => {
     if (!stats) return;
     if (!on) {
       stats.shifts = null;
@@ -107827,7 +108118,7 @@ function createShiftWatch() {
       region: regionOf(entry),
       sources: entry?.sources
     });
-    publish();
+    publish2();
   };
   const cancelWatch = () => {
     if (!raf2) return;
@@ -107896,13 +108187,13 @@ function createShiftWatch() {
     }
     on = true;
     if (!observer) observer = makeObserver();
-    publish();
+    publish2();
   };
   const markUsable = (t) => {
     if (!on) return false;
     const n3 = Number(t);
     usableAt = Number.isFinite(n3) ? n3 : perfNow();
-    publish();
+    publish2();
     return true;
   };
   const watchMount = (mountEl) => {

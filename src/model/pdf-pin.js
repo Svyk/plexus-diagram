@@ -140,6 +140,46 @@ export function figureCardMarkdown(block, doc) {
   return caption ? `${image} ${caption}` : image;
 }
 
+// A pasted figure is a note card: the image, the caption lines, and the Source chip share one height.
+// Width stays 280. A bare crop matches figureCardSize. A caption or a chip grows the card, capped at 520.
+const FIGURE_COPY_W = 280;
+const FIGURE_COPY_PAD = 26;
+const FIGURE_COPY_LINE = 20;
+const FIGURE_COPY_CHIP = 28;
+const FIGURE_COPY_CHARS = 42;
+const FIGURE_COPY_MAX_LINES = 6;
+const FIGURE_COPY_IMAGE_CAP = 360;
+const FIGURE_COPY_IMAGE_MIN = 72;
+const FIGURE_COPY_MAX = 520;
+
+export function figureCopySize(block, doc, { source = false } = {}) {
+  const caption = pinCaption(block, doc);
+  const lines = caption
+    ? Math.min(FIGURE_COPY_MAX_LINES, Math.max(1, Math.ceil(caption.length / FIGURE_COPY_CHARS)))
+    : 0;
+  const chip = source ? FIGURE_COPY_CHIP : 0;
+  let image = 0;
+  const box = block?.bbox;
+  if (Array.isArray(box) && box.length >= 4) {
+    const bw = Number(box[2]) - Number(box[0]);
+    const bh = Number(box[3]) - Number(box[1]);
+    if (bw > 0 && bh > 0) image = Math.round((FIGURE_COPY_W - FIGURE_COPY_PAD) * (bh / bw));
+  }
+  if (!(image > 0)) image = FIGURE_COPY_IMAGE_MIN;
+  else image = Math.min(FIGURE_COPY_IMAGE_CAP, image);
+  let h = FIGURE_COPY_PAD + image + lines * FIGURE_COPY_LINE + chip;
+  if (h > FIGURE_COPY_MAX) {
+    const keep = chip + (lines ? FIGURE_COPY_LINE : 0);
+    const room = Math.max(FIGURE_COPY_IMAGE_MIN, FIGURE_COPY_MAX - FIGURE_COPY_PAD - keep);
+    image = Math.min(image, room);
+    const textRoom = FIGURE_COPY_MAX - FIGURE_COPY_PAD - image - chip;
+    const fit = Math.max(lines ? 1 : 0, Math.min(lines, Math.floor(textRoom / FIGURE_COPY_LINE)));
+    h = FIGURE_COPY_PAD + image + fit * FIGURE_COPY_LINE + chip;
+    if (h > FIGURE_COPY_MAX) h = FIGURE_COPY_MAX;
+  }
+  return { w: FIGURE_COPY_W, h: Math.round(h) };
+}
+
 export function isSourceAttrString(text) {
   return SOURCE_RE.test(String(text ?? "").trim());
 }

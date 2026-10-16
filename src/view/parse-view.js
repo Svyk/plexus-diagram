@@ -9,6 +9,7 @@ import {
   CARD_JSON_MIME,
   cardJsonPayload,
   figureCardMarkdown,
+  figureCopySize,
   matchParsedBlock,
   pinDeepLink,
   pinSpecFromBlock,
@@ -854,7 +855,10 @@ export function createParseView({
           try { onToast?.(pinnedToast(block.page)); } catch { /* host */ }
         }
         const copied = planCopiedSource({ markdown: plain, source });
-        const json = cardJsonPayload({ markdown: copied.markdown, size: { w: 280, h: 160 }, kind: block.type || "card", source: copied.sourceUid });
+        const size = isImageCopy(block)
+          ? figureCopySize(block, parsed, { source: Boolean(copied.sourceUid || source) })
+          : { w: 280, h: 160 };
+        const json = cardJsonPayload({ markdown: copied.markdown, size, kind: block.type || "card", source: copied.sourceUid });
         const text = source ? `${plain}\n${sourceAttrString(source)}` : plain;
         return writeTyped({ "text/plain": text, [CARD_JSON_MIME]: JSON.stringify(json) });
       }

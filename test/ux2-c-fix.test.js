@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createHost } from "../src/host/roam.js";
-import { matchParsedBlock, pageFracFromBbox } from "../src/model/pdf-pin.js";
+import { figureCopySize, matchParsedBlock, pageFracFromBbox } from "../src/model/pdf-pin.js";
 import { acquireSession } from "../src/session.js";
 import { createSettingsPanel } from "../src/settings.js";
 import { applyPdfReaderDark } from "../src/view/pdf-reader-dark.js";
@@ -288,6 +288,24 @@ test("a figure copy reuses the uploaded file on redo", async () => {
   const menu = readFileSync(new URL("../src/view/parse-view.js", import.meta.url), "utf8");
   assert.match(menu, /copyFigureFile\(/);
   assert.match(menu, /figureCardMarkdown\(live, parsed\)/);
+});
+
+test("a copied figure card is tall enough for the caption and the Source chip", () => {
+  const caption = "Figure 1. Presumptive positives per month. Peaks follow wet-clean months.";
+  const block = { id: "f1", type: "figure", bbox: [0, 0, 400, 160], caption };
+  const sized = figureCopySize(block, { blocks: {} }, { source: true });
+  assert.equal(sized.w, 280);
+  assert.ok(sized.h > 160, `expected a card taller than 160, got ${sized.h}`);
+  assert.ok(sized.h >= 26 + 72 + 20 + 28, `caption and chip do not fit in ${sized.h}`);
+  assert.ok(sized.h <= 520);
+  const bare = figureCopySize({ type: "figure", bbox: [0, 0, 254, 127] }, null, { source: false });
+  assert.equal(bare.w, 280);
+  assert.equal(bare.h, 153);
+  const menu = readFileSync(new URL("../src/view/parse-view.js", import.meta.url), "utf8");
+  assert.match(menu, /figureCopySize\(/);
+  const css = readFileSync(new URL("../src/css/source-chip.css", import.meta.url), "utf8");
+  assert.match(css, /pxd-item__body:has\(> \.pxd-chip--source\)/);
+  assert.match(css, /max-height:\s*360px/);
 });
 
 test("PDF dark mode leaves the board reader alone and paints page photos back", async () => {

@@ -263,7 +263,7 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
       getContext() {
         return {
           clearRect() {}, fillRect() {}, strokeRect() {}, beginPath() {}, rect() {}, fill() {}, stroke() {},
-          save() {}, restore() {}, scale() {}, translate() {}, setTransform() {},
+          save() {}, restore() {}, scale() {}, translate() {}, setTransform() {}, moveTo() {}, lineTo() {},
           fillStyle: "", strokeStyle: "", lineWidth: 1,
         };
       },

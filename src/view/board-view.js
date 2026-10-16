@@ -4098,11 +4098,16 @@ function buildBoardView(onFail, {
   // Shell builds follow the same burst as the reveal cull. The flag is on before the event's hit-test,
   // and off again when the burst ends, which rearms the priority frame and the background pump.
   const syncShellHold = () => {
-    try { itemsR.holdShells?.(deferReveal()); } catch { /* renderer */ }
+    const hold = deferReveal();
+    if (hold) cancelSlice();
+    try { itemsR.holdShells?.(hold); } catch { /* renderer */ }
   };
+  // "burst": every unattached item and edge (showUnderlay); "cover": only the overview-fast queue.
+  let underlayKind = "";
   const showUnderlay = () => {
     if (underlayDrawn) return;
     underlayDrawn = true;
+    underlayKind = "burst";
     const b = board();
     if (!b) return;
     const r = paintRects();
@@ -4151,11 +4156,72 @@ function buildBoardView(onFail, {
     const items = itemsR.pendingBoxes?.() || [];
     if (!items.length) { coverUids = new Set(); underlay.hide(); return; }
     coverUids = new Set(items.map((item) => item.uid));
+    underlayKind = "cover";
     underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
   };
   const releaseUnderlay = () => {
     underlay.hide();
     paintOverviewCover();
+  };
+  // C1. The settle after a fit or a zoom out on a big board attached every near shell and edge in one task (PhD MAIN
+  // at fit: ~1,500 shells and ~2,114 edges, 60-120 ms, most of the zoom-in tier flip). It attaches one slice per
+  // frame instead, nearest the view centre first (selected and editing cards before that), and the underlay boxes
+  // stay up until both queues are empty. A burst that starts meanwhile stops the slices; its own settle resumes them.
+  // Kill switch: speed flag slicedSettle.
+  const SETTLE_SHELLS = 48;
+  const SETTLE_EDGES = 120;
+  const SETTLE_SLICE_MS = 6;
+  let sliceFrame = null;
+  let slicing = false;
+  const slicedSettleOn = () => { try { return notedSpeedFlags().slicedSettle !== false; } catch { return true; } };
+  const sliceWanted = () => slicedSettleOn() && Boolean(size.width) && Boolean(itemsR.isVirtual?.());
+  const endSlice = () => {
+    sliceFrame?.();
+    sliceFrame = null;
+    slicing = false;
+    itemsR.sliceAttach?.(null);
+  };
+  // The canvas stays as it is; the next burst draws it again for what is attached by then.
+  const cancelSlice = () => {
+    if (!slicing) return;
+    endSlice();
+    underlayDrawn = false;
+  };
+  // Call before the settle's content pass: that pass then attaches one slice.
+  const beginSlice = () => {
+    if (sliceWanted()) itemsR.sliceAttach?.({ budget: SETTLE_SHELLS, ms: SETTLE_SLICE_MS });
+    else endSlice();
+  };
+  const sliceEdges = (rect) => (rect ? edgesR.cull?.(rect, { budget: SETTLE_EDGES, ms: SETTLE_SLICE_MS }) || 0 : 0);
+  const sliceStep = () => {
+    sliceFrame = null;
+    if (!slicing) return;
+    if (disposed || suspended) { endSlice(); return; }
+    if (gesturing || wheelLayer) { cancelSlice(); return; }
+    const rect = visibleWorldRect(vp, size, ATTACH_MARGIN);
+    if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, SETTLE_SHELLS, SETTLE_SLICE_MS);
+    const edgesLeft = sliceEdges(rect);
+    if (edgesLeft || (itemsR.attachLeft?.() || 0) > 0) { sliceFrame = timers.frame(sliceStep); return; }
+    endSlice();
+    releaseUnderlay();
+  };
+  // The settle's edge pass and underlay hand-off (after beginSlice and the content pass).
+  const settleAttach = () => {
+    const rect = size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null;
+    if (!sliceWanted()) {
+      endSlice();
+      if (rect) edgesR.cull?.(rect);
+      releaseUnderlay();
+      return;
+    }
+    const edgesLeft = sliceEdges(rect);
+    if (!edgesLeft && !((itemsR.attachLeft?.() || 0) > 0)) { endSlice(); releaseUnderlay(); return; }
+    // A burst's canvas already shows every box that is not attached; a fit (no burst) or the overview cover draws it.
+    if (underlay.isShown() && underlayKind === "burst") underlayDrawn = true;
+    else { underlayDrawn = false; showUnderlay(); }
+    slicing = true;
+    sliceFrame?.();
+    sliceFrame = timers.frame(sliceStep);
   };
   const revealNear = () => {
     if (!size.width) return;
@@ -4210,6 +4276,7 @@ function buildBoardView(onFail, {
       }
       syncShellHold();
       applyLod();
+      beginSlice();
       scheduleContent();
       vpStore.set(vpId, vp);
       // Arrow sizes, link heads and the label cut-off follow the zoom: re-place every edge only when they change.
@@ -4225,9 +4292,8 @@ function buildBoardView(onFail, {
           for (const e of board()?.edges.values() || []) if (e.fromBlock || e.toBlock) dirty.edges.add(e.uid);
         }
       }
-      if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
-      // The shells and edges near the view are in the DOM again (both culls attach at once).
-      releaseUnderlay();
+      // The shells and edges near the view come back (a slice per frame on a big board), then the underlay hides.
+      settleAttach();
       dirty.minimap = true;
       schedule();
       updateBackToContent();
@@ -7586,9 +7652,9 @@ function buildBoardView(onFail, {
           propsPanel.place();
           paintGrid();
           chrome.toolbar.setZoom(vp.zoom);
+          beginSlice();
           scheduleContent();
-          if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
-          releaseUnderlay();
+          settleAttach();
           vpStore.set(vpId, vp);
           dirty.selection = true;
           schedule();
@@ -8085,7 +8151,8 @@ function buildBoardView(onFail, {
   };
   const promoteQueued = (hit) => {
     if (!hit?.uid) return null;
-    itemsR.ensureShell?.(hit.uid);
+    if (itemsR.attachNow) itemsR.attachNow(hit.uid);
+    else itemsR.ensureShell?.(hit.uid);
     if (hit.part === "title") return { kind: "section-title", uid: hit.uid };
     if (hit.part === "border") return { kind: "section-border", uid: hit.uid };
     return { kind: "item", uid: hit.uid };
@@ -8094,7 +8161,7 @@ function buildBoardView(onFail, {
     const screen = { x: (event.clientX || 0) - rootRect.left, y: (event.clientY || 0) - rootRect.top };
     const world = screenToWorld(vp, screen);
     let target = targetOf(event.target);
-    if (target.kind === "empty" && queuedOverview()) {
+    if (target.kind === "empty" && (queuedOverview() || slicing)) {
       const next = promoteQueued(hitTest(board(), world, rects()));
       if (next) target = next;
     }

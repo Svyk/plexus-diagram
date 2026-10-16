@@ -2000,6 +2000,10 @@ export function createItemRenderer({
   let pendingView = null;
   const viewWaiters = [];
   const BULK_ATTACH = 64;
+  // C1: while a settle slices its attach (the view sets this until its queue drains), every content pass attaches at
+  // most one slice; attachLeft counts the wanted shells the last cull left detached.
+  let attachSlice = null;
+  let attachLeft = 0;
   let cullRect = null;
   let virtualOff = false; // the virtualShells kill switch, read once per sync
   const virtual = () => !virtualOff && (lastBoard?.items?.size || 0) > VIRTUAL_MIN;
@@ -2078,6 +2082,7 @@ export function createItemRenderer({
   const cullShells = (rect, { reveal = false, budget = Infinity, ms = Infinity } = {}) => {
     const t0 = ms < Infinity ? now() : 0;
     if (rect) cullRect = rect;
+    attachLeft = 0;
     if (!virtual() || !cullRect) return [];
     const active = activeShellUid();
     let add = [];
@@ -2091,10 +2096,13 @@ export function createItemRenderer({
       else if (!want && on && !reveal) rec.el.remove();
     }
     if (!add.length) return add;
+    const wanted = add.length;
     if (add.length > budget) {
       const cx = cullRect.x + cullRect.w / 2;
       const cy = cullRect.y + cullRect.h / 2;
+      // Selected, hovered, editing and focused cards go first, then nearest the centre.
       const dist = (rec) => {
+        if (keepAttached(rec.uid, rec, active)) return -1;
         const r = drawnRect(rec.uid, lastRects?.get(rec.uid));
         return r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity;
       };
@@ -2111,6 +2119,7 @@ export function createItemRenderer({
         if (t0 && n % 8 === 0 && now() - t0 > ms) { add.length = n; break; }
       }
     }
+    attachLeft = wanted - add.length;
     return add;
   };
   // Many shells at once: one backward walk of the board order inserts each before the next attached shell of its
@@ -5456,7 +5465,7 @@ export function createItemRenderer({
   const fillContent = ({ visibleRect, attachRect = null, zoom = zoomCache, tier = null, dirty = null } = {}) => {
     zoomCache = zoom;
     // Bodies mount within visibleRect (a screen around the view); shells join the DOM within the tighter attachRect.
-    cullShells(attachRect || visibleRect);
+    cullShells(attachRect || visibleRect, attachSlice || undefined);
     paintOffscreen(visibleRect);
     if (!lastBoard || !lastRects || !contentSched) return;
     const next = new Set();
@@ -6828,6 +6837,20 @@ export function createItemRenderer({
       const added = cullShells(rect, { reveal: true, budget, ms });
       for (const rec of added) paintOneOffscreen(rec.uid, rec, rect);
       return added.length;
+    },
+    // C1: a settle on a big board attaches `{ budget, ms }` per content pass until the view clears it (null).
+    sliceAttach(opts) { attachSlice = opts && virtual() ? { budget: opts.budget ?? 48, ms: opts.ms ?? 6 } : null; },
+    attachLeft: () => (virtual() ? attachLeft : 0),
+    // A press on a box during the pop-in: the card's shell joins the DOM now.
+    attachNow(uid) {
+      const el = ensureShell(uid);
+      if (shellsHeld) return el;
+      const rec = shells.get(uid);
+      if (rec?.el && !isAttached(rec)) {
+        attachShell(rec);
+        paintOneOffscreen(uid, rec, lastContent?.visibleRect);
+      }
+      return el || rec?.el || null;
     },
     // The gesture underlay draws a box for every item whose shell is not in the DOM.
     isVirtual: () => virtual(),

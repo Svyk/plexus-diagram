@@ -16,6 +16,7 @@ import { paintSuggest } from "./suggest-lines.js";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const PAIR_OFFSET = 18;
 const LABEL_HIDE_ZOOM = 0.3;
+const now = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
 
 // Liang-Barsky clip of the segment (x1,y1)-(x2,y2) against rect r.
 export function segmentMeetsRect(x1, y1, x2, y2, r) {
@@ -779,11 +780,16 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   };
 
   // A settled camera after a pointer or wheel-zoom gesture: park what left the view, put back what came near.
-  const cull = (rect) => {
-    if (!rect || !lastPass) return;
+  // budget / ms (C1, a sliced settle): build or re-place at most that many near edges (a selected or edited edge does
+  // not count) and return how many near edges are still waiting for a later frame. Parking is never sliced.
+  const cull = (rect, { budget = Infinity, ms = Infinity } = {}) => {
+    if (!rect || !lastPass) return 0;
     view = rect;
     const { board, rects, coveredEdges, selection } = lastPass;
-    if (!virtualEdges(board)) return;
+    if (!virtualEdges(board)) return 0;
+    const t0 = ms < Infinity ? now() : 0;
+    let built = 0;
+    let left = 0;
     for (const edge of board.edges.values()) {
       const rec = edgeEls.get(edge.uid);
       if (!endsReady(board, edge)) {
@@ -811,12 +817,15 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         continue;
       }
       if (rec && !rec.parked && !rec.stale) continue;
+      if (!pinned && (built >= budget || (t0 && built % 16 === 0 && built && now() - t0 > ms))) { left += 1; continue; }
       const live = rec || buildEdge(edge);
       if (rec?.parked) unparkEdge(live);
       live.stale = false;
       paintEdge(board, edge, live, { covered: coveredEdges.has(edge.uid), selected: selection.edge === edge.uid });
       placeEdge(board, edge, live, rects, zoomCache);
+      if (!pinned) built += 1;
     }
+    return left;
   };
 
   // Re-place only the given edges (drag preview): rects may be an override map.

@@ -834,7 +834,10 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
 
   // A settled camera after a pointer or wheel-zoom gesture: park what left the view, put back what came near.
   // budget / ms (C1, a sliced settle): build or re-place at most that many near edges (a selected or edited edge does
-  // not count) and return how many near edges are still waiting for a later frame. Parking is never sliced.
+  // not count) and return how many near edges are still waiting for a later frame. E2-2 (perf2): a sliced cull parks
+  // at most PARK_SLICE far edges a frame too (a zoom-in settle parked ~2,000 in one task); a far edge left for the next
+  // slice is off the view and counts as waiting.
+  const PARK_SLICE = 400;
   const cull = (rect, { budget = Infinity, ms = Infinity } = {}) => {
     if (!rect || !lastPass) return 0;
     view = rect;
@@ -843,6 +846,13 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     const t0 = ms < Infinity ? now() : 0;
     let built = 0;
     let left = 0;
+    let parks = budget < Infinity ? PARK_SLICE : Infinity;
+    const park = (rec) => {
+      if (rec.parked) return;
+      if (parks <= 0) { left += 1; return; }
+      parks -= 1;
+      parkEdge(rec);
+    };
     for (const edge of board.edges.values()) {
       const rec = edgeEls.get(edge.uid);
       if (!endsReady(board, edge)) {
@@ -857,8 +867,9 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         const pinnedWait = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
         const waitNear = pinnedWait || (rec && !rec.parked ? !edgeFar(board, edge, rects) : edgeNear(board, edge, rects));
         if (!waitNear) {
+          if (rec && !rec.parked && parks <= 0) { left += 1; continue; }
           waiting.delete(edge.uid);
-          if (rec) parkEdge(rec);
+          if (rec) park(rec);
         }
         continue;
       }
@@ -866,7 +877,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       const pinned = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
       const near = pinned || (rec && !rec.parked ? !edgeFar(board, edge, rects) : edgeNear(board, edge, rects));
       if (!near) {
-        if (rec) parkEdge(rec);
+        if (rec) park(rec);
         continue;
       }
       if (rec && !rec.parked && !rec.stale) continue;

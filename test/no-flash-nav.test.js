@@ -309,3 +309,23 @@ test("E2-2: the cover released when the slices run out draws the in-view cards t
     assert.equal(worst, 0);
   } finally { m.done(); }
 });
+
+test("E2-2: the zoom-in settle parks far edges in slices (at most ~500 per task), not ~1,300 in one task", async () => {
+  const { sharedTaskProbe } = await import("../src/long-tasks.js");
+  const m = await builtAtFit();
+  const probe = sharedTaskProbe();
+  const orig = probe.span;
+  const drops = [];
+  try {
+    probe.span = (name, fn, phase) => {
+      const a = m.view.stats().edgesAttached;
+      try { return orig(name, fn, phase); } finally { drops.push([name, a - m.view.stats().edgesAttached]); }
+    };
+    const frames = await zoomBurst(m, -1, 4);
+    assert.equal(m.view.state().lod, "detail");
+    assert.deepEqual(missingFrames(frames), []);
+    const most = Math.max(...drops.map(([, d]) => d));
+    assert.ok(most <= 500, `edges parked or dropped in one task: ${most} (${JSON.stringify(drops.filter(([, d]) => d > 100))})`);
+    assert.ok(m.view.stats().edgesAttached < 1500, "the far edges are parked in the end");
+  } finally { probe.span = orig; m.done(); }
+});

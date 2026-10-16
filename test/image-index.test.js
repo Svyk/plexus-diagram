@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { DIAGRAM_DB, DIAGRAM_DB_VERSION, IMAGE_DB, STORE_IMAGE_INDEX, openDiagramDb, openImageDb } from "../src/host/diagram-db.js";
-import { OCR_MIN_H, OCR_MIN_W, RETRY_MS, createImageIndex } from "../src/host/image-index.js";
+import { OCR_MIN_H, OCR_MIN_W, RETRY_MS, createImageIndex, localImagePath } from "../src/host/image-index.js";
 import { colorQuery, colorScore } from "../src/model/color.js";
 
 function makeDb() {
@@ -89,7 +89,7 @@ const settle = async (index) => {
   throw new Error("index never settled");
 };
 
-function rig({ idb = fakeIDB(), sizes = {}, ocr = null, readText = false, now = () => Date.now(), failUrls = [], ocrCap } = {}) {
+function rig({ idb = fakeIDB(), sizes = {}, ocr = null, readText = false, now = () => Date.now(), failUrls = [], ocrCap, helperText = null } = {}) {
   const log = { fetches: [], live: 0, peak: 0 };
   const index = createImageIndex({
     indexedDB: idb,
@@ -108,6 +108,7 @@ function rig({ idb = fakeIDB(), sizes = {}, ocr = null, readText = false, now = 
     decode: async (blob) => ({ rgba: solid(...(colors[blob.url] || [0, 200, 0])), ...(sizes[blob.url] || { w: 640, h: 480 }) }),
     decodeFull: async (blob) => ({ rgb: new Uint8Array(12), width: 2, height: 2, ...(sizes[blob.url] || { w: 640, h: 480 }) }),
     ocr,
+    helperText,
     settings: { colors: () => true, readText: () => readText },
     ocrCap,
   });
@@ -288,4 +289,55 @@ test("text reading: one at a time, large images only, capped per session, resuma
   assert.equal(reads.length, 5);
   assert.equal(keys.filter((k) => next.index.records.get(k).text === "Revenue 2026").length, 5);
   assert.equal(next.log.fetches.filter((f) => f[0] === "big0").length, 0);
+});
+
+test("localImagePath keeps a file path and skips web urls", () => {
+  assert.equal(localImagePath("file:///Users/me/lab%20note.png"), "/Users/me/lab note.png");
+  assert.equal(localImagePath("/Users/me/scan.png"), "/Users/me/scan.png");
+  assert.equal(localImagePath("https://x.test/a.png"), "");
+  assert.equal(localImagePath("blob:https://roamresearch.com/abc"), "");
+});
+
+test("a local path is read by the helper even when in-browser text is off", async () => {
+  const reads = [];
+  const asked = [];
+  const r = rig({
+    readText: false,
+    ocr: { readImageText: async () => { reads.push(1); return "browser"; } },
+    helperText: async (path) => { asked.push(path); return "lab notebook"; },
+  });
+  await r.index.enqueue([{ key: "file:///Users/me/a.png", url: "file:///Users/me/a.png", path: "/Users/me/a.png" }]);
+  await settle(r.index);
+  const rec = r.index.records.get("file:///Users/me/a.png");
+  assert.deepEqual(asked, ["/Users/me/a.png"]);
+  assert.equal(reads.length, 0);
+  assert.equal(rec.text, "lab notebook");
+  assert.equal(rec.failed, undefined);
+  assert.ok(rec.palette);
+  await r.index.enqueue([{ key: "file:///Users/me/a.png", url: "file:///Users/me/a.png", path: "/Users/me/a.png" }]);
+  await settle(r.index);
+  assert.equal(asked.length, 1);
+});
+
+test("a helper that has no image route stores empty text and leaves colour searchable", async () => {
+  const r = rig({
+    readText: true,
+    ocr: { readImageText: async () => "browser" },
+    helperText: async () => null,
+  });
+  await r.index.enqueue([{ key: "p", url: "https://x.test/red.png", path: "/tmp/red.png" }]);
+  await settle(r.index);
+  const rec = r.index.records.get("p");
+  assert.equal(rec.text, "");
+  assert.equal(rec.failed, undefined);
+  assert.ok(rec.palette);
+  const thrown = rig({ helperText: async () => { throw new Error("down"); } });
+  await thrown.index.enqueue([{ key: "q", url: "https://x.test/blue.png", path: "/tmp/blue.png" }]);
+  await settle(thrown.index);
+  assert.equal(thrown.index.records.get("q").text, "");
+  assert.equal(thrown.index.records.get("q").failed, undefined);
+  const web = rig({ helperText: async () => { throw new Error("should not run"); } });
+  await web.index.enqueue([{ key: "https://x.test/red.png", url: "https://x.test/red.png" }]);
+  await settle(web.index);
+  assert.equal(web.index.records.get("https://x.test/red.png").text, undefined);
 });

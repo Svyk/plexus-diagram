@@ -141,26 +141,65 @@ export function figureCardMarkdown(block, doc) {
   return caption ? `${image} ${caption}` : image;
 }
 
-// A pasted figure is a note card: the image, the caption lines, and the Source chip share one height.
-// Width stays 280. A bare crop matches figureCardSize. A caption or a chip grows the card, capped at 520.
+// A pasted figure is a note card. Width stays 280. The body is 254px wide (1px border
+// and 12px padding on each side). .pxd-item__string is 13px with line-height 1.4, so a
+// line box is 19px. A 254px line held 35 characters of the live caption; 34 leaves room
+// for a wider glyph so the last line is not under-counted. The Source chip is 18px text,
+// a 1px border, and 4px of margin above and below (28px). A bare crop matches figureCardSize.
+// A tall picture shrinks toward 520. Caption lines and the chip are never dropped.
 const FIGURE_COPY_W = 280;
 const FIGURE_COPY_PAD = 26;
-const FIGURE_COPY_LINE = 20;
+const FIGURE_COPY_FONT = 13;
+const FIGURE_COPY_LINE_RATIO = 1.4;
+const FIGURE_COPY_LINE = Math.ceil(FIGURE_COPY_FONT * FIGURE_COPY_LINE_RATIO);
+const FIGURE_COPY_CHARS = 34;
 const FIGURE_COPY_CHIP = 28;
-const FIGURE_COPY_CHARS = 42;
-const FIGURE_COPY_MAX_LINES = 6;
 const FIGURE_COPY_IMAGE_CAP = 360;
 const FIGURE_COPY_IMAGE_MIN = 72;
 // A copied image with no crop box. 72px clips a real picture under a two-line caption.
 const FIGURE_COPY_IMAGE_SLOT = 200;
 const FIGURE_COPY_MAX = 520;
 
+// Word wrap at the card's character budget. A word moves to the next line. A word longer
+// than the line breaks, which is what word-break: break-word does on the card body.
+function captionLineCount(caption) {
+  const text = squash(caption);
+  if (!text) return 0;
+  const cols = Math.max(1, FIGURE_COPY_CHARS);
+  let lines = 1;
+  let col = 0;
+  for (const word of text.split(" ")) {
+    if (!word) continue;
+    let rest = word;
+    while (rest) {
+      if (col === 0) {
+        if (rest.length <= cols) { col = rest.length; rest = ""; }
+        else {
+          rest = rest.slice(cols);
+          if (rest) { lines += 1; col = 0; }
+          else col = cols;
+        }
+      } else if (col + 1 + rest.length <= cols) {
+        col += 1 + rest.length;
+        rest = "";
+      } else if (rest.length <= cols) {
+        lines += 1;
+        col = rest.length;
+        rest = "";
+      } else {
+        lines += 1;
+        col = 0;
+      }
+    }
+  }
+  return lines;
+}
+
 export function figureCopySize(block, doc, { source = false } = {}) {
   const caption = pinCaption(block, doc);
-  const lines = caption
-    ? Math.min(FIGURE_COPY_MAX_LINES, Math.max(1, Math.ceil(caption.length / FIGURE_COPY_CHARS)))
-    : 0;
+  const lines = captionLineCount(caption);
   const chip = source ? FIGURE_COPY_CHIP : 0;
+  const text = lines * FIGURE_COPY_LINE;
   let image = 0;
   const box = block?.bbox;
   if (Array.isArray(box) && box.length >= 4) {
@@ -172,17 +211,11 @@ export function figureCopySize(block, doc, { source = false } = {}) {
     const url = String(block?.image?.url || block?.url || "").trim();
     image = url ? FIGURE_COPY_IMAGE_SLOT : FIGURE_COPY_IMAGE_MIN;
   } else image = Math.min(FIGURE_COPY_IMAGE_CAP, image);
-  let h = FIGURE_COPY_PAD + image + lines * FIGURE_COPY_LINE + chip;
-  if (h > FIGURE_COPY_MAX) {
-    const keep = chip + (lines ? FIGURE_COPY_LINE : 0);
-    const room = Math.max(FIGURE_COPY_IMAGE_MIN, FIGURE_COPY_MAX - FIGURE_COPY_PAD - keep);
-    image = Math.min(image, room);
-    const textRoom = FIGURE_COPY_MAX - FIGURE_COPY_PAD - image - chip;
-    const fit = Math.max(lines ? 1 : 0, Math.min(lines, Math.floor(textRoom / FIGURE_COPY_LINE)));
-    h = FIGURE_COPY_PAD + image + fit * FIGURE_COPY_LINE + chip;
-    if (h > FIGURE_COPY_MAX) h = FIGURE_COPY_MAX;
+  if (FIGURE_COPY_PAD + image + text + chip > FIGURE_COPY_MAX) {
+    const room = FIGURE_COPY_MAX - FIGURE_COPY_PAD - text - chip;
+    if (room >= FIGURE_COPY_IMAGE_MIN) image = Math.min(image, room);
   }
-  return { w: FIGURE_COPY_W, h: Math.round(h) };
+  return { w: FIGURE_COPY_W, h: Math.round(FIGURE_COPY_PAD + image + text + chip) };
 }
 
 export function isSourceAttrString(text) {

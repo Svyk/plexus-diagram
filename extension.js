@@ -24866,6 +24866,161 @@ var init_parts_search = __esm({
   }
 });
 
+// src/model/pdf-text-search.js
+function editDistance1(a, b) {
+  const left = String(a || "");
+  const right = String(b || "");
+  if (left === right) return true;
+  const la = left.length;
+  const lb = right.length;
+  if (!la || !lb || Math.abs(la - lb) > 1) return false;
+  const [s, t] = la <= lb ? [left, right] : [right, left];
+  let i = 0;
+  let j = 0;
+  let used = false;
+  while (i < s.length && j < t.length) {
+    if (s[i] === t[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+    if (used) return false;
+    used = true;
+    if (s.length === t.length) i += 1;
+    j += 1;
+  }
+  return true;
+}
+function fracOf(item, width, height) {
+  const tr = Array.isArray(item?.transform) ? item.transform : [];
+  const x = Number(tr[4]) || 0;
+  const baseline = Number(tr[5]) || 0;
+  const w = Number(item?.width) || 0;
+  const h = Number(item?.height) || Math.abs(Number(tr[3])) || 0;
+  const top = height - baseline - h;
+  return [clamp015(x / width), clamp015(top / height), clamp015(w / width), clamp015(h / height)];
+}
+function pageFromTextContent({ n: n3 = 1, width = 0, height = 0, items = [] } = {}) {
+  const spans = [];
+  const bits = [];
+  const pageW = Number(width) || 0;
+  const pageH = Number(height) || 0;
+  for (const item of Array.isArray(items) ? items : []) {
+    const str3 = String(item?.str || "");
+    if (!str3) continue;
+    bits.push(str3);
+    if (pageW > 0 && pageH > 0) spans.push({ str: str3, frac: fracOf(item, pageW, pageH) });
+  }
+  const text4 = bits.join(" ").replace(/\s+/g, " ").trim();
+  return { n: Number(n3) || 0, text: text4, lower: text4.toLowerCase(), spans };
+}
+function wordsOf2(lower4) {
+  return lower4.match(/[a-z0-9]+/g) || [];
+}
+function boxForQuery(page, text4) {
+  const needle = String(text4 ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
+  if (!needle || !page) return null;
+  const lower4 = page.lower || String(page.text || "").toLowerCase();
+  const terms = queryTerms(needle);
+  const term = terms[0] || needle;
+  const fuzzy2 = term.length >= 4 && !lower4.includes(term) && !/\s/.test(term);
+  return flashFrac({ ...page, lower: lower4 }, fuzzy2 ? term : needle, fuzzy2 ? term : "");
+}
+function flashFrac(page, needle, fuzzyWord) {
+  const spans = Array.isArray(page.spans) ? page.spans : [];
+  const want = String(fuzzyWord || needle || "").toLowerCase();
+  if (!want) return null;
+  for (const span of spans) {
+    const str3 = String(span?.str || "").toLowerCase();
+    if (str3.includes(want)) return span.frac || null;
+  }
+  if (fuzzyWord) {
+    for (const span of spans) {
+      for (const word of wordsOf2(String(span?.str || "").toLowerCase())) {
+        if (editDistance1(word, needle)) return span.frac || null;
+      }
+    }
+  }
+  return null;
+}
+function exactOf(hit, phrase) {
+  if (typeof hit.exact === "boolean") return hit.exact;
+  const lower4 = hit.page?.lower ?? hit.lower ?? "";
+  const exact = lower4.includes(phrase);
+  hit.exact = exact;
+  return exact;
+}
+function rankPostingHits(candidates2, { text: text4 = "", pages = "" } = {}, limit = 40) {
+  const terms = queryTerms(text4);
+  if (!terms.length) return [];
+  const phrase = String(text4 ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
+  const range = parsePageRange(pages);
+  const cap4 = Math.max(1, Math.floor(Number(limit) || 40));
+  const phraseMatters = Boolean(phrase) && (terms.length > 1 || phrase.includes(" "));
+  const rows = [];
+  for (const hit of Array.isArray(candidates2) ? candidates2 : []) {
+    const n3 = Number(hit?.n) || 0;
+    if (range && (n3 < range.from || n3 > range.to)) continue;
+    rows.push(hit);
+  }
+  rows.sort((a, b) => Number(a.fuzzy) - Number(b.fuzzy) || (b.count || 0) - (a.count || 0) || (a.seq || 0) - (b.seq || 0));
+  const chosen = [];
+  let exacts = 0;
+  for (const hit of rows) {
+    const exact = phraseMatters ? exactOf(hit, phrase) : false;
+    if (exact) exacts += 1;
+    chosen.push(exact ? { ...hit, exact: true } : hit);
+    if (!phraseMatters && chosen.length >= cap4) break;
+    if (phraseMatters && exacts >= cap4) break;
+  }
+  chosen.sort((a, b) => Number(Boolean(b.exact)) - Number(Boolean(a.exact)) || Number(a.fuzzy) - Number(b.fuzzy) || (b.count || 0) - (a.count || 0) || (a.seq || 0) - (b.seq || 0));
+  const needle = phraseMatters ? phrase : terms[0] || "";
+  return chosen.slice(0, cap4).map((hit) => {
+    const page = hit.page || {};
+    const fuzzyWord = hit.fuzzy ? terms[0] || "" : "";
+    return {
+      hash: hit.doc?.hash || "",
+      url: hit.doc?.url || "",
+      pdfUid: hit.doc?.pdfUid || "",
+      title: hit.doc?.title || "",
+      page: Number(hit.n) || 0,
+      text: page.text || "",
+      snippet: partSnippet(page.text || "", text4),
+      frac: Array.isArray(page.spans) && page.spans.length ? flashFrac(page, hit.exact ? phrase : hit.fuzzyWord || needle, fuzzyWord) : null,
+      exact: Boolean(hit.exact),
+      fuzzy: Boolean(hit.fuzzy)
+    };
+  });
+}
+function pdfTextActivate(hit, { add = false, item = null } = {}) {
+  if (!hit || typeof hit !== "object") return null;
+  if (add) return { action: "add", hit };
+  const onBoard = Boolean(item?.uid);
+  const blockUid3 = onBoard ? item.target?.kind === "block" && item.target.uid ? item.target.uid : item.uid : String(hit.pdfUid || hit.blockUid || "");
+  const page = Number(hit.page) || 1;
+  const frac = Array.isArray(hit.frac) && hit.frac.length >= 4 ? hit.frac.slice(0, 4) : null;
+  if (!blockUid3) return { action: "sidebar", page, url: String(hit.url || ""), frac, hit };
+  return {
+    action: "reader",
+    cardUid: onBoard ? item.uid : "",
+    blockUid: blockUid3,
+    page,
+    frac,
+    source: onBoard ? item.string || "" : hit.url ? `{{[[pdf]]: ${hit.url}}}` : "",
+    title: hit.title || hit.docTitle || "",
+    hit
+  };
+}
+var clamp015, PDF_TEXT_OPEN_TIP;
+var init_pdf_text_search = __esm({
+  "src/model/pdf-text-search.js"() {
+    init_library();
+    init_parts_search();
+    clamp015 = (n3) => Math.max(0, Math.min(1, Number(n3) || 0));
+    PDF_TEXT_OPEN_TIP = "Opens this page. Shift+Enter or drag adds it to the board.";
+  }
+});
+
 // src/model/color.js
 function rgbToOklab(r, g, b) {
   const lr = LIN[r & 255];
@@ -25839,16 +25994,35 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       img.setAttribute("alt", "");
       img.setAttribute("loading", "lazy");
     }
-    const open = (event) => {
+    r.setAttribute("title", PDF_TEXT_OPEN_TIP);
+    if (hit.pdfUid) {
+      r.setAttribute("draggable", "true");
+      r.draggable = true;
+    }
+    const activate = (event) => {
       event.stopPropagation();
+      const add = event.shiftKey === true;
       try {
-        on.openPdfHit?.(hit);
+        if (typeof on.openPdfText === "function") on.openPdfText(hit, { add, needle: input.value });
+        else on.openPdfHit?.(hit);
       } catch {
       }
       r.classList.add("pxd-panel__row--on");
     };
-    listenRow(chip, "click", open);
-    listenRow(r, "click", open);
+    r.pxdActivate = activate;
+    listenRow(chip, "click", activate);
+    listenRow(r, "click", activate);
+    if (hit.pdfUid) {
+      listenRow(r, "dragstart", (event) => {
+        try {
+          const ref = `((${hit.pdfUid}))`;
+          event.dataTransfer?.setData?.(CARD_MIME, ref);
+          event.dataTransfer?.setData?.("text/plain", ref);
+          if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+        } catch {
+        }
+      });
+    }
     return r;
   };
   const partRow = (parent, part, needle) => {
@@ -25916,11 +26090,19 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       pdfBlockUid: part.pdfUid || "",
       kind: part.kind === "table" || part.kind === "figure" || part.kind === "formula" ? part.kind : "blocks"
     };
+    const textHit = part.kind !== "figure";
+    if (textHit) r.setAttribute("title", PDF_TEXT_OPEN_TIP);
     const openThis = (event) => {
       event.stopPropagation();
-      if (on.openPart?.(part) !== true) on.addPart?.(payload);
+      if (textHit && typeof on.openPdfText === "function") {
+        try {
+          on.openPdfText({ ...part, title: part.docTitle || part.title || "", needle: input.value }, { add: event.shiftKey === true, needle: input.value });
+        } catch {
+        }
+      } else if (on.openPart?.(part) !== true) on.addPart?.(payload);
       r.classList.add("pxd-panel__row--on");
     };
+    if (textHit && typeof on.openPdfText === "function") r.pxdActivate = openThis;
     listenRow(chip, "click", openThis);
     listenRow(r, "click", openThis);
     listenRow(r, "dragstart", (event) => {
@@ -26522,6 +26704,15 @@ ${page}`)) return false;
     if (event.key === "Enter") {
       event.preventDefault();
       if (activeRow && results.contains?.(activeRow)) {
+        if (typeof activeRow.pxdActivate === "function") {
+          try {
+            activeRow.pxdActivate({ shiftKey: event.shiftKey === true, stopPropagation() {
+            }, preventDefault() {
+            } });
+          } catch {
+          }
+          return;
+        }
         try {
           activeRow.click();
         } catch {
@@ -27326,6 +27517,7 @@ var init_panel = __esm({
     init_pdf_ident();
     init_semantic();
     init_parts_search();
+    init_pdf_text_search();
     init_color();
     init_drop();
     init_journal();
@@ -71108,7 +71300,7 @@ var MOTION_TIMING = Object.freeze({
   fractionMs: 300
 });
 var SVG_NS4 = "http://www.w3.org/2000/svg";
-var clamp015 = (n3) => Math.max(0, Math.min(1, n3));
+var clamp016 = (n3) => Math.max(0, Math.min(1, n3));
 function partKind(type) {
   const t = String(type || "").toLowerCase();
   if (t === "table") return "table";
@@ -71153,15 +71345,15 @@ function countLabel(counts, ms = null) {
 }
 function overallFraction({ fraction = null, page = 0, pageCount = 0 } = {}) {
   const f = Number(fraction);
-  if (fraction != null && Number.isFinite(f)) return clamp015(f);
+  if (fraction != null && Number.isFinite(f)) return clamp016(f);
   const p = Number(page);
   const n3 = Number(pageCount);
-  if (n3 > 0 && p > 0) return clamp015(p / n3);
+  if (n3 > 0 && p > 0) return clamp016(p / n3);
   return null;
 }
 function ringOffset(fraction) {
   if (fraction == null || !Number.isFinite(Number(fraction))) return 75;
-  return Math.round((1 - clamp015(Number(fraction))) * 1e3) / 10;
+  return Math.round((1 - clamp016(Number(fraction))) * 1e3) / 10;
 }
 function pageSweepMs(durations, t = MOTION_TIMING) {
   const last = (durations || []).filter((d) => Number.isFinite(d) && d > 0).slice(-3);
@@ -86472,185 +86664,8 @@ function createImageIndex({
   return { load, enqueue, pause, status, records, dispose, version: IMAGE_DB_VERSION };
 }
 
-// src/model/pdf-text-search.js
-init_library();
-init_parts_search();
-var clamp016 = (n3) => Math.max(0, Math.min(1, Number(n3) || 0));
-function editDistance1(a, b) {
-  const left = String(a || "");
-  const right = String(b || "");
-  if (left === right) return true;
-  const la = left.length;
-  const lb = right.length;
-  if (!la || !lb || Math.abs(la - lb) > 1) return false;
-  const [s, t] = la <= lb ? [left, right] : [right, left];
-  let i = 0;
-  let j = 0;
-  let used = false;
-  while (i < s.length && j < t.length) {
-    if (s[i] === t[j]) {
-      i += 1;
-      j += 1;
-      continue;
-    }
-    if (used) return false;
-    used = true;
-    if (s.length === t.length) i += 1;
-    j += 1;
-  }
-  return true;
-}
-function fracOf(item, width, height) {
-  const tr = Array.isArray(item?.transform) ? item.transform : [];
-  const x = Number(tr[4]) || 0;
-  const baseline = Number(tr[5]) || 0;
-  const w = Number(item?.width) || 0;
-  const h = Number(item?.height) || Math.abs(Number(tr[3])) || 0;
-  const top = height - baseline - h;
-  return [clamp016(x / width), clamp016(top / height), clamp016(w / width), clamp016(h / height)];
-}
-function pageFromTextContent({ n: n3 = 1, width = 0, height = 0, items = [] } = {}) {
-  const spans = [];
-  const bits = [];
-  const pageW = Number(width) || 0;
-  const pageH = Number(height) || 0;
-  for (const item of Array.isArray(items) ? items : []) {
-    const str3 = String(item?.str || "");
-    if (!str3) continue;
-    bits.push(str3);
-    if (pageW > 0 && pageH > 0) spans.push({ str: str3, frac: fracOf(item, pageW, pageH) });
-  }
-  const text4 = bits.join(" ").replace(/\s+/g, " ").trim();
-  return { n: Number(n3) || 0, text: text4, lower: text4.toLowerCase(), spans };
-}
-function docsFromPartRows(rows) {
-  const docs = /* @__PURE__ */ new Map();
-  for (const row4 of Array.isArray(rows) ? rows : []) {
-    if (!row4 || row4.kind === "figure") continue;
-    const text4 = String(row4.text || "").replace(/\s+/g, " ").trim();
-    if (!text4) continue;
-    const hash = String(row4.sha256 || row4.url || "");
-    if (!hash) continue;
-    let doc = docs.get(hash);
-    if (!doc) {
-      doc = {
-        hash,
-        url: row4.url || "",
-        pdfUid: row4.pdfUid || "",
-        title: row4.docTitle || "",
-        pages: /* @__PURE__ */ new Map()
-      };
-      docs.set(hash, doc);
-    }
-    const n3 = Number(row4.page) || 0;
-    const page = doc.pages.get(n3) || { n: n3, bits: [] };
-    page.bits.push(text4);
-    doc.pages.set(n3, page);
-  }
-  return [...docs.values()].map((doc) => ({
-    hash: doc.hash,
-    url: doc.url,
-    pdfUid: doc.pdfUid,
-    title: doc.title,
-    pages: [...doc.pages.values()].map((page) => {
-      const text4 = page.bits.join(" ").replace(/\s+/g, " ").trim();
-      return { n: page.n, text: text4, lower: text4.toLowerCase(), spans: [] };
-    })
-  }));
-}
-function wordsOf2(lower4) {
-  return lower4.match(/[a-z0-9]+/g) || [];
-}
-function boxForQuery(page, text4) {
-  const needle = String(text4 ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
-  if (!needle || !page) return null;
-  const lower4 = page.lower || String(page.text || "").toLowerCase();
-  const terms = queryTerms(needle);
-  const term = terms[0] || needle;
-  const fuzzy2 = term.length >= 4 && !lower4.includes(term) && !/\s/.test(term);
-  return flashFrac({ ...page, lower: lower4 }, fuzzy2 ? term : needle, fuzzy2 ? term : "");
-}
-function flashFrac(page, needle, fuzzyWord) {
-  const spans = Array.isArray(page.spans) ? page.spans : [];
-  const want = String(fuzzyWord || needle || "").toLowerCase();
-  if (!want) return null;
-  for (const span of spans) {
-    const str3 = String(span?.str || "").toLowerCase();
-    if (str3.includes(want)) return span.frac || null;
-  }
-  if (fuzzyWord) {
-    for (const span of spans) {
-      for (const word of wordsOf2(String(span?.str || "").toLowerCase())) {
-        if (editDistance1(word, needle)) return span.frac || null;
-      }
-    }
-  }
-  return null;
-}
-function exactOf(hit, phrase) {
-  if (typeof hit.exact === "boolean") return hit.exact;
-  const lower4 = hit.page?.lower ?? hit.lower ?? "";
-  const exact = lower4.includes(phrase);
-  hit.exact = exact;
-  return exact;
-}
-function rankPostingHits(candidates2, { text: text4 = "", pages = "" } = {}, limit = 40) {
-  const terms = queryTerms(text4);
-  if (!terms.length) return [];
-  const phrase = String(text4 ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
-  const range = parsePageRange(pages);
-  const cap4 = Math.max(1, Math.floor(Number(limit) || 40));
-  const phraseMatters = Boolean(phrase) && (terms.length > 1 || phrase.includes(" "));
-  const rows = [];
-  for (const hit of Array.isArray(candidates2) ? candidates2 : []) {
-    const n3 = Number(hit?.n) || 0;
-    if (range && (n3 < range.from || n3 > range.to)) continue;
-    rows.push(hit);
-  }
-  rows.sort((a, b) => Number(a.fuzzy) - Number(b.fuzzy) || (b.count || 0) - (a.count || 0) || (a.seq || 0) - (b.seq || 0));
-  const chosen = [];
-  let exacts = 0;
-  for (const hit of rows) {
-    const exact = phraseMatters ? exactOf(hit, phrase) : false;
-    if (exact) exacts += 1;
-    chosen.push(exact ? { ...hit, exact: true } : hit);
-    if (!phraseMatters && chosen.length >= cap4) break;
-    if (phraseMatters && exacts >= cap4) break;
-  }
-  chosen.sort((a, b) => Number(Boolean(b.exact)) - Number(Boolean(a.exact)) || Number(a.fuzzy) - Number(b.fuzzy) || (b.count || 0) - (a.count || 0) || (a.seq || 0) - (b.seq || 0));
-  const needle = phraseMatters ? phrase : terms[0] || "";
-  return chosen.slice(0, cap4).map((hit) => {
-    const page = hit.page || {};
-    const fuzzyWord = hit.fuzzy ? terms[0] || "" : "";
-    return {
-      hash: hit.doc?.hash || "",
-      url: hit.doc?.url || "",
-      pdfUid: hit.doc?.pdfUid || "",
-      title: hit.doc?.title || "",
-      page: Number(hit.n) || 0,
-      text: page.text || "",
-      snippet: partSnippet(page.text || "", text4),
-      frac: Array.isArray(page.spans) && page.spans.length ? flashFrac(page, hit.exact ? phrase : hit.fuzzyWord || needle, fuzzyWord) : null,
-      exact: Boolean(hit.exact),
-      fuzzy: Boolean(hit.fuzzy)
-    };
-  });
-}
-function pdfHitOpenDetail(hit, item) {
-  if (!hit || !item?.uid) return null;
-  const blockUid3 = item.target?.kind === "block" && item.target.uid ? item.target.uid : item.uid;
-  const frac = Array.isArray(hit.frac) && hit.frac.length >= 4 ? hit.frac.slice(0, 4) : null;
-  return {
-    cardUid: item.uid,
-    blockUid: blockUid3,
-    page: Number(hit.page) || 1,
-    frac,
-    source: item.string || "",
-    title: hit.title || ""
-  };
-}
-
 // src/host/pdf-text-index.js
+init_pdf_text_search();
 init_library();
 var PDF_TEXT_DB = "plexus-diagram-pdf-text";
 var PDF_TEXT_DB_VERSION = 1;
@@ -86659,6 +86674,10 @@ var PDF_TEXT_V = 1;
 var PAGE_CAP = 80;
 var JOB_CAP = 40;
 var PDF_TEXT_NO_LIB_MS = 6e4;
+var PDF_TEXT_SLICE_MS = 16;
+var WORD_CHUNK = 80;
+var ROW_CHUNK = 24;
+var ITEM_CHUNK = 120;
 var wordsOf3 = (lower4) => String(lower4 || "").match(/[a-z0-9]+/g) || [];
 function timerLater(fn, ms) {
   const id = setTimeout(fn, ms);
@@ -86786,46 +86805,281 @@ function createPdfTextIndex({
   const share = holdPdfTextDb(factory);
   const byUrl = /* @__PURE__ */ new Map();
   let seq = 0;
+  const postingQueue = [];
+  const postingLive = /* @__PURE__ */ new Set();
+  let postingPumping = false;
+  let postingLater = null;
+  let pendingRows = null;
+  let rowSource = null;
+  let rowCursor = 0;
+  let rowFoldDone = true;
+  let rowStamp = "";
+  let foldDocs = /* @__PURE__ */ new Map();
   const openDbOnce = () => {
     if (!factory) return Promise.resolve(null);
     share.hold();
     return share.open();
   };
-  function addPostings(doc) {
-    if (!doc?.hash || byKey.has(doc.hash)) return false;
+  function paused() {
+    return pausedUntil > now4();
+  }
+  function rowsStamp(rows) {
+    const list = Array.isArray(rows) ? rows : [];
+    let h = list.length;
+    for (let i = 0; i < list.length; i += 17) {
+      const row4 = list[i] || {};
+      h = Math.imul(h, 33) + String(row4.text || "").length + (Number(row4.page) || 0) + String(row4.sha256 || row4.url || "").length;
+    }
+    return String(h);
+  }
+  function pageList(doc) {
     const pages = [];
-    for (const page of Array.isArray(doc.pages) ? doc.pages : []) {
+    for (const page of Array.isArray(doc?.pages) ? doc.pages : []) {
       const text4 = String(page?.text || "").replace(/\s+/g, " ").trim();
       if (!text4) continue;
-      const lower4 = page.lower || text4.toLowerCase();
-      pages.push({ n: Number(page.n) || 0, text: text4, lower: lower4 });
+      pages.push({ n: Number(page.n) || 0, text: text4, lower: page.lower || text4.toLowerCase() });
     }
-    const stored = {
-      hash: doc.hash,
-      url: doc.url || "",
-      pdfUid: doc.pdfUid || "",
-      title: doc.title || "",
-      pages,
-      empty: pages.length === 0
-    };
-    byKey.set(stored.hash, stored);
-    if (stored.url) byUrl.set(stored.url, stored);
-    docs.push(stored);
-    if (stored.empty) return false;
+    return pages;
+  }
+  function rememberDoc(doc) {
+    if (!doc?.hash) return false;
+    const pages = pageList(doc);
+    let stored = byKey.get(doc.hash);
+    if (!pages.length) {
+      if (stored) return false;
+      stored = { hash: doc.hash, url: doc.url || "", pdfUid: doc.pdfUid || "", title: doc.title || "", pages: [], empty: true };
+      byKey.set(stored.hash, stored);
+      if (stored.url) byUrl.set(stored.url, stored);
+      docs.push(stored);
+      return false;
+    }
+    if (!stored) {
+      stored = { hash: doc.hash, url: doc.url || "", pdfUid: doc.pdfUid || "", title: doc.title || "", pages: [], empty: false };
+      byKey.set(stored.hash, stored);
+      if (stored.url) byUrl.set(stored.url, stored);
+      docs.push(stored);
+    }
+    const have = new Set(stored.pages.map((page) => page.n));
+    const start = stored.pages.length;
     for (const page of pages) {
-      seq += 1;
-      const pageSeq = seq;
-      for (const word of new Set(wordsOf3(page.lower))) {
-        let list = postings.get(word);
-        if (!list) postings.set(word, list = []);
-        list.push({ doc: stored, n: page.n, seq: pageSeq });
-        const bucket = `${word[0]}:${word.length}`;
-        let set = buckets2.get(bucket);
-        if (!set) buckets2.set(bucket, set = /* @__PURE__ */ new Set());
-        set.add(word);
+      if (have.has(page.n)) continue;
+      have.add(page.n);
+      stored.pages.push(page);
+    }
+    if (stored.pages.length) stored.empty = false;
+    if (stored.pages.length === start) return false;
+    if (postingLive.has(stored.hash)) return true;
+    postingLive.add(stored.hash);
+    postingQueue.push({ hash: stored.hash, pageI: start, wordI: 0, words: null, pageSeq: 0 });
+    return true;
+  }
+  function postWord(stored, page, word, pageSeq) {
+    if (!word) return;
+    let list = postings.get(word);
+    if (!list) postings.set(word, list = []);
+    list.push({ doc: stored, n: page.n, seq: pageSeq });
+    const bucket = `${word[0]}:${word.length}`;
+    let set = buckets2.get(bucket);
+    if (!set) buckets2.set(bucket, set = /* @__PURE__ */ new Set());
+    set.add(word);
+  }
+  function finishJob(job, notify) {
+    postingLive.delete(job.hash);
+    const at = postingQueue.indexOf(job);
+    if (at >= 0) postingQueue.splice(at, 1);
+    if (notify) {
+      try {
+        onReady2?.(job.hash);
+      } catch {
       }
     }
-    return true;
+  }
+  function forgetDoc(hash) {
+    const stored = byKey.get(hash);
+    if (!stored) return;
+    byKey.delete(hash);
+    if (stored.url && byUrl.get(stored.url) === stored) byUrl.delete(stored.url);
+    const at = docs.indexOf(stored);
+    if (at >= 0) docs.splice(at, 1);
+    for (const [word, list] of postings) {
+      const next = list.filter((hit) => hit.doc !== stored);
+      if (next.length) postings.set(word, next);
+      else {
+        postings.delete(word);
+        const bucket = `${word[0]}:${word.length}`;
+        const set = buckets2.get(bucket);
+        if (set) {
+          set.delete(word);
+          if (!set.size) buckets2.delete(bucket);
+        }
+      }
+    }
+  }
+  function foldOneRow(row4) {
+    if (!row4 || row4.kind === "figure") return;
+    const text4 = String(row4.text || "").replace(/\s+/g, " ").trim();
+    if (!text4) return;
+    const hash = String(row4.sha256 || row4.url || "");
+    if (!hash) return;
+    let doc = foldDocs.get(hash);
+    if (!doc) {
+      doc = { hash, url: row4.url || "", pdfUid: row4.pdfUid || "", title: row4.docTitle || "", pages: /* @__PURE__ */ new Map() };
+      foldDocs.set(hash, doc);
+    }
+    const n3 = Number(row4.page) || 0;
+    const page = doc.pages.get(n3) || { n: n3, bits: [] };
+    page.bits.push(text4);
+    doc.pages.set(n3, page);
+  }
+  function beginRows(list) {
+    const stamp2 = rowsStamp(list);
+    if (stamp2 === rowStamp && (rowFoldDone || rowSource)) return;
+    rowStamp = stamp2;
+    rowSource = Array.isArray(list) ? list : [];
+    rowCursor = 0;
+    rowFoldDone = rowSource.length === 0;
+    foldDocs = /* @__PURE__ */ new Map();
+  }
+  function runOneChunk({ notify }) {
+    const started = now4();
+    let done3 = 0;
+    if (!rowFoldDone && rowSource) {
+      while (done3 < ROW_CHUNK && rowCursor < rowSource.length) {
+        if (done3 > 0 && now4() - started >= PDF_TEXT_SLICE_MS) break;
+        foldOneRow(rowSource[rowCursor]);
+        rowCursor += 1;
+        done3 += 1;
+      }
+      if (rowCursor >= rowSource.length) {
+        rowFoldDone = true;
+        for (const doc of foldDocs.values()) {
+          const pages = [...doc.pages.values()].map((page) => {
+            const text4 = page.bits.join(" ").replace(/\s+/g, " ").trim();
+            return { n: page.n, text: text4, lower: text4.toLowerCase() };
+          });
+          rememberDoc({ hash: doc.hash, url: doc.url, pdfUid: doc.pdfUid, title: doc.title, pages });
+        }
+        foldDocs = /* @__PURE__ */ new Map();
+      }
+    }
+    if (done3 > 0 && now4() - started >= PDF_TEXT_SLICE_MS) return;
+    let wordsDone = 0;
+    let hops = 0;
+    while (wordsDone < WORD_CHUNK && hops < WORD_CHUNK && postingQueue.length) {
+      if (wordsDone > 0 && now4() - started >= PDF_TEXT_SLICE_MS) break;
+      const job = postingQueue[0];
+      const stored = byKey.get(job.hash);
+      if (!stored) {
+        finishJob(job, false);
+        continue;
+      }
+      if (job.pageI >= stored.pages.length) {
+        finishJob(job, notify);
+        break;
+      }
+      const page = stored.pages[job.pageI];
+      if (job.words == null || job.wordPage !== job.pageI) {
+        job.words = [...new Set(wordsOf3(page.lower || page.text || ""))];
+        job.wordI = 0;
+        job.wordPage = job.pageI;
+        seq += 1;
+        job.pageSeq = seq;
+      }
+      if (job.wordI >= job.words.length) {
+        job.pageI += 1;
+        job.words = null;
+        hops += 1;
+        if (job.pageI >= stored.pages.length) {
+          finishJob(job, notify);
+          break;
+        }
+        continue;
+      }
+      postWord(stored, page, job.words[job.wordI], job.pageSeq);
+      job.wordI += 1;
+      wordsDone += 1;
+      hops += 1;
+    }
+  }
+  function scheduleAfterPause() {
+    if (postingLater) return;
+    const gen = generation;
+    const wait2 = Math.max(0, pausedUntil - now4());
+    let cancel = null;
+    try {
+      cancel = later(() => {
+        postingLater = null;
+        if (gen !== generation) return;
+        if (pausedUntil > now4()) {
+          scheduleAfterPause();
+          return;
+        }
+        armPostings();
+      }, wait2);
+    } catch {
+      cancel = null;
+    }
+    postingLater = typeof cancel === "function" ? cancel : (() => {
+    });
+  }
+  function postingWork() {
+    return postingQueue.length > 0 || !rowFoldDone || pendingRows != null;
+  }
+  function armPostings() {
+    if (postingPumping || typeof budget?.idle !== "function") return;
+    if (!postingWork()) {
+      if (finishSlices) {
+        const done3 = finishSlices;
+        finishSlices = null;
+        try {
+          done3();
+        } catch {
+        }
+      }
+      return;
+    }
+    if (paused()) {
+      scheduleAfterPause();
+      return;
+    }
+    postingPumping = true;
+    const gen = generation;
+    const cancel = budget.idle(() => {
+      cancelPostings = null;
+      postingPumping = false;
+      if (gen !== generation) return;
+      if (paused()) {
+        scheduleAfterPause();
+        return;
+      }
+      if (pendingRows) {
+        const rows = pendingRows;
+        pendingRows = null;
+        beginRows(rows);
+      }
+      runOneChunk({ notify: true });
+      if (gen !== generation) return;
+      armPostings();
+    }, { label: "pdf-text-postings" });
+    cancelPostings = typeof cancel === "function" ? cancel : null;
+  }
+  function chewItems(job) {
+    const started = now4();
+    const items = job.items || [];
+    let done3 = 0;
+    while ((job.itemI || 0) < items.length && done3 < ITEM_CHUNK) {
+      if (done3 > 0 && now4() - started >= PDF_TEXT_SLICE_MS) break;
+      const item = items[job.itemI];
+      job.itemI += 1;
+      done3 += 1;
+      if (item?.str) job.bits.push(String(item.str));
+    }
+    if (job.itemI < items.length) return;
+    const text4 = (job.bits || []).join(" ").replace(/\s+/g, " ").trim();
+    if (text4) job.pages.push({ n: job.pageN || job.n, text: text4, lower: text4.toLowerCase() });
+    job.items = null;
+    job.bits = null;
+    job.itemI = 0;
   }
   async function withStore(mode, fn) {
     try {
@@ -86863,45 +87117,24 @@ function createPdfTextIndex({
           const doc = { hash: key, url: rec.url || "", pdfUid: rec.pdfUid || "", title: rec.title || "", pages: rec.pages };
           const text4 = (doc.pages || []).some((page) => String(page?.text || "").trim());
           if (text4) pendingDocs.push(doc);
-          else addPostings(doc);
+          else rememberDoc(doc);
         }
       }
       if (token !== loadToken) return false;
-      if (!pendingDocs.length || typeof budget?.idle !== "function") {
-        for (const doc of pendingDocs) addPostings(doc);
+      for (const doc of pendingDocs) rememberDoc(doc);
+      if (token !== loadToken) return false;
+      if (!postingQueue.length || typeof budget?.idle !== "function") {
+        let guard = 0;
+        while (postingQueue.length && guard < 1e5) {
+          runOneChunk({ notify: false });
+          guard += 1;
+        }
         if (token === loadToken) loadDone = true;
         return true;
       }
       await new Promise((resolve) => {
         finishSlices = resolve;
-        let i = 0;
-        const slice = () => {
-          cancelPostings = null;
-          if (token !== loadToken) {
-            resolve();
-            return;
-          }
-          addPostings(pendingDocs[i]);
-          i += 1;
-          if (i >= pendingDocs.length) {
-            resolve();
-            return;
-          }
-          const cancel2 = budget.idle(slice, { label: "pdf-text-postings" });
-          cancelPostings = () => {
-            try {
-              cancel2?.();
-            } catch {
-            }
-          };
-        };
-        const cancel = budget.idle(slice, { label: "pdf-text-postings" });
-        cancelPostings = () => {
-          try {
-            cancel?.();
-          } catch {
-          }
-        };
+        armPostings();
       });
       finishSlices = null;
       if (token !== loadToken) return false;
@@ -86973,9 +87206,18 @@ ${hit.n}`;
     return rankPostingHits(pagesFor(text4), query || {}, limit);
   }
   function noteParsed(rows) {
-    let added = 0;
-    for (const doc of docsFromPartRows(rows)) if (addPostings(doc)) added += 1;
-    return added;
+    const list = Array.isArray(rows) ? rows : [];
+    if (paused()) {
+      pendingRows = list;
+      scheduleAfterPause();
+      return 0;
+    }
+    const stamp2 = rowsStamp(list);
+    if (stamp2 === rowStamp && rowFoldDone) return 0;
+    beginRows(list);
+    runOneChunk({ notify: false });
+    if (postingQueue.length || !rowFoldDone) armPostings();
+    return 1;
   }
   function pause(ms = 600) {
     pausedUntil = now4() + ms;
@@ -87079,6 +87321,10 @@ ${hit.n}`;
       job.n = 0;
       return false;
     }
+    if (job.items) {
+      chewItems(job);
+      return false;
+    }
     job.n += 1;
     if (job.n > Math.min(job.handle.pageCount, PAGE_CAP)) {
       const doc = {
@@ -87093,21 +87339,33 @@ ${hit.n}`;
         return false;
       }
       const known2 = byKey.has(doc.hash);
-      const added = addPostings(doc);
+      rememberDoc(doc);
       if (!known2 && byKey.has(doc.hash)) {
         try {
           await save(byKey.get(doc.hash));
         } catch {
         }
-        if (added) {
-          try {
-            onReady2?.(doc.hash);
-          } catch {
-          }
-        }
       }
+      armPostings();
       await dropHandle(takeHandle(job));
       return true;
+    }
+    if (typeof job.handle.readItems === "function") {
+      let raw = null;
+      try {
+        raw = await job.handle.readItems(job.n);
+      } catch {
+        raw = null;
+      }
+      if (gen !== generation) {
+        await dropHandle(takeHandle(job));
+        return false;
+      }
+      job.items = Array.isArray(raw?.items) ? raw.items : [];
+      job.itemI = 0;
+      job.bits = [];
+      job.pageN = Number(raw?.n) || job.n;
+      return false;
     }
     let page = null;
     try {
@@ -87134,6 +87392,26 @@ ${hit.n}`;
     } catch {
     }
     cancelLater = null;
+    try {
+      cancelPostings?.();
+    } catch {
+    }
+    cancelPostings = null;
+    postingPumping = false;
+    try {
+      postingLater?.();
+    } catch {
+    }
+    postingLater = null;
+    for (const job of postingQueue) forgetDoc(job.hash);
+    postingQueue.splice(0);
+    postingLive.clear();
+    pendingRows = null;
+    rowSource = null;
+    rowCursor = 0;
+    rowFoldDone = true;
+    foldDocs = /* @__PURE__ */ new Map();
+    rowStamp = "";
     const pending = queue.splice(0);
     queued.clear();
     pumping = false;
@@ -87141,11 +87419,6 @@ ${hit.n}`;
     if (!loadDone) {
       loadToken += 1;
       loaded = null;
-      try {
-        cancelPostings?.();
-      } catch {
-      }
-      cancelPostings = null;
       try {
         finishSlices?.();
       } catch {
@@ -87169,10 +87442,11 @@ ${hit.n}`;
     }
     arm4();
   }
-  return { search, noteParsed, enqueue, pause, stop: stop3, whenLoaded, counts, docs, version: PDF_TEXT_DB_VERSION };
+  return { search, noteParsed, enqueue, pause, paused, stop: stop3, whenLoaded, counts, docs, version: PDF_TEXT_DB_VERSION };
 }
 
 // src/host/pdf-text-open.js
+init_pdf_text_search();
 init_parse_hash();
 function unparsedPdfJobs(rows, blocks, allow = () => true) {
   const seen = /* @__PURE__ */ new Set();
@@ -87213,29 +87487,35 @@ async function openPdfDocument(lib, url, { allow = () => true } = {}) {
     }
     const hash = await sha256Hex(String(url));
     let closed = false;
+    async function rawPage(n3) {
+      const page = await pdf.getPage(n3);
+      let content = null;
+      try {
+        content = await page.getTextContent();
+      } catch {
+        content = null;
+      }
+      const view = typeof page.getViewport === "function" ? page.getViewport({ scale: 1 }) : null;
+      try {
+        page.cleanup?.();
+      } catch {
+      }
+      return {
+        n: n3,
+        width: view?.width || 0,
+        height: view?.height || 0,
+        items: content?.items || []
+      };
+    }
     return {
       hash,
       pageCount: pdf.numPages,
       async readPage(n3) {
-        const page = await pdf.getPage(n3);
-        let content = null;
-        try {
-          content = await page.getTextContent();
-        } catch {
-          content = null;
-        }
-        const view = typeof page.getViewport === "function" ? page.getViewport({ scale: 1 }) : null;
-        const built = pageFromTextContent({
-          n: n3,
-          width: view?.width || 0,
-          height: view?.height || 0,
-          items: content?.items || []
-        });
-        try {
-          page.cleanup?.();
-        } catch {
-        }
-        return built;
+        return pageFromTextContent(await rawPage(n3));
+      },
+      async readItems(n3) {
+        const raw = await rawPage(n3);
+        return { n: raw.n, items: raw.items };
       },
       async close() {
         if (closed) return;
@@ -87295,6 +87575,9 @@ async function openPdfForText({ disposed = false, url, allow, found, open } = {}
   if (handle) return handle;
   return found.workerReady ? null : { retry: true };
 }
+
+// src/view/board-view.js
+init_pdf_text_search();
 
 // src/model/image-search.js
 init_color();
@@ -99797,6 +100080,7 @@ function buildBoardView(onFail, {
         }),
         onReady: () => {
           try {
+            if (pdfText?.paused?.()) return;
             panel?.refreshSearch?.();
           } catch {
           }
@@ -99982,6 +100266,79 @@ ${url}`;
     const exclude = target.kind === "page" ? `[[${target.title}]]` : `((${target.uid}))`;
     panel.findRelated({ query, label: item.title || target.title || "this card", exclude });
   };
+  const openPdfTextHit = (hit, { add = false, needle = "" } = {}) => {
+    if (!hit || disposed) return false;
+    const boardUid2 = pdfCardUidFor(hit.pdfUid || "", hit.url || "");
+    const item = boardUid2 ? board2()?.items.get(boardUid2) : null;
+    let next = hit;
+    if (!item && !hit.pdfUid && !hit.blockUid && hit.url) {
+      const block = (pdfBlocks() || []).find((row4) => row4 && row4.url === hit.url);
+      if (block?.uid) next = { ...hit, pdfUid: block.uid };
+    }
+    const plan = pdfTextActivate(next, { add: add === true, item });
+    if (!plan) return false;
+    if (plan.action === "add") {
+      if (hit.blockId) {
+        void parseActions().sendParsedToBoard({
+          sha256: hit.sha256,
+          engine: hit.engine || "builtin",
+          optsHash: hit.optsHash || "",
+          ids: [hit.blockId],
+          pdfUid: hit.pdfUid || "",
+          pdfBlockUid: hit.pdfUid || "",
+          kind: hit.kind === "table" || hit.kind === "figure" || hit.kind === "formula" ? hit.kind : "blocks"
+        });
+        return true;
+      }
+      const uid = next.pdfUid || hit.pdfUid || "";
+      if (!uid) return false;
+      addStringsBeside([`((${uid}))`]);
+      return true;
+    }
+    if (plan.action === "sidebar") {
+      const uid = next.pdfUid || hit.pdfUid || "";
+      if (!uid) return false;
+      try {
+        host?.openInSidebar?.(uid, "block");
+      } catch {
+        return false;
+      }
+      return true;
+    }
+    const openReader = (detail) => {
+      if (disposed) return false;
+      try {
+        ensureReadPane().open?.(detail);
+      } catch {
+        return false;
+      }
+      return true;
+    };
+    const opened = openReader(plan);
+    const hasFrac = Array.isArray(plan.frac) && plan.frac.length >= 4;
+    const query = needle || hit.needle || hit.snippet?.hit || hit.text || "";
+    const found = !hasFrac && hit.url ? detectPdfjs2(win2) : null;
+    if (!hasFrac && found?.workerReady && query) {
+      void (async () => {
+        let handle = null;
+        try {
+          handle = await openPdfDocument(found.lib, hit.url, { allow: firstPageAllowed });
+          if (disposed || !handle) return;
+          const page = await handle.readPage(Number(hit.page) || 1);
+          if (disposed) return;
+          const frac = boxForQuery(page, hit.snippet?.hit || query);
+          if (frac) openReader({ ...plan, frac });
+        } catch {
+        } finally {
+          try {
+            await handle?.close?.();
+          } catch {
+          }
+        }
+      })();
+    }
+    return opened;
+  };
   let panelWidth = PANEL_WIDTH_DEFAULT;
   try {
     const stored = Number(storage?.getItem?.(PANEL_WIDTH_KEY));
@@ -100128,46 +100485,8 @@ ${url}`;
           return [];
         }
       },
-      openPdfHit: (hit) => {
-        const uid = pdfCardUidFor(hit?.pdfUid || "", hit?.url || "");
-        const item = uid ? board2()?.items.get(uid) : null;
-        const openAt = (next) => {
-          if (disposed) return false;
-          const detail = pdfHitOpenDetail(next, item);
-          if (!detail) return false;
-          try {
-            ensureReadPane().open?.(detail);
-          } catch {
-            return false;
-          }
-          return true;
-        };
-        const hasFrac = Array.isArray(hit?.frac) && hit.frac.length >= 4;
-        const found = !hasFrac && hit?.url ? detectPdfjs2(win2) : null;
-        if (hasFrac || !found?.workerReady) return openAt(hit);
-        void (async () => {
-          let handle = null;
-          try {
-            handle = await openPdfDocument(found.lib, hit.url, { allow: firstPageAllowed });
-            if (disposed || !handle) {
-              openAt(hit);
-              return;
-            }
-            const page = await handle.readPage(Number(hit.page) || 1);
-            if (disposed) return;
-            const frac = boxForQuery(page, hit?.snippet?.hit || "");
-            openAt(frac ? { ...hit, frac } : hit);
-          } catch {
-            openAt(hit);
-          } finally {
-            try {
-              await handle?.close?.();
-            } catch {
-            }
-          }
-        })();
-        return true;
-      },
+      openPdfHit: (hit) => openPdfTextHit(hit, { add: false }),
+      openPdfText: (hit, opts) => openPdfTextHit(hit, opts || {}),
       searchParts: async (query, limit) => {
         if (typeof host?.listPdfBlocks !== "function") return [];
         const rows = await partsIndex().get();
@@ -100181,10 +100500,8 @@ ${url}`;
         void parseActions().sendParsedToBoard(payload);
       },
       openPart: (row4) => {
-        const uid = pdfCardUidFor(row4?.pdfUid || "", row4?.url || "");
-        if (!uid || typeof itemsR?.openPdfAt !== "function") return false;
-        void itemsR.openPdfAt(uid, row4.page || 1);
-        return true;
+        if (!row4 || row4.kind === "figure") return false;
+        return openPdfTextHit(row4, { add: false }) === true;
       },
       askPart: (row4) => {
         void askAboutParsed({ pdfUid: pdfCardUidFor(row4?.pdfUid || "", row4?.url || "") || row4?.pdfUid || "", url: row4?.url || "", sha256: row4?.sha256 || "", engine: row4?.engine || "builtin", optsHash: row4?.optsHash || "", blockId: row4?.blockId || "", page: row4?.page ?? null });

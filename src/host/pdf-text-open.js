@@ -41,22 +41,28 @@ export async function openPdfDocument(lib, url, { allow = () => true } = {}) {
     }
     const hash = await sha256Hex(String(url));
     let closed = false;
+    async function rawPage(n) {
+      const page = await pdf.getPage(n);
+      let content = null;
+      try { content = await page.getTextContent(); } catch { content = null; }
+      const view = typeof page.getViewport === "function" ? page.getViewport({ scale: 1 }) : null;
+      try { page.cleanup?.(); } catch { /* gone */ }
+      return {
+        n,
+        width: view?.width || 0,
+        height: view?.height || 0,
+        items: content?.items || [],
+      };
+    }
     return {
       hash,
       pageCount: pdf.numPages,
       async readPage(n) {
-        const page = await pdf.getPage(n);
-        let content = null;
-        try { content = await page.getTextContent(); } catch { content = null; }
-        const view = typeof page.getViewport === "function" ? page.getViewport({ scale: 1 }) : null;
-        const built = pageFromTextContent({
-          n,
-          width: view?.width || 0,
-          height: view?.height || 0,
-          items: content?.items || [],
-        });
-        try { page.cleanup?.(); } catch { /* gone */ }
-        return built;
+        return pageFromTextContent(await rawPage(n));
+      },
+      async readItems(n) {
+        const raw = await rawPage(n);
+        return { n: raw.n, items: raw.items };
       },
       async close() {
         if (closed) return;

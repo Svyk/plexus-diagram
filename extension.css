@@ -1528,6 +1528,8 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-root .pxd-panel__input {
   width: 100%;
+  flex: 0 0 auto;
+  min-height: 30px;
 }
 
 .pxd-panel__filters {

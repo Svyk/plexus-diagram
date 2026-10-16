@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  PDF_TEXT_OPEN_TIP,
   boxForQuery,
   docsFromPartRows,
   editDistance1,
   pageFromTextContent,
   pdfHitOpenDetail,
+  pdfTextActivate,
   rankPostingHits,
   searchPdfText,
 } from "../src/model/pdf-text-search.js";
@@ -116,4 +118,11 @@ test("parsed part rows become page text, and a hit opens the reader with the pin
   assert.equal(detail.blockUid, "block1");
   assert.equal(detail.page, 3);
   assert.equal(pdfHitOpenDetail(hits[0], null), null);
+  const off = pdfTextActivate(hits[0], {});
+  assert.equal(off.action, "reader");
+  assert.equal(off.blockUid, "pdf1");
+  assert.equal(off.cardUid, "");
+  assert.equal(off.page, 3);
+  assert.equal(pdfTextActivate(hits[0], { add: true }).action, "add");
+  assert.equal(PDF_TEXT_OPEN_TIP.includes("Shift+Enter"), true);
 });

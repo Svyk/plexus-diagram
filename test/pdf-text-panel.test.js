@@ -202,3 +202,164 @@ test("tag, days, pages, and Meaning sit on a second filter row, styled with the 
   assert.match(css, /\.pxd-panel__row--active[\s\S]*var\(--pxd-accent-soft\)/);
   assert.match(css, /\.bp3-dark \.pxd-root[\s\S]*\.pxd-panel__page-chip/);
 });
+
+const OPEN_TIP = "Opens this page. Shift+Enter or drag adds it to the board.";
+
+function openHost() {
+  const opens = [];
+  const adds = [];
+  return {
+    opens,
+    adds,
+    on: {
+      searchImages: async () => ({ images: [], figures: [] }),
+      openPdfText: (row, opts) => { opens.push({ row, add: opts?.add === true }); return true; },
+      openPdfHit: () => { throw new Error("openPdfHit"); },
+      openPart: () => { throw new Error("openPart"); },
+      addPart: (payload) => { adds.push(payload); },
+      addBeside: () => { throw new Error("addBeside"); },
+    },
+  };
+}
+
+async function openSetup(t, { parts = [], hits = [] } = {}) {
+  const host = openHost();
+  const f = setup({
+    on: {
+      ...host.on,
+      searchParts: async () => parts,
+      searchPdfText: () => hits,
+    },
+    host: { librarySearch: () => ({ rows: [], queries: [] }) },
+  });
+  t.after(f.restore);
+  await search(f, "brain");
+  return { f, ...host };
+}
+
+test("clicking a PDF text row opens that page", async (t) => {
+  const { f, opens, adds } = await openSetup(t, { hits: [HIT] });
+  const row = q(f.root, ".pxd-panel__row--pdftext");
+  assert.equal(row.getAttribute("title"), OPEN_TIP);
+  f.stub.dispatch(row, "click");
+  assert.equal(opens.length, 1);
+  assert.equal(opens[0].row, HIT);
+  assert.equal(opens[0].add, false);
+  assert.equal(adds.length, 0);
+});
+
+test("clicking a PDF text page chip opens that page", async (t) => {
+  const { f, opens, adds } = await openSetup(t, { hits: [HIT] });
+  f.stub.dispatch(q(f.root, ".pxd-panel__row--pdftext .pxd-panel__page-chip"), "click");
+  assert.equal(opens.length, 1);
+  assert.equal(opens[0].row, HIT);
+  assert.equal(opens[0].add, false);
+  assert.equal(adds.length, 0);
+});
+
+test("Enter on a PDF text row opens that page", async (t) => {
+  const { f, opens, adds } = await openSetup(t, { hits: [HIT] });
+  const input = q(f.root, ".pxd-panel__input");
+  f.stub.dispatch(input, "keydown", { key: "ArrowDown" });
+  f.stub.dispatch(input, "keydown", { key: "Enter" });
+  assert.equal(opens.length, 1);
+  assert.equal(opens[0].row, HIT);
+  assert.equal(opens[0].add, false);
+  assert.equal(adds.length, 0);
+});
+
+test("Shift+Enter on a PDF text row adds it and does not open", async (t) => {
+  const { f, opens, adds } = await openSetup(t, { hits: [HIT] });
+  const input = q(f.root, ".pxd-panel__input");
+  f.stub.dispatch(input, "keydown", { key: "ArrowDown" });
+  f.stub.dispatch(input, "keydown", { key: "Enter", shiftKey: true });
+  assert.equal(opens.length, 1);
+  assert.equal(opens[0].add, true);
+  assert.equal(opens[0].row, HIT);
+  assert.equal(adds.length, 0);
+});
+
+test("dragging a PDF text row carries the block ref", async (t) => {
+  const { f, opens } = await openSetup(t, { hits: [HIT] });
+  const data = {};
+  const row = q(f.root, ".pxd-panel__row--pdftext");
+  f.stub.dispatch(row, "dragstart", {
+    dataTransfer: { setData(k, v) { data[k] = v; }, effectAllowed: "" },
+  });
+  assert.equal(data["application/x-plexus-card"], "((pdf2))");
+  assert.equal(opens.length, 0);
+});
+
+test("clicking a parsed PDF text row opens that page", async (t) => {
+  const { f, opens, adds } = await openSetup(t, { parts: [PART] });
+  const row = q(f.root, ".pxd-panel__row--part");
+  assert.equal(row.getAttribute("title"), OPEN_TIP);
+  f.stub.dispatch(row, "click");
+  assert.equal(opens.length, 1);
+  assert.equal(opens[0].add, false);
+  assert.equal(opens[0].row.pdfUid, "pdf1");
+  assert.equal(opens[0].row.page, 4);
+  assert.equal(opens[0].row.blockId, "p1");
+  assert.equal(adds.length, 0);
+});
+
+test("clicking a parsed PDF text page chip opens that page", async (t) => {
+  const { f, opens, adds } = await openSetup(t, { parts: [PART] });
+  f.stub.dispatch(q(f.root, ".pxd-panel__row--part .pxd-panel__page-chip"), "click");
+  assert.equal(opens.length, 1);
+  assert.equal(opens[0].add, false);
+  assert.equal(opens[0].row.blockId, "p1");
+  assert.equal(adds.length, 0);
+});
+
+test("Enter on a parsed PDF text row opens that page", async (t) => {
+  const { f, opens, adds } = await openSetup(t, { parts: [PART] });
+  const input = q(f.root, ".pxd-panel__input");
+  f.stub.dispatch(input, "keydown", { key: "ArrowDown" });
+  f.stub.dispatch(input, "keydown", { key: "Enter" });
+  assert.equal(opens.length, 1);
+  assert.equal(opens[0].add, false);
+  assert.equal(opens[0].row.blockId, "p1");
+  assert.equal(adds.length, 0);
+});
+
+test("Shift+Enter on a parsed PDF text row adds it", async (t) => {
+  const { f, opens, adds } = await openSetup(t, { parts: [PART] });
+  const input = q(f.root, ".pxd-panel__input");
+  f.stub.dispatch(input, "keydown", { key: "ArrowDown" });
+  f.stub.dispatch(input, "keydown", { key: "Enter", shiftKey: true });
+  assert.equal(opens.length, 1);
+  assert.equal(opens[0].add, true);
+  assert.equal(opens[0].row.blockId, "p1");
+  assert.equal(adds.length, 0);
+});
+
+test("a figure row still opens through the figure path", async (t) => {
+  const figure = { ...PART, kind: "figure", blockId: "f1", text: "brain figure" };
+  const opened = [];
+  const host = openHost();
+  const f = setup({
+    on: {
+      ...host.on,
+      openPart: (part) => { opened.push(part); return true; },
+      searchParts: async () => [figure],
+      searchPdfText: () => [],
+      searchImages: async () => ({ images: [], figures: [] }),
+    },
+    host: { librarySearch: () => ({ rows: [], queries: [] }) },
+  });
+  t.after(f.restore);
+  await search(f, "brain");
+  f.stub.dispatch(q(f.root, ".pxd-panel__row--part"), "click");
+  assert.equal(opened[0], figure);
+  assert.equal(host.opens.length, 0);
+  assert.equal(host.adds.length, 0);
+});
+
+test("the search field does not shrink when the result list grows", () => {
+  const css = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
+  const rule = css.match(/\.pxd-root \.pxd-panel__input \{[^}]*\}/);
+  assert.ok(rule, "panel input rule");
+  assert.match(rule[0], /flex:\s*0\s+0\s+auto/);
+  assert.match(rule[0], /min-height:\s*30px/);
+});

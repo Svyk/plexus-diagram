@@ -19286,7 +19286,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, slicedResume: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true };
 }
 function parseSpeedFlags(raw) {
   const base = defaultSpeedFlags();
@@ -19740,7 +19740,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "slicedResume"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -21993,7 +21993,7 @@ function parseRoamDay(title) {
   if (month < 0) return null;
   return { y: Number(m[4]), m: month + 1, d: day };
 }
-function childString2(child) {
+function childString3(child) {
   return child?.[":block/string"] ?? child?.string ?? "";
 }
 function dayOf(value) {
@@ -22009,7 +22009,7 @@ function dueChip(content, today = /* @__PURE__ */ new Date()) {
   let raw = null;
   let title = "";
   for (const child of content || []) {
-    const text4 = String(childString2(child));
+    const text4 = String(childString3(child));
     if (taskAttrId(text4) !== "due") continue;
     raw = text4;
     const rest = text4.slice(text4.indexOf("::") + 2).trim();
@@ -22054,7 +22054,7 @@ function taskMeta(string, content, today = /* @__PURE__ */ new Date(), names = l
   }
   const seen = /* @__PURE__ */ new Set();
   for (const child of content || []) {
-    const text4 = String(childString2(child));
+    const text4 = String(childString3(child));
     const id = taskAttrId(text4, names);
     if (!id || id === "other" || id === "activity" || seen.has(id)) continue;
     seen.add(id);
@@ -28618,7 +28618,7 @@ function readingTitle(title) {
   if (!text4) return "";
   return READING_PREFIXES.some((prefix) => text4.startsWith(prefix)) ? text4 : "";
 }
-function childString3(child) {
+function childString4(child) {
   if (typeof child === "string") return child;
   if (!child || typeof child !== "object") return "";
   const raw = child[":block/string"] ?? child.string;
@@ -28630,7 +28630,7 @@ function cleanAuthor(raw) {
 function authorFrom(children) {
   const list = Array.isArray(children) ? children : [];
   for (const child of list) {
-    const text4 = childString3(child).trim();
+    const text4 = childString4(child).trim();
     if (!text4.startsWith(AUTHOR_PREFIX)) continue;
     const author = cleanAuthor(text4.slice(AUTHOR_PREFIX.length));
     if (author) return author;
@@ -28640,7 +28640,7 @@ function authorFrom(children) {
 function authorBlockUid(children) {
   const list = Array.isArray(children) ? children : [];
   for (const child of list) {
-    if (!childString3(child).trim().startsWith(AUTHOR_PREFIX)) continue;
+    if (!childString4(child).trim().startsWith(AUTHOR_PREFIX)) continue;
     const uid = child?.[":block/uid"] ?? child?.uid;
     if (typeof uid === "string" && uid) return uid;
   }
@@ -30202,7 +30202,7 @@ function cardContentKey(item, live2 = false, pdfOpen = false, chipSig = "", cove
       if (depth > BOARD_KEY_DEPTH) return;
       for (const c of kids) {
         if (budget-- <= 0) return;
-        parts.push(childUid(c), childString4(c), JSON.stringify(childProps(c) ?? null));
+        parts.push(childUid(c), childString5(c), JSON.stringify(childProps(c) ?? null));
         walkBoard(childKids(c), depth + 1);
       }
     };
@@ -30212,7 +30212,7 @@ function cardContentKey(item, live2 = false, pdfOpen = false, chipSig = "", cove
   const walk3 = (kids, depth) => {
     if (depth > CONTENT_DEPTH) return;
     for (const c of kids) {
-      parts.push(childString4(c), childIsOpen(c) ? "o" : "x");
+      parts.push(childString5(c), childIsOpen(c) ? "o" : "x");
       walk3(childKids(c), depth + 1);
     }
   };
@@ -30814,7 +30814,7 @@ function createItemRenderer({
     const walk3 = (list, depth) => {
       if (!Array.isArray(list) || depth > CONTENT_DEPTH) return;
       for (const child of list) {
-        pushString(childString4(child), childUid(child) || item.uid);
+        pushString(childString5(child), childUid(child) || item.uid);
         walk3(childKids(child), depth + 1);
       }
     };
@@ -32458,9 +32458,9 @@ function createItemRenderer({
       const node2 = el2("div", "pxd-kids-peek", root);
       node2.setAttribute("role", "tooltip");
       for (const c of rows) {
-        el2("div", "pxd-kids-peek__row", node2).textContent = plainText(childString4(c), PEEK_TEXT_MAX);
+        el2("div", "pxd-kids-peek__row", node2).textContent = plainText(childString5(c), PEEK_TEXT_MAX);
         for (const g of visibleKids(childKids(c)).slice(0, PEEK_SUB)) {
-          el2("div", "pxd-kids-peek__row pxd-kids-peek__row--sub", node2).textContent = plainText(childString4(g), PEEK_TEXT_MAX);
+          el2("div", "pxd-kids-peek__row pxd-kids-peek__row--sub", node2).textContent = plainText(childString5(g), PEEK_TEXT_MAX);
         }
       }
       placeNearAnchor(node2, rec.kidsBtn.getBoundingClientRect(), root, { gap: 6 });
@@ -32531,7 +32531,7 @@ function createItemRenderer({
   const outlineRead = {
     uid: (node2) => childUid(node2),
     kids: (node2) => childKids(node2),
-    label: (node2) => plainText(firstLine(childString4(node2))).trim().slice(0, 48) || "block"
+    label: (node2) => plainText(firstLine(childString5(node2))).trim().slice(0, 48) || "block"
   };
   const cardLabelOf = (item) => {
     const rec = shells.get(item?.uid);
@@ -32548,7 +32548,7 @@ function createItemRenderer({
     const cardUid = opts.cardUid || "";
     for (const b of blocks) {
       if (budget.n >= CONTENT_LIMIT) return;
-      const s = childString4(b);
+      const s = childString5(b);
       if (skipChildString(s)) continue;
       budget.n += 1;
       const rowUid = childUid(b);
@@ -33132,7 +33132,7 @@ function createItemRenderer({
     const parts = [];
     const walk3 = (list) => {
       for (const c of list) {
-        parts.push(childUid(c), childString4(c), c.open === false ? "0" : "1");
+        parts.push(childUid(c), childString5(c), c.open === false ? "0" : "1");
         walk3(childKids(c));
       }
     };
@@ -33142,7 +33142,7 @@ function createItemRenderer({
   const countRows = (blocks) => {
     let n3 = 0;
     for (const c of blocks) {
-      if (skipChildString(childString4(c))) continue;
+      if (skipChildString(childString5(c))) continue;
       n3 += 1;
       if (c.open !== false) n3 += countRows(childKids(c));
     }
@@ -33363,7 +33363,7 @@ function createItemRenderer({
   const renderOutline = (parent, blocks, b, rec, depth = 0, parentUid = null) => {
     if (!rec.rowState) rec.rowState = /* @__PURE__ */ new Map();
     for (const blk of blocks || []) {
-      const s = childString4(blk);
+      const s = childString5(blk);
       if (skipChildString(s)) continue;
       const uid = childUid(blk);
       const kids = isRoamTableString(s) ? [] : childKids(blk);
@@ -33386,7 +33386,7 @@ function createItemRenderer({
     let n3 = 0;
     const walk3 = (list, depth, parentUid) => {
       for (const blk of list || []) {
-        const s = childString4(blk);
+        const s = childString5(blk);
         if (skipChildString(s)) continue;
         const uid = childUid(blk);
         const kids = isRoamTableString(s) ? [] : childKids(blk);
@@ -34182,6 +34182,7 @@ function createItemRenderer({
     attachFocusGuard();
     attachFloor(editing);
     onEditChange?.(rec.uid);
+    holdForEdit(true);
     nudgeEditorMenus(doc);
   };
   const endStickyEdit = () => {
@@ -34192,6 +34193,7 @@ function createItemRenderer({
     detachFocusGuard();
     e2.rec.el.classList.remove("pxd-item--typing");
     onEditChange?.(null);
+    holdForEdit(false);
   };
   const focusSticky = async (uid) => {
     const rec = shells.get(uid);
@@ -35066,7 +35068,8 @@ function createItemRenderer({
     const body = rec.body;
     if (rec.editor && editing?.uid !== item.uid) detachStickyEditor(rec);
     unmountRoots(rec);
-    body.replaceChildren();
+    if (rec.freezeKeep) rec.freezeBefore = directChildren(body);
+    else body.replaceChildren();
     rec.stickyLive = false;
     rec.editor = null;
     rec.bare = false;
@@ -35475,26 +35478,44 @@ function createItemRenderer({
     if (detail) rec.regionWidth = rec.rect?.w ?? item.w;
   };
   const mountContent = (rec, item) => {
-    reserveCardHeight(rec, item);
-    mountContentBody(rec, item);
-    syncKidsBadge(rec, item);
-    if (rec.type !== "section" && !rec.contentUnwatch && typeof host?.watchContent === "function") {
-      try {
-        const off = host.watchContent(item.uid);
-        if (typeof off === "function") rec.contentUnwatch = off;
-      } catch {
+    const frozenKeep = Boolean(rec.frozen?.length);
+    rec.frozen = null;
+    rec.freezeKeep = frozenKeep;
+    rec.freezeBefore = null;
+    try {
+      reserveCardHeight(rec, item);
+      mountContentBody(rec, item);
+      syncKidsBadge(rec, item);
+      if (rec.type !== "section" && !rec.contentUnwatch && typeof host?.watchContent === "function") {
+        try {
+          const off = host.watchContent(item.uid);
+          if (typeof off === "function") rec.contentUnwatch = off;
+        } catch {
+        }
       }
+    } finally {
+      if (frozenKeep) dropFrozenFrame(rec.body, rec.freezeBefore);
+      rec.freezeKeep = false;
+      rec.freezeBefore = null;
     }
   };
   const mountSectionTitle = (rec, item) => {
     noteRender(item.uid);
-    unmountRoots(rec);
-    rec.title.replaceChildren();
-    const node2 = renderRoot(rec.title, item.string || "Section", "pxd-rs pxd-section__title-text", item.uid);
-    if (!item.string) node2.textContent = "Section";
-    rec.roots = [node2];
-    rec.titleRendered = true;
-    rec.contentKey = contentKeyFor(item);
+    const frozenKeep = Boolean(rec.frozen?.length);
+    rec.frozen = null;
+    let before = null;
+    try {
+      unmountRoots(rec);
+      if (frozenKeep) before = directChildren(rec.title);
+      else rec.title.replaceChildren();
+      const node2 = renderRoot(rec.title, item.string || "Section", "pxd-rs pxd-section__title-text", item.uid);
+      if (!item.string) node2.textContent = "Section";
+      rec.roots = [node2];
+      rec.titleRendered = true;
+      rec.contentKey = contentKeyFor(item);
+    } finally {
+      if (frozenKeep) dropFrozenFrame(rec.title, before);
+    }
   };
   const unmountContent = (uid) => {
     const rec = shells.get(uid);
@@ -35610,24 +35631,130 @@ function createItemRenderer({
   };
   let lastContent = null;
   let quieted = false;
-  const holdQuiet = (rec, uid) => {
-    if (!rec.roots?.length || editing?.uid === uid) return;
-    if (rec.type === "section") {
-      const text4 = rec.title?.textContent || lastBoard?.items.get(uid)?.title || "Section";
-      unmountRoots(rec);
-      if (rec.title) rec.title.textContent = text4;
-      rec.titleRendered = false;
-    } else if (rec.body) {
-      const text4 = rec.body.textContent || "";
-      unmountRoots(rec);
-      rec.body.replaceChildren();
-      if (text4) el2("div", "pxd-quiet", rec.body).textContent = text4;
-    } else {
-      unmountRoots(rec);
+  let editHeld = false;
+  let freezeGen = 0;
+  let freezeFrame = null;
+  const editQuietOn = () => {
+    try {
+      return speedOf().editQuiet !== false;
+    } catch {
+      return true;
     }
+  };
+  const directChildren = (node2) => {
+    const list = node2?.children;
+    if (!list) return [];
+    const out = [];
+    for (let i = 0; i < list.length; i += 1) out.push(list[i]);
+    return out;
+  };
+  const dropFrozenFrame = (container, before) => {
+    if (!container || !before?.length) return;
+    for (const node2 of before) {
+      if (node2?.parentElement === container) {
+        try {
+          node2.remove();
+        } catch {
+        }
+      }
+    }
+  };
+  const cancelFreezeFrame = () => {
+    const cancel = freezeFrame;
+    freezeFrame = null;
+    if (typeof cancel === "function") {
+      try {
+        cancel();
+      } catch {
+      }
+    }
+  };
+  const LIVE_ATTR = /^(?:id|contenteditable|tabindex)$/i;
+  const attrNames = (node2) => {
+    const attrs = node2?.attributes;
+    if (!attrs) return [];
+    if (typeof attrs.keys === "function") return [...attrs.keys()];
+    const names = [];
+    if (typeof attrs.length === "number") {
+      for (let i = 0; i < attrs.length; i += 1) {
+        const name = attrs[i]?.name || attrs[i]?.nodeName;
+        if (name) names.push(name);
+      }
+    }
+    return names;
+  };
+  const stripLiveAttrs = (node2) => {
+    const walk3 = (el3) => {
+      if (!el3 || el3.nodeType !== 1) return;
+      for (const name of attrNames(el3)) {
+        if (LIVE_ATTR.test(name) || /^on/i.test(name)) {
+          try {
+            el3.removeAttribute(name);
+          } catch {
+          }
+        }
+      }
+      if (typeof el3.getAttribute === "function" && el3.getAttribute("id") == null && el3.id && !/^el-\d+$/.test(String(el3.id))) el3.id = "";
+      const list = el3.children;
+      for (let i = 0; i < (list?.length || 0); i += 1) if (list[i].nodeType === 1) walk3(list[i]);
+    };
+    walk3(node2);
+  };
+  const renderedRoot = (node2) => {
+    if (!node2 || node2.nodeType !== 1) return false;
+    if (node2.classList?.contains("pxd-embed-live") || node2.classList?.contains("pxd-rs__live") || node2.classList?.contains("pxd-item__editor--sticky")) return true;
+    return Boolean(node2.querySelector?.(".pxd-rs__live, .pxd-embed-live, .pxd-item__editor--sticky"));
+  };
+  const holdQuiet = (rec, uid) => {
+    if (!rec || editing?.uid === uid) return;
+    const roots = (rec.roots || []).filter(renderedRoot);
+    if (!roots.length) return;
+    const clones = [];
+    for (const root of roots) {
+      const parent = root.parentElement;
+      if (!parent || typeof root.cloneNode !== "function") continue;
+      const clone2 = root.cloneNode(true);
+      stripLiveAttrs(clone2);
+      clone2.classList?.add("pxd-quiet");
+      parent.insertBefore(clone2, root);
+      clones.push(clone2);
+    }
+    unmountRoots(rec);
+    for (const root of roots) {
+      try {
+        root.remove();
+      } catch {
+      }
+    }
+    rec.frozen = clones.length ? clones : null;
     rec.contentKey = null;
     mounted.delete(uid);
     contentSched?.drop(uid);
+  };
+  const freezeMounted = () => {
+    const gen = freezeGen;
+    cancelFreezeFrame();
+    const queue = [];
+    for (const [uid, rec] of shells) queue.push([uid, rec]);
+    const pump = () => {
+      freezeFrame = null;
+      while (queue.length) {
+        const start = now2();
+        let n3 = 0;
+        while (queue.length && (n3 === 0 || now2() - start < CHUNK_MS)) {
+          if (gen !== freezeGen || !quieted || disposed) return;
+          const [uid, rec] = queue.shift();
+          if (shells.get(uid) === rec) holdQuiet(rec, uid);
+          n3 += 1;
+        }
+        if (!queue.length) return;
+        if (typeof timers?.frame === "function") {
+          freezeFrame = timers.frame(pump);
+          return;
+        }
+      }
+    };
+    pump();
   };
   const cardHeavy = (item, rec) => {
     if (!item || item.type === "section") return false;
@@ -35726,15 +35853,49 @@ function createItemRenderer({
   };
   const quiet = (on) => {
     const next = Boolean(on);
-    if (next === quieted) return;
-    quieted = next;
-    if (quieted) {
-      contentSched?.hold(true);
-      for (const [uid, rec] of shells) holdQuiet(rec, uid);
+    if (!next && editHeld) return;
+    if (next === quieted) {
+      if (next) {
+        contentSched?.hold(true);
+        freezeGen += 1;
+        freezeMounted();
+      }
       return;
     }
+    quieted = next;
+    freezeGen += 1;
+    if (quieted) {
+      contentSched?.hold(true);
+      freezeMounted();
+      return;
+    }
+    cancelFreezeFrame();
     contentSched?.hold(false);
-    if (lastContent) fillContent(lastContent);
+    if (lastContent) fillContent({ ...lastContent, zoom: zoomCache });
+  };
+  const restoreEditQuiet = () => {
+    for (const uid of shells.keys()) {
+      if (contentSched?.isDone(uid)) continue;
+      contentSched?.renderNow(uid);
+    }
+  };
+  const holdForEdit = (on) => {
+    if (!editQuietOn()) {
+      if (!on && editHeld) {
+        editHeld = false;
+        quiet(false);
+        restoreEditQuiet();
+      }
+      return;
+    }
+    const next = Boolean(on);
+    if (next === editHeld) {
+      if (next) quiet(true);
+      return;
+    }
+    editHeld = next;
+    quiet(next);
+    if (!next) restoreEditQuiet();
   };
   const setPaused = (on) => {
     const was = paused;
@@ -35754,6 +35915,7 @@ function createItemRenderer({
     const next = Number(zoom);
     const prevZoom = zoomCache;
     zoomCache = next > 0 && Number.isFinite(next) ? next : 1;
+    if (lastContent && lastContent.zoom !== zoomCache) lastContent = { ...lastContent, zoom: zoomCache };
     if (zoomCache !== prevZoom) {
       closePeek();
       refreshRegionLayers();
@@ -35949,7 +36111,7 @@ function createItemRenderer({
     const lines = [];
     const own2 = item.kind === "block" ? rec.refString : item.string;
     if (typeof own2 === "string") lines.push(...own2.split("\n"));
-    for (const c of item.content || []) lines.push(...String(childString4(c)).split("\n"));
+    for (const c of item.content || []) lines.push(...String(childString5(c)).split("\n"));
     const out = [];
     for (const line of lines) {
       if (out.length >= ATTR_CHIPS_MAX) break;
@@ -36573,6 +36735,7 @@ function createItemRenderer({
     attachFocusGuard();
     attachFloor(editing);
     onEditChange?.(uid);
+    holdForEdit(true);
     let ok = true;
     try {
       if (pageEdit) {
@@ -36742,6 +36905,7 @@ function createItemRenderer({
         if (grow > live2.h) (onGrow || ((u, h) => session?.growToFit?.(u, h)))(uid, grow);
       }
     }
+    holdForEdit(false);
   };
   const autocompleteOpen = () => Boolean(doc.querySelector?.(".rm-autocomplete__results"));
   const renameSection = (uid) => {
@@ -37031,6 +37195,8 @@ function createItemRenderer({
   const dispose = () => {
     if (disposed) return;
     disposed = true;
+    freezeGen += 1;
+    cancelFreezeFrame();
     stopShellBg();
     tellPane({ open: false });
     if (freshTimer) {
@@ -37340,7 +37506,7 @@ function createItemRenderer({
     dispose
   };
 }
-var SIDES3, CHUNK_MS, LRU_CAP, UNMOUNT_AFTER_MS, HYDRATE_CAP_MS, CONTENT_LIMIT, CONTENT_DEPTH, OUTLINE_CAP, OUTLINE_FETCH, PAGE_WATCH_MAX, PAGE_REFRESH_MS, BLOCK_REFRESH_MS, GROW_CAP, HEADER_H, META_H, REF_TITLE_MAX, HEADER_TEXT_MAX, TINY_MINI_PX, ATTR_CHIPS_MAX, SVG_NS3, ROW_BOARD_W, ROW_BOARD_H, ROW_BOARD_THUMBS, BOARD_KEY_DEPTH, BOARD_KEY_NODES, KID_ROW_H, PEEK_DELAY_MS, PEEK_TOP, PEEK_SUB, PEEK_TEXT_MAX, now2, HL_NAMES2, NOTE_CARET_SKIP, childString4, childKids, childUid, childProps, KIDS_KINDS, isKidsCard, isSticky, STICKY_TITLE_MAX, stickyTitleOf, isTaskAttrString, skipChildString, visibleKids, taskBlockOn, statusSig, TASK_MARK, isTaskCard, regionHubs;
+var SIDES3, CHUNK_MS, LRU_CAP, UNMOUNT_AFTER_MS, HYDRATE_CAP_MS, CONTENT_LIMIT, CONTENT_DEPTH, OUTLINE_CAP, OUTLINE_FETCH, PAGE_WATCH_MAX, PAGE_REFRESH_MS, BLOCK_REFRESH_MS, GROW_CAP, HEADER_H, META_H, REF_TITLE_MAX, HEADER_TEXT_MAX, TINY_MINI_PX, ATTR_CHIPS_MAX, SVG_NS3, ROW_BOARD_W, ROW_BOARD_H, ROW_BOARD_THUMBS, BOARD_KEY_DEPTH, BOARD_KEY_NODES, KID_ROW_H, PEEK_DELAY_MS, PEEK_TOP, PEEK_SUB, PEEK_TEXT_MAX, now2, HL_NAMES2, NOTE_CARET_SKIP, childString5, childKids, childUid, childProps, KIDS_KINDS, isKidsCard, isSticky, STICKY_TITLE_MAX, stickyTitleOf, isTaskAttrString, skipChildString, visibleKids, taskBlockOn, statusSig, TASK_MARK, isTaskCard, regionHubs;
 var init_cards = __esm({
   "src/view/cards.js"() {
     init_card_face();
@@ -37416,7 +37582,7 @@ var init_cards = __esm({
     now2 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
     HL_NAMES2 = ["red", "orange", "yellow", "green", "blue", "purple", "pink", "gray", "grey", "teal", "indigo"];
     NOTE_CARET_SKIP = ".pxd-item__editor, .pxd-task-check, .pxd-grip, .pxd-port, .pxd-row__fold, .pxd-row__more";
-    childString4 = (c) => c?.[":block/string"] ?? c?.string ?? "";
+    childString5 = (c) => c?.[":block/string"] ?? c?.string ?? "";
     childKids = (c) => c?.[":block/children"] ?? c?.children ?? [];
     childUid = (c) => c?.[":block/uid"] ?? c?.uid ?? "";
     childProps = (c) => c?.[":block/props"] ?? c?.props;
@@ -37430,7 +37596,7 @@ var init_cards = __esm({
     };
     isTaskAttrString = (s) => taskAttrId(s) !== null;
     skipChildString = (s) => isTaskAttrString(s) || isStructuralString(s) || isSourceAttrString(s);
-    visibleKids = (list) => (list || []).filter((c) => !skipChildString(childString4(c)));
+    visibleKids = (list) => (list || []).filter((c) => !skipChildString(childString5(c)));
     taskBlockOn = () => false;
     statusSig = "";
     TASK_MARK = /^\s*\{\{\[\[(?:TODO|DONE)\]\]\}\}\s?/;
@@ -41057,7 +41223,60 @@ function diffFingerprints(prev, next) {
   for (const id of prev.keys()) if (!next.has(id)) removed.push(id);
   return { changed: changed2, removed, reordered };
 }
-function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerprint = false, guard = (_name, fn) => fn, schedule = (fn) => queueMicrotask(fn) }) {
+function timeChangedIds(prev, next) {
+  if (!prev || !next || prev.size !== next.size) return null;
+  const ids = [];
+  for (const [id, now5] of next) {
+    const was = prev.get(id);
+    if (!was) return null;
+    if (was.order !== now5.order) return null;
+    if (!sameWhys(was.whys, now5.whys)) return null;
+    if (was.time !== now5.time) ids.push(id);
+  }
+  for (const id of prev.keys()) if (!next.has(id)) return null;
+  return ids;
+}
+function soleStringChange(prev, next) {
+  if (!prev || !next) return null;
+  if ((prev[":block/string"] ?? "") !== (next[":block/string"] ?? "")) return null;
+  if ((prev[":block/order"] ?? null) !== (next[":block/order"] ?? null)) return null;
+  if ((prev[":block/heading"] || 0) !== (next[":block/heading"] || 0)) return null;
+  if ((prev[":block/open"] ?? null) !== (next[":block/open"] ?? null)) return null;
+  if (propsKey(prev[":block/props"]) !== propsKey(next[":block/props"])) return null;
+  const a = kidsOf2(prev);
+  const b = kidsOf2(next);
+  if (a.length !== b.length) return null;
+  let hit = null;
+  for (let i = 0; i < a.length; i += 1) {
+    const p = a[i];
+    const q2 = b[i];
+    if (p?.[UID] !== q2?.[UID]) return null;
+    const stringChanged = (p?.[":block/string"] ?? "") !== (q2?.[":block/string"] ?? "");
+    const restChanged = (p?.[":block/order"] ?? null) !== (q2?.[":block/order"] ?? null) || (p?.[":block/heading"] || 0) !== (q2?.[":block/heading"] || 0) || (p?.[":block/open"] ?? null) !== (q2?.[":block/open"] ?? null) || propsKey(p?.[":block/props"]) !== propsKey(q2?.[":block/props"]);
+    if (!stringChanged && !restChanged) continue;
+    if (restChanged || hit) return null;
+    hit = q2[UID] || null;
+  }
+  return hit;
+}
+function childString2(node2, id) {
+  for (const kid of kidsOf2(node2)) if (kid?.[UID] === id) return kid[":block/string"] ?? "";
+  return null;
+}
+function patchTreeString(tree, id, string) {
+  if (!tree) return;
+  const stack = [tree];
+  while (stack.length) {
+    const cur = stack.pop();
+    if (!cur || typeof cur !== "object") continue;
+    if (cur[UID] === id) {
+      cur[":block/string"] = string;
+      return;
+    }
+    for (const kid of kidsOf2(cur)) stack.push(kid);
+  }
+}
+function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, onEditString = null, editQuiet = () => true, fingerprint = false, guard = (_name, fn) => fn, schedule = (fn) => queueMicrotask(fn) }) {
   const entityOf = (id) => `[:block/uid "${String(id).replace(/["\\]/g, "")}"]`;
   const nodes = /* @__PURE__ */ new Map();
   const kinds = /* @__PURE__ */ new Map([[uid, "struct"]]);
@@ -41098,6 +41317,15 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
   let lastTree = null;
   let held = false;
   let dirty = false;
+  let editingUid = null;
+  const editQuietOn = () => {
+    try {
+      const value = typeof editQuiet === "function" ? editQuiet() : editQuiet;
+      return value !== false;
+    } catch {
+      return true;
+    }
+  };
   const patternOf = (kind) => kind === "edges" ? EDGES_PATTERN : kind === "deep" ? deepPattern : STRUCT_PATTERN;
   const read2 = (pattern, id) => {
     try {
@@ -41154,7 +41382,23 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
         return;
       }
       nodes.delete(id);
-    } else nodes.set(id, after);
+      kick();
+      return;
+    }
+    const before = nodes.get(id);
+    const sole = before && editingUid ? soleStringChange(before, after) : null;
+    nodes.set(id, after);
+    if (sole && sole === editingUid && editQuietOn()) {
+      const text4 = childString2(after, sole);
+      if (text4 != null) {
+        patchTreeString(lastTree, sole, text4);
+        try {
+          onEditString?.(sole, text4);
+        } catch {
+        }
+        return;
+      }
+    }
     kick();
   });
   const readWholeEdges = (id) => {
@@ -41170,6 +41414,31 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
     const have = new Set(kidsOf2(whole2).map((edge) => edge?.[UID]));
     for (const edgeUid of print.keys()) if (!have.has(edgeUid)) return null;
     return { whole: whole2, print };
+  };
+  const edgeStringsMatch = (stored, ids) => {
+    if (typeof data.pull_many !== "function" || !ids.length) return false;
+    let rows = null;
+    try {
+      rows = data.pull_many("[:block/uid :block/string :block/props]", ids.map((edgeUid) => entityOf(edgeUid)));
+    } catch {
+      return false;
+    }
+    if (!Array.isArray(rows) || rows.length !== ids.length) return false;
+    const have = /* @__PURE__ */ new Map();
+    for (const edge of kidsOf2(stored)) {
+      if (edge?.[UID]) have.set(edge[UID], { string: edge[":block/string"] ?? "", props: propsKey(edge[":block/props"]) });
+    }
+    const seen = /* @__PURE__ */ new Set();
+    for (const row4 of rows) {
+      const edgeUid = row4?.[UID];
+      const got = edgeUid ? have.get(edgeUid) : null;
+      if (!got || seen.has(edgeUid)) return false;
+      seen.add(edgeUid);
+      if ((row4[":block/string"] ?? "") !== got.string || propsKey(row4[":block/props"]) !== got.props) return false;
+    }
+    if (seen.size !== ids.length) return false;
+    for (const edgeUid of ids) if (!seen.has(edgeUid)) return false;
+    return true;
   };
   const onFingerprint = (id) => guard("watchEdges", (_before, after) => {
     if (disposed) return;
@@ -41191,6 +41460,11 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
     let reordered = false;
     if (prev && stored?.[UID]) {
       const diff = diffFingerprints(prev, next);
+      const times = !diff.removed.length && !diff.reordered ? timeChangedIds(prev, next) : null;
+      if (times && times.length && edgeStringsMatch(stored, times)) {
+        fingerprints.set(id, next);
+        return;
+      }
       if (!diff.changed.length && !diff.removed.length) {
         if (!diff.reordered) return;
         reordered = true;
@@ -41392,6 +41666,9 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
   }
   return {
     watchItem,
+    setEditing(id) {
+      editingUid = typeof id === "string" && id ? id : null;
+    },
     // Read every container again now (an undo, a refresh) and return the assembled tree; contents stay as stored.
     refresh() {
       if (disposed) return null;
@@ -43936,9 +44213,9 @@ function countReads(data, stats) {
   });
 }
 var BROWSE_TTL_MS = 3e4;
-function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph, now: now4, sleep } = {}) {
+function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph, now: now5, sleep } = {}) {
   const pacer = createWritePacer({
-    ...typeof now4 === "function" ? { now: now4 } : {},
+    ...typeof now5 === "function" ? { now: now5 } : {},
     ...typeof sleep === "function" ? { sleep } : {}
   });
   const mutate = async (fn) => {
@@ -44036,9 +44313,9 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     if (!ids.length || typeof data.pull_many !== "function") return uids.length;
     const res = data.pull_many(BLOCK_PROPS_PATTERN, ids.map((u) => [":block/uid", u]));
     if (!Array.isArray(res) || res.length !== ids.length) return uids.length;
-    const now5 = Date.now();
+    const now6 = Date.now();
     if (at === 0) primedProps.clear();
-    for (let i = 0; i < ids.length; i += 1) primedProps.set(ids[i], { at: now5, res: res[i] ?? null });
+    for (let i = 0; i < ids.length; i += 1) primedProps.set(ids[i], { at: now6, res: res[i] ?? null });
     return at + ids.length;
   };
   const adoptedTrees = /* @__PURE__ */ new Map();
@@ -44311,12 +44588,21 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const watchedBoards = /* @__PURE__ */ new Map();
   const bigBoards = /* @__PURE__ */ new Map();
   const splitWatches = /* @__PURE__ */ new Map();
+  const editingOf = /* @__PURE__ */ new Map();
+  const editListeners = /* @__PURE__ */ new Map();
   const contentWants = /* @__PURE__ */ new Map();
   const edgeFingerprintOn = () => {
     try {
       return notedSpeedFlags().edgeFingerprint === true;
     } catch {
       return false;
+    }
+  };
+  const editQuietOn = () => {
+    try {
+      return notedSpeedFlags().editQuiet !== false;
+    } catch {
+      return true;
     }
   };
   const splitWatchOn = () => {
@@ -44760,8 +45046,21 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       data: watchData,
       pull: rawPull,
       fingerprint: edgeFingerprintOn(),
+      editQuiet: editQuietOn,
       deepPattern: BOARD_PATTERN,
       guard: (name, fn) => guardCallback(name, fn, { stats }),
+      onEditString: (itemUid, string) => {
+        const live2 = cache.blockOf(itemUid);
+        if (live2 && typeof live2 === "object") live2[":block/string"] = string;
+        const set = editListeners.get(uid);
+        if (!set) return;
+        for (const fn of set) {
+          try {
+            fn(itemUid, string);
+          } catch {
+          }
+        }
+      },
       onTree: (tree) => {
         if (tree?.[":block/uid"]) absorb(uid, tree, false);
         for (const sub of [...subs]) {
@@ -44772,6 +45071,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     });
     split.subs = subs;
     splitWatches.set(uid, split);
+    if (editingOf.has(uid)) split.setEditing(editingOf.get(uid));
     for (const [key, want] of contentWants) armContent(key, want);
     return split;
   };
@@ -44818,8 +45118,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   let coverAsks = { at: 0, urls: /* @__PURE__ */ new Set() };
   let coverIndex = null;
   const coverIndexNow = () => {
-    const now5 = Date.now();
-    if (coverIndex && now5 - coverIndex.at < coverIndex.ttl) return coverIndex;
+    const now6 = Date.now();
+    if (coverIndex && now6 - coverIndex.at < coverIndex.ttl) return coverIndex;
     const t0 = Date.now();
     const pages = /* @__PURE__ */ new Map();
     for (const row4 of queryRows(host, PDF_PAGES_ALL_QUERY)) {
@@ -44831,7 +45131,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     for (const row4 of queryRows(host, PDF_PAGE_COUNTS_ALL_QUERY)) {
       if (Array.isArray(row4) && typeof row4[0] === "string" && Number(row4[1]) > 0) counts.set(row4[0], Number(row4[1]));
     }
-    coverIndex = { at: now5, ttl: Math.max(COVER_INDEX_MIN_MS, (Date.now() - t0) * 40), pages, counts };
+    coverIndex = { at: now6, ttl: Math.max(COVER_INDEX_MIN_MS, (Date.now() - t0) * 40), pages, counts };
     noteCoverBoards();
     return coverIndex;
   };
@@ -44864,8 +45164,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   };
   let coverWarm = null;
   const coverIndexPart = (i) => {
-    const now5 = Date.now();
-    if (coverIndex && now5 - coverIndex.at < coverIndex.ttl) return true;
+    const now6 = Date.now();
+    if (coverIndex && now6 - coverIndex.at < coverIndex.ttl) return true;
     if (i === 0 || !coverWarm) {
       const t02 = Date.now();
       const pages = /* @__PURE__ */ new Map();
@@ -44874,7 +45174,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         if (!pages.has(row4[0])) pages.set(row4[0], []);
         pages.get(row4[0]).push({ uid: row4[1], title: typeof row4[2] === "string" ? row4[2] : "", url: row4[0] });
       }
-      coverWarm = { at: now5, pages, ms: Date.now() - t02 };
+      coverWarm = { at: now6, pages, ms: Date.now() - t02 };
       return false;
     }
     const t0 = Date.now();
@@ -44887,10 +45187,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     return true;
   };
   const useCoverIndex = (url) => {
-    const now5 = Date.now();
-    if (now5 - coverAsks.at > COVER_INDEX_MIN_MS) coverAsks = { at: now5, urls: /* @__PURE__ */ new Set() };
+    const now6 = Date.now();
+    if (now6 - coverAsks.at > COVER_INDEX_MIN_MS) coverAsks = { at: now6, urls: /* @__PURE__ */ new Set() };
     coverAsks.urls.add(url);
-    return coverAsks.urls.size >= COVER_INDEX_URLS || Boolean(coverIndex && now5 - coverIndex.at < coverIndex.ttl);
+    return coverAsks.urls.size >= COVER_INDEX_URLS || Boolean(coverIndex && now6 - coverIndex.at < coverIndex.ttl);
   };
   const readPdfCover = (url) => {
     if (useCoverIndex(url)) {
@@ -44924,8 +45224,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const filterBrowseCache = /* @__PURE__ */ new Map();
   let userEids = null;
   const userIdsFor = (name) => {
-    const now5 = Date.now();
-    if (!userEids || now5 - userEids.at > 5 * 6e4) {
+    const now6 = Date.now();
+    if (!userEids || now6 - userEids.at > 5 * 6e4) {
       const map = /* @__PURE__ */ new Map();
       for (const query of USER_EID_QUERIES) {
         for (const [eid, n3] of host.q(query) || []) {
@@ -44935,19 +45235,19 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           if (!map.get(key).includes(eid)) map.get(key).push(eid);
         }
       }
-      userEids = { at: now5, map };
+      userEids = { at: now6, map };
     }
     return userEids.map.get(String(name).toLowerCase()) || null;
   };
   let highlightUrls = null;
   const highlightCounts = (timed) => {
-    const now5 = Date.now();
-    if (highlightUrls && now5 - highlightUrls.at < FILTER_BROWSE_TTL_MS) return highlightUrls.map;
+    const now6 = Date.now();
+    if (highlightUrls && now6 - highlightUrls.at < FILTER_BROWSE_TTL_MS) return highlightUrls.map;
     const map = /* @__PURE__ */ new Map();
     for (const [url, props] of timed("pdf-highlights", () => host.q(PDF_HIGHLIGHTS_QUERY))) {
       if (typeof url === "string" && hasPdfHighlight(props)) map.set(url, (map.get(url) || 0) + 1);
     }
-    highlightUrls = { at: now5, map };
+    highlightUrls = { at: now6, map };
     return map;
   };
   const pdfKeep = (rows, { parsed = false, highlights = false, parsedUrls = null } = {}, timed) => {
@@ -45543,6 +45843,33 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         return [];
       }
     },
+    // The view's editing card. A split that is not up yet reads this when it is created.
+    noteEditing(boardUid, itemUid) {
+      const id = String(boardUid ?? "");
+      if (!id) return;
+      const next = typeof itemUid === "string" && itemUid ? itemUid : null;
+      if (next) editingOf.set(id, next);
+      else editingOf.delete(id);
+      try {
+        splitWatches.get(id)?.setEditing(next);
+      } catch {
+      }
+    },
+    followEditString(boardUid, fn) {
+      const id = String(boardUid ?? "");
+      if (!id || typeof fn !== "function") return () => {
+      };
+      let set = editListeners.get(id);
+      if (!set) {
+        set = /* @__PURE__ */ new Set();
+        editListeners.set(id, set);
+      }
+      set.add(fn);
+      return () => {
+        set.delete(fn);
+        if (!set.size && editListeners.get(id) === set) editListeners.delete(id);
+      };
+    },
     watchBoard(uid, cb) {
       const covers2 = boardCovers.get(uid) === true;
       if (!covers2 && bigBoards.has(uid) && splitWatchOn()) return watchSplit(uid, cb);
@@ -45640,8 +45967,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (!modelStore || !trustOn() || !id || refreshes.has(id) || unverified.has(id) || !bigBoards.has(id)) return false;
       const split = splitWatches.get(id);
       if (!split || split.held || split.disposed) return false;
-      const now5 = pageStampOf(id);
-      if (!now5 || modelStore.stampOf(id) === now5) return false;
+      const now6 = pageStampOf(id);
+      if (!now6 || modelStore.stampOf(id) === now6) return false;
       const cancel = backgroundRead(id, "refresh", (tree, stamp2) => {
         refreshes.delete(id);
         if (tree && stamp2) keepModel(id, tree, stamp2);
@@ -45945,7 +46272,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // A ref target is joined into the board pull, but the board watch does not fire when it changes.
     blockStrings(uids, { fresh = false } = {}) {
       const out = /* @__PURE__ */ new Map();
-      const now5 = Date.now();
+      const now6 = Date.now();
       const missing2 = [];
       for (const uid of uids || []) {
         const id = String(uid ?? "");
@@ -45961,7 +46288,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           continue;
         }
         const hit = burstMemo.get(id);
-        if (hit && now5 - hit.at < BURST_MS) {
+        if (hit && now6 - hit.at < BURST_MS) {
           out.set(id, hit.value);
           continue;
         }
@@ -45980,7 +46307,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       for (const id of missing2) {
         const value = found.has(id) ? found.get(id) : null;
         out.set(id, value);
-        burstMemo.set(id, { value, at: now5 });
+        burstMemo.set(id, { value, at: now6 });
         if (fresh && typeof value === "string") {
           const node2 = cache.blockOf(id);
           if (node2 && typeof node2 === "object") node2[":block/string"] = value;
@@ -47321,15 +47648,15 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // Reads one page-level query (titles and times, never blocks) and keeps `limit` rows.
     browse(sort = "edited", limit = 40) {
       const id = ["edited", "created", "oldest", "title"].includes(sort) ? sort : "edited";
-      const now5 = Date.now();
-      if (!browsePages || now5 - browsePages.at > BROWSE_TTL_MS) {
+      const now6 = Date.now();
+      if (!browsePages || now6 - browsePages.at > BROWSE_TTL_MS) {
         const pages = [];
         for (const [p] of host.q(`[:find (pull ?p [:node/title :block/uid :create/time :edit/time]) :where [?p :node/title]]`) || []) {
           const title = p?.[":node/title"];
           const uid = p?.[":block/uid"];
           if (typeof title === "string" && !title.startsWith("roam/") && uid) pages.push({ title, uid: String(uid), created: Number(p[":create/time"]) || null, edited: Number(p[":edit/time"]) || null });
         }
-        browsePages = { at: now5, pages };
+        browsePages = { at: now6, pages };
       }
       const rows = browsePages.pages.map((p) => ({ kind: "page", title: p.title, uid: p.uid, meta: { created: p.created, edited: p.edited, createdBy: "", editedBy: "", refs: null, children: null, length: null }, onBoard: false, tags: [] }));
       const top = sortRows(rows, id).slice(0, Math.max(1, Math.floor(Number(limit) || 40)));
@@ -47355,12 +47682,12 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         return out;
       };
       const lim = Math.max(1, Math.floor(Number(limit) || 40));
-      const now5 = Date.now();
-      const spec = browseSpec(filter, { now: now5 });
+      const now6 = Date.now();
+      const spec = browseSpec(filter, { now: now6 });
       if (!spec) return { rows: [], queries, spec: null, defaulted: false };
       const key = typeof keep === "function" ? "" : browseKey(spec, sort, lim, [parsedUrls instanceof Set ? parsedUrls.size : -1, spec.orphan ? structureEpoch : 0]);
       const hit = key ? filterBrowseCache.get(key) : null;
-      if (hit && now5 - hit.at < FILTER_BROWSE_TTL_MS) {
+      if (hit && now6 - hit.at < FILTER_BROWSE_TTL_MS) {
         queries.push({ name: "browse-cache", ms: 0 });
         return { rows: hit.rows, total: hit.total ?? hit.rows.length, more: hit.more === true, queries, spec, defaulted: spec.defaulted };
       }
@@ -47459,7 +47786,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const rows = top.map((r) => libraryCard(r));
       if (key) {
         filterBrowseCache.delete(key);
-        filterBrowseCache.set(key, { at: now5, rows, total: kept.length, more: kept.length > lim || !pdfOnly && kept.length >= Math.max(BROWSE_ROWS, lim) });
+        filterBrowseCache.set(key, { at: now6, rows, total: kept.length, more: kept.length > lim || !pdfOnly && kept.length >= Math.max(BROWSE_ROWS, lim) });
         while (filterBrowseCache.size > FILTER_BROWSE_MAX) filterBrowseCache.delete(filterBrowseCache.keys().next().value);
       }
       return { rows, total: kept.length, more: kept.length > lim || !pdfOnly && kept.length >= Math.max(BROWSE_ROWS, lim), queries, spec, defaulted: spec.defaulted };
@@ -49221,6 +49548,24 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     boardWatch = host.watchBoard(uid, onBoard);
     boardWatchOn = true;
   }
+  let editStringOff = () => {
+  };
+  if (typeof host.followEditString === "function") {
+    try {
+      const off = host.followEditString(uid, (itemUid, string) => {
+        if (destroyed || !board2 || itemUid !== editingUid) return;
+        const item = board2.items.get(itemUid);
+        if (!item || !canPatchString(item, string)) return;
+        if (item.string === string) return;
+        writeItemString(item, string);
+        const node2 = ix().get(itemUid)?.node;
+        if (node2) node2[STR] = string;
+        emit2("change", { structural: false, dirty: /* @__PURE__ */ new Set([itemUid]) });
+      });
+      if (typeof off === "function") editStringOff = off;
+    } catch {
+    }
+  }
   function dropBoardWatch() {
     if (!boardWatchOn) return;
     boardWatchOn = false;
@@ -50342,6 +50687,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     // The view calls this with the card uid while that card is open, and null when editing ends.
     setEditing(id) {
       editingUid = typeof id === "string" && id ? id : null;
+      try {
+        host.noteEditing?.(uid, editingUid);
+      } catch {
+      }
     },
     idle: () => queue.idle(),
     setLinkMode(mode) {
@@ -52289,6 +52638,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      try {
+        editStringOff();
+      } catch {
+      }
+      try {
+        host.noteEditing?.(uid, null);
+      } catch {
+      }
       if (boardWatchOn) {
         boardWatchOn = false;
         boardWatchHeld = false;
@@ -92928,7 +93285,7 @@ init_card_face();
 var DEPTH = 3;
 var LIMIT2 = 24;
 var STOP_EVENTS2 = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick", "wheel", "keydown", "keyup", "contextmenu"];
-var childString5 = (c) => c?.[":block/string"] ?? c?.string ?? "";
+var childString6 = (c) => c?.[":block/string"] ?? c?.string ?? "";
 var childKids2 = (c) => c?.[":block/children"] ?? c?.children ?? [];
 function createQuickLook({ doc = globalThis.document, root, host, timers, on = {}, win: win2 = doc?.defaultView || null, pdfLib = null } = {}) {
   let node2 = null;
@@ -92962,7 +93319,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
       if (budget.n >= LIMIT2 * 4) return;
       budget.n += 1;
       const row4 = el2("div", "pxd-ql__block", parent);
-      renderRoot(row4, childString5(b), "pxd-rs pxd-ql__text");
+      renderRoot(row4, childString6(b), "pxd-rs pxd-ql__text");
       const kids = childKids2(b);
       if (kids.length && depth < DEPTH) renderBlocks(el2("div", "pxd-ql__children", row4), kids, depth + 1, budget);
     }
@@ -109733,11 +110090,21 @@ async function installPlexusDiagram({
     } catch {
     }
     const nodes = doc?.querySelectorAll?.("[class*='pxd-']");
+    const roots = [doc?.documentElement, doc?.body, doc?.head].filter(Boolean);
+    const anchors = [".roam-app", ".roam-body", "#app"].map((sel) => {
+      try {
+        return doc?.querySelector?.(sel);
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+    const isHostNode = (el2) => roots.includes(el2) || anchors.some((anchor) => anchor === el2 || el2.contains?.(anchor));
     for (const el2 of [...nodes || []]) {
       try {
         const classes = String(el2.getAttribute?.("class") ?? el2.className ?? "").split(/\s+/).filter(Boolean);
-        if (classes.some((name) => /^(rm-|roam-)/.test(name))) {
+        if (isHostNode(el2) || classes.some((name) => /^(rm-|roam-)/.test(name))) {
           for (const name of classes) if (name.startsWith("pxd-")) el2.classList.remove(name);
+          for (const attr of Array.from(el2.attributes || [], (a) => a.name)) if (attr.startsWith("data-pxd-")) el2.removeAttribute(attr);
         } else {
           el2.remove();
         }
@@ -114468,6 +114835,12 @@ async function installPlexusDiagram({
     bindExternalNav();
     lifecycle.add(installRoamStack(doc));
     lifecycle.add(() => syncBoardClass(doc, false));
+    lifecycle.add(() => {
+      try {
+        doc.body?.classList?.remove?.("pxd-has-fullscreen");
+      } catch {
+      }
+    });
     lifecycle.event(win2, "hashchange", onHash);
     lifecycle.event(win2, "popstate", onNavigate);
   }

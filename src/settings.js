@@ -227,10 +227,11 @@ export function normalizeSetting(id, value) {
 // edited block, so each card write changed its edges' fingerprint and read Connections whole (+100 ms per write).
 // overviewFast off restores the 3.30.0 open at map zoom: live waits until every shell in the view is built.
 // searchHay off rebuilds every card's haystack on each search key (3.34.0).
-const SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "searchHay"];
+// tableCaptionEdit off edits a table card by swapping in the raw {{[[table]]}} source (3.34.0).
+const SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "searchHay", "tableCaptionEdit"];
 
 export function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, searchHay: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, searchHay: true, tableCaptionEdit: true };
 }
 
 export function parseSpeedFlags(raw) {

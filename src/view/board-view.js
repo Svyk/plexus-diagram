@@ -8384,10 +8384,20 @@ function buildBoardView(onFail, {
     const hostNode = tablePointerTarget(node);
     return Boolean(hostNode && root.contains(hostNode));
   };
+  const tablePressSkip = ".pxd-table-overlay, .pxd-roam-table__open, .rg-col-resize, .rg-row-resize, .pxd-table-caption";
+  const shieldTablePress = (event) => {
+    try { if (notedSpeedFlags().tableCaptionEdit === false) return; } catch { return; }
+    if (event.target?.closest?.(tablePressSkip)) return;
+    event.preventDefault();
+  };
   let onBoardPointerDown;
   listen(root, "pointerdown", onBoardPointerDown = (event) => {
     if (leavesBoardPointer(event.target) || inReaderText(event.target)) return;
-    if (inRoamTable(event.target) && !event.__pxdGrab) { tablePointer = event.target; return; }
+    if (inRoamTable(event.target) && !event.__pxdGrab) {
+      tablePointer = event.target;
+      shieldTablePress(event);
+      return;
+    }
     // Interact is on: this click belongs to the reader. preventDefault or stopPropagation would block page nav.
     if (pdfClickShield(event.target)) return;
     else if (root.querySelector?.(".pxd-pdf-live")) itemsR.endPdfInteract();
@@ -8509,7 +8519,14 @@ function buildBoardView(onFail, {
   for (const type of ["mousedown", "mouseup"]) {
     listen(root, type, (event) => {
       if (type === "mousedown" && stealPinPress(event)) return;
-      if (leavesBoardPointer(event.target) || inReaderText(event.target) || inRoamTable(event.target)) return;
+      if (leavesBoardPointer(event.target) || inReaderText(event.target)) return;
+      if (inRoamTable(event.target)) {
+        if (type === "mousedown") {
+          shieldTablePress(event);
+          if (event.defaultPrevented) event.stopPropagation();
+        }
+        return;
+      }
       const native = nativeClickKind(event.target);
       if (native === "checkbox" || native === "image") return;
       const editing = itemsR.editingUid();
@@ -9233,6 +9250,7 @@ function buildBoardView(onFail, {
       }
     }
     if (inputFocused && itemsR.isEditing()) {
+      if (event.target?.closest?.(".pxd-table-caption")) return;
       const ta = String(event.target?.tagName || "").toLowerCase() === "textarea" ? event.target : doc.activeElement;
       if (ta && String(ta.tagName || "").toLowerCase() === "textarea") {
         const uid = itemsR.editingUid();

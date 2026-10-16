@@ -82,7 +82,7 @@ import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
 import { createPageChips } from "./page-chips.js";
-import { jumpSidebarPdf, sidebarPageEl, sidebarPdfContainer } from "./pin-reveal.js";
+import { SIDEBAR_WAIT_MS, jumpSidebarPdf, pdfTargetsMatch, sidebarPageEl, waitForSidebarPdf, watchNodeGone } from "./pin-reveal.js";
 import { createCardMotionRelay } from "./card-parse-motion.js";
 import { runChartToTable } from "./chart-table.js";
 import { askThemeChanged, openAskAI, setAskSettings } from "./ask-ai.js";
@@ -1881,38 +1881,109 @@ function buildBoardView(onFail, {
   };
   let sidebarChips = null;
   let sidebarHost = null;
-  // An already-open sidebar PDF jumps to the pin. Chips attach only when a parse is loaded,
-  // and only when that reader is on the page, so a board with no sidebar grows no listeners.
-  function revealSidebarPin(plan) {
+  let sidebarGen = 0;
+  let sidebarUnwatch = null;
+  let sidebarWake = null;
+  const readBlock = (uid) => {
+    try { return host?.blockString?.(uid) || ""; } catch { return ""; }
+  };
+  function pinPdfTarget(plan) {
+    const uid = String(plan?.pdfUid || "").trim();
+    if (!uid) return null;
+    let source = readBlock(uid);
+    if (!source) {
+      try {
+        const b = board();
+        if (b) {
+          for (const it of b.items.values()) {
+            if (!it || it.kind !== "pdf") continue;
+            const blockUid = it.target?.kind === "block" ? it.target.uid : it.uid;
+            if (it.uid === uid || blockUid === uid || it.target?.uid === uid) { source = it.string || ""; break; }
+          }
+        }
+      } catch { source = ""; }
+    }
+    return { uid, url: pdfMacroUrl(source) || "" };
+  }
+  function parseMatchesPin(want) {
+    if (!want || !readPane?.parsedDoc?.()) return false;
+    return pdfTargetsMatch({
+      uid: readPane?.blockUid?.() || "",
+      url: readPane?.sourceUrl?.() || "",
+    }, want);
+  }
+  function dropSidebarChips() {
+    sidebarUnwatch?.();
+    sidebarUnwatch = null;
+    try { sidebarChips?.dispose?.(); } catch { /* gone */ }
+    sidebarChips = null;
+    sidebarHost = null;
+  }
+  // Jump only the sidebar PDF that is this pin. Shift-click waits until that window exists.
+  // Chips attach only once the pane's parse is the same file, and leave with the window.
+  async function revealSidebarPin(plan) {
     if (disposed || !plan) return false;
-    const box = sidebarPdfContainer(doc);
-    if (!box) return false;
-    if (Number.isInteger(plan.page) && plan.page >= 1) {
-      try { jumpSidebarPdf(doc, plan.page); } catch { /* field */ }
-    }
-    const parsed = readPane?.parsedDoc?.() || null;
-    if (!parsed) return true;
-    if (sidebarChips && sidebarHost !== box) {
-      try { sidebarChips.dispose(); } catch { /* gone */ }
-      sidebarChips = null;
-    }
-    sidebarHost = box;
-    if (!sidebarChips) {
-      sidebarChips = createPageChips({
+    const want = pinPdfTarget(plan);
+    if (!want) return false;
+    const gen = ++sidebarGen;
+    const alive = () => !disposed && gen === sidebarGen;
+    const started = Date.now();
+    const sleep = (ms) => new Promise((resolve) => {
+      const cancel = timers.later(() => {
+        if (sidebarWake === wake) sidebarWake = null;
+        resolve();
+      }, ms);
+      const wake = () => { cancel(); resolve(); };
+      sidebarWake?.();
+      sidebarWake = wake;
+    });
+    try {
+      const box = await waitForSidebarPdf({
         doc,
-        host: box,
-        getParsed: () => readPane?.parsedDoc?.() || null,
-        pageEl: (n) => sidebarPageEl(sidebarPdfContainer(doc) || box, n),
-        pageOf: (n) => (readPane?.parsedDoc?.()?.pages || []).find((row) => row?.n === n) || null,
-        storage,
+        want,
+        readString: readBlock,
+        timeout: Math.max(0, SIDEBAR_WAIT_MS - (Date.now() - started)),
+        sleep,
+        alive,
       });
+      if (!alive() || !box) return false;
+      if (Number.isInteger(plan.page) && plan.page >= 1) {
+        try { jumpSidebarPdf(doc, plan.page, want, readBlock); } catch { /* field */ }
+      }
+      const pace = 50;
+      const cap = Math.ceil(SIDEBAR_WAIT_MS / pace) + 1;
+      for (let i = 0; i < cap && Date.now() < started + SIDEBAR_WAIT_MS; i += 1) {
+        if (!alive()) return false;
+        if (parseMatchesPin(want)) break;
+        await sleep(pace);
+      }
+      if (!alive() || !parseMatchesPin(want)) return true;
+      if (sidebarHost !== box) dropSidebarChips();
+      sidebarHost = box;
+      sidebarUnwatch?.();
+      sidebarUnwatch = watchNodeGone(box, doc, () => {
+        if (sidebarHost !== box) return;
+        dropSidebarChips();
+      });
+      if (!sidebarChips) {
+        sidebarChips = createPageChips({
+          doc,
+          host: box,
+          getParsed: () => (parseMatchesPin(want) ? readPane?.parsedDoc?.() || null : null),
+          pageEl: (n) => sidebarPageEl(box, n),
+          pageOf: (n) => (readPane?.parsedDoc?.()?.pages || []).find((row) => row?.n === n) || null,
+          storage,
+        });
+      }
+      try { sidebarChips.setShown(true); } catch { /* chips */ }
+      const block = matchParsedBlock(readPane?.parsedDoc?.() || null, plan);
+      if (block && alive()) {
+        try { sidebarChips.flash(block.id); } catch { /* chips */ }
+      }
+      return true;
+    } catch {
+      return false;
     }
-    try { sidebarChips.setShown(true); } catch { /* chips */ }
-    const block = matchParsedBlock(parsed, plan);
-    if (block) {
-      try { sidebarChips.flash(block.id); } catch { /* chips */ }
-    }
-    return true;
   }
   function openPin(detail) {
     const plan = detail && typeof detail === "object" ? detail : null;
@@ -10063,7 +10134,7 @@ function buildBoardView(onFail, {
       };
       // Each step stands alone. A throw used to set disposed and skip the body popover and the window listeners.
       step(() => perfLog?.cancelPan?.());
-      step(() => { sidebarChips?.dispose?.(); sidebarChips = null; sidebarHost = null; });
+      step(() => { sidebarGen += 1; sidebarWake?.(); sidebarWake = null; dropSidebarChips(); });
       step(() => { dropTabStrip(); root.classList.remove("pxd-root--fstabs"); });
       step(() => closeLinksMenu());
       step(() => closeOutsideMenu());

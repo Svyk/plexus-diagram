@@ -2788,6 +2788,8 @@ export function createReadPane({
     showOutline() { void enterParsed("both"); },
     mode: () => viewMode,
     parsedDoc: () => parsedView?.getDoc?.() || null,
+    sourceUrl: () => pdfUrl(),
+    blockUid: () => current.blockUid || "",
     // U2 contract for OCR sources: pxd-ocr/1 page records (or { pages }) for the open PDF.
     setOcrPages: (pages, opts) => setOcrPages(pages, opts),
     noteScan,

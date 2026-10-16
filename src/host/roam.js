@@ -1202,10 +1202,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // Boards of SPLIT_WATCH_MIN blocks or more: uid -> their last full pull, and the split watch while one is live.
   const bigBoards = new Map();
   const splitWatches = new Map();
+  // Board uid -> the card uid open in the editor. The section watch skips a kick that is only that string.
+  const editingOf = new Map();
+  const editListeners = new Map();
   // Mounted cards that want their contents live: itemUid -> { n, offs: split -> release }. Kept here, not on the
   // split, so a split recreated after a keep-alive pause arms them again without the view asking.
   const contentWants = new Map();
   const edgeFingerprintOn = () => { try { return notedSpeedFlags().edgeFingerprint === true; } catch { return false; } };
+  const editQuietOn = () => { try { return notedSpeedFlags().editQuiet !== false; } catch { return true; } };
   const splitWatchOn = () => { try { return notedSpeedFlags().splitWatch !== false; } catch { return true; } };
   // A card's content watch can wait: with the minute budget low, arms wait until it recovers, so openPage and writes
   // are not refused. The board's own watches never wait.
@@ -1650,8 +1654,18 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       data: watchData,
       pull: rawPull,
       fingerprint: edgeFingerprintOn(),
+      editQuiet: editQuietOn,
       deepPattern: BOARD_PATTERN,
       guard: (name, fn) => guardCallback(name, fn, { stats }),
+      onEditString: (itemUid, string) => {
+        const live = cache.blockOf(itemUid);
+        if (live && typeof live === "object") live[":block/string"] = string;
+        const set = editListeners.get(uid);
+        if (!set) return;
+        for (const fn of set) {
+          try { fn(itemUid, string); } catch { /* session */ }
+        }
+      },
       onTree: (tree) => {
         if (tree?.[":block/uid"]) absorb(uid, tree, false);
         for (const sub of [...subs]) {
@@ -1663,6 +1677,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     });
     split.subs = subs;
     splitWatches.set(uid, split);
+    if (editingOf.has(uid)) split.setEditing(editingOf.get(uid));
     for (const [key, want] of contentWants) armContent(key, want);
     return split;
   };
@@ -2408,6 +2423,31 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       } catch {
         return [];
       }
+    },
+
+    // The view's editing card. A split that is not up yet reads this when it is created.
+    noteEditing(boardUid, itemUid) {
+      const id = String(boardUid ?? "");
+      if (!id) return;
+      const next = typeof itemUid === "string" && itemUid ? itemUid : null;
+      if (next) editingOf.set(id, next);
+      else editingOf.delete(id);
+      try { splitWatches.get(id)?.setEditing(next); } catch { /* split */ }
+    },
+
+    followEditString(boardUid, fn) {
+      const id = String(boardUid ?? "");
+      if (!id || typeof fn !== "function") return () => {};
+      let set = editListeners.get(id);
+      if (!set) {
+        set = new Set();
+        editListeners.set(id, set);
+      }
+      set.add(fn);
+      return () => {
+        set.delete(fn);
+        if (!set.size && editListeners.get(id) === set) editListeners.delete(id);
+      };
     },
 
     watchBoard(uid, cb) {

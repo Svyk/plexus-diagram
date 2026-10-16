@@ -116,7 +116,57 @@ export function diffFingerprints(prev, next) {
   return { changed, removed, reordered };
 }
 
-export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerprint = false, guard = (_name, fn) => fn, schedule = (fn) => queueMicrotask(fn) }) {
+// The container's own fields and every direct child match, except one child's string.
+// That child's uid, or null when the diff is anything else (or nothing).
+function soleStringChange(prev, next) {
+  if (!prev || !next) return null;
+  if ((prev[":block/string"] ?? "") !== (next[":block/string"] ?? "")) return null;
+  if ((prev[":block/order"] ?? null) !== (next[":block/order"] ?? null)) return null;
+  if ((prev[":block/heading"] || 0) !== (next[":block/heading"] || 0)) return null;
+  if ((prev[":block/open"] ?? null) !== (next[":block/open"] ?? null)) return null;
+  if (propsKey(prev[":block/props"]) !== propsKey(next[":block/props"])) return null;
+  const a = kidsOf(prev);
+  const b = kidsOf(next);
+  if (a.length !== b.length) return null;
+  let hit = null;
+  for (let i = 0; i < a.length; i += 1) {
+    const p = a[i];
+    const q = b[i];
+    if (p?.[UID] !== q?.[UID]) return null;
+    // Direct fields only. The container pattern does not pull grandchildren, and the stored
+    // node still has them, so a body block must not look like a second change.
+    const stringChanged = (p?.[":block/string"] ?? "") !== (q?.[":block/string"] ?? "");
+    const restChanged = (p?.[":block/order"] ?? null) !== (q?.[":block/order"] ?? null)
+      || (p?.[":block/heading"] || 0) !== (q?.[":block/heading"] || 0)
+      || (p?.[":block/open"] ?? null) !== (q?.[":block/open"] ?? null)
+      || propsKey(p?.[":block/props"]) !== propsKey(q?.[":block/props"]);
+    if (!stringChanged && !restChanged) continue;
+    if (restChanged || hit) return null;
+    hit = q[UID] || null;
+  }
+  return hit;
+}
+
+function childString(node, id) {
+  for (const kid of kidsOf(node)) if (kid?.[UID] === id) return kid[":block/string"] ?? "";
+  return null;
+}
+
+function patchTreeString(tree, id, string) {
+  if (!tree) return;
+  const stack = [tree];
+  while (stack.length) {
+    const cur = stack.pop();
+    if (!cur || typeof cur !== "object") continue;
+    if (cur[UID] === id) {
+      cur[":block/string"] = string;
+      return;
+    }
+    for (const kid of kidsOf(cur)) stack.push(kid);
+  }
+}
+
+export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, onEditString = null, editQuiet = () => true, fingerprint = false, guard = (_name, fn) => fn, schedule = (fn) => queueMicrotask(fn) }) {
   const entityOf = (id) => `[:block/uid "${String(id).replace(/["\\]/g, "")}"]`;
   const nodes = new Map();
   const kinds = new Map([[uid, "struct"]]);
@@ -160,6 +210,13 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
   // Callbacks only store what Roam sent and mark the tree dirty; release() assembles once if anything changed.
   let held = false;
   let dirty = false;
+  let editingUid = null;
+  const editQuietOn = () => {
+    try {
+      const value = typeof editQuiet === "function" ? editQuiet() : editQuiet;
+      return value !== false;
+    } catch { return true; }
+  };
 
   const patternOf = (kind) => (kind === "edges" ? EDGES_PATTERN : kind === "deep" ? deepPattern : STRUCT_PATTERN);
   const read = (pattern, id) => {
@@ -216,7 +273,20 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
         return;
       }
       nodes.delete(id);
-    } else nodes.set(id, after);
+      kick();
+      return;
+    }
+    const before = nodes.get(id);
+    const sole = before && editingUid ? soleStringChange(before, after) : null;
+    nodes.set(id, after);
+    if (sole && sole === editingUid && editQuietOn()) {
+      const text = childString(after, sole);
+      if (text != null) {
+        patchTreeString(lastTree, sole, text);
+        try { onEditString?.(sole, text); } catch { /* session */ }
+        return;
+      }
+    }
     kick();
   });
 
@@ -471,6 +541,9 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
 
   return {
     watchItem,
+    setEditing(id) {
+      editingUid = typeof id === "string" && id ? id : null;
+    },
     // Read every container again now (an undo, a refresh) and return the assembled tree; contents stay as stored.
     refresh() {
       if (disposed) return null;

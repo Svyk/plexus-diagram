@@ -987,6 +987,22 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     boardWatch = host.watchBoard(uid, onBoard);
     boardWatchOn = true;
   }
+  let editStringOff = () => {};
+  if (typeof host.followEditString === "function") {
+    try {
+      const off = host.followEditString(uid, (itemUid, string) => {
+        if (destroyed || !board || itemUid !== editingUid) return;
+        const item = board.items.get(itemUid);
+        if (!item || !canPatchString(item, string)) return;
+        if (item.string === string) return;
+        writeItemString(item, string);
+        const node = ix().get(itemUid)?.node;
+        if (node) node[STR] = string;
+        emit("change", { structural: false, dirty: new Set([itemUid]) });
+      });
+      if (typeof off === "function") editStringOff = off;
+    } catch { /* host */ }
+  }
 
   function dropBoardWatch() {
     if (!boardWatchOn) return;
@@ -2052,6 +2068,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     // The view calls this with the card uid while that card is open, and null when editing ends.
     setEditing(id) {
       editingUid = typeof id === "string" && id ? id : null;
+      try { host.noteEditing?.(uid, editingUid); } catch { /* host */ }
     },
 
     idle: () => queue.idle(),
@@ -3976,6 +3993,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      try { editStringOff(); } catch { /* already dropped */ }
+      try { host.noteEditing?.(uid, null); } catch { /* host */ }
       if (boardWatchOn) {
         boardWatchOn = false;
         boardWatchHeld = false;

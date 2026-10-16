@@ -8613,6 +8613,53 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   opacity: 0.85;
 }
 
+.pxd-panel__filters-row {
+  display: flex;
+  flex: 1 0 100%;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pxd-panel__group {
+  margin: 8px 8px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pxd-muted);
+}
+
+.pxd-panel__page-chip {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 999px;
+  background: var(--pxd-card);
+  color: var(--pxd-text);
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.pxd-panel__row--active {
+  background: var(--pxd-accent-soft);
+  box-shadow: inset 2px 0 0 var(--pxd-accent);
+}
+
+.pxd-panel__row-snip {
+  color: var(--pxd-muted);
+  white-space: normal;
+}
+
+.bp3-dark .pxd-root .pxd-panel__page-chip,
+body.bt-theme-dark .pxd-root .pxd-panel__page-chip,
+.rm-dark-theme .pxd-root .pxd-panel__page-chip,
+.pxd-root--dark .pxd-panel__page-chip {
+  background: var(--pxd-card);
+  color: var(--pxd-text);
+  border-color: var(--pxd-border);
+}
+
 /* A long page name must not push the hit text out of the row. */
 .pxd-panel__row > .pxd-panel__row-label {
   flex: 0 1 auto;

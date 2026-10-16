@@ -24,11 +24,13 @@ import { shouldNudgeQueries } from "./model/query-fold.js";
 import { applyFullscreenChrome } from "./view/fullscreen.js";
 import { installRoamStack, syncBoardClass } from "./view/roam-stack.js";
 import { focusOpenBlock } from "./model/card-children.js";
+import { zoomBoardTarget } from "./model/zoom-board.js";
 import { hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
 import { createRelChips } from "./relchips.js";
 import { createBoardChips } from "./boardchips.js";
 import { createCardChips } from "./cardchips.js";
+import { addedZoomHost, createZoomChip } from "./view/zoom-chip.js";
 import { createPrefetch } from "./prefetch.js";
 import { installBoardRules } from "./model/board-rule.js";
 import { createResurface } from "./view/resurface-panel.js";
@@ -343,6 +345,31 @@ export async function installPlexusDiagram({
     onOpen: ({ boardUid, cardUid, sidebar }) => { void openPublic(boardUid, { card: cardUid, sidebar }); },
     onPreview: ({ boardUid, cardUid }) => chipPreview(boardUid, cardUid),
   });
+  // A zoomed block on a board page keeps Roam's outline. The chip opens that board.
+  const zoomChip = createZoomChip({
+    doc,
+    readTarget: () => {
+      const uid = diagramUidFromLocation();
+      if (!uid) return null;
+      return zoomBoardTarget(uid, {
+        parentOf: (id) => {
+          try { return host.blockLocation?.(id) ?? null; } catch { return null; }
+        },
+        isDiagram: (id) => {
+          try { return isDiagramString(host.blockString?.(id)); } catch { return false; }
+        },
+        isSection: (id) => {
+          let props = null;
+          try { props = host.pullProps?.(id); } catch { props = null; }
+          return props?.plexus?.type === "section";
+        },
+        blockString: (id) => {
+          try { return host.blockString?.(id) || ""; } catch { return ""; }
+        },
+      });
+    },
+    onOpen: (target) => { openZoomedCard(target); },
+  });
   // FAST-4. Chip hovers, crumbs, nested boards, and known refs share this warm. FAST-9 gates it with `enabled`.
   const schedulePrefetch = createPrefetch({
     doc,
@@ -407,6 +434,7 @@ export async function installPlexusDiagram({
   lifecycle.add(() => relChips.dispose());
   lifecycle.add(() => boardChips.dispose());
   lifecycle.add(() => cardChips.dispose());
+  lifecycle.add(() => zoomChip.drop());
   lifecycle.add(() => schedulePrefetch.dispose());
   lifecycle.add(() => resurface.dispose());
   // Inline ((trailUid)) strips. The map is filled by scanTrails; unload drops every one.
@@ -3509,6 +3537,7 @@ export async function installPlexusDiagram({
       boardChips.scan(node);
       cardChips.scan(node);
       if (settings[SETTING_IDS.resurface] !== false) resurface.scan(node);
+      if (addedZoomHost(node)) zoomChip.sync();
     }
     scanRegions(node);
     scanTrails(node);
@@ -3571,6 +3600,7 @@ export async function installPlexusDiagram({
       }
     }
     reconcile();
+    try { zoomChip.sync(); } catch { /* chip */ }
   }
 
   // ---- commands -------------------------------------------------------------------------------
@@ -4159,6 +4189,26 @@ export async function installPlexusDiagram({
     }
   }
 
+  // Roam's zoom stays. The chip opens the board focused on the card, and on the
+  // zoomed block when that block is not the card itself. Nothing is written.
+  function openZoomedCard(target) {
+    const boardUid = target?.boardUid;
+    const cardUid = target?.cardUid;
+    const blockUid = String(target?.blockUid || "");
+    if (!boardUid || !cardUid) return;
+    void openPublic(boardUid, { card: cardUid }).then((ok) => {
+      if (!ok || stopped || !blockUid || blockUid === cardUid) return;
+      const focus = (left) => {
+        if (stopped) return;
+        const rec = findOpenMount(boardUid, false) || findOpenMount(boardUid, true);
+        let done = false;
+        try { done = rec?.view?.focusInside?.(cardUid, blockUid) === true; } catch { done = false; }
+        if (!done && left > 0) lifecycle.timeout(() => focus(left - 1), 50);
+      };
+      focus(40);
+    });
+  }
+
   function openPublic(boardUid, opts = {}) {
     const sidebar = Boolean(opts?.sidebar);
     if (sidebar) {
@@ -4300,6 +4350,7 @@ export async function installPlexusDiagram({
   }
   scanRegions(doc);
   scanTrails(doc?.body || doc);
+  try { zoomChip.sync(); } catch { /* chip */ }
   for (const portal of doc?.querySelectorAll?.(".bp3-portal") || []) scanRegions(portal);
   // Typing outside a board is a Roam transaction. The board view drops live Roam
   // roots on its window keydown (quiet). An on-screen board stays mounted; this

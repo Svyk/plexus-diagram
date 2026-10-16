@@ -19279,7 +19279,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true };
 }
 function parseSpeedFlags(raw) {
   const base = defaultSpeedFlags();
@@ -19733,7 +19733,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -31941,7 +31941,10 @@ function createItemRenderer({
         freshen(rec);
         if (frag) (rec.type === "section" ? sectionNodes : itemNodes).append(rec.el);
         else layerOf(rec).append(rec.el);
-      } else if (isAttached(rec)) rec.el.remove();
+      } else if (isAttached(rec)) {
+        rec.el.remove();
+        noteCanvasDetach();
+      }
     }
     if (sectionNodes?.childNodes.length) sectionsLayer.append(sectionNodes);
     if (itemNodes?.childNodes.length) itemsLayer.append(itemNodes);
@@ -31954,13 +31957,18 @@ function createItemRenderer({
     const active2 = activeShellUid();
     let add = [];
     const far = farRect();
+    let removed = 0;
     for (const [uid, rec] of shells) {
       if (!rec.el) continue;
       const on = isAttached(rec);
       const want = keepAttached(uid, rec, active2) || nearView(uid, on ? far : cullRect);
       if (want && !on) add.push(rec);
-      else if (!want && on && !reveal) rec.el.remove();
+      else if (!want && on && !reveal) {
+        rec.el.remove();
+        removed += 1;
+      }
     }
+    if (removed) noteCanvasDetach();
     if (!add.length) return add;
     const wanted2 = add.length;
     if (add.length > budget) {
@@ -32028,6 +32036,20 @@ function createItemRenderer({
       onShells?.();
     } catch {
     }
+  };
+  let canvasDetachPending = false;
+  const noteCanvasDetach = () => {
+    if (canvasDetachPending || !canvasCards()) return;
+    canvasDetachPending = true;
+    queueMicrotask(() => {
+      canvasDetachPending = false;
+      if (canvasCards()) {
+        try {
+          onOverviewQueue?.();
+        } catch {
+        }
+      }
+    });
   };
   let shellsHeld = false;
   const holdShells = (on) => {
@@ -35490,7 +35512,10 @@ function createItemRenderer({
     rec.contentKey = null;
     mounted.delete(uid);
     contentSched?.drop(uid);
-    if (virtual() && isAttached(rec) && !keepAttached(uid, rec, activeShellUid()) && !nearView(uid, farRect())) rec.el.remove();
+    if (virtual() && isAttached(rec) && !keepAttached(uid, rec, activeShellUid()) && !nearView(uid, farRect())) {
+      rec.el.remove();
+      noteCanvasDetach();
+    }
   };
   const mountScheduled = (uid) => {
     if (disposed || paused) return false;
@@ -37075,7 +37100,7 @@ function createItemRenderer({
       for (const uid of lastBoard?.order || []) {
         if (!queued.has(uid) || shells.has(uid)) continue;
         const rect = coverShift?.get(uid) || lastRects?.get(uid);
-        if (rect) out.push({ uid, rect });
+        if (rect) out.push({ uid, rect, color: lastBoard.items.get(uid)?.color || "" });
       }
       return out;
     },
@@ -37104,6 +37129,22 @@ function createItemRenderer({
       const added = cullShells(rect, { reveal: true, budget, ms });
       for (const rec of added) paintOneOffscreen(rec.uid, rec, rect);
       return added.length;
+    },
+    // E3 (perf2): the far shells leave the DOM before a tier flip, so the flip restyles only what stays near
+    // (zoom-in to detail on the PhD main board restyled ~1,500 attached overview shells for a 27-card view).
+    detachFar(rect) {
+      if (disposed || !rect || !virtual()) return 0;
+      cullRect = rect;
+      const active2 = activeShellUid();
+      const far = farRect();
+      let removed = 0;
+      for (const [uid, rec] of shells) {
+        if (!isAttached(rec) || keepAttached(uid, rec, active2) || nearView(uid, far)) continue;
+        rec.el.remove();
+        removed += 1;
+      }
+      if (removed) noteCanvasDetach();
+      return removed;
     },
     // C1: a settle on a big board attaches `{ budget, ms }` per content pass until the view clears it (null).
     sliceAttach(opts) {
@@ -42750,6 +42791,7 @@ var BG_SLICE_MS = 30;
 var BG_QUIET_MS = 300;
 var BG_DUTY = 0.25;
 var BG_GAP_MIN_MS = 5;
+var BG_CAMERA_QUIET_MS = 500;
 var INPUT_EVENTS = ["wheel", "pointerdown", "pointermove", "keydown", "touchstart", "touchmove"];
 function createBgBudget({
   win: win2 = globalThis,
@@ -42767,9 +42809,25 @@ function createBgBudget({
   sliceMs = BG_SLICE_MS,
   quietMs = BG_QUIET_MS,
   duty = BG_DUTY,
-  enabled = () => true
+  enabled = () => true,
+  gestureQuiet = () => false,
+  cameraQuietMs = BG_CAMERA_QUIET_MS
 } = {}) {
   let lastInput = -Infinity;
+  let lastCamera = -Infinity;
+  const holds = /* @__PURE__ */ new Set();
+  const quietOn = () => {
+    try {
+      return gestureQuiet() === true;
+    } catch {
+      return false;
+    }
+  };
+  const gestureWait = () => {
+    if (!quietOn()) return 0;
+    if (holds.size) return quietMs;
+    return Math.max(0, cameraQuietMs - (now5() - lastCamera));
+  };
   let listening = false;
   const onInput = (ev) => {
     if (ev?.type === "pointermove" && !ev.buttons) return;
@@ -42812,7 +42870,7 @@ function createBgBudget({
     const run2 = (d) => {
       idleId = null;
       if (cancelled) return;
-      const wait2 = Math.max(quiet - Math.min(quietFor(), now5() - since), urgent ? 0 : nextAt - now5());
+      const wait2 = Math.max(quiet - Math.min(quietFor(), now5() - since), urgent ? 0 : nextAt - now5(), gestureWait());
       if (wait2 > 0) {
         timerId = setTimer(() => {
           timerId = null;
@@ -42829,7 +42887,7 @@ function createBgBudget({
       const deadline = {
         didTimeout: false,
         timeRemaining: () => {
-          if (quietFor() < quietMs) return 0;
+          if (quietFor() < quietMs || gestureWait() > 0) return 0;
           const left = sliceMs - (now5() - t0);
           const idleLeft = real ? d.didTimeout ? 0 : real.timeRemaining() : left;
           return Math.max(0, Math.min(left, idleLeft));
@@ -42893,6 +42951,16 @@ function createBgBudget({
     noteInput: () => {
       lastInput = now5();
     },
+    // The camera moved (any cause: wheel, drag, Fit, zoom buttons, an eased move).
+    noteCamera: () => {
+      lastCamera = now5();
+    },
+    // hold(key, true) while a gesture runs; hold(key, false) at its settle starts the input quiet from there.
+    hold: (key, on) => {
+      if (on) holds.add(key);
+      else if (holds.delete(key) && quietOn()) lastInput = now5();
+    },
+    held: () => holds.size > 0,
     quietFor,
     overruns,
     dispose() {
@@ -42909,11 +42977,15 @@ function createBgBudget({
 }
 var shared = null;
 var flagOn = () => true;
+var quietFlag = () => false;
 function bindBgBudgetFlag(fn) {
   flagOn = typeof fn === "function" ? fn : () => true;
 }
+function bindBgGestureFlag(fn) {
+  quietFlag = typeof fn === "function" ? fn : () => false;
+}
 function sharedBgBudget() {
-  if (!shared) shared = createBgBudget({ enabled: () => flagOn() });
+  if (!shared) shared = createBgBudget({ enabled: () => flagOn(), gestureQuiet: () => quietFlag() });
   return shared;
 }
 function resetSharedBgBudget() {
@@ -53294,6 +53366,8 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
   let canvas = null;
   let shown = false;
   let colorCache = null;
+  let lastItems = [];
+  let lastUids = null;
   const colors = () => {
     if (colorCache) return colorCache;
     const read2 = (name, fallback) => {
@@ -53335,16 +53409,22 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       return String(v).trim() || fallback;
     };
     c.palette = {};
-    for (const name of PALETTE2) c.palette[name] = read2(`--pxd-${name}-line`, c.line);
+    c.fills = {};
+    for (const name of PALETTE2) {
+      c.palette[name] = read2(`--pxd-${name}-line`, c.line);
+      const fill = read2(`--pxd-${name}-fill`, "");
+      c.fills[name] = !fill || fill === "transparent" || /^rgba\([^)]*,\s*0\)$/.test(fill) ? "" : fill;
+    }
     c.accent = read2("--pxd-accent", "hsl(175 80% 30%)");
     c.border = read2("--pxd-border", c.line);
+    c.borderStrong = read2("--pxd-border-strong", c.border);
     return c;
   };
   const hide = () => {
     shown = false;
     if (canvas && canvas.style.display !== "none") canvas.style.display = "none";
   };
-  const draw = ({ items = [], edges = [], zoom = 1, dpr = 1, styled = false } = {}) => {
+  const draw = ({ items = [], edges = [], zoom = 1, dpr = 1, styled = false, tier = "overview" } = {}) => {
     if (!items.length && !edges.length) {
       hide();
       return 0;
@@ -53364,7 +53444,7 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     }
     const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
     const scale = Math.max(0.01, Math.min(zoom * Math.min(dpr, 1.25), MAX_SIDE / w, MAX_SIDE / h));
-    const c = colors();
+    const c = styled ? paletteColors() : colors();
     if (!canvas) {
       canvas = doc.createElement("canvas");
       canvas.className = "pxd-underlay";
@@ -53386,22 +53466,67 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       return 0;
     }
     try {
-      paint2(ctx, { items, edges, c, scale, x0, y0, bw, bh, styled });
+      paint2(ctx, { items, edges, c, scale, x0, y0, bw, bh, styled, tier });
     } catch {
       hide();
       return 0;
     }
     canvas.style.display = "";
     shown = true;
+    lastItems = items;
+    lastUids = null;
     return items.length;
+  };
+  const drawnUids = () => {
+    if (!shown) return /* @__PURE__ */ new Set();
+    if (!lastUids) lastUids = new Set(lastItems.map((item) => item.uid));
+    return lastUids;
   };
   const drawOverview = ({ items = [], edges = [], zoom = 1, dpr = 1 } = {}) => {
     if (!items.length && !edges.length) {
       hide();
       return 0;
     }
-    paletteColors();
-    return draw({ items, edges, zoom, dpr, styled: true });
+    return draw({ items, edges, zoom, dpr, styled: true, tier: "overview" });
+  };
+  const paintCards = (ctx, { items, c, scale }) => {
+    const round6 = typeof ctx.roundRect === "function";
+    const shape = (r) => {
+      if (round6) ctx.roundRect(r.x, r.y, r.w, r.h, 8);
+      else ctx.rect(r.x, r.y, r.w, r.h);
+    };
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = c.card;
+    ctx.beginPath();
+    for (const { rect } of items) shape(rect);
+    ctx.fill();
+    const fills = /* @__PURE__ */ new Map();
+    const lines = /* @__PURE__ */ new Map();
+    for (const item of items) {
+      const name = item.color && c.palette?.[item.color] ? item.color : "";
+      const fill = name ? c.fills[name] : "";
+      if (fill) {
+        if (!fills.has(fill)) fills.set(fill, []);
+        fills.get(fill).push(item.rect);
+      }
+      const line = name ? c.palette[name] : c.borderStrong;
+      if (!lines.has(line)) lines.set(line, []);
+      lines.get(line).push(item.rect);
+    }
+    for (const [fill, rects] of fills) {
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      for (const r of rects) shape(r);
+      ctx.fill();
+    }
+    ctx.lineWidth = 1;
+    for (const [line, rects] of lines) {
+      ctx.strokeStyle = line;
+      ctx.beginPath();
+      for (const r of rects) shape(r);
+      ctx.stroke();
+    }
+    ctx.lineWidth = 1 / scale;
   };
   const paintStyled = (ctx, { items, c, scale }) => {
     const groups2 = /* @__PURE__ */ new Map();
@@ -53442,7 +53567,7 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     }
     ctx.globalAlpha = 1;
   };
-  const paint2 = (ctx, { items, edges, c, scale, x0, y0, bw, bh, styled = false }) => {
+  const paint2 = (ctx, { items, edges, c, scale, x0, y0, bw, bh, styled = false, tier = "overview" }) => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, bw, bh);
     ctx.setTransform(scale, 0, 0, scale, -x0 * scale, -y0 * scale);
@@ -53458,8 +53583,12 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    if (styled) {
+    if (styled && tier === "overview") {
       paintStyled(ctx, { items, c, scale });
+      return;
+    }
+    if (styled) {
+      paintCards(ctx, { items, c, scale });
       return;
     }
     ctx.fillStyle = c.card;
@@ -53476,7 +53605,7 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
   const dropColors = () => {
     colorCache = null;
   };
-  return { draw, drawOverview, hide, dispose, dropColors, isShown: () => shown, element: () => canvas };
+  return { draw, drawOverview, hide, dispose, dropColors, drawnUids, isShown: () => shown, element: () => canvas };
 }
 
 // src/view/board-view.js
@@ -82424,8 +82553,48 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const unparkEdge = (rec) => {
     if (!rec.parked) return;
     rec.parked = false;
-    svg?.append(rec.g);
+    (drag?.recs.has(rec) ? drag.layer : svg)?.append(rec.g);
     labelsLayer?.append(rec.label);
+  };
+  let drag = null;
+  const beginDrag = (board2, moving) => {
+    endDrag(null);
+    if (!svg?.parentElement || !moving?.size) return 0;
+    const layer = doc.createElementNS(SVG_NS5, "svg");
+    setClass(layer, "pxd-edges pxd-edges--drag");
+    layer.setAttribute("aria-hidden", "true");
+    layer.style.willChange = "transform";
+    svg.after?.(layer);
+    if (!layer.parentElement) svg.parentElement.append(layer);
+    const recs = /* @__PURE__ */ new Map();
+    for (const edge of board2.edges.values()) {
+      if (!moving.has(edge.from) || !moving.has(edge.to)) continue;
+      const rec = edgeEls.get(edge.uid);
+      if (!rec || rec.parked) continue;
+      const label = rec.label?.style?.transform || "";
+      recs.set(rec, label);
+      layer.append(rec.g);
+    }
+    drag = { layer, recs, inner: new Set([...recs.keys()].map((rec) => rec.uid)) };
+    return recs.size;
+  };
+  const dragBy = (dx, dy) => {
+    if (!drag) return;
+    drag.layer.style.transform = dx || dy ? `translate(${dx}px, ${dy}px)` : "";
+    for (const [rec, base] of drag.recs) if (rec.label && base) rec.label.style.transform = `translate(${dx}px, ${dy}px) ${base}`;
+  };
+  const endDrag = (ctx) => {
+    if (!drag) return;
+    const { layer, recs } = drag;
+    drag = null;
+    for (const [rec, base] of recs) {
+      if (rec.parked || !edgeEls.has(rec.uid)) continue;
+      svg.append(rec.g);
+      if (rec.label && base) rec.label.style.transform = base;
+      const edge = ctx?.board?.edges.get(rec.uid);
+      if (edge && ctx.rects) placeEdge(ctx.board, edge, rec, ctx.rects, ctx.zoom ?? zoomCache);
+    }
+    layer.remove();
   };
   const endOn = (spec, rect, other) => {
     if (!spec || !rect || spec.face) return null;
@@ -82841,6 +83010,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   };
   let placements = 0;
   const placeEdge = (board2, edge, rec, rects, zoom) => {
+    if (drag?.recs.has(rec)) {
+      rec.stale = true;
+      return;
+    }
     placements += 1;
     const geo = geometryFor(board2, edge, rects);
     rec.geo = geo;
@@ -83361,6 +83534,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     return rec ? rec.label.getBoundingClientRect() : null;
   };
   const dispose = () => {
+    endDrag(null);
     for (const uid of [...edgeEls.keys()]) removeEdge(uid);
     for (const key of [...linkEls.keys()]) removeLink(key);
     setTempWire(null);
@@ -83396,6 +83570,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       return n3;
     },
     placements: () => placements,
+    beginDrag,
+    dragBy,
+    endDrag,
+    dragInner: () => drag?.inner ?? null,
     flushWaiting,
     waitingLeft: () => waiting.size,
     setSelection,
@@ -94514,9 +94692,10 @@ function buildBoardView(onFail, {
   let frameHandle = null;
   let fsDispose = () => {
   };
+  let fsParked = false;
   let routeOff = () => {
   };
-  const dirty = { viewport: false, items: /* @__PURE__ */ new Set(), edges: /* @__PURE__ */ new Set(), structural: false, all: true, selection: false, links: false, ctx: false, minimap: false };
+  const dirty = { viewport: false, items: /* @__PURE__ */ new Set(), edges: /* @__PURE__ */ new Set(), structural: false, all: true, selection: false, links: false, ctx: false, minimap: false, resync: false };
   const board2 = () => session.board;
   const OUTLINE_NEAR = "100% 0px";
   const OUTLINE_FAR = "300% 0px";
@@ -97603,6 +97782,10 @@ function buildBoardView(onFail, {
   const setViewport = (next) => {
     if (!next) return;
     vp = { x: next.x, y: next.y, zoom: next.zoom };
+    try {
+      sharedBgBudget().noteCamera();
+    } catch {
+    }
     if (hoverUid) hideHover();
     markViewport();
     if (!gesturing) settle2();
@@ -97667,7 +97850,17 @@ function buildBoardView(onFail, {
     if (name === "data-pxd-lod") root.setAttribute(name, value);
     else root.style.setProperty(name, value);
   };
+  const flipStats = { flips: 0, attachedAtFlip: [] };
+  let paintedTier = null;
   const paintTier = () => {
+    if (paintedTier !== tier) {
+      if (paintedTier !== null) {
+        flipStats.flips += 1;
+        flipStats.attachedAtFlip.push(itemsR.attachedCount?.() ?? 0);
+        if (flipStats.attachedAtFlip.length > 20) flipStats.attachedAtFlip.shift();
+      }
+      paintedTier = tier;
+    }
     paintRoot("data-pxd-lod", tier);
     const f = lodFonts(vp.zoom);
     paintRoot("--pxd-map-font", `${f.map}px`);
@@ -97684,7 +97877,9 @@ function buildBoardView(onFail, {
   };
   const applyLod = () => {
     const was = tier;
-    tier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
+    const next = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
+    if (next !== was && size.width && styledUnderlay()) itemsR.detachFar?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
+    tier = next;
     paintTier();
     paintInvZoom();
     if (tier !== was) {
@@ -97865,6 +98060,13 @@ function buildBoardView(onFail, {
       return true;
     }
   };
+  const styledUnderlay = () => {
+    try {
+      return notedSpeedFlags().styledUnderlay !== false;
+    } catch {
+      return true;
+    }
+  };
   const deferReveal = () => {
     if (!wheelLayer && !gesturing) return false;
     if (gesturing) {
@@ -97873,6 +98075,62 @@ function buildBoardView(onFail, {
     }
     return deferOn() && Boolean(itemsR.isVirtual?.());
   };
+  const DRAG_LAYER_MIN = 24;
+  let dragRide = null;
+  const dragLayerWanted = (set) => {
+    try {
+      if (notedSpeedFlags().dragLayer === false) return false;
+    } catch {
+      return false;
+    }
+    return gesturing && ctl.gestureKind?.() === "move" && set.size >= DRAG_LAYER_MIN;
+  };
+  const beginDragRide = (b, set) => {
+    const shells = [];
+    for (const uid of set) {
+      const el3 = itemsR.shellOf(uid);
+      if (el3?.style) {
+        el3.style.willChange = "transform";
+        shells.push(el3);
+      }
+    }
+    dragRide = { shells, edges: edgesR.beginDrag(b, set), turn: 0 };
+  };
+  const DRAG_EDGE_BUDGET = 300;
+  const rideCrossing = (b, touching) => {
+    const inner = edgesR.dragInner() || /* @__PURE__ */ new Set();
+    const view2 = size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null;
+    const r = paintRects();
+    const near2 = [];
+    for (const uid of touching) {
+      if (inner.has(uid)) continue;
+      const e2 = b.edges.get(uid);
+      if (!e2) continue;
+      const a = r.get(e2.from), c = r.get(e2.to);
+      if (view2 && !(a && rectsIntersect(a, view2)) && !(c && rectsIntersect(c, view2))) continue;
+      near2.push(uid);
+    }
+    if (near2.length <= DRAG_EDGE_BUDGET) return near2;
+    const start = dragRide.turn % near2.length;
+    dragRide.turn += DRAG_EDGE_BUDGET;
+    const out = near2.slice(start, start + DRAG_EDGE_BUDGET);
+    if (out.length < DRAG_EDGE_BUDGET) out.push(...near2.slice(0, DRAG_EDGE_BUDGET - out.length));
+    return out;
+  };
+  const endDragRide = () => {
+    if (!dragRide) return;
+    const ride = dragRide;
+    dragRide = null;
+    for (const el3 of ride.shells) {
+      try {
+        el3.style.willChange = "";
+      } catch {
+      }
+    }
+    const b = board2();
+    edgesR.endDrag(b ? { board: b, rects: paintRects(), zoom: vp.zoom } : null);
+  };
+  const bgHoldKey = {};
   const syncShellHold = () => {
     const hold = deferReveal();
     if (hold) cancelSlice();
@@ -97880,8 +98138,13 @@ function buildBoardView(onFail, {
       itemsR.holdShells?.(hold);
     } catch {
     }
+    try {
+      sharedBgBudget().hold(bgHoldKey, !disposed && !suspended && (gesturing || wheelLayer));
+    } catch {
+    }
   };
   let underlayKind = "";
+  let underlayTier = "";
   const showUnderlay = () => {
     if (overviewCanvasOn() && paintOverviewCanvas({ band: false })) return;
     if (underlayDrawn) return;
@@ -97894,7 +98157,7 @@ function buildBoardView(onFail, {
     for (const item of b.items.values()) {
       if (item.type === "section") continue;
       const rect = r.get(item.uid);
-      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect });
+      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect, color: item.color || "" });
     }
     const edges = [];
     if (edgesR.isVirtual?.(b)) {
@@ -97904,7 +98167,8 @@ function buildBoardView(onFail, {
         if (a && c) edges.push([a, c]);
       }
     }
-    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1 });
+    underlayTier = tier;
+    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1, styled: styledUnderlay(), tier });
   };
   const endUnderlay = () => {
     underlayDrawn = false;
@@ -97946,7 +98210,18 @@ function buildBoardView(onFail, {
     }
     coverUids = new Set(items.map((item) => item.uid));
     underlayKind = "cover";
-    underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1 });
+    const edges = [];
+    const b = styledUnderlay() ? board2() : null;
+    if (b && edgesR.isVirtual?.(b)) {
+      const r = paintRects();
+      for (const e2 of b.edges.values()) {
+        if (edgesR.edgeShown(e2.uid) || !(coverUids.has(e2.from) || coverUids.has(e2.to))) continue;
+        const a = r.get(e2.from), c = r.get(e2.to);
+        if (a && c) edges.push([a, c]);
+      }
+    }
+    underlayTier = tier;
+    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1, styled: styledUnderlay(), tier });
   };
   const releaseUnderlay = () => {
     if (overviewCanvasOn() && paintOverviewCanvas()) return;
@@ -98072,7 +98347,8 @@ function buildBoardView(onFail, {
       releaseUnderlay();
       return;
     }
-    if (underlay.isShown() && (underlayKind === "burst" || underlayKind === "overview")) underlayDrawn = true;
+    const stale = underlayKind === "burst" && styledUnderlay() && underlayTier !== tier;
+    if (underlay.isShown() && !stale && (underlayKind === "burst" || underlayKind === "overview")) underlayDrawn = true;
     else {
       underlayDrawn = false;
       showUnderlay();
@@ -98124,7 +98400,10 @@ function buildBoardView(onFail, {
         }
       }
       settleWaitAt = 0;
-      if (gesturing) return;
+      if (gesturing) {
+        if (wheelLayer) armSettle();
+        return;
+      }
       hitShield.drop();
       endUnderlay();
       paintGrid();
@@ -102376,6 +102655,7 @@ ${url}`;
         }
         liveRects = null;
         resetGrown();
+        endDragRide();
         resumeTimer = timers.later(() => {
           resumeTimer = null;
           itemsR.setPaused(false);
@@ -102407,6 +102687,8 @@ ${url}`;
       if (overviewCanvasOn()) ovDirty = true;
       const set = new Set(uids);
       for (const u of uids) for (const d of descendantsOf(b, u)) set.add(d);
+      if ((dx || dy) && !dragRide && dragLayerWanted(set)) beginDragRide(b, set);
+      if (dragRide) edgesR.dragBy(dx, dy);
       const top = new Set(uids);
       const eff = effectiveRects();
       previewFit(uids, {
@@ -102415,7 +102697,8 @@ ${url}`;
       for (const u of grown) set.add(u);
       const links = paintedLinks();
       const linkKeys = new Set(links.filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
-      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: paintRects(), zoom: vp.zoom, linkKeys, links });
+      const touching = edgesTouching(b, set);
+      edgesR.update({ board: b, edgeUids: dragRide ? rideCrossing(b, touching) : touching, rects: paintRects(), zoom: vp.zoom, linkKeys, links });
       dirty.minimap = true;
       schedule();
     },
@@ -104410,8 +104693,15 @@ ${url}`;
   if (typeof MO === "function") {
     try {
       let settle3 = null;
+      const classKey = () => [doc.documentElement, doc.body].map((n3) => String(n3?.className?.baseVal ?? n3?.className ?? "").split(/\s+/).filter((c) => c && !c.startsWith("pxd-")).sort().join(" ")).join("|");
+      let lastClassKey = classKey();
       const mo = trackObserver(new MO(() => {
         if (disposed || suspended) return;
+        if (notedSpeedFlags().gestureQuiet !== false) {
+          const key = classKey();
+          if (key === lastClassKey) return;
+          lastClassKey = key;
+        }
         applyTheme();
         settle3?.();
         settle3 = timers.later(() => {
@@ -104463,12 +104753,12 @@ ${url}`;
       });
     }
     let itemsChanged = false;
-    if (dirty.all || dirty.structural || dirty.items.size) {
+    if (dirty.all || dirty.structural || dirty.items.size || dirty.resync) {
       itemsR.sync({
         board: b,
         rects: paintRects(),
-        dirty: dirty.all ? null : dirty.items,
-        structural: dirty.structural,
+        dirty: dirty.all || dirty.resync ? null : dirty.items,
+        structural: dirty.structural || dirty.resync,
         view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null,
         attachView: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null
       });
@@ -104578,12 +104868,12 @@ ${url}`;
       chrome.ctx.reposition();
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLiftIdle();
-    const wheelMinimap = wheelLayer && !itemsChanged && !dirty.minimap;
+    const wheelMinimap = wheelLayer && !itemsChanged && !dirty.minimap || Boolean(dragRide) && !itemsChanged;
     if ((itemsChanged || dirty.minimap || dirty.viewport && !gesturing) && !(wheelMinimap && perfNow3() - minimapAt < MINIMAP_WHEEL_MS)) {
       minimapAt = perfNow3();
       const shown = paintRects();
       chrome.minimap.update({ board: b, rects: shown, vp, size });
-      if (!(deferReveal() && !itemsChanged)) paintLandmarkDots(b, shown);
+      if (!(deferReveal() && !itemsChanged) && !dragRide) paintLandmarkDots(b, shown);
     }
     if (itemsChanged && !gesturing) {
       scheduleContent();
@@ -104607,6 +104897,7 @@ ${url}`;
     dirty.edges = edgeRest || /* @__PURE__ */ new Set();
     dirty.structural = false;
     dirty.all = false;
+    dirty.resync = false;
     dirty.selection = false;
     dirty.links = false;
     edgeSlicing = Boolean(edgeRest);
@@ -104975,6 +105266,10 @@ ${url}`;
   applyBackground();
   applyMotion();
   applyLod();
+  try {
+    sharedBgBudget().noteCamera();
+  } catch {
+  }
   itemsR.setShowBadges(flag("show-card-badges", true));
   seedSnapshotBadges();
   dirty.viewport = true;
@@ -105186,16 +105481,32 @@ ${url}`;
     // Crumbs and board history: keep a parked root in its mount, unrendered (content-visibility:hidden keeps its
     // style and layout). Removing it dropped every computed style, and the way back restyled the whole board before
     // the first paint (PhD main board: 13,762 elements, 166 ms, plus 33 ms of layout).
+    // E1 (perf2): a fullscreen board parks too (keepFullscreen). The mount's chrome belongs to whichever board shows:
+    // a parked board lets go of its placement observers and takes them back when it shows again, and disposing it
+    // while parked leaves the mount's fullscreen alone.
     park() {
       if (disposed || !root.parentElement || !(size.width > 0)) return false;
       root.style.width = `${size.width}px`;
       root.setAttribute("data-pxd-parked", "");
+      if (isFullscreen) {
+        try {
+          fsDispose();
+        } catch {
+        }
+        fsDispose = () => {
+        };
+        fsParked = true;
+      }
       return true;
     },
     unpark() {
       if (!root.hasAttribute?.("data-pxd-parked")) return;
       root.removeAttribute("data-pxd-parked");
       root.style.width = "";
+      if (fsParked) {
+        fsParked = false;
+        if (isFullscreen && !disposed) fsDispose = applyFullscreenChrome(mountEl, true, doc);
+      }
     },
     rebind(nextMount) {
       if (disposed || !nextMount) return;
@@ -105219,6 +105530,10 @@ ${url}`;
       if (disposed || suspended) return;
       suspended = true;
       hitShield.drop();
+      try {
+        sharedBgBudget().hold(bgHoldKey, false);
+      } catch {
+      }
       suspendedBoard = board2();
       if (frameHandle) {
         const cancel = frameHandle;
@@ -105274,9 +105589,14 @@ ${url}`;
       }
       timers.resumeBg();
       armCoverWarm();
-      if (board2() !== suspendedBoard || itemsR.queuedCount?.() > 0) {
+      if (board2() !== suspendedBoard || itemsR.queuedCount?.() > 0 && notedSpeedFlags().keepFullscreen === false) {
         dirty.all = true;
         dirty.structural = true;
+      } else if (itemsR.queuedCount?.() > 0) {
+        dirty.resync = true;
+        dirty.viewport = true;
+        dirty.selection = true;
+        dirty.minimap = true;
       } else {
         dirty.viewport = true;
         dirty.selection = true;
@@ -105513,7 +105833,29 @@ ${url}`;
     stats() {
       return { timers: timers.count(), listeners: listeners3.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount(), edgePlacements: edgesR.placements?.() ?? 0, edgesAttached: edgesR.attachedCount?.() ?? 0 };
     },
+    // E probe (perf2): what the view shows for the cards in the camera right now. A card is painted by its attached
+    // shell or by a box on the underlay; `missing` cards show nothing (a blank or partial frame when > 0).
+    paintAudit() {
+      const b = board2();
+      if (!b || !size.width) return { inView: 0, attached: 0, covered: 0, missing: 0, lod: tier };
+      const view2 = visibleWorldRect(vp, size, 0);
+      const r = paintRects();
+      const under = underlay.isShown() ? underlay.drawnUids() : null;
+      let inView = 0, attached = 0, covered = 0;
+      for (const item of b.items.values()) {
+        if (item.type === "section") continue;
+        const rect = r.get(item.uid);
+        if (!rect || !rectsIntersect(rect, view2)) continue;
+        inView += 1;
+        if (itemsR.attachedUid(item.uid)) attached += 1;
+        else if (under?.has(item.uid)) covered += 1;
+      }
+      return { inView, attached, covered, missing: inView - attached - covered, lod: tier, edges: edgesR.attachedCount?.() ?? 0 };
+    },
     // C2 probe: whether the overview canvas tier is on, and how many times it was drawn.
+    flipStats() {
+      return { flips: flipStats.flips, attachedAtFlip: flipStats.attachedAtFlip.slice() };
+    },
     overviewCanvasStats() {
       return { on: overviewCanvasOn(), draws: ovDraws, items: ovItems, shown: underlay.isShown() && underlayKind === "overview" };
     },
@@ -105533,6 +105875,10 @@ ${url}`;
       if (disposing) return;
       disposing = true;
       disposed = true;
+      try {
+        sharedBgBudget().hold(bgHoldKey, false);
+      } catch {
+      }
       if (pdfTitleJob) {
         const stop3 = pdfTitleJob;
         pdfTitleJob = null;
@@ -105636,7 +105982,9 @@ ${url}`;
       }));
       step(() => routeOff());
       step(() => fsDispose());
-      step(() => applyFullscreenChrome(mountEl, false, doc));
+      step(() => {
+        if (!root.hasAttribute?.("data-pxd-parked")) applyFullscreenChrome(mountEl, false, doc);
+      });
       step(() => {
         try {
           vpStore.set(vpId, vp);
@@ -106321,12 +106669,41 @@ function el(doc, tag, cls, parent) {
   if (parent) parent.append(node2);
   return node2;
 }
-function removeBoardSnap(mountEl) {
+var SNAP_FADE_MS = 140;
+function removeBoardSnap(mountEl, { fade = false } = {}) {
   const nodes = mountEl?.querySelectorAll?.(`.${SNAP_ROOT_CLASS}`);
+  const win2 = mountEl?.ownerDocument?.defaultView || globalThis.window;
+  let reduce = false;
+  try {
+    reduce = Boolean(win2?.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+  } catch {
+    reduce = false;
+  }
+  const raf2 = typeof win2?.requestAnimationFrame === "function" ? win2.requestAnimationFrame.bind(win2) : null;
   for (const node2 of [...nodes || []]) {
     try {
       node2.__pxdSnap?.off?.();
     } catch {
+    }
+    if (fade && !reduce && raf2 && node2.style) {
+      try {
+        node2.classList?.remove?.(SNAP_ROOT_CLASS);
+        node2.removeAttribute?.("data-pxd-snap");
+        node2.setAttribute?.("aria-hidden", "true");
+        node2.style.pointerEvents = "none";
+        node2.style.transition = `opacity ${SNAP_FADE_MS}ms linear`;
+        raf2(() => {
+          node2.style.opacity = "0";
+        });
+        setTimeout(() => {
+          try {
+            node2.remove();
+          } catch {
+          }
+        }, SNAP_FADE_MS + 60);
+        continue;
+      } catch {
+      }
     }
     try {
       node2.remove();
@@ -108960,6 +109337,7 @@ async function installPlexusDiagram({
   }
   const speedFlags = () => notedSpeedFlags();
   bindBgBudgetFlag(() => speedFlags().bgBudget !== false);
+  bindBgGestureFlag(() => speedFlags().gestureQuiet !== false);
   const liveSettings = { get: (id) => settings[id] };
   let stopped = false;
   let closeAddToBoard = () => {
@@ -109576,6 +109954,7 @@ async function installPlexusDiagram({
     }
   }
   const snapAllowed = () => speedFlags().snapshot !== false;
+  const steadyCamera = () => speedFlags().steadyCamera !== false;
   const readsNow = () => Number(host.stats?.reads) || 0;
   const runIdle = (fn) => {
     if (notedSpeedFlags().bgBudget !== false && typeof (win2.requestIdleCallback ?? globalThis.requestIdleCallback) === "function") {
@@ -109900,13 +110279,22 @@ async function installPlexusDiagram({
       } catch {
         stored = null;
       }
-      const vp = resolveSnapViewport({ initial: initialViewport, stored, snap });
       anchorMount(rec.mountEl);
       if (rec.fullscreen) fsOff = applyFullscreenChrome(rec.mountEl, true, doc);
       else if (snap.height) {
         rec.mountEl.style.height = `${snap.height}px`;
         rec.mountEl.style.minHeight = `${snap.height}px`;
       }
+      let size = null;
+      if (steadyCamera() && !initialViewport && !stored && !snap.vp) {
+        try {
+          const box2 = rec.mountEl.getBoundingClientRect?.();
+          if (box2?.width > 0 && box2?.height > 0) size = { width: box2.width, height: box2.height };
+        } catch {
+          size = null;
+        }
+      }
+      const vp = resolveSnapViewport({ initial: initialViewport, stored, snap, size });
       const painted = paintBoardSnap(doc, rec.mountEl, snap, vp, { thumbs: snapStore.thumbs, fullscreen: rec.fullscreen });
       if (!painted) throw new Error("snapshot paint failed");
       painted.snap = snap;
@@ -109952,7 +110340,7 @@ async function installPlexusDiagram({
       }
     }
     try {
-      removeBoardSnap(rec.mountEl);
+      removeBoardSnap(rec.mountEl, { fade: live2 && speedFlags().styledUnderlay !== false });
     } catch {
     }
   }
@@ -110036,7 +110424,8 @@ async function installPlexusDiagram({
   function mountSnapView(handoff, standIn, { autofocus, viewport: viewport2, onLive, logging, t0 }, fail4) {
     const rec = handoff.rec;
     const state = handoff.painted?.state;
-    const vpNow = state?.moved ? { ...state.vp } : viewport2;
+    const painted = steadyCamera() && handoff.painted?.vp ? { ...handoff.painted.vp } : null;
+    const vpNow = state?.moved ? { ...state.vp } : viewport2 || painted;
     let view;
     try {
       view = callMountView(rec, autofocus, vpNow, {
@@ -110791,7 +111180,7 @@ async function installPlexusDiagram({
     if (speedFlags().keepAlive === false) return false;
     const view = rec?.view;
     if (!view || view.sketchStandIn === true) return false;
-    if (rec.fullscreen) return false;
+    if (rec.fullscreen && speedFlags().keepFullscreen === false) return false;
     if (holdsFocus(rec)) {
       const active3 = doc.activeElement;
       if (isTextEntryTarget(active3)) return false;
@@ -111166,6 +111555,10 @@ async function installPlexusDiagram({
     } catch {
     }
     resumeView(rec, view);
+    try {
+      view?.setFullscreen?.(Boolean(rec.fullscreen));
+    } catch {
+    }
     const session = rec.session;
     const rest = () => {
       if (stopped || rec.view !== view || rec.session !== session) return;

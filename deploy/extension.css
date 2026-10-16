@@ -13766,6 +13766,37 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   min-height: 0;
 }
 
+/* Caption edit. The generic editing rule lifts the header to an 8px strip, which
+   slides the table up. Keep this header in flow at the resting line. */
+.pxd-root .pxd-item.pxd-item--roam-table.pxd-item--editing > .pxd-item__header {
+  position: static;
+  top: auto;
+  right: auto;
+  left: auto;
+  height: auto;
+  min-height: 32px;
+  padding: 6px 12px;
+  font-size: 13px;
+  overflow: hidden;
+  z-index: auto;
+}
+.pxd-root .pxd-item.pxd-item--roam-table.pxd-item--editing > .pxd-item__header > .pxd-table-caption {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  resize: none;
+  overflow: hidden;
+  font: inherit;
+  font-weight: 600;
+  line-height: 20px;
+  color: inherit;
+  background: transparent;
+}
+
 /* Fullscreen board tabs. Inside .pxd-root so the chrome tokens apply. Not on document.body.
    P32-6: the strip is painted only from two tabs up (board-view paintTabStrip), and it is 28 px tall. */
 

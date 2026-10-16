@@ -21,7 +21,7 @@ import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displa
 import { trailBadges, trailPoints } from "../model/trails.js";
 import { landmarkDots, landmarkUids, walkStops } from "../model/landmarks.js";
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
-import { findOnBoard } from "../model/find.js";
+import { createHayIndex, findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS, highlightModel, noteActionPlan } from "../model/highlight.js";
@@ -7554,13 +7554,102 @@ function buildBoardView(onFail, {
     const edges = q ? new Set((hits || []).filter((h) => h.kind === "edge").map((h) => h.uid)) : null;
     edgesR.setSearch(edges);
   };
+  let hay = null;
+  let hayStop = null;
+  let hayNoted = false;
+  let hayNestsReady = false;
+  let hayNests = [];
+  let hayPlan = null;
+  const blockResolve = (uid) => {
+    try { return host?.blockString?.(uid) ?? null; } catch { return null; }
+  };
+  const ensureHay = () => {
+    if (!hay) hay = createHayIndex({ resolve: blockResolve });
+    return hay;
+  };
+  const resetHayNests = () => {
+    hayPlan = null;
+    hayNests = [];
+    hayNestsReady = false;
+    hayNoted = false;
+  };
+  // One nested pull per slice. Block-ref text is cached on the index, so a key never calls the host.
+  const advanceNests = (b) => {
+    const ix = ensureHay();
+    if (!hayPlan || hayPlan.uid !== b.uid) {
+      hayPlan = { uid: b.uid, items: [...b.items.values()], di: 0, list: [], seen: new Set(), pi: 0, discovering: true };
+      hayNests = [];
+    }
+    const plan = hayPlan;
+    const t0 = globalThis.performance?.now?.() ?? Date.now();
+    const elapsed = () => (globalThis.performance?.now?.() ?? Date.now()) - t0;
+    while (plan.discovering) {
+      if (plan.di >= plan.items.length) { plan.discovering = false; break; }
+      if (elapsed() >= 8) return "yield";
+      const item = plan.items[plan.di++];
+      let target = null;
+      if (item?.kind === "board") target = item.uid;
+      else if (item?.kind === "block" && item.target?.uid) {
+        const text = ix.blockText(item.target.uid);
+        if (classifyString(text || "").kind === "board") target = item.target.uid;
+      }
+      if (!target || target === b.uid || plan.seen.has(target)) continue;
+      plan.seen.add(target);
+      plan.list.push({ parentUid: item.uid, target });
+    }
+    if (plan.pi < plan.list.length) {
+      const spec = plan.list[plan.pi++];
+      let raw = null;
+      try { raw = host?.pullBoard?.(spec.target, { prime: false }); } catch { raw = null; }
+      let child = null;
+      if (raw) { try { child = buildBoard(raw); } catch { child = null; } }
+      if (child?.items) hayNests.push({ parentUid: spec.parentUid, board: child });
+      if (plan.pi < plan.list.length || elapsed() >= 8) return "yield";
+    }
+    return "done";
+  };
+  const hayPart = (deadline) => {
+    if (notedSpeedFlags().searchHay === false) return true;
+    const b = board();
+    if (!b?.items) return true;
+    const ix = ensureHay();
+    if (!hayNestsReady) {
+      if (advanceNests(b) === "yield") return false;
+      hayNestsReady = true;
+    }
+    if (!hayNoted) {
+      ix.note(b, hayNests);
+      hayNoted = true;
+    }
+    return ix.step(deadline);
+  };
+  const armHay = () => {
+    if (notedSpeedFlags().searchHay === false) return;
+    if (hayStop) return;
+    const ix = ensureHay();
+    if (hayNoted && hayNestsReady && ix.ready()) return;
+    hayStop = sharedBgBudget().run((deadline) => {
+      let done = false;
+      try { done = hayPart(deadline) === true; }
+      catch (err) { done = true; console.error("[plexus-diagram] search hay", err); }
+      if (done) hayStop = null;
+      return done;
+    }, { partMs: 1e6, label: "search-hay" });
+  };
   const searchFilter = (text) => {
     const b = board();
     const q = String(text || "").trim().toLowerCase();
     searchQuery = q;
     searchIndex = -1;
     setRootFlag("searching", Boolean(q));
-    searchMatches = b && q ? findOnBoard(b, q, nestedBoards(b), (uid) => host?.blockString?.(uid)) : [];
+    if (!b || !q) searchMatches = [];
+    else if (notedSpeedFlags().searchHay !== false) {
+      const ix = ensureHay();
+      if (!ix.ready()) armHay();
+      searchMatches = ix.ready() ? ix.find(b, q) : findOnBoard(b, q, nestedBoards(b), blockResolve);
+    } else {
+      searchMatches = findOnBoard(b, q, nestedBoards(b), blockResolve);
+    }
     paintSearch(b, searchMatches, q);
     return searchMatches.length;
   };
@@ -8652,10 +8741,20 @@ function buildBoardView(onFail, {
     const hostNode = tablePointerTarget(node);
     return Boolean(hostNode && root.contains(hostNode));
   };
+  const tablePressSkip = ".pxd-table-overlay, .pxd-roam-table__open, .rg-root, .rg-col-resize, .rg-row-resize, .pxd-table-caption";
+  const shieldTablePress = (event) => {
+    try { if (notedSpeedFlags().tableCaptionEdit === false) return; } catch { return; }
+    if (event.target?.closest?.(tablePressSkip)) return;
+    event.preventDefault();
+  };
   let onBoardPointerDown;
   listen(root, "pointerdown", onBoardPointerDown = (event) => {
     if (leavesBoardPointer(event.target) || inReaderText(event.target)) return;
-    if (inRoamTable(event.target) && !event.__pxdGrab) { tablePointer = event.target; return; }
+    if (inRoamTable(event.target) && !event.__pxdGrab) {
+      tablePointer = event.target;
+      shieldTablePress(event);
+      return;
+    }
     // Interact is on: this click belongs to the reader. preventDefault or stopPropagation would block page nav.
     if (pdfClickShield(event.target)) return;
     else if (root.querySelector?.(".pxd-pdf-live")) itemsR.endPdfInteract();
@@ -8777,7 +8876,14 @@ function buildBoardView(onFail, {
   for (const type of ["mousedown", "mouseup"]) {
     listen(root, type, (event) => {
       if (type === "mousedown" && stealPinPress(event)) return;
-      if (leavesBoardPointer(event.target) || inReaderText(event.target) || inRoamTable(event.target)) return;
+      if (leavesBoardPointer(event.target) || inReaderText(event.target)) return;
+      if (inRoamTable(event.target)) {
+        if (type === "mousedown") {
+          shieldTablePress(event);
+          if (event.defaultPrevented) event.stopPropagation();
+        }
+        return;
+      }
       const native = nativeClickKind(event.target);
       if (native === "checkbox" || native === "image") return;
       const editing = itemsR.editingUid();
@@ -9502,6 +9608,7 @@ function buildBoardView(onFail, {
       }
     }
     if (inputFocused && itemsR.isEditing()) {
+      if (event.target?.closest?.(".pxd-table-caption")) return;
       const ta = String(event.target?.tagName || "").toLowerCase() === "textarea" ? event.target : doc.activeElement;
       if (ta && String(ta.tagName || "").toLowerCase() === "textarea") {
         const uid = itemsR.editingUid();
@@ -9693,6 +9800,12 @@ function buildBoardView(onFail, {
       }
     } else dirty.all = true;
     if (!d || d.has?.(boardUid)) applyBackground();
+    if (notedSpeedFlags().searchHay !== false) {
+      const ix = ensureHay();
+      if (structural) resetHayNests();
+      ix.touch(b, d, Boolean(structural));
+      armHay();
+    }
     ctl.reconcile();
     dirty.selection = true;
     schedule();
@@ -9702,6 +9815,7 @@ function buildBoardView(onFail, {
     if (laterCtl.isOpen()) laterCtl.refresh();
     panel.refreshViews?.();
   }));
+  if (notedSpeedFlags().searchHay !== false) armHay();
   subs.push(session.on("links", () => { if (disposed || suspended) return; dirty.links = true; schedule(); }));
   subs.push(session.on("sync", (state) => { if (disposed || suspended) return; chrome.toolbar.setSync(state); }));
   subs.push(session.on("toast", (t) => { if (disposed || suspended) return; chrome.toast.show(t); }));
@@ -10872,6 +10986,7 @@ function buildBoardView(onFail, {
       step(() => itemsR.dispose());
       step(() => edgesR.dispose());
       step(() => { offPartsChange?.(); partsIdx?.dispose(); partsIdx = null; });
+      step(() => { try { hayStop?.(); } catch { /* index */ } hayStop = null; });
       step(() => imgIndex?.dispose());
       step(() => { try { stopPdfTextFeed?.(); } catch { /* gone */ } stopPdfTextFeed = null; pdfText?.stop?.(); });
       step(() => pdfNames?.dispose());

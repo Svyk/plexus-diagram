@@ -6493,6 +6493,68 @@ export function createItemRenderer({
     };
   };
 
+  // A folded table keeps the rendered grid. The caption is a one-line field in the header.
+  const openTableCaption = (uid, rec, item) => {
+    const table = rec.body?.querySelector?.(".pxd-roam-table") || null;
+    const captionCard = Boolean(item.tableUid);
+    const initial = captionCard ? String(item.string || "") : String(item.title || "");
+    const field = el("textarea", "pxd-table-caption");
+    field.setAttribute("rows", "1");
+    field.setAttribute("aria-label", "Table caption");
+    field.value = initial;
+    let closed = false;
+    const stopPointer = (event) => event.stopPropagation?.();
+    let onKey = () => {};
+    let onBlur = () => {};
+    const finish = (commit) => {
+      if (closed) return;
+      closed = true;
+      field.removeEventListener("keydown", onKey);
+      field.removeEventListener("blur", onBlur);
+      field.removeEventListener("pointerdown", stopPointer);
+      field.removeEventListener("mousedown", stopPointer);
+      const text = String(field.value ?? "");
+      const write = Boolean(commit) && captionCard && text !== initial && !isRoamTableString(text);
+      if (editing?.editor === field) editing = null;
+      try { field.remove(); } catch { /* already gone */ }
+      rec.el.classList.remove("pxd-item--editing");
+      releaseEditLock(rec);
+      const live = lastBoard?.items.get(uid) || item;
+      if (shells.has(uid)) paintShell(rec, live);
+      try { onEditChange?.(null); } catch { /* host */ }
+      if (write) {
+        try { session?.setString?.(uid, text); } catch { /* host */ }
+      }
+    };
+    onKey = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        finish(false);
+      } else if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        finish(true);
+      }
+    };
+    onBlur = () => finish(true);
+    field.addEventListener("keydown", onKey);
+    field.addEventListener("blur", onBlur);
+    field.addEventListener("pointerdown", stopPointer);
+    field.addEventListener("mousedown", stopPointer);
+    rec.header?.replaceChildren?.(field);
+    editing = {
+      uid, rec, editor: field, targetUid: item.uid, item, ready: true,
+      tableCaption: true, tableNode: table, finish, fadeCancel: null, releaseCancel: null,
+    };
+    rec.el.classList.add("pxd-item--editing");
+    const pinned = rec.el.style?.height;
+    if (pinned && rec.el.style?.setProperty) rec.el.style.setProperty("height", pinned, "important");
+    try { onEditChange?.(uid); } catch { /* host */ }
+    try { field.focus({ preventScroll: true }); } catch { field.focus?.(); }
+    return true;
+  };
+
   const enterEdit = async (uid, { row = "", offset } = {}) => {
     const rec = shells.get(uid);
     const item = lastBoard?.items.get(uid);
@@ -6534,6 +6596,7 @@ export function createItemRenderer({
       }
     }
     if (editing) await exitEdit();
+    if (tableUidOf(item) && speedOf().tableCaptionEdit !== false) return openTableCaption(uid, rec, item);
     if (!host?.renderBlock) { host?.openBlock?.(uid); return false; }
     const targetUid = item.target.kind === "block" ? item.target.uid : item.uid;
     const heavyUid = ownHeavyUid(item);
@@ -6731,6 +6794,10 @@ export function createItemRenderer({
       const active = doc.activeElement;
       if (active && e.editor.contains?.(active)) active.blur?.();
       endStickyEdit();
+      return;
+    }
+    if (e.tableCaption) {
+      e.finish?.(true);
       return;
     }
     editing = null;
@@ -7006,7 +7073,9 @@ export function createItemRenderer({
       doc.removeEventListener?.("pointerdown", onOutsidePeek, true);
       outsidePeekOn = false;
     }
-    if (editing) {
+    if (editing?.tableCaption) {
+      try { editing.finish?.(false); } catch { /* already closed */ }
+    } else if (editing) {
       const e = editing;
       clearEditFade(e);
       editing = null;

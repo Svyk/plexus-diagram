@@ -73,6 +73,7 @@ import {
   worldToScreen,
   zoomAt,
 } from "../model/geometry.js";
+import { cameraForCard } from "../model/zoom-open.js";
 import { itemSig } from "../model/boardsnap.js";
 import { captionForView, selectionViewRect } from "../model/view-save.js";
 import { PLEXUS_MIME, copyPayload, editorPastePlan, imageMarkdown, inlineAtCaret, parsePastedText } from "../model/clipboard.js";
@@ -9726,6 +9727,47 @@ function buildBoardView(onFail, {
     focusInside(cardUid, blockUid) {
       if (disposed) return false;
       return itemsR.focusInside?.(cardUid, blockUid) === true;
+    },
+    // Folded card: session reveal, then the row. A closed page or board card uses setBlockOpen.
+    unfoldForFocus(cardUid, blockUid) {
+      if (disposed) return false;
+      itemsR.ensureShell?.(cardUid);
+      return itemsR.unfoldForFocus?.(cardUid, blockUid) === true;
+    },
+    rowMounted(cardUid, blockUid) {
+      if (disposed) return false;
+      if (!blockUid || blockUid === cardUid) return Boolean(itemsR.shellOf?.(cardUid));
+      return itemsR.rowMounted?.(cardUid, blockUid) === true;
+    },
+    cardWorldRect(uid) {
+      if (disposed) return null;
+      return itemsR.cardWorldRect?.(uid) || rects().get(uid) || null;
+    },
+    // Readable zoom, then centre. Zoom only increases. The board on a long page scrolls into view.
+    centerCard(cardUid) {
+      if (disposed || !cardUid || !board()?.items.has(cardUid)) return false;
+      itemsR.ensureShell?.(cardUid);
+      ctl.select([cardUid]);
+      const rect = itemsR.cardWorldRect?.(cardUid) || rects().get(cardUid);
+      const next = cameraForCard(vp, rect, size);
+      if (next) {
+        moveViewport(next);
+        applyLod();
+        scheduleContent();
+      }
+      if (!isFullscreen) {
+        try { mountEl?.scrollIntoView?.({ block: "center" }); } catch { /* layout */ }
+      }
+      return true;
+    },
+    showAt(next) {
+      if (disposed || !next) return false;
+      const zoom = Number(next.zoom);
+      if (!Number.isFinite(next.x) || !Number.isFinite(next.y) || !(zoom > 0)) return false;
+      moveViewport({ x: next.x, y: next.y, zoom });
+      applyLod();
+      scheduleContent();
+      return true;
     },
     viewport: () => ({ x: vp.x, y: vp.y, zoom: vp.zoom }),
     restoreViewport(next) {

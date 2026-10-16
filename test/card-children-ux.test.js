@@ -323,6 +323,8 @@ function harness({ children, hostOverrides = {}, session = {} } = {}) {
   const writes = [];
   const sess = {
     setKids: (...args) => { writes.push(["setKids", ...args]); return Promise.resolve(); },
+    setCollapsed: (...args) => { writes.push(["setCollapsed", ...args]); return Promise.resolve(); },
+    setBlockOpen: (...args) => { writes.push(["setBlockOpen", ...args]); return Promise.resolve(true); },
     setNodeOpen: (...args) => { writes.push(["setNodeOpen", ...args]); return Promise.resolve(true); },
     ...session,
   };
@@ -660,4 +662,68 @@ test("a grandchild bullet focuses card › parent › child; stepFocus walks bac
   t.after(h2.restore);
   h2.show();
   assert.equal(h2.root.querySelector(".pxd-focus__crumb"), null);
+});
+
+test("focusing a grandchild on a folded card mounts the row and writes nothing", (t) => {
+  const h = harness({
+    children: [blk("noteAAAA1", "Parent card", { ":x": 0, ":y": 0, ":w": 240, ":h": 32, ":collapsed": true }, 0, alpha)],
+  });
+  t.after(h.restore);
+  h.show();
+  const cardEl = h.root.querySelector("[data-uid=noteAAAA1]");
+  assert.equal(cardEl.querySelector("[data-pxd-row=kidA10001]"), null);
+  assert.equal(h.r.focusInside("noteAAAA1", "kidA10001"), true);
+  assert.ok(cardEl.querySelector("[data-pxd-row=kidA10001]"));
+  assert.match(cardEl.querySelector(".pxd-focus__crumb").textContent, /grandchild/);
+  assert.equal(cardEl.classList.contains("pxd-item--collapsed"), false);
+  assert.equal(h.writes.length, 0);
+  assert.equal(h.r.stepFocus(), true);
+  assert.equal(h.r.stepFocus(), true);
+  assert.equal(cardEl.querySelector(".pxd-focus__crumb"), null);
+  assert.equal(cardEl.classList.contains("pxd-item--collapsed"), true);
+  assert.equal(h.writes.length, 0);
+});
+
+test("a folded block card waits until the pulled row mounts and does not write kids", async (t) => {
+  let resolvePull = null;
+  const h = harness({
+    children: [blk("refAAAA01", "((target01))", { ":x": 0, ":y": 0, ":w": 240, ":h": 40 }, 0)],
+    hostOverrides: {
+      blockString: () => "Parent card",
+      pullTree: () => new Promise((resolve) => { resolvePull = resolve; }),
+    },
+  });
+  t.after(h.restore);
+  h.show();
+  const cardEl = h.root.querySelector("[data-uid=refAAAA01]");
+  assert.equal(h.r.focusInside("refAAAA01", "gk000001"), false);
+  assert.equal(cardEl.querySelector("[data-pxd-row=gk000001]"), null);
+  assert.equal(typeof resolvePull, "function");
+  resolvePull([{ uid: "ck000001", string: "Child block", children: [{ uid: "gk000001", string: "Grandchild block" }] }]);
+  await Promise.resolve();
+  assert.equal(h.r.focusInside("refAAAA01", "gk000001"), true);
+  assert.ok(cardEl.querySelector("[data-pxd-row=gk000001]"));
+  assert.match(cardEl.querySelector(".pxd-focus__crumb").textContent, /Grandchild/);
+  assert.equal(h.writes.some((row) => row[0] === "setKids" || row[0] === "setCollapsed"), false);
+});
+
+test("a Roam-closed page card uses setBlockOpen, the same unfold the card already has", (t) => {
+  const h = harness({
+    children: [blk("pagecard1", "[[Notes]]", { ":x": 0, ":y": 0, ":w": 240, ":h": 80 }, 0, [], false)],
+    hostOverrides: {
+      pagePreview: () => ({
+        exists: true,
+        title: "Notes",
+        uid: "pageUid01",
+        blocks: [{ uid: "kid000001", string: "Child block", children: [{ uid: "grand0001", string: "Grandchild block" }] }],
+      }),
+    },
+  });
+  t.after(h.restore);
+  h.show();
+  const cardEl = h.root.querySelector("[data-uid=pagecard1]");
+  assert.equal(h.r.focusInside("pagecard1", "grand0001"), true);
+  assert.ok(cardEl.querySelector("[data-pxd-row=grand0001]"));
+  assert.deepEqual(h.writes.filter((row) => row[0] === "setBlockOpen"), [["setBlockOpen", "pagecard1", true]]);
+  assert.equal(h.writes.some((row) => row[0] === "setKids" || row[0] === "setCollapsed"), false);
 });

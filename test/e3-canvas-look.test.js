@@ -37,3 +37,47 @@ test("E3-4: in a zoom burst past 0.2 on the overview canvas the boxes are drawn 
     assert.deepEqual(missingFrames(frames), []);
   } finally { m.done(); }
 });
+
+import { dragSelection } from "./fixtures/big-mount.js";
+
+// E3-6 (perf2): dragLayer gave no gain live (p50 232 vs 218 ms): the crossing edges were re-pathed inside the edges
+// <svg>, so every drag frame repainted all ~2,000 paths. They ride their own layer for the drag now.
+const dWritesByLayer = (root) => {
+  const counts = new Map();
+  for (const path of root.querySelectorAll("path")) {
+    const set = path.setAttribute.bind(path);
+    path.setAttribute = (name, value) => {
+      if (name === "d") {
+        let n = path.parentElement;
+        while (n && !String(n.getAttribute?.("class") || "").startsWith("pxd-edges")) n = n.parentElement;
+        const key = n ? String(n.getAttribute("class")) : "?";
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+      return set(name, value);
+    };
+  }
+  return counts;
+};
+test("E3-6: during a big drag no path in the main edges layer is rewritten; crossing edges are re-pathed in their own layer, and go back at the drop", async () => {
+  const { m, root, el, p } = await dragSelection({});
+  try {
+    m.stub.dispatch(el, "pointerdown", { ...p, button: 0, buttons: 1, pointerId: 7 });
+    for (let i = 1; i <= 2; i += 1) {
+      m.stub.dispatch(el, "pointermove", { clientX: p.clientX + i * 3, clientY: p.clientY + i * 2, buttons: 1, pointerId: 7 });
+      m.stub.flushFrames();
+    }
+    const cross = root.querySelector(".pxd-edges--cross");
+    assert.ok(cross && cross.children.length > 0, "crossing edges ride their own layer");
+    const counts = dWritesByLayer(root);
+    for (let i = 3; i <= 8; i += 1) {
+      m.stub.dispatch(el, "pointermove", { clientX: p.clientX + i * 3, clientY: p.clientY + i * 2, buttons: 1, pointerId: 7 });
+      m.stub.flushFrames();
+    }
+    assert.equal(counts.get("pxd-edges") || 0, 0, `d writes in the main edges layer during the drag: ${JSON.stringify([...counts])}`);
+    assert.ok((counts.get("pxd-edges pxd-edges--cross") || 0) > 0, `crossing edges follow: ${JSON.stringify([...counts])}`);
+    const kids = [...cross.children];
+    m.stub.dispatch(el, "pointerup", { clientX: p.clientX + 24, clientY: p.clientY + 16, button: 0, buttons: 0, pointerId: 7 });
+    assert.equal(root.querySelector(".pxd-edges--cross"), null, "the crossing layer is gone in the drop's task");
+    assert.ok(kids.every((g) => g.parentElement?.getAttribute("class") === "pxd-edges"), "crossing edges are back in the edges layer");
+  } finally { m.done(); }
+});

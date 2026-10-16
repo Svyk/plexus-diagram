@@ -48,9 +48,10 @@ const ALL_ON = {
   styledUnderlay: true,
   gestureQuiet: true,
   dragLayer: true,
+  editQuiet: true,
 };
 
-test("the panel has no speed-flags control, and bad JSON leaves the defaults (twenty-three on, edgeFingerprint and overviewCanvas off)", () => {
+test("the panel has no speed-flags control, and bad JSON leaves the defaults (twenty-four on, edgeFingerprint and overviewCanvas off)", () => {
   assert.equal(createSettingsPanel().settings.some((row) => row.id === "speed-flags"), false);
   assert.equal(Object.hasOwn(settingsDefaults(), "speed-flags"), false);
   assert.deepEqual(flagsDefault(), ALL_ON);

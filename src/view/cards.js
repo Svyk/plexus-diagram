@@ -4191,6 +4191,7 @@ export function createItemRenderer({
     attachFocusGuard();
     attachFloor(editing);
     onEditChange?.(rec.uid);
+    holdForEdit(true);
     nudgeEditorMenus(doc);
   };
   const endStickyEdit = () => {
@@ -4201,6 +4202,7 @@ export function createItemRenderer({
     detachFocusGuard();
     e.rec.el.classList.remove("pxd-item--typing");
     onEditChange?.(null);
+    holdForEdit(false);
   };
   const focusSticky = async (uid) => {
     const rec = shells.get(uid);
@@ -4975,7 +4977,9 @@ export function createItemRenderer({
     const body = rec.body;
     if (rec.editor && editing?.uid !== item.uid) detachStickyEditor(rec);
     unmountRoots(rec);
-    body.replaceChildren();
+    // A frozen card keeps its clone in the body until the new root is appended. replaceChildren would blank that frame.
+    if (rec.freezeKeep) rec.freezeBefore = directChildren(body);
+    else body.replaceChildren();
     rec.stickyLive = false;
     rec.editor = null;
     rec.bare = false;
@@ -5325,27 +5329,45 @@ export function createItemRenderer({
   };
 
   const mountContent = (rec, item) => {
-    reserveCardHeight(rec, item);
-    mountContentBody(rec, item);
-    syncKidsBadge(rec, item);
-    // Big boards watch their cards' contents only while the card is mounted.
-    if (rec.type !== "section" && !rec.contentUnwatch && typeof host?.watchContent === "function") {
-      try {
-        const off = host.watchContent(item.uid);
-        if (typeof off === "function") rec.contentUnwatch = off;
-      } catch { /* contents refresh with the next board pull */ }
+    const frozenKeep = Boolean(rec.frozen?.length);
+    rec.frozen = null;
+    rec.freezeKeep = frozenKeep;
+    rec.freezeBefore = null;
+    try {
+      reserveCardHeight(rec, item);
+      mountContentBody(rec, item);
+      syncKidsBadge(rec, item);
+      // Big boards watch their cards' contents only while the card is mounted.
+      if (rec.type !== "section" && !rec.contentUnwatch && typeof host?.watchContent === "function") {
+        try {
+          const off = host.watchContent(item.uid);
+          if (typeof off === "function") rec.contentUnwatch = off;
+        } catch { /* contents refresh with the next board pull */ }
+      }
+    } finally {
+      if (frozenKeep) dropFrozenFrame(rec.body, rec.freezeBefore);
+      rec.freezeKeep = false;
+      rec.freezeBefore = null;
     }
   };
 
   const mountSectionTitle = (rec, item) => {
     noteRender(item.uid);
-    unmountRoots(rec);
-    rec.title.replaceChildren();
-    const node = renderRoot(rec.title, item.string || "Section", "pxd-rs pxd-section__title-text", item.uid);
-    if (!item.string) node.textContent = "Section";
-    rec.roots = [node];
-    rec.titleRendered = true;
-    rec.contentKey = contentKeyFor(item);
+    const frozenKeep = Boolean(rec.frozen?.length);
+    rec.frozen = null;
+    let before = null;
+    try {
+      unmountRoots(rec);
+      if (frozenKeep) before = directChildren(rec.title);
+      else rec.title.replaceChildren();
+      const node = renderRoot(rec.title, item.string || "Section", "pxd-rs pxd-section__title-text", item.uid);
+      if (!item.string) node.textContent = "Section";
+      rec.roots = [node];
+      rec.titleRendered = true;
+      rec.contentKey = contentKeyFor(item);
+    } finally {
+      if (frozenKeep) dropFrozenFrame(rec.title, before);
+    }
   };
 
   const unmountContent = (uid) => {
@@ -5446,28 +5468,120 @@ export function createItemRenderer({
   };
 
   // Decide which items need content for the current viewport; mount in idle chunks.
-  // `quieted` drops every live Roam root while the user types outside the board.
-  // A keystroke is a Roam transaction, and each renderString root re-renders on it.
+  // `quieted` unmounts every live Roam root while the user types outside the board.
+  // The pixels stay: each live root is swapped for a static clone of itself.
   let lastContent = null;
   let quieted = false;
-  const holdQuiet = (rec, uid) => {
-    if (!rec.roots?.length || editing?.uid === uid) return;
-    if (rec.type === "section") {
-      const text = rec.title?.textContent || lastBoard?.items.get(uid)?.title || "Section";
-      unmountRoots(rec);
-      if (rec.title) rec.title.textContent = text;
-      rec.titleRendered = false;
-    } else if (rec.body) {
-      const text = rec.body.textContent || "";
-      unmountRoots(rec);
-      rec.body.replaceChildren();
-      if (text) el("div", "pxd-quiet", rec.body).textContent = text;
-    } else {
-      unmountRoots(rec);
+  let editHeld = false;
+  let freezeGen = 0;
+  let freezeFrame = null;
+  const editQuietOn = () => {
+    try { return speedOf().editQuiet !== false; } catch { return true; }
+  };
+  const directChildren = (node) => {
+    const list = node?.children;
+    if (!list) return [];
+    const out = [];
+    for (let i = 0; i < list.length; i += 1) out.push(list[i]);
+    return out;
+  };
+  // The new root is already in `container`. Dropping the previous direct children cannot leave it empty.
+  const dropFrozenFrame = (container, before) => {
+    if (!container || !before?.length) return;
+    for (const node of before) {
+      if (node?.parentElement === container) {
+        try { node.remove(); } catch { /* already gone */ }
+      }
     }
+  };
+  const cancelFreezeFrame = () => {
+    const cancel = freezeFrame;
+    freezeFrame = null;
+    if (typeof cancel === "function") {
+      try { cancel(); } catch { /* already ran */ }
+    }
+  };
+  const LIVE_ATTR = /^(?:id|contenteditable|tabindex)$/i;
+  const attrNames = (node) => {
+    const attrs = node?.attributes;
+    if (!attrs) return [];
+    if (typeof attrs.keys === "function") return [...attrs.keys()];
+    const names = [];
+    if (typeof attrs.length === "number") {
+      for (let i = 0; i < attrs.length; i += 1) {
+        const name = attrs[i]?.name || attrs[i]?.nodeName;
+        if (name) names.push(name);
+      }
+    }
+    return names;
+  };
+  const stripLiveAttrs = (node) => {
+    const walk = (el) => {
+      if (!el || el.nodeType !== 1) return;
+      for (const name of attrNames(el)) {
+        if (LIVE_ATTR.test(name) || /^on/i.test(name)) {
+          try { el.removeAttribute(name); } catch { /* host */ }
+        }
+      }
+      if (typeof el.getAttribute === "function" && el.getAttribute("id") == null && el.id && !/^el-\d+$/.test(String(el.id))) el.id = "";
+      const list = el.children;
+      for (let i = 0; i < (list?.length || 0); i += 1) if (list[i].nodeType === 1) walk(list[i]);
+    };
+    walk(node);
+  };
+  const renderedRoot = (node) => {
+    if (!node || node.nodeType !== 1) return false;
+    if (node.classList?.contains("pxd-embed-live") || node.classList?.contains("pxd-rs__live") || node.classList?.contains("pxd-item__editor--sticky")) return true;
+    return Boolean(node.querySelector?.(".pxd-rs__live, .pxd-embed-live, .pxd-item__editor--sticky"));
+  };
+  // One public cloneNode per live root. Child copies stay inside that call, so a stepped clock counts roots.
+  const holdQuiet = (rec, uid) => {
+    if (!rec || editing?.uid === uid) return;
+    const roots = (rec.roots || []).filter(renderedRoot);
+    if (!roots.length) return;
+    const clones = [];
+    for (const root of roots) {
+      const parent = root.parentElement;
+      if (!parent || typeof root.cloneNode !== "function") continue;
+      const clone = root.cloneNode(true);
+      stripLiveAttrs(clone);
+      clone.classList?.add("pxd-quiet");
+      parent.insertBefore(clone, root);
+      clones.push(clone);
+    }
+    unmountRoots(rec);
+    for (const root of roots) {
+      try { root.remove(); } catch { /* already gone */ }
+    }
+    rec.frozen = clones.length ? clones : null;
     rec.contentKey = null;
     mounted.delete(uid);
     contentSched?.drop(uid);
+  };
+  const freezeMounted = () => {
+    const gen = freezeGen;
+    cancelFreezeFrame();
+    const queue = [];
+    for (const [uid, rec] of shells) queue.push([uid, rec]);
+    const pump = () => {
+      freezeFrame = null;
+      while (queue.length) {
+        const start = now();
+        let n = 0;
+        while (queue.length && (n === 0 || now() - start < CHUNK_MS)) {
+          if (gen !== freezeGen || !quieted || disposed) return;
+          const [uid, rec] = queue.shift();
+          if (shells.get(uid) === rec) holdQuiet(rec, uid);
+          n += 1;
+        }
+        if (!queue.length) return;
+        if (typeof timers?.frame === "function") {
+          freezeFrame = timers.frame(pump);
+          return;
+        }
+      }
+    };
+    pump();
   };
   const cardHeavy = (item, rec) => {
     if (!item || item.type === "section") return false;
@@ -5575,18 +5689,56 @@ export function createItemRenderer({
     fillContent(args);
   };
   // Detach live Roam roots so a keystroke elsewhere does not re-render every card.
-  // The words stay as plain text. The next schedule puts the live roots back.
+  // A clone of the current DOM stays in the same element until exit mounts the live root again.
   const quiet = (on) => {
     const next = Boolean(on);
-    if (next === quieted) return;
-    quieted = next;
-    if (quieted) {
-      contentSched?.hold(true);
-      for (const [uid, rec] of shells) holdQuiet(rec, uid);
+    if (!next && editHeld) return;
+    if (next === quieted) {
+      if (next) {
+        contentSched?.hold(true);
+        freezeGen += 1;
+        freezeMounted();
+      }
       return;
     }
+    quieted = next;
+    freezeGen += 1;
+    if (quieted) {
+      contentSched?.hold(true);
+      freezeMounted();
+      return;
+    }
+    cancelFreezeFrame();
     contentSched?.hold(false);
-    if (lastContent) fillContent(lastContent);
+    // lastContent.zoom is the last content pass. setZoom during the edit is the live camera,
+    // and a replay of the old pass would drop the note editor's counter-scale.
+    if (lastContent) fillContent({ ...lastContent, zoom: zoomCache });
+  };
+  // Held for the whole edit. quiet(false) from the 700 ms outside-typing timer cannot release it.
+  // Exit mounts the quieted bodies before it returns. The idle pump would leave them blank for a turn.
+  const restoreEditQuiet = () => {
+    for (const uid of shells.keys()) {
+      if (contentSched?.isDone(uid)) continue;
+      contentSched?.renderNow(uid);
+    }
+  };
+  const holdForEdit = (on) => {
+    if (!editQuietOn()) {
+      if (!on && editHeld) {
+        editHeld = false;
+        quiet(false);
+        restoreEditQuiet();
+      }
+      return;
+    }
+    const next = Boolean(on);
+    if (next === editHeld) {
+      if (next) quiet(true);
+      return;
+    }
+    editHeld = next;
+    quiet(next);
+    if (!next) restoreEditQuiet();
   };
 
   const setPaused = (on) => {
@@ -5608,6 +5760,7 @@ export function createItemRenderer({
     const next = Number(zoom);
     const prevZoom = zoomCache;
     zoomCache = next > 0 && Number.isFinite(next) ? next : 1;
+    if (lastContent && lastContent.zoom !== zoomCache) lastContent = { ...lastContent, zoom: zoomCache };
     if (zoomCache !== prevZoom) {
       closePeek();
       refreshRegionLayers();
@@ -6373,6 +6526,7 @@ export function createItemRenderer({
     attachFocusGuard();
     attachFloor(editing);
     onEditChange?.(uid);
+    holdForEdit(true);
     let ok = true;
     try {
       if (pageEdit) {
@@ -6534,6 +6688,7 @@ export function createItemRenderer({
         if (grow > live.h) (onGrow || ((u, h) => session?.growToFit?.(u, h)))(uid, grow);
       }
     }
+    holdForEdit(false);
   };
 
   const autocompleteOpen = () => Boolean(doc.querySelector?.(".rm-autocomplete__results"));
@@ -6756,6 +6911,8 @@ export function createItemRenderer({
   const dispose = () => {
     if (disposed) return;
     disposed = true;
+    freezeGen += 1;
+    cancelFreezeFrame();
     stopShellBg();
     tellPane({ open: false });
     if (freshTimer) { try { freshTimer(); } catch { /* already ran */ } freshTimer = null; }

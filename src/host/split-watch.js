@@ -15,8 +15,9 @@ export const EDGES_PATTERN = `[${A} {(limit :block/children nil) [${A} {(limit :
 // create, move or delete shows up as a changed uid list and a delete's renumbering as a changed :block/order.
 // Every children join takes (limit :block/children nil): without it Roam stops at 1,000 values and a short list
 // would read as deletions. This pattern is a watch only; reads and assembly stay on EDGES_PATTERN. A change that is
-// not order-only reads the Connections block whole: the published list always comes from a whole read, never from
-// patched pieces, so it can never be shorter than what Roam holds.
+// not order-only reads the Connections block whole, except a time-only stamp whose edge text and props still
+// match the stored node: that writes the new fingerprint and returns. The published list always comes from a whole read,
+// never from patched pieces, so it can never be shorter than what Roam holds.
 export const FINGERPRINT_PATTERN = "[:block/uid {(limit :block/children nil) [:block/uid :block/order :edit/time {(limit :block/children nil) [:block/uid :block/order :edit/time {(limit :block/children nil) [:block/uid]}]}]}]";
 // A nested board's thumbnail: its items and their direct children (section members).
 export const THUMB_PATTERN = `[${A} {(limit :block/children nil) [${A} {(limit :block/children nil) [${A}]}]}]`;
@@ -116,7 +117,72 @@ export function diffFingerprints(prev, next) {
   return { changed, removed, reordered };
 }
 
-export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerprint = false, guard = (_name, fn) => fn, schedule = (fn) => queueMicrotask(fn) }) {
+// Uids whose only fingerprint change is :edit/time. Null when the uid set, order, or why-note structure differs.
+function timeChangedIds(prev, next) {
+  if (!prev || !next || prev.size !== next.size) return null;
+  const ids = [];
+  for (const [id, now] of next) {
+    const was = prev.get(id);
+    if (!was) return null;
+    if (was.order !== now.order) return null;
+    if (!sameWhys(was.whys, now.whys)) return null;
+    if (was.time !== now.time) ids.push(id);
+  }
+  for (const id of prev.keys()) if (!next.has(id)) return null;
+  return ids;
+}
+
+// The container's own fields and every direct child match, except one child's string.
+// That child's uid, or null when the diff is anything else (or nothing).
+function soleStringChange(prev, next) {
+  if (!prev || !next) return null;
+  if ((prev[":block/string"] ?? "") !== (next[":block/string"] ?? "")) return null;
+  if ((prev[":block/order"] ?? null) !== (next[":block/order"] ?? null)) return null;
+  if ((prev[":block/heading"] || 0) !== (next[":block/heading"] || 0)) return null;
+  if ((prev[":block/open"] ?? null) !== (next[":block/open"] ?? null)) return null;
+  if (propsKey(prev[":block/props"]) !== propsKey(next[":block/props"])) return null;
+  const a = kidsOf(prev);
+  const b = kidsOf(next);
+  if (a.length !== b.length) return null;
+  let hit = null;
+  for (let i = 0; i < a.length; i += 1) {
+    const p = a[i];
+    const q = b[i];
+    if (p?.[UID] !== q?.[UID]) return null;
+    // Direct fields only. The container pattern does not pull grandchildren, and the stored
+    // node still has them, so a body block must not look like a second change.
+    const stringChanged = (p?.[":block/string"] ?? "") !== (q?.[":block/string"] ?? "");
+    const restChanged = (p?.[":block/order"] ?? null) !== (q?.[":block/order"] ?? null)
+      || (p?.[":block/heading"] || 0) !== (q?.[":block/heading"] || 0)
+      || (p?.[":block/open"] ?? null) !== (q?.[":block/open"] ?? null)
+      || propsKey(p?.[":block/props"]) !== propsKey(q?.[":block/props"]);
+    if (!stringChanged && !restChanged) continue;
+    if (restChanged || hit) return null;
+    hit = q[UID] || null;
+  }
+  return hit;
+}
+
+function childString(node, id) {
+  for (const kid of kidsOf(node)) if (kid?.[UID] === id) return kid[":block/string"] ?? "";
+  return null;
+}
+
+function patchTreeString(tree, id, string) {
+  if (!tree) return;
+  const stack = [tree];
+  while (stack.length) {
+    const cur = stack.pop();
+    if (!cur || typeof cur !== "object") continue;
+    if (cur[UID] === id) {
+      cur[":block/string"] = string;
+      return;
+    }
+    for (const kid of kidsOf(cur)) stack.push(kid);
+  }
+}
+
+export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, onEditString = null, editQuiet = () => true, fingerprint = false, guard = (_name, fn) => fn, schedule = (fn) => queueMicrotask(fn) }) {
   const entityOf = (id) => `[:block/uid "${String(id).replace(/["\\]/g, "")}"]`;
   const nodes = new Map();
   const kinds = new Map([[uid, "struct"]]);
@@ -160,6 +226,13 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
   // Callbacks only store what Roam sent and mark the tree dirty; release() assembles once if anything changed.
   let held = false;
   let dirty = false;
+  let editingUid = null;
+  const editQuietOn = () => {
+    try {
+      const value = typeof editQuiet === "function" ? editQuiet() : editQuiet;
+      return value !== false;
+    } catch { return true; }
+  };
 
   const patternOf = (kind) => (kind === "edges" ? EDGES_PATTERN : kind === "deep" ? deepPattern : STRUCT_PATTERN);
   const read = (pattern, id) => {
@@ -216,7 +289,20 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
         return;
       }
       nodes.delete(id);
-    } else nodes.set(id, after);
+      kick();
+      return;
+    }
+    const before = nodes.get(id);
+    const sole = before && editingUid ? soleStringChange(before, after) : null;
+    nodes.set(id, after);
+    if (sole && sole === editingUid && editQuietOn()) {
+      const text = childString(after, sole);
+      if (text != null) {
+        patchTreeString(lastTree, sole, text);
+        try { onEditString?.(sole, text); } catch { /* session */ }
+        return;
+      }
+    }
     kick();
   });
 
@@ -239,8 +325,35 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
     return { whole, print };
   };
 
-  // The Connections watch: diff the fingerprint. An order-only change re-sorts the stored edges; anything else reads
-  // the block whole.
+  // True when every time-changed edge's text and props equal the stored node. The fingerprint has no props,
+  // so a color edit is a time stamp until this pull. A missing pull_many, a short result, or one different
+  // string or props map falls through to the whole read.
+  const edgeStringsMatch = (stored, ids) => {
+    if (typeof data.pull_many !== "function" || !ids.length) return false;
+    let rows = null;
+    try {
+      rows = data.pull_many("[:block/uid :block/string :block/props]", ids.map((edgeUid) => entityOf(edgeUid)));
+    } catch { return false; }
+    if (!Array.isArray(rows) || rows.length !== ids.length) return false;
+    const have = new Map();
+    for (const edge of kidsOf(stored)) {
+      if (edge?.[UID]) have.set(edge[UID], { string: edge[":block/string"] ?? "", props: propsKey(edge[":block/props"]) });
+    }
+    const seen = new Set();
+    for (const row of rows) {
+      const edgeUid = row?.[UID];
+      const got = edgeUid ? have.get(edgeUid) : null;
+      if (!got || seen.has(edgeUid)) return false;
+      seen.add(edgeUid);
+      if ((row[":block/string"] ?? "") !== got.string || propsKey(row[":block/props"]) !== got.props) return false;
+    }
+    if (seen.size !== ids.length) return false;
+    for (const edgeUid of ids) if (!seen.has(edgeUid)) return false;
+    return true;
+  };
+
+  // The Connections watch: diff the fingerprint. An order-only change re-sorts the stored edges. A time-only
+  // stamp whose text and props still match writes the fingerprint and returns. Anything else reads the block whole.
   const onFingerprint = (id) => guard("watchEdges", (_before, after) => {
     if (disposed) return;
     if (held && after?.[UID]) {
@@ -262,6 +375,11 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
     let reordered = false;
     if (prev && stored?.[UID]) {
       const diff = diffFingerprints(prev, next);
+      const times = !diff.removed.length && !diff.reordered ? timeChangedIds(prev, next) : null;
+      if (times && times.length && edgeStringsMatch(stored, times)) {
+        fingerprints.set(id, next);
+        return;
+      }
       if (!diff.changed.length && !diff.removed.length) {
         if (!diff.reordered) return;
         reordered = true;
@@ -471,6 +589,9 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
 
   return {
     watchItem,
+    setEditing(id) {
+      editingUid = typeof id === "string" && id ? id : null;
+    },
     // Read every container again now (an undo, a refresh) and return the assembled tree; contents stay as stored.
     refresh() {
       if (disposed) return null;

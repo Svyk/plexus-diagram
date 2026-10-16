@@ -434,3 +434,40 @@ test("E2-6: Escape during a grouped drag puts every shell back where it was, out
     if (m.commits.length === 0) assert.equal(el.style.transform, before, "a cancelled drag leaves the card where it was");
   } finally { m.done(); }
 });
+
+// E2-6 (gestureQuiet): the board's own background jobs (the overview-fast shell pump) during an open, then a 700 ms
+// wheel burst: no bg slice inside the burst. On this fixture the input quiet alone already keeps wheel bursts clear
+// (flag off: 0 too), and the camera quiet makes the open tail ~0.3 s longer (E.out.md "Fix round 2").
+test("E2-6: no background-budget slice runs inside a wheel burst while the board's own jobs are pending", async () => {
+  const { sharedTaskProbe, resetSharedTaskProbe } = await import("../src/long-tasks.js");
+  const { bindBgGestureFlag, bindBgBudgetFlag, resetSharedBgBudget } = await import("../src/bg-budget.js");
+  bindBgGestureFlag(() => true);
+  bindBgBudgetFlag(() => true);
+  resetSharedBgBudget();
+  resetSharedTaskProbe();
+  const realRic = globalThis.requestIdleCallback;
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 });
+  const probe = sharedTaskProbe();
+  const orig = probe.span;
+  const seen = { open: 0, burst: 0, after: 0 };
+  let phase = "open";
+  probe.span = (name, fn, ph) => { if (name.startsWith("bg:")) seen[phase] += 1; return orig(name, fn, ph); };
+  try {
+    const run = async (ms, step) => { const end = Date.now() + ms; while (Date.now() < end) { step?.(); m.stub.flushFrames(); m.stub.flushIdle(); m.stub.flushTimers(); await tick(16); } };
+    await run(300);
+    phase = "burst";
+    await run(700, () => m.stub.dispatch(m.view.root, "wheel", { deltaX: 20, deltaY: 20, deltaMode: 0, clientX: 700, clientY: 450 }));
+    phase = "after";
+    await run(2500);
+    assert.equal(seen.burst, 0, `bg slices inside the burst: ${JSON.stringify(seen)}`);
+    assert.ok(seen.after > 0, "the jobs ran once the camera was still");
+    assert.equal(m.view.stats().shells, 1570, "the shell pump finished after the burst");
+  } finally {
+    probe.span = orig;
+    globalThis.requestIdleCallback = realRic;
+    m.done();
+    bindBgGestureFlag(() => false);
+    resetSharedBgBudget();
+    resetSharedTaskProbe();
+  }
+});

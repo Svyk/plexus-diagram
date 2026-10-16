@@ -4376,6 +4376,9 @@ function buildBoardView(onFail, {
   // (hitTest): a click selects on pointerup, a drag pans, a double click or a context menu builds that one shell.
   // Not drawn on this tier: the dust lens, strength lens, lane marks and badges (they paint shells; there are none).
   let ovDirty = true;
+  let ovLook = "overview";
+  // The tier this zoom shows (no hysteresis), for the canvas look; the overview look below 0.2 (styledUnderlay off: always).
+  const canvasLook = () => (styledUnderlay() ? lodTier(vp.zoom, "detail", { threshold: mapThreshold() }) : "overview");
   let ovBand = null;
   let ovModel = null;
   let ovRects = null;
@@ -4399,8 +4402,13 @@ function buildBoardView(onFail, {
     const attached = itemsR.attachedCount?.() ?? 0;
     if (b !== ovModel || model !== ovRects || attached !== ovAttached) ovDirty = true;
     const sharp = !size.width || underlay.covers(visibleWorldRect(vp, size, 0), vp.zoom, win?.devicePixelRatio || 1);
-    if (shown && !ovDirty && sharp && (!band || nextBand === ovBand)) { underlayDrawn = true; return true; }
+    // E3-4: the boxes take the look of the tier this zoom shows, also inside a burst (the tier itself flips at the
+    // settle). At 0.3 the canvas drew flat overview blocks with no titles until the settle, then the map shells landed
+    // in the dark card look with titles (QA4 C ovmap #10 -> #11).
+    const look = canvasLook();
+    if (shown && !ovDirty && sharp && look === ovLook && (!band || nextBand === ovBand)) { underlayDrawn = true; return true; }
     ovDirty = false;
+    ovLook = look;
     ovBand = nextBand;
     ovModel = b;
     ovRects = model;
@@ -4415,7 +4423,7 @@ function buildBoardView(onFail, {
       if (!rect || itemsR.attachedUid(uid)) continue;
       const hit = Boolean(canvasSearch?.has(uid));
       const dim = Boolean((canvasSearch && !hit) || (canvasFocus && !canvasFocus.has(uid)));
-      items.push({ uid, rect, color: item.color || "", dim, hit, selected: sel.has(uid) });
+      items.push({ uid, rect, color: item.color || "", title: item.title || "", dim, hit, selected: sel.has(uid) });
     }
     const edges = [];
     for (const e of b.edges.values()) {
@@ -4428,7 +4436,7 @@ function buildBoardView(onFail, {
     coverUids = new Set();
     ovDraws += 1;
     ovItems = items.length;
-    underlay.drawOverview({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, view: underlayView() });
+    underlay.drawOverview({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, view: underlayView(), look });
     return true;
   };
   // C1. The settle after a fit or a zoom out on a big board attached every near shell and edge in one task (PhD MAIN

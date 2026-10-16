@@ -168,9 +168,10 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
 
   // C2, the overview tier: items [{ uid, rect, color, dim, hit, selected }] (cards with no shell in the DOM), edges
   // [[rectA, rectB]] (edges not in the DOM). One fill per colour group, one stroke per outline kind, hairline edges.
-  const drawOverview = ({ items = [], edges = [], zoom = 1, dpr = 1, view = null } = {}) => {
+  // look (E3-4): the tier the zoom shows; map or detail draws the card look (fill, border, radius, titles).
+  const drawOverview = ({ items = [], edges = [], zoom = 1, dpr = 1, view = null, look = "overview" } = {}) => {
     if (!items.length && !edges.length) { hide(); return 0; }
-    return draw({ items, edges, zoom, dpr, styled: true, tier: "overview", view });
+    return draw({ items, edges, zoom, dpr, styled: true, tier: look === "map" || look === "detail" ? look : "overview", view });
   };
 
   // Map and detail tiers: a card is --pxd-card under its palette fill, with a 1px border in its line colour

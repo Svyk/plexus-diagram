@@ -112,3 +112,16 @@ test("E3-1 ratchet: the bench's second zoom-in (the fit's slices still attaching
     ledger.stop();
   } finally { m.done(); }
 });
+
+// E3-2: the open at overview (QA4 B: first paint 1.4-1.6 s, max task 1.2-1.4 s against 1.1 s / 0.97 s in 3.34.0). Every
+// overview-fast pump chunk drew the cover again: 44 full bitmaps (46 megapixels) in the open of the fixture, styled
+// since round 1 (palette fill, border stroke per card), each one a raster and an upload in the browser.
+test("E3-2: the open of a big board at overview draws the cover a couple of times, not once per pump chunk", async () => {
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true });
+  try {
+    for (let i = 0; i < 40; i += 1) { await tick(20); m.stub.flushFrames(); m.stub.flushTimers(); m.stub.flushIdle(); }
+    assert.ok(m.view.stats().shells >= 1500, `the open built the board: ${m.view.stats().shells}`);
+    const { draws, resizes } = m.view.underlayStats();
+    assert.ok(draws <= 3, `cover draws in the open: ${draws} (resizes ${resizes})`);
+  } finally { m.done(); }
+});

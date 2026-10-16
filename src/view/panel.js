@@ -323,18 +323,19 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     if (which === "more") loadUsers();
     root?.classList?.toggle?.("pxd-root--types-open", which != null || typesOpen());
   };
-  const tagInput = el("input", "pxd-panel__tag", filters);
+  const filterRow = el("div", "pxd-panel__filters-row", filters);
+  const tagInput = el("input", "pxd-panel__tag", filterRow);
   tagInput.type = "text";
   tagInput.placeholder = "#tag";
   tagInput.setAttribute("placeholder", "#tag");
   tagInput.setAttribute("aria-label", "Tag");
-  const daysInput = el("input", "pxd-panel__days", filters);
+  const daysInput = el("input", "pxd-panel__days", filterRow);
   daysInput.type = "number";
   daysInput.min = "0";
   daysInput.placeholder = "days";
   daysInput.setAttribute("placeholder", "days");
   daysInput.setAttribute("aria-label", "Edited in the last N days");
-  const pagesInput = el("input", "pxd-panel__pages", filters);
+  const pagesInput = el("input", "pxd-panel__pages", filterRow);
   pagesInput.type = "text";
   pagesInput.placeholder = "p. 3-8";
   pagesInput.setAttribute("placeholder", "p. 3-8");
@@ -344,7 +345,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   orphanBox.type = "checkbox";
   orphanBox.setAttribute("aria-label", "Not on any board");
   orphanLabel.append("Not on any board");
-  const meaningLabel = el("label", "pxd-panel__meaning", filters);
+  const meaningLabel = el("label", "pxd-panel__meaning", filterRow);
   meaningLabel.title = "Also find notes by meaning (Roam semantic search)";
   const meaningBox = el("input", "pxd-panel__meaning-box", meaningLabel);
   meaningBox.type = "checkbox";
@@ -386,6 +387,18 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   relClear.setAttribute("aria-label", "Clear related search");
   relClear.setAttribute("title", "Clear");
   const results = el("div", "pxd-panel__list", searchPane);
+  let activeRow = null;
+  const moveActive = (dir) => {
+    const list = [...results.querySelectorAll(".pxd-panel__row")];
+    if (!list.length) return;
+    const at = list.indexOf(activeRow);
+    const next = at < 0 ? list[dir < 0 ? list.length - 1 : 0] : list[Math.max(0, Math.min(list.length - 1, at + dir))];
+    if (activeRow) { activeRow.classList.remove("pxd-panel__row--active"); activeRow.removeAttribute("aria-selected"); }
+    activeRow = next;
+    activeRow.classList.add("pxd-panel__row--active");
+    activeRow.setAttribute("aria-selected", "true");
+    try { activeRow.scrollIntoView?.({ block: "nearest" }); } catch { /* stub */ }
+  };
   const indexNote = el("div", "pxd-panel__index-note", searchPane);
   indexNote.style.display = "none";
   indexNote.setAttribute("aria-live", "polite");
@@ -575,6 +588,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     } else if (thumb) {
       const col = el("span", "pxd-panel__row-col", r);
       el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, col, shown);
+      if (card.snippet) paintSnippet(el("span", "pxd-panel__row-text pxd-panel__row-snip", col), partSnippet(card.snippet, input.value));
       if (label) el("span", "pxd-panel__row-label pxd-panel__row-sub", col, label);
     } else {
       el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, shown);
@@ -600,6 +614,46 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     return r;
   };
 
+  function pictureUrl(value) {
+    const s = String(value || "");
+    return /^(https?:|blob:|file:|\/)/.test(s) ? s : "";
+  }
+
+  function paintSnippet(node, snip) {
+    if (!node || !snip) return;
+    if (snip.before) node.append(snip.before);
+    if (snip.hit) el("mark", "pxd-panel__mark", node, snip.hit);
+    if (snip.after) node.append(snip.after);
+  }
+
+  const pdfTextRow = (parent, hit) => {
+    const r = el("div", "pxd-panel__row pxd-panel__row--pdftext", parent);
+    r.dataset.url = hit.url || "";
+    r.setAttribute("data-url", hit.url || "");
+    const chip = el("button", "pxd-panel__page-chip", r, `p. ${hit.page}`);
+    chip.type = "button";
+    chip.setAttribute("aria-label", `Page ${hit.page}`);
+    const col = el("span", "pxd-panel__row-col", r);
+    if (hit.title) el("span", "pxd-panel__row-text pxd-panel__row-title", col, hit.title);
+    const body = el("span", "pxd-panel__row-text pxd-panel__row-text--part", col);
+    paintSnippet(body, hit.snippet);
+    const shot = pictureUrl(hit.thumb);
+    if (shot) {
+      const img = el("img", "pxd-panel__thumb", r);
+      img.setAttribute("src", shot);
+      img.setAttribute("alt", "");
+      img.setAttribute("loading", "lazy");
+    }
+    const open = (event) => {
+      event.stopPropagation();
+      try { on.openPdfHit?.(hit); } catch { /* host */ }
+      r.classList.add("pxd-panel__row--on");
+    };
+    listenRow(chip, "click", open);
+    listenRow(r, "click", open);
+    return r;
+  };
+
   const partRow = (parent, part, needle) => {
     const r = el("div", "pxd-panel__row pxd-panel__row--part", parent);
     r.setAttribute("draggable", "true");
@@ -610,6 +664,9 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     const head = el("div", "pxd-panel__part-head", r);
     el("span", `pxd-panel__badge pxd-panel__badge--${part.kind}`, head, PART_LABELS[part.kind] || part.kind);
     el("span", "pxd-panel__row-label", head, `p. ${part.page} · ${part.docTitle || "PDF"}`);
+    const chip = el("button", "pxd-panel__page-chip", head, `p. ${part.page}`);
+    chip.type = "button";
+    chip.setAttribute("aria-label", `Page ${part.page}`);
     if (typeof on.askPart === "function") {
       const ask = el("button", "pxd-panel__row-act", head);
       ask.setAttribute("type", "button");
@@ -634,11 +691,14 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       add.setAttribute("title", "Add to question");
       listenRow(add, "click", (event) => { event.stopPropagation(); on.basketPart(part); });
     }
-    const snip = partSnippet(part.text, needle);
     const body = el("span", "pxd-panel__row-text pxd-panel__row-text--part", r);
-    if (snip.before) body.append(snip.before);
-    if (snip.hit) el("mark", "pxd-panel__mark", body, snip.hit);
-    if (snip.after) body.append(snip.after);
+    paintSnippet(body, partSnippet(part.text, needle));
+    const shot = pictureUrl(part.thumb);
+    if (shot) {
+      const img = el("img", "pxd-panel__thumb", r);
+      img.setAttribute("src", shot);
+      img.setAttribute("alt", "");
+    }
     paletteDots(r, part.palette);
     if (part.kind === "figure") likeButton(head, part.key, `Figure p. ${part.page}`);
     const payload = {
@@ -646,11 +706,13 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       pdfUid: part.pdfUid || "", pdfBlockUid: part.pdfUid || "",
       kind: part.kind === "table" || part.kind === "figure" || part.kind === "formula" ? part.kind : "blocks",
     };
-    listenRow(r, "click", (event) => {
+    const openThis = (event) => {
       event.stopPropagation();
       if (on.openPart?.(part) !== true) on.addPart?.(payload);
       r.classList.add("pxd-panel__row--on");
-    });
+    };
+    listenRow(chip, "click", openThis);
+    listenRow(r, "click", openThis);
     listenRow(r, "dragstart", (event) => {
       try {
         const json = JSON.stringify(payload);
@@ -900,8 +962,14 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     }
     let parts = [];
     const needle = String(filter.text || "").trim();
-    const kinds = checked.size === ALL_TYPES.length && !wantFigures ? [] : PARSE_PART_TYPES.filter((t) => checked.has(t) && !(wantFigures && t === "figure"));
-    if (typeof on.searchParts === "function" && (checked.size === ALL_TYPES.length || kinds.length > 0)
+    // A saved filter of only "pdf" checks no part type, so the old gate never asked for page text.
+    // PDF on, with no part type picked, searches the text parts. Figures stay on the image path.
+    const textPartKinds = PARSE_PART_TYPES.filter((t) => t !== "figure");
+    const explicitKinds = PARSE_PART_TYPES.filter((t) => checked.has(t) && !(wantFigures && t === "figure"));
+    const allOn = checked.size === ALL_TYPES.length;
+    const wantPdfBody = allOn || checked.has("pdf") || explicitKinds.length > 0;
+    const kinds = allOn && !wantFigures ? [] : (explicitKinds.length ? explicitKinds : (checked.has("pdf") && needle ? textPartKinds : []));
+    if (typeof on.searchParts === "function" && wantPdfBody
       && (needle || kinds.length) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter)) {
       const t0 = Date.now();
       try { parts = (await Promise.resolve(on.searchParts({ text: needle, kinds, pages: filter.pages }, LIMIT))) || []; } catch { parts = []; }
@@ -909,18 +977,57 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       results.dataset.partsMs = String(Date.now() - t0);
     }
     let found = { images: [], figures: [] };
+    const bodySearch = Boolean(needle) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter);
     if ((wantImages || wantFigures) && (needle || filter.types.length) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter)) {
       try { found = (await Promise.resolve(on.searchImages({ text: needle, images: wantImages, figures: wantFigures, pages: filter.pages }, LIMIT))) || found; } catch { /* keep none */ }
       if (id !== queryId) return;
     }
+    let pdfHits = [];
+    if (bodySearch && wantPdfBody && typeof on.searchPdfText === "function") {
+      try {
+        const got = on.searchPdfText({ text: needle, pages: filter.pages }, LIMIT);
+        if (Array.isArray(got)) pdfHits = got;
+      } catch { pdfHits = []; }
+    }
+    const covered = new Set();
+    for (const part of parts) {
+      if (!part || part.kind === "figure") continue;
+      const page = Number(part.page) || 0;
+      if (part.url) covered.add(`${part.url}\n${page}`);
+      if (part.sha256) covered.add(`${part.sha256}\n${page}`);
+    }
+    pdfHits = pdfHits.filter((hit) => {
+      if (!hit) return false;
+      const page = Number(hit.page) || 0;
+      if (hit.url && covered.has(`${hit.url}\n${page}`)) return false;
+      if (hit.hash && covered.has(`${hit.hash}\n${page}`)) return false;
+      return true;
+    });
     const images = Array.isArray(found.images) ? found.images : [];
     const figures = Array.isArray(found.figures) ? found.figures : [];
+    const textParts = [];
+    const figureParts = [];
+    for (const part of parts) (part?.kind === "figure" ? figureParts : textParts).push(part);
     results.replaceChildren();
-    if (!rows.length && !parts.length && !images.length && !figures.length) el("div", "pxd-panel__empty", results, "No matches");
-    rows.forEach((r) => row(results, r));
-    images.forEach((img) => row(results, { ...libraryCard({ kind: "block", uid: img.uid, string: img.string, pageTitle: img.pageTitle }), palette: img.palette, likeKey: img.key, likeName: imageName(img) }));
-    parts.forEach((part) => partRow(results, part, needle));
-    figures.forEach((part) => partRow(results, part, needle));
+    activeRow = null;
+    const anyHit = rows.length || textParts.length || pdfHits.length || images.length || figureParts.length || figures.length;
+    if (!anyHit) el("div", "pxd-panel__empty", results, "No matches");
+    const group = (title) => el("div", "pxd-panel__group", results, title);
+    if (rows.length) {
+      group("Cards");
+      rows.forEach((r) => row(results, r));
+    }
+    if (textParts.length || pdfHits.length) {
+      group("PDF text");
+      textParts.forEach((part) => partRow(results, part, needle));
+      pdfHits.forEach((hit) => pdfTextRow(results, hit));
+    }
+    if (images.length || figureParts.length || figures.length) {
+      group("Images");
+      images.forEach((img) => row(results, { ...libraryCard({ kind: "block", uid: img.uid, string: img.string, pageTitle: img.pageTitle }), palette: img.palette, likeKey: img.key, likeName: imageName(img), snippet: img.snippet }));
+      figureParts.forEach((part) => partRow(results, part, needle));
+      figures.forEach((part) => partRow(results, part, needle));
+    }
     showMoreRow(pack);
     results.dataset.paintMs = String(Date.now() - started);
     results.setAttribute("data-paint-ms", String(Date.now() - started));
@@ -1053,8 +1160,17 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   };
   listen(input, "keydown", (event) => {
     event.stopPropagation();
-    if (event.key === "Escape") { event.preventDefault(); api.close(); }
-    if (event.key === "Enter") { event.preventDefault(); searchNow(); }
+    if (event.key === "Escape") { event.preventDefault(); api.close(); return; }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      moveActive(event.key === "ArrowDown" ? 1 : -1);
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (activeRow && results.contains?.(activeRow)) { try { activeRow.click(); } catch { /* stub */ } return; }
+      searchNow();
+    }
   });
   for (const field of [tagInput, daysInput, pagesInput]) {
     listen(field, "keydown", (event) => {

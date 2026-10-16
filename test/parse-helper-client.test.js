@@ -419,6 +419,37 @@ test("ocr: a batch that is aborted stops the read", async () => {
   assert.equal(sent.length, 1);
 });
 
+test("ocrImagePath posts the local path and returns null when the helper has no image route", async () => {
+  const sent = [];
+  const fetch = async (url, init) => {
+    sent.push({ url, method: init.method, type: init.headers["Content-Type"], body: init.body });
+    if (String(url).endsWith("/v1/ocr-image")) return { status: 200, json: async () => ({ text: "lab notebook" }) };
+    return { status: 404, json: async () => ({ error: "no" }) };
+  };
+  const settings = { get: (k) => (k === "parse-helper-token" ? "tok" : undefined) };
+  const client = createHelperClient({ fetch, settings, setSetting: () => {} });
+  assert.equal(await client.ocrImagePath("/Users/me/scan.png"), "lab notebook");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].method, "POST");
+  assert.match(sent[0].url, /\/v1\/ocr-image$/);
+  assert.equal(sent[0].type, "application/json");
+  assert.deepEqual(JSON.parse(sent[0].body), { path: "/Users/me/scan.png" });
+
+  const missing = createHelperClient({
+    fetch: async () => ({ status: 404, json: async () => ({ error: "no" }) }),
+    settings,
+    setSetting: () => {},
+  });
+  assert.equal(await missing.ocrImagePath("/tmp/a.png"), null);
+  const down = createHelperClient({
+    fetch: async () => { throw new TypeError("not running"); },
+    settings,
+    setSetting: () => {},
+  });
+  assert.equal(await down.ocrImagePath("/tmp/a.png"), null);
+  assert.equal(await client.ocrImagePath(""), null);
+});
+
 test("vlm: pages and regions over the helper's caps go in batches and the readings join", async () => {
   const { planVlmBatches } = await import("../src/host/parse-helper-client.js");
   const { sent, client } = bodyClient((url, opts) => ({ model: "m", tables: (opts.tables || []).map((t) => ({ page: t.page })), layout: opts.pages.map((n) => ({ page: n })), decode: { greedy: true } }));

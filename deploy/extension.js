@@ -9291,13 +9291,13 @@ function detectColumns(lines, { pageW, minLines = 4 } = {}) {
 function valueColumn(lines) {
   const list = lines || [];
   if (list.length < 3) return false;
-  const wordsOf2 = (l) => String(l.text || "").trim().split(/\s+/).filter(Boolean).length;
-  if (list.some((l) => wordsOf2(l) >= 12)) return false;
+  const wordsOf4 = (l) => String(l.text || "").trim().split(/\s+/).filter(Boolean).length;
+  if (list.some((l) => wordsOf4(l) >= 12)) return false;
   const digitShare = (l) => {
     const text4 = String(l.text || "").replace(/\s+/g, "");
     return text4.length ? (text4.match(/\d/g) || []).length / text4.length : 0;
   };
-  const valued = list.filter((l) => wordsOf2(l) <= 8 && digitShare(l) >= 0.3).length;
+  const valued = list.filter((l) => wordsOf4(l) <= 8 && digitShare(l) >= 0.3).length;
   return valued / list.length >= 0.6;
 }
 function shortColumnGutters(lines, pageW, minLines) {
@@ -25233,18 +25233,19 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     if (which === "more") loadUsers();
     root?.classList?.toggle?.("pxd-root--types-open", which != null || typesOpen());
   };
-  const tagInput = el2("input", "pxd-panel__tag", filters);
+  const filterRow = el2("div", "pxd-panel__filters-row", filters);
+  const tagInput = el2("input", "pxd-panel__tag", filterRow);
   tagInput.type = "text";
   tagInput.placeholder = "#tag";
   tagInput.setAttribute("placeholder", "#tag");
   tagInput.setAttribute("aria-label", "Tag");
-  const daysInput = el2("input", "pxd-panel__days", filters);
+  const daysInput = el2("input", "pxd-panel__days", filterRow);
   daysInput.type = "number";
   daysInput.min = "0";
   daysInput.placeholder = "days";
   daysInput.setAttribute("placeholder", "days");
   daysInput.setAttribute("aria-label", "Edited in the last N days");
-  const pagesInput = el2("input", "pxd-panel__pages", filters);
+  const pagesInput = el2("input", "pxd-panel__pages", filterRow);
   pagesInput.type = "text";
   pagesInput.placeholder = "p. 3-8";
   pagesInput.setAttribute("placeholder", "p. 3-8");
@@ -25254,7 +25255,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   orphanBox.type = "checkbox";
   orphanBox.setAttribute("aria-label", "Not on any board");
   orphanLabel.append("Not on any board");
-  const meaningLabel = el2("label", "pxd-panel__meaning", filters);
+  const meaningLabel = el2("label", "pxd-panel__meaning", filterRow);
   meaningLabel.title = "Also find notes by meaning (Roam semantic search)";
   const meaningBox = el2("input", "pxd-panel__meaning-box", meaningLabel);
   meaningBox.type = "checkbox";
@@ -25310,6 +25311,24 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   relClear.setAttribute("aria-label", "Clear related search");
   relClear.setAttribute("title", "Clear");
   const results = el2("div", "pxd-panel__list", searchPane);
+  let activeRow = null;
+  const moveActive = (dir) => {
+    const list = [...results.querySelectorAll(".pxd-panel__row")];
+    if (!list.length) return;
+    const at = list.indexOf(activeRow);
+    const next = at < 0 ? list[dir < 0 ? list.length - 1 : 0] : list[Math.max(0, Math.min(list.length - 1, at + dir))];
+    if (activeRow) {
+      activeRow.classList.remove("pxd-panel__row--active");
+      activeRow.removeAttribute("aria-selected");
+    }
+    activeRow = next;
+    activeRow.classList.add("pxd-panel__row--active");
+    activeRow.setAttribute("aria-selected", "true");
+    try {
+      activeRow.scrollIntoView?.({ block: "nearest" });
+    } catch {
+    }
+  };
   const indexNote = el2("div", "pxd-panel__index-note", searchPane);
   indexNote.style.display = "none";
   indexNote.setAttribute("aria-live", "polite");
@@ -25507,6 +25526,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     } else if (thumb2) {
       const col2 = el2("span", "pxd-panel__row-col", r);
       el2("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, col2, shown);
+      if (card2.snippet) paintSnippet(el2("span", "pxd-panel__row-text pxd-panel__row-snip", col2), partSnippet(card2.snippet, input.value));
       if (label) el2("span", "pxd-panel__row-label pxd-panel__row-sub", col2, label);
     } else {
       el2("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, shown);
@@ -25539,6 +25559,46 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     });
     return r;
   };
+  function pictureUrl(value) {
+    const s = String(value || "");
+    return /^(https?:|blob:|file:|\/)/.test(s) ? s : "";
+  }
+  function paintSnippet(node2, snip) {
+    if (!node2 || !snip) return;
+    if (snip.before) node2.append(snip.before);
+    if (snip.hit) el2("mark", "pxd-panel__mark", node2, snip.hit);
+    if (snip.after) node2.append(snip.after);
+  }
+  const pdfTextRow = (parent, hit) => {
+    const r = el2("div", "pxd-panel__row pxd-panel__row--pdftext", parent);
+    r.dataset.url = hit.url || "";
+    r.setAttribute("data-url", hit.url || "");
+    const chip = el2("button", "pxd-panel__page-chip", r, `p. ${hit.page}`);
+    chip.type = "button";
+    chip.setAttribute("aria-label", `Page ${hit.page}`);
+    const col2 = el2("span", "pxd-panel__row-col", r);
+    if (hit.title) el2("span", "pxd-panel__row-text pxd-panel__row-title", col2, hit.title);
+    const body = el2("span", "pxd-panel__row-text pxd-panel__row-text--part", col2);
+    paintSnippet(body, hit.snippet);
+    const shot2 = pictureUrl(hit.thumb);
+    if (shot2) {
+      const img = el2("img", "pxd-panel__thumb", r);
+      img.setAttribute("src", shot2);
+      img.setAttribute("alt", "");
+      img.setAttribute("loading", "lazy");
+    }
+    const open = (event) => {
+      event.stopPropagation();
+      try {
+        on.openPdfHit?.(hit);
+      } catch {
+      }
+      r.classList.add("pxd-panel__row--on");
+    };
+    listenRow(chip, "click", open);
+    listenRow(r, "click", open);
+    return r;
+  };
   const partRow = (parent, part, needle) => {
     const r = el2("div", "pxd-panel__row pxd-panel__row--part", parent);
     r.setAttribute("draggable", "true");
@@ -25549,6 +25609,9 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const head2 = el2("div", "pxd-panel__part-head", r);
     el2("span", `pxd-panel__badge pxd-panel__badge--${part.kind}`, head2, PART_LABELS[part.kind] || part.kind);
     el2("span", "pxd-panel__row-label", head2, `p. ${part.page} · ${part.docTitle || "PDF"}`);
+    const chip = el2("button", "pxd-panel__page-chip", head2, `p. ${part.page}`);
+    chip.type = "button";
+    chip.setAttribute("aria-label", `Page ${part.page}`);
     if (typeof on.askPart === "function") {
       const ask2 = el2("button", "pxd-panel__row-act", head2);
       ask2.setAttribute("type", "button");
@@ -25582,11 +25645,14 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
         on.basketPart(part);
       });
     }
-    const snip = partSnippet(part.text, needle);
     const body = el2("span", "pxd-panel__row-text pxd-panel__row-text--part", r);
-    if (snip.before) body.append(snip.before);
-    if (snip.hit) el2("mark", "pxd-panel__mark", body, snip.hit);
-    if (snip.after) body.append(snip.after);
+    paintSnippet(body, partSnippet(part.text, needle));
+    const shot2 = pictureUrl(part.thumb);
+    if (shot2) {
+      const img = el2("img", "pxd-panel__thumb", r);
+      img.setAttribute("src", shot2);
+      img.setAttribute("alt", "");
+    }
     paletteDots(r, part.palette);
     if (part.kind === "figure") likeButton(head2, part.key, `Figure p. ${part.page}`);
     const payload = {
@@ -25598,11 +25664,13 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       pdfBlockUid: part.pdfUid || "",
       kind: part.kind === "table" || part.kind === "figure" || part.kind === "formula" ? part.kind : "blocks"
     };
-    listenRow(r, "click", (event) => {
+    const openThis = (event) => {
       event.stopPropagation();
       if (on.openPart?.(part) !== true) on.addPart?.(payload);
       r.classList.add("pxd-panel__row--on");
-    });
+    };
+    listenRow(chip, "click", openThis);
+    listenRow(r, "click", openThis);
     listenRow(r, "dragstart", (event) => {
       try {
         const json = JSON.stringify(payload);
@@ -25924,8 +25992,12 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     }
     let parts = [];
     const needle = String(filter.text || "").trim();
-    const kinds = checked.size === ALL_TYPES.length && !wantFigures ? [] : PARSE_PART_TYPES.filter((t) => checked.has(t) && !(wantFigures && t === "figure"));
-    if (typeof on.searchParts === "function" && (checked.size === ALL_TYPES.length || kinds.length > 0) && (needle || kinds.length) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter)) {
+    const textPartKinds = PARSE_PART_TYPES.filter((t) => t !== "figure");
+    const explicitKinds = PARSE_PART_TYPES.filter((t) => checked.has(t) && !(wantFigures && t === "figure"));
+    const allOn = checked.size === ALL_TYPES.length;
+    const wantPdfBody = allOn || checked.has("pdf") || explicitKinds.length > 0;
+    const kinds = allOn && !wantFigures ? [] : explicitKinds.length ? explicitKinds : checked.has("pdf") && needle ? textPartKinds : [];
+    if (typeof on.searchParts === "function" && wantPdfBody && (needle || kinds.length) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter)) {
       const t0 = Date.now();
       try {
         parts = await Promise.resolve(on.searchParts({ text: needle, kinds, pages: filter.pages }, LIMIT)) || [];
@@ -25936,6 +26008,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       results.dataset.partsMs = String(Date.now() - t0);
     }
     let found = { images: [], figures: [] };
+    const bodySearch = Boolean(needle) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter);
     if ((wantImages || wantFigures) && (needle || filter.types.length) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter)) {
       try {
         found = await Promise.resolve(on.searchImages({ text: needle, images: wantImages, figures: wantFigures, pages: filter.pages }, LIMIT)) || found;
@@ -25943,14 +26016,58 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       }
       if (id !== queryId) return;
     }
+    let pdfHits = [];
+    if (bodySearch && wantPdfBody && typeof on.searchPdfText === "function") {
+      try {
+        const got = on.searchPdfText({ text: needle, pages: filter.pages }, LIMIT);
+        if (Array.isArray(got)) pdfHits = got;
+      } catch {
+        pdfHits = [];
+      }
+    }
+    const covered = /* @__PURE__ */ new Set();
+    for (const part of parts) {
+      if (!part || part.kind === "figure") continue;
+      const page = Number(part.page) || 0;
+      if (part.url) covered.add(`${part.url}
+${page}`);
+      if (part.sha256) covered.add(`${part.sha256}
+${page}`);
+    }
+    pdfHits = pdfHits.filter((hit) => {
+      if (!hit) return false;
+      const page = Number(hit.page) || 0;
+      if (hit.url && covered.has(`${hit.url}
+${page}`)) return false;
+      if (hit.hash && covered.has(`${hit.hash}
+${page}`)) return false;
+      return true;
+    });
     const images = Array.isArray(found.images) ? found.images : [];
     const figures = Array.isArray(found.figures) ? found.figures : [];
+    const textParts = [];
+    const figureParts = [];
+    for (const part of parts) (part?.kind === "figure" ? figureParts : textParts).push(part);
     results.replaceChildren();
-    if (!rows.length && !parts.length && !images.length && !figures.length) el2("div", "pxd-panel__empty", results, "No matches");
-    rows.forEach((r) => row4(results, r));
-    images.forEach((img) => row4(results, { ...libraryCard({ kind: "block", uid: img.uid, string: img.string, pageTitle: img.pageTitle }), palette: img.palette, likeKey: img.key, likeName: imageName(img) }));
-    parts.forEach((part) => partRow(results, part, needle));
-    figures.forEach((part) => partRow(results, part, needle));
+    activeRow = null;
+    const anyHit = rows.length || textParts.length || pdfHits.length || images.length || figureParts.length || figures.length;
+    if (!anyHit) el2("div", "pxd-panel__empty", results, "No matches");
+    const group = (title) => el2("div", "pxd-panel__group", results, title);
+    if (rows.length) {
+      group("Cards");
+      rows.forEach((r) => row4(results, r));
+    }
+    if (textParts.length || pdfHits.length) {
+      group("PDF text");
+      textParts.forEach((part) => partRow(results, part, needle));
+      pdfHits.forEach((hit) => pdfTextRow(results, hit));
+    }
+    if (images.length || figureParts.length || figures.length) {
+      group("Images");
+      images.forEach((img) => row4(results, { ...libraryCard({ kind: "block", uid: img.uid, string: img.string, pageTitle: img.pageTitle }), palette: img.palette, likeKey: img.key, likeName: imageName(img), snippet: img.snippet }));
+      figureParts.forEach((part) => partRow(results, part, needle));
+      figures.forEach((part) => partRow(results, part, needle));
+    }
     showMoreRow(pack);
     results.dataset.paintMs = String(Date.now() - started);
     results.setAttribute("data-paint-ms", String(Date.now() - started));
@@ -26143,9 +26260,22 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     if (event.key === "Escape") {
       event.preventDefault();
       api3.close();
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      moveActive(event.key === "ArrowDown" ? 1 : -1);
+      return;
     }
     if (event.key === "Enter") {
       event.preventDefault();
+      if (activeRow && results.contains?.(activeRow)) {
+        try {
+          activeRow.click();
+        } catch {
+        }
+        return;
+      }
       searchNow();
     }
   });
@@ -57632,6 +57762,34 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     }
     return { ...body, sha256: sha };
   }
+  async function ocrImagePath(path) {
+    const file = String(path || "").trim();
+    if (!file) return null;
+    try {
+      const { url, token } = config();
+      if (!token || typeof fetchFn !== "function") return null;
+      const res = await call(`${url}/v1/ocr-image`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ path: file })
+      });
+      if (!res || res.status < 200 || res.status >= 300) return null;
+      let body = null;
+      try {
+        body = await res.json();
+      } catch {
+        body = null;
+      }
+      if (typeof body?.text === "string") return body.text;
+      if (Array.isArray(body?.pages)) return body.pages.map((page) => String(page?.text || "")).filter(Boolean).join("\n");
+      return "";
+    } catch {
+      return null;
+    }
+  }
   async function tables({ bytes, sha256, pages, tables: regions, signal } = {}) {
     const sha = sha256 || await sha256Hex(bytes);
     const list = regions || [];
@@ -57728,6 +57886,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     cancel,
     reparseTable,
     ocr,
+    ocrImagePath,
     tables,
     vlm,
     endpoint,
@@ -76928,7 +77087,7 @@ function createReadPane({
     if (next == null) return;
     scroller.scrollTop = next;
   };
-  const flashFrac = (frac, page) => {
+  const flashFrac2 = (frac, page) => {
     scrollFrac(frac, page);
     const style = fracStyle(frac);
     const node2 = fracPage(page);
@@ -78548,7 +78707,7 @@ function createReadPane({
             } catch {
               flashed2 = false;
             }
-            if (!flashed2) flashFrac(frac, next.page);
+            if (!flashed2) flashFrac2(frac, next.page);
           }
         }, kept);
       } else if (wanted) locateHighlight(wanted);
@@ -85646,6 +85805,18 @@ var OCR_MIN_H = 120;
 var OCR_SESSION_CAP = 40;
 var OCR_MAX_SIDE = 1280;
 var SAMPLE = 64;
+function localImagePath(url) {
+  const raw = String(url || "").trim();
+  if (raw.startsWith("file://")) {
+    try {
+      return decodeURIComponent(new URL(raw).pathname);
+    } catch {
+      return "";
+    }
+  }
+  if (raw.startsWith("/") && !raw.startsWith("//")) return raw;
+  return "";
+}
 function makeCanvas(w, h) {
   if (typeof OffscreenCanvas === "function") return new OffscreenCanvas(w, h);
   const canvas = globalThis.document.createElement("canvas");
@@ -85715,6 +85886,7 @@ function createImageIndex({
   decode = decodeSample,
   decodeFull = decodeRgb,
   ocr = null,
+  helperText = null,
   settings = {},
   now: now4 = () => Date.now(),
   idle = (fn) => {
@@ -85793,7 +85965,8 @@ function createImageIndex({
     }
   };
   function status() {
-    const textRuns = ocrQ.length > 0 && wantText() && !ocrBlocked && ocrDone < ocrCap;
+    const helperQueued = ocrQ.some((item) => helperPath(item));
+    const textRuns = helperQueued || ocrQ.length > 0 && wantText() && !ocrBlocked && ocrDone < ocrCap;
     const colorRuns = colorQ.length > 0 && wantColors();
     return {
       pending: colorQ.length + activeColor,
@@ -85850,7 +86023,33 @@ function createImageIndex({
       schedulePump(0);
     }
   }
+  function helperPath(item) {
+    return Boolean(item?.path) && typeof helperText === "function";
+  }
+  async function helperTextJob(item) {
+    activeOcr += 1;
+    try {
+      await whenIdle();
+      let text4 = "";
+      try {
+        const got = await helperText(item.path);
+        text4 = typeof got === "string" ? got : "";
+      } catch {
+        text4 = "";
+      }
+      const old = records.get(item.key) || {};
+      const next = { ...old, text: text4, w: old.w, h: old.h, at: now4(), v: IMAGE_INDEX_V };
+      delete next.failed;
+      await save(item.key, next);
+    } finally {
+      activeOcr -= 1;
+      queued.delete(`t:${item.key}`);
+      progress();
+      schedulePump(0);
+    }
+  }
   async function ocrJob(item) {
+    if (helperPath(item)) return helperTextJob(item);
     activeOcr += 1;
     let counted = false;
     try {
@@ -85889,7 +86088,9 @@ function createImageIndex({
       return;
     }
     while (activeColor < MAX_FETCHES && colorQ.length && wantColors()) void colorJob(colorQ.shift());
-    if (!activeColor && !colorQ.length && !activeOcr && ocrQ.length && wantText() && !ocrBlocked && ocrDone < ocrCap) {
+    const nextText = ocrQ[0];
+    const helperNext = helperPath(nextText);
+    if (!activeColor && !colorQ.length && !activeOcr && nextText && (helperNext || wantText() && !ocrBlocked && ocrDone < ocrCap)) {
       void ocrJob(ocrQ.shift());
     }
   }
@@ -85917,8 +86118,9 @@ function createImageIndex({
         }
       }
       const needText = (!rec || rec.text === void 0) && !rec?.failed;
-      if (needText && ocr && wantText() && !queued.has(`t:${item.key}`)) {
-        const small = rec && rec.w && rec.h && (rec.w < OCR_MIN_W || rec.h < OCR_MIN_H);
+      const viaHelper = helperPath(item);
+      if (needText && (viaHelper || ocr && wantText()) && !queued.has(`t:${item.key}`)) {
+        const small = !viaHelper && rec && rec.w && rec.h && (rec.w < OCR_MIN_W || rec.h < OCR_MIN_H);
         if (!small) {
           queued.add(`t:${item.key}`);
           ocrQ.push(item);
@@ -85947,9 +86149,834 @@ function createImageIndex({
   return { load, enqueue, pause, status, records, dispose, version: IMAGE_DB_VERSION };
 }
 
+// src/model/pdf-text-search.js
+init_library();
+init_parts_search();
+var clamp016 = (n3) => Math.max(0, Math.min(1, Number(n3) || 0));
+function editDistance1(a, b) {
+  const left = String(a || "");
+  const right = String(b || "");
+  if (left === right) return true;
+  const la = left.length;
+  const lb = right.length;
+  if (!la || !lb || Math.abs(la - lb) > 1) return false;
+  const [s, t] = la <= lb ? [left, right] : [right, left];
+  let i = 0;
+  let j = 0;
+  let used = false;
+  while (i < s.length && j < t.length) {
+    if (s[i] === t[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+    if (used) return false;
+    used = true;
+    if (s.length === t.length) i += 1;
+    j += 1;
+  }
+  return true;
+}
+function fracOf(item, width, height) {
+  const tr = Array.isArray(item?.transform) ? item.transform : [];
+  const x = Number(tr[4]) || 0;
+  const baseline = Number(tr[5]) || 0;
+  const w = Number(item?.width) || 0;
+  const h = Number(item?.height) || Math.abs(Number(tr[3])) || 0;
+  const top = height - baseline - h;
+  return [clamp016(x / width), clamp016(top / height), clamp016(w / width), clamp016(h / height)];
+}
+function pageFromTextContent({ n: n3 = 1, width = 0, height = 0, items = [] } = {}) {
+  const spans = [];
+  const bits = [];
+  const pageW = Number(width) || 0;
+  const pageH = Number(height) || 0;
+  for (const item of Array.isArray(items) ? items : []) {
+    const str3 = String(item?.str || "");
+    if (!str3) continue;
+    bits.push(str3);
+    if (pageW > 0 && pageH > 0) spans.push({ str: str3, frac: fracOf(item, pageW, pageH) });
+  }
+  const text4 = bits.join(" ").replace(/\s+/g, " ").trim();
+  return { n: Number(n3) || 0, text: text4, lower: text4.toLowerCase(), spans };
+}
+function docsFromPartRows(rows) {
+  const docs = /* @__PURE__ */ new Map();
+  for (const row4 of Array.isArray(rows) ? rows : []) {
+    if (!row4 || row4.kind === "figure") continue;
+    const text4 = String(row4.text || "").replace(/\s+/g, " ").trim();
+    if (!text4) continue;
+    const hash = String(row4.sha256 || row4.url || "");
+    if (!hash) continue;
+    let doc = docs.get(hash);
+    if (!doc) {
+      doc = {
+        hash,
+        url: row4.url || "",
+        pdfUid: row4.pdfUid || "",
+        title: row4.docTitle || "",
+        pages: /* @__PURE__ */ new Map()
+      };
+      docs.set(hash, doc);
+    }
+    const n3 = Number(row4.page) || 0;
+    const page = doc.pages.get(n3) || { n: n3, bits: [] };
+    page.bits.push(text4);
+    doc.pages.set(n3, page);
+  }
+  return [...docs.values()].map((doc) => ({
+    hash: doc.hash,
+    url: doc.url,
+    pdfUid: doc.pdfUid,
+    title: doc.title,
+    pages: [...doc.pages.values()].map((page) => {
+      const text4 = page.bits.join(" ").replace(/\s+/g, " ").trim();
+      return { n: page.n, text: text4, lower: text4.toLowerCase(), spans: [] };
+    })
+  }));
+}
+function wordsOf2(lower4) {
+  return lower4.match(/[a-z0-9]+/g) || [];
+}
+function boxForQuery(page, text4) {
+  const needle = String(text4 ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
+  if (!needle || !page) return null;
+  const lower4 = page.lower || String(page.text || "").toLowerCase();
+  const terms = queryTerms(needle);
+  const term = terms[0] || needle;
+  const fuzzy2 = term.length >= 4 && !lower4.includes(term) && !/\s/.test(term);
+  return flashFrac({ ...page, lower: lower4 }, fuzzy2 ? term : needle, fuzzy2 ? term : "");
+}
+function flashFrac(page, needle, fuzzyWord) {
+  const spans = Array.isArray(page.spans) ? page.spans : [];
+  const want = String(fuzzyWord || needle || "").toLowerCase();
+  if (!want) return null;
+  for (const span of spans) {
+    const str3 = String(span?.str || "").toLowerCase();
+    if (str3.includes(want)) return span.frac || null;
+  }
+  if (fuzzyWord) {
+    for (const span of spans) {
+      for (const word of wordsOf2(String(span?.str || "").toLowerCase())) {
+        if (editDistance1(word, needle)) return span.frac || null;
+      }
+    }
+  }
+  return null;
+}
+function exactOf(hit, phrase) {
+  if (typeof hit.exact === "boolean") return hit.exact;
+  const lower4 = hit.page?.lower ?? hit.lower ?? "";
+  const exact = lower4.includes(phrase);
+  hit.exact = exact;
+  return exact;
+}
+function rankPostingHits(candidates2, { text: text4 = "", pages = "" } = {}, limit = 40) {
+  const terms = queryTerms(text4);
+  if (!terms.length) return [];
+  const phrase = String(text4 ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
+  const range = parsePageRange(pages);
+  const cap4 = Math.max(1, Math.floor(Number(limit) || 40));
+  const phraseMatters = Boolean(phrase) && (terms.length > 1 || phrase.includes(" "));
+  const rows = [];
+  for (const hit of Array.isArray(candidates2) ? candidates2 : []) {
+    const n3 = Number(hit?.n) || 0;
+    if (range && (n3 < range.from || n3 > range.to)) continue;
+    rows.push(hit);
+  }
+  rows.sort((a, b) => Number(a.fuzzy) - Number(b.fuzzy) || (b.count || 0) - (a.count || 0) || (a.seq || 0) - (b.seq || 0));
+  const chosen = [];
+  let exacts = 0;
+  for (const hit of rows) {
+    const exact = phraseMatters ? exactOf(hit, phrase) : false;
+    if (exact) exacts += 1;
+    chosen.push(exact ? { ...hit, exact: true } : hit);
+    if (!phraseMatters && chosen.length >= cap4) break;
+    if (phraseMatters && exacts >= cap4) break;
+  }
+  chosen.sort((a, b) => Number(Boolean(b.exact)) - Number(Boolean(a.exact)) || Number(a.fuzzy) - Number(b.fuzzy) || (b.count || 0) - (a.count || 0) || (a.seq || 0) - (b.seq || 0));
+  const needle = phraseMatters ? phrase : terms[0] || "";
+  return chosen.slice(0, cap4).map((hit) => {
+    const page = hit.page || {};
+    const fuzzyWord = hit.fuzzy ? terms[0] || "" : "";
+    return {
+      hash: hit.doc?.hash || "",
+      url: hit.doc?.url || "",
+      pdfUid: hit.doc?.pdfUid || "",
+      title: hit.doc?.title || "",
+      page: Number(hit.n) || 0,
+      text: page.text || "",
+      snippet: partSnippet(page.text || "", text4),
+      frac: Array.isArray(page.spans) && page.spans.length ? flashFrac(page, hit.exact ? phrase : hit.fuzzyWord || needle, fuzzyWord) : null,
+      exact: Boolean(hit.exact),
+      fuzzy: Boolean(hit.fuzzy)
+    };
+  });
+}
+function pdfHitOpenDetail(hit, item) {
+  if (!hit || !item?.uid) return null;
+  const blockUid3 = item.target?.kind === "block" && item.target.uid ? item.target.uid : item.uid;
+  const frac = Array.isArray(hit.frac) && hit.frac.length >= 4 ? hit.frac.slice(0, 4) : null;
+  return {
+    cardUid: item.uid,
+    blockUid: blockUid3,
+    page: Number(hit.page) || 1,
+    frac,
+    source: item.string || "",
+    title: hit.title || ""
+  };
+}
+
+// src/host/pdf-text-index.js
+init_library();
+var PDF_TEXT_DB = "plexus-diagram-pdf-text";
+var PDF_TEXT_DB_VERSION = 1;
+var STORE_PDF_TEXT = "pages";
+var PDF_TEXT_V = 1;
+var PAGE_CAP = 80;
+var JOB_CAP = 40;
+var PDF_TEXT_NO_LIB_MS = 6e4;
+var wordsOf3 = (lower4) => String(lower4 || "").match(/[a-z0-9]+/g) || [];
+function timerLater(fn, ms) {
+  const id = setTimeout(fn, ms);
+  try {
+    id?.unref?.();
+  } catch {
+  }
+  return () => {
+    try {
+      clearTimeout(id);
+    } catch {
+    }
+  };
+}
+var sharedTextDb = /* @__PURE__ */ new WeakMap();
+function holdPdfTextDb(factory) {
+  const usable = Boolean(factory) && (typeof factory === "object" || typeof factory === "function");
+  if (!usable) return { hold() {
+  }, release() {
+  }, open: () => Promise.resolve(null) };
+  let slot2 = sharedTextDb.get(factory);
+  if (!slot2) {
+    slot2 = { refs: 0, promise: null, db: null };
+    sharedTextDb.set(factory, slot2);
+  }
+  let held = false;
+  return {
+    hold() {
+      if (held) return;
+      held = true;
+      slot2.refs += 1;
+    },
+    release() {
+      if (!held) return;
+      held = false;
+      slot2.refs -= 1;
+      if (slot2.refs > 0) return;
+      const db = slot2.db;
+      slot2.db = null;
+      slot2.promise = null;
+      if (sharedTextDb.get(factory) === slot2) sharedTextDb.delete(factory);
+      try {
+        db?.close();
+      } catch {
+      }
+    },
+    open() {
+      if (slot2.promise) return slot2.promise;
+      const pending = openDb(factory, {
+        name: PDF_TEXT_DB,
+        version: PDF_TEXT_DB_VERSION,
+        stores: [STORE_PDF_TEXT]
+      }).then((db) => {
+        if (slot2.promise !== pending || !db || slot2.refs <= 0) {
+          slot2.promise = null;
+          slot2.db = null;
+          try {
+            db?.close();
+          } catch {
+          }
+          return null;
+        }
+        slot2.db = db;
+        const evict = () => {
+          if (slot2.db !== db) return;
+          slot2.db = null;
+          slot2.promise = null;
+        };
+        try {
+          const prev = db.onversionchange;
+          db.onversionchange = (event) => {
+            evict();
+            if (typeof prev === "function") prev(event);
+          };
+          db.onclose = evict;
+        } catch {
+        }
+        return db;
+      });
+      slot2.promise = pending;
+      return pending;
+    }
+  };
+}
+function requestResult4(req) {
+  return new Promise((resolve) => {
+    try {
+      req.onsuccess = () => resolve({ ok: true, result: req.result });
+      req.onerror = (event) => {
+        try {
+          event?.preventDefault?.();
+        } catch {
+        }
+        resolve({ ok: false, result: null });
+      };
+    } catch {
+      resolve({ ok: false, result: null });
+    }
+  });
+}
+function createPdfTextIndex({
+  budget = null,
+  openPdf = null,
+  indexedDB: factory = null,
+  now: now4 = () => Date.now(),
+  later = timerLater,
+  onReady: onReady2 = null
+} = {}) {
+  const docs = [];
+  const byKey = /* @__PURE__ */ new Map();
+  const postings = /* @__PURE__ */ new Map();
+  const buckets2 = /* @__PURE__ */ new Map();
+  const queue = [];
+  const queued = /* @__PURE__ */ new Set();
+  let pausedUntil = 0;
+  let pumping = false;
+  let generation = 0;
+  let stopIdle = null;
+  let cancelLater = null;
+  let loaded = null;
+  let loadToken = 0;
+  let loadDone = false;
+  let cancelPostings = null;
+  let finishSlices = null;
+  const share = holdPdfTextDb(factory);
+  const byUrl = /* @__PURE__ */ new Map();
+  let seq = 0;
+  const openDbOnce = () => {
+    if (!factory) return Promise.resolve(null);
+    share.hold();
+    return share.open();
+  };
+  function addPostings(doc) {
+    if (!doc?.hash || byKey.has(doc.hash)) return false;
+    const pages = [];
+    for (const page of Array.isArray(doc.pages) ? doc.pages : []) {
+      const text4 = String(page?.text || "").replace(/\s+/g, " ").trim();
+      if (!text4) continue;
+      const lower4 = page.lower || text4.toLowerCase();
+      pages.push({ n: Number(page.n) || 0, text: text4, lower: lower4 });
+    }
+    const stored = {
+      hash: doc.hash,
+      url: doc.url || "",
+      pdfUid: doc.pdfUid || "",
+      title: doc.title || "",
+      pages,
+      empty: pages.length === 0
+    };
+    byKey.set(stored.hash, stored);
+    if (stored.url) byUrl.set(stored.url, stored);
+    docs.push(stored);
+    if (stored.empty) return false;
+    for (const page of pages) {
+      seq += 1;
+      const pageSeq = seq;
+      for (const word of new Set(wordsOf3(page.lower))) {
+        let list = postings.get(word);
+        if (!list) postings.set(word, list = []);
+        list.push({ doc: stored, n: page.n, seq: pageSeq });
+        const bucket = `${word[0]}:${word.length}`;
+        let set = buckets2.get(bucket);
+        if (!set) buckets2.set(bucket, set = /* @__PURE__ */ new Set());
+        set.add(word);
+      }
+    }
+    return true;
+  }
+  async function withStore(mode, fn) {
+    try {
+      const db = await openDbOnce();
+      if (!db || typeof db.transaction !== "function") return { ok: false };
+      const store = db.transaction(STORE_PDF_TEXT, mode).objectStore(STORE_PDF_TEXT);
+      return await fn(store);
+    } catch {
+      return { ok: false };
+    }
+  }
+  async function save(doc) {
+    await withStore("readwrite", (store) => requestResult4(store.put({
+      url: doc.url,
+      pdfUid: doc.pdfUid,
+      title: doc.title,
+      empty: Boolean(doc.empty),
+      pages: (doc.pages || []).map((page) => ({ n: page.n, text: page.text })),
+      at: now4(),
+      v: PDF_TEXT_V
+    }, doc.hash)));
+  }
+  function whenLoaded() {
+    if (loaded) return loaded;
+    const token = loadToken;
+    loaded = (async () => {
+      const keys = await withStore("readonly", (store) => requestResult4(store.getAllKeys()));
+      const pendingDocs = [];
+      if (token === loadToken && keys?.ok && Array.isArray(keys.result)) {
+        for (const key of keys.result) {
+          if (token !== loadToken) return false;
+          const got = await withStore("readonly", (store) => requestResult4(store.get(key)));
+          const rec = got?.ok ? got.result : null;
+          if (!rec || rec.v !== PDF_TEXT_V) continue;
+          const doc = { hash: key, url: rec.url || "", pdfUid: rec.pdfUid || "", title: rec.title || "", pages: rec.pages };
+          const text4 = (doc.pages || []).some((page) => String(page?.text || "").trim());
+          if (text4) pendingDocs.push(doc);
+          else addPostings(doc);
+        }
+      }
+      if (token !== loadToken) return false;
+      if (!pendingDocs.length || typeof budget?.idle !== "function") {
+        for (const doc of pendingDocs) addPostings(doc);
+        if (token === loadToken) loadDone = true;
+        return true;
+      }
+      await new Promise((resolve) => {
+        finishSlices = resolve;
+        let i = 0;
+        const slice = () => {
+          cancelPostings = null;
+          if (token !== loadToken) {
+            resolve();
+            return;
+          }
+          addPostings(pendingDocs[i]);
+          i += 1;
+          if (i >= pendingDocs.length) {
+            resolve();
+            return;
+          }
+          const cancel2 = budget.idle(slice, { label: "pdf-text-postings" });
+          cancelPostings = () => {
+            try {
+              cancel2?.();
+            } catch {
+            }
+          };
+        };
+        const cancel = budget.idle(slice, { label: "pdf-text-postings" });
+        cancelPostings = () => {
+          try {
+            cancel?.();
+          } catch {
+          }
+        };
+      });
+      finishSlices = null;
+      if (token !== loadToken) return false;
+      loadDone = true;
+      return true;
+    })();
+    return loaded;
+  }
+  if (factory) void whenLoaded();
+  function hitsFor(needle) {
+    const exact = postings.get(needle) || [];
+    if (exact.length || needle.length < 4) return { list: exact, fuzzy: false };
+    const list = [];
+    for (const len of [needle.length - 1, needle.length, needle.length + 1]) {
+      const set = buckets2.get(`${needle[0]}:${len}`);
+      if (!set) continue;
+      for (const known2 of set) {
+        if (!editDistance1(known2, needle)) continue;
+        list.push(...postings.get(known2) || []);
+      }
+    }
+    return { list, fuzzy: true };
+  }
+  function pagesFor(text4) {
+    const terms = queryTerms(text4);
+    const needles = [];
+    for (const term of terms) {
+      if (term.includes(" ")) needles.push(...term.split(/\s+/).filter((word) => word.length >= 2));
+      else needles.push(term);
+    }
+    if (!needles.length) return [];
+    let chosen = null;
+    for (const needle of needles) {
+      const { list, fuzzy: fuzzy2 } = hitsFor(needle);
+      if (!list.length) return [];
+      const mine = /* @__PURE__ */ new Map();
+      for (const hit of list) {
+        const key = `${hit.doc.hash}
+${hit.n}`;
+        const prev = mine.get(key);
+        if (prev) {
+          if (hit.seq < prev.seq) prev.seq = hit.seq;
+          continue;
+        }
+        mine.set(key, { doc: hit.doc, n: hit.n, seq: hit.seq, fuzzy: fuzzy2, count: 1 });
+      }
+      if (!chosen) chosen = mine;
+      else {
+        const next = /* @__PURE__ */ new Map();
+        for (const [key, hit] of chosen) {
+          const other = mine.get(key);
+          if (!other) continue;
+          next.set(key, { doc: hit.doc, n: hit.n, seq: Math.min(hit.seq, other.seq), fuzzy: hit.fuzzy || other.fuzzy, count: hit.count + other.count });
+        }
+        chosen = next;
+      }
+      if (!chosen.size) return [];
+    }
+    const out = [];
+    for (const hit of chosen.values()) {
+      const page = hit.doc.pages.find((item) => item.n === hit.n) || { n: hit.n, text: "", lower: "" };
+      out.push({ doc: hit.doc, page, n: hit.n, seq: hit.seq, fuzzy: hit.fuzzy, count: hit.count });
+    }
+    return out;
+  }
+  function search(query, limit) {
+    const text4 = query?.text ?? "";
+    if (!String(text4).trim()) return [];
+    return rankPostingHits(pagesFor(text4), query || {}, limit);
+  }
+  function noteParsed(rows) {
+    let added = 0;
+    for (const doc of docsFromPartRows(rows)) if (addPostings(doc)) added += 1;
+    return added;
+  }
+  function pause(ms = 600) {
+    pausedUntil = now4() + ms;
+  }
+  function takeHandle(job) {
+    const handle = job?.handle || null;
+    if (job) job.handle = null;
+    return handle;
+  }
+  function arm4() {
+    if (pumping || !queue.length || typeof budget?.idle !== "function") return;
+    pumping = true;
+    const gen = generation;
+    stopIdle = budget.idle(() => {
+      stopIdle = null;
+      if (gen !== generation) {
+        pumping = false;
+        return;
+      }
+      if (pausedUntil > now4()) {
+        pumping = false;
+        const wait2 = Math.max(0, pausedUntil - now4());
+        try {
+          cancelLater?.();
+        } catch {
+        }
+        const cancel = later(() => {
+          cancelLater = null;
+          if (gen === generation) arm4();
+        }, wait2);
+        cancelLater = typeof cancel === "function" ? cancel : null;
+        return;
+      }
+      const job = queue[0];
+      if (!job) {
+        pumping = false;
+        return;
+      }
+      void step(job, gen).then((done3) => {
+        if (gen !== generation) return;
+        pumping = false;
+        if (done3) {
+          if (queue[0] === job) queue.shift();
+          if (job?.url) queued.delete(job.url);
+        }
+        arm4();
+      }, () => {
+        if (gen !== generation) return;
+        pumping = false;
+        if (queue[0] === job) queue.shift();
+        void dropHandle(takeHandle(job));
+        if (job?.url) queued.delete(job.url);
+        arm4();
+      });
+    }, { label: "pdf-text" });
+  }
+  async function dropHandle(handle) {
+    try {
+      await handle?.close?.();
+    } catch {
+    }
+  }
+  async function step(job, gen) {
+    if (gen !== generation) {
+      await dropHandle(takeHandle(job));
+      return false;
+    }
+    if (!job.handle) {
+      if (job.hash && byKey.has(job.hash)) return true;
+      if (typeof openPdf !== "function") return true;
+      let handle = null;
+      try {
+        handle = await openPdf(job.url);
+      } catch {
+        handle = null;
+      }
+      if (gen !== generation) {
+        await dropHandle(handle);
+        return false;
+      }
+      if (handle?.retry === true && typeof handle.readPage !== "function") {
+        pausedUntil = now4() + PDF_TEXT_NO_LIB_MS;
+        return false;
+      }
+      if (!handle || !(handle.pageCount > 0) || typeof handle.readPage !== "function") {
+        await dropHandle(handle);
+        return true;
+      }
+      const hash = job.hash || handle.hash || "";
+      if (!hash || byKey.has(hash)) {
+        await dropHandle(handle);
+        return true;
+      }
+      if (gen !== generation) {
+        await dropHandle(handle);
+        return false;
+      }
+      job.handle = handle;
+      job.hash = hash;
+      job.pages = [];
+      job.n = 0;
+      return false;
+    }
+    job.n += 1;
+    if (job.n > Math.min(job.handle.pageCount, PAGE_CAP)) {
+      const doc = {
+        hash: job.hash,
+        url: job.url,
+        pdfUid: job.pdfUid || "",
+        title: job.title || "",
+        pages: job.pages
+      };
+      if (gen !== generation) {
+        await dropHandle(takeHandle(job));
+        return false;
+      }
+      const known2 = byKey.has(doc.hash);
+      const added = addPostings(doc);
+      if (!known2 && byKey.has(doc.hash)) {
+        try {
+          await save(byKey.get(doc.hash));
+        } catch {
+        }
+        if (added) {
+          try {
+            onReady2?.(doc.hash);
+          } catch {
+          }
+        }
+      }
+      await dropHandle(takeHandle(job));
+      return true;
+    }
+    let page = null;
+    try {
+      page = await job.handle.readPage(job.n);
+    } catch {
+      page = null;
+    }
+    if (gen !== generation) {
+      await dropHandle(takeHandle(job));
+      return false;
+    }
+    if (page?.text && String(page.text).trim()) job.pages.push({ n: page.n, text: String(page.text).replace(/\s+/g, " ").trim(), lower: page.lower || String(page.text).toLowerCase() });
+    return false;
+  }
+  function stop3() {
+    generation += 1;
+    try {
+      stopIdle?.();
+    } catch {
+    }
+    stopIdle = null;
+    try {
+      cancelLater?.();
+    } catch {
+    }
+    cancelLater = null;
+    const pending = queue.splice(0);
+    queued.clear();
+    pumping = false;
+    for (const job of pending) void dropHandle(takeHandle(job));
+    if (!loadDone) {
+      loadToken += 1;
+      loaded = null;
+      try {
+        cancelPostings?.();
+      } catch {
+      }
+      cancelPostings = null;
+      try {
+        finishSlices?.();
+      } catch {
+      }
+      finishSlices = null;
+    }
+    share.release();
+  }
+  function counts() {
+    let pages = 0;
+    for (const doc of docs) pages += Array.isArray(doc.pages) ? doc.pages.length : 0;
+    return { docs: docs.length, pages, queue: queue.length };
+  }
+  function enqueue(jobs) {
+    for (const job of Array.isArray(jobs) ? jobs : []) {
+      const url = String(job?.url || "");
+      if (!url || queued.has(url) || queue.length >= JOB_CAP) continue;
+      if (byUrl.has(url) || job.hash && byKey.has(job.hash)) continue;
+      queued.add(url);
+      queue.push({ url, hash: job.hash || "", pdfUid: job.pdfUid || "", title: job.title || "" });
+    }
+    arm4();
+  }
+  return { search, noteParsed, enqueue, pause, stop: stop3, whenLoaded, counts, docs, version: PDF_TEXT_DB_VERSION };
+}
+
+// src/host/pdf-text-open.js
+init_parse_hash();
+function unparsedPdfJobs(rows, blocks, allow = () => true) {
+  const seen = /* @__PURE__ */ new Set();
+  for (const row4 of Array.isArray(rows) ? rows : []) {
+    if (!row4 || row4.kind === "figure") continue;
+    if (row4.url) seen.add(row4.url);
+  }
+  const jobs = [];
+  const queued = /* @__PURE__ */ new Set();
+  for (const block of Array.isArray(blocks) ? blocks : []) {
+    const url = String(block?.url || "");
+    if (!url || seen.has(url) || queued.has(url) || !allow(url)) continue;
+    queued.add(url);
+    jobs.push({ url, pdfUid: block.uid || "", title: block.pageTitle || "" });
+  }
+  return jobs;
+}
+async function destroyPdf(pdf, task) {
+  try {
+    await pdf?.destroy?.();
+  } catch {
+  }
+  try {
+    await task?.destroy?.();
+  } catch {
+  }
+}
+async function openPdfDocument(lib, url, { allow = () => true } = {}) {
+  if (!allow(url) || !lib || typeof lib.getDocument !== "function") return null;
+  let task = null;
+  let pdf = null;
+  try {
+    task = lib.getDocument({ url, isEvalSupported: false, verbosity: 0 });
+    pdf = await (task?.promise ?? task);
+    if (!pdf || typeof pdf.getPage !== "function" || !(pdf.numPages > 0)) {
+      await destroyPdf(pdf, task);
+      return null;
+    }
+    const hash = await sha256Hex(String(url));
+    let closed = false;
+    return {
+      hash,
+      pageCount: pdf.numPages,
+      async readPage(n3) {
+        const page = await pdf.getPage(n3);
+        let content = null;
+        try {
+          content = await page.getTextContent();
+        } catch {
+          content = null;
+        }
+        const view = typeof page.getViewport === "function" ? page.getViewport({ scale: 1 }) : null;
+        const built = pageFromTextContent({
+          n: n3,
+          width: view?.width || 0,
+          height: view?.height || 0,
+          items: content?.items || []
+        });
+        try {
+          page.cleanup?.();
+        } catch {
+        }
+        return built;
+      },
+      async close() {
+        if (closed) return;
+        closed = true;
+        await destroyPdf(pdf, task);
+      }
+    };
+  } catch {
+    await destroyPdf(pdf, task);
+    return null;
+  }
+}
+
+// src/view/pdf-js-for-text.js
+function frameWindows(doc) {
+  let nodes = [];
+  try {
+    nodes = [...doc?.querySelectorAll?.("iframe") || []];
+  } catch {
+    nodes = [];
+  }
+  const out = [];
+  for (const node2 of nodes) {
+    try {
+      const win2 = node2?.contentWindow;
+      if (win2) out.push(win2);
+    } catch {
+    }
+  }
+  return out;
+}
+function pdfJsForText(win2, doc) {
+  const scopes = [win2, ...frameWindows(doc)];
+  const found = [];
+  for (const scope of scopes) {
+    let one = null;
+    try {
+      one = detectPdfjs2(scope);
+    } catch {
+      one = null;
+    }
+    if (one?.lib) found.push(one);
+  }
+  return found.find((one) => one.workerReady) || found[0] || null;
+}
+async function openPdfForText({ disposed = false, url, allow, found, open } = {}) {
+  if (disposed) return null;
+  if (typeof allow === "function" && !allow(url)) return null;
+  const lib = found?.lib;
+  if (!lib || typeof lib.getDocument !== "function") return { retry: true };
+  let handle = null;
+  try {
+    handle = await open(lib, url);
+  } catch {
+    handle = null;
+  }
+  if (handle) return handle;
+  return found.workerReady ? null : { retry: true };
+}
+
 // src/model/image-search.js
 init_color();
 init_library();
+init_parts_search();
 function splitImageQuery(text4) {
   const words = [];
   const colors = [];
@@ -85987,19 +87014,29 @@ function searchImages(items, records, { text: text4 = "", pages = "" } = {}, lim
       }
       if (!all) continue;
     }
+    let source = "";
     if (words.length) {
-      const hay = ok && rec.text ? `${item.hay}
-${String(rec.text).toLowerCase()}` : item.hay;
+      source = ok && rec.text ? `${item.hay}
+${String(rec.text)}` : item.hay;
+      const hay = source.toLowerCase();
       if (!words.every((w) => hay.includes(w))) continue;
     }
-    hits.push({ item, score, seq, palette: ok ? rec.palette : null });
+    hits.push({ item, score, seq, palette: ok ? rec.palette : null, source });
   }
   hits.sort((a, b) => b.score - a.score || a.seq - b.seq);
-  return hits.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map(({ item, palette, score }) => ({
-    ...item,
-    palette: palette ? palette.slice(0, 3).map((p) => p.hex) : [],
-    colorScore: score
-  }));
+  return hits.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map(({ item, palette, score, source }) => {
+    const row4 = {
+      ...item,
+      palette: palette ? palette.slice(0, 3).map((p) => p.hex) : [],
+      colorScore: score
+    };
+    if (source) {
+      const snip = partSnippet(source, words.join(" "));
+      const shown = `${snip.before}${snip.hit}${snip.after}`.trim();
+      if (shown) row4.snippet = shown;
+    }
+    return row4;
+  });
 }
 var SIMILAR_LIMIT = 40;
 function similarImages(items, records, sourceKey, limit = SIMILAR_LIMIT) {
@@ -98281,6 +99318,7 @@ function buildBoardView(onFail, {
       imgIndex = createImageIndex({
         indexedDB: doc.defaultView?.indexedDB,
         ocr: sharedDeviceOcr(),
+        helperText: (path) => imageHelper().ocrImagePath(path),
         settings: { colors: () => readSetting2("image-index-colors") !== false, readText: () => readSetting2("image-read-text") === true },
         onProgress: (st) => {
           try {
@@ -98308,7 +99346,10 @@ function buildBoardView(onFail, {
       }
     }
     const feed = [
-      ...imgItems.map((i) => ({ key: i.key, url: i.url })),
+      ...imgItems.map((i) => {
+        const path = localImagePath(i.url);
+        return path ? { key: i.key, url: i.url, path } : { key: i.key, url: i.url };
+      }),
       ...figItems.map((f) => ({ key: f.key, bytes: () => imgStore.getImage(f.key) }))
     ];
     if (feed.length) timers.later(() => {
@@ -98337,6 +99378,82 @@ function buildBoardView(onFail, {
       pdfBlockList = [];
     }
     return pdfBlockList;
+  };
+  let pdfText = null;
+  let imageHelperClient = null;
+  const imageHelper = () => {
+    if (!imageHelperClient) {
+      imageHelperClient = createHelperClient({
+        settings: settingsProxy,
+        setSetting: (id, value) => typeof onSetDefaults === "function" ? onSetDefaults({ [id]: value }) : void 0,
+        fetch: doc.defaultView?.fetch?.bind?.(doc.defaultView),
+        storage: (() => {
+          try {
+            return doc.defaultView?.localStorage;
+          } catch {
+            return void 0;
+          }
+        })()
+      });
+    }
+    return imageHelperClient;
+  };
+  const pdfTextIndex = () => {
+    if (!pdfText) {
+      pdfText = createPdfTextIndex({
+        budget: sharedBgBudget(),
+        later: (fn, ms) => timers.later(fn, ms),
+        indexedDB: doc.defaultView?.indexedDB,
+        openPdf: (url) => openPdfForText({
+          disposed,
+          url,
+          allow: firstPageAllowed,
+          found: pdfJsForText(win2, doc),
+          open: (lib) => openPdfDocument(lib, url, { allow: firstPageAllowed })
+        }),
+        onReady: () => {
+          try {
+            panel?.refreshSearch?.();
+          } catch {
+          }
+        }
+      });
+    }
+    return pdfText;
+  };
+  let stopPdfTextFeed = null;
+  const feedPdfText = () => {
+    try {
+      stopPdfTextFeed?.();
+    } catch {
+    }
+    stopPdfTextFeed = timers.later(() => {
+      stopPdfTextFeed = null;
+      if (disposed || !panel.isOpen()) return;
+      void (async () => {
+        const index = pdfTextIndex();
+        try {
+          await index.whenLoaded();
+        } catch {
+        }
+        if (disposed || !panel.isOpen()) return;
+        let rows = [];
+        try {
+          rows = await partsIndex().get();
+        } catch {
+          rows = [];
+        }
+        if (disposed) return;
+        index.noteParsed(rows);
+        const known2 = new Set((index.docs || []).map((doc2) => doc2.url).filter(Boolean));
+        const jobs = unparsedPdfJobs(rows, pdfBlocks(), firstPageAllowed).filter((job) => !known2.has(job.url));
+        index.enqueue(jobs);
+        try {
+          panel.refreshSearch?.();
+        } catch {
+        }
+      })();
+    }, 0);
   };
   const pdfNameInfo = /* @__PURE__ */ new Map();
   const pdfNamesR = () => {
@@ -98502,6 +99619,15 @@ ${url}`;
         if (!open) {
           sendPending = null;
           pdfNames?.stop();
+          try {
+            stopPdfTextFeed?.();
+          } catch {
+          }
+          stopPdfTextFeed = null;
+          try {
+            pdfText?.stop?.();
+          } catch {
+          }
         } else {
           partsIdx?.invalidate();
           imgList = null;
@@ -98512,6 +99638,7 @@ ${url}`;
           timers.later(() => {
             if (!disposed && panel.isOpen()) pdfBlocks();
           }, 0);
+          feedPdfText();
           void pdfNamesR().load().then((n3) => {
             if (n3 && !disposed && panel.isOpen()) panel.refreshPdfNames([]);
           });
@@ -98606,10 +99733,65 @@ ${url}`;
         }
       },
       searchImages: searchImageCards,
-      typing: () => imgIndex?.pause(),
+      typing: () => {
+        imgIndex?.pause();
+        pdfText?.pause();
+      },
+      searchPdfText: (query, limit) => {
+        try {
+          return pdfTextIndex().search(query, limit);
+        } catch {
+          return [];
+        }
+      },
+      openPdfHit: (hit) => {
+        const uid = pdfCardUidFor(hit?.pdfUid || "", hit?.url || "");
+        const item = uid ? board2()?.items.get(uid) : null;
+        const openAt = (next) => {
+          if (disposed) return false;
+          const detail = pdfHitOpenDetail(next, item);
+          if (!detail) return false;
+          try {
+            ensureReadPane().open?.(detail);
+          } catch {
+            return false;
+          }
+          return true;
+        };
+        const hasFrac = Array.isArray(hit?.frac) && hit.frac.length >= 4;
+        const found = !hasFrac && hit?.url ? detectPdfjs2(win2) : null;
+        if (hasFrac || !found?.workerReady) return openAt(hit);
+        void (async () => {
+          let handle = null;
+          try {
+            handle = await openPdfDocument(found.lib, hit.url, { allow: firstPageAllowed });
+            if (disposed || !handle) {
+              openAt(hit);
+              return;
+            }
+            const page = await handle.readPage(Number(hit.page) || 1);
+            if (disposed) return;
+            const frac = boxForQuery(page, hit?.snippet?.hit || "");
+            openAt(frac ? { ...hit, frac } : hit);
+          } catch {
+            openAt(hit);
+          } finally {
+            try {
+              await handle?.close?.();
+            } catch {
+            }
+          }
+        })();
+        return true;
+      },
       searchParts: async (query, limit) => {
         if (typeof host?.listPdfBlocks !== "function") return [];
-        return searchParts(await partsIndex().get(), query, limit);
+        const rows = await partsIndex().get();
+        try {
+          pdfTextIndex().noteParsed(rows);
+        } catch {
+        }
+        return searchParts(rows, query, limit);
       },
       addPart: (payload) => {
         void parseActions().sendParsedToBoard(payload);
@@ -102506,6 +103688,14 @@ ${url}`;
     pdfProbe() {
       return { covers: coverReport(), fit: readPane?.fitInfo?.() || null, inline: itemsR.inlineUid?.() || "" };
     },
+    pdfTextStats() {
+      try {
+        const got = pdfText?.counts?.() || { docs: 0, pages: 0, queue: 0 };
+        return { docs: Number(got.docs) || 0, pages: Number(got.pages) || 0, queue: Number(got.queue) || 0 };
+      } catch {
+        return { docs: 0, pages: 0, queue: 0 };
+      }
+    },
     dispose() {
       if (disposing) return;
       disposing = true;
@@ -102670,6 +103860,14 @@ ${url}`;
         partsIdx = null;
       });
       step(() => imgIndex?.dispose());
+      step(() => {
+        try {
+          stopPdfTextFeed?.();
+        } catch {
+        }
+        stopPdfTextFeed = null;
+        pdfText?.stop?.();
+      });
       step(() => pdfNames?.dispose());
       step(() => panel.dispose());
       step(() => propsPanel.dispose());
@@ -110302,6 +111500,22 @@ async function installPlexusDiagram({
         return { uid: rec.uid };
       }
     }),
+    pdfText() {
+      const totals = { docs: 0, pages: 0, queue: 0 };
+      for (const rec of mounts.values()) {
+        let got = null;
+        try {
+          got = rec.view?.pdfTextStats?.();
+        } catch {
+          got = null;
+        }
+        if (!got) continue;
+        totals.docs += Number(got.docs) || 0;
+        totals.pages += Number(got.pages) || 0;
+        totals.queue += Number(got.queue) || 0;
+      }
+      return totals;
+    },
     cameraRect(boardUid) {
       const rec = pickCameraMount([...mounts.values()], boardUid, isSidebarMount, currentUid);
       try {

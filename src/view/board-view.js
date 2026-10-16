@@ -122,7 +122,12 @@ import { createSemantic } from "../host/semantic.js";
 import { identHaystack, identMatches, pdfRowName, pdfRowSub } from "../model/pdf-ident.js";
 import { createPdfNames } from "./pdf-names.js";
 import { notifyPdfNames, setPdfNameResolver } from "../model/pdf-name-for.js";
-import { createImageIndex } from "../host/image-index.js";
+import { createImageIndex, localImagePath } from "../host/image-index.js";
+import { createPdfTextIndex } from "../host/pdf-text-index.js";
+import { openPdfDocument, unparsedPdfJobs } from "../host/pdf-text-open.js";
+import { openPdfForText, pdfJsForText } from "./pdf-js-for-text.js";
+import { createHelperClient } from "../host/parse-helper-client.js";
+import { boxForQuery, pdfHitOpenDetail } from "../model/pdf-text-search.js";
 import { searchImages, similarImages } from "../model/image-search.js";
 import { createFigureImages, getFigureImages, setFigureImages, shrinkImage } from "../host/figure-image.js";
 import { imageDoc } from "../model/ai-context.js";
@@ -6451,6 +6456,7 @@ function buildBoardView(onFail, {
       imgIndex = createImageIndex({
         indexedDB: doc.defaultView?.indexedDB,
         ocr: sharedDeviceOcr(),
+        helperText: (path) => imageHelper().ocrImagePath(path),
         settings: { colors: () => readSetting("image-index-colors") !== false, readText: () => readSetting("image-read-text") === true },
         onProgress: (st) => { try { panel.setIndexing?.(st.pending); } catch { /* panel gone */ } },
       });
@@ -6473,7 +6479,10 @@ function buildBoardView(onFail, {
       }
     }
     const feed = [
-      ...imgItems.map((i) => ({ key: i.key, url: i.url })),
+      ...imgItems.map((i) => {
+        const path = localImagePath(i.url);
+        return path ? { key: i.key, url: i.url, path } : { key: i.key, url: i.url };
+      }),
       ...figItems.map((f) => ({ key: f.key, bytes: () => imgStore.getImage(f.key) })),
     ];
     if (feed.length) timers.later(() => { void index.enqueue(feed); }, 0);
@@ -6497,6 +6506,60 @@ function buildBoardView(onFail, {
     if (pdfBlockList) return pdfBlockList;
     try { pdfBlockList = host?.listPdfBlocks?.(1000) || []; } catch { pdfBlockList = []; }
     return pdfBlockList;
+  };
+  let pdfText = null;
+  let imageHelperClient = null;
+  const imageHelper = () => {
+    if (!imageHelperClient) {
+      imageHelperClient = createHelperClient({
+        settings: settingsProxy,
+        setSetting: (id, value) => (typeof onSetDefaults === "function" ? onSetDefaults({ [id]: value }) : undefined),
+        fetch: doc.defaultView?.fetch?.bind?.(doc.defaultView),
+        storage: (() => { try { return doc.defaultView?.localStorage; } catch { return undefined; } })(),
+      });
+    }
+    return imageHelperClient;
+  };
+  const pdfTextIndex = () => {
+    if (!pdfText) {
+      pdfText = createPdfTextIndex({
+        budget: sharedBgBudget(),
+        later: (fn, ms) => timers.later(fn, ms),
+        indexedDB: doc.defaultView?.indexedDB,
+        openPdf: (url) => openPdfForText({
+          disposed,
+          url,
+          allow: firstPageAllowed,
+          found: pdfJsForText(win, doc),
+          open: (lib) => openPdfDocument(lib, url, { allow: firstPageAllowed }),
+        }),
+        onReady: () => { try { panel?.refreshSearch?.(); } catch { /* panel gone */ } },
+      });
+    }
+    return pdfText;
+  };
+  let stopPdfTextFeed = null;
+  const feedPdfText = () => {
+    try { stopPdfTextFeed?.(); } catch { /* gone */ }
+    // A timer, not the background budget. Creating the database has to happen when the panel
+    // opens. Quiet time and requestIdleCallback were leaving it uncreated on a busy Roam window.
+    stopPdfTextFeed = timers.later(() => {
+      stopPdfTextFeed = null;
+      if (disposed || !panel.isOpen()) return;
+      void (async () => {
+        const index = pdfTextIndex();
+        try { await index.whenLoaded(); } catch { /* empty cache */ }
+        if (disposed || !panel.isOpen()) return;
+        let rows = [];
+        try { rows = await partsIndex().get(); } catch { rows = []; }
+        if (disposed) return;
+        index.noteParsed(rows);
+        const known = new Set((index.docs || []).map((doc) => doc.url).filter(Boolean));
+        const jobs = unparsedPdfJobs(rows, pdfBlocks(), firstPageAllowed).filter((job) => !known.has(job.url));
+        index.enqueue(jobs);
+        try { panel.refreshSearch?.(); } catch { /* panel gone */ }
+      })();
+    }, 0);
   };
   const pdfNameInfo = new Map();
   const pdfNamesR = () => {
@@ -6632,7 +6695,14 @@ function buildBoardView(onFail, {
       isOnBoard,
       opened: (open) => {
         chrome.toolbar.setPanel(open);
-        if (!open) { sendPending = null; pdfNames?.stop(); }
+        if (!open) {
+          sendPending = null;
+          pdfNames?.stop();
+          // The feed's first idle slice is not the whole read. stop() also closes a document already opening.
+          try { stopPdfTextFeed?.(); } catch { /* gone */ }
+          stopPdfTextFeed = null;
+          try { pdfText?.stop?.(); } catch { /* gone */ }
+        }
         else {
           partsIdx?.invalidate();
           imgList = null;
@@ -6642,6 +6712,7 @@ function buildBoardView(onFail, {
           parsedUrlSet = null;
           // The PDF list the keyword search matches names against: read once per opening, after first paint.
           timers.later(() => { if (!disposed && panel.isOpen()) pdfBlocks(); }, 0);
+          feedPdfText();
           void pdfNamesR().load().then((n) => { if (n && !disposed && panel.isOpen()) panel.refreshPdfNames([]); });
         }
       },
@@ -6683,10 +6754,46 @@ function buildBoardView(onFail, {
       saveMeaning: (on) => { try { storage?.setItem?.(MEANING_KEY, on ? "1" : "0"); } catch { /* private mode */ } },
       saveTypes: (types) => { try { storage?.setItem?.(LIB_TYPES_KEY, JSON.stringify(types)); } catch { /* private mode */ } },
       searchImages: searchImageCards,
-      typing: () => imgIndex?.pause(),
+      typing: () => { imgIndex?.pause(); pdfText?.pause(); },
+      searchPdfText: (query, limit) => {
+        try { return pdfTextIndex().search(query, limit); } catch { return []; }
+      },
+      openPdfHit: (hit) => {
+        const uid = pdfCardUidFor(hit?.pdfUid || "", hit?.url || "");
+        const item = uid ? board()?.items.get(uid) : null;
+        const openAt = (next) => {
+          if (disposed) return false;
+          const detail = pdfHitOpenDetail(next, item);
+          if (!detail) return false;
+          try { ensureReadPane().open?.(detail); } catch { return false; }
+          return true;
+        };
+        const hasFrac = Array.isArray(hit?.frac) && hit.frac.length >= 4;
+        const found = !hasFrac && hit?.url ? detectPdfjs(win) : null;
+        if (hasFrac || !found?.workerReady) return openAt(hit);
+        // The cache keeps page text only. The box is read from this one page, then the document is closed.
+        void (async () => {
+          let handle = null;
+          try {
+            handle = await openPdfDocument(found.lib, hit.url, { allow: firstPageAllowed });
+            if (disposed || !handle) { openAt(hit); return; }
+            const page = await handle.readPage(Number(hit.page) || 1);
+            if (disposed) return;
+            const frac = boxForQuery(page, hit?.snippet?.hit || "");
+            openAt(frac ? { ...hit, frac } : hit);
+          } catch {
+            openAt(hit);
+          } finally {
+            try { await handle?.close?.(); } catch { /* gone */ }
+          }
+        })();
+        return true;
+      },
       searchParts: async (query, limit) => {
         if (typeof host?.listPdfBlocks !== "function") return [];
-        return searchParts(await partsIndex().get(), query, limit);
+        const rows = await partsIndex().get();
+        try { pdfTextIndex().noteParsed(rows); } catch { /* index */ }
+        return searchParts(rows, query, limit);
       },
       addPart: (payload) => { void parseActions().sendParsedToBoard(payload); },
       openPart: (row) => {
@@ -10155,6 +10262,14 @@ function buildBoardView(onFail, {
     pdfProbe() {
       return { covers: coverReport(), fit: readPane?.fitInfo?.() || null, inline: itemsR.inlineUid?.() || "" };
     },
+    pdfTextStats() {
+      try {
+        const got = pdfText?.counts?.() || { docs: 0, pages: 0, queue: 0 };
+        return { docs: Number(got.docs) || 0, pages: Number(got.pages) || 0, queue: Number(got.queue) || 0 };
+      } catch {
+        return { docs: 0, pages: 0, queue: 0 };
+      }
+    },
     dispose() {
       if (disposing) return;
       disposing = true;
@@ -10242,6 +10357,7 @@ function buildBoardView(onFail, {
       step(() => edgesR.dispose());
       step(() => { offPartsChange?.(); partsIdx?.dispose(); partsIdx = null; });
       step(() => imgIndex?.dispose());
+      step(() => { try { stopPdfTextFeed?.(); } catch { /* gone */ } stopPdfTextFeed = null; pdfText?.stop?.(); });
       step(() => pdfNames?.dispose());
       step(() => panel.dispose());
       step(() => propsPanel.dispose());

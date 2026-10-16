@@ -614,6 +614,33 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
     return { ...body, sha256: sha };
   }
 
+  // Words in a picture that already lives on this machine. Today's helper only reads PDF bytes
+  // (`/v1/ocr`), so a missing route or a dead helper returns null and the caller skips the picture.
+  async function ocrImagePath(path) {
+    const file = String(path || "").trim();
+    if (!file) return null;
+    try {
+      const { url, token } = config();
+      if (!token || typeof fetchFn !== "function") return null;
+      const res = await call(`${url}/v1/ocr-image`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ path: file }),
+      });
+      if (!res || res.status < 200 || res.status >= 300) return null;
+      let body = null;
+      try { body = await res.json(); } catch { body = null; }
+      if (typeof body?.text === "string") return body.text;
+      if (Array.isArray(body?.pages)) return body.pages.map((page) => String(page?.text || "")).filter(Boolean).join("\n");
+      return "";
+    } catch {
+      return null;
+    }
+  }
+
   // Table crops for a helper that advertises vlm-tables. Same PDF body as ocr().
   // `tables` is [{page, bbox}] in PDF points, origin top-left.
   async function tables({ bytes, sha256, pages, tables: regions, signal } = {}) {
@@ -704,7 +731,7 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
   }
 
   return {
-    health, status, pair, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr, tables, vlm, endpoint,
+    health, status, pair, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr, ocrImagePath, tables, vlm, endpoint,
     get vlmTables() { return vlmOn; },
     get vlmHigh() { return vlmHighOn; },
   };

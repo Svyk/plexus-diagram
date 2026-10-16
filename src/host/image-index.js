@@ -16,6 +16,16 @@ export const OCR_SESSION_CAP = 40;
 export const OCR_MAX_SIDE = 1280;
 const SAMPLE = 64;
 
+// A picture this machine can hand to the helper. Web and blob urls are not local files.
+export function localImagePath(url) {
+  const raw = String(url || "").trim();
+  if (raw.startsWith("file://")) {
+    try { return decodeURIComponent(new URL(raw).pathname); } catch { return ""; }
+  }
+  if (raw.startsWith("/") && !raw.startsWith("//")) return raw;
+  return "";
+}
+
 function makeCanvas(w, h) {
   if (typeof OffscreenCanvas === "function") return new OffscreenCanvas(w, h);
   const canvas = globalThis.document.createElement("canvas");
@@ -78,6 +88,7 @@ export function createImageIndex({
   decode = decodeSample,
   decodeFull = decodeRgb,
   ocr = null,
+  helperText = null,
   settings = {},
   now = () => Date.now(),
   idle = (fn) => {
@@ -155,7 +166,8 @@ export function createImageIndex({
   const progress = () => { try { onProgress?.(status()); } catch { /* listener */ } };
 
   function status() {
-    const textRuns = ocrQ.length > 0 && wantText() && !ocrBlocked && ocrDone < ocrCap;
+    const helperQueued = ocrQ.some((item) => helperPath(item));
+    const textRuns = helperQueued || (ocrQ.length > 0 && wantText() && !ocrBlocked && ocrDone < ocrCap);
     const colorRuns = colorQ.length > 0 && wantColors();
     return {
       pending: colorQ.length + activeColor,
@@ -211,7 +223,35 @@ export function createImageIndex({
     }
   }
 
+  function helperPath(item) {
+    return Boolean(item?.path) && typeof helperText === "function";
+  }
+
+  async function helperTextJob(item) {
+    activeOcr += 1;
+    try {
+      await whenIdle();
+      let text = "";
+      try {
+        const got = await helperText(item.path);
+        text = typeof got === "string" ? got : "";
+      } catch {
+        text = "";
+      }
+      const old = records.get(item.key) || {};
+      const next = { ...old, text, w: old.w, h: old.h, at: now(), v: IMAGE_INDEX_V };
+      delete next.failed;
+      await save(item.key, next);
+    } finally {
+      activeOcr -= 1;
+      queued.delete(`t:${item.key}`);
+      progress();
+      schedulePump(0);
+    }
+  }
+
   async function ocrJob(item) {
+    if (helperPath(item)) return helperTextJob(item);
     activeOcr += 1;
     let counted = false;
     try {
@@ -246,7 +286,9 @@ export function createImageIndex({
     if (paused()) { schedulePump(pausedUntil - now() + 10); return; }
     while (activeColor < MAX_FETCHES && colorQ.length && wantColors()) void colorJob(colorQ.shift());
     // Text comes after colour and one at a time, only with models already on this device.
-    if (!activeColor && !colorQ.length && !activeOcr && ocrQ.length && wantText() && !ocrBlocked && ocrDone < ocrCap) {
+    const nextText = ocrQ[0];
+    const helperNext = helperPath(nextText);
+    if (!activeColor && !colorQ.length && !activeOcr && nextText && (helperNext || (wantText() && !ocrBlocked && ocrDone < ocrCap))) {
       void ocrJob(ocrQ.shift());
     }
   }
@@ -276,8 +318,9 @@ export function createImageIndex({
         if (wantColors() && !queued.has(item.key)) { queued.add(item.key); colorQ.push(item); }
       }
       const needText = (!rec || rec.text === undefined) && !(rec?.failed);
-      if (needText && ocr && wantText() && !queued.has(`t:${item.key}`)) {
-        const small = rec && rec.w && rec.h && (rec.w < OCR_MIN_W || rec.h < OCR_MIN_H);
+      const viaHelper = helperPath(item);
+      if (needText && (viaHelper || (ocr && wantText())) && !queued.has(`t:${item.key}`)) {
+        const small = !viaHelper && rec && rec.w && rec.h && (rec.w < OCR_MIN_W || rec.h < OCR_MIN_H);
         if (!small) { queued.add(`t:${item.key}`); ocrQ.push(item); }
       }
     }

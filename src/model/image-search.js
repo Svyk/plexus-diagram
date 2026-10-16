@@ -3,6 +3,7 @@
 
 import { COLOR_MIN_SCORE, colorQuery, colorScore, paletteDistance } from "./color.js";
 import { parsePageRange, queryTerms } from "./library.js";
+import { partSnippet } from "./parts-search.js";
 
 // { words, colors } from a query. A quoted phrase stays a word.
 export function splitImageQuery(text) {
@@ -46,18 +47,28 @@ export function searchImages(items, records, { text = "", pages = "" } = {}, lim
       }
       if (!all) continue;
     }
+    let source = "";
     if (words.length) {
-      const hay = ok && rec.text ? `${item.hay}\n${String(rec.text).toLowerCase()}` : item.hay;
+      source = ok && rec.text ? `${item.hay}\n${String(rec.text)}` : item.hay;
+      const hay = source.toLowerCase();
       if (!words.every((w) => hay.includes(w))) continue;
     }
-    hits.push({ item, score, seq, palette: ok ? rec.palette : null });
+    hits.push({ item, score, seq, palette: ok ? rec.palette : null, source });
   }
   hits.sort((a, b) => b.score - a.score || a.seq - b.seq);
-  return hits.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map(({ item, palette, score }) => ({
-    ...item,
-    palette: palette ? palette.slice(0, 3).map((p) => p.hex) : [],
-    colorScore: score,
-  }));
+  return hits.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map(({ item, palette, score, source }) => {
+    const row = {
+      ...item,
+      palette: palette ? palette.slice(0, 3).map((p) => p.hex) : [],
+      colorScore: score,
+    };
+    if (source) {
+      const snip = partSnippet(source, words.join(" "));
+      const shown = `${snip.before}${snip.hit}${snip.after}`.trim();
+      if (shown) row.snippet = shown;
+    }
+    return row;
+  });
 }
 
 export const SIMILAR_LIMIT = 40;

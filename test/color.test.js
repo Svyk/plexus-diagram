@@ -125,6 +125,9 @@ test("searchImages: colour, text, both, unindexed", () => {
   assert.ok(top.colorScore > 0.3);
   const figs = [{ key: "f1", hay: "figure 1", page: 2 }, { key: "f2", hay: "figure 2", page: 9 }];
   assert.deepEqual(searchImages(figs, new Map(), { text: "figure", pages: "1-4" }).map((r) => r.key), ["f1"]);
+  const ocrHit = searchImages(items, records, { text: "revenue" }).find((r) => r.key === "a");
+  assert.match(ocrHit.snippet, /Quarterly revenue/);
+  assert.equal(searchImages(items, records, { text: "red" })[0].snippet, undefined);
 });
 
 test("hue ranges: mid blues match blue, teal is not blue, grays match no chromatic name", () => {

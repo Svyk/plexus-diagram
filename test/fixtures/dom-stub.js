@@ -104,6 +104,10 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
     return style;
   };
 
+  // Assigned after `document` exists. Descendant copies go through this, not through node.cloneNode,
+  // so a test can count one public cloneNode call per root.
+  let cloneTree = (node) => node;
+
   const makeEl = (tag, ns) => {
     let html = "";
     const attrs = new Map();
@@ -271,6 +275,7 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
       parentElement: null,
       id: `el-${id += 1}`,
       _rect: null,
+      cloneNode(deep) { return cloneTree(el, deep === true); },
     };
     Object.defineProperty(el, "innerHTML", {
       get() { return html; },
@@ -318,6 +323,43 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
     activeElement: null,
     contains(node) { return document.body.contains(node) || node === document.body; },
   };
+  const htmlNs = "http://www.w3.org/1999/xhtml";
+  const copyStyle = (from, to) => {
+    const style = from?.style;
+    if (!style || !to?.style) return;
+    for (const key of Object.keys(style)) {
+      if (key === "cssText") continue;
+      const value = style[key];
+      if (typeof value === "function" || value == null || value === "") continue;
+      to.style.setProperty(key, value);
+    }
+  };
+  cloneTree = (node, deep) => {
+    if (!node || node.nodeType !== 1) {
+      return node?.nodeType === 3 ? document.createTextNode(node.textContent || "") : node;
+    }
+    const tag = String(node.tagName || "div").toLowerCase();
+    const ns = node.namespaceURI;
+    const copy = ns && ns !== htmlNs ? document.createElementNS(ns, tag) : document.createElement(tag);
+    copy.className = node.className;
+    if (node.attributes && typeof node.attributes.keys === "function") {
+      for (const name of node.attributes.keys()) {
+        if (name === "class") continue;
+        copy.setAttribute(name, node.attributes.get(name));
+      }
+    }
+    copyStyle(node, copy);
+    if (node._rect) copy._rect = node._rect;
+    const kids = (node._kids || []).slice();
+    if (deep && kids.length) {
+      for (const child of kids) {
+        const cloned = child.nodeType === 3 ? document.createTextNode(child.textContent || "") : cloneTree(child, true);
+        copy.append(cloned);
+      }
+    } else if (node._text != null) copy.textContent = node._text;
+    return copy;
+  };
+
   document.body = makeEl("body");
   document.documentElement = makeEl("html");
   document.documentElement.append(document.body);

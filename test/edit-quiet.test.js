@@ -1,4 +1,4 @@
-// A1. While one card is in edit, sibling live roots on that board stay plain text.
+// A1. While one card is in edit, sibling live roots on that board are unmounted.
 // A key does not call renderString on them. Exit mounts them once. Another board is left alone.
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -27,12 +27,14 @@ function renderer(stub, doc, uid, strings) {
   const calls = { siblingString: 0, siblingBlock: 0 };
   const own = new Set();
   const host = {
+    connected: new Set(),
     renderString(node, string) {
+      host.connected.add(node);
       const id = node.closest?.("[data-uid]")?.getAttribute?.("data-uid") || "";
       if (!own.has(id)) calls.siblingString += 1;
       node.textContent = string;
     },
-    unmount() {},
+    unmount(node) { if (node) host.connected.delete(node); },
     renderBlock(el) {
       const id = el.closest?.("[data-uid]")?.getAttribute?.("data-uid") || "";
       if (!own.has(id)) calls.siblingBlock += 1;
@@ -99,7 +101,7 @@ async function settle(h, promise) {
 
 // Roam re-renders every still-connected renderString root when a block writes.
 function roamRerender(root, host) {
-  const lives = [...root.querySelectorAll(".pxd-rs__live")].filter((node) => !node.closest(".pxd-item--editing"));
+  const lives = [...root.querySelectorAll(".pxd-rs__live")].filter((node) => host.connected?.has(node) && !node.closest(".pxd-item--editing"));
   for (const live of lives) host.renderString(live, live.textContent || "");
   return lives.length;
 }
@@ -128,7 +130,7 @@ test("a key inside the editing card does not re-render sibling roots, and exit r
     h.a.r.quiet(false);
     h.a.flush();
     assert.equal(h.a.calls.siblingString, held);
-    assert.equal(h.a.r.shellOf(beta).querySelector(".pxd-rs__live"), null);
+    assert.equal([...h.a.r.shellOf(beta).querySelectorAll(".pxd-rs__live")].some((node) => h.a.host.connected.has(node)), false);
     await settle(h, h.a.r.exitEdit());
     h.a.flush();
     assert.equal(h.a.calls.siblingString - held, 2);

@@ -1938,13 +1938,13 @@ function renderTrailStrip(doc, parent, stops, { onStop, onWalk } = {}) {
   if (!parent.__pxdStripKeys) {
     parent.__pxdStripKeys = true;
     parent.addEventListener("keydown", (event) => {
-      const now4 = parent.__pxdStrip || {};
+      const now5 = parent.__pxdStrip || {};
       if (event.key !== "Enter" && event.key !== " ") return;
       const target = event.target;
       if (target?.closest?.(".pxd-trail-strip__walk")) {
         event.preventDefault?.();
         event.stopPropagation?.();
-        now4.onWalk?.();
+        now5.onWalk?.();
         return;
       }
       const btn2 = target?.closest?.(".pxd-trail-strip__stop");
@@ -1953,7 +1953,7 @@ function renderTrailStrip(doc, parent, stops, { onStop, onWalk } = {}) {
       if (i < 0) return;
       event.preventDefault?.();
       event.stopPropagation?.();
-      now4.onStop?.(now4.list?.[i]);
+      now5.onStop?.(now5.list?.[i]);
     });
   }
   return parent;
@@ -3588,7 +3588,7 @@ function pdfNameFromRefs(strings) {
   }
   return "";
 }
-function pdfPageBaseTitle({ display = "", alias = "", refs = [], fileName: fileName2 = "", now: now4 } = {}) {
+function pdfPageBaseTitle({ display = "", alias = "", refs = [], fileName: fileName2 = "", now: now5 } = {}) {
   const shown = cleanPageTitle(display, TITLE_MAX);
   if (meaningful(shown)) return shown;
   const label = cleanPageTitle(alias, TITLE_MAX);
@@ -3598,7 +3598,7 @@ function pdfPageBaseTitle({ display = "", alias = "", refs = [], fileName: fileN
   const raw = String(fileName2 ?? "").replace(/\.pdf$/i, "");
   const file = cleanPageTitle(raw.replace(/_+/g, " "), TITLE_MAX);
   if (meaningful(file) && !looksRandomName(raw.replace(/_+/g, " ").trim())) return file;
-  return `PDF ${shortDate(now4)}`;
+  return `PDF ${shortDate(now5)}`;
 }
 function uniquePageTitle(base, taken) {
   const root = cleanPageTitle(base, TITLE_MAX) || `PDF ${shortDate()}`;
@@ -3624,7 +3624,7 @@ function inlinePdfCards(board2) {
   for (const item of board2?.items?.values?.() || []) if (isInlinePdfCard(item)) out.push(item);
   return out;
 }
-function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageExists, titleFor, aliasOf, refsOf, now: now4, newUid } = {}) {
+function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageExists, titleFor, aliasOf, refsOf, now: now5, newUid } = {}) {
   const plan = { graph, boardUid: board2?.uid || "", moves: [], edges: [], skipped: [] };
   if (!board2?.items) return plan;
   const call = (fn, ...args) => {
@@ -3653,7 +3653,7 @@ function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageE
     if (found?.uid && found.title) {
       page = { uid: found.uid, title: found.title, reuse: true, why: found.why || "url" };
     } else {
-      const title = uniquePageTitle(pdfPageBaseTitle({ display: shown, alias: call(aliasOf, item) || "", refs: call(refsOf, item) || [], fileName: pdfFileTitle(url), now: call(now4) }), (t) => plannedTitles.has(t) || call(pageExists, t) === true);
+      const title = uniquePageTitle(pdfPageBaseTitle({ display: shown, alias: call(aliasOf, item) || "", refs: call(refsOf, item) || [], fileName: pdfFileTitle(url), now: call(now5) }), (t) => plannedTitles.has(t) || call(pageExists, t) === true);
       page = { uid: null, newUid: String(call(newUid) || ""), title, reuse: false, why: "new" };
     }
     plannedTitles.add(page.title);
@@ -3720,8 +3720,8 @@ var init_pdf_page = __esm({
     TITLE_MAX = 100;
     MEANINGLESS = /^(?:pdf|untitled(?:\b.*)?|document|scan(?:ned)?)$/i;
     meaningful = (t) => t.length >= 3 && !MEANINGLESS.test(t);
-    shortDate = (now4) => {
-      const d = new Date(Number.isFinite(now4) ? now4 : Date.now());
+    shortDate = (now5) => {
+      const d = new Date(Number.isFinite(now5) ? now5 : Date.now());
       const p = (n3) => String(n3).padStart(2, "0");
       return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
     };
@@ -15358,11 +15358,11 @@ function notePendingPin(pending) {
   notedPin = pending;
   return pending;
 }
-function takePendingPin(now4 = 0) {
+function takePendingPin(now5 = 0) {
   const pending = notedPin;
   if (!pending) return null;
   notedPin = null;
-  if (Number(now4) > Number(pending.until)) return null;
+  if (Number(now5) > Number(pending.until)) return null;
   return pending;
 }
 function sourcePinOf(children) {
@@ -15513,11 +15513,11 @@ function pinOpenPlan(region) {
   if (!pdfUid || !Number.isInteger(page) || page < 1 || !Array.isArray(region.f)) return null;
   return { pdfUid, page, frac: region.f.slice(), pinUid: String(region.uid || "") };
 }
-function pinOpenFallback({ opened = false, plan = null, pageUid: pageUid2 = "", now: now4 = 0 } = {}) {
+function pinOpenFallback({ opened = false, plan = null, pageUid: pageUid2 = "", now: now5 = 0 } = {}) {
   if (opened || !plan?.pinUid) return null;
   const page = String(pageUid2 || "").trim();
   if (!UID_RE4.test(page)) return null;
-  return { openPage: page, pending: { pinUid: plan.pinUid, until: Number(now4) + PIN_PENDING_MS } };
+  return { openPage: page, pending: { pinUid: plan.pinUid, until: Number(now5) + PIN_PENDING_MS } };
 }
 function pinnedToast(page) {
   const n3 = Number(page);
@@ -16254,10 +16254,10 @@ function thumbnailBudget(uids, { cap: cap4 = THUMBNAIL_CAP } = {}) {
   }
   return out;
 }
-function timerStep(state, now4) {
+function timerStep(state, now5) {
   const remaining = Math.max(0, Number(state?.remainingMs) || 0);
   if (!state?.running || !state.endsAt) return { remainingMs: remaining, running: false, endsAt: null };
-  const left = Math.max(0, state.endsAt - now4);
+  const left = Math.max(0, state.endsAt - now5);
   return { remainingMs: left, running: left > 0, endsAt: left > 0 ? state.endsAt : null };
 }
 function presenterNote(board2, uid) {
@@ -17774,10 +17774,10 @@ function librarySelective(filter) {
   if (f.text || f.tag) return true;
   return f.types.some((t) => BOUNDED_TYPES.includes(t));
 }
-function editedSince(edited, days, now4 = Date.now()) {
+function editedSince(edited, days, now5 = Date.now()) {
   const n3 = Math.max(0, Math.floor(Number(days) || 0));
   if (!n3) return true;
-  const t = now4 instanceof Date ? now4.getTime() : Number(now4);
+  const t = now5 instanceof Date ? now5.getTime() : Number(now5);
   return Number.isFinite(edited) && edited > t - n3 * DAY_MS;
 }
 function blockKind(string) {
@@ -17808,7 +17808,7 @@ function queryTerms(text4) {
   }
   return terms;
 }
-function narrowLibrary(rows, filter, now4 = Date.now()) {
+function narrowLibrary(rows, filter, now5 = Date.now()) {
   const f = normalizeLibraryFilter(filter);
   const terms = queryTerms(f.text);
   return (Array.isArray(rows) ? rows : []).filter((row4) => {
@@ -17822,7 +17822,7 @@ function narrowLibrary(rows, filter, now4 = Date.now()) {
       const hay = typeof row4?.lower === "string" ? row4.lower : [row4?.title, row4?.string, row4?.text].filter((v) => v != null).join("\n").toLowerCase();
       if (!terms.every((t) => hay.includes(t))) return false;
     }
-    if (f.days && !editedSince(row4?.edited, f.days, now4)) return false;
+    if (f.days && !editedSince(row4?.edited, f.days, now5)) return false;
     if (f.orphan && (kind === "board" || row4?.onBoard)) return false;
     return true;
   });
@@ -17899,9 +17899,9 @@ function libraryCardBase(row4) {
   }
   return { string: `((${uid}))`, text: String(row4?.string ?? row4?.text ?? "").slice(0, 120), kind, label };
 }
-function recentDailyTitles(days = 14, now4 = /* @__PURE__ */ new Date()) {
+function recentDailyTitles(days = 14, now5 = /* @__PURE__ */ new Date()) {
   const n3 = Math.max(1, Math.min(366, Math.floor(Number(days) || 14)));
-  const base = now4 instanceof Date ? now4 : new Date(now4);
+  const base = now5 instanceof Date ? now5 : new Date(now5);
   const titles = [];
   for (let i = 0; i < n3; i += 1) {
     const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() - i, 12, 0, 0, 0);
@@ -17943,8 +17943,8 @@ function sortRows(rows, sort) {
   if (!cmp) return list;
   return list.map((row4, i) => [row4, i]).sort((a, b) => cmp(a[0], b[0]) || a[1] - b[1]).map((x) => x[0]);
 }
-function ago(time, now4) {
-  const s = Math.max(0, Math.floor((now4 - time) / 1e3));
+function ago(time, now5) {
+  const s = Math.max(0, Math.floor((now5 - time) / 1e3));
   if (s < 60) return "just now";
   const m = Math.floor(s / 60);
   if (m < 60) return `${m} min ago`;
@@ -17953,22 +17953,22 @@ function ago(time, now4) {
   const d = Math.floor(h / 24);
   return d < 30 ? `${d} ${d === 1 ? "day" : "days"} ago` : "";
 }
-function dateText(time, now4) {
+function dateText(time, now5) {
   const d = new Date(time);
-  const nowY = new Date(now4).getFullYear();
+  const nowY = new Date(now5).getFullYear();
   return `${MONTHS6[d.getMonth()]} ${d.getDate()}${d.getFullYear() === nowY ? "" : `, ${d.getFullYear()}`}`;
 }
-function metaLine(row4, sort, now4 = Date.now()) {
+function metaLine(row4, sort, now5 = Date.now()) {
   const meta = row4?.meta;
   if (!meta) return "";
   const id = normalizeSort(sort);
   if (id === "edited") {
     const t = num4(meta.edited);
-    return t ? `edited ${ago(t, now4) || dateText(t, now4)}${by(meta.editedBy)}` : "";
+    return t ? `edited ${ago(t, now5) || dateText(t, now5)}${by(meta.editedBy)}` : "";
   }
   if (id === "created" || id === "oldest") {
     const t = num4(meta.created);
-    return t ? `created ${dateText(t, now4)}${by(meta.createdBy)}` : "";
+    return t ? `created ${dateText(t, now5)}${by(meta.createdBy)}` : "";
   }
   if (id === "linked") return num4(meta.refs) != null ? plural(meta.refs, "ref", "refs") : "";
   if (id === "children") return num4(meta.children) != null ? plural(meta.children, "child", "children") : "";
@@ -17999,7 +17999,7 @@ function metaFilterActive(raw) {
   const f = normalizeMetaFilter(raw);
   return metaFilterHostActive(f) || f.parsed || f.highlights || f.thisBoard;
 }
-function narrowByMeta(rows, raw, { days = 0, now: now4 = Date.now() } = {}) {
+function narrowByMeta(rows, raw, { days = 0, now: now5 = Date.now() } = {}) {
   const f = normalizeMetaFilter(raw);
   const n3 = Math.max(0, Math.floor(Number(days) || 0));
   const lower4 = (s) => String(s ?? "").toLowerCase();
@@ -18007,7 +18007,7 @@ function narrowByMeta(rows, raw, { days = 0, now: now4 = Date.now() } = {}) {
     const m = row4?.meta || {};
     if (f.dayMode === "created" && n3) {
       const t = num4(m.created);
-      if (t == null || t <= now4 - n3 * DAY_MS2) return false;
+      if (t == null || t <= now5 - n3 * DAY_MS2) return false;
     }
     if (f.createdBy && lower4(m.createdBy) !== lower4(f.createdBy)) return false;
     if (f.editedBy && lower4(m.editedBy) !== lower4(f.editedBy)) return false;
@@ -18020,13 +18020,13 @@ function narrowByMeta(rows, raw, { days = 0, now: now4 = Date.now() } = {}) {
     return true;
   });
 }
-function createMetaCache(read2, { ttl = META_TTL_MS, now: now4 = () => Date.now(), max = META_MAX } = {}) {
+function createMetaCache(read2, { ttl = META_TTL_MS, now: now5 = () => Date.now(), max = META_MAX } = {}) {
   const cache = /* @__PURE__ */ new Map();
   return {
     get(uids) {
       const out = /* @__PURE__ */ new Map();
       const need2 = /* @__PURE__ */ new Set();
-      const t = now4();
+      const t = now5();
       for (const uid of uids || []) {
         const hit = cache.get(uid);
         if (hit && t - hit.at < ttl) out.set(uid, hit.meta);
@@ -18294,7 +18294,7 @@ function wantsFilterBrowse(filter) {
   if (f.text || f.tag) return false;
   return f.days > 0 || f.orphan || metaFilterActive(filter);
 }
-function browseSpec(filter, { now: now4 = Date.now() } = {}) {
+function browseSpec(filter, { now: now5 = Date.now() } = {}) {
   const f = normalizeLibraryFilter(filter);
   const m = normalizeMetaFilter(filter);
   const pdf = m.parsed || m.highlights;
@@ -18313,7 +18313,7 @@ function browseSpec(filter, { now: now4 = Date.now() } = {}) {
     types: f.types,
     mode: f.days > 0 ? m.dayMode : "edited",
     days,
-    since: days ? now4 - days * DAY_MS3 : null,
+    since: days ? now5 - days * DAY_MS3 : null,
     defaulted: !bounded,
     under: m.under,
     createdBy: m.createdBy,
@@ -18702,8 +18702,8 @@ function changedToggle(wasOn, tab = "") {
   const on = wasOn !== true;
   return { on, open: on, close: !on && tab === "changed" };
 }
-function timeAgo(time, now4 = Date.now()) {
-  const s = Math.max(0, Math.floor((now4 - time) / 1e3));
+function timeAgo(time, now5 = Date.now()) {
+  const s = Math.max(0, Math.floor((now5 - time) / 1e3));
   if (s < 60) return "just now";
   const m = Math.floor(s / 60);
   if (m < 60) return `${m} min ago`;
@@ -19279,7 +19279,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false };
 }
 function parseSpeedFlags(raw) {
   const base = defaultSpeedFlags();
@@ -19733,7 +19733,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -22012,14 +22012,14 @@ function dueChip(content, today = /* @__PURE__ */ new Date()) {
   }
   if (raw == null || !title) return null;
   const due = parseRoamDay(title);
-  const now4 = dayOf(today);
-  return { text: title, overdue: Boolean(due && now4 && stamp(due) < stamp(now4)), today: Boolean(due && now4 && stamp(due) === stamp(now4)), raw, day: due };
+  const now5 = dayOf(today);
+  return { text: title, overdue: Boolean(due && now5 && stamp(due) < stamp(now5)), today: Boolean(due && now5 && stamp(due) === stamp(now5)), raw, day: due };
 }
 function shortDay(day, today = /* @__PURE__ */ new Date()) {
   if (!day) return "";
-  const now4 = dayOf(today);
+  const now5 = dayOf(today);
   const base = `${SHORT_MONTHS[day.m - 1]} ${day.d}`;
-  return now4 && day.y !== now4.y ? `${base}, ${day.y}` : base;
+  return now5 && day.y !== now5.y ? `${base}, ${day.y}` : base;
 }
 function dayChoices(today = /* @__PURE__ */ new Date()) {
   const at = (n3) => iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + n3));
@@ -22838,7 +22838,7 @@ function mountFpsFromStamps(stamps) {
   const fps = 1e3 / mid;
   return Number.isFinite(fps) ? Math.round(fps) : null;
 }
-function createRowScheduler({ idle, now: now4 = () => Date.now(), budgetMs = 8, render, eager = null } = {}) {
+function createRowScheduler({ idle, now: now5 = () => Date.now(), budgetMs = 8, render, eager = null } = {}) {
   const rows = /* @__PURE__ */ new Map();
   let handle = null;
   let disposed = false;
@@ -22885,11 +22885,11 @@ function createRowScheduler({ idle, now: now4 = () => Date.now(), budgetMs = 8, 
     handle = null;
     queued = false;
     if (disposed || held) return;
-    const start = now4();
+    const start = now5();
     const open = allNow();
     const has = deadline && typeof deadline.timeRemaining === "function" ? () => deadline.timeRemaining() > 1 : () => true;
     for (const row4 of pending()) {
-      if (!open && (held || now4() - start >= budgetMs || !has())) break;
+      if (!open && (held || now5() - start >= budgetMs || !has())) break;
       finish(row4);
     }
     if (!held && pending().length) schedule();
@@ -23842,7 +23842,7 @@ function pageEnd(s, i) {
   }
   return -1;
 }
-function parseNode(s, i, now4) {
+function parseNode(s, i, now5) {
   const at = skipSpace(s, i);
   if (at >= s.length) return unsupported("empty");
   if (s.startsWith("[[", at) || s.startsWith("#[[", at)) {
@@ -23851,34 +23851,34 @@ function parseNode(s, i, now4) {
     if (end < 0) return unsupported("unclosed page");
     const title = s.slice(open + 2, end - 2).trim();
     if (!title) return unsupported("empty page");
-    return { ok: true, node: pageNode(title, now4), next: end };
+    return { ok: true, node: pageNode(title, now5), next: end };
   }
   if (s[at] === "#") {
     const m = /^#([^\s#{}[\]()]+)/.exec(s.slice(at));
     if (!m) return unsupported("tag");
-    return { ok: true, node: pageNode(m[1], now4), next: at + m[0].length };
+    return { ok: true, node: pageNode(m[1], now5), next: at + m[0].length };
   }
   if (s.startsWith("((", at)) {
     const m = /^\(\(([A-Za-z0-9_-]{9})\)\)/.exec(s.slice(at));
     if (!m) return unsupported("block ref");
     return { ok: true, node: { op: "block", uid: m[1] }, next: at + m[0].length };
   }
-  if (s[at] === "{") return parseCurly(s, at, now4);
+  if (s[at] === "{") return parseCurly(s, at, now5);
   return unsupported("bare word");
 }
-function pageNode(title, now4) {
-  return { op: "page", title, date: dateOfName(title, now4) };
+function pageNode(title, now5) {
+  return { op: "page", title, date: dateOfName(title, now5) };
 }
-function dateOfName(name, now4) {
+function dateOfName(name, now5) {
   const key = String(name).trim().toLowerCase();
-  const base = now4 instanceof Date ? now4 : new Date(now4 ?? Date.now());
+  const base = now5 instanceof Date ? now5 : new Date(now5 ?? Date.now());
   const day = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 12, 0, 0, 0);
   if (key === "today") return day.getTime();
   if (key === "yesterday") return new Date(day.getTime() - DAY4).getTime();
   if (key === "tomorrow") return new Date(day.getTime() + DAY4).getTime();
   return pageTitleToDate(name);
 }
-function parseCurly(s, at, now4) {
+function parseCurly(s, at, now5) {
   const m = /^\{\s*([a-z-]+)\s*:/.exec(s.slice(at));
   if (!m) return unsupported("curly");
   const name = m[1];
@@ -23891,7 +23891,7 @@ function parseCurly(s, at, now4) {
       k += 1;
       break;
     }
-    const got = parseNode(s, k, now4);
+    const got = parseNode(s, k, now5);
     if (!got.ok) return got;
     args.push(got.node);
     k = got.next;
@@ -23931,7 +23931,7 @@ function shapeOk(node2, inAnd = false) {
   }
   return node2.args.every((a) => shapeOk(a, false));
 }
-function parseQuery(string, { now: now4 = Date.now() } = {}) {
+function parseQuery(string, { now: now5 = Date.now() } = {}) {
   const wrap = WRAP.exec(String(string ?? "").trim());
   if (!wrap) return unsupported("not a query");
   let body = String(wrap[1] ?? "").trim();
@@ -23945,7 +23945,7 @@ function parseQuery(string, { now: now4 = Date.now() } = {}) {
   const nodes = [];
   let k = 0;
   while (skipSpace(body, k) < body.length) {
-    const got = parseNode(body, k, now4);
+    const got = parseNode(body, k, now5);
     if (!got.ok) return got;
     nodes.push(got.node);
     k = got.next;
@@ -24173,7 +24173,7 @@ var init_query_backend = __esm({
 });
 
 // src/view/query-card.js
-function createQueryCards({ doc = globalThis.document, host, storage, graph = "", backend, now: now4 = Date.now, schedule } = {}) {
+function createQueryCards({ doc = globalThis.document, host, storage, graph = "", backend, now: now5 = Date.now, schedule } = {}) {
   const cache = createQueryCache(storage, typeof graph === "function" ? graph() : graph);
   const source = backend || (host?.q ? createQueryBackend(host) : null);
   const runs = /* @__PURE__ */ new Map();
@@ -24207,12 +24207,12 @@ function createQueryCards({ doc = globalThis.document, host, storage, graph = ""
   }
   function fetchRows(uid, ast, force) {
     const hit = runs.get(uid);
-    if (!force && hit?.result && now4() - hit.at < REUSE_MS) return Promise.resolve(hit.result);
+    if (!force && hit?.result && now5() - hit.at < REUSE_MS) return Promise.resolve(hit.result);
     if (hit?.promise) return hit.promise;
-    const entry = { at: now4(), result: null, promise: null };
+    const entry = { at: now5(), result: null, promise: null };
     entry.promise = loadQueryRows(ast, source, { exclude: excludeOf(uid), tick: () => new Promise((resolve) => later(resolve)) }).catch(() => ({ status: "error", rows: [], total: 0, partial: true })).then((result) => {
       entry.promise = null;
-      entry.at = now4();
+      entry.at = now5();
       if (result.status === "ok") {
         entry.result = result;
         cache.set(uid, result.rows, { total: result.total, partial: result.partial });
@@ -24918,7 +24918,7 @@ function indexUntil(ix, rows, over) {
   ix.ready = true;
   return true;
 }
-function stepPartsIndex(rows, { deadline = null, now: now4 = defaultNow, sliceMs = PARTS_SLICE_MS } = {}) {
+function stepPartsIndex(rows, { deadline = null, now: now5 = defaultNow, sliceMs = PARTS_SLICE_MS } = {}) {
   sliceCalls += 1;
   const list = Array.isArray(rows) ? rows : [];
   if (!list.length) {
@@ -24933,7 +24933,7 @@ function stepPartsIndex(rows, { deadline = null, now: now4 = defaultNow, sliceMs
       starved = false;
     }
   }
-  const t0 = now4();
+  const t0 = now5();
   const ix = ensureIndex(list);
   if (ix.ready) {
     lastSliceMs = 0;
@@ -24942,20 +24942,20 @@ function stepPartsIndex(rows, { deadline = null, now: now4 = defaultNow, sliceMs
   let checks = 0;
   const over = () => {
     checks += 1;
-    lastSliceMs = now4() - t0;
+    lastSliceMs = now5() - t0;
     if (starved && checks >= 1) return true;
     return lastSliceMs >= sliceMs;
   };
   return indexUntil(ix, list, over);
 }
-function schedulePartsIndex(rows, { budget = null, now: now4 = defaultNow, onReady: onReady2 = null, sliceMs = PARTS_SLICE_MS } = {}) {
+function schedulePartsIndex(rows, { budget = null, now: now5 = defaultNow, onReady: onReady2 = null, sliceMs = PARTS_SLICE_MS } = {}) {
   if (!Array.isArray(rows) || !rows.length || typeof budget?.run !== "function") return () => {
   };
   let stopped = false;
   let cancel = null;
   cancel = budget.run((deadline) => {
     if (stopped) return true;
-    const done3 = stepPartsIndex(rows, { deadline, now: now4, sliceMs });
+    const done3 = stepPartsIndex(rows, { deadline, now: now5, sliceMs });
     if (done3 && !stopped && typeof onReady2 === "function") {
       try {
         onReady2();
@@ -28260,9 +28260,9 @@ function shellOffscreen(uid, rect, view, { editingUid = null } = {}) {
   if (!uid || uid === editingUid) return false;
   return rectMisses(rect, view);
 }
-function unmountDue(seenAt, now4, grace = UNMOUNT_GRACE_MS) {
-  if (!Number.isFinite(seenAt) || !Number.isFinite(now4)) return false;
-  return now4 - seenAt >= grace;
+function unmountDue(seenAt, now5, grace = UNMOUNT_GRACE_MS) {
+  if (!Number.isFinite(seenAt) || !Number.isFinite(now5)) return false;
+  return now5 - seenAt >= grace;
 }
 var UNMOUNT_GRACE_MS;
 var init_offscreen = __esm({
@@ -28710,8 +28710,8 @@ function resolveRegionTarget(hit, outline) {
   }
   return { kind: "outline", blockUid: outline?.blockUid, pageUid: outline?.pageUid };
 }
-function createShowStash(now4 = () => Date.now()) {
-  const clock = typeof now4 === "function" ? now4 : () => Date.now();
+function createShowStash(now5 = () => Date.now()) {
+  const clock = typeof now5 === "function" ? now5 : () => Date.now();
   let entry = null;
   const live2 = () => {
     if (!entry) return null;
@@ -31869,9 +31869,13 @@ function createItemRenderer({
   let pendingView = null;
   const viewWaiters = [];
   const BULK_ATTACH = 64;
+  let attachSlice = null;
+  let attachLeft = 0;
   let cullRect = null;
   let virtualOff = false;
   const virtual = () => !virtualOff && (lastBoard?.items?.size || 0) > VIRTUAL_MIN;
+  let canvasOn = false;
+  const canvasCards = () => canvasOn && virtual();
   const isAttached = (rec) => Boolean(rec?.el?.parentElement);
   const activeShellUid = () => {
     const active2 = doc.activeElement;
@@ -31881,6 +31885,7 @@ function createItemRenderer({
   const keepAttached = (uid, rec, active2) => rec.type === "section" || uid === selectedPrimary || rec.hover || editing?.uid === uid || mounted.has(uid) || uid === active2;
   const farRect = () => cullRect ? { x: cullRect.x - cullRect.w * 0.125, y: cullRect.y - cullRect.h * 0.125, w: cullRect.w * 1.25, h: cullRect.h * 1.25 } : null;
   const nearView = (uid, rect = cullRect) => {
+    if (canvasCards() && lastBoard?.items.get(uid)?.type !== "section") return false;
     if (!rect) return true;
     const r = drawnRect(uid, lastRects?.get(uid));
     return !r || rectsIntersect(r, rect);
@@ -31944,6 +31949,7 @@ function createItemRenderer({
   const cullShells = (rect, { reveal = false, budget = Infinity, ms = Infinity } = {}) => {
     const t0 = ms < Infinity ? now2() : 0;
     if (rect) cullRect = rect;
+    attachLeft = 0;
     if (!virtual() || !cullRect) return [];
     const active2 = activeShellUid();
     let add = [];
@@ -31956,10 +31962,12 @@ function createItemRenderer({
       else if (!want && on && !reveal) rec.el.remove();
     }
     if (!add.length) return add;
+    const wanted2 = add.length;
     if (add.length > budget) {
       const cx = cullRect.x + cullRect.w / 2;
       const cy = cullRect.y + cullRect.h / 2;
       const dist = (rec) => {
+        if (keepAttached(rec.uid, rec, active2)) return -1;
         const r = drawnRect(rec.uid, lastRects?.get(rec.uid));
         return r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity;
       };
@@ -31978,6 +31986,7 @@ function createItemRenderer({
         }
       }
     }
+    attachLeft = wanted2 - add.length;
     return add;
   };
   const attachMany = (set) => {
@@ -32032,7 +32041,7 @@ function createItemRenderer({
     if (shellsLive) armShellPump();
   };
   const pumpChunk = ({ limit = 40, priority = false } = {}) => {
-    if (shellsHeld) return false;
+    if (shellsHeld || canvasCards()) return false;
     if (shellQueue.length) noteOverviewQueue();
     const t0 = now2();
     const built = [];
@@ -32069,7 +32078,7 @@ function createItemRenderer({
     return shellQueue.length === 0;
   };
   const pumpShells = () => {
-    if (shellsHeld) return;
+    if (shellsHeld || canvasCards()) return;
     if (pumpChunk()) return;
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
   };
@@ -32088,7 +32097,7 @@ function createItemRenderer({
   };
   const pumpPriorityFrame = () => {
     priorityFrame = null;
-    if (!shellsLive || shellsHeld) return;
+    if (!shellsLive || shellsHeld || canvasCards()) return;
     pumpChunk({ limit: OPEN_CHUNK, priority: true });
     if (!shellsLive || shellsHeld) return;
     if (priorityLeft > 0 && shellQueue.length && timers?.frame) {
@@ -32099,6 +32108,10 @@ function createItemRenderer({
   };
   const armShellPump = () => {
     if (!shellsLive || shellsHeld) return;
+    if (canvasCards()) {
+      stopShellBg();
+      return;
+    }
     stopShellBg();
     if (!shellQueue.length) return;
     if (priorityLeft > 0 && timers?.frame) {
@@ -32124,7 +32137,7 @@ function createItemRenderer({
   const resumeShells = () => {
     shellsLive = true;
   };
-  const promoteQueue = (viewRect) => {
+  const promoteQueue = (viewRect, { nearest = false } = {}) => {
     if (!viewRect || !shellQueue.length || !lastRects) return;
     const inside8 = [];
     const outside = [];
@@ -32134,6 +32147,15 @@ function createItemRenderer({
       else outside.push(uid);
     }
     if (!inside8.length) return;
+    if (nearest) {
+      const cx = viewRect.x + viewRect.w / 2;
+      const cy = viewRect.y + viewRect.h / 2;
+      const dist = (uid) => {
+        const r = lastRects.get(uid);
+        return (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2;
+      };
+      inside8.sort((a, b) => dist(a) - dist(b));
+    }
     shellQueue = inside8.concat(outside);
     priorityLeft = inside8.length;
     armShellPump();
@@ -32222,15 +32244,15 @@ function createItemRenderer({
     const holdQueue = shells.size > 0 && shellQueue.length > 0;
     let orderChanged = structural;
     let defer = null;
-    if (!shells.size && board2.order.length > 80 && typeof timers?.frame === "function") {
-      const now4 = [];
+    if (!shells.size && board2.order.length > 80 && typeof timers?.frame === "function" && canvasCards()) {
+      const now5 = [];
       const later2 = [];
       for (const uid of board2.order) {
-        const rect = rects.get(uid);
-        if (view && rect && rectsIntersect(rect, view)) now4.push(uid);
+        const item = board2.items.get(uid);
+        if (item?.type === "section" || uid === selectedPrimary) now5.push(uid);
         else later2.push(uid);
       }
-      if (!now4.length && view) {
+      if (view) {
         const cx = view.x + view.w / 2;
         const cy = view.y + view.h / 2;
         const dist = (uid) => {
@@ -32239,21 +32261,41 @@ function createItemRenderer({
         };
         later2.sort((a, b) => dist(a) - dist(b));
       }
-      if (!now4.length) now4.push(...later2.splice(0, 24));
-      let fast = false;
-      try {
-        fast = lod !== "detail" && speedOf().overviewFast !== false;
-      } catch {
-        fast = false;
+      priorityLeft = 0;
+      pendingView = null;
+      if (later2.length) defer = new Set(later2);
+    } else if (!shells.size && board2.order.length > 80 && typeof timers?.frame === "function") {
+      const now5 = [];
+      const later2 = [];
+      for (const uid of board2.order) {
+        const rect = rects.get(uid);
+        if (view && rect && rectsIntersect(rect, view)) now5.push(uid);
+        else later2.push(uid);
       }
-      if (view && (fast && now4.length > OPEN_CHUNK || now4.length > OPEN_NOW_MAX)) {
+      if (!now5.length && view) {
         const cx = view.x + view.w / 2;
         const cy = view.y + view.h / 2;
         const dist = (uid) => {
           const r = rects.get(uid);
           return r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity;
         };
-        const ranked = now4.slice().sort((a, b) => dist(a) - dist(b));
+        later2.sort((a, b) => dist(a) - dist(b));
+      }
+      if (!now5.length) now5.push(...later2.splice(0, 24));
+      let fast = false;
+      try {
+        fast = lod !== "detail" && speedOf().overviewFast !== false;
+      } catch {
+        fast = false;
+      }
+      if (view && (fast && now5.length > OPEN_CHUNK || now5.length > OPEN_NOW_MAX)) {
+        const cx = view.x + view.w / 2;
+        const cy = view.y + view.h / 2;
+        const dist = (uid) => {
+          const r = rects.get(uid);
+          return r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity;
+        };
+        const ranked = now5.slice().sort((a, b) => dist(a) - dist(b));
         const sections = [];
         const cards = [];
         for (const uid of ranked) (board2.items.get(uid)?.type === "section" ? sections : cards).push(uid);
@@ -32263,20 +32305,20 @@ function createItemRenderer({
           const restPriority = priority.filter((uid) => !first.has(uid));
           const restSet = new Set(restPriority);
           priorityLeft = restPriority.length;
-          now4.length = 0;
-          for (const uid of board2.order) if (first.has(uid)) now4.push(uid);
+          now5.length = 0;
+          for (const uid of board2.order) if (first.has(uid)) now5.push(uid);
           const tail = [...restPriority, ...ranked.filter((uid) => !first.has(uid) && !restSet.has(uid))];
           later2.unshift(...tail);
         } else {
           const keep = new Set(ranked.slice(0, OPEN_NOW_MAX));
           const rest = ranked.slice(OPEN_NOW_MAX);
-          now4.length = 0;
-          for (const uid of board2.order) if (keep.has(uid)) now4.push(uid);
+          now5.length = 0;
+          for (const uid of board2.order) if (keep.has(uid)) now5.push(uid);
           pendingView = new Set(rest);
           later2.unshift(...rest);
         }
       }
-      if (now4.length && later2.length) defer = new Set(later2);
+      if (now5.length && later2.length) defer = new Set(later2);
     }
     if (defer?.size) {
       shellQueue = [...defer];
@@ -35584,7 +35626,7 @@ function createItemRenderer({
   };
   const fillContent = ({ visibleRect, attachRect = null, zoom = zoomCache, tier = null, dirty = null } = {}) => {
     zoomCache = zoom;
-    cullShells(attachRect || visibleRect);
+    cullShells(attachRect || visibleRect, attachSlice || void 0);
     paintOffscreen(visibleRect);
     if (!lastBoard || !lastRects || !contentSched) return;
     const next = /* @__PURE__ */ new Set();
@@ -35677,6 +35719,14 @@ function createItemRenderer({
   const setLod = (nextLod, zoom) => {
     const prev = lod;
     lod = nextLod === "map" || nextLod === "overview" ? nextLod : "detail";
+    const canvasWas = canvasOn;
+    try {
+      canvasOn = lod === "overview" && speedOf().overviewCanvas === true && speedOf().overviewFast !== false;
+    } catch {
+      canvasOn = false;
+    }
+    if (canvasWas && !canvasOn && shellQueue.length && !priorityFrame) armShellPump();
+    if (!canvasWas && canvasOn) stopShellBg();
     setZoom(zoom);
     closePeek();
     if (lod !== "detail") closeCardPeek();
@@ -35973,6 +36023,7 @@ function createItemRenderer({
   const setSelection = (uids) => {
     const list = Array.isArray(uids) ? uids : [];
     const set = new Set(list);
+    if (canvasCards() && list.length && !shells.has(list[list.length - 1])) ensureShell(list[list.length - 1]);
     let primary = null;
     for (let i = list.length - 1; i >= 0; i -= 1) {
       if (shells.has(list[i])) {
@@ -37053,6 +37104,23 @@ function createItemRenderer({
       const added = cullShells(rect, { reveal: true, budget, ms });
       for (const rec of added) paintOneOffscreen(rec.uid, rec, rect);
       return added.length;
+    },
+    // C1: a settle on a big board attaches `{ budget, ms }` per content pass until the view clears it (null).
+    sliceAttach(opts) {
+      attachSlice = opts && virtual() ? { budget: opts.budget ?? 48, ms: opts.ms ?? 6 } : null;
+    },
+    attachLeft: () => virtual() ? attachLeft : 0,
+    canvasTier: () => canvasCards(),
+    // A press on a box during the pop-in: the card's shell joins the DOM now.
+    attachNow(uid) {
+      const el3 = ensureShell(uid);
+      if (shellsHeld) return el3;
+      const rec = shells.get(uid);
+      if (rec?.el && !isAttached(rec)) {
+        attachShell(rec);
+        paintOneOffscreen(uid, rec, lastContent?.visibleRect);
+      }
+      return el3 || rec?.el || null;
     },
     // The gesture underlay draws a box for every item whose shell is not in the DOM.
     isVirtual: () => virtual(),
@@ -39402,8 +39470,8 @@ function copyBytes(bytes) {
 function emptyMeta() {
   return { docs: [], images: [] };
 }
-function createParseStore({ indexedDB: factory, now: now4, docCap = PARSE_DOC_CAP, imageCap = PARSE_IMAGE_CAP } = {}) {
-  const clock = typeof now4 === "function" ? now4 : () => Date.now();
+function createParseStore({ indexedDB: factory, now: now5, docCap = PARSE_DOC_CAP, imageCap = PARSE_IMAGE_CAP } = {}) {
+  const clock = typeof now5 === "function" ? now5 : () => Date.now();
   const memory = {
     parse: /* @__PURE__ */ new Map(),
     images: /* @__PURE__ */ new Map(),
@@ -39781,7 +39849,7 @@ async function bytesOf2(file) {
   if (typeof file.arrayBuffer === "function") return new Uint8Array(await file.arrayBuffer());
   return null;
 }
-function createReadKeeper({ host = null, session = null, store = null, settings = null, now: now4 = Date.now, log = null } = {}) {
+function createReadKeeper({ host = null, session = null, store = null, settings = null, now: now5 = Date.now, log = null } = {}) {
   const warned = /* @__PURE__ */ new Set();
   const warn = (what, error) => {
     if (warned.has(what)) return;
@@ -39836,7 +39904,7 @@ function createReadKeeper({ host = null, session = null, store = null, settings 
           parseRev: PARSE_REV,
           schema: READ_SCHEMA,
           bytes: payload.byteLength,
-          createdAt: now4(),
+          createdAt: now5(),
           docHash
         };
         const write = async () => {
@@ -39927,7 +39995,7 @@ function createSyncHold({
   doc = globalThis.document,
   sleep = delay,
   frame: frame2 = nextFrame,
-  now: now4 = () => Date.now(),
+  now: now5 = () => Date.now(),
   capMs = SYNC_HOLD_CAP_MS,
   online = () => globalThis.navigator?.onLine !== false
 } = {}) {
@@ -39978,12 +40046,12 @@ function createSyncHold({
     const cap4 = Math.min(capMs, Number.isFinite(budget) ? budget : capMs);
     onHold?.();
     installGuard();
-    const start = now4();
+    const start = now5();
     let capped = false;
     try {
       while (state === true) {
         if (abort?.()) break;
-        if (now4() - start >= cap4) {
+        if (now5() - start >= cap4) {
           capped = true;
           break;
         }
@@ -39994,7 +40062,7 @@ function createSyncHold({
     } finally {
       if (!keepGuard) release();
     }
-    return { waited: now4() - start, capped, held: true };
+    return { waited: now5() - start, capped, held: true };
   };
   return { saving, wait: wait2, release };
 }
@@ -40641,7 +40709,7 @@ var CONTAINER_QUERY = `[:find ?cu :in $ ?pu ?cp :where [?p :block/uid ?pu] [?p :
 var AUTHOR_QUERY = `[:find ?title :in $ ?uid :where [?u :user/uid ?uid] [?u :user/display-page ?p] [?p :node/title ?title]]`;
 var THREAD_TTL_MS = 5e3;
 var TREE_PULL = `[:block/uid :block/string :block/order {(limit :block/children nil) [:block/uid :block/string :block/order {(limit :block/children nil) [:block/uid :block/string :block/order {(limit :block/children nil) [:block/uid :block/string :block/order]}]}]}]`;
-function installCommentHost(host, { api: api3, data = api3?.data, now: now4 = () => /* @__PURE__ */ new Date() } = {}) {
+function installCommentHost(host, { api: api3, data = api3?.data, now: now5 = () => /* @__PURE__ */ new Date() } = {}) {
   if (!host || !data) return host;
   const commentsEid = () => {
     try {
@@ -40718,7 +40786,7 @@ function installCommentHost(host, { api: api3, data = api3?.data, now: now4 = ()
     const plan = commentThreadPlan(tree, {
       pageUid: pageUid2,
       targetUid: target,
-      dateTitle: dailyTitle(now4()),
+      dateTitle: dailyTitle(now5()),
       authorTitle,
       generateUid: () => host.generateUid()
     });
@@ -40841,14 +40909,14 @@ function diffFingerprints(prev, next) {
   const changed2 = [];
   const removed = [];
   let reordered = false;
-  for (const [id, now4] of next) {
+  for (const [id, now5] of next) {
     const was = prev.get(id);
     if (!was) {
       changed2.push(id);
       continue;
     }
-    if (was.time !== now4.time || !sameWhys(was.whys, now4.whys)) changed2.push(id);
-    else if (was.order !== now4.order) reordered = true;
+    if (was.time !== now5.time || !sameWhys(was.whys, now5.whys)) changed2.push(id);
+    else if (was.order !== now5.order) reordered = true;
   }
   for (const id of prev.keys()) if (!next.has(id)) removed.push(id);
   return { changed: changed2, removed, reordered };
@@ -41157,10 +41225,10 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
       };
       itemWatch.set(key, w);
       data.addPullWatch(w.pattern, w.entity, w.cb);
-      const now4 = read2(pattern, key);
+      const now5 = read2(pattern, key);
       const seen = published.has(key) ? published.get(key) : content.get(key);
-      if (now4?.[UID] && !sameKids(seen, kidsOf2(now4), depth)) {
-        content.set(key, whole2(now4));
+      if (now5?.[UID] && !sameKids(seen, kidsOf2(now5), depth)) {
+        content.set(key, whole2(now5));
         kick();
       }
     }
@@ -41343,9 +41411,9 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
       if (!Array.isArray(res) || res.length !== ids.length) return fail4();
       for (let i = 0; i < ids.length; i += 1) {
         const n3 = outs.get(ids[i]);
-        const now4 = res[i];
-        if (!now4) return fail4();
-        if (Object.prototype.hasOwnProperty.call(now4, ":block/open")) n3[":block/open"] = now4[":block/open"];
+        const now5 = res[i];
+        if (!now5) return fail4();
+        if (Object.prototype.hasOwnProperty.call(now5, ":block/open")) n3[":block/open"] = now5[":block/open"];
         else delete n3[":block/open"];
       }
     }
@@ -41383,8 +41451,8 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
       calls += 1;
       if (!Array.isArray(res) || res.length !== ids.length) return false;
       for (let j = 0; j < ids.length; j += 1) {
-        const now4 = res[j];
-        if (!now4 || now4[":db/id"] !== ids[j] || now4[":block/open"] !== openVals[i + j]) return false;
+        const now5 = res[j];
+        if (!now5 || now5[":db/id"] !== ids[j] || now5[":block/open"] !== openVals[i + j]) return false;
       }
     }
     return true;
@@ -41419,8 +41487,8 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
       return "bad";
     }
     for (let j = 0; j < ids.length; j += 1) {
-      const now4 = res[j];
-      if (!now4 || now4[":db/id"] !== ids[j] || fieldKey(now4) !== fieldSnap[base + j]) {
+      const now5 = res[j];
+      if (!now5 || now5[":db/id"] !== ids[j] || fieldKey(now5) !== fieldSnap[base + j]) {
         fieldsOk = false;
         return "bad";
       }
@@ -42084,7 +42152,7 @@ function defaultIdle(fn) {
 function createBoardSnapStore({
   indexedDB = globalThis.indexedDB,
   graph = "",
-  now: now4 = Date.now,
+  now: now5 = Date.now,
   idle = defaultIdle,
   lruSize = SNAP_LRU,
   keep = SNAP_KEEP,
@@ -42228,7 +42296,7 @@ function createBoardSnapStore({
     }
     if (!rows.length && !thumbRows.length) return true;
     const list = (await readRecent(handle)).slice();
-    const at = now4();
+    const at = now5();
     for (const row4 of rows) {
       const index = list.findIndex((entry) => entry.uid === row4.uid);
       if (index >= 0) list.splice(index, 1);
@@ -42516,7 +42584,7 @@ function done2(tx) {
     tx.onabort = () => resolve(false);
   });
 }
-function createModelStore({ indexedDB = globalThis.indexedDB, graph = "", now: now4 = Date.now, enabled = () => true, keep = MODEL_KEEP, budget = MODEL_BUDGET } = {}) {
+function createModelStore({ indexedDB = globalThis.indexedDB, graph = "", now: now5 = Date.now, enabled = () => true, keep = MODEL_KEEP, budget = MODEL_BUDGET } = {}) {
   const graphOf = typeof graph === "function" ? graph : () => graph;
   const modelKey2 = (uid) => `model\0${graphOf()}\0${uid}`;
   const metaKey2 = () => `models\0${graphOf()}`;
@@ -42584,7 +42652,7 @@ function createModelStore({ indexedDB = globalThis.indexedDB, graph = "", now: n
         if (!handle) return false;
         const rows = (await readList()).filter((row4) => row4.uid !== uid);
         const fits = model.size <= budget;
-        if (fits) rows.unshift({ uid, stamp: stamp2, savedAt: now4(), size: model.size });
+        if (fits) rows.unshift({ uid, stamp: stamp2, savedAt: now5(), size: model.size });
         const dropped = [];
         let total = 0;
         const keepRows = [];
@@ -42685,7 +42753,7 @@ var BG_GAP_MIN_MS = 5;
 var INPUT_EVENTS = ["wheel", "pointerdown", "pointermove", "keydown", "touchstart", "touchmove"];
 function createBgBudget({
   win: win2 = globalThis,
-  now: now4 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now(),
+  now: now5 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now(),
   ric = (fn, opts) => typeof win2.requestIdleCallback === "function" ? win2.requestIdleCallback(fn, opts) : setTimeout(() => fn({ timeRemaining: () => 12, didTimeout: true }), 0),
   cic = (id) => {
     try {
@@ -42705,7 +42773,7 @@ function createBgBudget({
   let listening = false;
   const onInput = (ev) => {
     if (ev?.type === "pointermove" && !ev.buttons) return;
-    lastInput = now4();
+    lastInput = now5();
   };
   const listen = () => {
     if (listening || typeof win2?.addEventListener !== "function") return;
@@ -42717,7 +42785,7 @@ function createBgBudget({
       }
     }
   };
-  const quietFor = () => now4() - lastInput;
+  const quietFor = () => now5() - lastInput;
   let nextAt = -Infinity;
   const overruns = [];
   listen();
@@ -42744,7 +42812,7 @@ function createBgBudget({
     const run2 = (d) => {
       idleId = null;
       if (cancelled) return;
-      const wait2 = Math.max(quiet - Math.min(quietFor(), now4() - since), urgent ? 0 : nextAt - now4());
+      const wait2 = Math.max(quiet - Math.min(quietFor(), now5() - since), urgent ? 0 : nextAt - now5());
       if (wait2 > 0) {
         timerId = setTimer(() => {
           timerId = null;
@@ -42756,13 +42824,13 @@ function createBgBudget({
         }
         return;
       }
-      const t0 = now4();
+      const t0 = now5();
       const real = typeof d?.timeRemaining === "function" ? d : null;
       const deadline = {
         didTimeout: false,
         timeRemaining: () => {
           if (quietFor() < quietMs) return 0;
-          const left = sliceMs - (now4() - t0);
+          const left = sliceMs - (now5() - t0);
           const idleLeft = real ? d.didTimeout ? 0 : real.timeRemaining() : left;
           return Math.max(0, Math.min(left, idleLeft));
         }
@@ -42770,12 +42838,12 @@ function createBgBudget({
       try {
         fn(deadline);
       } finally {
-        const spent = now4() - t0;
+        const spent = now5() - t0;
         if (spent > 2 * sliceMs) {
           overruns.push({ label: label || "?", ms: Math.round(spent) });
           if (overruns.length > 40) overruns.shift();
         }
-        if (duty > 0 && duty < 1 && spent >= BG_GAP_MIN_MS) nextAt = now4() + spent * (1 - duty) / duty;
+        if (duty > 0 && duty < 1 && spent >= BG_GAP_MIN_MS) nextAt = now5() + spent * (1 - duty) / duty;
       }
     };
     if (delay2 > 0) {
@@ -42813,7 +42881,7 @@ function createBgBudget({
       } while (!done3 && !stopped && deadline.timeRemaining() >= need2());
       if (!done3 && !stopped) cancel = idle(slice, { timeout, quiet, label, urgent });
     };
-    cancel = idle(slice, { timeout, quiet: firstQuiet, since: firstQuiet > quiet ? now4() : -Infinity, label, urgent });
+    cancel = idle(slice, { timeout, quiet: firstQuiet, since: firstQuiet > quiet ? now5() : -Infinity, label, urgent });
     return () => {
       stopped = true;
       cancel?.();
@@ -42823,7 +42891,7 @@ function createBgBudget({
     idle,
     run,
     noteInput: () => {
-      lastInput = now4();
+      lastInput = now5();
     },
     quietFor,
     overruns,
@@ -43319,7 +43387,7 @@ var SPLIT_HOLD_MS = 6e4;
 function isRateLimitError(error) {
   return /mutation rate limit|rate limit exceeded/i.test(String(error?.message ?? error ?? ""));
 }
-function createWritePacer({ now: now4 = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), burst = WRITE_BURST, gapMs = WRITE_GAP_MS, cap: cap4 = WRITE_CAP, windowMs = 6e4 } = {}) {
+function createWritePacer({ now: now5 = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), burst = WRITE_BURST, gapMs = WRITE_GAP_MS, cap: cap4 = WRITE_CAP, windowMs = 6e4 } = {}) {
   const stamps = [];
   const writes = [];
   let chain = Promise.resolve();
@@ -43328,17 +43396,17 @@ function createWritePacer({ now: now4 = Date.now, sleep = (ms) => new Promise((r
     while (writes.length && t - writes[0] >= windowMs) writes.shift();
   };
   const take = async () => {
-    let t = now4();
+    let t = now5();
     trim(t);
     if (stamps.length >= cap4) {
       await sleep(stamps[0] + windowMs - t);
-      t = now4();
+      t = now5();
       trim(t);
     } else if (writes.length >= burst) {
       const wait2 = writes[writes.length - 1] + gapMs - t;
       if (wait2 > 0) {
         await sleep(wait2);
-        t = now4();
+        t = now5();
       }
     }
     stamps.push(t);
@@ -43354,24 +43422,24 @@ function createWritePacer({ now: now4 = Date.now, sleep = (ms) => new Promise((r
     },
     // A call that Roam counts but that does not wait (add/removePullWatch): it counts toward the cap only.
     note() {
-      const t = now4();
+      const t = now5();
       trim(t);
       stamps.push(t);
     },
     // Roam refused a write: count the window as full so the next write waits it out.
     saturate() {
-      const t = now4();
+      const t = now5();
       trim(t);
       while (stamps.length < cap4) stamps.push(t);
     },
     get recent() {
-      trim(now4());
+      trim(now5());
       return stamps.length;
     }
   };
 }
 var canon = (v) => typeof v === "string" ? v : JSON.stringify(v);
-function createEchoLedger({ graceMs = 800, now: now4 = Date.now } = {}) {
+function createEchoLedger({ graceMs = 800, now: now5 = Date.now } = {}) {
   const state = /* @__PURE__ */ new Map();
   const keyOf2 = (uid, field) => `${uid}\0${field}`;
   const get = (uid, field, create) => {
@@ -43393,7 +43461,7 @@ function createEchoLedger({ graceMs = 800, now: now4 = Date.now } = {}) {
       const s = get(uid, field, false);
       if (!s) return;
       s.inflight = Math.max(0, s.inflight - 1);
-      if (s.inflight === 0) s.graceUntil = now4() + graceMs;
+      if (s.inflight === 0) s.graceUntil = now5() + graceMs;
     },
     accept(uid, field, value) {
       const k = keyOf2(uid, field);
@@ -43401,14 +43469,14 @@ function createEchoLedger({ graceMs = 800, now: now4 = Date.now } = {}) {
       if (!s) return true;
       const v = canon(value);
       const idle = s.inflight === 0;
-      if (idle && now4() >= s.graceUntil) {
+      if (idle && now5() >= s.graceUntil) {
         state.delete(k);
         return true;
       }
       const idx = s.pending.lastIndexOf(v);
       if (idx >= 0 && idx === s.pending.length - 1) {
         s.pending = [];
-        if (idle) s.graceUntil = now4() + graceMs;
+        if (idle) s.graceUntil = now5() + graceMs;
         return false;
       }
       return false;
@@ -43426,7 +43494,7 @@ function createEchoLedger({ graceMs = 800, now: now4 = Date.now } = {}) {
     }
   };
 }
-function createViewportStore({ storage = globalThis.localStorage, graph = "", now: now4 = Date.now } = {}) {
+function createViewportStore({ storage = globalThis.localStorage, graph = "", now: now5 = Date.now } = {}) {
   const key = (uid) => `plexus-diagram:vp:${graph}:${uid}`;
   const lastWrite = /* @__PURE__ */ new Map();
   const latest = /* @__PURE__ */ new Map();
@@ -43438,7 +43506,7 @@ function createViewportStore({ storage = globalThis.localStorage, graph = "", no
       storage?.setItem(key(uid), JSON.stringify(latest.get(uid)));
     } catch {
     }
-    lastWrite.set(uid, now4());
+    lastWrite.set(uid, now5());
     latest.delete(uid);
   };
   return {
@@ -43455,7 +43523,7 @@ function createViewportStore({ storage = globalThis.localStorage, graph = "", no
     set(uid, vp) {
       if (!vp) return;
       latest.set(uid, { x: vp.x, y: vp.y, zoom: vp.zoom });
-      const since = now4() - (lastWrite.get(uid) ?? -Infinity);
+      const since = now5() - (lastWrite.get(uid) ?? -Infinity);
       if (since >= 500) {
         flush(uid);
         return;
@@ -43720,9 +43788,9 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     if (!ids.length || typeof data.pull_many !== "function") return uids.length;
     const res = data.pull_many(BLOCK_PROPS_PATTERN, ids.map((u) => [":block/uid", u]));
     if (!Array.isArray(res) || res.length !== ids.length) return uids.length;
-    const now4 = Date.now();
+    const now5 = Date.now();
     if (at === 0) primedProps.clear();
-    for (let i = 0; i < ids.length; i += 1) primedProps.set(ids[i], { at: now4, res: res[i] ?? null });
+    for (let i = 0; i < ids.length; i += 1) primedProps.set(ids[i], { at: now5, res: res[i] ?? null });
     return at + ids.length;
   };
   const adoptedTrees = /* @__PURE__ */ new Map();
@@ -44502,8 +44570,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   let coverAsks = { at: 0, urls: /* @__PURE__ */ new Set() };
   let coverIndex = null;
   const coverIndexNow = () => {
-    const now4 = Date.now();
-    if (coverIndex && now4 - coverIndex.at < coverIndex.ttl) return coverIndex;
+    const now5 = Date.now();
+    if (coverIndex && now5 - coverIndex.at < coverIndex.ttl) return coverIndex;
     const t0 = Date.now();
     const pages = /* @__PURE__ */ new Map();
     for (const row4 of queryRows(host, PDF_PAGES_ALL_QUERY)) {
@@ -44515,7 +44583,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     for (const row4 of queryRows(host, PDF_PAGE_COUNTS_ALL_QUERY)) {
       if (Array.isArray(row4) && typeof row4[0] === "string" && Number(row4[1]) > 0) counts.set(row4[0], Number(row4[1]));
     }
-    coverIndex = { at: now4, ttl: Math.max(COVER_INDEX_MIN_MS, (Date.now() - t0) * 40), pages, counts };
+    coverIndex = { at: now5, ttl: Math.max(COVER_INDEX_MIN_MS, (Date.now() - t0) * 40), pages, counts };
     noteCoverBoards();
     return coverIndex;
   };
@@ -44548,8 +44616,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   };
   let coverWarm = null;
   const coverIndexPart = (i) => {
-    const now4 = Date.now();
-    if (coverIndex && now4 - coverIndex.at < coverIndex.ttl) return true;
+    const now5 = Date.now();
+    if (coverIndex && now5 - coverIndex.at < coverIndex.ttl) return true;
     if (i === 0 || !coverWarm) {
       const t02 = Date.now();
       const pages = /* @__PURE__ */ new Map();
@@ -44558,7 +44626,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         if (!pages.has(row4[0])) pages.set(row4[0], []);
         pages.get(row4[0]).push({ uid: row4[1], title: typeof row4[2] === "string" ? row4[2] : "", url: row4[0] });
       }
-      coverWarm = { at: now4, pages, ms: Date.now() - t02 };
+      coverWarm = { at: now5, pages, ms: Date.now() - t02 };
       return false;
     }
     const t0 = Date.now();
@@ -44571,10 +44639,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     return true;
   };
   const useCoverIndex = (url) => {
-    const now4 = Date.now();
-    if (now4 - coverAsks.at > COVER_INDEX_MIN_MS) coverAsks = { at: now4, urls: /* @__PURE__ */ new Set() };
+    const now5 = Date.now();
+    if (now5 - coverAsks.at > COVER_INDEX_MIN_MS) coverAsks = { at: now5, urls: /* @__PURE__ */ new Set() };
     coverAsks.urls.add(url);
-    return coverAsks.urls.size >= COVER_INDEX_URLS || Boolean(coverIndex && now4 - coverIndex.at < coverIndex.ttl);
+    return coverAsks.urls.size >= COVER_INDEX_URLS || Boolean(coverIndex && now5 - coverIndex.at < coverIndex.ttl);
   };
   const readPdfCover = (url) => {
     if (useCoverIndex(url)) {
@@ -44608,8 +44676,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const filterBrowseCache = /* @__PURE__ */ new Map();
   let userEids = null;
   const userIdsFor = (name) => {
-    const now4 = Date.now();
-    if (!userEids || now4 - userEids.at > 5 * 6e4) {
+    const now5 = Date.now();
+    if (!userEids || now5 - userEids.at > 5 * 6e4) {
       const map = /* @__PURE__ */ new Map();
       for (const query of USER_EID_QUERIES) {
         for (const [eid, n3] of host.q(query) || []) {
@@ -44619,19 +44687,19 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           if (!map.get(key).includes(eid)) map.get(key).push(eid);
         }
       }
-      userEids = { at: now4, map };
+      userEids = { at: now5, map };
     }
     return userEids.map.get(String(name).toLowerCase()) || null;
   };
   let highlightUrls = null;
   const highlightCounts = (timed) => {
-    const now4 = Date.now();
-    if (highlightUrls && now4 - highlightUrls.at < FILTER_BROWSE_TTL_MS) return highlightUrls.map;
+    const now5 = Date.now();
+    if (highlightUrls && now5 - highlightUrls.at < FILTER_BROWSE_TTL_MS) return highlightUrls.map;
     const map = /* @__PURE__ */ new Map();
     for (const [url, props] of timed("pdf-highlights", () => host.q(PDF_HIGHLIGHTS_QUERY))) {
       if (typeof url === "string" && hasPdfHighlight(props)) map.set(url, (map.get(url) || 0) + 1);
     }
-    highlightUrls = { at: now4, map };
+    highlightUrls = { at: now5, map };
     return map;
   };
   const pdfKeep = (rows, { parsed = false, highlights = false, parsedUrls = null } = {}, timed) => {
@@ -45324,8 +45392,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (!modelStore || !trustOn() || !id || refreshes.has(id) || unverified.has(id) || !bigBoards.has(id)) return false;
       const split = splitWatches.get(id);
       if (!split || split.held || split.disposed) return false;
-      const now4 = pageStampOf(id);
-      if (!now4 || modelStore.stampOf(id) === now4) return false;
+      const now5 = pageStampOf(id);
+      if (!now5 || modelStore.stampOf(id) === now5) return false;
       const cancel = backgroundRead(id, "refresh", (tree, stamp2) => {
         refreshes.delete(id);
         if (tree && stamp2) keepModel(id, tree, stamp2);
@@ -45629,7 +45697,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // A ref target is joined into the board pull, but the board watch does not fire when it changes.
     blockStrings(uids, { fresh = false } = {}) {
       const out = /* @__PURE__ */ new Map();
-      const now4 = Date.now();
+      const now5 = Date.now();
       const missing2 = [];
       for (const uid of uids || []) {
         const id = String(uid ?? "");
@@ -45645,7 +45713,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           continue;
         }
         const hit = burstMemo.get(id);
-        if (hit && now4 - hit.at < BURST_MS) {
+        if (hit && now5 - hit.at < BURST_MS) {
           out.set(id, hit.value);
           continue;
         }
@@ -45664,7 +45732,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       for (const id of missing2) {
         const value = found.has(id) ? found.get(id) : null;
         out.set(id, value);
-        burstMemo.set(id, { value, at: now4 });
+        burstMemo.set(id, { value, at: now5 });
         if (fresh && typeof value === "string") {
           const node2 = cache.blockOf(id);
           if (node2 && typeof node2 === "object") node2[":block/string"] = value;
@@ -47000,15 +47068,15 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // Reads one page-level query (titles and times, never blocks) and keeps `limit` rows.
     browse(sort = "edited", limit = 40) {
       const id = ["edited", "created", "oldest", "title"].includes(sort) ? sort : "edited";
-      const now4 = Date.now();
-      if (!browsePages || now4 - browsePages.at > BROWSE_TTL_MS) {
+      const now5 = Date.now();
+      if (!browsePages || now5 - browsePages.at > BROWSE_TTL_MS) {
         const pages = [];
         for (const [p] of host.q(`[:find (pull ?p [:node/title :block/uid :create/time :edit/time]) :where [?p :node/title]]`) || []) {
           const title = p?.[":node/title"];
           const uid = p?.[":block/uid"];
           if (typeof title === "string" && !title.startsWith("roam/") && uid) pages.push({ title, uid: String(uid), created: Number(p[":create/time"]) || null, edited: Number(p[":edit/time"]) || null });
         }
-        browsePages = { at: now4, pages };
+        browsePages = { at: now5, pages };
       }
       const rows = browsePages.pages.map((p) => ({ kind: "page", title: p.title, uid: p.uid, meta: { created: p.created, edited: p.edited, createdBy: "", editedBy: "", refs: null, children: null, length: null }, onBoard: false, tags: [] }));
       const top = sortRows(rows, id).slice(0, Math.max(1, Math.floor(Number(limit) || 40)));
@@ -47034,12 +47102,12 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         return out;
       };
       const lim = Math.max(1, Math.floor(Number(limit) || 40));
-      const now4 = Date.now();
-      const spec = browseSpec(filter, { now: now4 });
+      const now5 = Date.now();
+      const spec = browseSpec(filter, { now: now5 });
       if (!spec) return { rows: [], queries, spec: null, defaulted: false };
       const key = typeof keep === "function" ? "" : browseKey(spec, sort, lim, [parsedUrls instanceof Set ? parsedUrls.size : -1, spec.orphan ? structureEpoch : 0]);
       const hit = key ? filterBrowseCache.get(key) : null;
-      if (hit && now4 - hit.at < FILTER_BROWSE_TTL_MS) {
+      if (hit && now5 - hit.at < FILTER_BROWSE_TTL_MS) {
         queries.push({ name: "browse-cache", ms: 0 });
         return { rows: hit.rows, total: hit.total ?? hit.rows.length, more: hit.more === true, queries, spec, defaulted: spec.defaulted };
       }
@@ -47138,7 +47206,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const rows = top.map((r) => libraryCard(r));
       if (key) {
         filterBrowseCache.delete(key);
-        filterBrowseCache.set(key, { at: now4, rows, total: kept.length, more: kept.length > lim || !pdfOnly && kept.length >= Math.max(BROWSE_ROWS, lim) });
+        filterBrowseCache.set(key, { at: now5, rows, total: kept.length, more: kept.length > lim || !pdfOnly && kept.length >= Math.max(BROWSE_ROWS, lim) });
         while (filterBrowseCache.size > FILTER_BROWSE_MAX) filterBrowseCache.delete(filterBrowseCache.keys().next().value);
       }
       return { rows, total: kept.length, more: kept.length > lim || !pdfOnly && kept.length >= Math.max(BROWSE_ROWS, lim), queries, spec, defaulted: spec.defaulted };
@@ -48295,7 +48363,7 @@ function unknownKeys(plexus, known2) {
   for (const [k, v] of Object.entries(plexus ?? {})) if (!known2.includes(k)) out[k] = v;
   return out;
 }
-function createSession(uid, { host, settings = null, virtual = false, raf: raf2, now: now4 = Date.now, idle, linkDelay = 1500, graceMs = 800, confirmBulk = null, syncHold = null } = {}) {
+function createSession(uid, { host, settings = null, virtual = false, raf: raf2, now: now5 = Date.now, idle, linkDelay = 1500, graceMs = 800, confirmBulk = null, syncHold = null } = {}) {
   const schedule = raf2 ?? ((fn) => {
     if (typeof globalThis.requestAnimationFrame === "function") return globalThis.requestAnimationFrame(fn);
     const t = setTimeout(fn, 0);
@@ -48328,7 +48396,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     syncState = state;
     emit2("sync", state);
   };
-  const ledger = createEchoLedger({ graceMs, now: now4 });
+  const ledger = createEchoLedger({ graceMs, now: now5 });
   let destroyed = false;
   let raw = clone(host.pullBoard(uid, { light: true }));
   let board2 = null;
@@ -50866,8 +50934,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           loc = null;
         }
         if (!loc || loc.parentUid !== f.parentUid) continue;
-        const now5 = host.pullEntity?.("[:block/string]", f.queryUid)?.[":block/string"];
-        if (!hasQueryMacro(now5)) continue;
+        const now6 = host.pullEntity?.("[:block/string]", f.queryUid)?.[":block/string"];
+        if (!hasQueryMacro(now6)) continue;
         folds.push({ ...f, order: loc.order });
       }
       if (!folds.length) return Promise.resolve({ folded: 0 });
@@ -52685,10 +52753,10 @@ extendSession((session, api3) => {
 // src/snapshots.js
 init_snapshots();
 extendSession((session, api3) => {
-  session.saveSnapshot = (now4 = /* @__PURE__ */ new Date()) => {
+  session.saveSnapshot = (now5 = /* @__PURE__ */ new Date()) => {
     const board2 = api3.board();
     if (!board2) return Promise.resolve(null);
-    const title = snapshotTitle(now4);
+    const title = snapshotTitle(now5);
     if (!title) return Promise.resolve(null);
     const items = captureLayout(board2);
     return api3.txn((t) => {
@@ -53221,6 +53289,7 @@ function createHitShield({ doc, root, onWheel, onPress: onPress2, enabled = () =
 
 // src/view/gesture-underlay.js
 var MAX_SIDE = 2048;
+var PALETTE2 = ["gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
 function createGestureUnderlay({ doc, world, root, before = null } = {}) {
   let canvas = null;
   let shown = false;
@@ -53246,11 +53315,36 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     colorCache = { card: read2("--pxd-card", "rgba(128,128,128,0.35)"), line: read2("--pxd-muted", "rgba(128,128,128,0.6)") };
     return colorCache;
   };
+  const paletteColors = () => {
+    const c = colors();
+    if (c.palette) return c;
+    const read2 = (name, fallback) => {
+      let v = "";
+      try {
+        v = root?.style?.getPropertyValue?.(name) || "";
+      } catch {
+        v = "";
+      }
+      if (!v) {
+        try {
+          v = doc.defaultView?.getComputedStyle?.(root)?.getPropertyValue?.(name) || "";
+        } catch {
+          v = "";
+        }
+      }
+      return String(v).trim() || fallback;
+    };
+    c.palette = {};
+    for (const name of PALETTE2) c.palette[name] = read2(`--pxd-${name}-line`, c.line);
+    c.accent = read2("--pxd-accent", "hsl(175 80% 30%)");
+    c.border = read2("--pxd-border", c.line);
+    return c;
+  };
   const hide = () => {
     shown = false;
     if (canvas && canvas.style.display !== "none") canvas.style.display = "none";
   };
-  const draw = ({ items = [], edges = [], zoom = 1, dpr = 1 } = {}) => {
+  const draw = ({ items = [], edges = [], zoom = 1, dpr = 1, styled = false } = {}) => {
     if (!items.length && !edges.length) {
       hide();
       return 0;
@@ -53292,7 +53386,7 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       return 0;
     }
     try {
-      paint2(ctx, { items, edges, c, scale, x0, y0, bw, bh });
+      paint2(ctx, { items, edges, c, scale, x0, y0, bw, bh, styled });
     } catch {
       hide();
       return 0;
@@ -53301,7 +53395,54 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     shown = true;
     return items.length;
   };
-  const paint2 = (ctx, { items, edges, c, scale, x0, y0, bw, bh }) => {
+  const drawOverview = ({ items = [], edges = [], zoom = 1, dpr = 1 } = {}) => {
+    if (!items.length && !edges.length) {
+      hide();
+      return 0;
+    }
+    paletteColors();
+    return draw({ items, edges, zoom, dpr, styled: true });
+  };
+  const paintStyled = (ctx, { items, c, scale }) => {
+    const groups2 = /* @__PURE__ */ new Map();
+    const outline = [];
+    const marked = [];
+    for (const item of items) {
+      const fill = item.color && c.palette?.[item.color] ? c.palette[item.color] : c.card;
+      const key = `${fill}\0${item.dim ? 1 : 0}`;
+      let list = groups2.get(key);
+      if (!list) {
+        list = { fill, dim: Boolean(item.dim), rects: [] };
+        groups2.set(key, list);
+      }
+      list.rects.push(item.rect);
+      if (!item.color || !c.palette?.[item.color]) outline.push(item.rect);
+      if (item.hit || item.selected) marked.push(item.rect);
+    }
+    for (const { fill, dim, rects } of groups2.values()) {
+      ctx.globalAlpha = dim ? 0.25 : 1;
+      ctx.fillStyle = fill;
+      for (const r of rects) ctx.fillRect(r.x, r.y, r.w, r.h);
+    }
+    if (outline.length) {
+      ctx.globalAlpha = 0.8;
+      ctx.strokeStyle = c.border;
+      ctx.lineWidth = 1 / scale;
+      ctx.beginPath();
+      for (const r of outline) ctx.rect(r.x, r.y, r.w, r.h);
+      ctx.stroke();
+    }
+    if (marked.length) {
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = c.accent;
+      ctx.lineWidth = 2 / scale;
+      ctx.beginPath();
+      for (const r of marked) ctx.rect(r.x, r.y, r.w, r.h);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  };
+  const paint2 = (ctx, { items, edges, c, scale, x0, y0, bw, bh, styled = false }) => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, bw, bh);
     ctx.setTransform(scale, 0, 0, scale, -x0 * scale, -y0 * scale);
@@ -53317,6 +53458,10 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
+    if (styled) {
+      paintStyled(ctx, { items, c, scale });
+      return;
+    }
     ctx.fillStyle = c.card;
     for (const { rect: r } of items) ctx.fillRect(r.x, r.y, r.w, r.h);
   };
@@ -53331,7 +53476,7 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
   const dropColors = () => {
     colorCache = null;
   };
-  return { draw, hide, dispose, dropColors, isShown: () => shown, element: () => canvas };
+  return { draw, drawOverview, hide, dispose, dropColors, isShown: () => shown, element: () => canvas };
 }
 
 // src/view/board-view.js
@@ -54883,15 +55028,15 @@ function normCount(value, cap4) {
   if (!Number.isFinite(n3) || n3 <= 0 || !(cap4 > 0)) return 0;
   return Math.min(n3, cap4) / cap4;
 }
-function recencyNorm(editTime, now4) {
-  if (!Number.isFinite(editTime) || !Number.isFinite(now4)) return 0;
-  const days = Math.max(0, now4 - editTime) / DAY3;
+function recencyNorm(editTime, now5) {
+  if (!Number.isFinite(editTime) || !Number.isFinite(now5)) return 0;
+  const days = Math.max(0, now5 - editTime) / DAY3;
   return Math.exp(-Math.LN2 * days / RECENCY_HALF_LIFE_DAYS);
 }
-function strengthScore(components = {}, { trackOpens = false, now: now4 = components?.now ?? Date.now() } = {}) {
+function strengthScore(components = {}, { trackOpens = false, now: now5 = components?.now ?? Date.now() } = {}) {
   const refs = normCount(components?.refs, REFS_CAP);
   const shared4 = normCount(components?.shared, SHARED_CAP);
-  const recency = recencyNorm(components?.editTime ?? components?.edit, now4);
+  const recency = recencyNorm(components?.editTime ?? components?.edit, now5);
   if (trackOpens !== true) return clamp014(0.6 * refs + 0.25 * shared4 + 0.15 * recency);
   const opens = normCount(components?.opens, OPENS_CAP);
   return clamp014(0.5 * refs + 0.2 * shared4 + 0.15 * recency + 0.15 * opens);
@@ -54915,10 +55060,10 @@ function stampsOf(item) {
     now: Number.isFinite(item?.now) ? item.now : Date.now()
   };
 }
-function dustAge(editTime, createTime, now4) {
+function dustAge(editTime, createTime, now5) {
   const stamps = [editTime, createTime].filter((n3) => Number.isFinite(n3));
-  if (!stamps.length || !Number.isFinite(now4)) return null;
-  return Math.max(0, now4 - Math.max(...stamps));
+  if (!stamps.length || !Number.isFinite(now5)) return null;
+  return Math.max(0, now5 - Math.max(...stamps));
 }
 function dusty(item, period) {
   const limit = dustLimit(period);
@@ -54950,10 +55095,10 @@ function explain(components = {}) {
   const refs = countPhrase(components?.refs, "ref", "refs");
   const shared4 = countPhrase(components?.shared, "shared board", "shared boards");
   const edit = components?.editTime ?? components?.edit;
-  const now4 = Number.isFinite(components?.now) ? components.now : Date.now();
+  const now5 = Number.isFinite(components?.now) ? components.now : Date.now();
   let when = "not edited";
   if (Number.isFinite(edit)) {
-    const part = ageParts(Math.max(0, now4 - edit));
+    const part = ageParts(Math.max(0, now5 - edit));
     when = part.unit === "today" ? "edited today" : `edited ${part.n} ${part.n === 1 ? part.unit : `${part.unit}s`} ago`;
   }
   return `${refs}, ${shared4}, ${when}`;
@@ -55440,7 +55585,7 @@ function mountMemoryLane({
   items = [],
   edges = [],
   snapshots = [],
-  now: now4 = Date.now(),
+  now: now5 = Date.now(),
   motion = "full",
   onFrame,
   onPreview,
@@ -55448,8 +55593,8 @@ function mountMemoryLane({
   clearTimer = (id) => clearTimeout(id)
 } = {}) {
   const index = timeIndex(items);
-  const start = index.length ? index[0].time : now4;
-  const end = now4;
+  const start = index.length ? index[0].time : now5;
+  const end = now5;
   const steps = monthSteps(start, end);
   const bar = doc.createElement("div");
   bar.className = "pxd-memory";
@@ -55905,7 +56050,7 @@ async function revealZoomedBlock(target, io = {}) {
   const cardUid = target?.cardUid;
   const blockUid3 = String(target?.blockUid || "") || cardUid;
   if (!boardUid || !cardUid || !blockUid3) return false;
-  const now4 = typeof io.now === "function" ? io.now : () => Date.now();
+  const now5 = typeof io.now === "function" ? io.now : () => Date.now();
   const budget = Number(io.budgetMs) > 0 ? Number(io.budgetMs) : ZOOM_BUDGET_MS;
   const tick = Number(io.tickMs) > 0 ? Number(io.tickMs) : ZOOM_TICK_MS;
   let mounted = "";
@@ -55926,7 +56071,7 @@ async function revealZoomedBlock(target, io = {}) {
   if (io.stopped?.()) return false;
   const child = blockUid3 !== cardUid;
   if (child) {
-    const start = now4();
+    const start = now5();
     let seen = false;
     while (true) {
       if (io.stopped?.()) return false;
@@ -55944,7 +56089,7 @@ async function revealZoomedBlock(target, io = {}) {
         seen = true;
         break;
       }
-      if (now4() - start >= budget || typeof io.wait !== "function") break;
+      if (now5() - start >= budget || typeof io.wait !== "function") break;
       await io.wait(tick);
     }
     if (!seen) return false;
@@ -56767,10 +56912,21 @@ function createInteractions({ actions, settings } = {}) {
     }
     const emptyPans = (state.tool === "select" || state.tool === "connect") && !ev.shift && setting("empty-drag", "pan") !== "select";
     if (emptyPans) {
-      begin({ kind: "pan", start: ev.screen, vp0: { ...vp() }, clearOnClick: true });
+      begin({ kind: "pan", start: ev.screen, vp0: { ...vp() }, clearOnClick: true, canvasUid: t.canvasUid || null, multi: Boolean(ev.meta || ev.ctrl) });
       return;
     }
-    begin({ kind: "marquee", start: ev.world, base: ev.shift ? new Set(state.selection) : /* @__PURE__ */ new Set(), shift: ev.shift });
+    begin({ kind: "marquee", start: ev.world, base: ev.shift ? new Set(state.selection) : /* @__PURE__ */ new Set(), shift: ev.shift, canvasUid: t.canvasUid || null, multi: Boolean(ev.meta || ev.ctrl) });
+  };
+  const clickCanvasCard = (g) => {
+    const uid = g.canvasUid;
+    if (!uid || !board2()?.items.has(uid)) return false;
+    if (g.multi || g.shift) {
+      const next = new Set(state.selection);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      selectItems(next);
+    } else selectItems([uid]);
+    return true;
   };
   const onPointerMove = (ev) => {
     if (ev.pointerId != null && fingers.has(ev.pointerId)) {
@@ -56980,7 +57136,7 @@ function createInteractions({ actions, settings } = {}) {
     const r = rects();
     switch (g.kind) {
       case "pan":
-        if (!g.moved && g.clearOnClick) clearSelection();
+        if (!g.moved && g.clearOnClick && !clickCanvasCard(g)) clearSelection();
         break;
       case "label": {
         if (!g.moved && g.edge) {
@@ -56992,6 +57148,7 @@ function createInteractions({ actions, settings } = {}) {
       }
       case "marquee":
       case "lasso":
+        if (!g.moved && g.canvasUid && clickCanvasCard(g)) break;
         if (!g.moved && !g.shift) clearSelection();
         break;
       case "section-draw": {
@@ -58538,9 +58695,9 @@ function planVlmBatches(pages, regions) {
 var TOKEN_BACKUP_KEY = "plexus-diagram:parse-helper-token";
 var PAIR_POLL_MS = 500;
 var PAIR_WAIT_MS = 6e4;
-function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, now: now4, sleep, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
+function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, now: now5, sleep, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
   const fetchFn = fetchImpl;
-  const clock = typeof now4 === "function" ? now4 : () => Date.now();
+  const clock = typeof now5 === "function" ? now5 : () => Date.now();
   let healthCache = null;
   let probeCache = null;
   let vlmOn = false;
@@ -64133,7 +64290,7 @@ function createDragGhost({
   grab: grabAt = null,
   previewMin = null,
   footprint = null,
-  now: now4 = () => globalThis.performance?.now?.() ?? Date.now()
+  now: now5 = () => globalThis.performance?.now?.() ?? Date.now()
 } = {}) {
   const win2 = doc?.defaultView || globalThis;
   const host = root || doc?.body;
@@ -64182,7 +64339,7 @@ function createDragGhost({
   };
   const footing = () => zone === "board" && targetScale("board") > zoneScale("board", zoomNow) + 1e-6;
   let foot = null;
-  let anim = { fromX: sx, fromY: sy, to: targetScale(zone), at: now4(), ms: MORPH_MS };
+  let anim = { fromX: sx, fromY: sy, to: targetScale(zone), at: now5(), ms: MORPH_MS };
   let raf2 = 0;
   let dirty = true;
   let ended = false;
@@ -64223,10 +64380,10 @@ function createDragGhost({
     foot.style.height = `${r.h.toFixed(1)}px`;
     foot.style.transform = `translate3d(${(r.x - origin.x).toFixed(1)}px, ${(r.y - origin.y).toFixed(1)}px, 0)`;
   }
-  function frame2(at = now4()) {
+  function frame2(at = now5()) {
     raf2 = 0;
     if (ended) return false;
-    const t0 = now4();
+    const t0 = now5();
     const k = anim ? easeOut((at - anim.at) / anim.ms) : 1;
     if (anim) {
       sx = anim.fromX + (anim.to - anim.fromX) * k;
@@ -64241,7 +64398,7 @@ function createDragGhost({
       painted = { x: at2.x, y: at2.y, sx, sy, zone };
     }
     dirty = false;
-    const spent = now4() - t0;
+    const spent = now5() - t0;
     timing.frames += 1;
     timing.total += spent;
     timing.max = Math.max(timing.max, spent);
@@ -64255,7 +64412,7 @@ function createDragGhost({
       frame2();
       return;
     }
-    raf2 = req(() => frame2(now4()));
+    raf2 = req(() => frame2(now5()));
   }
   const stop3 = () => {
     ended = true;
@@ -64299,7 +64456,7 @@ function createDragGhost({
       const next = rects.rootRect ? zoneAt(current3.x, current3.y, rects) : zone;
       if (next !== zone) {
         zone = next;
-        anim = { fromX: sx, fromY: sy, to: targetScale(zone), at: now4(), ms: LAND_MS };
+        anim = { fromX: sx, fromY: sy, to: targetScale(zone), at: now5(), ms: LAND_MS };
       }
       dirty = true;
       schedule();
@@ -64376,10 +64533,10 @@ function startPlacement({
   blocked: blocked3 = null,
   onPlace = null,
   onCancel = null,
-  now: now4
+  now: now5
 } = {}) {
   const win2 = doc?.defaultView || globalThis;
-  const ghost = createDragGhost({ doc, root, pane, from, pointer, content, width, footprint, zoom, blocked: blocked3, grab: PLACE_GRAB, previewMin: PLACE_PREVIEW_MIN, ...now4 ? { now: now4 } : {} });
+  const ghost = createDragGhost({ doc, root, pane, from, pointer, content, width, footprint, zoom, blocked: blocked3, grab: PLACE_GRAB, previewMin: PLACE_PREVIEW_MIN, ...now5 ? { now: now5 } : {} });
   try {
     ghost.element().classList.add("pxd-ghost--place");
   } catch {
@@ -64390,7 +64547,7 @@ function startPlacement({
   }
   let done3 = false;
   let swallowUntil = 0;
-  const clock = () => typeof now4 === "function" ? now4() : globalThis.performance?.now?.() ?? Date.now();
+  const clock = () => typeof now5 === "function" ? now5() : globalThis.performance?.now?.() ?? Date.now();
   const bound = [];
   const on = (type, fn) => {
     win2?.addEventListener?.(type, fn, true);
@@ -65966,12 +66123,12 @@ function createAnydocHost({
   fetch: fetchImpl,
   caches: cachesImpl,
   origin = ANYDOC_ORIGIN,
-  now: now4,
+  now: now5,
   engine
 } = {}) {
   const fetchFn = fetchImpl || globalThis.fetch?.bind(globalThis);
   const cachesApi = cachesImpl === void 0 ? globalThis.caches : cachesImpl;
-  const clock = typeof now4 === "function" ? now4 : () => typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+  const clock = typeof now5 === "function" ? now5 : () => typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
   const glue = engine?.init || __wbg_init;
   const convertBytes = engine?.toMarkdownBytes || toMarkdownBytes;
   let ready = null;
@@ -66433,10 +66590,10 @@ async function helperParse({ fetch: fetch2, transport, bytes, apiKey, region, ti
   if (!provider) throw fail2("bad-response", "cloud parse returned no result");
   return provider;
 }
-async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tier, pages, layout = true, signal, onProgress, sleep, now: now4, timeoutMs }) {
+async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tier, pages, layout = true, signal, onProgress, sleep, now: now5, timeoutMs }) {
   const headers = { Authorization: `Bearer ${apiKey}` };
   if (!transport.direct) headers["X-Pxd-Region"] = region === "eu" ? "eu" : "us";
-  const clock = now4;
+  const clock = now5;
   const pause = sleep;
   const deadline = clock() + timeoutMs;
   const form = new FormData();
@@ -66519,7 +66676,7 @@ async function parseCloud({
   signal,
   onProgress,
   sleep = wait,
-  now: now4 = () => Date.now(),
+  now: now5 = () => Date.now(),
   timeoutMs = DEFAULT_TIMEOUT_MS
 } = {}) {
   if (confirmed !== true) throw fail2("confirm", "confirm required");
@@ -66557,7 +66714,7 @@ async function parseCloud({
         signal,
         onProgress,
         sleep,
-        now: now4,
+        now: now5,
         timeoutMs
       });
       return { provider, transport: "relay" };
@@ -67979,7 +68136,7 @@ async function writeClipboard({ text: text4 = "", mime = null, data = null } = {
   area2.remove();
   return ok;
 }
-function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTextEntry, on = {}, now: now4 = () => Date.now() } = {}) {
+function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTextEntry, on = {}, now: now5 = () => Date.now() } = {}) {
   const offs = [];
   const win2 = doc.defaultView ?? globalThis.window;
   let lastCloneKey = -Infinity;
@@ -68019,7 +68176,7 @@ function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTe
     if (active2(event) && copy(event, true)) on.cutDone?.();
   }, true);
   listen(win2, "keydown", (event) => {
-    if ((event.metaKey || event.ctrlKey) && event.shiftKey && String(event.key).toLowerCase() === "v") lastCloneKey = now4();
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && String(event.key).toLowerCase() === "v") lastCloneKey = now5();
   }, true);
   listen(win2, "paste", (event) => {
     if (!editorNode(event)) return;
@@ -68034,7 +68191,7 @@ function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTe
     const parsed = parseClipboard(event.clipboardData);
     if (!parsed) return;
     event.preventDefault();
-    if (parsed.kind === "plexus") on.pastePlexus?.(parsed.data, { clone: now4() - lastCloneKey <= CLONE_WINDOW_MS });
+    if (parsed.kind === "plexus") on.pastePlexus?.(parsed.data, { clone: now5() - lastCloneKey <= CLONE_WINDOW_MS });
     else if (parsed.kind === "card-json") on.pasteCardJson?.(parsed.data);
     else if (parsed.kind === "images") on.pasteImages?.(parsed.files);
     else on.pasteText?.(parsed.entries);
@@ -68754,7 +68911,7 @@ async function shrinkImage(blob, { doc = globalThis.document, maxSide = MAX_SIDE
   }
 }
 var extOf = (blob) => /jpe?g/i.test(blob?.type || "") ? "jpg" : "png";
-function createFigureImages({ store = null, upload = null, encrypted = null, enabled = null, fetchFn = null, shrink = shrinkImage, now: now4 = Date.now } = {}) {
+function createFigureImages({ store = null, upload = null, encrypted = null, enabled = null, fetchFn = null, shrink = shrinkImage, now: now5 = Date.now } = {}) {
   const inflight = /* @__PURE__ */ new Map();
   const isOn = () => {
     try {
@@ -68821,7 +68978,7 @@ function createFigureImages({ store = null, upload = null, encrypted = null, ena
     }
     if (!isUsableImageUrl(got)) return { ok: false, reason: /\.enc(?:$|[?#])/i.test(got) ? "encrypted" : "upload-failed" };
     try {
-      if (key) await store?.putMeta?.(metaKey2(key), { url: got, at: now4() });
+      if (key) await store?.putMeta?.(metaKey2(key), { url: got, at: now5() });
     } catch {
     }
     return { ok: true, url: got, uploaded: true };
@@ -72126,7 +72283,7 @@ function prefersReducedMotion(win2) {
     return false;
   }
 }
-function createThrottle({ minMs = MOTION_TIMING.countMs, now: now4 = () => Date.now(), setTimer, clearTimer, paint: paint2 } = {}) {
+function createThrottle({ minMs = MOTION_TIMING.countMs, now: now5 = () => Date.now(), setTimer, clearTimer, paint: paint2 } = {}) {
   let last = -Infinity;
   let timer = null;
   let pending;
@@ -72135,7 +72292,7 @@ function createThrottle({ minMs = MOTION_TIMING.countMs, now: now4 = () => Date.
     timer = null;
     if (!has) return;
     has = false;
-    last = now4();
+    last = now5();
     const value = pending;
     pending = void 0;
     try {
@@ -72147,7 +72304,7 @@ function createThrottle({ minMs = MOTION_TIMING.countMs, now: now4 = () => Date.
     push(value) {
       pending = value;
       has = true;
-      const wait2 = minMs - (now4() - last);
+      const wait2 = minMs - (now5() - last);
       if (wait2 <= 0) {
         if (timer != null) {
           clearTimer?.(timer);
@@ -72175,7 +72332,7 @@ function createThrottle({ minMs = MOTION_TIMING.countMs, now: now4 = () => Date.
     }
   };
 }
-function createParseMotion({ doc, overlayHost: overlayHost2 = null, overlayPage = 0, headHost = null, mode = () => "full", now: now4 = () => Date.now(), timing = MOTION_TIMING, cls = "" } = {}) {
+function createParseMotion({ doc, overlayHost: overlayHost2 = null, overlayPage = 0, headHost = null, mode = () => "full", now: now5 = () => Date.now(), timing = MOTION_TIMING, cls = "" } = {}) {
   const win2 = () => doc?.defaultView || null;
   const later = (fn, ms) => (win2()?.setTimeout || setTimeout)(fn, ms);
   const unlater = (id) => (win2()?.clearTimeout || clearTimeout)(id);
@@ -72235,7 +72392,7 @@ function createParseMotion({ doc, overlayHost: overlayHost2 = null, overlayPage 
   };
   const counter = createThrottle({
     minMs: timing.countMs,
-    now: now4,
+    now: now5,
     setTimer: (fn, ms) => wait2(fn, ms),
     clearTimer: (id) => {
       timers.delete(id);
@@ -72442,7 +72599,7 @@ function createParseMotion({ doc, overlayHost: overlayHost2 = null, overlayPage 
       dropOverlay();
       lastPage = 0;
       durations.length = 0;
-      pageAt = now4();
+      pageAt = now5();
       applyMode();
       setState("running");
       if (headText) headText.textContent = "Reading…";
@@ -72463,7 +72620,7 @@ function createParseMotion({ doc, overlayHost: overlayHost2 = null, overlayPage 
       }
       const plan = beamPlan(info, lastPage);
       if (plan.kind === "page" && plan.restart) {
-        const t = now4();
+        const t = now5();
         if (lastPage) durations.push(t - pageAt);
         pageAt = t;
       }
@@ -72681,10 +72838,10 @@ function dragPayload({ sha256 = "", engine = "builtin", optsHash = "", ids = [],
   if (pdfBlockUid) body.pdfBlockUid = pdfBlockUid;
   return body;
 }
-function syncDecision({ locked = false, wheeling = false, now: now4 = 0, last = null, throttle = SYNC_MS } = {}) {
+function syncDecision({ locked = false, wheeling = false, now: now5 = 0, last = null, throttle = SYNC_MS } = {}) {
   if (locked || wheeling) return { jump: false, last };
-  if (last != null && now4 - last < throttle) return { jump: false, last };
-  return { jump: true, last: now4 };
+  if (last != null && now5 - last < throttle) return { jump: false, last };
+  return { jump: true, last: now5 };
 }
 function keyCommand(event, { textEntry = false, owned = false } = {}) {
   if (!owned || textEntry || !event) return null;
@@ -72871,7 +73028,7 @@ function createParseView({
     parent?.append?.(node2);
     return node2;
   };
-  const now4 = () => typeof clock === "function" ? clock() : Date.now();
+  const now5 = () => typeof clock === "function" ? clock() : Date.now();
   const tagged = (button3, text4) => {
     let span = null;
     for (const child of Array.from(button3.children || [])) if (String(child.className).includes("pxd-parse__tag")) span = child;
@@ -74312,7 +74469,7 @@ function createParseView({
     phase = "running";
     progress = { page: 0, pageCount: progress.pageCount || 0, engine: "anydoc" };
     paintChip();
-    const t0 = now4();
+    const t0 = now5();
     try {
       const pdf = typeof getPdf === "function" ? await getPdf() : null;
       if (dead) return;
@@ -74333,9 +74490,9 @@ function createParseView({
         format: "pdf",
         engine: "anydoc",
         sha256: sha,
-        createdAt: new Date(now4()).toISOString()
+        createdAt: new Date(now5()).toISOString()
       });
-      await finishDoc(docResult, typeof converted.ms === "number" ? converted.ms : now4() - t0, gen);
+      await finishDoc(docResult, typeof converted.ms === "number" ? converted.ms : now5() - t0, gen);
     } catch (err) {
       if (dead) return;
       phase = "idle";
@@ -74360,7 +74517,7 @@ function createParseView({
     const total = Number(pdf?.numPages) || Number(explicit?.numPages) || 1;
     if (!explicit?.pages && !rangeTouched) applyDefaultRange(total);
     const [from, to] = explicit?.pages || rangeOf(total);
-    const t0 = now4();
+    const t0 = now5();
     const span = Math.max(1, to - from + 1);
     motionOwnProgress = motionLive;
     records = [];
@@ -74394,7 +74551,7 @@ function createParseView({
         from,
         to: n3
       });
-      preview.stats = { ...preview.stats || {}, ms: now4() - t0 };
+      preview.stats = { ...preview.stats || {}, ms: now5() - t0 };
       parsed = preview;
       render();
       if (motionOwnProgress) {
@@ -74418,7 +74575,7 @@ function createParseView({
       from,
       to
     });
-    await finishDoc(finalDoc, now4() - t0, gen);
+    await finishDoc(finalDoc, now5() - t0, gen);
     if (autoScan && scanPagesOf(finalDoc).length) {
       await refreshHelper();
       const engine = ocrEngine();
@@ -74476,7 +74633,7 @@ function createParseView({
           if (ctrl.signal.aborted) return;
         }
       }
-      const t0 = now4();
+      const t0 = now5();
       const extra = typeof ocrAlt === "function" ? ocrAlt() : ocrAlt;
       let readerMode = "doubtful";
       try {
@@ -74531,7 +74688,7 @@ function createParseView({
         } catch {
         }
       }
-      await finishDoc(result.doc, (parsed.ocr ? 0 : parsed.stats?.ms || 0) + (now4() - t0), gen);
+      await finishDoc(result.doc, (parsed.ocr ? 0 : parsed.stats?.ms || 0) + (now5() - t0), gen);
     } catch (error) {
       if (error?.name !== "AbortError") {
         try {
@@ -74563,7 +74720,7 @@ function createParseView({
           if (dead || parsed !== base) return false;
         }
       }
-      const t0 = now4();
+      const t0 = now5();
       let merged = mergeOcrPageRecords({ base, ocrPages: incoming, records: recs, pages, numPages: base.pageCount, from, to, sha256: base.sha256 });
       if (typeof readCells === "function") {
         try {
@@ -74592,7 +74749,7 @@ function createParseView({
         } catch {
         }
       }
-      await finishDoc(merged.doc, (base.stats?.ms || 0) + (now4() - t0), gen);
+      await finishDoc(merged.doc, (base.stats?.ms || 0) + (now5() - t0), gen);
       return true;
     } catch {
       return false;
@@ -74611,7 +74768,7 @@ function createParseView({
     phase = "running";
     progress = { page: 0, pageCount: 0, engine: "docling" };
     paintChip();
-    const t0 = now4();
+    const t0 = now5();
     const pdf = typeof getPdf === "function" ? await getPdf() : null;
     const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
     failure = "";
@@ -74651,7 +74808,7 @@ function createParseView({
     }
     if (abort !== ctrl) return null;
     jobId = result?.job || jobId;
-    if (result?.doc) await finishDoc(result.doc, result.doc.stats?.ms ?? now4() - t0, gen);
+    if (result?.doc) await finishDoc(result.doc, result.doc.stats?.ms ?? now5() - t0, gen);
     else phase = "idle";
     paintChip();
     return Boolean(result?.doc);
@@ -74762,7 +74919,7 @@ function createParseView({
     phase = "running";
     progress = { page: 0, pageCount: pages, engine: "cloud", provider: "llamaparse" };
     paintChip();
-    const started = now4();
+    const started = now5();
     try {
       if (!pdf && typeof getPdf === "function") pdf = await getPdf();
       const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
@@ -74791,7 +74948,7 @@ function createParseView({
       const credits = cloudUsageCredits(result.provider);
       if (credits != null) docResult.stats = { ...docResult.stats || {}, credits };
       if (ctrl.signal.aborted) return;
-      await finishDoc(docResult, now4() - started, gen);
+      await finishDoc(docResult, now5() - started, gen);
     } catch (error) {
       if (phase === "running") phase = "idle";
       cloudToast(error, "llamaparse");
@@ -74832,7 +74989,7 @@ function createParseView({
     phase = "running";
     progress = { page: 0, pageCount: pages, engine: "cloud", provider: "mistral" };
     paintChip();
-    const started = now4();
+    const started = now5();
     try {
       if (!pdf && typeof getPdf === "function") pdf = await getPdf();
       const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
@@ -74849,7 +75006,7 @@ function createParseView({
       const local = await localParseForCloud(store, sha, parsed?.engine === "cloud" ? null : parsed);
       const docResult = withKeptTitle(mistralToParse(result.provider, { sha256: sha }), local);
       if (ctrl.signal.aborted) return;
-      await finishDoc(docResult, now4() - started, gen);
+      await finishDoc(docResult, now5() - started, gen);
     } catch (error) {
       if (phase === "running") phase = "idle";
       cloudToast(error, "mistral");
@@ -74971,11 +75128,11 @@ function createParseView({
     return best;
   }
   function onBodyScroll() {
-    if (echo || now4() < echoUntil) return;
+    if (echo || now5() < echoUntil) return;
     const decision = syncDecision({
       locked,
-      wheeling: now4() < wheelingUntil,
-      now: now4(),
+      wheeling: now5() < wheelingUntil,
+      now: now5(),
       last: lastJump
     });
     lastJump = decision.last;
@@ -75240,7 +75397,7 @@ function createParseView({
   });
   if (readerEl) {
     wheelFn = () => {
-      wheelingUntil = now4() + 400;
+      wheelingUntil = now5() + 400;
     };
     listen(readerEl, "wheel", wheelFn);
   }
@@ -75311,7 +75468,7 @@ function createParseView({
       render();
     },
     noteReaderWheel() {
-      wheelingUntil = now4() + 400;
+      wheelingUntil = now5() + 400;
     },
     scrollBody() {
       onBodyScroll();
@@ -75350,7 +75507,7 @@ function createParseView({
     scrollToPage(page) {
       const n3 = Number(page) || 1;
       echo = true;
-      echoUntil = now4() + SYNC_MS;
+      echoUntil = now5() + SYNC_MS;
       const node2 = n3 > 1 ? body.querySelector?.(`[data-page="${n3}"]`) : null;
       body.scrollTop = node2 ? outlineScrollTop(node2, body) : 0;
       echo = false;
@@ -75372,7 +75529,7 @@ function createParseView({
         if (!page || page === lastPage) return;
         lastPage = page;
         echo = true;
-        echoUntil = now4() + SYNC_MS;
+        echoUntil = now5() + SYNC_MS;
         const node2 = page > 1 ? body.querySelector?.(`[data-page="${page}"]`) : null;
         body.scrollTop = node2 ? outlineScrollTop(node2, body) : 0;
         echo = false;
@@ -76389,8 +76546,8 @@ function removeWords(layer) {
   } catch {
   }
 }
-function mountWords(layer, record, { doc = layer?.ownerDocument || globalThis.document, widthPx = 0, measure = null, key = "", now: now4 = () => Date.now() } = {}) {
-  const t0 = now4();
+function mountWords(layer, record, { doc = layer?.ownerDocument || globalThis.document, widthPx = 0, measure = null, key = "", now: now5 = () => Date.now() } = {}) {
+  const t0 = now5();
   if (!layer || !doc) return { count: 0, ms: 0 };
   const prep = prepared(record);
   removeWords(layer);
@@ -76416,7 +76573,7 @@ function mountWords(layer, record, { doc = layer?.ownerDocument || globalThis.do
   });
   if (frag) layer.append(frag);
   layer.setAttribute(MARK_ATTR, key || `${n3}:${Math.round(widthPx)}`);
-  return { count: prep.words.length, ms: now4() - t0 };
+  return { count: prep.words.length, ms: now5() - t0 };
 }
 function compactPage(record) {
   const r23 = (v) => Math.round(v * 100) / 100;
@@ -76434,7 +76591,7 @@ function pageRecords(input) {
   if (Array.isArray(input.pages)) return pageRecords(input.pages);
   return Number.isFinite(Number(input.n)) ? [input] : [];
 }
-function createTextLayer({ doc = globalThis.document, readerEl = null, measure = null, now: now4 = () => globalThis.performance?.now?.() ?? Date.now() } = {}) {
+function createTextLayer({ doc = globalThis.document, readerEl = null, measure = null, now: now5 = () => globalThis.performance?.now?.() ?? Date.now() } = {}) {
   const view = () => doc?.defaultView || globalThis;
   const records = /* @__PURE__ */ new Map();
   const width = measure || createMeasure(doc);
@@ -76500,7 +76657,7 @@ function createTextLayer({ doc = globalThis.document, readerEl = null, measure =
     }
     const done3 = [];
     for (const job of plan) {
-      const res = mountWords(job.layer, job.record, { doc, widthPx: job.widthPx, measure: width, key: job.key, now: now4 });
+      const res = mountWords(job.layer, job.record, { doc, widthPx: job.widthPx, measure: width, key: job.key, now: now5 });
       stats.mounts += 1;
       stats.words += res.count;
       stats.lastMs = res.ms;
@@ -77231,15 +77388,15 @@ function createReadPane({
   };
   const restoreScale = (kept) => {
     if (!kept || !kept.value && !(kept.scale > 0)) return false;
-    const now4 = readerScale();
-    if (!now4) return false;
-    if (now4.value === kept.value && Math.abs(now4.scale - kept.scale) < 5e-3) return false;
+    const now5 = readerScale();
+    if (!now5) return false;
+    if (now5.value === kept.value && Math.abs(now5.scale - kept.scale) < 5e-3) return false;
     const named2 = /^(page-width|page-fit|page-actual|auto)$/.test(kept.value);
     autoZoom = true;
     try {
-      if (named2) now4.viewer.currentScaleValue = kept.value;
-      else if (kept.scale > 0) now4.viewer.currentScale = kept.scale;
-      else now4.viewer.currentScaleValue = kept.value;
+      if (named2) now5.viewer.currentScaleValue = kept.value;
+      else if (kept.scale > 0) now5.viewer.currentScale = kept.scale;
+      else now5.viewer.currentScaleValue = kept.value;
     } catch {
     }
     autoZoom = false;
@@ -80137,9 +80294,9 @@ function sidebarPageEl(box2, n3) {
   const want = String(n3);
   return box2.querySelector(`.page[data-page-number="${want}"]`) || null;
 }
-async function waitForSidebarPdf({ doc, want, readString, timeout = SIDEBAR_WAIT_MS, step = 50, now: now4 = () => Date.now(), sleep, alive } = {}) {
-  const start = typeof now4 === "function" ? now4() : Date.now();
-  const clock = typeof now4 === "function" ? now4 : () => Date.now();
+async function waitForSidebarPdf({ doc, want, readString, timeout = SIDEBAR_WAIT_MS, step = 50, now: now5 = () => Date.now(), sleep, alive } = {}) {
+  const start = typeof now5 === "function" ? now5() : Date.now();
+  const clock = typeof now5 === "function" ? now5 : () => Date.now();
   const found = () => sidebarPdfContainer(doc, want, readString);
   if (!want || !String(want.uid || "").trim() && !String(want.url || "").trim()) return null;
   const immediate = found();
@@ -80276,9 +80433,9 @@ async function readPageTitle(pdf, { fonts = false, first = null } = {}) {
     return { pageTitle: "", titleLines: [] };
   }
 }
-function createFirstPageRenderer({ doc, lib, timers, now: now4 } = {}) {
+function createFirstPageRenderer({ doc, lib, timers, now: now5 } = {}) {
   const time = timersOf(timers);
-  const clock = typeof now4 === "function" ? now4 : () => Date.now();
+  const clock = typeof now5 === "function" ? now5 : () => Date.now();
   let busy = false;
   let count = { tried: 0, ok: 0, failed: 0, lastMs: 0 };
   async function render(spec) {
@@ -80472,8 +80629,8 @@ var WARM_TIMEOUT_MS = 8e3;
 var WARM_POLL_MS = 100;
 var COVER_JPEG = 0.72;
 var HOLDER_CLASS = "pxd-pdf-warm";
-function clockOf(now4) {
-  return typeof now4 === "function" ? now4 : () => Date.now();
+function clockOf(now5) {
+  return typeof now5 === "function" ? now5 : () => Date.now();
 }
 function timersOf2(timers) {
   const set = typeof timers?.setTimeout === "function" ? timers.setTimeout.bind(timers) : setTimeout;
@@ -80628,9 +80785,9 @@ function applyHolderStyle(el2) {
   } catch {
   }
 }
-function createPdfWarm({ doc, root, host, store, timers, now: now4, renderFirst } = {}) {
+function createPdfWarm({ doc, root, host, store, timers, now: now5, renderFirst } = {}) {
   const time = timersOf2(timers);
-  const nowFn = clockOf(now4);
+  const nowFn = clockOf(now5);
   const outcomes = /* @__PURE__ */ new Map();
   const paths = { pdfjs: 0, reader: 0 };
   let generation = 0;
@@ -82163,6 +82320,7 @@ function paintSuggest(doc, svg, lines) {
 var SVG_NS5 = "http://www.w3.org/2000/svg";
 var PAIR_OFFSET = 18;
 var LABEL_HIDE_ZOOM = 0.3;
+var now4 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
 function segmentMeetsRect(x1, y1, x2, y2, r) {
   let t0 = 0;
   let t1 = 1;
@@ -82244,7 +82402,9 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       view = keep;
     }
   };
+  let canvasTier = () => false;
   const edgeNear = (board2, edge, rects) => {
+    if (canvasTier()) return false;
     if (!view) return true;
     const a = rects.get(edgeAnchor(board2, edge.from, edge.homeFrom));
     const b = rects.get(edgeAnchor(board2, edge.to, edge.homeTo));
@@ -82909,11 +83069,14 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     }
     return n3;
   };
-  const cull = (rect) => {
-    if (!rect || !lastPass) return;
+  const cull = (rect, { budget = Infinity, ms = Infinity } = {}) => {
+    if (!rect || !lastPass) return 0;
     view = rect;
     const { board: board2, rects, coveredEdges, selection } = lastPass;
-    if (!virtualEdges(board2)) return;
+    if (!virtualEdges(board2)) return 0;
+    const t0 = ms < Infinity ? now4() : 0;
+    let built = 0;
+    let left = 0;
     for (const edge of board2.edges.values()) {
       const rec = edgeEls.get(edge.uid);
       if (!endsReady(board2, edge)) {
@@ -82938,12 +83101,18 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
         continue;
       }
       if (rec && !rec.parked && !rec.stale) continue;
+      if (!pinned2 && (built >= budget || t0 && built % 16 === 0 && built && now4() - t0 > ms)) {
+        left += 1;
+        continue;
+      }
       const live2 = rec || buildEdge(edge);
       if (rec?.parked) unparkEdge(live2);
       live2.stale = false;
       paintEdge(board2, edge, live2, { covered: coveredEdges.has(edge.uid), selected: selection.edge === edge.uid });
       placeEdge(board2, edge, live2, rects, zoomCache);
+      if (!pinned2) built += 1;
     }
+    return left;
   };
   const update = ({ board: board2, edgeUids, rects, zoom = zoomCache, linkKeys = null, links = [] }) => {
     for (const uid of edgeUids) {
@@ -83212,6 +83381,9 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   return {
     edgeShown,
     isVirtual: (board2) => virtualEdges(board2),
+    setCanvasTier: (on) => {
+      canvasTier = typeof on === "function" ? on : () => Boolean(on);
+    },
     render,
     update,
     reveal,
@@ -84472,9 +84644,9 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         keep++;
       }
     }
-    const now4 = kids.findIndex((k) => k.getAttribute("data-ctx-overflow"));
-    if ((now4 < 0 ? kids.length : now4) === keep) return;
-    if (now4 >= 0 && now4 < keep && Number(row4.getAttribute("data-ctx-est")) === keep) return;
+    const now5 = kids.findIndex((k) => k.getAttribute("data-ctx-overflow"));
+    if ((now5 < 0 ? kids.length : now5) === keep) return;
+    if (now5 >= 0 && now5 < keep && Number(row4.getAttribute("data-ctx-est")) === keep) return;
     closeCtxMore();
     more?.remove();
     kids.forEach((k, idx) => {
@@ -86686,13 +86858,13 @@ function semanticEnabled(api3) {
     return false;
   }
 }
-function createSemantic({ api: api3 = () => globalThis.roamAlphaAPI, now: now4 = () => Date.now(), ttl = SEM_TTL_MS, max = SEM_MAX, retry = SEM_RETRY_MS } = {}) {
+function createSemantic({ api: api3 = () => globalThis.roamAlphaAPI, now: now5 = () => Date.now(), ttl = SEM_TTL_MS, max = SEM_MAX, retry = SEM_RETRY_MS } = {}) {
   const cache = /* @__PURE__ */ new Map();
   const inflight = /* @__PURE__ */ new Map();
   let calls = 0;
   const remember2 = (key, data, life = ttl) => {
     cache.delete(key);
-    cache.set(key, { at: now4(), data, life });
+    cache.set(key, { at: now5(), data, life });
     while (cache.size > max) cache.delete(cache.keys().next().value);
   };
   const lifeOf = (hit) => Number.isFinite(hit?.life) ? hit.life : ttl;
@@ -86724,14 +86896,14 @@ function createSemantic({ api: api3 = () => globalThis.roamAlphaAPI, now: now4 =
     peek(query) {
       const key = String(query ?? "").trim();
       const hit = key ? cache.get(key) : null;
-      return hit ? { data: hit.data, stale: now4() - hit.at >= lifeOf(hit) } : null;
+      return hit ? { data: hit.data, stale: now5() - hit.at >= lifeOf(hit) } : null;
     },
     // Fresh cache → it. Stale → it at once, then `onFresh(data)` after the background refresh. None → the engine.
     async search(query, { onFresh } = {}) {
       const key = String(query ?? "").trim();
       if (!key) return [];
       const hit = cache.get(key);
-      if (hit && now4() - hit.at < lifeOf(hit)) {
+      if (hit && now5() - hit.at < lifeOf(hit)) {
         cache.delete(key);
         cache.set(key, hit);
         return hit.data;
@@ -86834,7 +87006,7 @@ async function readPdfIdent(lib, url, { signal = null, timeoutMs = READ_TIMEOUT_
   }
 }
 function createPdfNames({ store, lib = () => null, readParse = async () => null, idle, onChange = () => {
-}, now: now4 = () => Date.now(), read: read2 = readPdfIdent, timers = null } = {}) {
+}, now: now5 = () => Date.now(), read: read2 = readPdfIdent, timers = null } = {}) {
   const idents = /* @__PURE__ */ new Map();
   const queue = [];
   const queued = /* @__PURE__ */ new Set();
@@ -86897,7 +87069,7 @@ function createPdfNames({ store, lib = () => null, readParse = async () => null,
   const known2 = (url) => {
     const got = idents.get(url);
     if (!got) return false;
-    if (got.failed) return now4() - (Number(got.at) || 0) < (got.noLib ? RETRY_NO_LIB_MS : RETRY_FAILED_MS);
+    if (got.failed) return now5() - (Number(got.at) || 0) < (got.noLib ? RETRY_NO_LIB_MS : RETRY_FAILED_MS);
     return true;
   };
   const pump = () => {
@@ -86913,7 +87085,7 @@ function createPdfNames({ store, lib = () => null, readParse = async () => null,
     running = url;
     controller = typeof AbortController === "function" ? new AbortController() : null;
     const signal = controller?.signal ?? null;
-    const t0 = now4();
+    const t0 = now5();
     (async () => {
       let ident = null;
       try {
@@ -86946,11 +87118,11 @@ function createPdfNames({ store, lib = () => null, readParse = async () => null,
           stats.read += 1;
         }
       }
-      if (!ident && noLib) idents.set(url, { failed: true, noLib: true, at: now4() });
+      if (!ident && noLib) idents.set(url, { failed: true, noLib: true, at: now5() });
       else if (!ident) {
         stats.failed += 1;
-        idents.set(url, { failed: true, at: now4() });
-      } else idents.set(url, { ...ident, at: now4() });
+        idents.set(url, { failed: true, at: now5() });
+      } else idents.set(url, { ...ident, at: now5() });
       save();
       try {
         onChange([url]);
@@ -86958,7 +87130,7 @@ function createPdfNames({ store, lib = () => null, readParse = async () => null,
       }
     })().catch(() => {
     }).finally(() => {
-      stats.ms += Math.max(0, now4() - t0);
+      stats.ms += Math.max(0, now5() - t0);
       if (running === url) running = "";
       controller = null;
       schedule();
@@ -87128,7 +87300,7 @@ function createImageIndex({
   ocr = null,
   helperText = null,
   settings = {},
-  now: now4 = () => Date.now(),
+  now: now5 = () => Date.now(),
   idle = (fn) => {
     if (typeof requestIdleCallback === "function") requestIdleCallback(() => fn(), { timeout: 500 });
     else setTimeout(fn, 16);
@@ -87197,7 +87369,7 @@ function createImageIndex({
     records.set(key, record);
     await withStore("readwrite", (store) => requestResult3(store.put(record, key)));
   }
-  const paused = () => pausedUntil > now4();
+  const paused = () => pausedUntil > now5();
   const progress = () => {
     try {
       onProgress?.(status());
@@ -87223,7 +87395,7 @@ function createImageIndex({
           return;
         }
         if (paused()) {
-          later(go, pausedUntil - now4() + 10);
+          later(go, pausedUntil - now5() + 10);
           return;
         }
         idle(resolve);
@@ -87253,9 +87425,9 @@ function createImageIndex({
       const palette = colorPalette(rgba);
       const old = records.get(item.key);
       const keep = old && !old.failed && old.text !== void 0 ? { text: old.text } : {};
-      await save(item.key, { ...keep, palette, w, h, at: now4(), v: IMAGE_INDEX_V });
+      await save(item.key, { ...keep, palette, w, h, at: now5(), v: IMAGE_INDEX_V });
     } catch (error) {
-      if (!error?.skip) await save(item.key, { failed: true, at: now4() });
+      if (!error?.skip) await save(item.key, { failed: true, at: now5() });
     } finally {
       activeColor -= 1;
       queued.delete(item.key);
@@ -87278,7 +87450,7 @@ function createImageIndex({
         text4 = "";
       }
       const old = records.get(item.key) || {};
-      const next = { ...old, text: text4, w: old.w, h: old.h, at: now4(), v: IMAGE_INDEX_V };
+      const next = { ...old, text: text4, w: old.w, h: old.h, at: now5(), v: IMAGE_INDEX_V };
       delete next.failed;
       await save(item.key, next);
     } finally {
@@ -87308,10 +87480,10 @@ function createImageIndex({
         text4 = got;
         counted = true;
       }
-      await save(item.key, { ...old, text: text4, w: old.w || full.w, h: old.h || full.h, at: now4(), v: IMAGE_INDEX_V });
+      await save(item.key, { ...old, text: text4, w: old.w || full.w, h: old.h || full.h, at: now5(), v: IMAGE_INDEX_V });
     } catch (error) {
       const old = records.get(item.key) || {};
-      if (!old.failed && !error?.skip) await save(item.key, { ...old, text: "", at: now4(), v: IMAGE_INDEX_V });
+      if (!old.failed && !error?.skip) await save(item.key, { ...old, text: "", at: now5(), v: IMAGE_INDEX_V });
     } finally {
       if (counted) ocrDone += 1;
       activeOcr -= 1;
@@ -87324,7 +87496,7 @@ function createImageIndex({
     pumpTimer = false;
     if (disposed) return;
     if (paused()) {
-      schedulePump(pausedUntil - now4() + 10);
+      schedulePump(pausedUntil - now5() + 10);
       return;
     }
     while (activeColor < MAX_FETCHES && colorQ.length && wantColors()) void colorJob(colorQ.shift());
@@ -87340,12 +87512,12 @@ function createImageIndex({
     later(pump, Math.max(0, ms));
   }
   function pause(ms = TYPING_PAUSE_MS) {
-    pausedUntil = now4() + ms;
+    pausedUntil = now5() + ms;
   }
   async function enqueue(items) {
     await load();
     ocrBlocked = false;
-    const t = now4();
+    const t = now5();
     for (const item of Array.isArray(items) ? items : []) {
       if (!item?.key || !item.url && typeof item.bytes !== "function") continue;
       const rec = records.get(item.key);
@@ -87507,7 +87679,7 @@ function createPdfTextIndex({
   budget = null,
   openPdf = null,
   indexedDB: factory = null,
-  now: now4 = () => Date.now(),
+  now: now5 = () => Date.now(),
   later = timerLater,
   onReady: onReady2 = null
 } = {}) {
@@ -87546,7 +87718,7 @@ function createPdfTextIndex({
     return share.open();
   };
   function paused() {
-    return pausedUntil > now4();
+    return pausedUntil > now5();
   }
   function rowsStamp(rows) {
     const list = Array.isArray(rows) ? rows : [];
@@ -87666,11 +87838,11 @@ function createPdfTextIndex({
     foldDocs = /* @__PURE__ */ new Map();
   }
   function runOneChunk({ notify }) {
-    const started = now4();
+    const started = now5();
     let done3 = 0;
     if (!rowFoldDone && rowSource) {
       while (done3 < ROW_CHUNK && rowCursor < rowSource.length) {
-        if (done3 > 0 && now4() - started >= PDF_TEXT_SLICE_MS) break;
+        if (done3 > 0 && now5() - started >= PDF_TEXT_SLICE_MS) break;
         foldOneRow(rowSource[rowCursor]);
         rowCursor += 1;
         done3 += 1;
@@ -87687,11 +87859,11 @@ function createPdfTextIndex({
         foldDocs = /* @__PURE__ */ new Map();
       }
     }
-    if (done3 > 0 && now4() - started >= PDF_TEXT_SLICE_MS) return;
+    if (done3 > 0 && now5() - started >= PDF_TEXT_SLICE_MS) return;
     let wordsDone = 0;
     let hops = 0;
     while (wordsDone < WORD_CHUNK && hops < WORD_CHUNK && postingQueue.length) {
-      if (wordsDone > 0 && now4() - started >= PDF_TEXT_SLICE_MS) break;
+      if (wordsDone > 0 && now5() - started >= PDF_TEXT_SLICE_MS) break;
       const job = postingQueue[0];
       const stored = byKey.get(job.hash);
       if (!stored) {
@@ -87729,13 +87901,13 @@ function createPdfTextIndex({
   function scheduleAfterPause() {
     if (postingLater) return;
     const gen = generation;
-    const wait2 = Math.max(0, pausedUntil - now4());
+    const wait2 = Math.max(0, pausedUntil - now5());
     let cancel = null;
     try {
       cancel = later(() => {
         postingLater = null;
         if (gen !== generation) return;
-        if (pausedUntil > now4()) {
+        if (pausedUntil > now5()) {
           scheduleAfterPause();
           return;
         }
@@ -87789,11 +87961,11 @@ function createPdfTextIndex({
     cancelPostings = typeof cancel === "function" ? cancel : null;
   }
   function chewItems(job) {
-    const started = now4();
+    const started = now5();
     const items = job.items || [];
     let done3 = 0;
     while ((job.itemI || 0) < items.length && done3 < ITEM_CHUNK) {
-      if (done3 > 0 && now4() - started >= PDF_TEXT_SLICE_MS) break;
+      if (done3 > 0 && now5() - started >= PDF_TEXT_SLICE_MS) break;
       const item = items[job.itemI];
       job.itemI += 1;
       done3 += 1;
@@ -87823,7 +87995,7 @@ function createPdfTextIndex({
       title: doc.title,
       empty: Boolean(doc.empty),
       pages: (doc.pages || []).map((page) => ({ n: page.n, text: page.text })),
-      at: now4(),
+      at: now5(),
       v: PDF_TEXT_V
     }, doc.hash)));
   }
@@ -87945,7 +88117,7 @@ ${hit.n}`;
     return 1;
   }
   function pause(ms = 600) {
-    pausedUntil = now4() + ms;
+    pausedUntil = now5() + ms;
   }
   function takeHandle(job) {
     const handle = job?.handle || null;
@@ -87962,9 +88134,9 @@ ${hit.n}`;
         pumping = false;
         return;
       }
-      if (pausedUntil > now4()) {
+      if (pausedUntil > now5()) {
         pumping = false;
-        const wait2 = Math.max(0, pausedUntil - now4());
+        const wait2 = Math.max(0, pausedUntil - now5());
         try {
           cancelLater?.();
         } catch {
@@ -88024,7 +88196,7 @@ ${hit.n}`;
         return false;
       }
       if (handle?.retry === true && typeof handle.readPage !== "function") {
-        pausedUntil = now4() + PDF_TEXT_NO_LIB_MS;
+        pausedUntil = now5() + PDF_TEXT_NO_LIB_MS;
         return false;
       }
       if (!handle || !(handle.pageCount > 0) || typeof handle.readPage !== "function") {
@@ -91047,7 +91219,7 @@ function detach2(index) {
     offStored = null;
   }
 }
-function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS, budget = null, now: now4 } = {}) {
+function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS, budget = null, now: now5 } = {}) {
   const perDoc = /* @__PURE__ */ new Map();
   let rows = null;
   let building = null;
@@ -91095,7 +91267,7 @@ function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS, budge
       }
       stopIndex = schedulePartsIndex(out, {
         budget,
-        now: now4,
+        now: now5,
         onReady: () => {
           if (mine !== epoch) return;
           for (const fn of [...changed2]) {
@@ -96742,7 +96914,7 @@ function buildBoardView(onFail, {
     const visible2 = /* @__PURE__ */ new Set();
     const view2 = size.width ? visibleWorldRect(vp, size, 0) : null;
     const r = rects();
-    const now4 = Date.now();
+    const now5 = Date.now();
     let pending = 0;
     for (const item of board2()?.items.values() || []) {
       if (item?.kind !== "pdf") continue;
@@ -96756,7 +96928,7 @@ function buildBoardView(onFail, {
         pending += 1;
       } else if (coverFaces.get(url)?.state === "loading") pending += 1;
       const wanted = titleWanted(url);
-      const due = now4 >= (titleNextAt.get(url) || 0);
+      const due = now5 >= (titleNextAt.get(url) || 0);
       if (wanted ? !due : titleWanted(url, { anyRenderer: true })) pending += 1;
       cards.push({
         uid: item.uid,
@@ -96955,6 +97127,7 @@ function buildBoardView(onFail, {
     blockText: (uid) => host?.blockString?.(uid),
     onHover: (uid, on) => hoverRows(uid, on)
   });
+  edgesR.setCanvasTier?.(() => overviewCanvasOn());
   const timelineTargetUid = (item) => {
     if (!item || item.type === "section" || item.type === "text") return "";
     if (item.target?.kind === "page") {
@@ -97172,7 +97345,7 @@ function buildBoardView(onFail, {
     for (const row4 of editRows) {
       if (Array.isArray(row4) && row4.length >= 2 && Number.isFinite(Number(row4[1]))) editAt.set(String(row4[0]), Number(row4[1]));
     }
-    const now4 = Date.now();
+    const now5 = Date.now();
     const track2 = Boolean(openStore && openStore.enabled);
     const scores = /* @__PURE__ */ new Map();
     for (const edge of ends) {
@@ -97180,11 +97353,11 @@ function buildBoardView(onFail, {
       const components = {
         refs: (refCount.get(edge.from) || 0) + (refCount.get(edge.to) || 0),
         shared: shareCount(edge.from, edge.to),
-        now: now4
+        now: now5
       };
       if (times.length) components.editTime = Math.max(...times);
       if (track2) components.opens = edgeOpens(openStore, edge.from, edge.to);
-      scores.set(edge.uid, { components, trackOpens: track2, now: now4 });
+      scores.set(edge.uid, { components, trackOpens: track2, now: now5 });
     }
     strengthScores = scores;
     try {
@@ -97238,11 +97411,11 @@ function buildBoardView(onFail, {
         create: Number.isFinite(create) && create >= 0 ? create : null
       });
     }
-    const now4 = Date.now();
+    const now5 = Date.now();
     const ages = /* @__PURE__ */ new Map();
     for (const pair2 of pairs) {
       const hit = by2.get(pair2.target) || {};
-      const age = { now: now4 };
+      const age = { now: now5 };
       if (hit.edit != null) age.editTime = hit.edit;
       if (hit.create != null) age.createTime = hit.create;
       ages.set(pair2.uid, age);
@@ -97518,6 +97691,7 @@ function buildBoardView(onFail, {
       pdfFlip?.setLod?.(tier);
       chrome.toolbar.scheduleDock?.();
       if (was !== "detail" && tier === "detail" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0));
+      if (was === "overview" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0), { nearest: true });
     }
   };
   const scheduleContent = () => {
@@ -97573,13 +97747,13 @@ function buildBoardView(onFail, {
     itemsR.setShowBadges(flag("show-card-badges", true));
     if (!flag("show-card-badges", true) || tier !== "detail" || typeof host?.cardStats !== "function") return;
     const items = visibleBadgeItems();
-    const now4 = Date.now();
+    const now5 = Date.now();
     const misses = [];
     const seen = /* @__PURE__ */ new Set();
     for (const item of items) {
       const key = badgeKeyOf(item);
       const hit = badgeCache.get(key);
-      if (hit && now4 - hit.at < BADGE_TTL_MS || seen.has(key) || badgePending.has(key)) continue;
+      if (hit && now5 - hit.at < BADGE_TTL_MS || seen.has(key) || badgePending.has(key)) continue;
       seen.add(key);
       misses.push({ key, target: badgeTargetOf(item) });
     }
@@ -97700,14 +97874,19 @@ function buildBoardView(onFail, {
     return deferOn() && Boolean(itemsR.isVirtual?.());
   };
   const syncShellHold = () => {
+    const hold = deferReveal();
+    if (hold) cancelSlice();
     try {
-      itemsR.holdShells?.(deferReveal());
+      itemsR.holdShells?.(hold);
     } catch {
     }
   };
+  let underlayKind = "";
   const showUnderlay = () => {
+    if (overviewCanvasOn() && paintOverviewCanvas({ band: false })) return;
     if (underlayDrawn) return;
     underlayDrawn = true;
+    underlayKind = "burst";
     const b = board2();
     if (!b) return;
     const r = paintRects();
@@ -97737,7 +97916,13 @@ function buildBoardView(onFail, {
     return tier === "overview" && coverUids.has(uid);
   };
   paintOverviewCover = () => {
-    if (disposed || underlayDrawn) return;
+    if (disposed) return;
+    if (overviewCanvasOn()) {
+      ovDirty = true;
+      if (!wheelLayer) paintOverviewCanvas({ band: !gesturing });
+      return;
+    }
+    if (underlayDrawn) return;
     try {
       if (notedSpeedFlags().overviewFast === false) {
         coverUids = /* @__PURE__ */ new Set();
@@ -97760,11 +97945,141 @@ function buildBoardView(onFail, {
       return;
     }
     coverUids = new Set(items.map((item) => item.uid));
+    underlayKind = "cover";
     underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1 });
   };
   const releaseUnderlay = () => {
+    if (overviewCanvasOn() && paintOverviewCanvas()) return;
     underlay.hide();
     paintOverviewCover();
+  };
+  let ovDirty = true;
+  let ovBand = null;
+  let ovModel = null;
+  let ovRects = null;
+  let ovAttached = -1;
+  let ovDraws = 0;
+  let ovItems = 0;
+  let canvasSearch = null;
+  let canvasFocus = null;
+  const ovBandOf = (z) => Math.round(Math.log(z > 0 ? z : 1) / Math.log(1.5));
+  const overviewCanvasOn = () => tier === "overview" && Boolean(itemsR.canvasTier?.());
+  const paintOverviewCanvas = ({ band = true } = {}) => {
+    if (disposed || suspended) return false;
+    const b = board2();
+    if (!b) return false;
+    const nextBand = ovBandOf(vp.zoom);
+    const shown = underlay.isShown() && underlayKind === "overview";
+    const model = rects();
+    const attached = itemsR.attachedCount?.() ?? 0;
+    if (b !== ovModel || model !== ovRects || attached !== ovAttached) ovDirty = true;
+    if (shown && !ovDirty && (!band || nextBand === ovBand)) {
+      underlayDrawn = true;
+      return true;
+    }
+    ovDirty = false;
+    ovBand = nextBand;
+    ovModel = b;
+    ovRects = model;
+    ovAttached = attached;
+    const r = paintRects();
+    const sel = new Set(selection.items);
+    const items = [];
+    for (const uid of b.order) {
+      const item = b.items.get(uid);
+      if (!item || item.type === "section") continue;
+      const rect = r.get(uid);
+      if (!rect || itemsR.attachedUid(uid)) continue;
+      const hit = Boolean(canvasSearch?.has(uid));
+      const dim = Boolean(canvasSearch && !hit || canvasFocus && !canvasFocus.has(uid));
+      items.push({ uid, rect, color: item.color || "", dim, hit, selected: sel.has(uid) });
+    }
+    const edges = [];
+    for (const e2 of b.edges.values()) {
+      if (edgesR.edgeShown(e2.uid)) continue;
+      const a = r.get(e2.from), c = r.get(e2.to);
+      if (a && c) edges.push([a, c]);
+    }
+    underlayDrawn = true;
+    underlayKind = "overview";
+    coverUids = /* @__PURE__ */ new Set();
+    ovDraws += 1;
+    ovItems = items.length;
+    underlay.drawOverview({ items, edges, zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1 });
+    return true;
+  };
+  const SETTLE_SHELLS = 48;
+  const SETTLE_EDGES = 120;
+  const SETTLE_SLICE_MS = 6;
+  let sliceFrame = null;
+  let slicing = false;
+  const slicedSettleOn = () => {
+    try {
+      return notedSpeedFlags().slicedSettle !== false;
+    } catch {
+      return true;
+    }
+  };
+  const sliceWanted = () => slicedSettleOn() && Boolean(size.width) && Boolean(itemsR.isVirtual?.());
+  const endSlice = () => {
+    sliceFrame?.();
+    sliceFrame = null;
+    slicing = false;
+    itemsR.sliceAttach?.(null);
+  };
+  const cancelSlice = () => {
+    if (!slicing) return;
+    endSlice();
+    underlayDrawn = false;
+  };
+  const beginSlice = () => {
+    if (sliceWanted()) itemsR.sliceAttach?.({ budget: SETTLE_SHELLS, ms: SETTLE_SLICE_MS });
+    else endSlice();
+  };
+  const sliceEdges = (rect) => rect ? edgesR.cull?.(rect, { budget: SETTLE_EDGES, ms: SETTLE_SLICE_MS }) || 0 : 0;
+  const sliceStep = () => {
+    sliceFrame = null;
+    if (!slicing) return;
+    if (disposed || suspended) {
+      endSlice();
+      return;
+    }
+    if (gesturing || wheelLayer) {
+      cancelSlice();
+      return;
+    }
+    const rect = visibleWorldRect(vp, size, ATTACH_MARGIN);
+    if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, SETTLE_SHELLS, SETTLE_SLICE_MS);
+    const edgesLeft = sliceEdges(rect);
+    if (edgesLeft || (itemsR.attachLeft?.() || 0) > 0) {
+      sliceFrame = timers.frame(sliceStep);
+      return;
+    }
+    endSlice();
+    releaseUnderlay();
+  };
+  const settleAttach = () => {
+    const rect = size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null;
+    if (!sliceWanted()) {
+      endSlice();
+      if (rect) edgesR.cull?.(rect);
+      releaseUnderlay();
+      return;
+    }
+    const edgesLeft = sliceEdges(rect);
+    if (!edgesLeft && !((itemsR.attachLeft?.() || 0) > 0)) {
+      endSlice();
+      releaseUnderlay();
+      return;
+    }
+    if (underlay.isShown() && (underlayKind === "burst" || underlayKind === "overview")) underlayDrawn = true;
+    else {
+      underlayDrawn = false;
+      showUnderlay();
+    }
+    slicing = true;
+    sliceFrame?.();
+    sliceFrame = timers.frame(sliceStep);
   };
   const revealNear = () => {
     if (!size.width) return;
@@ -97821,6 +98136,7 @@ function buildBoardView(onFail, {
       }
       syncShellHold();
       applyLod();
+      beginSlice();
       scheduleContent();
       vpStore.set(vpId, vp);
       if (vp.zoom !== edgesZoomAt) {
@@ -97833,8 +98149,7 @@ function buildBoardView(onFail, {
           for (const e2 of board2()?.edges.values() || []) if (e2.fromBlock || e2.toBlock) dirty.edges.add(e2.uid);
         }
       }
-      if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
-      releaseUnderlay();
+      settleAttach();
       dirty.minimap = true;
       schedule();
       updateBackToContent();
@@ -98581,6 +98896,11 @@ function buildBoardView(onFail, {
     focusKey = key;
     itemsR.setFocus(set);
     edgesR.setFocus(set);
+    canvasFocus = set ? new Set(set) : null;
+    if (overviewCanvasOn()) {
+      ovDirty = true;
+      paintOverviewCanvas();
+    }
   };
   const toggleFocus = () => {
     if (focusOn) {
@@ -101153,15 +101473,15 @@ ${url}`;
       pdfTitle: (url) => parsedTitles.get(url) || "",
       // Parsed PDFs filter: the parse store's urls, read once per 30 s (and again on each panel opening).
       parsedUrls: async () => {
-        const now4 = Date.now();
-        if (parsedUrlSet && now4 - parsedUrlSet.at < 3e4) return parsedUrlSet.set;
+        const now5 = Date.now();
+        if (parsedUrlSet && now5 - parsedUrlSet.at < 3e4) return parsedUrlSet.set;
         let list = [];
         try {
           list = await parseStoreShared().parsedUrls?.() || [];
         } catch {
           list = [];
         }
-        parsedUrlSet = { at: now4, set: new Set(list) };
+        parsedUrlSet = { at: now5, set: new Set(list) };
         return parsedUrlSet.set;
       },
       isParsed: async (url) => {
@@ -101666,6 +101986,11 @@ ${url}`;
   };
   const paintSearch = (b, hits, q2) => {
     const bright = new Set((hits || []).map((h) => h.focus));
+    canvasSearch = q2 ? bright : null;
+    if (overviewCanvasOn()) {
+      ovDirty = true;
+      paintOverviewCanvas();
+    }
     for (const item of b?.items.values() || []) {
       const shell = itemsR.shellOf(item.uid);
       const on = Boolean(q2) && bright.has(item.uid);
@@ -102058,9 +102383,9 @@ ${url}`;
           propsPanel.place();
           paintGrid();
           chrome.toolbar.setZoom(vp.zoom);
+          beginSlice();
           scheduleContent();
-          if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
-          releaseUnderlay();
+          settleAttach();
           vpStore.set(vpId, vp);
           dirty.selection = true;
           schedule();
@@ -102079,6 +102404,7 @@ ${url}`;
       const b = board2();
       if (!b) return;
       liveRects = itemsR.previewMove(uids, dx, dy, b, rects());
+      if (overviewCanvasOn()) ovDirty = true;
       const set = new Set(uids);
       for (const u of uids) for (const d of descendantsOf(b, u)) set.add(d);
       const top = new Set(uids);
@@ -102659,7 +102985,8 @@ ${url}`;
   };
   const promoteQueued = (hit) => {
     if (!hit?.uid) return null;
-    itemsR.ensureShell?.(hit.uid);
+    if (itemsR.attachNow) itemsR.attachNow(hit.uid);
+    else itemsR.ensureShell?.(hit.uid);
     if (hit.part === "title") return { kind: "section-title", uid: hit.uid };
     if (hit.part === "border") return { kind: "section-border", uid: hit.uid };
     return { kind: "item", uid: hit.uid };
@@ -102668,7 +102995,14 @@ ${url}`;
     const screen = { x: (event.clientX || 0) - rootRect.left, y: (event.clientY || 0) - rootRect.top };
     const world2 = screenToWorld(vp, screen);
     let target = targetOf2(event.target);
-    if (target.kind === "empty" && queuedOverview()) {
+    if (target.kind === "empty" && overviewCanvasOn() && (type === "pointerdown" || type === "dblclick" || type === "contextmenu")) {
+      const hit = hitTest(board2(), world2, rects());
+      if (hit?.uid && board2()?.items.get(hit.uid)?.type !== "section") {
+        if (type === "pointerdown") target = { kind: "empty", canvasUid: hit.uid };
+        else target = promoteQueued(hit) || target;
+      }
+    }
+    if (target.kind === "empty" && !target.canvasUid && (queuedOverview() || slicing)) {
       const next = promoteQueued(hitTest(board2(), world2, rects()));
       if (next) target = next;
     }
@@ -103052,10 +103386,10 @@ ${url}`;
     }
     if (!pinJump && !api3?.ui) return false;
     const key = `${uid}:${event.shiftKey ? 1 : 0}:${pinJump ? "pin" : "ref"}`;
-    const now4 = Date.now();
-    if (key === lastRefKey && now4 - lastRefAt < 500) return true;
+    const now5 = Date.now();
+    if (key === lastRefKey && now5 - lastRefAt < 500) return true;
     lastRefKey = key;
-    lastRefAt = now4;
+    lastRefAt = now5;
     if (pinJump) {
       dismissRoamHoverPopups();
       openCopiedSource(pinJump.plan, { shift: pinJump.mode === "sidebar" });
@@ -103283,7 +103617,7 @@ ${url}`;
     }
     const node2 = event.target?.closest?.(".pxd-item--card");
     let uid = node2?.getAttribute?.("data-uid") || node2?.dataset?.uid || null;
-    if (!uid && queuedOverview() && !event.target?.closest?.(".pxd-item, .pxd-section")) {
+    if (!uid && queuedOverview() && !overviewCanvasOn() && !event.target?.closest?.(".pxd-item, .pxd-section")) {
       const screen = { x: (event.clientX || 0) - (rootRect.left || 0), y: (event.clientY || 0) - (rootRect.top || 0) };
       const hit = hitTest(board2(), screenToWorld(vp, screen), rects());
       if (hit?.part === "body") {
@@ -104216,6 +104550,7 @@ ${url}`;
         pdfFlip?.setLod?.(tier);
         chrome.toolbar.scheduleDock?.();
         if (prevTier !== "detail" && tier === "detail" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0));
+        if (prevTier === "overview" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0), { nearest: true });
       }
       if (!gesturing && !deferReveal()) paintGrid();
       if (!deferReveal()) chrome.toolbar.setZoom(vp.zoom);
@@ -104262,6 +104597,10 @@ ${url}`;
     }
     if (searchMatches.length || root.hasAttribute("data-pxd-searching")) panel.refreshMarks();
     if (itemsChanged || edgesDue || itemsMoveEdges) paintLenses();
+    if (overviewCanvasOn()) {
+      if (dirty.selection) ovDirty = true;
+      if (!wheelLayer) paintOverviewCanvas({ band: false });
+    }
     dirty.minimap = false;
     dirty.viewport = false;
     dirty.items = /* @__PURE__ */ new Set();
@@ -105174,6 +105513,10 @@ ${url}`;
     stats() {
       return { timers: timers.count(), listeners: listeners3.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount(), edgePlacements: edgesR.placements?.() ?? 0, edgesAttached: edgesR.attachedCount?.() ?? 0 };
     },
+    // C2 probe: whether the overview canvas tier is on, and how many times it was drawn.
+    overviewCanvasStats() {
+      return { on: overviewCanvasOn(), draws: ovDraws, items: ovItems, shown: underlay.isShown() && underlayKind === "overview" };
+    },
     // P32 live probes: cover source (pdf.js or hidden reader) and the pane's fit path. Read-only.
     pdfProbe() {
       return { covers: coverReport(), fit: readPane?.fitInfo?.() || null, inline: itemsR.inlineUid?.() || "" };
@@ -105501,7 +105844,7 @@ function parseSketch(raw) {
   }
   return { items, edges };
 }
-function createSketchStore({ storage = globalThis.localStorage, graph = "", now: now4 = Date.now, enabled = () => true } = {}) {
+function createSketchStore({ storage = globalThis.localStorage, graph = "", now: now5 = Date.now, enabled = () => true } = {}) {
   const graphOf = typeof graph === "function" ? graph : () => graph;
   const key = (uid) => sketchKey(graphOf(), uid);
   const lastWrite = /* @__PURE__ */ new Map();
@@ -105524,7 +105867,7 @@ function createSketchStore({ storage = globalThis.localStorage, graph = "", now:
       storage?.setItem(key(uid), text4);
     } catch {
     }
-    lastWrite.set(uid, now4());
+    lastWrite.set(uid, now5());
   };
   return {
     get(uid) {
@@ -105551,7 +105894,7 @@ function createSketchStore({ storage = globalThis.localStorage, graph = "", now:
       const text4 = packSketch(sketch);
       if (!text4) return;
       latest.set(uid, text4);
-      const since = now4() - (lastWrite.get(uid) ?? -Infinity);
+      const since = now5() - (lastWrite.get(uid) ?? -Infinity);
       if (since >= SKETCH_DEBOUNCE_MS) {
         flush(uid);
         return;
@@ -105795,7 +106138,7 @@ function createBoardSnapCapture({
   threshold = 0.45,
   prev = null,
   thumbs = /* @__PURE__ */ new Map(),
-  now: now4 = Date.now
+  now: now5 = Date.now
 } = {}) {
   let done3 = false;
   let out = null;
@@ -105874,7 +106217,7 @@ function createBoardSnapCapture({
       v: SNAP_VERSION,
       uid: uid || board2.uid,
       stamp: boardStamp(board2, rects),
-      savedAt: now4(),
+      savedAt: now5(),
       height: finite8(height) ? height : 0,
       width: finite8(width) ? width : 0,
       threshold: finite8(threshold) ? threshold : 0.45,
@@ -106631,7 +106974,7 @@ function createPrefetch({
   delayMs = DEFAULT_DELAY_MS,
   limit = DEFAULT_LIMIT,
   windowMs = DEFAULT_WINDOW_MS,
-  now: now4 = Date.now,
+  now: now5 = Date.now,
   enabled = () => true,
   setTimer = (fn, ms) => setTimeout(fn, ms),
   clearTimer = (id) => clearTimeout(id)
@@ -106705,7 +107048,7 @@ function createPrefetch({
         return null;
       }
     }
-    const t = now4();
+    const t = now5();
     prune(t);
     if (misses.length >= limit) return null;
     misses.push(t);
@@ -109367,18 +109710,18 @@ async function installPlexusDiagram({
       if (!capture) return false;
       parts.capture = capture;
       parts.finish = () => {
-        let now4 = null;
+        let now5 = null;
         try {
-          now4 = rec.view?.snapshotSource?.() ?? null;
+          now5 = rec.view?.snapshotSource?.() ?? null;
         } catch {
-          now4 = null;
+          now5 = null;
         }
-        if (!now4 || now4.gesturing || now4.board !== src.board || now4.vp?.x !== src.vp?.x || now4.vp?.y !== src.vp?.y || now4.vp?.zoom !== src.vp?.zoom || currentUid(rec) !== uid || isDarkTheme(rec) !== dark) return null;
+        if (!now5 || now5.gesturing || now5.board !== src.board || now5.vp?.x !== src.vp?.x || now5.vp?.y !== src.vp?.y || now5.vp?.zoom !== src.vp?.zoom || currentUid(rec) !== uid || isDarkTheme(rec) !== dark) return null;
         const out = capture.result();
         if (!out) return false;
         let same2 = false;
         try {
-          same2 = out.stamp === boardStamp(now4.board, now4.rects);
+          same2 = out.stamp === boardStamp(now5.board, now5.rects);
         } catch {
           same2 = false;
         }

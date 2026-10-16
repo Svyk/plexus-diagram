@@ -43626,6 +43626,7 @@ function createWriteQueue({ onBusy } = {}) {
 var WRITE_BURST = 200;
 var WRITE_GAP_MS = 100;
 var WRITE_CAP = 1200;
+var MAX_GROUP_WRITES = 45;
 var WATCH_ARM_LOW = 900;
 var WATCH_ARM_RETRY_MS = 5e3;
 var SPLIT_HOLD_MS = 6e4;
@@ -43935,8 +43936,11 @@ function countReads(data, stats) {
   });
 }
 var BROWSE_TTL_MS = 3e4;
-function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
-  const pacer = createWritePacer();
+function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph, now: now4, sleep } = {}) {
+  const pacer = createWritePacer({
+    ...typeof now4 === "function" ? { now: now4 } : {},
+    ...typeof sleep === "function" ? { sleep } : {}
+  });
   const mutate = async (fn) => {
     await pacer.pace();
     try {
@@ -43986,7 +43990,6 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const undoLog = [];
   const redoLog = [];
   const UNDO_LOG_MAX = 200;
-  const MAX_GROUP_WRITES = 45;
   const UNDO_ECHO_MS = 900;
   let openGroup = null;
   let silent = false;
@@ -46267,10 +46270,15 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // The open group becomes ONE entry that undoes and redoes through its own callbacks ({ undo, redo }, async),
     // not through a count of Roam's native undo steps (one Plexus write can be more than one native entry).
     // null drops it again: a transaction that failed midway closes as a native chunk of the writes that ran.
+    // A second custom entry is ignored: a nested writer must not replace the inverse that already covers this group.
     setCustomUndo(entry) {
       if (!openGroup) return;
-      if (entry && typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
-      else if (!entry) delete openGroup.custom;
+      if (!entry) {
+        delete openGroup.custom;
+        return;
+      }
+      if (openGroup.custom) return;
+      if (typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
     },
     // A file upload does not pass through noteWrite. A group that only uploaded would be dropped.
     noteGroupedWrite(kind) {
@@ -49585,13 +49593,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish2();
-    if (custom) custom.forward = list;
+    const active2 = custom && (custom.when !== "over-native-limit" || list.length > MAX_GROUP_WRITES) ? custom : null;
+    if (active2) active2.forward = list;
     return queue.run(() => grouped(async () => {
-      if (custom) host.setCustomUndo?.(custom);
+      if (active2) host.setCustomUndo?.(active2);
       try {
-        return await execute(list, { hold: true, suspend: !custom });
+        return await execute(list, { hold: true, suspend: !active2 });
       } catch (err) {
-        if (custom) host.setCustomUndo?.(null);
+        if (active2) host.setCustomUndo?.(null);
         throw err;
       }
     })).then(() => result, (err) => {
@@ -50344,9 +50353,45 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     refreshLinks,
     commitMove(uids, dx, dy) {
       if (!board2 || !dx && !dy) return Promise.resolve();
+      const before = /* @__PURE__ */ new Map();
+      const remember2 = (id) => {
+        if (before.has(id)) return;
+        const node2 = rawNode(id);
+        if (!node2) return;
+        const hit = ix().get(id);
+        before.set(id, { parent: hit?.parent?.[UID3] || uid, order: node2[ORD], plexus: clone(rawPlexus(id)) });
+      };
+      const custom = {
+        when: "over-native-limit",
+        async undo() {
+          const moves = [];
+          const propsOps = [];
+          for (const [id, prev] of before) {
+            const parentNow = ix().get(id)?.parent?.[UID3] || uid;
+            if (prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
+            if (stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
+          }
+          moves.sort((a, b) => a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0));
+          await execute([...moves, ...propsOps]);
+        },
+        async redo() {
+          await execute(custom.forward);
+        }
+      };
       return txn((t) => {
+        const move = t.move.bind(t);
+        const props = t.props.bind(t);
+        t.move = (id, parent, order) => {
+          remember2(id);
+          move(id, parent, order);
+        };
+        t.props = (id, plexus) => {
+          remember2(id);
+          props(id, plexus);
+        };
         const top = topLevelOf(board2, uids).filter((id) => !board2.items.get(id).pinned);
         if (!top.length) return;
+        for (const id of top) remember2(id);
         const moved = new Map(rects);
         for (const id of top) {
           const r = rects.get(id);
@@ -50365,7 +50410,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         }
         applyFit(t, top);
         if (flag("space-out", false)) spaceOutAfter(t, top);
-      });
+      }, custom);
     },
     commitRects(list) {
       if (!board2 || !list?.length) return Promise.resolve();

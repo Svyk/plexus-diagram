@@ -553,6 +553,8 @@ export function createWriteQueue({ onBusy } = {}) {
 export const WRITE_BURST = 200;
 export const WRITE_GAP_MS = 100;
 export const WRITE_CAP = 1200;
+// Under Roam's undo depth (50). A native group larger than this is split, so one Cmd+Z would undo only the tail.
+export const MAX_GROUP_WRITES = 45;
 // Content-watch arms wait while the last minute holds this many paced calls (writes plus watch calls).
 export const WATCH_ARM_LOW = 900;
 export const WATCH_ARM_RETRY_MS = 5000;
@@ -865,8 +867,11 @@ function countReads(data, stats) {
 
 const BROWSE_TTL_MS = 30000;
 
-export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
-  const pacer = createWritePacer();
+export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph, now, sleep } = {}) {
+  const pacer = createWritePacer({
+    ...(typeof now === "function" ? { now } : {}),
+    ...(typeof sleep === "function" ? { sleep } : {}),
+  });
   // One Roam mutation, paced; a refusal at Roam's rate cap waits out the window and tries once more.
   const mutate = async (fn) => {
     await pacer.pace();
@@ -916,13 +921,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   });
   // Every data.block.* call is its own Roam undo entry. The log groups the calls of one session transaction
   // (host.group) so one undo()/redo() steps over the whole user operation. A write outside a group is its own step.
-  // A group holds at most MAX_GROUP_WRITES writes: a larger transaction is split into consecutive groups (one plexus
-  // undo entry, so one Cmd+Z, per chunk) so every entry stays inside Roam's own undo depth and undo never has to
-  // clean up with deletes (those would land on Roam's stack and resurrect blocks on the next Cmd+Z).
+  // A native group holds at most MAX_GROUP_WRITES writes: a larger transaction is split into consecutive groups (one
+  // plexus undo entry, so one Cmd+Z, per chunk) so every entry stays inside Roam's own undo depth and undo never has
+  // to clean up with deletes (those would land on Roam's stack and resurrect blocks on the next Cmd+Z). A custom undo
+  // entry is not split: one Cmd+Z runs its inverse, which may itself be hundreds of writes.
   const undoLog = [];
   const redoLog = [];
   const UNDO_LOG_MAX = 200;
-  const MAX_GROUP_WRITES = 45; // under Roam's undo depth (50)
   const UNDO_ECHO_MS = 900; // Roam echoes our own writes back through the pull watch; those are not foreign edits
   let openGroup = null;
   let silent = false; // inverse writes of a custom undo entry: they are not new user steps
@@ -3136,10 +3141,12 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     // The open group becomes ONE entry that undoes and redoes through its own callbacks ({ undo, redo }, async),
     // not through a count of Roam's native undo steps (one Plexus write can be more than one native entry).
     // null drops it again: a transaction that failed midway closes as a native chunk of the writes that ran.
+    // A second custom entry is ignored: a nested writer must not replace the inverse that already covers this group.
     setCustomUndo(entry) {
       if (!openGroup) return;
-      if (entry && typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
-      else if (!entry) delete openGroup.custom;
+      if (!entry) { delete openGroup.custom; return; }
+      if (openGroup.custom) return;
+      if (typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
     },
 
     // A file upload does not pass through noteWrite. A group that only uploaded would be dropped.

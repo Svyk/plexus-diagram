@@ -2784,6 +2784,25 @@ export function createReadPane({
     fitInfo: () => ({ path: fitState.path, clicks: fitState.clicks, done: fitDone, userZoomed }),
     element: () => pane,
     parse() { void enterParsed("both", { run: true }); },
+    // A kept parse that restore() skips. Show parsed and the outlines, then flash the pin.
+    showKeptParse(doc, { page, frac } = {}) {
+      if (!openFlag || !doc?.blocks) return false;
+      bgGen += 1;
+      revealModes();
+      const view = ensureParsed();
+      try { view.cancel?.(); } catch { /* parse */ }
+      view.setTarget({ url: pdfUrl(), pdfUid: current.cardUid });
+      view.showDoc(doc);
+      viewMode = "both";
+      applyModeClass();
+      showParsedBtn.setAttribute("aria-pressed", "true");
+      try { view.setShowParsed(true); } catch { /* chips */ }
+      let flashed = false;
+      try { flashed = view.flashPart({ page, frac }) === true; } catch { flashed = false; }
+      if (!flashed && Array.isArray(frac)) flashFrac(frac, page);
+      return true;
+    },
+    flashFrac: (frac, page) => flashFrac(frac, page),
     showParsed() { void enterParsed("both"); },
     showOutline() { void enterParsed("both"); },
     mode: () => viewMode,

@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { parseClipboard } from "../src/model/clipboard.js";
 import { handleParseDrop } from "../src/model/drop.js";
-import { copiedPartPlan, copyMenuPlan, figureCopySize, pasteCardPlan } from "../src/model/pdf-pin.js";
+import { KEPT_PARSE_WAIT_MS, copiedPartPlan, copyMenuPlan, figureCopySize, pasteCardPlan, waitKeptParse } from "../src/model/pdf-pin.js";
 import { placementContent, createParseActions } from "../src/view/parse-actions.js";
 import { runChipAction } from "../src/view/page-chips.js";
 
@@ -205,6 +205,29 @@ test("clipboard text of a copied table pastes as a folded table", () => {
   const board = src("../src/view/board-view.js");
   assert.match(board, /parseClipboard\(/);
   assert.match(board, /insertParsedTable\?\.\(\{/);
+});
+
+test("a ref-card Source loads the kept parse before it flashes", async () => {
+  const doc = { blocks: { a: { id: "a", type: "para" } } };
+  const found = await waitKeptParse(() => doc, { sleep: () => new Promise(() => {}) });
+  assert.equal(found, doc);
+  const started = Date.now();
+  const missed = await waitKeptParse(() => new Promise(() => {}), { timeout: KEPT_PARSE_WAIT_MS, sleep: async () => null });
+  assert.equal(missed, null);
+  assert.ok(Date.now() - started < 500, "the bounded wait slept on the wall clock");
+  assert.equal(await waitKeptParse(() => ({ pages: [] }), { sleep: () => new Promise(() => {}) }), null);
+
+  const board = src("../src/view/board-view.js");
+  const openAt = board.indexOf("function openPin");
+  const open = board.slice(openAt, board.indexOf("openPinFromChip", openAt));
+  assert.match(open, /pdfSourceOfItem\(/);
+  assert.match(open, /waitKeptParse\(/);
+  const pane = src("../src/view/read-pane.js");
+  assert.match(pane, /showKeptParse\(doc/);
+  assert.match(pane, /flashFrac\(frac, page\)/);
+  const revealAt = board.indexOf("async function revealSidebarPin");
+  const reveal = board.slice(revealAt, board.indexOf("function openPin", revealAt));
+  assert.match(reveal, /loadParsedFor\(/);
 });
 
 test("the Source chip sits under the caption instead of over it", () => {

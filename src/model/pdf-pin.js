@@ -752,6 +752,31 @@ export function sourceOpenPlan({ sidebar = false, card = false } = {}) {
   return "roam";
 }
 
+// A Source click on a ref card waits this long for a stored parse, then flashes the page alone.
+export const KEPT_PARSE_WAIT_MS = 2500;
+
+// Race a kept-parse load against a bound. A hanging load loses. A value without blocks is a miss.
+export async function waitKeptParse(load, { timeout = KEPT_PARSE_WAIT_MS, sleep } = {}) {
+  let timer = null;
+  const pending = Promise.resolve()
+    .then(() => (typeof load === "function" ? load() : null))
+    .catch(() => null);
+  const limit = typeof sleep === "function"
+    ? Promise.resolve().then(() => sleep(timeout)).then(() => null).catch(() => null)
+    : new Promise((resolve) => {
+      timer = setTimeout(() => resolve(null), Math.max(0, Number(timeout) || 0));
+    });
+  try {
+    const doc = await Promise.race([
+      pending.then((value) => (value && value.blocks ? value : null)),
+      limit,
+    ]);
+    return doc && doc.blocks ? doc : null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export function pinOpenPlan(region) {
   if (!region || region.kind !== "pdf" || region.supported === false) return null;
   const pdfUid = String(region.drawingUid || "").trim();

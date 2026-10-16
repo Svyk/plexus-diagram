@@ -25,7 +25,7 @@ import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS, highlightModel, noteActionPlan } from "../model/highlight.js";
 import { cleanPdfTitle, coverModel, embedSplit, parsedDocTitle, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
-import { answerSource, gestureSource, matchParsedBlock, notePendingPin, pasteCardPlan, pinOpenFallback, pinOpenPlan, readWithSource, refOpenPlan, sourceOpenPlan } from "../model/pdf-pin.js";
+import { KEPT_PARSE_WAIT_MS, answerSource, gestureSource, matchParsedBlock, notePendingPin, pasteCardPlan, pinOpenFallback, pinOpenPlan, readWithSource, refOpenPlan, sourceOpenPlan, waitKeptParse } from "../model/pdf-pin.js";
 import { parseRegion } from "../model/regions.js";
 import { isMetaBanner } from "../model/title-cap.js";
 import { createSharpStore } from "./sharp-store.js";
@@ -1883,6 +1883,7 @@ function buildBoardView(onFail, {
   let sidebarHost = null;
   let sidebarParsed = null;
   let sidebarGen = 0;
+  let keptParseGen = 0;
   let sidebarUnwatch = null;
   let sidebarWake = null;
   function pinPdfTarget(plan) {
@@ -2036,16 +2037,41 @@ function buildBoardView(onFail, {
       return false;
     }
     const blockUid = item.target?.kind === "block" ? item.target.uid : item.uid;
+    // A ref card's own string is ((uid)). The PDF macro lives on the block it points at.
+    const source = pdfSourceOfItem(item) || item.string || "";
     ensureReadPane().open?.({
       cardUid: item.uid,
       blockUid,
       page: plan.page,
       frac: plan.frac,
-      source: item.string || "",
+      source,
       title: pdfDisplayTitle(item),
     });
+    void revealKeptParse(plan, source);
     try { revealSidebarPin(plan); } catch { /* sidebar */ }
     return true;
+  }
+  // restore() misses a stale kept parse, and it can lose the race to the page flash.
+  async function revealKeptParse(plan, source) {
+    const gen = ++keptParseGen;
+    const pane = readPane;
+    const url = pdfMacroUrl(typeof source === "string" ? source : "");
+    if (!url) {
+      try { pane?.flashFrac?.(plan?.frac, plan?.page); } catch { /* flash */ }
+      return;
+    }
+    let parsed = null;
+    try {
+      parsed = await waitKeptParse(() => loadParsedFor({ url }), { timeout: KEPT_PARSE_WAIT_MS });
+    } catch { parsed = null; }
+    if (disposed || gen !== keptParseGen || !pane?.isOpen?.()) return;
+    const live = pane.sourceUrl?.() || "";
+    if (live && live !== url) return;
+    if (parsed?.blocks) {
+      try { pane.showKeptParse?.(parsed, { page: plan?.page, frac: plan?.frac }); } catch { /* parse */ }
+      return;
+    }
+    try { pane.flashFrac?.(plan?.frac, plan?.page); } catch { /* flash */ }
   }
   openPinFromChip = (pinUid, event) => {
     let text = "";

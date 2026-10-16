@@ -387,3 +387,70 @@ test("loaded postings are built one document per idle slice", async () => {
   await ready;
   assert.equal(second.search({ text: "beta" }).length, 1);
 });
+
+test("counts reports indexed docs, pages, and the queue", () => {
+  const index = createPdfTextIndex({ budget: budgetOf(), openPdf: async () => null });
+  assert.deepEqual(index.counts(), { docs: 0, pages: 0, queue: 0 });
+  index.noteParsed([
+    { sha256: "s", url: "https://x.test/b.pdf", pdfUid: "p2", docTitle: "Report", page: 3, kind: "paragraph", text: "Zone 3 floor drains" },
+    { sha256: "s", url: "https://x.test/b.pdf", pdfUid: "p2", docTitle: "Report", page: 4, kind: "paragraph", text: "Move drains to weekly" },
+  ]);
+  index.enqueue([{ url: "https://x.test/c.pdf" }]);
+  assert.deepEqual(index.counts(), { docs: 1, pages: 2, queue: 1 });
+});
+
+test("a missing pdf.js retries after 60s and a null open still finishes the job", async () => {
+  let now = 1000;
+  const later = [];
+  const budget = budgetOf();
+  const opens = [];
+  let mode = "retry";
+  const index = createPdfTextIndex({
+    budget,
+    now: () => now,
+    later: (fn, ms) => { later.push({ fn, at: now + ms }); return () => {}; },
+    openPdf: async () => {
+      opens.push(mode);
+      if (mode === "retry") return { retry: true };
+      if (mode === "null") return null;
+      return {
+        hash: "cureus",
+        pageCount: 1,
+        readPage: async (n) => ({ n, text: "unrestricted access", lower: "unrestricted access" }),
+        close: async () => {},
+      };
+    },
+  });
+  index.enqueue([{ url: "https://x.test/cureus.pdf" }]);
+  budget.flush();
+  await tick();
+  assert.equal(opens.length, 1);
+  assert.equal(index.counts().queue, 1, "no lib keeps the job");
+  now = 1000 + 59999;
+  later.splice(0).forEach((job) => { if (job.at <= now) job.fn(); });
+  budget.flush();
+  await tick();
+  assert.equal(opens.length, 1, "the retry waits 60s");
+  now = 1000 + 60000;
+  mode = "ok";
+  later.splice(0).forEach((job) => { if (job.at <= now) job.fn(); });
+  await drain(budget, 8);
+  assert.ok(opens.includes("ok"));
+  assert.equal(index.search({ text: "unrestricted" })[0]?.page, 1);
+  assert.equal(index.counts().queue, 0);
+});
+
+test("a null open still finishes the job", async () => {
+  const budget = budgetOf();
+  let opens = 0;
+  const index = createPdfTextIndex({
+    budget,
+    now: () => 0,
+    later: () => () => {},
+    openPdf: async () => { opens += 1; return null; },
+  });
+  index.enqueue([{ url: "https://x.test/bad.pdf" }]);
+  await drain(budget, 6);
+  assert.equal(opens, 1);
+  assert.equal(index.counts().queue, 0);
+});

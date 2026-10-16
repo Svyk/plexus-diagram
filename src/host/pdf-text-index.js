@@ -11,6 +11,8 @@ export const STORE_PDF_TEXT = "pages";
 export const PDF_TEXT_V = 1;
 const PAGE_CAP = 80;
 const JOB_CAP = 40;
+// Same wait pdf-names uses when Roam has not loaded a pdf.js lib yet.
+export const PDF_TEXT_NO_LIB_MS = 60000;
 
 const wordsOf = (lower) => String(lower || "").match(/[a-z0-9]+/g) || [];
 
@@ -378,6 +380,11 @@ export function createPdfTextIndex({
         await dropHandle(handle);
         return false;
       }
+      // No lib yet (or getDocument failed before a worker exists). Keep the job and try again.
+      if (handle?.retry === true && typeof handle.readPage !== "function") {
+        pausedUntil = now() + PDF_TEXT_NO_LIB_MS;
+        return false;
+      }
       if (!handle || !(handle.pageCount > 0) || typeof handle.readPage !== "function") {
         await dropHandle(handle);
         return true;
@@ -451,6 +458,12 @@ export function createPdfTextIndex({
     share.release();
   }
 
+  function counts() {
+    let pages = 0;
+    for (const doc of docs) pages += Array.isArray(doc.pages) ? doc.pages.length : 0;
+    return { docs: docs.length, pages, queue: queue.length };
+  }
+
   function enqueue(jobs) {
     for (const job of Array.isArray(jobs) ? jobs : []) {
       const url = String(job?.url || "");
@@ -462,5 +475,5 @@ export function createPdfTextIndex({
     arm();
   }
 
-  return { search, noteParsed, enqueue, pause, stop, whenLoaded, docs, version: PDF_TEXT_DB_VERSION };
+  return { search, noteParsed, enqueue, pause, stop, whenLoaded, counts, docs, version: PDF_TEXT_DB_VERSION };
 }

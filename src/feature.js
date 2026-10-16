@@ -4212,6 +4212,18 @@ export async function installPlexusDiagram({
     pdfProbe: () => [...mounts.values()].map((rec) => {
       try { return { uid: rec.uid, ...rec.view?.pdfProbe?.() }; } catch { return { uid: rec.uid }; }
     }),
+    pdfText() {
+      const totals = { docs: 0, pages: 0, queue: 0 };
+      for (const rec of mounts.values()) {
+        let got = null;
+        try { got = rec.view?.pdfTextStats?.(); } catch { got = null; }
+        if (!got) continue;
+        totals.docs += Number(got.docs) || 0;
+        totals.pages += Number(got.pages) || 0;
+        totals.queue += Number(got.queue) || 0;
+      }
+      return totals;
+    },
     cameraRect(boardUid) {
       const rec = pickCameraMount([...mounts.values()], boardUid, isSidebarMount, currentUid);
       try { return rec?.view?.cameraRect?.() ?? null; } catch { return null; }

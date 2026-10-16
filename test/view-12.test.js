@@ -1567,6 +1567,78 @@ test("panel: the Boards tab lists host boards, adds a board shortcut as a ((uid)
   }
 });
 
+test("opening search creates the PDF text database without waiting for an idle slice", async () => {
+  const f = mountFixture();
+  const names = [];
+  f.stub.window.indexedDB = {
+    open(name) {
+      names.push(name);
+      return {};
+    },
+  };
+  try {
+    await f.flush();
+    names.length = 0;
+    f.root.querySelector(".pxd-toolbar__add").click();
+    await tick(0);
+    assert.ok(names.includes("plexus-diagram-pdf-text"), `databases opened: ${names.join(",") || "(none)"}`);
+    const stats = f.view.pdfTextStats();
+    assert.deepEqual(Object.keys(stats).sort(), ["docs", "pages", "queue"]);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("the first search creates the PDF text database before the open-panel timer", async () => {
+  const f = mountFixture({
+    hostOverrides: {
+      listPdfBlocks: () => [{ uid: "pdf1", url: "https://x.test/report.pdf", pageTitle: "Report" }],
+    },
+  });
+  const names = [];
+  const db = () => ({
+    objectStoreNames: { contains: () => true },
+    createObjectStore() {},
+    close() {},
+    transaction() {
+      return {
+        objectStore() {
+          return {
+            get() { const req = {}; queueMicrotask(() => { req.result = undefined; req.onsuccess?.(); }); return req; },
+            getAll() { const req = {}; queueMicrotask(() => { req.result = []; req.onsuccess?.(); }); return req; },
+            getAllKeys() { const req = {}; queueMicrotask(() => { req.result = []; req.onsuccess?.(); }); return req; },
+            put() { const req = {}; queueMicrotask(() => { req.onsuccess?.(); }); return req; },
+          };
+        },
+      };
+    },
+  });
+  f.stub.window.indexedDB = {
+    open(name) {
+      names.push(name);
+      const req = {};
+      queueMicrotask(() => { req.result = db(); req.onsuccess?.(); });
+      return req;
+    },
+  };
+  try {
+    await f.flush();
+    names.length = 0;
+    const add = f.root.querySelector(".pxd-toolbar__add");
+    add.click();
+    const input = f.root.querySelector(".pxd-panel__input");
+    input.value = "drains";
+    f.stub.dispatch(input, "keydown", { key: "Enter" });
+    add.click();
+    for (let i = 0; i < 8; i += 1) await tick(0);
+    assert.ok(names.includes("plexus-diagram-pdf-text"), `databases opened: ${names.join(",") || "(none)"}`);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 // ------------------------------------------------------------------ dispose
 
 test("dispose after using menu, Quick Look, focus, present and the panel leaves no nodes, listeners, timers or frames", async () => {

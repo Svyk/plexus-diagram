@@ -385,6 +385,17 @@ test("opening the right sidebar parks the boards on the page", async () => {
   });
 });
 
+test("pdfText sums indexed docs, pages, and the queue across mounted boards", async () => {
+  await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    assert.deepEqual(t.env.win.__plexusDiagram.pdfText(), { docs: 0, pages: 0, queue: 0 });
+    t.views[0].pdfTextStats = () => ({ docs: 2, pages: 9, queue: 1 });
+    assert.deepEqual(t.env.win.__plexusDiagram.pdfText(), { docs: 2, pages: 9, queue: 1 });
+  });
+});
+
 test("PACKAGE_VERSION comes from package.json", async () => {
   const { readFile } = await import("node:fs/promises");
   const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));

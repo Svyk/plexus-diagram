@@ -58,6 +58,21 @@
   color: inherit;
 }
 
+/* An open overlay (autocomplete, date) must paint outside the card. The three
+   clips above return once pxd-item--pop leaves. The header stays clipped so the
+   title still ellipsizes. The board edge (.pxd-root overflow:clip) still cuts it. */
+.pxd-root .pxd-item.pxd-item--page.pxd-item--editing.pxd-item--pop {
+  overflow: visible;
+}
+
+.pxd-root .pxd-item.pxd-item--page.pxd-item--editing.pxd-item--pop > .pxd-item__body {
+  overflow: visible;
+}
+
+.pxd-root .pxd-item.pxd-item--page.pxd-item--editing.pxd-item--pop > .pxd-item__body > .pxd-item__editor.pxd-page-edit {
+  overflow: visible;
+}
+
 .pxd-root .pxd-item--page .pxd-page-edit::-webkit-scrollbar {
   width: 8px;
   height: 8px;

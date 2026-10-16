@@ -5,14 +5,29 @@
 
 const UID = /^[A-Za-z0-9_-]{9,15}$/;
 
+// Embed textareas are `block-input-render-block-path-<card>-uuid…-<block>`.
+// The block is the shortest 9–15 char suffix after a hyphen: a uuid piece is
+// 12 hex chars, and a longer match would swallow it. Uids may contain "-" and "_".
+function uidFromBlockInput(id) {
+  const prefix = "block-input-";
+  if (!id.startsWith(prefix)) return null;
+  const rest = id.slice(prefix.length);
+  if (UID.test(rest)) return rest;
+  for (let i = rest.length - 1; i >= 0; i -= 1) {
+    if (rest[i] !== "-") continue;
+    const tail = rest.slice(i + 1);
+    if (tail.length > 15) return null;
+    if (UID.test(tail)) return tail;
+  }
+  return null;
+}
+
 export function blockUidFromNode(node) {
   let el = node;
   while (el && el.nodeType === 1) {
     const id = String(el.id || el.getAttribute?.("id") || "");
-    if (id.startsWith("block-input-")) {
-      const rest = id.slice("block-input-".length);
-      if (UID.test(rest)) return rest;
-    }
+    const fromInput = uidFromBlockInput(id);
+    if (fromInput) return fromInput;
     if (UID.test(id)) return id;
     const data = el.dataset?.uid || el.getAttribute?.("data-uid") || "";
     if (UID.test(data)) return data;

@@ -962,8 +962,14 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     }
     let parts = [];
     const needle = String(filter.text || "").trim();
-    const kinds = checked.size === ALL_TYPES.length && !wantFigures ? [] : PARSE_PART_TYPES.filter((t) => checked.has(t) && !(wantFigures && t === "figure"));
-    if (typeof on.searchParts === "function" && (checked.size === ALL_TYPES.length || kinds.length > 0)
+    // A saved filter of only "pdf" checks no part type, so the old gate never asked for page text.
+    // PDF on, with no part type picked, searches the text parts. Figures stay on the image path.
+    const textPartKinds = PARSE_PART_TYPES.filter((t) => t !== "figure");
+    const explicitKinds = PARSE_PART_TYPES.filter((t) => checked.has(t) && !(wantFigures && t === "figure"));
+    const allOn = checked.size === ALL_TYPES.length;
+    const wantPdfBody = allOn || checked.has("pdf") || explicitKinds.length > 0;
+    const kinds = allOn && !wantFigures ? [] : (explicitKinds.length ? explicitKinds : (checked.has("pdf") && needle ? textPartKinds : []));
+    if (typeof on.searchParts === "function" && wantPdfBody
       && (needle || kinds.length) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter)) {
       const t0 = Date.now();
       try { parts = (await Promise.resolve(on.searchParts({ text: needle, kinds, pages: filter.pages }, LIMIT))) || []; } catch { parts = []; }
@@ -977,7 +983,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       if (id !== queryId) return;
     }
     let pdfHits = [];
-    if (bodySearch && typeof on.searchPdfText === "function") {
+    if (bodySearch && wantPdfBody && typeof on.searchPdfText === "function") {
       try {
         const got = on.searchPdfText({ text: needle, pages: filter.pages }, LIMIT);
         if (Array.isArray(got)) pdfHits = got;

@@ -114,6 +114,56 @@ test("arrow keys move the active row and Enter opens it; Enter with no selection
   assert.equal(pdfCalls, 1);
 });
 
+test("a PDF-only type filter still shows parsed page text", async (t) => {
+  const partCalls = [];
+  let imageCalls = 0;
+  const f = setup({
+    on: {
+      loadTypes: () => ["pdf"],
+      searchParts: async (query) => {
+        partCalls.push(query);
+        return [{
+          kind: "paragraph", page: 2, text: "Zone 3 floor drains", docTitle: "QA Technical Report",
+          sha256: "rep", engine: "builtin", optsHash: "oh", blockId: "d1", pdfUid: "pdf1", url: "https://x/report.pdf",
+        }];
+      },
+      searchImages: async () => { imageCalls += 1; return { images: [], figures: [] }; },
+      searchPdfText: () => [],
+    },
+    host: { librarySearch: () => ({ rows: [{ string: "{{pdf: https://x/report.pdf}}", text: "QA Technical Report", kind: "pdf", label: "pdf", url: "https://x/report.pdf" }], queries: [] }) },
+  });
+  t.after(f.restore);
+  assert.equal(q(f.root, ".pxd-panel__type-btn").textContent, "1 type");
+  await search(f, "drains");
+  assert.equal(partCalls.length, 1);
+  assert.equal(partCalls[0].text, "drains");
+  assert.ok(partCalls[0].kinds.includes("paragraph"));
+  assert.equal(partCalls[0].kinds.includes("figure"), false);
+  assert.equal(imageCalls, 0);
+  assert.deepEqual([...f.root.querySelectorAll(".pxd-panel__group")].map((n) => n.textContent), ["Cards", "PDF text"]);
+  const row = q(f.root, ".pxd-panel__row--part");
+  assert.equal(q(row, ".pxd-panel__mark").textContent, "drains");
+  assert.equal(q(row, ".pxd-panel__page-chip").textContent, "p. 2");
+});
+
+test("a pages-only type filter does not ask for PDF text", async (t) => {
+  let partCalls = 0;
+  let pdfCalls = 0;
+  const f = setup({
+    on: {
+      loadTypes: () => ["page"],
+      searchParts: async () => { partCalls += 1; return []; },
+      searchPdfText: () => { pdfCalls += 1; return []; },
+    },
+    host: { librarySearch: () => ({ rows: [{ string: "[[Aging]]", text: "Aging", kind: "page", label: "page" }], queries: [] }) },
+  });
+  t.after(f.restore);
+  await search(f, "drains");
+  assert.equal(partCalls, 0);
+  assert.equal(pdfCalls, 0);
+  assert.equal(q(f.root, ".pxd-panel__group")?.textContent, "Cards");
+});
+
 test("tag and day filters do not ask the pdf text index", async (t) => {
   let pdfCalls = 0;
   const f = setup({

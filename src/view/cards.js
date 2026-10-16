@@ -5684,6 +5684,49 @@ export function createItemRenderer({
   // ---------------------------------------------------------------- preview during gestures
   // Queued member cards have no shell. The cover keeps their rects until the gesture ends.
   let coverShift = null;
+  // E2-6 (perf2, speed flag dragLayer): a drag of a big selection moves its attached shells into one group per layer
+  // (.pxd-drag-layer, the last child of the sections and items layers, so it stacks where they did) and a pointer frame
+  // writes one transform per group instead of one per shell (QA3: 125 composited shells, frame p50 200 ms). The drop
+  // puts each shell back in board order at its last preview spot, in the drop's task.
+  let dragGroup = null;
+  const beginDragGroup = (set) => {
+    if (dragGroup || disposed) return false;
+    const make = (layer) => {
+      const g = doc.createElement("div");
+      g.className = "pxd-drag-layer";
+      g.style.cssText = "position:absolute;left:0;top:0;width:0;height:0;overflow:visible;pointer-events:none;will-change:transform;";
+      layer.append(g);
+      return g;
+    };
+    const recs = [];
+    for (const uid of set) {
+      const rec = shells.get(uid);
+      if (rec?.el && isAttached(rec)) recs.push(rec);
+    }
+    if (!recs.length) return false;
+    const group = { sections: make(sectionsLayer), items: make(itemsLayer), recs, before: new Map(), last: null };
+    for (const rec of [...recs].sort((a, b) => indexOfUid(a.uid) - indexOfUid(b.uid))) {
+      group.before.set(rec, rec.el.style.transform);
+      (rec.type === "section" ? group.sections : group.items).append(rec.el);
+    }
+    dragGroup = group;
+    return true;
+  };
+  const endDragGroup = () => {
+    const group = dragGroup;
+    if (!group) return;
+    dragGroup = null;
+    for (const rec of group.recs) {
+      if (rec.el.parentElement !== group.sections && rec.el.parentElement !== group.items) continue;
+      // A shell nothing re-placed during the drag lands at its last preview spot (the commit re-places it there).
+      const at = group.last?.get(rec.uid);
+      if (at && rec.el.style.transform === group.before.get(rec)) rec.el.style.transform = `translate(${at.x}px, ${at.y}px)`;
+      rec.el.remove();
+    }
+    attachMany(new Set(group.recs.filter((rec) => rec.el && !isAttached(rec) && shells.get(rec.uid) === rec)));
+    group.sections.remove();
+    group.items.remove();
+  };
   const previewMove = (uids, dx, dy, board, rects) => {
     const set = new Set(uids);
     for (const u of uids) for (const d of descendantsOf(board, u)) set.add(d);
@@ -5697,14 +5740,21 @@ export function createItemRenderer({
       }
     }
     const live = new Map();
+    const grouped = dragGroup;
+    if (grouped) {
+      const t = `translate(${dx}px, ${dy}px)`;
+      grouped.sections.style.transform = t;
+      grouped.items.style.transform = t;
+    }
     for (const uid of set) {
       const rec = shells.get(uid);
       const r = rects.get(uid);
       if (!rec || !r) continue;
       const moved = { x: r.x + dx, y: r.y + dy, w: r.w, h: r.h };
-      rec.el.style.transform = `translate(${moved.x}px, ${moved.y}px)`;
+      if (!grouped || (rec.el.parentElement !== grouped.items && rec.el.parentElement !== grouped.sections)) rec.el.style.transform = `translate(${moved.x}px, ${moved.y}px)`;
       live.set(uid, moved);
     }
+    if (grouped) grouped.last = live;
     noteOverviewQueue();
     return live;
   };
@@ -6867,6 +6917,8 @@ export function createItemRenderer({
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     ensureShell,
     holdShells,
+    beginDragGroup,
+    endDragGroup,
     pauseShells,
     resumeShells,
     promoteQueue,

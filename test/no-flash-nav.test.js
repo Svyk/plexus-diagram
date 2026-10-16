@@ -177,7 +177,7 @@ test("E5: no background slice runs inside a wheel burst on the board; it runs on
 // layer (one transform a frame), the moving shells get their own compositor layers, and only the crossing edges near
 // the view are placed (at most 300 a frame). The drop places the riders at the committed spot in the same task.
 
-test("E6: a big selection drags as one layer: inner edges ride it untouched, crossing edges are budgeted, the drop places everything in one task", async () => {
+test("E6/E2-6: a big selection drags as one layer: shells in one group, inner edges ride untouched, crossing edges budgeted, the drop places everything in one task", async () => {
   const { m, root, sel, el, p } = await dragSelection({});
   try {
     assert.ok(sel.length >= 24, `selected ${sel.length}`);
@@ -201,11 +201,23 @@ test("E6: a big selection drags as one layer: inner edges ride it untouched, cro
     assert.match(layer.style.transform, /^translate\(/);
     assert.deepEqual(before.map(([g]) => g.children?.[1]?.getAttribute?.("d")), layerD, "a riding edge is not re-pathed during the drag");
     assert.ok(perFrame.slice(1).every((n) => n <= 300), `crossing edges placed per frame: ${perFrame}`);
-    assert.equal(el.style.willChange, "transform", "a moving shell is its own layer for the drag");
+    // E2-6: the moving shells ride one group per layer; a frame writes the group's transform, not each shell's.
+    const group = el.parentElement;
+    assert.equal(group.getAttribute("class"), "pxd-drag-layer", "the dragged shell rides the items layer's drag group");
+    assert.match(group.style.transform, /^translate\(/);
+    const fixed = el.style.transform;
+    m.stub.dispatch(el, "pointermove", { clientX: p.clientX + 33, clientY: p.clientY + 22, buttons: 1, pointerId: 7 });
+    m.stub.flushFrames();
+    assert.equal(el.style.transform, fixed, "a grouped shell's own transform is not written per frame");
     m.stub.dispatch(el, "pointerup", { clientX: p.clientX + 30, clientY: p.clientY + 20, button: 0, buttons: 0, pointerId: 7 });
     assert.equal(riders(root), null, "the drag layer is gone in the drop's task");
     assert.equal(m.commits.length, 1, "one commit (one undo entry) for the whole move");
-    assert.equal(el.style.willChange, "");
+    assert.equal(m.view.root.querySelector(".pxd-drag-layer"), null, "the drag groups are gone in the drop's task");
+    assert.equal(el.parentElement?.getAttribute("class"), "pxd-items", "the shell is back in the items layer");
+    const c = m.commits[0];
+    const r0 = m.session.rects.get(el.getAttribute("data-uid"));
+    assert.equal(el.style.transform, `translate(${r0.x}px, ${r0.y}px)`, "at the committed spot, no snap back");
+    assert.ok(c.dx !== 0 || c.dy !== 0);
     const moved = before.filter(([g, d]) => g.children?.[1]?.getAttribute?.("d") !== d).length;
     assert.equal(moved, before.length, "every rider is placed at the committed spot before the frame paints");
     assert.ok(before.every(([g]) => g.parentElement && g.parentElement.getAttribute("class")?.split(" ")[0] === "pxd-edges"), "riders are back in the edges layer");
@@ -404,5 +416,21 @@ test("E2-4: a zoom-out burst from detail draws the far cards with greeked titles
     const bars = ops.filter((op) => op === "fillRect #e5e7eb").length;
     assert.ok(bars > 100, `greeked text bars on the burst boxes: ${bars}`);
     assert.ok(ops.includes("fill #26333f"), "the boxes keep the card fill");
+  } finally { m.done(); }
+});
+
+test("E2-6: Escape during a grouped drag puts every shell back where it was, out of the group", async () => {
+  const { m, root, el, p } = await dragSelection({});
+  try {
+    const before = el.style.transform;
+    m.stub.dispatch(el, "pointerdown", { ...p, button: 0, buttons: 1, pointerId: 7 });
+    for (let i = 1; i <= 5; i += 1) { m.stub.dispatch(el, "pointermove", { clientX: p.clientX + i * 6, clientY: p.clientY + i * 4, buttons: 1, pointerId: 7 }); m.stub.flushFrames(); }
+    assert.ok(root.querySelector(".pxd-drag-layer"));
+    m.stub.dispatch(m.stub.window, "keydown", { key: "Escape", code: "Escape" });
+    m.stub.dispatch(el, "pointerup", { clientX: p.clientX + 30, clientY: p.clientY + 20, button: 0, buttons: 0, pointerId: 7 });
+    m.stub.flushFrames();
+    assert.equal(root.querySelector(".pxd-drag-layer"), null);
+    assert.equal(el.parentElement?.getAttribute("class"), "pxd-items");
+    if (m.commits.length === 0) assert.equal(el.style.transform, before, "a cancelled drag leaves the card where it was");
   } finally { m.done(); }
 });

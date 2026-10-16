@@ -4141,11 +4141,15 @@ function buildBoardView(onFail, {
   };
   const beginDragRide = (b, set) => {
     const shells = [];
-    for (const uid of set) {
-      const el = itemsR.shellOf(uid);
-      if (el?.style) { el.style.willChange = "transform"; shells.push(el); }
+    // E2-6: the moving shells ride one group per layer (cards.js beginDragGroup); per-shell layers otherwise.
+    const grouped = Boolean(itemsR.beginDragGroup?.(set));
+    if (!grouped) {
+      for (const uid of set) {
+        const el = itemsR.shellOf(uid);
+        if (el?.style) { el.style.willChange = "transform"; shells.push(el); }
+      }
     }
-    dragRide = { shells, edges: edgesR.beginDrag(b, set), turn: 0 };
+    dragRide = { shells, grouped, edges: edgesR.beginDrag(b, set), turn: 0 };
   };
   // The edges that cross the moving set and have an end near the view, at most DRAG_EDGE_BUDGET a frame (the rest of
   // them in turn on the next frames). An edge far from the view is placed by the drop's commit (or stays where it
@@ -4176,6 +4180,7 @@ function buildBoardView(onFail, {
     const ride = dragRide;
     dragRide = null;
     for (const el of ride.shells) { try { el.style.willChange = ""; } catch { /* gone */ } }
+    if (ride.grouped) { try { itemsR.endDragGroup?.(); } catch { /* renderer */ } }
     const b = board();
     edgesR.endDrag(b ? { board: b, rects: paintRects(), zoom: vp.zoom } : null);
   };

@@ -101,7 +101,10 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     view = widen(keep, 0.125);
     try { return !edgeNear(board, edge, rects); } finally { view = keep; }
   };
+  // C2: at the overview canvas tier every edge is a hairline on the view's canvas; only a pinned one is DOM.
+  let canvasTier = () => false;
   const edgeNear = (board, edge, rects) => {
+    if (canvasTier()) return false;
     if (!view) return true;
     const a = rects.get(edgeAnchor(board, edge.from, edge.homeFrom));
     const b = rects.get(edgeAnchor(board, edge.to, edge.homeTo));
@@ -1097,6 +1100,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   return {
     edgeShown,
     isVirtual: (board) => virtualEdges(board),
+    setCanvasTier: (on) => { canvasTier = typeof on === "function" ? on : () => Boolean(on); },
     render,
     update,
     reveal,

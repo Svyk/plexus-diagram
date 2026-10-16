@@ -3423,6 +3423,7 @@ function buildBoardView(onFail, {
     blockText: (uid) => host?.blockString?.(uid),
     onHover: (uid, on) => hoverRows(uid, on),
   });
+  edgesR.setCanvasTier?.(() => overviewCanvasOn());
 
   // NAV-3 / MEM-8. Queries run when Info opens or a lens turns on, not while the board is mounting.
   const timelineTargetUid = (item) => {
@@ -3925,6 +3926,8 @@ function buildBoardView(onFail, {
       pdfFlip?.setLod?.(tier);
       chrome.toolbar.scheduleDock?.();
       if (was !== "detail" && tier === "detail" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0));
+      // C2: the queue that waited on the overview canvas builds the new view first, nearest the centre.
+      if (was === "overview" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0), { nearest: true });
     }
   };
   const scheduleContent = () => {
@@ -4105,6 +4108,8 @@ function buildBoardView(onFail, {
   // "burst": every unattached item and edge (showUnderlay); "cover": only the overview-fast queue.
   let underlayKind = "";
   const showUnderlay = () => {
+    // C2: the overview canvas is the underlay already. A pan or a zoom burst does not redraw it.
+    if (overviewCanvasOn() && paintOverviewCanvas({ band: false })) return;
     if (underlayDrawn) return;
     underlayDrawn = true;
     underlayKind = "burst";
@@ -4145,7 +4150,13 @@ function buildBoardView(onFail, {
     return tier === "overview" && coverUids.has(uid);
   };
   paintOverviewCover = () => {
-    if (disposed || underlayDrawn) return;
+    if (disposed) return;
+    if (overviewCanvasOn()) {
+      ovDirty = true;
+      if (!wheelLayer) paintOverviewCanvas({ band: !gesturing });
+      return;
+    }
+    if (underlayDrawn) return;
     try { if (notedSpeedFlags().overviewFast === false) { coverUids = new Set(); return; } } catch { coverUids = new Set(); return; }
     if (tier === "detail" && itemsR.coverHeld?.() !== true) {
       const pending = itemsR.pendingBoxes?.() || [];
@@ -4160,8 +4171,73 @@ function buildBoardView(onFail, {
     underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
   };
   const releaseUnderlay = () => {
+    if (overviewCanvasOn() && paintOverviewCanvas()) return;
     underlay.hide();
     paintOverviewCover();
+  };
+  // C2. Overview tier of a big board on the underlay canvas (speed flag overviewCanvas, off by default this round).
+  // Below zoom 0.2 a card is a coloured box of ~15x10 screen pixels with its header hidden (extension.css), and the
+  // PhD main board built ~1,558 shells there that the overview CSS then hid (~1 s of pump CPU at open). On this tier
+  // the card shells are not built or attached (cards.js canvasTier); one fillRect per card and hairline edges on the
+  // underlay instead. The canvas sits inside .pxd-world, so a pan is the world transform and never redraws it.
+  // Redraws: the zoom band (at the settle), the item set and rects, edges, colours (theme), selection, search and
+  // focus. Sections, the selected card and an edited card stay real shells. Presses resolve through the model
+  // (hitTest): a click selects on pointerup, a drag pans, a double click or a context menu builds that one shell.
+  // Not drawn on this tier: the dust lens, strength lens, lane marks and badges (they paint shells; there are none).
+  let ovDirty = true;
+  let ovBand = null;
+  let ovModel = null;
+  let ovRects = null;
+  let ovAttached = -1;
+  let ovDraws = 0;
+  let ovItems = 0;
+  let canvasSearch = null;
+  let canvasFocus = null;
+  const ovBandOf = (z) => Math.round(Math.log(z > 0 ? z : 1) / Math.log(1.5));
+  const overviewCanvasOn = () => tier === "overview" && Boolean(itemsR.canvasTier?.());
+  const paintOverviewCanvas = ({ band = true } = {}) => {
+    if (disposed || suspended) return false;
+    const b = board();
+    if (!b) return false;
+    const nextBand = ovBandOf(vp.zoom);
+    const shown = underlay.isShown() && underlayKind === "overview";
+    // The item set, rects and edges are one model: a new board or rects object is a change.
+    // A tier flip inside a camera frame draws before the settle detaches the card shells: the attached count is part
+    // of the key (selection changes, the other way a card attaches here, set ovDirty themselves).
+    const model = rects();
+    const attached = itemsR.attachedCount?.() ?? 0;
+    if (b !== ovModel || model !== ovRects || attached !== ovAttached) ovDirty = true;
+    if (shown && !ovDirty && (!band || nextBand === ovBand)) { underlayDrawn = true; return true; }
+    ovDirty = false;
+    ovBand = nextBand;
+    ovModel = b;
+    ovRects = model;
+    ovAttached = attached;
+    const r = paintRects();
+    const sel = new Set(selection.items);
+    const items = [];
+    for (const uid of b.order) {
+      const item = b.items.get(uid);
+      if (!item || item.type === "section") continue;
+      const rect = r.get(uid);
+      if (!rect || itemsR.attachedUid(uid)) continue;
+      const hit = Boolean(canvasSearch?.has(uid));
+      const dim = Boolean((canvasSearch && !hit) || (canvasFocus && !canvasFocus.has(uid)));
+      items.push({ uid, rect, color: item.color || "", dim, hit, selected: sel.has(uid) });
+    }
+    const edges = [];
+    for (const e of b.edges.values()) {
+      if (edgesR.edgeShown(e.uid)) continue;
+      const a = r.get(e.from), c = r.get(e.to);
+      if (a && c) edges.push([a, c]);
+    }
+    underlayDrawn = true;
+    underlayKind = "overview";
+    coverUids = new Set();
+    ovDraws += 1;
+    ovItems = items.length;
+    underlay.drawOverview({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
+    return true;
   };
   // C1. The settle after a fit or a zoom out on a big board attached every near shell and edge in one task (PhD MAIN
   // at fit: ~1,500 shells and ~2,114 edges, 60-120 ms, most of the zoom-in tier flip). It attaches one slice per
@@ -4216,8 +4292,9 @@ function buildBoardView(onFail, {
     }
     const edgesLeft = sliceEdges(rect);
     if (!edgesLeft && !((itemsR.attachLeft?.() || 0) > 0)) { endSlice(); releaseUnderlay(); return; }
-    // A burst's canvas already shows every box that is not attached; a fit (no burst) or the overview cover draws it.
-    if (underlay.isShown() && underlayKind === "burst") underlayDrawn = true;
+    // A burst's canvas (or the overview canvas being left) already shows every box that is not attached; a fit (no
+    // burst) or the overview cover draws it.
+    if (underlay.isShown() && (underlayKind === "burst" || underlayKind === "overview")) underlayDrawn = true;
     else { underlayDrawn = false; showUnderlay(); }
     slicing = true;
     sliceFrame?.();
@@ -4976,6 +5053,8 @@ function buildBoardView(onFail, {
     focusKey = key;
     itemsR.setFocus(set);
     edgesR.setFocus(set);
+    canvasFocus = set ? new Set(set) : null;
+    if (overviewCanvasOn()) { ovDirty = true; paintOverviewCanvas(); }
   };
   const toggleFocus = () => {
     if (focusOn) { focusOn = false; applyFocus(); return; }
@@ -7271,6 +7350,8 @@ function buildBoardView(onFail, {
   };
   const paintSearch = (b, hits, q) => {
     const bright = new Set((hits || []).map((h) => h.focus));
+    canvasSearch = q ? bright : null;
+    if (overviewCanvasOn()) { ovDirty = true; paintOverviewCanvas(); }
     for (const item of b?.items.values() || []) {
       const shell = itemsR.shellOf(item.uid);
       const on = Boolean(q) && bright.has(item.uid);
@@ -7673,6 +7754,8 @@ function buildBoardView(onFail, {
       const b = board();
       if (!b) return;
       liveRects = itemsR.previewMove(uids, dx, dy, b, rects());
+      // C2: selected cards with no shell move on the overview canvas (the frame redraws it).
+      if (overviewCanvasOn()) ovDirty = true;
       const set = new Set(uids);
       for (const u of uids) for (const d of descendantsOf(b, u)) set.add(d);
       // A moved item joins the section under its center; that section grows around it (preview only).
@@ -8161,7 +8244,15 @@ function buildBoardView(onFail, {
     const screen = { x: (event.clientX || 0) - rootRect.left, y: (event.clientY || 0) - rootRect.top };
     const world = screenToWorld(vp, screen);
     let target = targetOf(event.target);
-    if (target.kind === "empty" && (queuedOverview() || slicing)) {
+    if (target.kind === "empty" && overviewCanvasOn() && (type === "pointerdown" || type === "dblclick" || type === "contextmenu")) {
+      // C2: a press on a canvas card is still empty space (a drag pans) and carries the card for the click.
+      const hit = hitTest(board(), world, rects());
+      if (hit?.uid && board()?.items.get(hit.uid)?.type !== "section") {
+        if (type === "pointerdown") target = { kind: "empty", canvasUid: hit.uid };
+        else target = promoteQueued(hit) || target;
+      }
+    }
+    if (target.kind === "empty" && !target.canvasUid && (queuedOverview() || slicing)) {
       const next = promoteQueued(hitTest(board(), world, rects()));
       if (next) target = next;
     }
@@ -8750,7 +8841,7 @@ function buildBoardView(onFail, {
     }
     const node = event.target?.closest?.(".pxd-item--card");
     let uid = node?.getAttribute?.("data-uid") || node?.dataset?.uid || null;
-    if (!uid && queuedOverview() && !event.target?.closest?.(".pxd-item, .pxd-section")) {
+    if (!uid && queuedOverview() && !overviewCanvasOn() && !event.target?.closest?.(".pxd-item, .pxd-section")) {
       const screen = { x: (event.clientX || 0) - (rootRect.left || 0), y: (event.clientY || 0) - (rootRect.top || 0) };
       const hit = hitTest(board(), screenToWorld(vp, screen), rects());
       if (hit?.part === "body") {
@@ -9619,6 +9710,7 @@ function buildBoardView(onFail, {
         pdfFlip?.setLod?.(tier);
         chrome.toolbar.scheduleDock?.();
         if (prevTier !== "detail" && tier === "detail" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0));
+        if (prevTier === "overview" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0), { nearest: true });
       }
       // A moving grid is a repaint of the page every frame (PhD page: paint + layerize ~20 ms); with the world as
       // its own layer and nothing else written, a frame is a compositor move. The grid holds still during a drag
@@ -9674,6 +9766,11 @@ function buildBoardView(onFail, {
     }
     if (searchMatches.length || root.hasAttribute("data-pxd-searching")) panel.refreshMarks();
     if (itemsChanged || edgesDue || itemsMoveEdges) paintLenses();
+    // The open's sliced edge render and a settle's badge pass leave the model as it was: no redraw for those.
+    if (overviewCanvasOn()) {
+      if (dirty.selection) ovDirty = true;
+      if (!wheelLayer) paintOverviewCanvas({ band: false });
+    }
     dirty.minimap = false;
     dirty.viewport = false;
     dirty.items = new Set();
@@ -10431,6 +10528,10 @@ function buildBoardView(onFail, {
     },
     stats() {
       return { timers: timers.count(), listeners: listeners.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount(), edgePlacements: edgesR.placements?.() ?? 0, edgesAttached: edgesR.attachedCount?.() ?? 0 };
+    },
+    // C2 probe: whether the overview canvas tier is on, and how many times it was drawn.
+    overviewCanvasStats() {
+      return { on: overviewCanvasOn(), draws: ovDraws, items: ovItems, shown: underlay.isShown() && underlayKind === "overview" };
     },
     // P32 live probes: cover source (pdf.js or hidden reader) and the pane's fit path. Read-only.
     pdfProbe() {

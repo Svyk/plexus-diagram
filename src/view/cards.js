@@ -2007,6 +2007,11 @@ export function createItemRenderer({
   let cullRect = null;
   let virtualOff = false; // the virtualShells kill switch, read once per sync
   const virtual = () => !virtualOff && (lastBoard?.items?.size || 0) > VIRTUAL_MIN;
+  // C2. The overview tier of a big board is drawn on the view's underlay canvas (speed flag overviewCanvas): card
+  // shells are neither built nor attached there. Sections stay DOM (keepAttached), and so do the selected, edited,
+  // mounted and focused cards. The queue waits until the tier is left.
+  let canvasOn = false;
+  const canvasCards = () => canvasOn && virtual();
   const isAttached = (rec) => Boolean(rec?.el?.parentElement);
   const activeShellUid = () => {
     const active = doc.activeElement;
@@ -2017,6 +2022,7 @@ export function createItemRenderer({
     || editing?.uid === uid || mounted.has(uid) || uid === active;
   const farRect = () => (cullRect ? { x: cullRect.x - cullRect.w * 0.125, y: cullRect.y - cullRect.h * 0.125, w: cullRect.w * 1.25, h: cullRect.h * 1.25 } : null);
   const nearView = (uid, rect = cullRect) => {
+    if (canvasCards() && lastBoard?.items.get(uid)?.type !== "section") return false;
     if (!rect) return true;
     const r = drawnRect(uid, lastRects?.get(uid));
     return !r || rectsIntersect(r, rect);
@@ -2172,7 +2178,7 @@ export function createItemRenderer({
   // so the far cards stay on the background budget. Returns true when the queue is empty.
   // While a burst holds shells, the chunk does nothing and the queue stays for the settle.
   const pumpChunk = ({ limit = 40, priority = false } = {}) => {
-    if (shellsHeld) return false;
+    if (shellsHeld || canvasCards()) return false;
     // Cover the queue before this chunk's shells exist. The matching call after the writes only hides an empty queue.
     if (shellQueue.length) noteOverviewQueue();
     const t0 = now();
@@ -2210,7 +2216,7 @@ export function createItemRenderer({
     return shellQueue.length === 0;
   };
   const pumpShells = () => {
-    if (shellsHeld) return;
+    if (shellsHeld || canvasCards()) return;
     if (pumpChunk()) return;
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
   };
@@ -2233,7 +2239,7 @@ export function createItemRenderer({
   };
   const pumpPriorityFrame = () => {
     priorityFrame = null;
-    if (!shellsLive || shellsHeld) return;
+    if (!shellsLive || shellsHeld || canvasCards()) return;
     pumpChunk({ limit: OPEN_CHUNK, priority: true });
     if (!shellsLive || shellsHeld) return;
     if (priorityLeft > 0 && shellQueue.length && timers?.frame) {
@@ -2244,6 +2250,7 @@ export function createItemRenderer({
   };
   const armShellPump = () => {
     if (!shellsLive || shellsHeld) return;
+    if (canvasCards()) { stopShellBg(); return; }
     stopShellBg();
     if (!shellQueue.length) return;
     if (priorityLeft > 0 && timers?.frame) {
@@ -2266,7 +2273,7 @@ export function createItemRenderer({
   const resumeShells = () => { shellsLive = true; };
   // A zoom into detail used to keep pumping open-time distance order, so the new view stayed empty
   // behind the priority tail. Cards inside the new view go to the front of the queue.
-  const promoteQueue = (viewRect) => {
+  const promoteQueue = (viewRect, { nearest = false } = {}) => {
     if (!viewRect || !shellQueue.length || !lastRects) return;
     const inside = [];
     const outside = [];
@@ -2276,6 +2283,15 @@ export function createItemRenderer({
       else outside.push(uid);
     }
     if (!inside.length) return;
+    if (nearest) {
+      const cx = viewRect.x + viewRect.w / 2;
+      const cy = viewRect.y + viewRect.h / 2;
+      const dist = (uid) => {
+        const r = lastRects.get(uid);
+        return (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2;
+      };
+      inside.sort((a, b) => dist(a) - dist(b));
+    }
     shellQueue = inside.concat(outside);
     priorityLeft = inside.length;
     armShellPump();
@@ -2360,7 +2376,28 @@ export function createItemRenderer({
     const holdQueue = shells.size > 0 && shellQueue.length > 0;
     let orderChanged = structural;
     let defer = null;
-    if (!shells.size && board.order.length > 80 && typeof timers?.frame === "function") {
+    if (!shells.size && board.order.length > 80 && typeof timers?.frame === "function" && canvasCards()) {
+      // C2: sections now (and a selected card), every other shell waits for the tier to change, nearest first.
+      const now = [];
+      const later = [];
+      for (const uid of board.order) {
+        const item = board.items.get(uid);
+        if (item?.type === "section" || uid === selectedPrimary) now.push(uid);
+        else later.push(uid);
+      }
+      if (view) {
+        const cx = view.x + view.w / 2;
+        const cy = view.y + view.h / 2;
+        const dist = (uid) => {
+          const r = rects.get(uid);
+          return r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity;
+        };
+        later.sort((a, b) => dist(a) - dist(b));
+      }
+      priorityLeft = 0;
+      pendingView = null;
+      if (later.length) defer = new Set(later);
+    } else if (!shells.size && board.order.length > 80 && typeof timers?.frame === "function") {
       const now = [];
       const later = [];
       for (const uid of board.order) {
@@ -5565,6 +5602,12 @@ export function createItemRenderer({
   const setLod = (nextLod, zoom) => {
     const prev = lod;
     lod = nextLod === "map" || nextLod === "overview" ? nextLod : "detail";
+    const canvasWas = canvasOn;
+    try { canvasOn = lod === "overview" && speedOf().overviewCanvas === true && speedOf().overviewFast !== false; } catch { canvasOn = false; }
+    // Leaving the canvas tier: the queue that waited there builds again, the cards in view first.
+    // The view promotes the cards in the new view (promoteQueue) right after.
+    if (canvasWas && !canvasOn && shellQueue.length && !priorityFrame) armShellPump();
+    if (!canvasWas && canvasOn) stopShellBg();
     setZoom(zoom);
     closePeek();
     if (lod !== "detail") closeCardPeek();
@@ -5866,6 +5909,8 @@ export function createItemRenderer({
   const setSelection = (uids) => {
     const list = Array.isArray(uids) ? uids : [];
     const set = new Set(list);
+    // C2: at the canvas tier the selected card is a real shell (it moves, resizes and edits like one).
+    if (canvasCards() && list.length && !shells.has(list[list.length - 1])) ensureShell(list[list.length - 1]);
     let primary = null;
     for (let i = list.length - 1; i >= 0; i -= 1) {
       if (shells.has(list[i])) { primary = list[i]; break; }
@@ -6841,6 +6886,7 @@ export function createItemRenderer({
     // C1: a settle on a big board attaches `{ budget, ms }` per content pass until the view clears it (null).
     sliceAttach(opts) { attachSlice = opts && virtual() ? { budget: opts.budget ?? 48, ms: opts.ms ?? 6 } : null; },
     attachLeft: () => (virtual() ? attachLeft : 0),
+    canvasTier: () => canvasCards(),
     // A press on a box during the pop-in: the card's shell joins the DOM now.
     attachNow(uid) {
       const el = ensureShell(uid);

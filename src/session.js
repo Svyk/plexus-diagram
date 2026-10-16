@@ -4067,7 +4067,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return sectionUid;
   }
 
-  if (linkMode !== "off" && board) refreshLinks();
+  const stored = host.storedDerived?.(uid);
+  if (stored?.links && linkMode !== "off" && board) {
+    allLinks = stored.links;
+    recomputeLinks(true);
+    host.onBoardVerified?.(uid, () => {
+      const next = host.storedDerived?.(uid);
+      if (destroyed || !next?.links) return;
+      allLinks = next.links;
+      recomputeLinks(false);
+    });
+  } else if (linkMode !== "off" && board) refreshLinks();
 
   const api = {
     uid,

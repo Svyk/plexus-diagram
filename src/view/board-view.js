@@ -4057,6 +4057,28 @@ function buildBoardView(onFail, {
     }
     if (seeded) applyBadges();
   };
+  // A trusted open already has counts. Stamp every card fresh, zeros where the store has no row,
+  // so the idle refresh does not read the graph for a card the stored map left out.
+  const seedStoredBadges = () => {
+    if (disposed) return;
+    try { if (notedSpeedFlags().storedDerived === false) return; } catch { /* default on */ }
+    if (typeof host?.storedDerived !== "function") return;
+    let got = null;
+    try { got = host.storedDerived(boardUid); } catch { got = null; }
+    const badges = got?.badges;
+    if (!badges || typeof badges.get !== "function") return;
+    const b = board();
+    if (!b) return;
+    const at = Date.now();
+    const zero = { refs: 0, boards: 0, open: 0, done: 0 };
+    for (const item of b.items.values()) {
+      if (item.type !== "card" || !item.target) continue;
+      const key = badgeKeyOf(item);
+      const stats = badges.get(key) || zero;
+      badgeCache.set(key, { at, stats: { ...zero, ...stats } });
+    }
+    applyBadges();
+  };
   // Last known counts per card uid, for the open snapshot.
   const badgeStatsByUid = () => {
     const out = new Map();
@@ -9931,6 +9953,8 @@ function buildBoardView(onFail, {
   applyLod();
   itemsR.setShowBadges(flag("show-card-badges", true));
   seedSnapshotBadges();
+  seedStoredBadges();
+  try { host.onBoardVerified?.(boardUid, () => { if (!disposed) seedStoredBadges(); }); } catch { /* listener */ }
   dirty.viewport = true;
   markAll();
   consumeDeepLink();

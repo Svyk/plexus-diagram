@@ -7,6 +7,7 @@
 // A tree is stored as preorder rows in JSON parts, so a load is a cheap structured clone of strings and the decode
 // runs in parts (one structured clone of a 28k-block object tree is one long task).
 
+import { colorForLabel } from "../model/schema.js";
 import { openDb } from "./diagram-db.js";
 import { SNAP_DB, SNAP_DB_VERSION, SNAP_STORE_BOARDS, SNAP_STORE_META, SNAP_STORE_THUMBS } from "./boardsnap-store.js";
 
@@ -125,6 +126,107 @@ export function decodeTree(model) {
   return dec.result();
 }
 
+// Derived links and badge counts ride on the same model row, under the same stamp. Counts and uid lists only:
+// a source string is not stored. Over DERIVED_MAX the source lists go, then links from the end; still over means
+// no derived field (the open falls back to prime and refreshLinks).
+export const DERIVED_MAX = 180_000;
+const DERIVED_V = 1;
+const DERIVED_UID = 64;
+const DERIVED_TITLE = 120;
+const DERIVED_SOURCES = 8;
+
+function clipId(value, max) {
+  return typeof value === "string" && value.length > 0 && value.length <= max ? value : "";
+}
+
+export function packDerived(badges, links) {
+  const b = [];
+  if (badges && typeof badges.forEach === "function") {
+    badges.forEach((stat, key) => {
+      if (!stat || typeof key !== "string") return;
+      const nums = [stat.refs | 0, stat.boards | 0, stat.open | 0, stat.done | 0];
+      if (key.startsWith("page:")) {
+        const title = clipId(key.slice(5), DERIVED_TITLE);
+        if (title) b.push(["p", title, ...nums]);
+      } else if (key.startsWith("uid:")) {
+        const uid = clipId(key.slice(4), DERIVED_UID);
+        if (uid) b.push(["u", uid, ...nums]);
+      }
+    });
+  }
+  const packLink = (link, keepSources) => {
+    const from = clipId(link?.from, DERIVED_UID);
+    const to = clipId(link?.to, DERIVED_UID);
+    if (!from || !to || from === to) return null;
+    const sources = [];
+    if (keepSources) {
+      for (const src of link.sources || []) {
+        if (sources.length >= DERIVED_SOURCES) break;
+        const uid = clipId(src?.uid, DERIVED_UID);
+        if (uid && !sources.includes(uid)) sources.push(uid);
+      }
+    }
+    const label = Array.isArray(link.labels) ? link.labels.find((item) => item && item !== "mentions") : null;
+    if (link.kind === "attr" && typeof label === "string" && label) return [from, to, 1, label.slice(0, 60), sources];
+    return [from, to, 0, sources];
+  };
+  const fit = (linkRows) => {
+    const packed = { v: DERIVED_V, b, l: linkRows };
+    return JSON.stringify(packed).length <= DERIVED_MAX ? packed : null;
+  };
+  let rows = [];
+  for (const link of links || []) {
+    const row = packLink(link, true);
+    if (row) rows.push(row);
+  }
+  let packed = fit(rows);
+  if (packed) return packed;
+  rows = [];
+  for (const link of links || []) {
+    const row = packLink(link, false);
+    if (row) rows.push(row);
+  }
+  packed = fit(rows);
+  if (packed) return packed;
+  while (rows.length) {
+    rows.pop();
+    packed = fit(rows);
+    if (packed) return packed;
+  }
+  return fit([]);
+}
+
+export function unpackDerived(raw) {
+  if (!raw || raw.v !== DERIVED_V || !Array.isArray(raw.b) || !Array.isArray(raw.l)) return null;
+  const badges = new Map();
+  for (const row of raw.b) {
+    if (!Array.isArray(row) || (row[0] !== "u" && row[0] !== "p") || typeof row[1] !== "string" || !row[1]) continue;
+    const stat = { refs: row[2] | 0, boards: row[3] | 0, open: row[4] | 0, done: row[5] | 0 };
+    badges.set(row[0] === "p" ? `page:${row[1]}` : `uid:${row[1]}`, stat);
+  }
+  const links = [];
+  for (const row of raw.l) {
+    if (!Array.isArray(row) || typeof row[0] !== "string" || typeof row[1] !== "string") continue;
+    const attr = row[2] === 1;
+    const label = attr && typeof row[3] === "string" && row[3] ? row[3] : "mentions";
+    const srcs = attr ? row[4] : row[3];
+    const sources = [];
+    if (Array.isArray(srcs)) {
+      for (const uid of srcs) if (typeof uid === "string" && uid) sources.push({ uid, string: "" });
+    }
+    links.push({
+      key: `${row[0]}->${row[1]}`,
+      from: row[0],
+      to: row[1],
+      kind: attr ? "attr" : "ref",
+      labels: [label],
+      sources,
+      color: colorForLabel(label),
+    });
+  }
+  return { badges, links };
+}
+
 function request(req) {
   return new Promise((resolve) => {
     if (!req) { resolve(null); return; }
@@ -217,7 +319,7 @@ export function createModelStore({ indexedDB = globalThis.indexedDB, graph = "",
         try { tx = handle.transaction([SNAP_STORE_BOARDS, SNAP_STORE_META], "readwrite"); } catch { return false; }
         try {
           const boards = tx.objectStore(SNAP_STORE_BOARDS);
-          if (fits) boards.put({ v: MODEL_VERSION, uid, stamp, n: model.n, size: model.size, parts: model.parts }, modelKey(uid));
+          if (fits) boards.put({ v: MODEL_VERSION, uid, stamp, n: model.n, size: model.size, parts: model.parts, derived: model.derived ?? null }, modelKey(uid));
           else boards.delete(modelKey(uid));
           for (const row of dropped) boards.delete(modelKey(row.uid));
           tx.objectStore(SNAP_STORE_META).put(keepRows, metaKey());
@@ -227,6 +329,31 @@ export function createModelStore({ indexedDB = globalThis.indexedDB, graph = "",
         }
         list = keepRows;
         return (await done(tx)) && fits;
+      };
+      writing = writing.then(job, job).catch(() => false);
+      return writing;
+    },
+    // Same row, same stamp, same budgeted size. A second transaction: the read transaction closes on await.
+    putDerived(uid, stamp, derived) {
+      if (!allow() || !uid || typeof stamp !== "string") return Promise.resolve(false);
+      const job = async () => {
+        const handle = await db();
+        if (!handle) return false;
+        const want = (await readList()).find((row) => row.uid === uid);
+        if (!want || want.stamp !== stamp) return false;
+        let readTx;
+        try { readTx = handle.transaction([SNAP_STORE_BOARDS], "readonly"); } catch { return false; }
+        const got = await request(readTx.objectStore(SNAP_STORE_BOARDS).get(modelKey(uid)));
+        if (!got || got.v !== MODEL_VERSION || got.stamp !== stamp || !Array.isArray(got.parts)) return false;
+        let tx;
+        try { tx = handle.transaction([SNAP_STORE_BOARDS], "readwrite"); } catch { return false; }
+        try {
+          tx.objectStore(SNAP_STORE_BOARDS).put({ ...got, derived: derived ?? null }, modelKey(uid));
+        } catch {
+          try { tx.abort(); } catch { /* done */ }
+          return false;
+        }
+        return done(tx);
       };
       writing = writing.then(job, job).catch(() => false);
       return writing;

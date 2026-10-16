@@ -144,3 +144,16 @@
   color: inherit;
   background: transparent;
 }
+
+/* R4: a block-look card hides its header at detail. While the caption is edited the header shows
+   over the top of the card instead, so the table under it does not move. */
+.pxd-root:not(:is([data-pxd-lod="map"],[data-pxd-lod="overview"])) .pxd-item.pxd-card--block.pxd-item--roam-table.pxd-item--editing > .pxd-item__header {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  background: var(--pxd-card, var(--pxd-surface, canvas));
+  border-bottom: 1px solid var(--pxd-border, currentColor);
+}

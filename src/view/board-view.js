@@ -9133,9 +9133,19 @@ function buildBoardView(onFail, {
     }
     if (!leavesBoardPointer(event.target) && !inReaderText(event.target)) event.stopPropagation();
   });
+  // R4: a "block"-look card hides its header at detail, so a table card there has no caption row to
+  // double-click. Its folded table (outside an interactive Roam Grid) and the table bar stand in for it.
+  const captionByTable = (target) => {
+    try { if (notedSpeedFlags().tableCaptionEdit === false) return false; } catch { return false; }
+    const card = target?.closest?.(".pxd-item.pxd-card--block.pxd-item--roam-table");
+    if (!card || !root.contains(card)) return false;
+    const lod = root.getAttribute?.("data-pxd-lod");
+    if (lod === "map" || lod === "overview") return false;
+    return !target.closest?.(tablePressSkip);
+  };
   listen(root, "dblclick", (event) => {
     // Return before preventDefault so a triple-click can still select the text.
-    if (leavesBoardPointer(event.target) || inReaderText(event.target) || inRoamTable(event.target) || event.target?.closest?.(".pxd-refs")) return;
+    if (leavesBoardPointer(event.target) || inReaderText(event.target) || (inRoamTable(event.target) && !captionByTable(event.target)) || event.target?.closest?.(".pxd-refs")) return;
     if (nativeClickKind(event.target)) return;
     event.stopPropagation();
     event.preventDefault();

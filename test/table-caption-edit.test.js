@@ -199,11 +199,10 @@ test("tableCaptionEdit off still swaps the body for the raw source", () => {
   }
 });
 
-function mountTableBoard() {
+function mountTableBoard(tree = captionTree()) {
   resetSharedBgBudget();
   const stub = createDomStub();
   const restore = stub.install();
-  const tree = captionTree();
   const board = buildBoard(tree);
   const host = {
     graph: "Svy",
@@ -294,4 +293,74 @@ test("tableCaptionEdit off leaves a grid click to the cell", () => {
   } finally {
     f.done();
   }
+});
+
+// R4: a "block"-look card has no header row at detail, so the header cannot be double-clicked.
+// A double-click on the folded table (outside an interactive Roam Grid) or its bar edits the caption.
+function blockLookTree() {
+  return rawBoard([
+    blk("cap00001", "Quarterly sales", { ...CAP_LAYOUT, ":look": "block" }, 0, [
+      blk("tbl00001", MACRO, null, 0, [blk("row00001", "Salt", null, 0)]),
+    ]),
+  ]);
+}
+
+test("R4: a block-look table card edits its caption from a double-click on the table", () => {
+  const f = mountTableBoard(blockLookTree());
+  try {
+    const card = f.view.root.querySelector('[data-uid="cap00001"]');
+    assert.equal(card.classList.contains("pxd-card--block"), true);
+    const table = card.querySelector(".pxd-roam-table");
+    const cell = table.querySelector(".pxd-test-cell");
+    assert.ok(cell);
+    const dbl = f.stub.dispatch(cell, "dblclick", { button: 0, clientX: 40, clientY: 80 });
+    const field = card.querySelector("textarea.pxd-table-caption");
+    assert.ok(field, "the caption field opens");
+    assert.equal(field.value, "Quarterly sales");
+    assert.equal(dbl.defaultPrevented, true);
+    assert.equal(table.parentElement === card.querySelector(".pxd-item__body"), true);
+    assert.equal(card.querySelector(".pxd-item__body").textContent.includes(MACRO), false);
+  } finally {
+    f.done();
+  }
+});
+
+test("R4: the bar of a block-look grid edits the caption; the grid keeps its own double-click", () => {
+  const f = mountTableBoard(blockLookTree());
+  try {
+    const card = f.view.root.querySelector('[data-uid="cap00001"]');
+    const table = card.querySelector(".pxd-roam-table");
+    const grid = f.stub.document.createElement("div");
+    grid.className = "rg-root";
+    const gcell = f.stub.document.createElement("div");
+    grid.append(gcell);
+    table.querySelector(".pxd-rs__live").append(grid);
+    f.stub.dispatch(gcell, "dblclick", { button: 0, clientX: 40, clientY: 80 });
+    assert.equal(Boolean(card.querySelector("textarea.pxd-table-caption")), false, "a grid cell double-click stays with the grid");
+    f.stub.dispatch(table.querySelector(".pxd-roam-table__bar"), "dblclick", { button: 0, clientX: 40, clientY: 50 });
+    assert.ok(card.querySelector("textarea.pxd-table-caption"));
+  } finally {
+    f.done();
+  }
+});
+
+test("R4: the card look (header shown) still leaves a table-body double-click alone", () => {
+  const f = mountTableBoard(rawBoard([
+    blk("cap00001", "Quarterly sales", { ...CAP_LAYOUT, ":look": "card" }, 0, [
+      blk("tbl00001", MACRO, null, 0, [blk("row00001", "Salt", null, 0)]),
+    ]),
+  ]));
+  try {
+    const card = f.view.root.querySelector('[data-uid="cap00001"]');
+    f.stub.dispatch(card.querySelector(".pxd-test-cell"), "dblclick", { button: 0, clientX: 40, clientY: 80 });
+    assert.equal(Boolean(card.querySelector("textarea.pxd-table-caption")), false);
+  } finally {
+    f.done();
+  }
+});
+
+test("R4: the caption field shows over a block-look card without moving the table", async () => {
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync(new URL("../src/css/table-card.css", import.meta.url), "utf8");
+  assert.match(css, /pxd-card--block\.pxd-item--roam-table\.pxd-item--editing > \.pxd-item__header[^{]*\{[^}]*display: block;[^}]*position: absolute;/);
 });

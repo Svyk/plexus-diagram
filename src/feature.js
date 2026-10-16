@@ -23,6 +23,7 @@ import { tableUidOf } from "./model/roam-table.js";
 import { shouldNudgeQueries } from "./model/query-fold.js";
 import { applyFullscreenChrome } from "./view/fullscreen.js";
 import { installRoamStack, syncBoardClass } from "./view/roam-stack.js";
+import { focusOpenBlock } from "./model/card-children.js";
 import { hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
 import { createRelChips } from "./relchips.js";
@@ -2129,6 +2130,19 @@ export async function installPlexusDiagram({
     const uid = node.uid ?? node["block-uid"];
     return typeof uid === "string" ? uid.trim() : "";
   }
+  function focusChildFromNav(blockUid) {
+    const parentOf = (id) => {
+      try { return host.blockLocation?.(id) ?? null; } catch { return null; }
+    };
+    const records = [];
+    for (const rec of mounts.values()) {
+      const items = rec.session?.board?.items;
+      const focusInside = rec.view?.focusInside;
+      if (!items || typeof focusInside !== "function") continue;
+      records.push({ items, focusInside });
+    }
+    focusOpenBlock(records, blockUid, parentOf);
+  }
   function bindExternalNav() {
     const mw = host.api?.ui?.mainWindow;
     if (!mw) return;
@@ -2138,6 +2152,7 @@ export async function installPlexusDiagram({
       const wrapped = function (arg, ...rest) {
         const uid = navTargetUid(arg, key);
         if (uid) noteExternal(uid);
+        if (name === "openBlock" && uid) focusChildFromNav(uid);
         try {
           return orig.call(this, arg, ...rest);
         } finally {

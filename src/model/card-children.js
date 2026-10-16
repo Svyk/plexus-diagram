@@ -71,3 +71,92 @@ export function findBlock(list, uid, read) {
   };
   return walk(list, []);
 }
+
+// One crumb step toward the card. A trail of one entry is the card's own child, so the next step is the card.
+export function focusStep(trail) {
+  const list = Array.isArray(trail) ? trail : [];
+  if (list.length <= 1) return { uid: null, trail: [] };
+  const next = list.slice(0, -1);
+  const uid = next[next.length - 1]?.uid || null;
+  return { uid, trail: uid ? next : [] };
+}
+
+const eachItem = (items) => {
+  if (!items) return [];
+  if (typeof items.values === "function") return [...items.values()];
+  return Array.isArray(items) ? items : [];
+};
+
+const nodeRead = {
+  uid: (node) => String(node?.[":block/uid"] ?? node?.uid ?? ""),
+  kids: (node) => node?.[":block/children"] || node?.children || [],
+  label: () => "",
+};
+
+// The card whose content tree contains this block. The card uid itself is not a child focus.
+export function cardOwningBlock(items, blockUid) {
+  const want = String(blockUid || "");
+  if (!want) return null;
+  for (const item of eachItem(items)) {
+    if (!item || item.type === "section" || item.uid === want) continue;
+    const content = Array.isArray(item.content) ? item.content : [];
+    if (findBlock(content, want, nodeRead)) return { cardUid: item.uid, blockUid: want };
+  }
+  return null;
+}
+
+const cardForParent = (items, parentUid, blockUid) => {
+  if (!parentUid) return null;
+  for (const item of eachItem(items)) {
+    if (!item || item.type === "section") continue;
+    if (item.uid === parentUid && blockUid !== item.uid) return { cardUid: item.uid, blockUid };
+    const target = item.target;
+    if (target?.kind === "block" && target.uid === parentUid && blockUid !== target.uid) {
+      return { cardUid: item.uid, blockUid };
+    }
+  }
+  return null;
+};
+
+// Walk Roam's parent pointer until a card on this board. Opening the card block itself is not a child focus.
+export function cardOwningByParent(items, blockUid, parentOf) {
+  const want = String(blockUid || "");
+  if (!want || typeof parentOf !== "function") return null;
+  for (const item of eachItem(items)) {
+    if (item?.type !== "section" && item?.uid === want) return null;
+  }
+  let uid = want;
+  const seen = new Set();
+  for (let i = 0; i < 24; i += 1) {
+    if (!uid || seen.has(uid)) return null;
+    seen.add(uid);
+    let parent = "";
+    try {
+      const loc = parentOf(uid);
+      parent = typeof loc === "string" ? loc : String(loc?.parentUid || "");
+    } catch { return null; }
+    if (!parent) return null;
+    const hit = cardForParent(items, parent, want);
+    if (hit) return hit;
+    uid = parent;
+  }
+  return null;
+}
+
+// Session focus only. The caller still lets Roam open the block.
+export function focusOpenBlock(records, blockUid, parentOf) {
+  const want = String(blockUid || "");
+  if (!want) return false;
+  let hit = false;
+  for (const rec of records || []) {
+    const items = rec?.items;
+    if (!items || typeof rec.focusInside !== "function") continue;
+    const owned = cardOwningBlock(items, want) || cardOwningByParent(items, want, parentOf);
+    if (!owned || !owned.cardUid || owned.blockUid === owned.cardUid) continue;
+    try {
+      rec.focusInside(owned.cardUid, owned.blockUid);
+      hit = true;
+    } catch { /* view gone */ }
+  }
+  return hit;
+}

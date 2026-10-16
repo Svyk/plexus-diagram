@@ -361,6 +361,29 @@ test("selection shows a context bar above the selection and never over it", asyn
   }
 });
 
+test("Escape steps out of a focused child and writes nothing", async () => {
+  const f = mountFixture({ kidsOn: ["cardAAAA1"] });
+  try {
+    await f.flush();
+    await tick(5);
+    f.stub.flushIdle();
+    const card = f.view.root.querySelector("[data-uid=cardAAAA1]");
+    const bullet = card.querySelector(".pxd-outline__bullet");
+    assert.ok(bullet, "the child has a focus bullet");
+    bullet.click();
+    f.stub.flushFrames();
+    assert.ok(card.querySelector(".pxd-focus__crumb"));
+    f.stub.dispatch(f.stub.window, "keydown", { key: "Escape" });
+    f.stub.flushFrames();
+    assert.equal(card.querySelector(".pxd-focus__crumb"), null);
+    assert.ok(card.querySelector("[data-pxd-row=kidAAAA01]"));
+    assert.equal(f.session.mutations.length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("TSK-6 the card color picker stays inside a narrow board", async () => {
   const f = mountFixture();
   try {

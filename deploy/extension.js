@@ -43313,6 +43313,7 @@ function createWriteQueue({ onBusy } = {}) {
 var WRITE_BURST = 200;
 var WRITE_GAP_MS = 100;
 var WRITE_CAP = 1200;
+var MAX_GROUP_WRITES = 45;
 var WATCH_ARM_LOW = 900;
 var WATCH_ARM_RETRY_MS = 5e3;
 var SPLIT_HOLD_MS = 6e4;
@@ -43622,8 +43623,11 @@ function countReads(data, stats) {
   });
 }
 var BROWSE_TTL_MS = 3e4;
-function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
-  const pacer = createWritePacer();
+function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph, now: now4, sleep } = {}) {
+  const pacer = createWritePacer({
+    ...typeof now4 === "function" ? { now: now4 } : {},
+    ...typeof sleep === "function" ? { sleep } : {}
+  });
   const mutate = async (fn) => {
     await pacer.pace();
     try {
@@ -43673,7 +43677,6 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const undoLog = [];
   const redoLog = [];
   const UNDO_LOG_MAX = 200;
-  const MAX_GROUP_WRITES = 45;
   const UNDO_ECHO_MS = 900;
   let openGroup = null;
   let silent = false;
@@ -43720,9 +43723,9 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     if (!ids.length || typeof data.pull_many !== "function") return uids.length;
     const res = data.pull_many(BLOCK_PROPS_PATTERN, ids.map((u) => [":block/uid", u]));
     if (!Array.isArray(res) || res.length !== ids.length) return uids.length;
-    const now4 = Date.now();
+    const now5 = Date.now();
     if (at === 0) primedProps.clear();
-    for (let i = 0; i < ids.length; i += 1) primedProps.set(ids[i], { at: now4, res: res[i] ?? null });
+    for (let i = 0; i < ids.length; i += 1) primedProps.set(ids[i], { at: now5, res: res[i] ?? null });
     return at + ids.length;
   };
   const adoptedTrees = /* @__PURE__ */ new Map();
@@ -44502,8 +44505,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   let coverAsks = { at: 0, urls: /* @__PURE__ */ new Set() };
   let coverIndex = null;
   const coverIndexNow = () => {
-    const now4 = Date.now();
-    if (coverIndex && now4 - coverIndex.at < coverIndex.ttl) return coverIndex;
+    const now5 = Date.now();
+    if (coverIndex && now5 - coverIndex.at < coverIndex.ttl) return coverIndex;
     const t0 = Date.now();
     const pages = /* @__PURE__ */ new Map();
     for (const row4 of queryRows(host, PDF_PAGES_ALL_QUERY)) {
@@ -44515,7 +44518,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     for (const row4 of queryRows(host, PDF_PAGE_COUNTS_ALL_QUERY)) {
       if (Array.isArray(row4) && typeof row4[0] === "string" && Number(row4[1]) > 0) counts.set(row4[0], Number(row4[1]));
     }
-    coverIndex = { at: now4, ttl: Math.max(COVER_INDEX_MIN_MS, (Date.now() - t0) * 40), pages, counts };
+    coverIndex = { at: now5, ttl: Math.max(COVER_INDEX_MIN_MS, (Date.now() - t0) * 40), pages, counts };
     noteCoverBoards();
     return coverIndex;
   };
@@ -44548,8 +44551,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   };
   let coverWarm = null;
   const coverIndexPart = (i) => {
-    const now4 = Date.now();
-    if (coverIndex && now4 - coverIndex.at < coverIndex.ttl) return true;
+    const now5 = Date.now();
+    if (coverIndex && now5 - coverIndex.at < coverIndex.ttl) return true;
     if (i === 0 || !coverWarm) {
       const t02 = Date.now();
       const pages = /* @__PURE__ */ new Map();
@@ -44558,7 +44561,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         if (!pages.has(row4[0])) pages.set(row4[0], []);
         pages.get(row4[0]).push({ uid: row4[1], title: typeof row4[2] === "string" ? row4[2] : "", url: row4[0] });
       }
-      coverWarm = { at: now4, pages, ms: Date.now() - t02 };
+      coverWarm = { at: now5, pages, ms: Date.now() - t02 };
       return false;
     }
     const t0 = Date.now();
@@ -44571,10 +44574,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     return true;
   };
   const useCoverIndex = (url) => {
-    const now4 = Date.now();
-    if (now4 - coverAsks.at > COVER_INDEX_MIN_MS) coverAsks = { at: now4, urls: /* @__PURE__ */ new Set() };
+    const now5 = Date.now();
+    if (now5 - coverAsks.at > COVER_INDEX_MIN_MS) coverAsks = { at: now5, urls: /* @__PURE__ */ new Set() };
     coverAsks.urls.add(url);
-    return coverAsks.urls.size >= COVER_INDEX_URLS || Boolean(coverIndex && now4 - coverIndex.at < coverIndex.ttl);
+    return coverAsks.urls.size >= COVER_INDEX_URLS || Boolean(coverIndex && now5 - coverIndex.at < coverIndex.ttl);
   };
   const readPdfCover = (url) => {
     if (useCoverIndex(url)) {
@@ -44608,8 +44611,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const filterBrowseCache = /* @__PURE__ */ new Map();
   let userEids = null;
   const userIdsFor = (name) => {
-    const now4 = Date.now();
-    if (!userEids || now4 - userEids.at > 5 * 6e4) {
+    const now5 = Date.now();
+    if (!userEids || now5 - userEids.at > 5 * 6e4) {
       const map = /* @__PURE__ */ new Map();
       for (const query of USER_EID_QUERIES) {
         for (const [eid, n3] of host.q(query) || []) {
@@ -44619,19 +44622,19 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           if (!map.get(key).includes(eid)) map.get(key).push(eid);
         }
       }
-      userEids = { at: now4, map };
+      userEids = { at: now5, map };
     }
     return userEids.map.get(String(name).toLowerCase()) || null;
   };
   let highlightUrls = null;
   const highlightCounts = (timed) => {
-    const now4 = Date.now();
-    if (highlightUrls && now4 - highlightUrls.at < FILTER_BROWSE_TTL_MS) return highlightUrls.map;
+    const now5 = Date.now();
+    if (highlightUrls && now5 - highlightUrls.at < FILTER_BROWSE_TTL_MS) return highlightUrls.map;
     const map = /* @__PURE__ */ new Map();
     for (const [url, props] of timed("pdf-highlights", () => host.q(PDF_HIGHLIGHTS_QUERY))) {
       if (typeof url === "string" && hasPdfHighlight(props)) map.set(url, (map.get(url) || 0) + 1);
     }
-    highlightUrls = { at: now4, map };
+    highlightUrls = { at: now5, map };
     return map;
   };
   const pdfKeep = (rows, { parsed = false, highlights = false, parsedUrls = null } = {}, timed) => {
@@ -45324,8 +45327,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (!modelStore || !trustOn() || !id || refreshes.has(id) || unverified.has(id) || !bigBoards.has(id)) return false;
       const split = splitWatches.get(id);
       if (!split || split.held || split.disposed) return false;
-      const now4 = pageStampOf(id);
-      if (!now4 || modelStore.stampOf(id) === now4) return false;
+      const now5 = pageStampOf(id);
+      if (!now5 || modelStore.stampOf(id) === now5) return false;
       const cancel = backgroundRead(id, "refresh", (tree, stamp2) => {
         refreshes.delete(id);
         if (tree && stamp2) keepModel(id, tree, stamp2);
@@ -45629,7 +45632,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // A ref target is joined into the board pull, but the board watch does not fire when it changes.
     blockStrings(uids, { fresh = false } = {}) {
       const out = /* @__PURE__ */ new Map();
-      const now4 = Date.now();
+      const now5 = Date.now();
       const missing2 = [];
       for (const uid of uids || []) {
         const id = String(uid ?? "");
@@ -45645,7 +45648,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           continue;
         }
         const hit = burstMemo.get(id);
-        if (hit && now4 - hit.at < BURST_MS) {
+        if (hit && now5 - hit.at < BURST_MS) {
           out.set(id, hit.value);
           continue;
         }
@@ -45664,7 +45667,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       for (const id of missing2) {
         const value = found.has(id) ? found.get(id) : null;
         out.set(id, value);
-        burstMemo.set(id, { value, at: now4 });
+        burstMemo.set(id, { value, at: now5 });
         if (fresh && typeof value === "string") {
           const node2 = cache.blockOf(id);
           if (node2 && typeof node2 === "object") node2[":block/string"] = value;
@@ -45954,10 +45957,15 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // The open group becomes ONE entry that undoes and redoes through its own callbacks ({ undo, redo }, async),
     // not through a count of Roam's native undo steps (one Plexus write can be more than one native entry).
     // null drops it again: a transaction that failed midway closes as a native chunk of the writes that ran.
+    // A second custom entry is ignored: a nested writer must not replace the inverse that already covers this group.
     setCustomUndo(entry) {
       if (!openGroup) return;
-      if (entry && typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
-      else if (!entry) delete openGroup.custom;
+      if (!entry) {
+        delete openGroup.custom;
+        return;
+      }
+      if (openGroup.custom) return;
+      if (typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
     },
     // A file upload does not pass through noteWrite. A group that only uploaded would be dropped.
     noteGroupedWrite(kind) {
@@ -47000,15 +47008,15 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // Reads one page-level query (titles and times, never blocks) and keeps `limit` rows.
     browse(sort = "edited", limit = 40) {
       const id = ["edited", "created", "oldest", "title"].includes(sort) ? sort : "edited";
-      const now4 = Date.now();
-      if (!browsePages || now4 - browsePages.at > BROWSE_TTL_MS) {
+      const now5 = Date.now();
+      if (!browsePages || now5 - browsePages.at > BROWSE_TTL_MS) {
         const pages = [];
         for (const [p] of host.q(`[:find (pull ?p [:node/title :block/uid :create/time :edit/time]) :where [?p :node/title]]`) || []) {
           const title = p?.[":node/title"];
           const uid = p?.[":block/uid"];
           if (typeof title === "string" && !title.startsWith("roam/") && uid) pages.push({ title, uid: String(uid), created: Number(p[":create/time"]) || null, edited: Number(p[":edit/time"]) || null });
         }
-        browsePages = { at: now4, pages };
+        browsePages = { at: now5, pages };
       }
       const rows = browsePages.pages.map((p) => ({ kind: "page", title: p.title, uid: p.uid, meta: { created: p.created, edited: p.edited, createdBy: "", editedBy: "", refs: null, children: null, length: null }, onBoard: false, tags: [] }));
       const top = sortRows(rows, id).slice(0, Math.max(1, Math.floor(Number(limit) || 40)));
@@ -47034,12 +47042,12 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         return out;
       };
       const lim = Math.max(1, Math.floor(Number(limit) || 40));
-      const now4 = Date.now();
-      const spec = browseSpec(filter, { now: now4 });
+      const now5 = Date.now();
+      const spec = browseSpec(filter, { now: now5 });
       if (!spec) return { rows: [], queries, spec: null, defaulted: false };
       const key = typeof keep === "function" ? "" : browseKey(spec, sort, lim, [parsedUrls instanceof Set ? parsedUrls.size : -1, spec.orphan ? structureEpoch : 0]);
       const hit = key ? filterBrowseCache.get(key) : null;
-      if (hit && now4 - hit.at < FILTER_BROWSE_TTL_MS) {
+      if (hit && now5 - hit.at < FILTER_BROWSE_TTL_MS) {
         queries.push({ name: "browse-cache", ms: 0 });
         return { rows: hit.rows, total: hit.total ?? hit.rows.length, more: hit.more === true, queries, spec, defaulted: spec.defaulted };
       }
@@ -47138,7 +47146,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const rows = top.map((r) => libraryCard(r));
       if (key) {
         filterBrowseCache.delete(key);
-        filterBrowseCache.set(key, { at: now4, rows, total: kept.length, more: kept.length > lim || !pdfOnly && kept.length >= Math.max(BROWSE_ROWS, lim) });
+        filterBrowseCache.set(key, { at: now5, rows, total: kept.length, more: kept.length > lim || !pdfOnly && kept.length >= Math.max(BROWSE_ROWS, lim) });
         while (filterBrowseCache.size > FILTER_BROWSE_MAX) filterBrowseCache.delete(filterBrowseCache.keys().next().value);
       }
       return { rows, total: kept.length, more: kept.length > lim || !pdfOnly && kept.length >= Math.max(BROWSE_ROWS, lim), queries, spec, defaulted: spec.defaulted };
@@ -49272,13 +49280,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish2();
-    if (custom) custom.forward = list;
+    const active2 = custom && (custom.when !== "over-native-limit" || list.length > MAX_GROUP_WRITES) ? custom : null;
+    if (active2) active2.forward = list;
     return queue.run(() => grouped(async () => {
-      if (custom) host.setCustomUndo?.(custom);
+      if (active2) host.setCustomUndo?.(active2);
       try {
-        return await execute(list, { hold: true, suspend: !custom });
+        return await execute(list, { hold: true, suspend: !active2 });
       } catch (err) {
-        if (custom) host.setCustomUndo?.(null);
+        if (active2) host.setCustomUndo?.(null);
         throw err;
       }
     })).then(() => result, (err) => {
@@ -50031,9 +50040,45 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     refreshLinks,
     commitMove(uids, dx, dy) {
       if (!board2 || !dx && !dy) return Promise.resolve();
+      const before = /* @__PURE__ */ new Map();
+      const remember2 = (id) => {
+        if (before.has(id)) return;
+        const node2 = rawNode(id);
+        if (!node2) return;
+        const hit = ix().get(id);
+        before.set(id, { parent: hit?.parent?.[UID3] || uid, order: node2[ORD], plexus: clone(rawPlexus(id)) });
+      };
+      const custom = {
+        when: "over-native-limit",
+        async undo() {
+          const moves = [];
+          const propsOps = [];
+          for (const [id, prev] of before) {
+            const parentNow = ix().get(id)?.parent?.[UID3] || uid;
+            if (prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
+            if (stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
+          }
+          moves.sort((a, b) => a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0));
+          await execute([...moves, ...propsOps]);
+        },
+        async redo() {
+          await execute(custom.forward);
+        }
+      };
       return txn((t) => {
+        const move = t.move.bind(t);
+        const props = t.props.bind(t);
+        t.move = (id, parent, order) => {
+          remember2(id);
+          move(id, parent, order);
+        };
+        t.props = (id, plexus) => {
+          remember2(id);
+          props(id, plexus);
+        };
         const top = topLevelOf(board2, uids).filter((id) => !board2.items.get(id).pinned);
         if (!top.length) return;
+        for (const id of top) remember2(id);
         const moved = new Map(rects);
         for (const id of top) {
           const r = rects.get(id);
@@ -50052,7 +50097,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         }
         applyFit(t, top);
         if (flag("space-out", false)) spaceOutAfter(t, top);
-      });
+      }, custom);
     },
     commitRects(list) {
       if (!board2 || !list?.length) return Promise.resolve();

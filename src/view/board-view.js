@@ -6385,8 +6385,11 @@ function buildBoardView(onFail, {
     }
     return pdfText;
   };
+  let stopPdfTextFeed = null;
   const feedPdfText = () => {
-    sharedBgBudget().idle(() => {
+    try { stopPdfTextFeed?.(); } catch { /* gone */ }
+    stopPdfTextFeed = sharedBgBudget().idle(() => {
+      stopPdfTextFeed = null;
       if (disposed || !panel.isOpen()) return;
       void (async () => {
         const index = pdfTextIndex();
@@ -10148,6 +10151,7 @@ function buildBoardView(onFail, {
       step(() => edgesR.dispose());
       step(() => { offPartsChange?.(); partsIdx?.dispose(); partsIdx = null; });
       step(() => imgIndex?.dispose());
+      step(() => { try { stopPdfTextFeed?.(); } catch { /* gone */ } stopPdfTextFeed = null; pdfText?.stop?.(); });
       step(() => pdfNames?.dispose());
       step(() => panel.dispose());
       step(() => propsPanel.dispose());

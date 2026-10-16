@@ -44,6 +44,7 @@ export function createPdfTextIndex({
   const queued = new Set();
   let pausedUntil = 0;
   let pumping = false;
+  let stopIdle = null;
   let dbPromise = null;
   let loaded = null;
 
@@ -179,7 +180,8 @@ export function createPdfTextIndex({
   function arm() {
     if (pumping || !queue.length || typeof budget?.idle !== "function") return;
     pumping = true;
-    budget.idle(() => {
+    stopIdle = budget.idle(() => {
+      stopIdle = null;
       if (pausedUntil > now()) {
         pumping = false;
         const wait = Math.max(0, pausedUntil - now());
@@ -251,6 +253,14 @@ export function createPdfTextIndex({
     return false;
   }
 
+  function stop() {
+    try { stopIdle?.(); } catch { /* gone */ }
+    stopIdle = null;
+    queue.length = 0;
+    queued.clear();
+    pumping = false;
+  }
+
   function enqueue(jobs) {
     for (const job of Array.isArray(jobs) ? jobs : []) {
       const url = String(job?.url || "");
@@ -262,5 +272,5 @@ export function createPdfTextIndex({
     arm();
   }
 
-  return { search, noteParsed, enqueue, pause, whenLoaded, docs, version: PDF_TEXT_DB_VERSION };
+  return { search, noteParsed, enqueue, pause, stop, whenLoaded, docs, version: PDF_TEXT_DB_VERSION };
 }

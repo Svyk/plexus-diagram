@@ -29,6 +29,7 @@ function open(extra = {}) {
   const restore = stub.install();
   const fake = createFakeRoam({ echoDelay: 0 });
   fake.trackUndo = true;
+  extra.onFake?.(fake);
   const seed = toSeed(bigBoardTree(FIXTURE));
   fake.seedBoard({ uid: seed.uid, string: seed.string, props: seed.props, children: seed.children });
   const host = createHost({ api: fake.api, storage: stub.localStorage, graph: "g", ...extra.host });
@@ -267,5 +268,66 @@ test("a drag over 600 writes asks, then one undo restores every card; a refusal 
     assert.equal(no.fake.writesLog().length, 0);
   } finally {
     no.restore();
+  }
+});
+
+// R4 (QA5: CSrDqKK2R kept its new section after one Cmd+Z, with its old relative x/y). The inverse was a diff
+// against the session's own model at undo time. A late echo that still carries a card's pre-move parent makes
+// that model say the card never left, so the move back was skipped and only the props were written.
+test("R4: one undo moves a card back even when a late echo left the model at its old parent", async () => {
+  const watches = [];
+  // The session's ledger clock. A Roam echo can land after the 800 ms grace of the write it predates
+  // (big drags: sync holds, split-watch parts); the host's own echo window is real time and stays open.
+  let skew = 0;
+  const { fake, session, restore } = open({
+    session: { now: () => Date.now() + skew },
+    onFake(f) {
+      const add = f.api.data.addPullWatch;
+      f.api.data.addPullWatch = (pattern, entity, cb) => { watches.push({ pattern, entity, cb }); return add(pattern, entity, cb); };
+    },
+  });
+  try {
+    const ids = cardIds(session);
+    const { picked } = pickCrossing(session);
+    const before = snap(fake, ids);
+    await session.commitMove(picked, 400, 0);
+    const wroteAt = Date.now();
+    await fake.flush();
+    const after = snap(fake, ids);
+    const crossed = ids.filter((id) => before.get(id).parent !== after.get(id).parent);
+    assert.ok(crossed.length > 0);
+    const stale = crossed[0];
+    const w = watches.find((x) => String(x.entity).includes("bigroot"));
+    assert.ok(w, "the board watch");
+    // A late echo: the tree as Roam has it now, except `stale` still in its old section with its old props.
+    const tree = structuredClone(fake.api.data.pull(w.pattern, w.entity));
+    const find = (n, id, parent = null) => {
+      if (n[":block/uid"] === id) return { n, parent };
+      for (const c of n[":block/children"] || []) { const hit = find(c, id, n); if (hit) return hit; }
+      return null;
+    };
+    const hit = find(tree, stale);
+    hit.parent[":block/children"] = hit.parent[":block/children"].filter((c) => c !== hit.n);
+    const home = find(tree, before.get(stale).parent).n;
+    hit.n[":block/order"] = before.get(stale).order;
+    hit.n[":block/props"] = { ...(hit.n[":block/props"] || {}), ":plexus": Object.fromEntries(Object.entries(before.get(stale).plexus).map(([k, v]) => [`:${k}`, v])) };
+    home[":block/children"] = [...(home[":block/children"] || []), hit.n];
+    // Inside the host's echo window (real Roam echoes a big write list for a while), so the undo log stays.
+    const realNow = Date.now;
+    Date.now = () => wroteAt + 100;
+    skew = 10_000;
+    try {
+      w.cb(null, tree);
+      await fake.flush();
+    } finally {
+      Date.now = realNow;
+    }
+    assert.equal(session.board.items.get(stale).parentUid, before.get(stale).parent, "the model now says the card never left");
+    await session.undo();
+    await fake.flush();
+    const left = differCount(before, snap(fake, ids));
+    assert.equal(left, 0, `one Cmd+Z left ${left} cards different (${stale} stayed in ${fake.block(stale).parent})`);
+  } finally {
+    restore();
   }
 });

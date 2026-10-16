@@ -2102,10 +2102,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         async undo() {
           const moves = [];
           const propsOps = [];
+          // R4: the inverse of what this drag wrote, not a diff against the model now. A late echo can put a
+          // card back at its old parent in the model while Roam still has it in the new one (QA5 CSrDqKK2R).
+          const wroteMove = new Set();
+          const wroteProps = new Set();
+          for (const op of custom.forward || []) {
+            if (op.op === "move") wroteMove.add(op.uid);
+            else if (op.op === "props") wroteProps.add(op.uid);
+          }
           for (const [id, prev] of before) {
             const parentNow = ix().get(id)?.parent?.[UID] || uid;
-            if (prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
-            if (stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
+            if (wroteMove.has(id) || prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
+            if (wroteProps.has(id) || stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
           }
           // Low original order first, per parent, so each card lands in the hole it left. Props come after the
           // move: stored x/y are relative to the parent the card is going back to.

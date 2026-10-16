@@ -22,6 +22,7 @@ import { renderTableThumb, tableThumbKey, thumbBox } from "./view/table-thumb.js
 import { tableUidOf } from "./model/roam-table.js";
 import { shouldNudgeQueries } from "./model/query-fold.js";
 import { applyFullscreenChrome } from "./view/fullscreen.js";
+import { installRoamStack, syncBoardClass } from "./view/roam-stack.js";
 import { hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
 import { createRelChips } from "./relchips.js";
@@ -2389,6 +2390,7 @@ export async function installPlexusDiagram({
     if (titlePanel) titlePanel.style.display = "none";
     native.after(mountEl);
     mounts.set(native, rec);
+    syncBoardClass(doc, true);
     // A diagram inside the right sidebar is a copy in a window the user may never scroll to.
     // Leave a gap and let the viewport watcher build the canvas only when that window is on screen.
     if (inRightSidebar(native) && typeof IntersectionObserver === "function") {
@@ -2708,6 +2710,7 @@ export async function installPlexusDiagram({
     viewportWatch?.unobserve(rec.mountEl);
     recByMount.delete(rec.mountEl);
     mounts.delete(rec.native);
+    syncBoardClass(doc, mounts.size > 0);
     const boardUid = rec.session?.board?.uid || rec.uid;
     publicEmit("unmount", { boardUid });
     let still = false;
@@ -4378,6 +4381,8 @@ export async function installPlexusDiagram({
     lifecycle.add(() => { try { statusApiSeen?.removeEventListener?.("statuses", refreshStatuses); } catch { /* gone */ } });
     followStatusApi();
     bindExternalNav();
+    lifecycle.add(installRoamStack(doc));
+    lifecycle.add(() => syncBoardClass(doc, false));
     lifecycle.event(win, "hashchange", onHash);
     lifecycle.event(win, "popstate", onNavigate);
   }

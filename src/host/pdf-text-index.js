@@ -44,6 +44,7 @@ export function createPdfTextIndex({
   const queued = new Set();
   let pausedUntil = 0;
   let pumping = false;
+  let generation = 0;
   let stopIdle = null;
   let dbPromise = null;
   let loaded = null;
@@ -177,30 +178,41 @@ export function createPdfTextIndex({
     pausedUntil = now() + ms;
   }
 
+  function takeHandle(job) {
+    const handle = job?.handle || null;
+    if (job) job.handle = null;
+    return handle;
+  }
+
   function arm() {
     if (pumping || !queue.length || typeof budget?.idle !== "function") return;
     pumping = true;
+    const gen = generation;
     stopIdle = budget.idle(() => {
       stopIdle = null;
+      if (gen !== generation) { pumping = false; return; }
       if (pausedUntil > now()) {
         pumping = false;
         const wait = Math.max(0, pausedUntil - now());
-        later(() => arm(), wait);
+        later(() => { if (gen === generation) arm(); }, wait);
         return;
       }
       const job = queue[0];
-      void step(job).then((done) => {
+      if (!job) { pumping = false; return; }
+      void step(job, gen).then((done) => {
+        if (gen !== generation) return;
         pumping = false;
         if (done) {
-          queue.shift();
+          if (queue[0] === job) queue.shift();
           if (job?.url) queued.delete(job.url);
         }
         arm();
       }, () => {
+        if (gen !== generation) return;
         pumping = false;
-        const failed = queue.shift();
-        void dropHandle(failed?.handle);
-        if (failed?.url) queued.delete(failed.url);
+        if (queue[0] === job) queue.shift();
+        void dropHandle(takeHandle(job));
+        if (job?.url) queued.delete(job.url);
         arm();
       });
     }, { label: "pdf-text" });
@@ -210,12 +222,22 @@ export function createPdfTextIndex({
     try { await handle?.close?.(); } catch { /* gone */ }
   }
 
-  async function step(job) {
+  // `gen` is the pump that started this step. stop() moves the generation, and a step from the old one
+  // closes whatever it opened and does not touch the queue the new pump is using.
+  async function step(job, gen) {
+    if (gen !== generation) {
+      await dropHandle(takeHandle(job));
+      return false;
+    }
     if (!job.handle) {
       if (job.hash && byKey.has(job.hash)) return true;
       if (typeof openPdf !== "function") return true;
       let handle = null;
       try { handle = await openPdf(job.url); } catch { handle = null; }
+      if (gen !== generation) {
+        await dropHandle(handle);
+        return false;
+      }
       if (!handle || !(handle.pageCount > 0) || typeof handle.readPage !== "function") {
         await dropHandle(handle);
         return true;
@@ -224,6 +246,10 @@ export function createPdfTextIndex({
       if (!hash || byKey.has(hash)) {
         await dropHandle(handle);
         return true;
+      }
+      if (gen !== generation) {
+        await dropHandle(handle);
+        return false;
       }
       job.handle = handle;
       job.hash = hash;
@@ -240,25 +266,35 @@ export function createPdfTextIndex({
         title: job.title || "",
         pages: job.pages,
       };
+      if (gen !== generation) {
+        await dropHandle(takeHandle(job));
+        return false;
+      }
       if (addPostings(doc)) {
         try { await save(doc); } catch { /* cache is optional */ }
         try { onReady?.(doc.hash); } catch { /* listener */ }
       }
-      await dropHandle(job.handle);
+      await dropHandle(takeHandle(job));
       return true;
     }
     let page = null;
     try { page = await job.handle.readPage(job.n); } catch { page = null; }
+    if (gen !== generation) {
+      await dropHandle(takeHandle(job));
+      return false;
+    }
     if (page?.text) job.pages.push(page);
     return false;
   }
 
   function stop() {
+    generation += 1;
     try { stopIdle?.(); } catch { /* gone */ }
     stopIdle = null;
-    queue.length = 0;
+    const pending = queue.splice(0);
     queued.clear();
     pumping = false;
+    for (const job of pending) void dropHandle(takeHandle(job));
   }
 
   function enqueue(jobs) {

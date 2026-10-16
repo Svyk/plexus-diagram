@@ -6402,7 +6402,8 @@ function buildBoardView(onFail, {
         const known = new Set((index.docs || []).map((doc) => doc.url).filter(Boolean));
         const jobs = unparsedPdfJobs(rows, pdfBlocks(), firstPageAllowed).filter((job) => !known.has(job.url));
         index.enqueue(jobs);
-        try { panel.refreshSearch?.(); } catch { /* panel gone */ } });
+        try { panel.refreshSearch?.(); } catch { /* panel gone */ }
+      })();
     });
   };
   const pdfNameInfo = new Map();
@@ -6539,7 +6540,14 @@ function buildBoardView(onFail, {
       isOnBoard,
       opened: (open) => {
         chrome.toolbar.setPanel(open);
-        if (!open) { sendPending = null; pdfNames?.stop(); }
+        if (!open) {
+          sendPending = null;
+          pdfNames?.stop();
+          // The feed's first idle slice is not the whole read. stop() also closes a document already opening.
+          try { stopPdfTextFeed?.(); } catch { /* gone */ }
+          stopPdfTextFeed = null;
+          try { pdfText?.stop?.(); } catch { /* gone */ }
+        }
         else {
           partsIdx?.invalidate();
           imgList = null;

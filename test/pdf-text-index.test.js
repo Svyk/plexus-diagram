@@ -199,3 +199,36 @@ test("a finished read closes the document, and an already cached file is closed 
   assert.equal(readsAgain, 0);
   assert.equal(closedAgain, 1);
 });
+
+test("stop closes the open document after openPdf resolves and before the last page", async () => {
+  const budget = budgetOf();
+  let closed = 0;
+  let reads = 0;
+  let releaseOpen;
+  const opened = new Promise((resolve) => { releaseOpen = resolve; });
+  const index = createPdfTextIndex({
+    budget,
+    openPdf: () => new Promise((resolve) => {
+      releaseOpen();
+      resolve({
+        hash: "h",
+        pageCount: 3,
+        readPage: async (n) => { reads += 1; return { n, text: "brain age", lower: "brain age", spans: [] }; },
+        close: async () => { closed += 1; },
+      });
+    }),
+  });
+  index.enqueue([{ url: "https://x.test/a.pdf" }]);
+  budget.flush();
+  await opened;
+  await tick();
+  assert.equal(reads, 0);
+  assert.equal(closed, 0);
+  index.stop();
+  await tick();
+  await tick();
+  assert.equal(closed, 1);
+  await drain(budget, 8);
+  assert.equal(reads, 0);
+  assert.equal(closed, 1);
+});

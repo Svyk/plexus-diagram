@@ -79270,10 +79270,10 @@ function createReadPane({
       } catch {
         flashed2 = false;
       }
-      if (!flashed2 && Array.isArray(frac)) flashFrac(frac, page);
+      if (!flashed2 && Array.isArray(frac)) flashFrac2(frac, page);
       return true;
     },
-    flashFrac: (frac, page) => flashFrac(frac, page),
+    flashFrac: (frac, page) => flashFrac2(frac, page),
     showParsed() {
       void enterParsed("both");
     },

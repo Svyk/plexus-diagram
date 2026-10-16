@@ -1,11 +1,13 @@
-// Roam paints [[ / (( / slash menus as a screen-space popover. Inside a zoomed board that
-// popover either sits in the scaled world (clipped by overflow, grown by the zoom) or keeps the
-// position it computed before the zoom. While a card editor is focused, pin the menu to the
-// anchor's screen box and take it out of the board.
+// Roam paints [[ / (( / slash menus as a screen-space popover. A menu rendered inside a
+// card stays there. Moving a node Roam's React owns makes removeChild throw NotFoundError
+// and parks the editor on document.body. The card is raised (pxd-item--pop) instead.
+// A menu already portaled to the body is pinned to the anchor with styles we set on that
+// node. It is not moved.
 //
-// A date picker is portaled to the document. Blueprint places it with a transform, and that
-// transform ignores the board's scale, so the calendar misses the button. Clear those ancestor
-// transforms and pin the one calendar Blueprint actually positioned.
+// A date picker portaled to the document is placed by Blueprint with a transform, and that
+// transform ignores the board's scale, so the calendar misses the button. Clear those
+// ancestor transforms and pin the one calendar Blueprint actually positioned. A picker
+// rendered inside the card is left where it is.
 
 const MENU_SELECTOR = ".rm-autocomplete__results, .bp3-datepicker, .rm-date-picker";
 const claimed = new WeakSet();
@@ -101,16 +103,14 @@ export function placeEditorMenus(doc, anchor) {
     const inBoard = Boolean(menu.closest?.(".pxd-root"));
     if (pageMenu) {
       if (!anchorIsField) continue;
-      if (inBoard && doc.body) doc.body.append(menu);
+      // Leave an in-card autocomplete where Roam rendered it.
+      if (inBoard) continue;
       pinAtAnchor(menu);
       continue;
     }
-    if (inBoard) {
-      if (doc.body) doc.body.append(menu);
-      releaseAncestorTransforms(menu);
-      pinAtAnchor(menu);
-      continue;
-    }
+    // A date picker rendered inside the card stays there. Clearing transforms
+    // here would wipe the board's zoom.
+    if (inBoard) continue;
     if (!anchorInBoard) continue;
     const overlay = menu.closest?.(".bp3-overlay");
     const overlayOpen = !overlay

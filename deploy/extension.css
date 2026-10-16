@@ -207,7 +207,9 @@ body.roam-body.dark .pxd-root,
 .pxd-mount--fullscreen {
   position: fixed !important;
   /* top/left/right/bottom set by fullscreen.js: below .rm-topbar, right of the left sidebar. */
-  z-index: 40;
+  /* Under Blueprint's inline portal z-index of 20. A calendar or Find or Create
+     result that keeps that inline value then paints above the board. */
+  z-index: 19;
   width: auto !important;
   height: auto !important;
   min-height: 0 !important;
@@ -218,15 +220,16 @@ body.pxd-has-fullscreen {
   overflow: hidden;
 }
 
-/* The board is a stacking context (contain, and a fixed fullscreen layer at 40).
-   Raise Roam's top bar so a date picker or Find or Create that stays in the bar
-   paints over the board. An ordinary body portal clears that layer. No !important
-   on it: an inline z-index Blueprint already set above 40 wins. A bare portal
-   whose inline z-index is 20, and which is not a dialog or a menu, stays at 20.
-   Dialogs keep a floor above the pin toast. A menu, select, or date picker opened
-   from a dialog is its own portal and stacks above that floor. An overlay inside
-   a card is not moved: the card rises above its siblings. .pxd-root overflow:clip
-   still cuts that popover at the board edge. */
+/* The board is a stacking context (contain, and a fixed fullscreen layer at 19).
+   19 is under Blueprint's inline portal default of 20, so a calendar or Find or
+   Create result that keeps that inline value paints above the fullscreen board.
+   The top bar stays at 80. An ordinary body portal is 2500 with no !important:
+   an inline z-index already above 19 still wins, and a dialog menu is not
+   crushed down to 2500. Dialogs keep a floor above the pin toast. A menu,
+   select, or date picker opened from a dialog is its own portal and stacks
+   above that floor. An overlay inside a card is not moved: the card rises
+   above its siblings. .pxd-root overflow:clip still cuts that popover at the
+   board edge. */
 body.pxd-has-board .rm-topbar {
   z-index: 80;
 }
@@ -2507,7 +2510,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 /* Ask AI chat window, in the style of Live AI Assistant's chat. Appended to the document body and placed by
    ask-ai.js (left/top/width/height inline), so it floats above a fullscreen board (.pxd-mount--fullscreen is
-   z-index 40) and Roam's sidebars. Buttons use two classes: Blueprint's `.bp3-dark button` beats one. */
+   z-index 19) and Roam's sidebars. Buttons use two classes: Blueprint's `.bp3-dark button` beats one. */
 /* Colours: one light set and one dark set (Live AI's dark chat over Blueprint's dark palette). The dark set applies
    under .bp3-dark and with .pxd-ask--dark, which ask-ai.js sets from the board and Roam's own dark markers and
    background (floatingDark). test/ask-dark.test.js checks the text pairs against WCAG AA. */
@@ -8336,6 +8339,21 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   color: inherit;
 }
 
+/* An open overlay (autocomplete, date) must paint outside the card. The three
+   clips above return once pxd-item--pop leaves. The header stays clipped so the
+   title still ellipsizes. The board edge (.pxd-root overflow:clip) still cuts it. */
+.pxd-root .pxd-item.pxd-item--page.pxd-item--editing.pxd-item--pop {
+  overflow: visible;
+}
+
+.pxd-root .pxd-item.pxd-item--page.pxd-item--editing.pxd-item--pop > .pxd-item__body {
+  overflow: visible;
+}
+
+.pxd-root .pxd-item.pxd-item--page.pxd-item--editing.pxd-item--pop > .pxd-item__body > .pxd-item__editor.pxd-page-edit {
+  overflow: visible;
+}
+
 .pxd-root .pxd-item--page .pxd-page-edit::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -9720,7 +9738,8 @@ body.bt-theme-dark .pxd-parse .pxd-parse__block--on,
 }
 
 .pxd-pdf-chip.pxd-pdf-chip,
-.pxd-boardchip.pxd-boardchip {
+.pxd-boardchip.pxd-boardchip,
+.pxd-zoomchip.pxd-zoomchip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -9748,10 +9767,17 @@ body.bt-theme-dark .pxd-parse .pxd-parse__block--on,
   white-space: nowrap;
 }
 
+.pxd-zoomchip.pxd-zoomchip {
+  margin: 4px 0 4px 8px;
+  white-space: nowrap;
+}
+
 .bp3-dark .pxd-pdf-chip.pxd-pdf-chip,
 .bp3-dark .pxd-boardchip.pxd-boardchip,
+.bp3-dark .pxd-zoomchip.pxd-zoomchip,
 body.bt-theme-dark .pxd-pdf-chip.pxd-pdf-chip,
-body.bt-theme-dark .pxd-boardchip.pxd-boardchip {
+body.bt-theme-dark .pxd-boardchip.pxd-boardchip,
+body.bt-theme-dark .pxd-zoomchip.pxd-zoomchip {
   border: 1px solid var(--pxd-border, #3b4b58);
   background: transparent;
   color: #e6edf3;

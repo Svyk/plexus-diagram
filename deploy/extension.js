@@ -26836,16 +26836,11 @@ function placeEditorMenus(doc, anchor) {
     const inBoard = Boolean(menu.closest?.(".pxd-root"));
     if (pageMenu) {
       if (!anchorIsField) continue;
-      if (inBoard && doc.body) doc.body.append(menu);
+      if (inBoard) continue;
       pinAtAnchor(menu);
       continue;
     }
-    if (inBoard) {
-      if (doc.body) doc.body.append(menu);
-      releaseAncestorTransforms(menu);
-      pinAtAnchor(menu);
-      continue;
-    }
+    if (inBoard) continue;
     if (!anchorInBoard) continue;
     const overlay = menu.closest?.(".bp3-overlay");
     const overlayOpen = !overlay || overlay.classList?.contains?.("bp3-overlay-open") || String(overlay.className || "").includes("bp3-overlay-open");
@@ -102682,6 +102677,76 @@ function syncBoardClass(doc, on) {
 
 // src/feature.js
 init_card_children();
+
+// src/model/zoom-board.js
+var MAX_STEPS = 24;
+var parentUidOf = (loc) => {
+  if (!loc) return "";
+  if (typeof loc === "string") return loc;
+  return String(loc.parentUid || "");
+};
+var connectionsHeader = (text4) => String(text4 || "").split("\n")[0].trim() === "Connections";
+function zoomBoardTarget(blockUid3, readers = {}) {
+  const start = String(blockUid3 || "");
+  if (!start) return null;
+  const parentOf = readers.parentOf;
+  const isDiagram = readers.isDiagram;
+  if (typeof parentOf !== "function" || typeof isDiagram !== "function") return null;
+  const isSection = readers.isSection;
+  const blockString4 = readers.blockString;
+  const down2 = [];
+  const seen = /* @__PURE__ */ new Set();
+  let uid = start;
+  let boardUid = "";
+  for (let i = 0; i < MAX_STEPS; i += 1) {
+    if (!uid || seen.has(uid)) return null;
+    seen.add(uid);
+    let diagram = false;
+    try {
+      diagram = isDiagram(uid) === true;
+    } catch {
+      return null;
+    }
+    if (diagram) {
+      if (uid === start) return null;
+      boardUid = uid;
+      break;
+    }
+    down2.push(uid);
+    let parent = "";
+    try {
+      parent = parentUidOf(parentOf(uid));
+    } catch {
+      return null;
+    }
+    if (!parent) return null;
+    uid = parent;
+  }
+  if (!boardUid) return null;
+  let cardUid = "";
+  for (let i = down2.length - 1; i >= 0; i -= 1) {
+    const id = down2[i];
+    let section2 = false;
+    try {
+      section2 = typeof isSection === "function" && isSection(id) === true;
+    } catch {
+      section2 = false;
+    }
+    let text4 = "";
+    try {
+      text4 = typeof blockString4 === "function" ? blockString4(id) || "" : "";
+    } catch {
+      text4 = "";
+    }
+    if (section2 || connectionsHeader(text4)) continue;
+    cardUid = id;
+    break;
+  }
+  if (!cardUid) return null;
+  return { boardUid, cardUid, blockUid: start };
+}
+
+// src/feature.js
 init_deeplink();
 init_relchips();
 
@@ -103412,6 +103477,100 @@ ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).jo
     disposeChips();
   };
   return { scan, dispose, count: () => chips.size };
+}
+
+// src/view/zoom-chip.js
+function addedZoomHost(node2) {
+  if (!node2 || node2.nodeType !== 1 || typeof node2.closest !== "function") return null;
+  try {
+    if (node2.closest(".pxd-root")) return null;
+  } catch {
+    return null;
+  }
+  try {
+    if (typeof node2.matches === "function" && node2.matches(".rm-zoom")) return node2;
+  } catch {
+  }
+  if (typeof node2.querySelector !== "function") return null;
+  let found = null;
+  try {
+    found = node2.querySelector(".rm-zoom");
+  } catch {
+    return null;
+  }
+  if (!found) return null;
+  try {
+    if (found.closest?.(".pxd-root")) return null;
+  } catch {
+    return null;
+  }
+  return found;
+}
+function createZoomChip({ doc, readTarget, onOpen } = {}) {
+  let button3 = null;
+  let key = "";
+  const zoomNode = () => {
+    const list = doc?.querySelectorAll?.(".rm-article-wrapper .rm-zoom") || [];
+    for (const node2 of list) {
+      try {
+        if (node2.closest?.(".pxd-root") || node2.closest?.(".bp3-portal")) continue;
+      } catch {
+        continue;
+      }
+      return node2;
+    }
+    return null;
+  };
+  const drop = () => {
+    try {
+      button3?.remove();
+    } catch {
+    }
+    button3 = null;
+    key = "";
+  };
+  const sync = () => {
+    const zoom = zoomNode();
+    let target = null;
+    if (zoom) {
+      try {
+        target = readTarget?.() || null;
+      } catch {
+        target = null;
+      }
+    }
+    if (!zoom || !target?.boardUid || !target?.cardUid) {
+      drop();
+      return;
+    }
+    const next = `${target.boardUid}\0${target.cardUid}\0${target.blockUid || ""}`;
+    if (button3 && button3.isConnected !== false && button3.parentElement === zoom && key === next) return;
+    drop();
+    const el2 = doc.createElement("button");
+    el2.type = "button";
+    el2.className = "pxd-zoomchip";
+    el2.textContent = "Open on board";
+    const stop3 = (event) => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+    };
+    el2.addEventListener("mousedown", stop3);
+    el2.addEventListener("click", (event) => {
+      stop3(event);
+      try {
+        onOpen?.(target);
+      } catch {
+      }
+    });
+    try {
+      zoom.append(el2);
+    } catch {
+      return;
+    }
+    button3 = el2;
+    key = next;
+  };
+  return { sync, drop };
 }
 
 // src/model/board-rule.js
@@ -104739,6 +104898,48 @@ async function installPlexusDiagram({
     },
     onPreview: ({ boardUid, cardUid }) => chipPreview(boardUid, cardUid)
   });
+  const zoomChip = createZoomChip({
+    doc,
+    readTarget: () => {
+      const uid = diagramUidFromLocation();
+      if (!uid) return null;
+      return zoomBoardTarget(uid, {
+        parentOf: (id) => {
+          try {
+            return host.blockLocation?.(id) ?? null;
+          } catch {
+            return null;
+          }
+        },
+        isDiagram: (id) => {
+          try {
+            return isDiagramString2(host.blockString?.(id));
+          } catch {
+            return false;
+          }
+        },
+        isSection: (id) => {
+          let props = null;
+          try {
+            props = host.pullProps?.(id);
+          } catch {
+            props = null;
+          }
+          return props?.plexus?.type === "section";
+        },
+        blockString: (id) => {
+          try {
+            return host.blockString?.(id) || "";
+          } catch {
+            return "";
+          }
+        }
+      });
+    },
+    onOpen: (target) => {
+      openZoomedCard(target);
+    }
+  });
   const schedulePrefetch2 = createPrefetch({
     doc,
     cache: cardCache,
@@ -104802,6 +105003,7 @@ async function installPlexusDiagram({
   lifecycle.add(() => relChips.dispose());
   lifecycle.add(() => boardChips.dispose());
   lifecycle.add(() => cardChips.dispose());
+  lifecycle.add(() => zoomChip.drop());
   lifecycle.add(() => schedulePrefetch2.dispose());
   lifecycle.add(() => resurface.dispose());
   const trailStrips = /* @__PURE__ */ new Map();
@@ -108215,6 +108417,7 @@ async function installPlexusDiagram({
       boardChips.scan(node2);
       cardChips.scan(node2);
       if (settings[SETTING_IDS.resurface] !== false) resurface.scan(node2);
+      if (addedZoomHost(node2)) zoomChip.sync();
     }
     scanRegions(node2);
     scanTrails(node2);
@@ -108272,6 +108475,10 @@ async function installPlexusDiagram({
       }
     }
     reconcile();
+    try {
+      zoomChip.sync();
+    } catch {
+    }
   }
   function focusedUid(context) {
     return context?.["block-uid"] || host.api?.ui?.getFocusedBlock?.()?.["block-uid"] || extensionAPI?.ui?.getFocusedBlock?.()?.["block-uid"] || null;
@@ -108882,6 +109089,27 @@ async function installPlexusDiagram({
       kick(20);
     }
   }
+  function openZoomedCard(target) {
+    const boardUid = target?.boardUid;
+    const cardUid = target?.cardUid;
+    const blockUid3 = String(target?.blockUid || "");
+    if (!boardUid || !cardUid) return;
+    void openPublic(boardUid, { card: cardUid }).then((ok) => {
+      if (!ok || stopped || !blockUid3 || blockUid3 === cardUid) return;
+      const focus = (left) => {
+        if (stopped) return;
+        const rec = findOpenMount(boardUid, false) || findOpenMount(boardUid, true);
+        let done3 = false;
+        try {
+          done3 = rec?.view?.focusInside?.(cardUid, blockUid3) === true;
+        } catch {
+          done3 = false;
+        }
+        if (!done3 && left > 0) lifecycle.timeout(() => focus(left - 1), 50);
+      };
+      focus(40);
+    });
+  }
   function openPublic(boardUid, opts = {}) {
     const sidebar = Boolean(opts?.sidebar);
     if (sidebar) {
@@ -109048,6 +109276,10 @@ async function installPlexusDiagram({
   }
   scanRegions(doc);
   scanTrails(doc?.body || doc);
+  try {
+    zoomChip.sync();
+  } catch {
+  }
   for (const portal of doc?.querySelectorAll?.(".bp3-portal") || []) scanRegions(portal);
   let wakeTimer = null;
   let quietTimer = null;

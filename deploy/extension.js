@@ -3959,8 +3959,11 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
       const cardKids = tableKid ? sortedChildren2(tableKid) : pdfPage && !kids.length && Array.isArray(pdfPage.children) ? pdfPage.children : kids;
       let target;
       if (pdfPage) target = { kind: "block", uid: pdfPage.pdfUid, page: pdfPage.title, ...pdfPage.pageUid ? { pageUid: pdfPage.pageUid } : {} };
-      else if (kind === "page") target = { kind: "page", title: cls.title };
-      else if (kind === "block" || kind === "region-ref" || kind === "drawing-ref" || kind === "pdf" && cls.refUid || kind === "highlight" && cls.refUid) target = { kind: "block", uid: cls.refUid };
+      else if (kind === "page") {
+        const pageRef = refNodes(child).find((ref) => ref?.[":node/title"] === cls.title);
+        const pageUid2 = typeof pageRef?.[":block/uid"] === "string" ? pageRef[":block/uid"] : "";
+        target = pageUid2 ? { kind: "page", title: cls.title, uid: pageUid2 } : { kind: "page", title: cls.title };
+      } else if (kind === "block" || kind === "region-ref" || kind === "drawing-ref" || kind === "pdf" && cls.refUid || kind === "highlight" && cls.refUid) target = { kind: "block", uid: cls.refUid };
       else target = { kind: "self", uid: cuid };
       const openKey = type === "card" ? kidsOpenKey(cardKids) : "";
       const item = {
@@ -19574,7 +19577,7 @@ function cardOwningBlock(items, blockUid3) {
   }
   return null;
 }
-function cardOwningByParent(items, blockUid3, parentOf) {
+function cardOwningByParent(items, blockUid3, parentOf, pageUidOf) {
   const want = String(blockUid3 || "");
   if (!want || typeof parentOf !== "function") return null;
   for (const item of eachItem(items)) {
@@ -19593,20 +19596,20 @@ function cardOwningByParent(items, blockUid3, parentOf) {
       return null;
     }
     if (!parent) return null;
-    const hit = cardForParent(items, parent, want);
+    const hit = cardForParent(items, parent, want, pageUidOf);
     if (hit) return hit;
     uid = parent;
   }
   return null;
 }
-function focusOpenBlock(records, blockUid3, parentOf) {
+function focusOpenBlock(records, blockUid3, parentOf, pageUidOf) {
   const want = String(blockUid3 || "");
   if (!want) return false;
   let hit = false;
   for (const rec of records || []) {
     const items = rec?.items;
     if (!items || typeof rec.focusInside !== "function") continue;
-    const owned = cardOwningBlock(items, want) || cardOwningByParent(items, want, parentOf);
+    const owned = cardOwningBlock(items, want) || cardOwningByParent(items, want, parentOf, pageUidOf);
     if (!owned || !owned.cardUid || owned.blockUid === owned.cardUid) continue;
     try {
       rec.focusInside(owned.cardUid, owned.blockUid);
@@ -19616,7 +19619,7 @@ function focusOpenBlock(records, blockUid3, parentOf) {
   }
   return hit;
 }
-var KIDS_H_CAP, PEEK_HOVER_MS, PEEK_LEAVE_MS, PEEK_ANIM_MS, CHILD_GROW_H, eachItem, nodeRead, cardForParent;
+var KIDS_H_CAP, PEEK_HOVER_MS, PEEK_LEAVE_MS, PEEK_ANIM_MS, CHILD_GROW_H, eachItem, nodeRead, pageUidMemo, pageTargetUid, cardForParent;
 var init_card_children = __esm({
   "src/model/card-children.js"() {
     KIDS_H_CAP = 900;
@@ -19634,7 +19637,24 @@ var init_card_children = __esm({
       kids: (node2) => node2?.[":block/children"] || node2?.children || [],
       label: () => ""
     };
-    cardForParent = (items, parentUid, blockUid3) => {
+    pageUidMemo = /* @__PURE__ */ new WeakMap();
+    pageTargetUid = (item, pageUidOf) => {
+      const target = item?.target;
+      if (!target || target.kind !== "page") return "";
+      if (target.uid) return String(target.uid);
+      if (typeof pageUidOf !== "function") return "";
+      const cached = pageUidMemo.get(item);
+      if (cached !== void 0) return cached;
+      let uid = "";
+      try {
+        uid = String(pageUidOf(target.title) || "");
+      } catch {
+        uid = "";
+      }
+      pageUidMemo.set(item, uid);
+      return uid;
+    };
+    cardForParent = (items, parentUid, blockUid3, pageUidOf) => {
       if (!parentUid) return null;
       for (const item of eachItem(items)) {
         if (!item || item.type === "section") continue;
@@ -19642,6 +19662,10 @@ var init_card_children = __esm({
         const target = item.target;
         if (target?.kind === "block" && target.uid === parentUid && blockUid3 !== target.uid) {
           return { cardUid: item.uid, blockUid: blockUid3 };
+        }
+        if (target?.kind === "page") {
+          const uid = pageTargetUid(item, pageUidOf);
+          if (uid && uid === parentUid && blockUid3 !== uid) return { cardUid: item.uid, blockUid: blockUid3 };
         }
       }
       return null;
@@ -102506,18 +102530,9 @@ var HOSTS = [
   ".bp3-menu",
   ".bp3-context-menu"
 ];
-var TRIGGERS = [
-  ".rm-block-ref",
-  ".rm-page-ref",
-  ".bp3-icon-calendar",
-  "#find-or-create-input",
-  ".rm-block__input",
-  ".bp3-popover-target",
-  ".bp3-menu"
-];
-var ORDINARY_Z = 2500;
-var DIALOG_Z = 4e5;
-var LIFT_FRAMES = 12;
+var raised = /* @__PURE__ */ new Map();
+var hostCard = /* @__PURE__ */ new WeakMap();
+var liveHosts = /* @__PURE__ */ new Set();
 var isHost = (node2) => {
   if (!node2 || node2.nodeType !== 1 || typeof node2.matches !== "function") return false;
   for (const sel of HOSTS) {
@@ -102545,142 +102560,112 @@ var trappedInBoard = (node2) => {
     return false;
   }
 };
-var isDialogHost = (host) => {
-  if (!host) return false;
-  if (isHost(host) && typeof host.matches === "function") {
+var claim = (host) => {
+  if (!host || hostCard.has(host) || !trappedInBoard(host)) return false;
+  let card2 = null;
+  try {
+    card2 = host.closest?.(".pxd-item") || null;
+  } catch {
+    card2 = null;
+  }
+  if (!card2 || card2 === host) return false;
+  hostCard.set(host, card2);
+  liveHosts.add(host);
+  raised.set(card2, (raised.get(card2) || 0) + 1);
+  try {
+    card2.classList.add("pxd-item--pop");
+  } catch {
+  }
+  return true;
+};
+var unclaim = (host) => {
+  const card2 = hostCard.get(host);
+  if (!card2) return;
+  hostCard.delete(host);
+  liveHosts.delete(host);
+  const next = (raised.get(card2) || 1) - 1;
+  if (next > 0) {
+    raised.set(card2, next);
+    return;
+  }
+  raised.delete(card2);
+  try {
+    card2.classList?.remove("pxd-item--pop");
+  } catch {
+  }
+};
+var releaseRaised = () => {
+  for (const card2 of raised.keys()) {
     try {
-      if (host.matches(".bp3-dialog, .bp3-alert")) return true;
+      card2.classList?.remove("pxd-item--pop");
     } catch {
     }
   }
-  try {
-    return Boolean(host.querySelector?.(".bp3-dialog, .bp3-alert"));
-  } catch {
-    return false;
-  }
-};
-var zOf = (node2) => {
-  const raw = node2?.style?.["z-index"] ?? node2?.style?.zIndex ?? "";
-  const n3 = Number.parseInt(String(raw), 10);
-  return Number.isFinite(n3) ? n3 : 0;
+  raised.clear();
+  liveHosts.clear();
+  hostCard = /* @__PURE__ */ new WeakMap();
 };
 function liftRoamOverlay(node2, doc) {
   if (!doc?.body) return false;
   const host = overlayHost(node2);
   if (!host) return false;
-  const trapped = trappedInBoard(host);
-  const onBody = host.parentElement === doc.body;
-  if (!trapped && !onBody) return false;
-  const want = isDialogHost(host) ? DIALOG_Z : ORDINARY_Z;
-  const current3 = zOf(host);
-  let moved = false;
-  if (trapped && !onBody) {
-    try {
-      doc.body.append(host);
-      moved = host.parentElement === doc.body;
-    } catch {
-      return false;
-    }
-  }
-  if (current3 >= want) return moved;
-  try {
-    host.style?.setProperty?.("z-index", String(want), "important");
-  } catch {
-    return moved;
-  }
-  return true;
+  return claim(host);
 }
-function liftRoamOverlays(doc) {
-  if (!doc?.querySelectorAll) return 0;
-  const seen = /* @__PURE__ */ new Set();
-  const hosts = [];
+var hostsInside = (node2) => {
+  if (!node2 || typeof node2.querySelectorAll !== "function") return [];
+  const out = [];
   for (const sel of HOSTS) {
     let list = [];
     try {
-      list = doc.querySelectorAll(sel) || [];
+      list = node2.querySelectorAll(sel) || [];
     } catch {
       list = [];
     }
-    for (const node2 of list) {
-      const host = overlayHost(node2);
-      if (!host || seen.has(host)) continue;
-      seen.add(host);
-      hosts.push(host);
-    }
+    for (const hit of list) out.push(hit);
   }
-  let n3 = 0;
-  for (const host of hosts) if (liftRoamOverlay(host, doc)) n3 += 1;
-  return n3;
-}
-var triggered = (target) => {
-  if (!target || typeof target.closest !== "function") return false;
-  for (const sel of TRIGGERS) {
-    try {
-      if (target.closest(sel)) return true;
-    } catch {
-    }
+  return out;
+};
+var considerAdded = (node2, doc) => {
+  if (!node2 || node2.nodeType !== 1) return;
+  if (isHost(node2)) liftRoamOverlay(node2, doc);
+  if (!trappedInBoard(node2)) return;
+  for (const hit of hostsInside(node2)) liftRoamOverlay(hit, doc);
+};
+var considerRemoved = (node2) => {
+  if (!node2 || node2.nodeType !== 1 || liveHosts.size === 0) return;
+  const hit = [];
+  for (const host of liveHosts) {
+    if (host === node2 || node2.contains?.(host)) hit.push(host);
   }
-  return false;
+  for (const host of hit) unclaim(host);
 };
 function installRoamStack(doc) {
   if (!doc?.body || typeof doc.addEventListener !== "function") return () => {
   };
-  let framesLeft = 0;
-  let raf2 = 0;
-  const view = doc.defaultView || globalThis;
-  const pump = () => {
-    raf2 = 0;
-    try {
-      liftRoamOverlays(doc);
-    } catch {
-    }
-    if (framesLeft <= 0) return;
-    framesLeft -= 1;
-    if (typeof view.requestAnimationFrame === "function") raf2 = view.requestAnimationFrame(pump) || 0;
-  };
-  const kick = () => {
-    framesLeft = LIFT_FRAMES;
-    if (raf2) return;
-    if (typeof view.requestAnimationFrame === "function") raf2 = view.requestAnimationFrame(pump) || 0;
-    if (!raf2) pump();
-  };
-  const onTrigger = (event) => {
-    if (!triggered(event?.target)) return;
-    kick();
-  };
-  doc.addEventListener("pointerover", onTrigger, true);
-  doc.addEventListener("focusin", onTrigger, true);
-  doc.addEventListener("pointerdown", onTrigger, true);
   let obs = null;
+  const view = doc.defaultView || globalThis;
   const Observer = view.MutationObserver || globalThis.MutationObserver;
+  const onMut = (records) => {
+    if (!doc.body?.classList?.contains?.("pxd-has-board")) return;
+    for (const rec of records || []) {
+      for (const node2 of rec.removedNodes || []) considerRemoved(node2);
+      for (const node2 of rec.addedNodes || []) considerAdded(node2, doc);
+    }
+  };
   if (typeof Observer === "function") {
     try {
-      obs = new Observer(() => kick());
-      obs.observe(doc.body, { childList: true });
+      obs = new Observer(onMut);
+      obs.observe(doc.body, { childList: true, subtree: true });
     } catch {
       obs = null;
     }
   }
   return () => {
     try {
-      doc.removeEventListener("pointerover", onTrigger, true);
-    } catch {
-    }
-    try {
-      doc.removeEventListener("focusin", onTrigger, true);
-    } catch {
-    }
-    try {
-      doc.removeEventListener("pointerdown", onTrigger, true);
-    } catch {
-    }
-    try {
       obs?.disconnect?.();
     } catch {
     }
-    if (raf2 && typeof view.cancelAnimationFrame === "function") view.cancelAnimationFrame(raf2);
-    raf2 = 0;
-    framesLeft = 0;
+    releaseRaised();
   };
 }
 function syncBoardClass(doc, on) {
@@ -106744,6 +106729,13 @@ async function installPlexusDiagram({
         return null;
       }
     };
+    const pageUidOf = (title) => {
+      try {
+        return host.pageUid?.(title) || "";
+      } catch {
+        return "";
+      }
+    };
     const records = [];
     for (const rec of mounts.values()) {
       const items = rec.session?.board?.items;
@@ -106751,7 +106743,7 @@ async function installPlexusDiagram({
       if (!items || typeof focusInside !== "function") continue;
       records.push({ items, focusInside });
     }
-    focusOpenBlock(records, blockUid3, parentOf);
+    focusOpenBlock(records, blockUid3, parentOf, pageUidOf);
   }
   function bindExternalNav() {
     const mw = host.api?.ui?.mainWindow;

@@ -220,19 +220,37 @@ body.pxd-has-fullscreen {
 
 /* The board is a stacking context (contain, and a fixed fullscreen layer at 40).
    Raise Roam's top bar so a date picker or Find or Create that stays in the bar
-   paints over the board. Body portals sit above Ask (1000). Dialogs sit above
-   the pin toast (100000). */
+   paints over the board. An ordinary body portal clears that layer. No !important
+   on it: an inline z-index Blueprint already set above 40 wins. A bare portal
+   whose inline z-index is 20, and which is not a dialog or a menu, stays at 20.
+   Dialogs keep a floor above the pin toast. A menu, select, or date picker opened
+   from a dialog is its own portal and stacks above that floor. An overlay inside
+   a card is not moved: the card rises above its siblings. .pxd-root overflow:clip
+   still cuts that popover at the board edge. */
 body.pxd-has-board .rm-topbar {
   z-index: 80;
 }
 
+.pxd-root .pxd-item.pxd-item--pop {
+  z-index: 6;
+}
+
 body.pxd-has-board > .bp3-portal {
-  z-index: 2500 !important;
+  z-index: 2500;
 }
 
 body.pxd-has-board > .bp3-portal:has(.bp3-dialog),
 body.pxd-has-board > .bp3-portal:has(.bp3-alert) {
   z-index: 400000 !important;
+}
+
+body.pxd-has-board > .bp3-portal:has(.bp3-menu),
+body.pxd-has-board > .bp3-portal:has(.bp3-datepicker),
+body.pxd-has-board > .bp3-portal:has(.bp3-select-popover),
+body.pxd-has-board > .bp3-portal:has(.rm-date-picker),
+body.pxd-has-board > .bp3-portal:has(.bp3-context-menu),
+body.pxd-has-board > .bp3-portal:has(.rm-autocomplete__results) {
+  z-index: 400010 !important;
 }
 
 /* RoamJS breadcrumbs live in .rm-topbar; hide them only while a board is fullscreen. */
@@ -5891,10 +5909,11 @@ body.roam-body.dark .pxd-commands__box.pxd-commands__box {
   background: var(--pxd-accent-soft);
 }
 
-/* Outline-side toast after Annotate pins a drawing. It sits on document.body, outside every .pxd-root. */
+/* Outline-side toast after Annotate pins a drawing. It sits on document.body, outside every .pxd-root.
+   Stay under a slash menu or date picker (4000) and under a dialog (400000) or menu portal (400010). */
 .pxd-toast.pxd-toast--pin {
   position: fixed;
-  z-index: 100000;
+  z-index: 3000;
   left: 50%;
   bottom: 24px;
   padding: 8px 12px;

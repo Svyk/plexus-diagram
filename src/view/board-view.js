@@ -3092,6 +3092,7 @@ function buildBoardView(onFail, {
           : emptyFace("error", record));
       }
       repaintForCover(url);
+      if (underlay.isShown()) { ovDirty = true; schedule(); }
       if (!disposed && typeof record?.pageTitle === "string" && record.pageTitle) {
         try { readPane?.refreshCards?.(); } catch { /* switcher */ }
       }
@@ -3101,6 +3102,38 @@ function buildBoardView(onFail, {
       coverFaces.set(url, emptyFace("none", null));
       repaintForCover(url);
     });
+  };
+  // R4: decoded cover images for the canvas boxes (gesture-underlay paintCovers). A card with a cover in coverFaces
+  // gets its image once it has decoded; the decode redraws the canvas. Capped like the faces.
+  const canvasCovers = new Map();
+  const CANVAS_COVERS_MAX = 160;
+  const canvasCoverOf = (item) => {
+    if (item?.kind !== "pdf") return null;
+    try { if (notedSpeedFlags().canvasCovers === false) return null; } catch { return null; }
+    const key = coverKey(pdfMacroUrl(pdfSourceOf(item)));
+    if (!key) return null;
+    const face = coverFaces.get(key);
+    // A card never built (overview canvas) asks the cover store once; the load redraws the canvas.
+    if (!face) { loadCover(key); return null; }
+    const src = face.state !== "loading" ? presentFace(key, face)?.src : null;
+    if (!src) return null;
+    let img = canvasCovers.get(src);
+    if (!img) {
+      const Img = win?.Image;
+      if (typeof Img !== "function") return null;
+      img = new Img();
+      img.decoding = "async";
+      img.onload = () => {
+        if (disposed) return;
+        ovDirty = true;
+        if (underlay.isShown()) schedule();
+      };
+      img.src = src;
+      canvasCovers.set(src, img);
+      if (canvasCovers.size > CANVAS_COVERS_MAX) canvasCovers.delete(canvasCovers.keys().next().value);
+      return null;
+    }
+    return img.complete && img.naturalWidth > 0 ? img : null;
   };
   const coverImageFor = (url) => {
     const key = coverKey(url);
@@ -4290,7 +4323,7 @@ function buildBoardView(onFail, {
     for (const item of b.items.values()) {
       if (item.type === "section") continue;
       const rect = r.get(item.uid);
-      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect, color: item.color || "", title: item.title || "" });
+      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect, color: item.color || "", title: item.title || "", cover: tier === "detail" ? null : canvasCoverOf(item) });
     }
     const edges = [];
     if (edgesR.isVirtual?.(b)) {
@@ -4472,7 +4505,7 @@ function buildBoardView(onFail, {
       if (!rect || itemsR.attachedUid(uid)) continue;
       const hit = Boolean(canvasSearch?.has(uid));
       const dim = Boolean((canvasSearch && !hit) || (canvasFocus && !canvasFocus.has(uid)));
-      items.push({ uid, rect, color: item.color || "", title: item.title || "", dim, hit, selected: sel.has(uid) });
+      items.push({ uid, rect, color: item.color || "", title: item.title || "", dim, hit, selected: sel.has(uid), cover: canvasCoverOf(item) });
     }
     const edges = [];
     for (const e of b.edges.values()) {

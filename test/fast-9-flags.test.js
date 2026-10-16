@@ -59,6 +59,7 @@ const ALL_ON = {
   bucketLayers: true,
   zoomNoLayer: true,
   mainFade: true,
+  canvasCovers: true,
 };
 
 test("the panel has no speed-flags control, and bad JSON leaves the defaults (thirty-one on, edgeFingerprint and overviewCanvas off)", () => {

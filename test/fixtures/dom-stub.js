@@ -272,7 +272,8 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
           ops,
           clearRect() { ops.length = 0; }, fillRect() { ops.push(["fillRect", ctx.fillStyle]); }, strokeRect() {}, beginPath() {}, rect() {}, roundRect() {},
           fill() { ops.push(["fill", ctx.fillStyle]); }, stroke() { ops.push(["stroke", ctx.strokeStyle]); },
-          save() {}, restore() {}, scale() {}, translate() {}, setTransform() {}, moveTo() {}, lineTo() {},
+          save() {}, restore() {}, scale() {}, translate() {}, setTransform() {}, moveTo() {}, lineTo() {}, clip() {},
+          drawImage(img) { ops.push(["drawImage", String(img?.src || "")]); },
           // Text: ~0.55 em per character at the font's px size.
           fillText(text) { ops.push(["fillText", ctx.fillStyle, String(text)]); },
           measureText(text) { const px = Number(/([\d.]+)px/.exec(ctx.font)?.[1]) || 10; return { width: String(text).length * px * 0.55 }; },

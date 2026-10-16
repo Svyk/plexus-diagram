@@ -2290,10 +2290,23 @@ export function createItemRenderer({
     shellBg = null;
     stopPriorityFrame();
   };
+  // R4 (adaptiveSlices): the hand-back from the overview canvas built 30 map shells per frame in one foreground task
+  // each (QA5 C at 0.3: a 551 ms freeze, browser work on the attached shells). Its chunks start at HANDBACK_CHUNK, halve
+  // after a long frame and double after a short one, up to OPEN_CHUNK. The open keeps OPEN_CHUNK.
+  const HANDBACK_CHUNK = 12;
+  let priorityLimit = OPEN_CHUNK;
+  let priorityAt = 0;
   const pumpPriorityFrame = () => {
     priorityFrame = null;
     if (!shellsLive || shellsHeld || canvasCards()) return;
-    pumpChunk({ limit: OPEN_CHUNK, priority: true });
+    if (priorityLimit < OPEN_CHUNK || priorityAt) {
+      const gap = priorityAt ? now() - priorityAt : 0;
+      if (gap > 50) priorityLimit = Math.max(HANDBACK_CHUNK, Math.floor(priorityLimit / 2));
+      else if (gap && gap < 24) priorityLimit = Math.min(OPEN_CHUNK, priorityLimit * 2);
+    }
+    pumpChunk({ limit: priorityLimit, priority: true });
+    priorityAt = priorityLimit < OPEN_CHUNK || priorityAt ? now() : 0;
+    if (priorityLeft <= 0 || !shellQueue.length) { priorityLimit = OPEN_CHUNK; priorityAt = 0; }
     if (!shellsLive || shellsHeld) return;
     if (priorityLeft > 0 && shellQueue.length && timers?.frame) {
       priorityFrame = timers.frame(pumpPriorityFrame, "shells");
@@ -2347,6 +2360,12 @@ export function createItemRenderer({
     }
     shellQueue = inside.concat(outside);
     priorityLeft = inside.length;
+    if (nearest) {
+      let adaptive = true;
+      try { adaptive = speedOf().adaptiveSlices !== false; } catch { adaptive = true; }
+      priorityLimit = adaptive ? HANDBACK_CHUNK : OPEN_CHUNK;
+      priorityAt = 0;
+    }
     armShellPump();
     noteOverviewQueue();
   };

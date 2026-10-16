@@ -233,6 +233,7 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
     };
     let n = 0;
     for (const item of items) {
+      if (item.cover) continue;
       const title = String(item.title || "").trim();
       if (!title) continue;
       const r = item.rect;
@@ -328,6 +329,28 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
     ctx.globalAlpha = 1;
   };
 
+  // R4: a PDF card with a cached cover shows the cover across the card at map and overview (pdf-cover.css P32-1:
+  // background-size cover, top centre, paper colour under it). The box draws it too, so the shell that lands on it at
+  // the hand-back from the canvas does not pop the cover in. item.cover is a decoded image (the view decodes it).
+  const paintCovers = (ctx, items) => {
+    if (typeof ctx.drawImage !== "function") return;
+    for (const item of items) {
+      const img = item.cover;
+      const iw = Number(img?.naturalWidth || img?.width) || 0;
+      const ih = Number(img?.naturalHeight || img?.height) || 0;
+      if (!(iw > 0 && ih > 0)) continue;
+      const r = item.rect;
+      const k = Math.max(r.w / iw, r.h / ih);
+      const sw = r.w / k, sh = r.h / k;
+      const sx = (iw - sw) / 2;
+      ctx.save?.();
+      if (typeof ctx.roundRect === "function" && typeof ctx.clip === "function") { ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 8); ctx.clip(); }
+      ctx.fillStyle = item.paper || "#ffffff";
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      try { ctx.drawImage(img, sx, 0, sw, sh, r.x, r.y, r.w, r.h); } catch { /* not decoded */ }
+      ctx.restore?.();
+    }
+  };
   const paint = (ctx, { items, edges, c, scale, x0, y0, bw, bh, styled = false, tier = "overview", zoom = 1, view = null }) => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, bw, bh);
@@ -344,8 +367,8 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    if (styled && tier === "overview") { paintStyled(ctx, { items, c, scale }); return; }
-    if (styled) { paintCards(ctx, { items, c, scale, tier, zoom, view }); return; }
+    if (styled && tier === "overview") { paintStyled(ctx, { items, c, scale }); paintCovers(ctx, items); return; }
+    if (styled) { paintCards(ctx, { items, c, scale, tier, zoom, view }); paintCovers(ctx, items); return; }
     ctx.fillStyle = c.card;
     for (const { rect: r } of items) ctx.fillRect(r.x, r.y, r.w, r.h);
   };

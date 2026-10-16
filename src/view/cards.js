@@ -5375,6 +5375,20 @@ export function createItemRenderer({
   };
 
   // One card body is one scheduler row. Already mounted bodies return done so renderBlock is not called again.
+  // E2-5 (perf2): card bodies whose mount (Roam render included) took SLOW_MOUNT_MS or more, the last 30, for
+  // view.longTasks() (QA3: a 4.4 s single task while panning at detail, not attributed).
+  const SLOW_MOUNT_MS = 50;
+  const slowMounts = [];
+  const timedMount = (uid) => {
+    const t0 = now();
+    try { return mountScheduled(uid); } finally {
+      const ms = now() - t0;
+      if (ms >= SLOW_MOUNT_MS) {
+        slowMounts.push({ uid, kind: lastBoard?.items.get(uid)?.kind || "", ms: Math.round(ms), at: Math.round(t0) });
+        if (slowMounts.length > 30) slowMounts.shift();
+      }
+    }
+  };
   const mountScheduled = (uid) => {
     if (disposed || paused) return false;
     if (!wanted.has(uid)) return false;
@@ -5393,7 +5407,7 @@ export function createItemRenderer({
     idle: (fn) => (timers?.idle ? timers.idle(fn, "content") : idle(fn)),
     now,
     budgetMs: CHUNK_MS,
-    render: (uid) => mountScheduled(uid),
+    render: (uid) => timedMount(uid),
     eager: () => speedOf().budgetedMount === false,
   });
   const publishMountFps = () => {
@@ -6924,6 +6938,7 @@ export function createItemRenderer({
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     ensureShell,
     holdShells,
+    slowMounts: () => slowMounts.slice(),
     beginDragGroup,
     endDragGroup,
     pauseShells,

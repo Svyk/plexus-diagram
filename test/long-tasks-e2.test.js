@@ -60,3 +60,13 @@ test("E2-5: view.longTasks() names a slow background job on the real board view"
     resetSharedTaskProbe();
   }
 });
+
+test("E2-5: view.slowMounts() names a card body whose mount took 50 ms or more", async () => {
+  const m = mountBig({ x: -2000, y: -1500, zoom: 1 }, { renderMs: 60 });
+  try {
+    for (let i = 0; i < 20 && !m.view.slowMounts().length; i += 1) { await m.pump(5); await tick(20); }
+    const got = m.view.slowMounts();
+    assert.ok(got.length > 0, "a slow mount is logged");
+    assert.ok(got[0].uid && got[0].ms >= 50, JSON.stringify(got[0]));
+  } finally { m.done(); }
+});

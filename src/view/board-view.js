@@ -10546,6 +10546,10 @@ function buildBoardView(onFail, {
     longTasks() {
       return sharedTaskProbe().longTasks();
     },
+    // Card bodies that took 50 ms or more to mount ({ uid, kind, ms, at }), to name a long "content" task.
+    slowMounts() {
+      return itemsR.slowMounts?.() || [];
+    },
     applyShow(region) {
       if (disposed || !region) return;
       if (region.kind === "img") {

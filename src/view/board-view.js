@@ -4447,6 +4447,27 @@ function buildBoardView(onFail, {
   const SETTLE_SHELLS = 48;
   const SETTLE_EDGES = 120;
   const SETTLE_SLICE_MS = 6;
+  // E3-5 (perf2, speed flag adaptiveSlices): the browser's attach cost is not in our 6 ms (QA4 crumb back: 12 slices of
+  // 120-374 ms with ~4 ms of Plexus JS each). The time from one slice to the next is that frame: past one long frame
+  // the next slice takes half (down to SLICE_MIN_SHELLS), under a short one it doubles back (up to SETTLE_SHELLS). The
+  // resume and the hand-back from the overview canvas, where every shell attaches into a restyled board, start at 24.
+  const SLICE_MIN_SHELLS = 12;
+  const RESUME_SLICE_SHELLS = 24;
+  const SLICE_LONG_MS = 50;
+  const SLICE_SHORT_MS = 24;
+  let sliceShells = SETTLE_SHELLS;
+  let sliceAt = 0;
+  const sliceLog = [];
+  const adaptiveOn = () => { try { return notedSpeedFlags().adaptiveSlices !== false; } catch { return false; } };
+  const sliceEdgeBudget = () => (adaptiveOn() ? Math.round((SETTLE_EDGES * sliceShells) / SETTLE_SHELLS) : SETTLE_EDGES);
+  const adaptSlice = () => {
+    const gap = sliceAt ? perfNow() - sliceAt : 0;
+    if (!adaptiveOn()) sliceShells = SETTLE_SHELLS;
+    else if (gap > SLICE_LONG_MS) sliceShells = Math.max(SLICE_MIN_SHELLS, Math.floor(sliceShells / 2));
+    else if (gap && gap < SLICE_SHORT_MS) sliceShells = Math.min(SETTLE_SHELLS, sliceShells * 2);
+    sliceLog.push(sliceShells);
+    if (sliceLog.length > 60) sliceLog.shift();
+  };
   let sliceFrame = null;
   let slicing = false;
   const resumeView = () => {
@@ -4480,15 +4501,26 @@ function buildBoardView(onFail, {
   // E2-5 (perf2, speed flag slicedResume): a kept big board comes back with its RESUME_SHELLS shells nearest the view
   // centre; the rest leave the DOM before it un-parks and come back in the settle's slices over styled boxes (the
   // bridge snapshot fades out on top). Crumb back to PhD MAIN at fit rendered ~1,500 shells in one 514-595 ms task.
-  const RESUME_SHELLS = 96;
-  const sliceResume = () => {
-    try { if (notedSpeedFlags().slicedResume === false) return; } catch { return; }
-    if (!sliceWanted() || (itemsR.attachedCount?.() || 0) <= RESUME_SHELLS * 2) return;
+  // E3-5: 48 (was 96), and the trim runs in unpark() before the root shows again: removing ~1,450 shells from a root
+  // that had just un-parked was layout work in the resume task (QA4 crumb back: `resume` 416 ms, 403 of them Plexus).
+  // While parked the root is content-visibility:hidden, so the removals there cost no style or layout.
+  const RESUME_SHELLS = 48;
+  let resumeTrimmed = false;
+  const trimForResume = () => {
+    resumeTrimmed = false;
+    try { if (notedSpeedFlags().slicedResume === false) return false; } catch { return false; }
+    if (!sliceWanted() || (itemsR.attachedCount?.() || 0) <= RESUME_SHELLS * 2) return false;
     const rect = visibleWorldRect(vp, size, ATTACH_MARGIN);
-    if (!itemsR.keepNearest?.(rect, RESUME_SHELLS)) return;
+    resumeTrimmed = Boolean(itemsR.keepNearest?.(rect, RESUME_SHELLS));
+    return resumeTrimmed;
+  };
+  const sliceResume = () => {
+    const trimmed = resumeTrimmed || trimForResume();
+    resumeTrimmed = false;
+    if (!trimmed) return;
     underlayDrawn = false;
     showUnderlay();
-    beginSlice();
+    beginSlice(RESUME_SLICE_SHELLS);
     settleAttach();
   };
   const boardPhase = () => (suspended ? "parked" : wheelLayer ? "wheel" : gesturing ? (ctl.gestureKind?.() || "zoom") : slicing ? "slice" : settleTimer ? "settling" : "idle");
@@ -4507,19 +4539,29 @@ function buildBoardView(onFail, {
     underlayDrawn = false;
   };
   // Call before the settle's content pass: that pass then attaches one slice.
-  const beginSlice = () => {
-    if (sliceWanted()) itemsR.sliceAttach?.({ budget: SETTLE_SHELLS, ms: SETTLE_SLICE_MS });
+  const beginSlice = (start = 0) => {
+    // A new settle starts at the full budget; the resume (sliceResume) and the hand-back from the canvas at 24.
+    if (!slicing) sliceShells = start || SETTLE_SHELLS;
+    if (!adaptiveOn()) sliceShells = SETTLE_SHELLS;
+    sliceAt = 0;
+    if (sliceWanted()) {
+      sliceLog.push(sliceShells);
+      if (sliceLog.length > 60) sliceLog.shift();
+      itemsR.sliceAttach?.({ budget: sliceShells, ms: SETTLE_SLICE_MS });
+    }
     else endSlice();
   };
-  const sliceEdges = (rect) => (rect ? edgesR.cull?.(rect, { budget: SETTLE_EDGES, ms: SETTLE_SLICE_MS }) || 0 : 0);
+  const sliceEdges = (rect) => (rect ? edgesR.cull?.(rect, { budget: sliceEdgeBudget(), ms: SETTLE_SLICE_MS }) || 0 : 0);
   const sliceStep = () => {
     sliceFrame = null;
     if (!slicing) return;
     if (disposed || suspended) { endSlice(); return; }
     if (gesturing || wheelLayer) { cancelSlice(); return; }
     const rect = visibleWorldRect(vp, size, ATTACH_MARGIN);
-    if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, SETTLE_SHELLS, SETTLE_SLICE_MS);
+    adaptSlice();
+    if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, sliceShells, SETTLE_SLICE_MS);
     const edgesLeft = sliceEdges(rect);
+    sliceAt = perfNow();
     if (edgesLeft || (itemsR.attachLeft?.() || 0) > 0) { sliceFrame = timers.frame(sliceStep, "slice"); return; }
     endSlice();
     releaseUnderlay();
@@ -4543,6 +4585,7 @@ function buildBoardView(onFail, {
     if (underlay.isShown() && !stale && (underlayKind === "burst" || underlayKind === "overview")) underlayDrawn = true;
     else { underlayDrawn = false; showUnderlay(); }
     slicing = true;
+    sliceAt = perfNow();
     sliceFrame?.();
     sliceFrame = timers.frame(sliceStep, "slice");
   };
@@ -4601,8 +4644,9 @@ function buildBoardView(onFail, {
         propsPanel.place();
       }
       syncShellHold();
+      const fromCanvas = tier === "overview" && underlayKind === "overview" && underlay.isShown();
       applyLod();
-      beginSlice();
+      beginSlice(fromCanvas && tier !== "overview" && adaptiveOn() ? RESUME_SLICE_SHELLS : 0);
       scheduleContent();
       vpStore.set(vpId, vp);
       // Arrow sizes, link heads and the label cut-off follow the zoom: re-place every edge only when they change.
@@ -10556,6 +10600,8 @@ function buildBoardView(onFail, {
     },
     unpark() {
       if (!root.hasAttribute?.("data-pxd-parked")) return;
+      // E3-5: the far shells leave while the root is still unrendered; resume() slices them back in.
+      if (suspended && board() === suspendedBoard && !(itemsR.queuedCount?.() > 0)) { try { trimForResume(); } catch { resumeTrimmed = false; } }
       root.removeAttribute("data-pxd-parked");
       root.style.width = "";
       if (fsParked) {
@@ -10836,6 +10882,10 @@ function buildBoardView(onFail, {
     // E3 probe: underlay bitmap redraws and reallocations since the mount.
     underlayStats() {
       return underlay.stats();
+    },
+    // E3-5 probe: the shell budget of each recent settle slice (adaptiveSlices).
+    sliceStats() {
+      return { budgets: sliceLog.slice(), shells: sliceShells };
     },
     overviewCanvasStats() {
       return { on: overviewCanvasOn(), draws: ovDraws, items: ovItems, shown: underlay.isShown() && underlayKind === "overview" };

@@ -119,7 +119,9 @@ test("E3-1 ratchet: the bench's second zoom-in (the fit's slices still attaching
 test("E3-2: the open of a big board at overview draws the cover a couple of times, not once per pump chunk", async () => {
   const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true });
   try {
-    for (let i = 0; i < 40; i += 1) { await tick(20); m.stub.flushFrames(); m.stub.flushTimers(); m.stub.flushIdle(); }
+    // Wait by condition, bounded by time (slow runners build the board later).
+    const end = Date.now() + 15_000;
+    while (Date.now() < end && m.view.stats().shells < 1570) { await tick(20); m.stub.flushFrames(); m.stub.flushTimers(); m.stub.flushIdle(); }
     assert.ok(m.view.stats().shells >= 1500, `the open built the board: ${m.view.stats().shells}`);
     const { draws, resizes } = m.view.underlayStats();
     assert.ok(draws <= 3, `cover draws in the open: ${draws} (resizes ${resizes})`);

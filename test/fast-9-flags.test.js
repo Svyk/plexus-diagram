@@ -51,9 +51,10 @@ const ALL_ON = {
   slicedResume: true,
   idlePark: true,
   quietBodies: true,
+  adaptiveSlices: true,
 };
 
-test("the panel has no speed-flags control, and bad JSON leaves the defaults (twenty-six on, edgeFingerprint and overviewCanvas off)", () => {
+test("the panel has no speed-flags control, and bad JSON leaves the defaults (twenty-seven on, edgeFingerprint and overviewCanvas off)", () => {
   assert.equal(createSettingsPanel().settings.some((row) => row.id === "speed-flags"), false);
   assert.equal(Object.hasOwn(settingsDefaults(), "speed-flags"), false);
   assert.deepEqual(flagsDefault(), ALL_ON);

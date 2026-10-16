@@ -16,6 +16,7 @@ test("E3-4: in a zoom burst past 0.2 on the overview canvas the boxes are drawn 
     const canvas = m.view.root.querySelector(".pxd-underlay");
     const frames = [];
     const looks = [];
+    const n0 = m.view.sliceStats().budgets.length;
     for (let i = 0; i < 6; i += 1) {
       m.stub.dispatch(m.view.root, "wheel", { deltaX: 0, deltaY: -20, ctrlKey: true, deltaMode: 0, clientX: 700, clientY: 450 });
       await tick(16);
@@ -32,6 +33,7 @@ test("E3-4: in a zoom burst past 0.2 on the overview canvas the boxes are drawn 
     assert.ok(below.every((l) => l.block && !l.card), `overview look below 0.2: ${JSON.stringify(below)}`);
     for (let i = 0; i < 60; i += 1) { await tick(16); m.stub.flushTimers(); m.stub.flushFrames(); m.stub.flushIdle(); frames.push(m.view.paintAudit()); }
     assert.equal(m.view.state().lod, "map");
+    assert.equal(m.view.sliceStats().budgets[n0], 24, `the hand-back's first slice attaches 24 shells: ${JSON.stringify(m.view.sliceStats().budgets.slice(n0))}`);
     assert.deepEqual(missingFrames(frames), []);
   } finally { m.done(); }
 });

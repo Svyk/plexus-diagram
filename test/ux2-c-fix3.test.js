@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { parseClipboard } from "../src/model/clipboard.js";
 import { handleParseDrop } from "../src/model/drop.js";
-import { copiedPartPlan, copyMenuPlan, figureCopySize } from "../src/model/pdf-pin.js";
+import { copiedPartPlan, copyMenuPlan, figureCopySize, pasteCardPlan } from "../src/model/pdf-pin.js";
 import { placementContent, createParseActions } from "../src/view/parse-actions.js";
 import { runChipAction } from "../src/view/page-chips.js";
 
@@ -134,6 +134,77 @@ test("a figure drop and a parse-actions insert use the shared height", async () 
   assert.equal(inserted.ok, true);
   assert.ok(seen[0].h > 160, `session insert h ${seen[0].h}`);
   assert.equal(seen[0].w, 280);
+});
+
+const TABLE_TEXT = [
+  "| Zone | Swabs H1 |",
+  "| --- | --- |",
+  "| 1 | 4 |",
+  "| 2 | 8 |",
+  "| 3 | 2 |",
+  "| 4 | 6 |",
+  "| 5 | 1 |",
+  "| 6 | 9 |",
+  "",
+  "Table 2. Swabs",
+].join("\n");
+
+test("clipboard text of a copied table pastes as a folded table", () => {
+  const parsed = parseClipboard(clip(`${TABLE_TEXT}\n${SOURCE}`));
+  assert.equal(parsed.kind, "card-json");
+  assert.equal(parsed.data.kind, "table");
+  assert.equal(parsed.data.source, "pinuid01");
+  assert.equal(parsed.data.caption, "Table 2. Swabs");
+  const texts = parsed.data.table.cells.map((cell) => cell.text);
+  assert.ok(texts.includes("Zone"));
+  assert.ok(texts.includes("Swabs H1"));
+  assert.equal(parsed.data.table.cells.filter((cell) => cell.r === 0).length, 2);
+  const plan = pasteCardPlan(parsed.data, { x: 12, y: 18 });
+  assert.equal(plan.kind, "table");
+  assert.equal(plan.caption, "Table 2. Swabs");
+  assert.equal(plan.sourceUid, "pinuid01");
+  assert.equal(plan.table.cells[0].text, "Zone");
+  assert.doesNotMatch(plan.markdown, /pxd-size::/);
+
+  const html = "<table>\n<tr><th rowspan=\"2\">Zone</th><td>Swabs H1</td></tr>\n<tr><td>4</td></tr>\n</table>\n" + SOURCE;
+  const spanned = parseClipboard(clip(html));
+  assert.equal(spanned.data.kind, "table");
+  const zone = spanned.data.table.cells.find((cell) => cell.text === "Zone");
+  assert.equal(zone.rowSpan, 2);
+  assert.equal(spanned.data.source, "pinuid01");
+
+  const lone = parseClipboard(clip(`| just a pipe\n${SOURCE}`));
+  assert.notEqual(lone.data.kind, "table");
+  const pipes = parseClipboard(clip(`| Zone | Swabs H1 |\n| 1 | 4 |\n${SOURCE}`));
+  assert.notEqual(pipes.data.kind, "table");
+
+  const block = {
+    id: "t1",
+    type: "table",
+    rows: 2,
+    cols: 2,
+    cells: [
+      { r: 0, c: 0, text: "Zone", header: true },
+      { r: 0, c: 1, text: "Swabs H1", header: true },
+      { r: 1, c: 0, text: "1" },
+      { r: 1, c: 1, text: "4" },
+    ],
+  };
+  const menu = copyMenuPlan({
+    id: "source",
+    block,
+    doc: { blocks: { t1: block }, order: ["t1"] },
+    markdown: "| Zone | Swabs H1 |\n| --- | --- |\n| 1 | 4 |",
+    source: "pinuid01",
+  });
+  assert.match(menu.text, /\| Zone \| Swabs H1 \|/);
+  assert.doesNotMatch(menu.text, /pxd-size::/);
+  const fromMenu = parseClipboard(clip(menu.text));
+  assert.equal(fromMenu.data.kind, "table");
+  assert.ok(fromMenu.data.table.cells.some((cell) => cell.text === "Swabs H1"));
+  const board = src("../src/view/board-view.js");
+  assert.match(board, /parseClipboard\(/);
+  assert.match(board, /insertParsedTable\?\.\(\{/);
 });
 
 test("the Source chip sits under the caption instead of over it", () => {

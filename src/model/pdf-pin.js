@@ -3,6 +3,7 @@
 
 import { graphFromDeepLink, pageUidFromHash } from "./deeplink.js";
 import { normalizeFrac, parseRegion, PIN_CONTAINER_STRING, serializeRegion } from "./regions.js";
+import { parsedTableCaption, rowsCaption } from "./roam-table.js";
 import { viewportBox } from "../view/parse-overlay.js";
 
 export const PIN_IOU = 0.9;
@@ -353,6 +354,153 @@ function isCropBlock(block) {
   return Boolean(block && (block.type === "figure" || (block.type === "formula" && !block.latex)));
 }
 
+function decodeCell(text) {
+  return String(text ?? "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitPipeRow(line) {
+  let body = String(line ?? "").trim();
+  if (body.startsWith("|")) body = body.slice(1);
+  if (body.endsWith("|")) body = body.slice(0, -1);
+  const cells = [];
+  let cur = "";
+  for (let i = 0; i < body.length; i += 1) {
+    if (body[i] === "\\" && body[i + 1] === "|") { cur += "|"; i += 1; continue; }
+    if (body[i] === "|") { cells.push(cur.trim()); cur = ""; continue; }
+    cur += body[i];
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+
+function isRuleCell(text) {
+  return /^:?-{3,}:?$/.test(String(text ?? "").replace(/\s/g, ""));
+}
+
+function cellsFromBlock(block) {
+  const cells = [];
+  for (const cell of block?.cells || []) {
+    if (!cell || typeof cell !== "object") continue;
+    const r = Number.isInteger(cell.r) ? cell.r : (Number.isInteger(cell.row) ? cell.row : null);
+    const c = Number.isInteger(cell.c) ? cell.c : (Number.isInteger(cell.col) ? cell.col : null);
+    if (r == null || c == null) continue;
+    const row = { r, c, text: String(cell.text ?? "") };
+    if (cell.header === true) row.header = true;
+    const colSpan = Number(cell.colSpan);
+    const rowSpan = Number(cell.rowSpan);
+    if (Number.isInteger(colSpan) && colSpan > 1) row.colSpan = colSpan;
+    if (Number.isInteger(rowSpan) && rowSpan > 1) row.rowSpan = rowSpan;
+    cells.push(row);
+  }
+  if (!cells.length) return null;
+  const snap = { cells };
+  if (Number.isInteger(block.rows)) snap.rows = block.rows;
+  if (Number.isInteger(block.cols)) snap.cols = block.cols;
+  return snap;
+}
+
+function htmlTable(text) {
+  const found = /<table\b[^>]*>([\s\S]*?)<\/table>/i.exec(String(text ?? ""));
+  if (!found) return null;
+  const rawRows = [];
+  const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch;
+  while ((rowMatch = rowRe.exec(found[1]))) {
+    const row = [];
+    const cellRe = /<t([hd])\b([^>]*)>([\s\S]*?)<\/t\1>/gi;
+    let cellMatch;
+    while ((cellMatch = cellRe.exec(rowMatch[1]))) {
+      const attrs = cellMatch[2] || "";
+      const colSpan = Number(/colspan="(\d+)"/i.exec(attrs)?.[1]);
+      const rowSpan = Number(/rowspan="(\d+)"/i.exec(attrs)?.[1]);
+      const cell = { text: decodeCell(cellMatch[3]), header: cellMatch[1].toLowerCase() === "h" };
+      if (Number.isInteger(colSpan) && colSpan > 1) cell.colSpan = colSpan;
+      if (Number.isInteger(rowSpan) && rowSpan > 1) cell.rowSpan = rowSpan;
+      row.push(cell);
+    }
+    if (row.length) rawRows.push(row);
+  }
+  if (!rawRows.length) return null;
+  const occupied = new Set();
+  const key = (r, c) => `${r},${c}`;
+  const cells = [];
+  let cols = 0;
+  rawRows.forEach((row, r) => {
+    let c = 0;
+    for (const cell of row) {
+      while (occupied.has(key(r, c))) c += 1;
+      const rs = cell.rowSpan || 1;
+      const cs = cell.colSpan || 1;
+      const item = { r, c, text: cell.text };
+      if (cell.header) item.header = true;
+      if (cs > 1) item.colSpan = cs;
+      if (rs > 1) item.rowSpan = rs;
+      cells.push(item);
+      for (let dr = 0; dr < rs; dr += 1) {
+        for (let dc = 0; dc < cs; dc += 1) occupied.add(key(r + dr, c + dc));
+      }
+      c += cs;
+    }
+    cols = Math.max(cols, c);
+  });
+  const after = String(text).slice(found.index + found[0].length);
+  let caption = "";
+  for (const line of after.split("\n")) {
+    const raw = line.trim().replace(/^[-*]\s+/, "");
+    if (!raw) continue;
+    caption = raw.replace(/\s+/g, " ").trim().slice(0, 200);
+    break;
+  }
+  return { table: { cells, rows: rawRows.length, cols }, caption };
+}
+
+// A real GFM table (header, rule, rows) or an HTML table from a spanned copy.
+// A single pipe line is not a table. Run this on the raw text, before oneBulletTree.
+function tableFromMarkdown(text) {
+  const html = htmlTable(text);
+  if (html) return html;
+  const lines = String(text ?? "").replace(/\r\n/g, "\n").split("\n");
+  const rows = [];
+  let end = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    const raw = lines[i].trim();
+    if (!raw) {
+      if (rows.length) break;
+      continue;
+    }
+    const stripped = raw.replace(/^[-*]\s+/, "");
+    if (stripped.startsWith("|") && stripped.endsWith("|") && stripped.includes("|")) {
+      rows.push(splitPipeRow(stripped));
+      end = i;
+      continue;
+    }
+    if (rows.length) break;
+  }
+  if (rows.length < 2 || rows[1].length !== rows[0].length || !rows[1].every(isRuleCell)) return null;
+  let caption = "";
+  for (let i = end + 1; i < lines.length; i += 1) {
+    const raw = lines[i].trim().replace(/^[-*]\s+/, "");
+    if (!raw) continue;
+    caption = raw.replace(/\s+/g, " ").trim().slice(0, 200);
+    break;
+  }
+  const header = rows[0];
+  const body = rows.slice(2);
+  const cells = [];
+  header.forEach((value, c) => cells.push({ r: 0, c, text: value, header: true }));
+  body.forEach((row, r) => {
+    row.forEach((value, c) => cells.push({ r: r + 1, c, text: value }));
+  });
+  const table = { cells, rows: body.length + 1, cols: header.length };
+  return { table, caption: caption || rowsCaption(table.rows) };
+}
+
 function imageFace(text) {
   const body = String(text ?? "");
   const match = /!\[([^\]]*)\]\(([^)\s]+)\)/.exec(body);
@@ -370,6 +518,23 @@ export function copiedPartPlan({ block = null, doc = null, markdown = "", source
   const given = String(source ?? "").trim();
   if (!sourceUid && UID_RE.test(given)) sourceUid = given;
   const sourced = Boolean(sourceUid) || withSource === true;
+  const fromBlock = block?.type === "table" ? cellsFromBlock(block) : null;
+  const fromText = fromBlock ? null : tableFromMarkdown(split.body);
+  const tableHit = fromBlock || fromText?.table || null;
+  if (tableHit) {
+    const caption = fromText?.caption || parsedTableCaption(block?.type === "table" ? block : tableHit, doc);
+    return {
+      kind: "table",
+      markdown: split.body.trim() || "| |",
+      sourceUid,
+      size: null,
+      sourced: Boolean(sourceUid) || Boolean(fromText) || sourced,
+      sized: false,
+      image: false,
+      caption,
+      table: tableHit,
+    };
+  }
   const crop = isCropBlock(block);
   const face = imageFace(split.body);
   if (crop || face) {

@@ -38,15 +38,15 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
   align-items: stretch;
 }
 
-.pxd-item__body:has(> .pxd-chip--source) > .pxd-chip--source {
+.pxd-item__body > .pxd-chip.pxd-chip--source {
   position: static;
   flex: 0 0 auto;
   align-self: flex-start;
   margin-top: 4px;
 }
 
-.pxd-item__body:has(> .pxd-chip--source) > .pxd-rs,
-.pxd-item__body:has(> .pxd-chip--source) > .pxd-item__string {
+.pxd-item__body > .pxd-rs:has(~ .pxd-chip--source),
+.pxd-item__body > .pxd-item__string:has(~ .pxd-chip--source) {
   flex: 0 0 auto;
   height: auto;
   min-height: min-content;
@@ -54,9 +54,9 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
   position: static;
 }
 
-.pxd-item__body:has(> .pxd-chip--source) img,
-.pxd-item__body:has(> .pxd-chip--source) .rm-inline-img,
-.pxd-item__body:has(> .pxd-chip--source) .rm-inline-img__resize {
+.pxd-item__body.pxd-item__body--source img,
+.pxd-item__body.pxd-item__body--source .rm-inline-img,
+.pxd-item__body.pxd-item__body--source .rm-inline-img__resize {
   display: block;
   width: auto;
   height: auto;

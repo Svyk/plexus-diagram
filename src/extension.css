@@ -2411,7 +2411,10 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   z-index: 1;
 }
 
-.pxd-root .pxd-item:has(> .pxd-item__badges) > .pxd-item__body {
+/* R4: the :has() sits on the body, not the card. A card-level :has() aimed at a child put .pxd-item__body in the
+   style invalidation set of every :has() anchor above the board (Roam has some), so any DOM change restyled every
+   card body. Same rule for every :has() in this file set: no high-count element on the right of a :has(). */
+.pxd-root .pxd-item > .pxd-item__body:has(~ .pxd-item__badges) {
   padding-bottom: 24px;
 }
 

@@ -792,6 +792,17 @@ export function createItemRenderer({
     pageKids.set(pageUid, kids);
     return kids;
   };
+  // R4: a body that ends in a source chip carries SOURCE_BODY (source-chip.css). A :has() there put every image in
+  // the style invalidation set of each :has() anchor above the board. Every path that empties a body drops it.
+  const SOURCE_BODY = "pxd-item__body--source";
+  const clearBody = (rec) => {
+    rec.body?.replaceChildren?.();
+    rec.body?.classList?.remove?.(SOURCE_BODY);
+  };
+  const appendSourceChip = (body, node) => {
+    body.append(node);
+    body.classList?.add?.(SOURCE_BODY);
+  };
   const paintPinChip = (body, children) => {
     if (!body || body.querySelector?.(".pxd-chip--source")) return;
     const pin = sourcePinOf(children);
@@ -799,7 +810,7 @@ export function createItemRenderer({
     const node = buildPinChip(doc, { pinUid: pin.uid }, (uid, event) => {
       try { onPinOpen?.(uid, event); } catch { /* host */ }
     });
-    if (node) body.append(node);
+    if (node) appendSourceChip(body, node);
   };
   const sourceChipOf = (item) => {
     if (item?.kind !== "block") return null;
@@ -1730,7 +1741,7 @@ export function createItemRenderer({
     rec.el.classList.remove("pxd-sticky--picking");
   };
 
-  const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash", "pxd-item--roam-table", "pxd-item--into"];
+  const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash", "pxd-item--roam-table", "pxd-item--into", "pxd-item--pdf-bar"];
   const imageRegionString = (text) => {
     const region = parseRegion(text);
     return Boolean(region && region.kind === "img" && region.supported === true && region.owner === "plexus-diagram" && region.error == null);
@@ -2532,7 +2543,7 @@ export function createItemRenderer({
             // content changed under a mounted shell → remount on the next content pass
             dropRowOffs(rec);
             unmountRoots(rec);
-            rec.body?.replaceChildren?.();
+            clearBody(rec);
             rec.contentKey = null;
             mounted.delete(uid);
             contentSched?.drop(uid);
@@ -2799,7 +2810,7 @@ export function createItemRenderer({
     if (!rec || !item || disposed || editing?.uid === rec.uid) return;
     dropRowOffs(rec);
     unmountRoots(rec);
-    rec.body?.replaceChildren?.();
+    clearBody(rec);
     rec.contentKey = null;
     rec.pageKey = "";
     mounted.delete(rec.uid);
@@ -4998,6 +5009,7 @@ export function createItemRenderer({
     // A frozen card keeps its clone in the body until the new root is appended. replaceChildren would blank that frame.
     if (rec.freezeKeep) rec.freezeBefore = directChildren(body);
     else body.replaceChildren();
+    body.classList?.remove?.(SOURCE_BODY);
     rec.stickyLive = false;
     rec.editor = null;
     rec.bare = false;
@@ -5151,7 +5163,7 @@ export function createItemRenderer({
                 onOpen: (uid) => { try { host?.openInSidebar?.(uid); } catch { /* host */ } },
               });
               if (node) {
-                body.append(node);
+                appendSourceChip(body, node);
                 armAuthorWatch(rec, chip, node);
               }
             }
@@ -5398,7 +5410,7 @@ export function createItemRenderer({
       rec.title.textContent = lastBoard?.items.get(uid)?.title || "Section";
       rec.titleRendered = false;
     } else {
-      rec.body?.replaceChildren?.();
+      clearBody(rec);
       dropKidsBadge(rec);
       if (rec.type === "card") { rec.bare = true; rec.faced = false; rec.el.classList.add("pxd-item--bare"); }
       const gone = lastBoard?.items.get(uid);
@@ -7184,7 +7196,7 @@ export function createItemRenderer({
       if (key === rec.contentKey) continue;
       dropRowOffs(rec);
       unmountRoots(rec);
-      rec.body?.replaceChildren?.();
+      clearBody(rec);
       rec.contentKey = null;
       mountContent(rec, item);
     }
@@ -7374,7 +7386,7 @@ export function createItemRenderer({
         if (!rec || editing?.uid === uid) continue;
         dropRowOffs(rec);
         unmountRoots(rec);
-        rec.body?.replaceChildren?.();
+        clearBody(rec);
         rec.contentKey = null;
         mounted.delete(uid);
         contentSched?.drop(uid);

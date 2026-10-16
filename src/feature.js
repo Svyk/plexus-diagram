@@ -96,6 +96,7 @@ import { sampleRoam } from "./view/theme-follow.js";
 import { INTEGRATION_EVENTS } from "./model/detect.js";
 import { createPerfLog, hasLiveCard, perfNow } from "./perf-log.js";
 import { createShiftWatch } from "./view/shift-watch.js";
+import { SIDEBAR_PDF_CLASS, sidebarPdfDirty, syncSidebarPdf } from "./view/sidebar-pdf.js";
 
 // Roam reports `extension.version` as "DEV" for URL / local developer installs,
 // so the toolbar badge is stamped from package.json first.
@@ -4426,8 +4427,14 @@ export async function installPlexusDiagram({
         }
       }
     };
+    const onAppChange = (records) => {
+      onAdded(records);
+      if (sidebarPdfDirty(records, doc.documentElement?.classList?.contains?.(SIDEBAR_PDF_CLASS), doc)) syncSidebarPdf(doc);
+    };
+    syncSidebarPdf(doc);
+    lifecycle.add(() => doc.documentElement?.classList?.remove?.(SIDEBAR_PDF_CLASS));
     const app = doc.querySelector(".roam-app");
-    if (app) lifecycle.observer(new MutationObserver(guardCallback("observer", onAdded)), app, { childList: true, subtree: true });
+    if (app) lifecycle.observer(new MutationObserver(guardCallback("observer", onAppChange)), app, { childList: true, subtree: true });
     if (doc.body) {
       // Blueprint portals (popovers, sidebar previews) are siblings of .roam-app.
       lifecycle.observer(new MutationObserver(guardCallback("observer", (records) => {

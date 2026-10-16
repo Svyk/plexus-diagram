@@ -103,6 +103,7 @@ export function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = nul
   let loading = false;
   let announced = false;
   let host = null;
+  let barItem = null;
   let layer = null;
   let canvas = null;
   let bar = null;
@@ -150,6 +151,8 @@ export function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = nul
     unwheel();
     try { layer?.remove?.(); } catch { /* gone */ }
     try { bar?.remove?.(); } catch { /* gone */ }
+    barItem?.classList?.remove?.("pxd-item--pdf-bar");
+    barItem = null;
     layer = null;
     canvas = null;
     bar = null;
@@ -244,6 +247,9 @@ export function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = nul
       bind(next, 1);
       bar.append(prev, pagesEl, next);
       host.append(bar);
+      // R4: the card's badge row sits above the bar. A class, not .pxd-item:has(.pxd-pdf-bar): see r4-has-invalidation.
+      barItem = host.closest?.(".pxd-item") || null;
+      barItem?.classList?.add?.("pxd-item--pdf-bar");
     }
     paintBar();
   };

@@ -228,11 +228,11 @@ body.bt-theme-dark .pxd-root .pxd-pdf-hover,
   transition: opacity var(--pxd-pdf-fade, 80ms) var(--pxd-pdf-ease, ease) 0ms;
 }
 
-.pxd-root .pxd-pdf-cover:has(> .pxd-pdf-hover:not([hidden])) > .pxd-pdf-pills {
+.pxd-root .pxd-pdf-cover > .pxd-pdf-hover:not([hidden]) ~ .pxd-pdf-pills {
   bottom: calc(var(--pxd-pdf-strip-h, 28px) + var(--pxd-pdf-lift, 0px));
 }
 
-.pxd-root .pxd-pdf-cover:has(.pxd-pdf-bar) > .pxd-pdf-pills {
+.pxd-root .pxd-pdf-cover > :where(.pxd-pdf-paper):has(.pxd-pdf-bar) ~ .pxd-pdf-pills {
   bottom: calc(30px + var(--pxd-pdf-lift, 0px));
   border-radius: 0;
 }
@@ -456,7 +456,7 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill:hover,
   bottom: calc(4px + var(--pxd-pdf-lift, 0px));
 }
 
-.pxd-root .pxd-item:has(.pxd-pdf-bar) > .pxd-item__badges {
+.pxd-root .pxd-item.pxd-item--pdf-bar > .pxd-item__badges {
   bottom: calc(34px + var(--pxd-pdf-lift, 0px));
 }
 
@@ -531,15 +531,15 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-paper {
 
 /* P32-1 (live fix). Map and overview hide every card body, which left the cover with no box. A PDF card with a cached
    cover keeps its body as a full-card layer at those tiers, above the colour tile and the title tile. */
-.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf:not(.pxd-item--editing):has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body,
-.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf:not(.pxd-item--editing) > .pxd-item__body:has(.pxd-pdf-cover[data-cover-img]),
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf > .pxd-item__body:has(.pxd-pdf-cover[data-cover-img]) {
   display: block;
   position: absolute;
   inset: 0;
   z-index: 1;
 }
 
-.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header,
-.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf > .pxd-item__header:has(~ :where(.pxd-item__body) .pxd-pdf-cover[data-cover-img]),
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf > .pxd-item__header:has(~ :where(.pxd-item__body) .pxd-pdf-cover[data-cover-img]) {
   visibility: hidden;
 }

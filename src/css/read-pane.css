@@ -95,8 +95,10 @@
   max-width: calc(100vw - 48px) !important;
 }
 
-.roam-app:has(#right-sidebar .rm-pdf-container) .roam-main,
-.roam-app:has(#right-sidebar .rm-pdf-container) .roam-article {
+/* R4: a class on <html> (sidebar-pdf.js), not .roam-app:has(): an anchor above the board re-ran its invalidation
+   on every DOM change in the board. :not(#pxd-none) keeps the old rule's id weight. */
+:root.pxd-sidebar-pdf .roam-app:not(#pxd-none) .roam-main,
+:root.pxd-sidebar-pdf .roam-app:not(#pxd-none) .roam-article {
   min-width: 48px !important;
   max-width: none !important;
 }

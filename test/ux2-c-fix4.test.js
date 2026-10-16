@@ -55,14 +55,14 @@ test("the Source chip flows under the caption with no overlay", () => {
   const body = css.slice(css.indexOf(".pxd-item__body:has(> .pxd-chip--source)"));
   assert.match(body, /display:\s*flex/);
   assert.match(body, /flex-direction:\s*column/);
-  const chip = css.slice(css.indexOf(".pxd-item__body:has(> .pxd-chip--source) > .pxd-chip--source"));
+  const chip = css.slice(css.indexOf(".pxd-item__body > .pxd-chip.pxd-chip--source"));
   assert.match(chip, /position:\s*static/);
   assert.doesNotMatch(chip, /position:\s*absolute/);
   assert.doesNotMatch(chip, /position:\s*relative/);
   assert.doesNotMatch(chip, /z-index/);
   assert.match(chip, /margin-top:\s*4px/);
   assert.doesNotMatch(chip, /margin-top:\s*auto/);
-  const text = css.slice(css.indexOf(".pxd-item__body:has(> .pxd-chip--source) > .pxd-rs"));
+  const text = css.slice(css.indexOf(".pxd-item__body > .pxd-rs:has(~ .pxd-chip--source)"));
   assert.match(text, /flex:\s*0\s+0\s+auto/);
   assert.doesNotMatch(css, /position:\s*absolute/);
 });

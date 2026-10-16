@@ -2271,7 +2271,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     // grid falls back to native when the API is missing. flat repeats covered cells.
     // notes: the parse's footnote blocks on the table's page ([{ id, mark, text }]) for cell marks.
     // The card is a folded caption block (caption: the parse's table caption, else "Table · N rows") with the table under it.
-    insertParsedTable({ x, y, table, mode = "auto", notes, pin, caption } = {}) {
+    insertParsedTable({ x, y, table, mode = "auto", notes, pin, caption, sourceUid } = {}) {
       if (!board || destroyed || gone) return Promise.resolve(undefined);
       const asked = mode === "grid" || mode === "native" || mode === "flat" ? mode : "auto";
       const format = footnoteFormatNow();
@@ -2316,8 +2316,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           await host.deleteBlock(card);
           return { ok: false, reason: "empty" };
         }
-        // The Source:: pin stays under the table block, so the caption keeps exactly one child.
+        // The Source:: line stays under the table block, so the caption keeps exactly one child.
         if (pin) await citePin(uid, pin);
+        else if (sourceUid && sourceAttrString(sourceUid)) await host.createBlock({ parentUid: uid, order: "last", string: sourceAttrString(sourceUid) });
         repull();
         return { ok: true, uid: card, tableUid: uid, path, w: size.w, h: size.h };
       });

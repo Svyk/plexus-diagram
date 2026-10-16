@@ -391,7 +391,28 @@ export function writeWithSource(storage, on) {
   return next;
 }
 
-export function cardJsonPayload({ markdown = "", size = null, kind = "card", source = "" } = {}) {
+function tableSnapshot(table) {
+  if (!table || typeof table !== "object" || Array.isArray(table)) return null;
+  const cells = [];
+  for (const cell of Array.isArray(table.cells) ? table.cells : []) {
+    if (!cell || typeof cell !== "object") continue;
+    const row = {
+      r: Number.isInteger(cell.r) ? cell.r : 0,
+      c: Number.isInteger(cell.c) ? cell.c : 0,
+      text: String(cell.text ?? ""),
+    };
+    if (Number.isInteger(cell.colSpan) && cell.colSpan > 1) row.colSpan = cell.colSpan;
+    if (Number.isInteger(cell.rowSpan) && cell.rowSpan > 1) row.rowSpan = cell.rowSpan;
+    cells.push(row);
+  }
+  const snap = { cells };
+  if (Number.isInteger(table.rows)) snap.rows = table.rows;
+  if (Number.isInteger(table.cols)) snap.cols = table.cols;
+  if (table.grid && typeof table.grid === "object") snap.grid = table.grid;
+  return snap;
+}
+
+export function cardJsonPayload({ markdown = "", size = null, kind = "card", source = "", table = null, caption = "" } = {}) {
   const body = {
     markdown: String(markdown ?? ""),
     size: { w: Number(size?.w) > 0 ? Number(size.w) : 280, h: Number(size?.h) > 0 ? Number(size.h) : 160 },
@@ -399,6 +420,12 @@ export function cardJsonPayload({ markdown = "", size = null, kind = "card", sou
   };
   const pin = String(source ?? "").trim();
   if (UID_RE.test(pin)) body.source = pin;
+  if (body.kind === "table") {
+    const snap = tableSnapshot(table);
+    if (snap) body.table = snap;
+    const cap = String(caption ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
+    if (cap) body.caption = cap;
+  }
   return body;
 }
 
@@ -415,7 +442,7 @@ export function pasteCardPlan(data, point) {
   if (!parsed) return null;
   const copied = planCopiedSource({ markdown: parsed.markdown, source: parsed.source || "" });
   if (!copied.markdown.trim()) return null;
-  return {
+  const plan = {
     x: Number.isFinite(point?.x) ? point.x : 0,
     y: Number.isFinite(point?.y) ? point.y : 0,
     w: parsed.size.w,
@@ -423,6 +450,12 @@ export function pasteCardPlan(data, point) {
     markdown: copied.markdown,
     sourceUid: copied.sourceUid || "",
   };
+  if (parsed.kind === "table" && parsed.table) {
+    plan.kind = "table";
+    plan.table = parsed.table;
+    plan.caption = String(parsed.caption || "");
+  }
+  return plan;
 }
 
 export function pinDeepLink({ graph, pageUid, pinUid } = {}) {

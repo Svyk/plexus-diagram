@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createHost } from "../src/host/roam.js";
-import { figureCopySize, matchParsedBlock, pageFracFromBbox } from "../src/model/pdf-pin.js";
+import { cardJsonPayload, figureCopySize, matchParsedBlock, pageFracFromBbox, pasteCardPlan } from "../src/model/pdf-pin.js";
 import { acquireSession } from "../src/session.js";
 import { createSettingsPanel } from "../src/settings.js";
 import { applyPdfReaderDark } from "../src/view/pdf-reader-dark.js";
@@ -306,6 +306,60 @@ test("a copied figure card is tall enough for the caption and the Source chip", 
   const css = readFileSync(new URL("../src/css/source-chip.css", import.meta.url), "utf8");
   assert.match(css, /pxd-item__body:has\(> \.pxd-chip--source\)/);
   assert.match(css, /max-height:\s*360px/);
+});
+
+test("a copied table pastes as a folded caption over the table", async () => {
+  const table = {
+    id: "t1",
+    type: "table",
+    rows: 2,
+    cols: 2,
+    cells: [
+      { r: 0, c: 0, text: "Zone" },
+      { r: 0, c: 1, text: "Swabs H1" },
+      { r: 1, c: 0, text: "1" },
+      { r: 1, c: 1, text: "4" },
+    ],
+  };
+  const payload = cardJsonPayload({
+    markdown: "| Zone | Swabs H1 |\n| --- | --- |\n| 1 | 4 |",
+    size: { w: 280, h: 160 },
+    kind: "table",
+    source: "pinuid01",
+    table,
+    caption: "Table 2. Swabs",
+  });
+  assert.equal(payload.kind, "table");
+  assert.equal(payload.caption, "Table 2. Swabs");
+  assert.equal(payload.table.cells.length, 4);
+  const plan = pasteCardPlan(payload, { x: 40, y: 50 });
+  assert.equal(plan.kind, "table");
+  assert.equal(plan.caption, "Table 2. Swabs");
+  assert.equal(plan.sourceUid, "pinuid01");
+  assert.equal(plan.table.cells[0].text, "Zone");
+  const { fake, session } = pinSetup();
+  fake.trackUndo = true;
+  const res = await session.insertParsedTable({
+    x: plan.x,
+    y: plan.y,
+    table: plan.table,
+    caption: plan.caption,
+    mode: "native",
+    sourceUid: plan.sourceUid,
+  });
+  assert.equal(res.ok, true);
+  assert.equal(fake.block(res.uid).string, "Table 2. Swabs");
+  assert.equal(fake.block(res.uid).open, false);
+  assert.deepEqual(fake.children(res.uid), [res.tableUid]);
+  assert.equal(fake.block(res.tableUid).string, "{{[[table]]}}");
+  const source = fake.children(res.tableUid).map((id) => fake.block(id).string);
+  assert.ok(source.includes("Source:: ((pinuid01))"));
+  await session.undo();
+  assert.equal(fake.has(res.uid), false);
+  const menu = readFileSync(new URL("../src/view/parse-view.js", import.meta.url), "utf8");
+  assert.match(menu, /table:\s*block/);
+  const board = readFileSync(new URL("../src/view/board-view.js", import.meta.url), "utf8");
+  assert.match(board, /insertParsedTable\?\.\(\{/);
 });
 
 test("PDF dark mode leaves the board reader alone and paints page photos back", async () => {

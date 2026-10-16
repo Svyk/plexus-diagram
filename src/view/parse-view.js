@@ -57,6 +57,7 @@ import { graphOfWindow } from "../model/ask-models.js";
 import { createPartGutter } from "./part-gutter.js";
 import { docCounts, partBoxes } from "./parse-motion.js";
 import { toRoamMarkdown } from "../model/parse-to-roam-md.js";
+import { parsedTableCaption } from "../model/roam-table.js";
 import { present as liveAiPresent, SETUP_HINT } from "../host/liveai.js";
 import { pdfNameFor } from "../model/pdf-name-for.js";
 
@@ -858,7 +859,13 @@ export function createParseView({
         const size = isImageCopy(block)
           ? figureCopySize(block, parsed, { source: Boolean(copied.sourceUid || source) })
           : { w: 280, h: 160 };
-        const json = cardJsonPayload({ markdown: copied.markdown, size, kind: block.type || "card", source: copied.sourceUid });
+        const json = cardJsonPayload({
+          markdown: copied.markdown,
+          size,
+          kind: block.type || "card",
+          source: copied.sourceUid,
+          ...(block.type === "table" ? { table: block, caption: parsedTableCaption(block, parsed) } : {}),
+        });
         const text = source ? `${plain}\n${sourceAttrString(source)}` : plain;
         return writeTyped({ "text/plain": text, [CARD_JSON_MIME]: JSON.stringify(json) });
       }

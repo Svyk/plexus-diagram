@@ -9098,14 +9098,24 @@ function buildBoardView(onFail, {
       pasteCardJson: (data) => {
         const plan = pasteCardPlan(data, pastePoint());
         if (!plan) return;
-        Promise.resolve(session.insertParsedCard?.({
-          x: plan.x,
-          y: plan.y,
-          w: plan.w,
-          h: plan.h,
-          markdown: plan.markdown,
-          ...(plan.sourceUid ? { sourceUid: plan.sourceUid } : {}),
-        })).then(afterCreate("Pasted")).catch(() => {});
+        const insert = plan.kind === "table" && plan.table
+          ? session.insertParsedTable?.({
+            x: plan.x,
+            y: plan.y,
+            table: plan.table,
+            caption: plan.caption,
+            mode: "native",
+            ...(plan.sourceUid ? { sourceUid: plan.sourceUid } : {}),
+          })
+          : session.insertParsedCard?.({
+            x: plan.x,
+            y: plan.y,
+            w: plan.w,
+            h: plan.h,
+            markdown: plan.markdown,
+            ...(plan.sourceUid ? { sourceUid: plan.sourceUid } : {}),
+          });
+        Promise.resolve(insert).then(afterCreate("Pasted")).catch(() => {});
       },
       editorPaste,
     },

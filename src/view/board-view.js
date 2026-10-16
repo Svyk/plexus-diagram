@@ -119,7 +119,11 @@ import { createSemantic } from "../host/semantic.js";
 import { identHaystack, identMatches, pdfRowName, pdfRowSub } from "../model/pdf-ident.js";
 import { createPdfNames } from "./pdf-names.js";
 import { notifyPdfNames, setPdfNameResolver } from "../model/pdf-name-for.js";
-import { createImageIndex } from "../host/image-index.js";
+import { createImageIndex, localImagePath } from "../host/image-index.js";
+import { createPdfTextIndex } from "../host/pdf-text-index.js";
+import { openPdfDocument, unparsedPdfJobs } from "../host/pdf-text-open.js";
+import { createHelperClient } from "../host/parse-helper-client.js";
+import { pdfHitOpenDetail } from "../model/pdf-text-search.js";
 import { searchImages, similarImages } from "../model/image-search.js";
 import { createFigureImages, getFigureImages, setFigureImages, shrinkImage } from "../host/figure-image.js";
 import { imageDoc } from "../model/ai-context.js";
@@ -6301,6 +6305,7 @@ function buildBoardView(onFail, {
       imgIndex = createImageIndex({
         indexedDB: doc.defaultView?.indexedDB,
         ocr: sharedDeviceOcr(),
+        helperText: (path) => imageHelper().ocrImagePath(path),
         settings: { colors: () => readSetting("image-index-colors") !== false, readText: () => readSetting("image-read-text") === true },
         onProgress: (st) => { try { panel.setIndexing?.(st.pending); } catch { /* panel gone */ } },
       });
@@ -6323,7 +6328,10 @@ function buildBoardView(onFail, {
       }
     }
     const feed = [
-      ...imgItems.map((i) => ({ key: i.key, url: i.url })),
+      ...imgItems.map((i) => {
+        const path = localImagePath(i.url);
+        return path ? { key: i.key, url: i.url, path } : { key: i.key, url: i.url };
+      }),
       ...figItems.map((f) => ({ key: f.key, bytes: () => imgStore.getImage(f.key) })),
     ];
     if (feed.length) timers.later(() => { void index.enqueue(feed); }, 0);
@@ -6347,6 +6355,52 @@ function buildBoardView(onFail, {
     if (pdfBlockList) return pdfBlockList;
     try { pdfBlockList = host?.listPdfBlocks?.(1000) || []; } catch { pdfBlockList = []; }
     return pdfBlockList;
+  };
+  let pdfText = null;
+  let imageHelperClient = null;
+  const imageHelper = () => {
+    if (!imageHelperClient) {
+      imageHelperClient = createHelperClient({
+        settings: settingsProxy,
+        setSetting: (id, value) => (typeof onSetDefaults === "function" ? onSetDefaults({ [id]: value }) : undefined),
+        fetch: doc.defaultView?.fetch?.bind?.(doc.defaultView),
+        storage: (() => { try { return doc.defaultView?.localStorage; } catch { return undefined; } })(),
+      });
+    }
+    return imageHelperClient;
+  };
+  const pdfTextIndex = () => {
+    if (!pdfText) {
+      pdfText = createPdfTextIndex({
+        budget: sharedBgBudget(),
+        indexedDB: doc.defaultView?.indexedDB,
+        openPdf: (url) => {
+          if (disposed) return null;
+          const found = detectPdfjs(win);
+          if (!found?.workerReady) return null;
+          return openPdfDocument(found.lib, url, { allow: firstPageAllowed });
+        },
+        onReady: () => { try { panel?.refreshSearch?.(); } catch { /* panel gone */ } },
+      });
+    }
+    return pdfText;
+  };
+  const feedPdfText = () => {
+    sharedBgBudget().idle(() => {
+      if (disposed || !panel.isOpen()) return;
+      void (async () => {
+        const index = pdfTextIndex();
+        try { await index.whenLoaded(); } catch { /* empty cache */ }
+        if (disposed || !panel.isOpen()) return;
+        let rows = [];
+        try { rows = await partsIndex().get(); } catch { rows = []; }
+        if (disposed) return;
+        index.noteParsed(rows);
+        const known = new Set((index.docs || []).map((doc) => doc.url).filter(Boolean));
+        const jobs = unparsedPdfJobs(rows, pdfBlocks(), firstPageAllowed).filter((job) => !known.has(job.url));
+        index.enqueue(jobs);
+        try { panel.refreshSearch?.(); } catch { /* panel gone */ } });
+    });
   };
   const pdfNameInfo = new Map();
   const pdfNamesR = () => {
@@ -6492,6 +6546,7 @@ function buildBoardView(onFail, {
           parsedUrlSet = null;
           // The PDF list the keyword search matches names against: read once per opening, after first paint.
           timers.later(() => { if (!disposed && panel.isOpen()) pdfBlocks(); }, 0);
+          feedPdfText();
           void pdfNamesR().load().then((n) => { if (n && !disposed && panel.isOpen()) panel.refreshPdfNames([]); });
         }
       },
@@ -6533,7 +6588,18 @@ function buildBoardView(onFail, {
       saveMeaning: (on) => { try { storage?.setItem?.(MEANING_KEY, on ? "1" : "0"); } catch { /* private mode */ } },
       saveTypes: (types) => { try { storage?.setItem?.(LIB_TYPES_KEY, JSON.stringify(types)); } catch { /* private mode */ } },
       searchImages: searchImageCards,
-      typing: () => imgIndex?.pause(),
+      typing: () => { imgIndex?.pause(); pdfText?.pause(); },
+      searchPdfText: (query, limit) => {
+        try { return pdfText ? pdfText.search(query, limit) : []; } catch { return []; }
+      },
+      openPdfHit: (hit) => {
+        const uid = pdfCardUidFor(hit?.pdfUid || "", hit?.url || "");
+        const item = uid ? board()?.items.get(uid) : null;
+        const detail = pdfHitOpenDetail(hit, item);
+        if (!detail) return false;
+        try { ensureReadPane().open?.(detail); } catch { return false; }
+        return true;
+      },
       searchParts: async (query, limit) => {
         if (typeof host?.listPdfBlocks !== "function") return [];
         return searchParts(await partsIndex().get(), query, limit);

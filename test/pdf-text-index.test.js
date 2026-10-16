@@ -162,3 +162,40 @@ test("a finished read is cached by hash and the next index does not open the fil
   assert.equal(PDF_TEXT_DB, "plexus-diagram-pdf-text");
   assert.equal(STORE_PDF_TEXT, "pages");
 });
+
+test("a finished read closes the document, and an already cached file is closed without reading", async () => {
+  const budget = budgetOf();
+  let closed = 0;
+  let reads = 0;
+  const index = createPdfTextIndex({
+    budget,
+    openPdf: async () => ({
+      hash: "h1",
+      pageCount: 1,
+      readPage: async (n) => { reads += 1; return { n, text: "brain age", lower: "brain age", spans: [] }; },
+      close: async () => { closed += 1; },
+    }),
+  });
+  index.enqueue([{ url: "https://x.test/a.pdf" }]);
+  await drain(budget, 8);
+  assert.equal(reads, 1);
+  assert.equal(closed, 1);
+
+  const again = budgetOf();
+  let closedAgain = 0;
+  let readsAgain = 0;
+  const cached = createPdfTextIndex({
+    budget: again,
+    openPdf: async () => ({
+      hash: "known",
+      pageCount: 1,
+      readPage: async () => { readsAgain += 1; return { n: 1, text: "nope", lower: "nope", spans: [] }; },
+      close: async () => { closedAgain += 1; },
+    }),
+  });
+  cached.noteParsed([{ kind: "paragraph", text: "brain age", sha256: "known", url: "https://x.test/old.pdf", page: 2, pdfUid: "u", docTitle: "Old" }]);
+  cached.enqueue([{ url: "https://x.test/old.pdf" }]);
+  await drain(again, 6);
+  assert.equal(readsAgain, 0);
+  assert.equal(closedAgain, 1);
+});

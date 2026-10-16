@@ -196,11 +196,16 @@ export function createPdfTextIndex({
         arm();
       }, () => {
         pumping = false;
-        queue.shift();
-        if (job?.url) queued.delete(job.url);
+        const failed = queue.shift();
+        void dropHandle(failed?.handle);
+        if (failed?.url) queued.delete(failed.url);
         arm();
       });
     }, { label: "pdf-text" });
+  }
+
+  async function dropHandle(handle) {
+    try { await handle?.close?.(); } catch { /* gone */ }
   }
 
   async function step(job) {
@@ -209,9 +214,15 @@ export function createPdfTextIndex({
       if (typeof openPdf !== "function") return true;
       let handle = null;
       try { handle = await openPdf(job.url); } catch { handle = null; }
-      if (!handle || !(handle.pageCount > 0) || typeof handle.readPage !== "function") return true;
+      if (!handle || !(handle.pageCount > 0) || typeof handle.readPage !== "function") {
+        await dropHandle(handle);
+        return true;
+      }
       const hash = job.hash || handle.hash || "";
-      if (!hash || byKey.has(hash)) return true;
+      if (!hash || byKey.has(hash)) {
+        await dropHandle(handle);
+        return true;
+      }
       job.handle = handle;
       job.hash = hash;
       job.pages = [];
@@ -231,6 +242,7 @@ export function createPdfTextIndex({
         try { await save(doc); } catch { /* cache is optional */ }
         try { onReady?.(doc.hash); } catch { /* listener */ }
       }
+      await dropHandle(job.handle);
       return true;
     }
     let page = null;

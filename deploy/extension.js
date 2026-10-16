@@ -25766,10 +25766,21 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const covered = /* @__PURE__ */ new Set();
     for (const part of parts) {
       if (!part || part.kind === "figure") continue;
-      if (part.url) covered.add(part.url);
-      if (part.sha256) covered.add(part.sha256);
+      const page = Number(part.page) || 0;
+      if (part.url) covered.add(`${part.url}
+${page}`);
+      if (part.sha256) covered.add(`${part.sha256}
+${page}`);
     }
-    pdfHits = pdfHits.filter((hit) => hit && !covered.has(hit.url) && !covered.has(hit.hash));
+    pdfHits = pdfHits.filter((hit) => {
+      if (!hit) return false;
+      const page = Number(hit.page) || 0;
+      if (hit.url && covered.has(`${hit.url}
+${page}`)) return false;
+      if (hit.hash && covered.has(`${hit.hash}
+${page}`)) return false;
+      return true;
+    });
     const images = Array.isArray(found.images) ? found.images : [];
     const figures = Array.isArray(found.figures) ? found.figures : [];
     const textParts = [];
@@ -85212,15 +85223,14 @@ function docsFromPartRows(rows) {
 function wordsOf2(lower4) {
   return lower4.match(/[a-z0-9]+/g) || [];
 }
-function termHit(page, term) {
-  if (!term) return null;
-  if (page.lower.includes(term)) return { fuzzy: false };
-  if (term.length < 4 || /\s/.test(term)) return null;
-  for (const word of wordsOf2(page.lower)) {
-    if (Math.abs(word.length - term.length) > 1) continue;
-    if (editDistance1(word, term)) return { fuzzy: true, word };
-  }
-  return null;
+function boxForQuery(page, text4) {
+  const needle = String(text4 ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
+  if (!needle || !page) return null;
+  const lower4 = page.lower || String(page.text || "").toLowerCase();
+  const terms = queryTerms(needle);
+  const term = terms[0] || needle;
+  const fuzzy2 = term.length >= 4 && !lower4.includes(term) && !/\s/.test(term);
+  return flashFrac({ ...page, lower: lower4 }, fuzzy2 ? term : needle, fuzzy2 ? term : "");
 }
 function flashFrac(page, needle, fuzzyWord) {
   const spans = Array.isArray(page.spans) ? page.spans : [];
@@ -85239,65 +85249,54 @@ function flashFrac(page, needle, fuzzyWord) {
   }
   return null;
 }
-function searchPdfText(docs, { text: text4 = "", pages = "" } = {}, limit = 40) {
+function exactOf(hit, phrase) {
+  if (typeof hit.exact === "boolean") return hit.exact;
+  const lower4 = hit.page?.lower ?? hit.lower ?? "";
+  const exact = lower4.includes(phrase);
+  hit.exact = exact;
+  return exact;
+}
+function rankPostingHits(candidates2, { text: text4 = "", pages = "" } = {}, limit = 40) {
   const terms = queryTerms(text4);
   if (!terms.length) return [];
   const phrase = String(text4 ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
   const range = parsePageRange(pages);
   const cap4 = Math.max(1, Math.floor(Number(limit) || 40));
-  const hits = [];
-  let seq = 0;
-  for (const doc of Array.isArray(docs) ? docs : []) {
-    for (const page of Array.isArray(doc?.pages) ? doc.pages : []) {
-      seq += 1;
-      const n3 = Number(page?.n) || 0;
-      if (range && (n3 < range.from || n3 > range.to)) continue;
-      const lower4 = page.lower || String(page.text || "").toLowerCase();
-      const view = { lower: lower4, spans: page.spans };
-      let fuzzy2 = false;
-      let fuzzyWord = "";
-      let count = 0;
-      let all = true;
-      for (const term of terms) {
-        const hit = termHit(view, term);
-        if (!hit) {
-          all = false;
-          break;
-        }
-        if (hit.fuzzy) {
-          fuzzy2 = true;
-          fuzzyWord = fuzzyWord || hit.word;
-        }
-        count += 1;
-      }
-      if (!all) continue;
-      const exact = Boolean(phrase) && lower4.includes(phrase) && (terms.length > 1 || phrase.includes(" "));
-      hits.push({
-        doc,
-        page,
-        n: n3,
-        count,
-        seq,
-        exact,
-        fuzzy: fuzzy2,
-        fuzzyWord,
-        lower: lower4
-      });
-    }
+  const phraseMatters = Boolean(phrase) && (terms.length > 1 || phrase.includes(" "));
+  const rows = [];
+  for (const hit of Array.isArray(candidates2) ? candidates2 : []) {
+    const n3 = Number(hit?.n) || 0;
+    if (range && (n3 < range.from || n3 > range.to)) continue;
+    rows.push(hit);
   }
-  hits.sort((a, b) => Number(b.exact) - Number(a.exact) || Number(a.fuzzy) - Number(b.fuzzy) || b.count - a.count || a.seq - b.seq);
-  return hits.slice(0, cap4).map((hit) => ({
-    hash: hit.doc.hash || "",
-    url: hit.doc.url || "",
-    pdfUid: hit.doc.pdfUid || "",
-    title: hit.doc.title || "",
-    page: hit.n,
-    text: hit.page.text || "",
-    snippet: partSnippet(hit.page.text || "", text4),
-    frac: flashFrac(hit.page, phrase && hit.exact ? phrase : hit.fuzzyWord || terms[0], hit.fuzzy ? terms[0] : ""),
-    exact: hit.exact,
-    fuzzy: hit.fuzzy
-  }));
+  rows.sort((a, b) => Number(a.fuzzy) - Number(b.fuzzy) || (b.count || 0) - (a.count || 0) || (a.seq || 0) - (b.seq || 0));
+  const chosen = [];
+  let exacts = 0;
+  for (const hit of rows) {
+    const exact = phraseMatters ? exactOf(hit, phrase) : false;
+    if (exact) exacts += 1;
+    chosen.push(exact ? { ...hit, exact: true } : hit);
+    if (!phraseMatters && chosen.length >= cap4) break;
+    if (phraseMatters && exacts >= cap4) break;
+  }
+  chosen.sort((a, b) => Number(Boolean(b.exact)) - Number(Boolean(a.exact)) || Number(a.fuzzy) - Number(b.fuzzy) || (b.count || 0) - (a.count || 0) || (a.seq || 0) - (b.seq || 0));
+  const needle = phraseMatters ? phrase : terms[0] || "";
+  return chosen.slice(0, cap4).map((hit) => {
+    const page = hit.page || {};
+    const fuzzyWord = hit.fuzzy ? terms[0] || "" : "";
+    return {
+      hash: hit.doc?.hash || "",
+      url: hit.doc?.url || "",
+      pdfUid: hit.doc?.pdfUid || "",
+      title: hit.doc?.title || "",
+      page: Number(hit.n) || 0,
+      text: page.text || "",
+      snippet: partSnippet(page.text || "", text4),
+      frac: Array.isArray(page.spans) && page.spans.length ? flashFrac(page, hit.exact ? phrase : hit.fuzzyWord || needle, fuzzyWord) : null,
+      exact: Boolean(hit.exact),
+      fuzzy: Boolean(hit.fuzzy)
+    };
+  });
 }
 function pdfHitOpenDetail(hit, item) {
   if (!hit || !item?.uid) return null;
@@ -85322,6 +85321,89 @@ var PDF_TEXT_V = 1;
 var PAGE_CAP = 80;
 var JOB_CAP = 40;
 var wordsOf3 = (lower4) => String(lower4 || "").match(/[a-z0-9]+/g) || [];
+function timerLater(fn, ms) {
+  const id = setTimeout(fn, ms);
+  try {
+    id?.unref?.();
+  } catch {
+  }
+  return () => {
+    try {
+      clearTimeout(id);
+    } catch {
+    }
+  };
+}
+var sharedTextDb = /* @__PURE__ */ new WeakMap();
+function holdPdfTextDb(factory) {
+  const usable = Boolean(factory) && (typeof factory === "object" || typeof factory === "function");
+  if (!usable) return { hold() {
+  }, release() {
+  }, open: () => Promise.resolve(null) };
+  let slot2 = sharedTextDb.get(factory);
+  if (!slot2) {
+    slot2 = { refs: 0, promise: null, db: null };
+    sharedTextDb.set(factory, slot2);
+  }
+  let held = false;
+  return {
+    hold() {
+      if (held) return;
+      held = true;
+      slot2.refs += 1;
+    },
+    release() {
+      if (!held) return;
+      held = false;
+      slot2.refs -= 1;
+      if (slot2.refs > 0) return;
+      const db = slot2.db;
+      slot2.db = null;
+      slot2.promise = null;
+      if (sharedTextDb.get(factory) === slot2) sharedTextDb.delete(factory);
+      try {
+        db?.close();
+      } catch {
+      }
+    },
+    open() {
+      if (slot2.promise) return slot2.promise;
+      const pending = openDb(factory, {
+        name: PDF_TEXT_DB,
+        version: PDF_TEXT_DB_VERSION,
+        stores: [STORE_PDF_TEXT]
+      }).then((db) => {
+        if (slot2.promise !== pending || !db || slot2.refs <= 0) {
+          slot2.promise = null;
+          slot2.db = null;
+          try {
+            db?.close();
+          } catch {
+          }
+          return null;
+        }
+        slot2.db = db;
+        const evict = () => {
+          if (slot2.db !== db) return;
+          slot2.db = null;
+          slot2.promise = null;
+        };
+        try {
+          const prev = db.onversionchange;
+          db.onversionchange = (event) => {
+            evict();
+            if (typeof prev === "function") prev(event);
+          };
+          db.onclose = evict;
+        } catch {
+        }
+        return db;
+      });
+      slot2.promise = pending;
+      return pending;
+    }
+  };
+}
 function requestResult4(req) {
   return new Promise((resolve) => {
     try {
@@ -85343,9 +85425,7 @@ function createPdfTextIndex({
   openPdf = null,
   indexedDB: factory = null,
   now: now4 = () => Date.now(),
-  later = (fn) => {
-    fn();
-  },
+  later = timerLater,
   onReady: onReady2 = null
 } = {}) {
   const docs = [];
@@ -85356,49 +85436,55 @@ function createPdfTextIndex({
   const queued = /* @__PURE__ */ new Set();
   let pausedUntil = 0;
   let pumping = false;
+  let generation = 0;
   let stopIdle = null;
-  let dbPromise = null;
+  let cancelLater = null;
   let loaded = null;
+  let loadToken = 0;
+  let loadDone = false;
+  let cancelPostings = null;
+  let finishSlices = null;
+  const share = holdPdfTextDb(factory);
+  const byUrl = /* @__PURE__ */ new Map();
+  let seq = 0;
   const openDbOnce = () => {
     if (!factory) return Promise.resolve(null);
-    if (!dbPromise) {
-      dbPromise = openDb(factory, {
-        name: PDF_TEXT_DB,
-        version: PDF_TEXT_DB_VERSION,
-        stores: [STORE_PDF_TEXT]
-      }).then((db) => db || null);
-    }
-    return dbPromise;
+    share.hold();
+    return share.open();
   };
   function addPostings(doc) {
     if (!doc?.hash || byKey.has(doc.hash)) return false;
-    const words = /* @__PURE__ */ new Set();
     const pages = [];
     for (const page of Array.isArray(doc.pages) ? doc.pages : []) {
       const text4 = String(page?.text || "").replace(/\s+/g, " ").trim();
       if (!text4) continue;
       const lower4 = page.lower || text4.toLowerCase();
-      pages.push({ n: Number(page.n) || 0, text: text4, lower: lower4, spans: Array.isArray(page.spans) ? page.spans : [] });
-      for (const word of wordsOf3(lower4)) words.add(word);
+      pages.push({ n: Number(page.n) || 0, text: text4, lower: lower4 });
     }
-    if (!pages.length) return false;
     const stored = {
       hash: doc.hash,
       url: doc.url || "",
       pdfUid: doc.pdfUid || "",
       title: doc.title || "",
-      pages
+      pages,
+      empty: pages.length === 0
     };
     byKey.set(stored.hash, stored);
+    if (stored.url) byUrl.set(stored.url, stored);
     docs.push(stored);
-    for (const word of words) {
-      let list = postings.get(word);
-      if (!list) postings.set(word, list = []);
-      list.push(stored);
-      const bucket = `${word[0]}:${word.length}`;
-      let set = buckets2.get(bucket);
-      if (!set) buckets2.set(bucket, set = /* @__PURE__ */ new Set());
-      set.add(word);
+    if (stored.empty) return false;
+    for (const page of pages) {
+      seq += 1;
+      const pageSeq = seq;
+      for (const word of new Set(wordsOf3(page.lower))) {
+        let list = postings.get(word);
+        if (!list) postings.set(word, list = []);
+        list.push({ doc: stored, n: page.n, seq: pageSeq });
+        const bucket = `${word[0]}:${word.length}`;
+        let set = buckets2.get(bucket);
+        if (!set) buckets2.set(bucket, set = /* @__PURE__ */ new Set());
+        set.add(word);
+      }
     }
     return true;
   }
@@ -85417,59 +85503,135 @@ function createPdfTextIndex({
       url: doc.url,
       pdfUid: doc.pdfUid,
       title: doc.title,
-      pages: doc.pages.map((page) => ({ n: page.n, text: page.text, spans: page.spans })),
+      empty: Boolean(doc.empty),
+      pages: (doc.pages || []).map((page) => ({ n: page.n, text: page.text })),
       at: now4(),
       v: PDF_TEXT_V
     }, doc.hash)));
   }
   function whenLoaded() {
-    if (!loaded) {
-      loaded = (async () => {
-        const keys = await withStore("readonly", (store) => requestResult4(store.getAllKeys()));
-        if (keys?.ok && Array.isArray(keys.result)) {
-          for (const key of keys.result) {
-            const got = await withStore("readonly", (store) => requestResult4(store.get(key)));
-            const rec = got?.ok ? got.result : null;
-            if (rec && rec.v === PDF_TEXT_V) addPostings({ hash: key, ...rec });
-          }
+    if (loaded) return loaded;
+    const token = loadToken;
+    loaded = (async () => {
+      const keys = await withStore("readonly", (store) => requestResult4(store.getAllKeys()));
+      const pendingDocs = [];
+      if (token === loadToken && keys?.ok && Array.isArray(keys.result)) {
+        for (const key of keys.result) {
+          if (token !== loadToken) return false;
+          const got = await withStore("readonly", (store) => requestResult4(store.get(key)));
+          const rec = got?.ok ? got.result : null;
+          if (!rec || rec.v !== PDF_TEXT_V) continue;
+          const doc = { hash: key, url: rec.url || "", pdfUid: rec.pdfUid || "", title: rec.title || "", pages: rec.pages };
+          const text4 = (doc.pages || []).some((page) => String(page?.text || "").trim());
+          if (text4) pendingDocs.push(doc);
+          else addPostings(doc);
         }
+      }
+      if (token !== loadToken) return false;
+      if (!pendingDocs.length || typeof budget?.idle !== "function") {
+        for (const doc of pendingDocs) addPostings(doc);
+        if (token === loadToken) loadDone = true;
         return true;
-      })();
-    }
+      }
+      await new Promise((resolve) => {
+        finishSlices = resolve;
+        let i = 0;
+        const slice = () => {
+          cancelPostings = null;
+          if (token !== loadToken) {
+            resolve();
+            return;
+          }
+          addPostings(pendingDocs[i]);
+          i += 1;
+          if (i >= pendingDocs.length) {
+            resolve();
+            return;
+          }
+          const cancel2 = budget.idle(slice, { label: "pdf-text-postings" });
+          cancelPostings = () => {
+            try {
+              cancel2?.();
+            } catch {
+            }
+          };
+        };
+        const cancel = budget.idle(slice, { label: "pdf-text-postings" });
+        cancelPostings = () => {
+          try {
+            cancel?.();
+          } catch {
+          }
+        };
+      });
+      finishSlices = null;
+      if (token !== loadToken) return false;
+      loadDone = true;
+      return true;
+    })();
     return loaded;
   }
   if (factory) void whenLoaded();
-  function docsFor(text4) {
+  function hitsFor(needle) {
+    const exact = postings.get(needle) || [];
+    if (exact.length || needle.length < 4) return { list: exact, fuzzy: false };
+    const list = [];
+    for (const len of [needle.length - 1, needle.length, needle.length + 1]) {
+      const set = buckets2.get(`${needle[0]}:${len}`);
+      if (!set) continue;
+      for (const known2 of set) {
+        if (!editDistance1(known2, needle)) continue;
+        list.push(...postings.get(known2) || []);
+      }
+    }
+    return { list, fuzzy: true };
+  }
+  function pagesFor(text4) {
     const terms = queryTerms(text4);
     const needles = [];
     for (const term of terms) {
-      if (term.includes(" ")) needles.push(...term.split(/\s+/).filter((w) => w.length >= 2));
+      if (term.includes(" ")) needles.push(...term.split(/\s+/).filter((word) => word.length >= 2));
       else needles.push(term);
     }
     if (!needles.length) return [];
     let chosen = null;
     for (const needle of needles) {
-      const found = new Set(postings.get(needle) || []);
-      if (!found.size && needle.length >= 4) {
-        for (const len of [needle.length - 1, needle.length, needle.length + 1]) {
-          const set = buckets2.get(`${needle[0]}:${len}`);
-          if (!set) continue;
-          for (const known2 of set) {
-            if (!editDistance1(known2, needle)) continue;
-            for (const doc of postings.get(known2) || []) found.add(doc);
-          }
+      const { list, fuzzy: fuzzy2 } = hitsFor(needle);
+      if (!list.length) return [];
+      const mine = /* @__PURE__ */ new Map();
+      for (const hit of list) {
+        const key = `${hit.doc.hash}
+${hit.n}`;
+        const prev = mine.get(key);
+        if (prev) {
+          if (hit.seq < prev.seq) prev.seq = hit.seq;
+          continue;
         }
+        mine.set(key, { doc: hit.doc, n: hit.n, seq: hit.seq, fuzzy: fuzzy2, count: 1 });
       }
-      if (!found.size) return [];
-      chosen = chosen ? new Set([...chosen].filter((doc) => found.has(doc))) : found;
+      if (!chosen) chosen = mine;
+      else {
+        const next = /* @__PURE__ */ new Map();
+        for (const [key, hit] of chosen) {
+          const other = mine.get(key);
+          if (!other) continue;
+          next.set(key, { doc: hit.doc, n: hit.n, seq: Math.min(hit.seq, other.seq), fuzzy: hit.fuzzy || other.fuzzy, count: hit.count + other.count });
+        }
+        chosen = next;
+      }
       if (!chosen.size) return [];
     }
-    return [...chosen];
+    const out = [];
+    for (const hit of chosen.values()) {
+      const page = hit.doc.pages.find((item) => item.n === hit.n) || { n: hit.n, text: "", lower: "" };
+      out.push({ doc: hit.doc, page, n: hit.n, seq: hit.seq, fuzzy: hit.fuzzy, count: hit.count });
+    }
+    return out;
   }
   function search(query, limit) {
     const text4 = query?.text ?? "";
     if (!String(text4).trim()) return [];
-    return searchPdfText(docsFor(text4), query || {}, limit);
+    return rankPostingHits(pagesFor(text4), query || {}, limit);
   }
   function noteParsed(rows) {
     let added = 0;
@@ -85479,30 +85641,54 @@ function createPdfTextIndex({
   function pause(ms = 600) {
     pausedUntil = now4() + ms;
   }
+  function takeHandle(job) {
+    const handle = job?.handle || null;
+    if (job) job.handle = null;
+    return handle;
+  }
   function arm4() {
     if (pumping || !queue.length || typeof budget?.idle !== "function") return;
     pumping = true;
+    const gen = generation;
     stopIdle = budget.idle(() => {
       stopIdle = null;
+      if (gen !== generation) {
+        pumping = false;
+        return;
+      }
       if (pausedUntil > now4()) {
         pumping = false;
         const wait2 = Math.max(0, pausedUntil - now4());
-        later(() => arm4(), wait2);
+        try {
+          cancelLater?.();
+        } catch {
+        }
+        const cancel = later(() => {
+          cancelLater = null;
+          if (gen === generation) arm4();
+        }, wait2);
+        cancelLater = typeof cancel === "function" ? cancel : null;
         return;
       }
       const job = queue[0];
-      void step(job).then((done3) => {
+      if (!job) {
+        pumping = false;
+        return;
+      }
+      void step(job, gen).then((done3) => {
+        if (gen !== generation) return;
         pumping = false;
         if (done3) {
-          queue.shift();
+          if (queue[0] === job) queue.shift();
           if (job?.url) queued.delete(job.url);
         }
         arm4();
       }, () => {
+        if (gen !== generation) return;
         pumping = false;
-        const failed = queue.shift();
-        void dropHandle(failed?.handle);
-        if (failed?.url) queued.delete(failed.url);
+        if (queue[0] === job) queue.shift();
+        void dropHandle(takeHandle(job));
+        if (job?.url) queued.delete(job.url);
         arm4();
       });
     }, { label: "pdf-text" });
@@ -85513,7 +85699,11 @@ function createPdfTextIndex({
     } catch {
     }
   }
-  async function step(job) {
+  async function step(job, gen) {
+    if (gen !== generation) {
+      await dropHandle(takeHandle(job));
+      return false;
+    }
     if (!job.handle) {
       if (job.hash && byKey.has(job.hash)) return true;
       if (typeof openPdf !== "function") return true;
@@ -85523,6 +85713,10 @@ function createPdfTextIndex({
       } catch {
         handle = null;
       }
+      if (gen !== generation) {
+        await dropHandle(handle);
+        return false;
+      }
       if (!handle || !(handle.pageCount > 0) || typeof handle.readPage !== "function") {
         await dropHandle(handle);
         return true;
@@ -85531,6 +85725,10 @@ function createPdfTextIndex({
       if (!hash || byKey.has(hash)) {
         await dropHandle(handle);
         return true;
+      }
+      if (gen !== generation) {
+        await dropHandle(handle);
+        return false;
       }
       job.handle = handle;
       job.hash = hash;
@@ -85547,17 +85745,25 @@ function createPdfTextIndex({
         title: job.title || "",
         pages: job.pages
       };
-      if (addPostings(doc)) {
+      if (gen !== generation) {
+        await dropHandle(takeHandle(job));
+        return false;
+      }
+      const known2 = byKey.has(doc.hash);
+      const added = addPostings(doc);
+      if (!known2 && byKey.has(doc.hash)) {
         try {
-          await save(doc);
+          await save(byKey.get(doc.hash));
         } catch {
         }
-        try {
-          onReady2?.(doc.hash);
-        } catch {
+        if (added) {
+          try {
+            onReady2?.(doc.hash);
+          } catch {
+          }
         }
       }
-      await dropHandle(job.handle);
+      await dropHandle(takeHandle(job));
       return true;
     }
     let page = null;
@@ -85566,24 +85772,50 @@ function createPdfTextIndex({
     } catch {
       page = null;
     }
-    if (page?.text) job.pages.push(page);
+    if (gen !== generation) {
+      await dropHandle(takeHandle(job));
+      return false;
+    }
+    if (page?.text && String(page.text).trim()) job.pages.push({ n: page.n, text: String(page.text).replace(/\s+/g, " ").trim(), lower: page.lower || String(page.text).toLowerCase() });
     return false;
   }
   function stop3() {
+    generation += 1;
     try {
       stopIdle?.();
     } catch {
     }
     stopIdle = null;
-    queue.length = 0;
+    try {
+      cancelLater?.();
+    } catch {
+    }
+    cancelLater = null;
+    const pending = queue.splice(0);
     queued.clear();
     pumping = false;
+    for (const job of pending) void dropHandle(takeHandle(job));
+    if (!loadDone) {
+      loadToken += 1;
+      loaded = null;
+      try {
+        cancelPostings?.();
+      } catch {
+      }
+      cancelPostings = null;
+      try {
+        finishSlices?.();
+      } catch {
+      }
+      finishSlices = null;
+    }
+    share.release();
   }
   function enqueue(jobs) {
     for (const job of Array.isArray(jobs) ? jobs : []) {
       const url = String(job?.url || "");
       if (!url || queued.has(url) || queue.length >= JOB_CAP) continue;
-      if (job.hash && byKey.has(job.hash)) continue;
+      if (byUrl.has(url) || job.hash && byKey.has(job.hash)) continue;
       queued.add(url);
       queue.push({ url, hash: job.hash || "", pdfUid: job.pdfUid || "", title: job.title || "" });
     }
@@ -97899,6 +98131,7 @@ function buildBoardView(onFail, {
     if (!pdfText) {
       pdfText = createPdfTextIndex({
         budget: sharedBgBudget(),
+        later: (fn, ms) => timers.later(fn, ms),
         indexedDB: doc.defaultView?.indexedDB,
         openPdf: (url) => {
           if (disposed) return null;
@@ -97947,7 +98180,7 @@ function buildBoardView(onFail, {
           panel.refreshSearch?.();
         } catch {
         }
-      });
+      })();
     });
   };
   const pdfNameInfo = /* @__PURE__ */ new Map();
@@ -98114,6 +98347,15 @@ ${url}`;
         if (!open) {
           sendPending = null;
           pdfNames?.stop();
+          try {
+            stopPdfTextFeed?.();
+          } catch {
+          }
+          stopPdfTextFeed = null;
+          try {
+            pdfText?.stop?.();
+          } catch {
+          }
         } else {
           partsIdx?.invalidate();
           imgList = null;
@@ -98233,13 +98475,41 @@ ${url}`;
       openPdfHit: (hit) => {
         const uid = pdfCardUidFor(hit?.pdfUid || "", hit?.url || "");
         const item = uid ? board2()?.items.get(uid) : null;
-        const detail = pdfHitOpenDetail(hit, item);
-        if (!detail) return false;
-        try {
-          ensureReadPane().open?.(detail);
-        } catch {
-          return false;
-        }
+        const openAt = (next) => {
+          if (disposed) return false;
+          const detail = pdfHitOpenDetail(next, item);
+          if (!detail) return false;
+          try {
+            ensureReadPane().open?.(detail);
+          } catch {
+            return false;
+          }
+          return true;
+        };
+        const hasFrac = Array.isArray(hit?.frac) && hit.frac.length >= 4;
+        const found = !hasFrac && hit?.url ? detectPdfjs2(win2) : null;
+        if (hasFrac || !found?.workerReady) return openAt(hit);
+        void (async () => {
+          let handle = null;
+          try {
+            handle = await openPdfDocument(found.lib, hit.url, { allow: firstPageAllowed });
+            if (disposed || !handle) {
+              openAt(hit);
+              return;
+            }
+            const page = await handle.readPage(Number(hit.page) || 1);
+            if (disposed) return;
+            const frac = boxForQuery(page, hit?.snippet?.hit || "");
+            openAt(frac ? { ...hit, frac } : hit);
+          } catch {
+            openAt(hit);
+          } finally {
+            try {
+              await handle?.close?.();
+            } catch {
+            }
+          }
+        })();
         return true;
       },
       searchParts: async (query, limit) => {

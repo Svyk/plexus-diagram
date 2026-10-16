@@ -19557,7 +19557,66 @@ function findBlock(list, uid, read2) {
   };
   return walk3(list, []);
 }
-var KIDS_H_CAP, PEEK_HOVER_MS, PEEK_LEAVE_MS, PEEK_ANIM_MS, CHILD_GROW_H;
+function focusStep(trail) {
+  const list = Array.isArray(trail) ? trail : [];
+  if (list.length <= 1) return { uid: null, trail: [] };
+  const next = list.slice(0, -1);
+  const uid = next[next.length - 1]?.uid || null;
+  return { uid, trail: uid ? next : [] };
+}
+function cardOwningBlock(items, blockUid3) {
+  const want = String(blockUid3 || "");
+  if (!want) return null;
+  for (const item of eachItem(items)) {
+    if (!item || item.type === "section" || item.uid === want) continue;
+    const content = Array.isArray(item.content) ? item.content : [];
+    if (findBlock(content, want, nodeRead)) return { cardUid: item.uid, blockUid: want };
+  }
+  return null;
+}
+function cardOwningByParent(items, blockUid3, parentOf) {
+  const want = String(blockUid3 || "");
+  if (!want || typeof parentOf !== "function") return null;
+  for (const item of eachItem(items)) {
+    if (item?.type !== "section" && item?.uid === want) return null;
+  }
+  let uid = want;
+  const seen = /* @__PURE__ */ new Set();
+  for (let i = 0; i < 24; i += 1) {
+    if (!uid || seen.has(uid)) return null;
+    seen.add(uid);
+    let parent = "";
+    try {
+      const loc = parentOf(uid);
+      parent = typeof loc === "string" ? loc : String(loc?.parentUid || "");
+    } catch {
+      return null;
+    }
+    if (!parent) return null;
+    const hit = cardForParent(items, parent, want);
+    if (hit) return hit;
+    uid = parent;
+  }
+  return null;
+}
+function focusOpenBlock(records, blockUid3, parentOf) {
+  const want = String(blockUid3 || "");
+  if (!want) return false;
+  let hit = false;
+  for (const rec of records || []) {
+    const items = rec?.items;
+    if (!items || typeof rec.focusInside !== "function") continue;
+    const owned = cardOwningBlock(items, want) || cardOwningByParent(items, want, parentOf);
+    if (!owned || !owned.cardUid || owned.blockUid === owned.cardUid) continue;
+    try {
+      rec.focusInside(owned.cardUid, owned.blockUid);
+      hit = true;
+    } catch {
+    }
+  }
+  return hit;
+}
+var KIDS_H_CAP, PEEK_HOVER_MS, PEEK_LEAVE_MS, PEEK_ANIM_MS, CHILD_GROW_H, eachItem, nodeRead, cardForParent;
 var init_card_children = __esm({
   "src/model/card-children.js"() {
     KIDS_H_CAP = 900;
@@ -19565,6 +19624,28 @@ var init_card_children = __esm({
     PEEK_LEAVE_MS = 400;
     PEEK_ANIM_MS = 200;
     CHILD_GROW_H = 30;
+    eachItem = (items) => {
+      if (!items) return [];
+      if (typeof items.values === "function") return [...items.values()];
+      return Array.isArray(items) ? items : [];
+    };
+    nodeRead = {
+      uid: (node2) => String(node2?.[":block/uid"] ?? node2?.uid ?? ""),
+      kids: (node2) => node2?.[":block/children"] || node2?.children || [],
+      label: () => ""
+    };
+    cardForParent = (items, parentUid, blockUid3) => {
+      if (!parentUid) return null;
+      for (const item of eachItem(items)) {
+        if (!item || item.type === "section") continue;
+        if (item.uid === parentUid && blockUid3 !== item.uid) return { cardUid: item.uid, blockUid: blockUid3 };
+        const target = item.target;
+        if (target?.kind === "block" && target.uid === parentUid && blockUid3 !== target.uid) {
+          return { cardUid: item.uid, blockUid: blockUid3 };
+        }
+      }
+      return null;
+    };
   }
 });
 
@@ -31394,6 +31475,26 @@ function createItemRenderer({
     remountCard(rec);
     return true;
   };
+  const stepFocus = () => {
+    if (disposed || cardFocus.size === 0) return false;
+    const preferred = hotRow?.card && cardFocus.has(hotRow.card) ? hotRow.card : null;
+    const cardUid = preferred || cardFocus.keys().next().value;
+    const blockUid3 = cardFocus.get(cardUid);
+    if (!cardUid || !blockUid3) return false;
+    const item = lastBoard?.items.get(cardUid);
+    const rec = shells.get(cardUid);
+    const pageList = rec?.pageBlocks;
+    const contentList = Array.isArray(item?.content) ? item.content : [];
+    const list = Array.isArray(pageList) && pageList.length ? pageList : contentList;
+    const hit = findBlock(list, blockUid3, outlineRead);
+    const step = focusStep(hit?.trail);
+    if (step.uid) return focusInside(cardUid, step.uid);
+    cardFocus.delete(cardUid);
+    if (hotRow?.card === cardUid) hotRow = null;
+    if (rec?.peekOpen) rerenderPeek(rec);
+    else if (rec) remountCard(rec);
+    return true;
+  };
   const peekLive = /* @__PURE__ */ new Set();
   const notePeek = (rec) => {
     if (rec) peekLive.add(rec);
@@ -35627,6 +35728,7 @@ function createItemRenderer({
     measureContent,
     toggleKids,
     focusInside,
+    stepFocus,
     cancelCardPeek,
     closeCardPeek,
     setPeekBlocked,
@@ -70345,7 +70447,7 @@ function createThrottle({ minMs = MOTION_TIMING.countMs, now: now4 = () => Date.
     }
   };
 }
-function createParseMotion({ doc, overlayHost = null, overlayPage = 0, headHost = null, mode = () => "full", now: now4 = () => Date.now(), timing = MOTION_TIMING, cls = "" } = {}) {
+function createParseMotion({ doc, overlayHost: overlayHost2 = null, overlayPage = 0, headHost = null, mode = () => "full", now: now4 = () => Date.now(), timing = MOTION_TIMING, cls = "" } = {}) {
   const win2 = () => doc?.defaultView || null;
   const later = (fn, ms) => (win2()?.setTimeout || setTimeout)(fn, ms);
   const unlater = (id) => (win2()?.clearTimeout || clearTimeout)(id);
@@ -70371,7 +70473,7 @@ function createParseMotion({ doc, overlayHost = null, overlayPage = 0, headHost 
   let head = null;
   let ringFill = null;
   let headText = null;
-  let hostEl = overlayHost;
+  let hostEl = overlayHost2;
   let hostPage = Number(overlayPage) || 0;
   let headEl = headHost;
   let state = "idle";
@@ -99865,6 +99967,11 @@ ${url}`;
       event.stopPropagation();
       return;
     }
+    if (event.key === "Escape" && !itemsR.isEditing() && itemsR.stepFocus?.()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (event.key === "Escape" && hoverUid) hideHover();
     if (event.key === "Escape" && chrome.popover.isOpen()) {
       chrome.popover.close();
@@ -100957,6 +101064,11 @@ ${url}`;
         }
       }
       return ok;
+    },
+    // Session focus of a child block. Nothing is written.
+    focusInside(cardUid, blockUid3) {
+      if (disposed) return false;
+      return itemsR.focusInside?.(cardUid, blockUid3) === true;
     },
     viewport: () => ({ x: vp.x, y: vp.y, zoom: vp.zoom }),
     restoreViewport(next) {
@@ -102380,6 +102492,211 @@ function renderTableThumb(doc, grid, { dark = false, width = THUMB_W, height: bo
 
 // src/feature.js
 init_roam_table();
+
+// src/view/roam-stack.js
+var HOSTS = [
+  ".bp3-portal",
+  ".bp3-overlay",
+  ".bp3-popover",
+  ".rm-find-or-create-wrapper",
+  ".rm-autocomplete__wrapper",
+  ".rm-autocomplete__results",
+  ".bp3-datepicker",
+  ".rm-date-picker",
+  ".bp3-menu",
+  ".bp3-context-menu"
+];
+var TRIGGERS = [
+  ".rm-block-ref",
+  ".rm-page-ref",
+  ".bp3-icon-calendar",
+  "#find-or-create-input",
+  ".rm-block__input",
+  ".bp3-popover-target",
+  ".bp3-menu"
+];
+var ORDINARY_Z = 2500;
+var DIALOG_Z = 4e5;
+var LIFT_FRAMES = 12;
+var isHost = (node2) => {
+  if (!node2 || node2.nodeType !== 1 || typeof node2.matches !== "function") return false;
+  for (const sel of HOSTS) {
+    try {
+      if (node2.matches(sel)) return true;
+    } catch {
+    }
+  }
+  return false;
+};
+function overlayHost(node2) {
+  let host = null;
+  let cur = node2?.nodeType === 1 ? node2 : node2?.parentElement;
+  while (cur && cur.nodeType === 1) {
+    if (isHost(cur)) host = cur;
+    cur = cur.parentElement;
+  }
+  return host;
+}
+var trappedInBoard = (node2) => {
+  if (!node2 || typeof node2.closest !== "function") return false;
+  try {
+    return Boolean(node2.closest(".pxd-root, .pxd-mount"));
+  } catch {
+    return false;
+  }
+};
+var isDialogHost = (host) => {
+  if (!host) return false;
+  if (isHost(host) && typeof host.matches === "function") {
+    try {
+      if (host.matches(".bp3-dialog, .bp3-alert")) return true;
+    } catch {
+    }
+  }
+  try {
+    return Boolean(host.querySelector?.(".bp3-dialog, .bp3-alert"));
+  } catch {
+    return false;
+  }
+};
+var zOf = (node2) => {
+  const raw = node2?.style?.["z-index"] ?? node2?.style?.zIndex ?? "";
+  const n3 = Number.parseInt(String(raw), 10);
+  return Number.isFinite(n3) ? n3 : 0;
+};
+function liftRoamOverlay(node2, doc) {
+  if (!doc?.body) return false;
+  const host = overlayHost(node2);
+  if (!host) return false;
+  const trapped = trappedInBoard(host);
+  const onBody = host.parentElement === doc.body;
+  if (!trapped && !onBody) return false;
+  const want = isDialogHost(host) ? DIALOG_Z : ORDINARY_Z;
+  const current3 = zOf(host);
+  let moved = false;
+  if (trapped && !onBody) {
+    try {
+      doc.body.append(host);
+      moved = host.parentElement === doc.body;
+    } catch {
+      return false;
+    }
+  }
+  if (current3 >= want) return moved;
+  try {
+    host.style?.setProperty?.("z-index", String(want), "important");
+  } catch {
+    return moved;
+  }
+  return true;
+}
+function liftRoamOverlays(doc) {
+  if (!doc?.querySelectorAll) return 0;
+  const seen = /* @__PURE__ */ new Set();
+  const hosts = [];
+  for (const sel of HOSTS) {
+    let list = [];
+    try {
+      list = doc.querySelectorAll(sel) || [];
+    } catch {
+      list = [];
+    }
+    for (const node2 of list) {
+      const host = overlayHost(node2);
+      if (!host || seen.has(host)) continue;
+      seen.add(host);
+      hosts.push(host);
+    }
+  }
+  let n3 = 0;
+  for (const host of hosts) if (liftRoamOverlay(host, doc)) n3 += 1;
+  return n3;
+}
+var triggered = (target) => {
+  if (!target || typeof target.closest !== "function") return false;
+  for (const sel of TRIGGERS) {
+    try {
+      if (target.closest(sel)) return true;
+    } catch {
+    }
+  }
+  return false;
+};
+function installRoamStack(doc) {
+  if (!doc?.body || typeof doc.addEventListener !== "function") return () => {
+  };
+  let framesLeft = 0;
+  let raf2 = 0;
+  const view = doc.defaultView || globalThis;
+  const pump = () => {
+    raf2 = 0;
+    try {
+      liftRoamOverlays(doc);
+    } catch {
+    }
+    if (framesLeft <= 0) return;
+    framesLeft -= 1;
+    if (typeof view.requestAnimationFrame === "function") raf2 = view.requestAnimationFrame(pump) || 0;
+  };
+  const kick = () => {
+    framesLeft = LIFT_FRAMES;
+    if (raf2) return;
+    if (typeof view.requestAnimationFrame === "function") raf2 = view.requestAnimationFrame(pump) || 0;
+    if (!raf2) pump();
+  };
+  const onTrigger = (event) => {
+    if (!triggered(event?.target)) return;
+    kick();
+  };
+  doc.addEventListener("pointerover", onTrigger, true);
+  doc.addEventListener("focusin", onTrigger, true);
+  doc.addEventListener("pointerdown", onTrigger, true);
+  let obs = null;
+  const Observer = view.MutationObserver || globalThis.MutationObserver;
+  if (typeof Observer === "function") {
+    try {
+      obs = new Observer(() => kick());
+      obs.observe(doc.body, { childList: true });
+    } catch {
+      obs = null;
+    }
+  }
+  return () => {
+    try {
+      doc.removeEventListener("pointerover", onTrigger, true);
+    } catch {
+    }
+    try {
+      doc.removeEventListener("focusin", onTrigger, true);
+    } catch {
+    }
+    try {
+      doc.removeEventListener("pointerdown", onTrigger, true);
+    } catch {
+    }
+    try {
+      obs?.disconnect?.();
+    } catch {
+    }
+    if (raf2 && typeof view.cancelAnimationFrame === "function") view.cancelAnimationFrame(raf2);
+    raf2 = 0;
+    framesLeft = 0;
+  };
+}
+function syncBoardClass(doc, on) {
+  const list = doc?.body?.classList;
+  if (!list) return;
+  const present2 = Boolean(on);
+  if (typeof list.toggle === "function") {
+    list.toggle("pxd-has-board", present2);
+    return;
+  }
+  if (present2) list.add?.("pxd-has-board");
+  else list.remove?.("pxd-has-board");
+}
+
+// src/feature.js
+init_card_children();
 init_deeplink();
 init_relchips();
 
@@ -106419,6 +106736,23 @@ async function installPlexusDiagram({
     const uid = node2.uid ?? node2["block-uid"];
     return typeof uid === "string" ? uid.trim() : "";
   }
+  function focusChildFromNav(blockUid3) {
+    const parentOf = (id) => {
+      try {
+        return host.blockLocation?.(id) ?? null;
+      } catch {
+        return null;
+      }
+    };
+    const records = [];
+    for (const rec of mounts.values()) {
+      const items = rec.session?.board?.items;
+      const focusInside = rec.view?.focusInside;
+      if (!items || typeof focusInside !== "function") continue;
+      records.push({ items, focusInside });
+    }
+    focusOpenBlock(records, blockUid3, parentOf);
+  }
   function bindExternalNav() {
     const mw = host.api?.ui?.mainWindow;
     if (!mw) return;
@@ -106428,6 +106762,7 @@ async function installPlexusDiagram({
       const wrapped = function(arg, ...rest) {
         const uid = navTargetUid(arg, key);
         if (uid) noteExternal(uid);
+        if (name === "openBlock" && uid) focusChildFromNav(uid);
         try {
           return orig.call(this, arg, ...rest);
         } finally {
@@ -106702,6 +107037,7 @@ async function installPlexusDiagram({
     if (titlePanel) titlePanel.style.display = "none";
     native.after(mountEl);
     mounts.set(native, rec);
+    syncBoardClass(doc, true);
     if (inRightSidebar(native) && typeof IntersectionObserver === "function") {
       openStart(rec, "sidebar");
       rec.snapPaint = claimAliveKept(rec) ? null : paintSnapFor(rec, null);
@@ -107016,6 +107352,7 @@ async function installPlexusDiagram({
     viewportWatch?.unobserve(rec.mountEl);
     recByMount.delete(rec.mountEl);
     mounts.delete(rec.native);
+    syncBoardClass(doc, mounts.size > 0);
     const boardUid = rec.session?.board?.uid || rec.uid;
     publicEmit("unmount", { boardUid });
     let still = false;
@@ -108847,6 +109184,8 @@ async function installPlexusDiagram({
     });
     followStatusApi();
     bindExternalNav();
+    lifecycle.add(installRoamStack(doc));
+    lifecycle.add(() => syncBoardClass(doc, false));
     lifecycle.event(win2, "hashchange", onHash);
     lifecycle.event(win2, "popstate", onNavigate);
   }

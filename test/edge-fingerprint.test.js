@@ -200,9 +200,8 @@ test("the edgeFingerprint switch restores the EDGES_PATTERN watch", async () => 
   assert.equal(find(trees.at(-1), "e3")[":block/string"], "off");
 });
 
-// Live edges are `((A)) → label → ((B))`, and Roam re-stamps every block that references an edited block: one card
-// write changes the fingerprint of all that card's edges and the watch reads Connections whole on every card edit and
-// drag (+100 ms per write on PhD MAIN). So edgeFingerprint is off by default.
+// Live edges are `((A)) → label → ((B))`. Roam re-stamps every block that references an edited block.
+// A time-only stamp whose edge text did not change must not read Connections. The flag stays off until a scratch page confirms it.
 function seedRefs(fake) {
   const cards = Array.from({ length: 40 }, (_, i) => ({ uid: `c${i}`, string: `card ${i}`, props: { plexus: { type: "card", x: i * 10, y: 0, w: 200, h: 100 } } }));
   const edges = Array.from({ length: EDGES }, (_, i) => ({ uid: `e${i}`, string: `((c${i % 40})) → x → ((c${(i + 1) % 40}))`, props: { plexus: { type: "edge", from: `c${i % 40}`, to: `c${(i + 1) % 40}` } } }));
@@ -223,8 +222,68 @@ async function cardWriteRereadsEdges(flags) {
   return find(after, "edges1") !== before;
 }
 
-test("with the fingerprint on, a card write reads Connections again (Roam stamps the edges that cite the card)", async () => {
-  assert.equal(await cardWriteRereadsEdges({ edgeFingerprint: true }), true);
+test("with the fingerprint on, a cited card's props write does not replace Connections", async () => {
+  assert.equal(await cardWriteRereadsEdges({ edgeFingerprint: true }), false);
+});
+
+const edgeTime = (fake, uid) => fake.api.data.pull("[:block/uid :edit/time]", [":block/uid", uid])?.[":edit/time"];
+const stringPulls = (log) => log.filter((entry) => entry.many && String(entry.pattern).includes(":block/string"));
+
+test("editing a cited card re-stamps its edges, pulls their strings once, and does not kick", async () => {
+  const f = setup({ seedWith: seedRefs });
+  await settle(f.fake);
+  await f.fake.api.data.block.update({ block: { uid: "e1", string: "((c1)) → warm → ((c2))" } });
+  await settle(f.fake);
+  f.trees.length = 0;
+  f.fake.pullLog = [];
+  f.host.noteEditing("fp1", "c0");
+  const before = edgeTime(f.fake, "e0");
+  await f.fake.api.data.block.update({ block: { uid: "c0", string: "card 0 edited" } });
+  await settle(f.fake);
+  assert.notEqual(edgeTime(f.fake, "e0"), before, "the citing edge was re-stamped");
+  assert.equal(f.trees.length, 0);
+  assert.equal(wholeReads(f.fake.pullLog), 0);
+  assert.equal(stringPulls(f.fake.pullLog).length, 1);
+});
+
+test("editing an edge string still reads Connections whole", async () => {
+  const f = setup({ seedWith: seedRefs });
+  await settle(f.fake);
+  await f.fake.api.data.block.update({ block: { uid: "e1", string: "((c1)) → warm → ((c2))" } });
+  await settle(f.fake);
+  f.trees.length = 0;
+  f.fake.pullLog = [];
+  f.host.noteEditing("fp1", "c0");
+  await f.fake.api.data.block.update({ block: { uid: "e0", string: "((c0)) → edited → ((c1))" } });
+  await settle(f.fake);
+  assert.equal(f.trees.length, 1);
+  assert.equal(find(f.trees.at(-1), "e0")[":block/string"], "((c0)) → edited → ((c1))");
+  assert.equal(wholeReads(f.fake.pullLog), 1);
+});
+
+test("a later time-only stamp compares the stored string, and undo is handled the same way", async () => {
+  const f = setup({ seedWith: seedRefs });
+  f.fake.trackUndo = true;
+  await settle(f.fake);
+  await f.fake.api.data.block.update({ block: { uid: "e0", string: "((c0)) → changed → ((c1))" } });
+  await settle(f.fake);
+  f.trees.length = 0;
+  f.fake.pullLog = [];
+  f.host.noteEditing("fp1", "c0");
+  const stamped = edgeTime(f.fake, "e0");
+  await f.fake.api.data.block.update({ block: { uid: "c0", string: "card zero" } });
+  await settle(f.fake);
+  assert.notEqual(edgeTime(f.fake, "e0"), stamped);
+  assert.equal(f.trees.length, 0, "the stored string is the edited edge, which still matches");
+  assert.equal(wholeReads(f.fake.pullLog), 0);
+  assert.equal(stringPulls(f.fake.pullLog).length, 1);
+  const afterEdit = edgeTime(f.fake, "e0");
+  await f.fake.api.data.undo();
+  await settle(f.fake);
+  assert.notEqual(edgeTime(f.fake, "e0"), afterEdit, "undo moves the stamp again");
+  assert.equal(wholeReads(f.fake.pullLog), 0);
+  assert.equal(f.trees.length, 0);
+  assert.equal(stringPulls(f.fake.pullLog).length, 2);
 });
 
 test("edgeFingerprint is off by default: the Connections watch is EDGES_PATTERN and a card write leaves the edges alone", async () => {

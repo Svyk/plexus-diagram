@@ -223,8 +223,9 @@ export function normalizeSetting(id, value) {
 
 // FAST-9 + INSTANT-1. All on except edgeFingerprint. A missing key keeps its default. JSON that does not parse leaves this.
 // splitWatch, virtualShells, virtualEdges and edgeFingerprint are the big-board paths (PhD stress round): each off restores the
-// previous path without a release. edgeFingerprint is off: Roam re-stamps :edit/time on every block that references an
-// edited block, so each card write changed its edges' fingerprint and read Connections whole (+100 ms per write).
+// previous path without a release. edgeFingerprint stays off until a scratch page confirms the repair. A time-only
+// stamp whose edge text and props still match the stored node writes the new fingerprint and does not read Connections.
+// A string, uid, or order change still reads the block whole. Off restores the EDGES_PATTERN watch.
 // overviewFast off restores the 3.30.0 open at map zoom: live waits until every shell in the view is built.
 const SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "editQuiet"];
 

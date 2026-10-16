@@ -4128,6 +4128,7 @@ export function createItemRenderer({
     attachFocusGuard();
     attachFloor(editing);
     onEditChange?.(rec.uid);
+    holdForEdit(true);
     nudgeEditorMenus(doc);
   };
   const endStickyEdit = () => {
@@ -4138,6 +4139,7 @@ export function createItemRenderer({
     detachFocusGuard();
     e.rec.el.classList.remove("pxd-item--typing");
     onEditChange?.(null);
+    holdForEdit(false);
   };
   const focusSticky = async (uid) => {
     const rec = shells.get(uid);
@@ -5387,6 +5389,10 @@ export function createItemRenderer({
   // A keystroke is a Roam transaction, and each renderString root re-renders on it.
   let lastContent = null;
   let quieted = false;
+  let editHeld = false;
+  const editQuietOn = () => {
+    try { return speedOf().editQuiet !== false; } catch { return true; }
+  };
   const holdQuiet = (rec, uid) => {
     if (!rec.roots?.length || editing?.uid === uid) return;
     if (rec.type === "section") {
@@ -5515,6 +5521,7 @@ export function createItemRenderer({
   // The words stay as plain text. The next schedule puts the live roots back.
   const quiet = (on) => {
     const next = Boolean(on);
+    if (!next && editHeld) return;
     if (next === quieted) return;
     quieted = next;
     if (quieted) {
@@ -5524,6 +5531,32 @@ export function createItemRenderer({
     }
     contentSched?.hold(false);
     if (lastContent) fillContent(lastContent);
+  };
+  // Held for the whole edit. quiet(false) from the 700 ms outside-typing timer cannot release it.
+  // Exit mounts the quieted bodies before it returns. The idle pump would leave them blank for a turn.
+  const restoreEditQuiet = () => {
+    for (const uid of shells.keys()) {
+      if (contentSched?.isDone(uid)) continue;
+      contentSched?.renderNow(uid);
+    }
+  };
+  const holdForEdit = (on) => {
+    if (!editQuietOn()) {
+      if (!on && editHeld) {
+        editHeld = false;
+        quiet(false);
+        restoreEditQuiet();
+      }
+      return;
+    }
+    const next = Boolean(on);
+    if (next === editHeld) {
+      if (next) quiet(true);
+      return;
+    }
+    editHeld = next;
+    quiet(next);
+    if (!next) restoreEditQuiet();
   };
 
   const setPaused = (on) => {
@@ -6302,6 +6335,7 @@ export function createItemRenderer({
     attachFocusGuard();
     attachFloor(editing);
     onEditChange?.(uid);
+    holdForEdit(true);
     let ok = true;
     try {
       if (pageEdit) {
@@ -6463,6 +6497,7 @@ export function createItemRenderer({
         if (grow > live.h) (onGrow || ((u, h) => session?.growToFit?.(u, h)))(uid, grow);
       }
     }
+    holdForEdit(false);
   };
 
   const autocompleteOpen = () => Boolean(doc.querySelector?.(".rm-autocomplete__results"));

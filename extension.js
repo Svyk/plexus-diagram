@@ -34996,7 +34996,8 @@ function createItemRenderer({
     const body = rec.body;
     if (rec.editor && editing?.uid !== item.uid) detachStickyEditor(rec);
     unmountRoots(rec);
-    body.replaceChildren();
+    if (rec.freezeKeep) rec.freezeBefore = directChildren(body);
+    else body.replaceChildren();
     rec.stickyLive = false;
     rec.editor = null;
     rec.bare = false;
@@ -35405,26 +35406,44 @@ function createItemRenderer({
     if (detail) rec.regionWidth = rec.rect?.w ?? item.w;
   };
   const mountContent = (rec, item) => {
-    reserveCardHeight(rec, item);
-    mountContentBody(rec, item);
-    syncKidsBadge(rec, item);
-    if (rec.type !== "section" && !rec.contentUnwatch && typeof host?.watchContent === "function") {
-      try {
-        const off = host.watchContent(item.uid);
-        if (typeof off === "function") rec.contentUnwatch = off;
-      } catch {
+    const frozenKeep = Boolean(rec.frozen?.length);
+    rec.frozen = null;
+    rec.freezeKeep = frozenKeep;
+    rec.freezeBefore = null;
+    try {
+      reserveCardHeight(rec, item);
+      mountContentBody(rec, item);
+      syncKidsBadge(rec, item);
+      if (rec.type !== "section" && !rec.contentUnwatch && typeof host?.watchContent === "function") {
+        try {
+          const off = host.watchContent(item.uid);
+          if (typeof off === "function") rec.contentUnwatch = off;
+        } catch {
+        }
       }
+    } finally {
+      if (frozenKeep) dropFrozenFrame(rec.body, rec.freezeBefore);
+      rec.freezeKeep = false;
+      rec.freezeBefore = null;
     }
   };
   const mountSectionTitle = (rec, item) => {
     noteRender(item.uid);
-    unmountRoots(rec);
-    rec.title.replaceChildren();
-    const node2 = renderRoot(rec.title, item.string || "Section", "pxd-rs pxd-section__title-text", item.uid);
-    if (!item.string) node2.textContent = "Section";
-    rec.roots = [node2];
-    rec.titleRendered = true;
-    rec.contentKey = contentKeyFor(item);
+    const frozenKeep = Boolean(rec.frozen?.length);
+    rec.frozen = null;
+    let before = null;
+    try {
+      unmountRoots(rec);
+      if (frozenKeep) before = directChildren(rec.title);
+      else rec.title.replaceChildren();
+      const node2 = renderRoot(rec.title, item.string || "Section", "pxd-rs pxd-section__title-text", item.uid);
+      if (!item.string) node2.textContent = "Section";
+      rec.roots = [node2];
+      rec.titleRendered = true;
+      rec.contentKey = contentKeyFor(item);
+    } finally {
+      if (frozenKeep) dropFrozenFrame(rec.title, before);
+    }
   };
   const unmountContent = (uid) => {
     const rec = shells.get(uid);
@@ -35524,6 +35543,8 @@ function createItemRenderer({
   let lastContent = null;
   let quieted = false;
   let editHeld = false;
+  let freezeGen = 0;
+  let freezeFrame = null;
   const editQuietOn = () => {
     try {
       return speedOf().editQuiet !== false;
@@ -35531,24 +35552,120 @@ function createItemRenderer({
       return true;
     }
   };
-  const holdQuiet = (rec, uid) => {
-    if (!rec.roots?.length || editing?.uid === uid) return;
-    if (rec.type === "section") {
-      const text4 = rec.title?.textContent || lastBoard?.items.get(uid)?.title || "Section";
-      unmountRoots(rec);
-      if (rec.title) rec.title.textContent = text4;
-      rec.titleRendered = false;
-    } else if (rec.body) {
-      const text4 = rec.body.textContent || "";
-      unmountRoots(rec);
-      rec.body.replaceChildren();
-      if (text4) el2("div", "pxd-quiet", rec.body).textContent = text4;
-    } else {
-      unmountRoots(rec);
+  const directChildren = (node2) => {
+    const list = node2?.children;
+    if (!list) return [];
+    const out = [];
+    for (let i = 0; i < list.length; i += 1) out.push(list[i]);
+    return out;
+  };
+  const dropFrozenFrame = (container, before) => {
+    if (!container || !before?.length) return;
+    for (const node2 of before) {
+      if (node2?.parentElement === container) {
+        try {
+          node2.remove();
+        } catch {
+        }
+      }
     }
+  };
+  const cancelFreezeFrame = () => {
+    const cancel = freezeFrame;
+    freezeFrame = null;
+    if (typeof cancel === "function") {
+      try {
+        cancel();
+      } catch {
+      }
+    }
+  };
+  const LIVE_ATTR = /^(?:id|contenteditable|tabindex)$/i;
+  const attrNames = (node2) => {
+    const attrs = node2?.attributes;
+    if (!attrs) return [];
+    if (typeof attrs.keys === "function") return [...attrs.keys()];
+    const names = [];
+    if (typeof attrs.length === "number") {
+      for (let i = 0; i < attrs.length; i += 1) {
+        const name = attrs[i]?.name || attrs[i]?.nodeName;
+        if (name) names.push(name);
+      }
+    }
+    return names;
+  };
+  const stripLiveAttrs = (node2) => {
+    const walk3 = (el3) => {
+      if (!el3 || el3.nodeType !== 1) return;
+      for (const name of attrNames(el3)) {
+        if (LIVE_ATTR.test(name) || /^on/i.test(name)) {
+          try {
+            el3.removeAttribute(name);
+          } catch {
+          }
+        }
+      }
+      if (typeof el3.getAttribute === "function" && el3.getAttribute("id") == null && el3.id && !/^el-\d+$/.test(String(el3.id))) el3.id = "";
+      const list = el3.children;
+      for (let i = 0; i < (list?.length || 0); i += 1) if (list[i].nodeType === 1) walk3(list[i]);
+    };
+    walk3(node2);
+  };
+  const renderedRoot = (node2) => {
+    if (!node2 || node2.nodeType !== 1) return false;
+    if (node2.classList?.contains("pxd-embed-live") || node2.classList?.contains("pxd-rs__live") || node2.classList?.contains("pxd-item__editor--sticky")) return true;
+    return Boolean(node2.querySelector?.(".pxd-rs__live, .pxd-embed-live, .pxd-item__editor--sticky"));
+  };
+  const holdQuiet = (rec, uid) => {
+    if (!rec || editing?.uid === uid) return;
+    const roots = (rec.roots || []).filter(renderedRoot);
+    if (!roots.length) return;
+    const clones = [];
+    for (const root of roots) {
+      const parent = root.parentElement;
+      if (!parent || typeof root.cloneNode !== "function") continue;
+      const clone2 = root.cloneNode(true);
+      stripLiveAttrs(clone2);
+      clone2.classList?.add("pxd-quiet");
+      parent.insertBefore(clone2, root);
+      clones.push(clone2);
+    }
+    unmountRoots(rec);
+    for (const root of roots) {
+      try {
+        root.remove();
+      } catch {
+      }
+    }
+    rec.frozen = clones.length ? clones : null;
     rec.contentKey = null;
     mounted.delete(uid);
     contentSched?.drop(uid);
+  };
+  const freezeMounted = () => {
+    const gen = freezeGen;
+    cancelFreezeFrame();
+    const queue = [];
+    for (const [uid, rec] of shells) queue.push([uid, rec]);
+    const pump = () => {
+      freezeFrame = null;
+      while (queue.length) {
+        const start = now2();
+        let n3 = 0;
+        while (queue.length && (n3 === 0 || now2() - start < CHUNK_MS)) {
+          if (gen !== freezeGen || !quieted || disposed) return;
+          const [uid, rec] = queue.shift();
+          if (shells.get(uid) === rec) holdQuiet(rec, uid);
+          n3 += 1;
+        }
+        if (!queue.length) return;
+        if (typeof timers?.frame === "function") {
+          freezeFrame = timers.frame(pump);
+          return;
+        }
+      }
+    };
+    pump();
   };
   const cardHeavy = (item, rec) => {
     if (!item || item.type === "section") return false;
@@ -35648,13 +35765,22 @@ function createItemRenderer({
   const quiet = (on) => {
     const next = Boolean(on);
     if (!next && editHeld) return;
-    if (next === quieted) return;
-    quieted = next;
-    if (quieted) {
-      contentSched?.hold(true);
-      for (const [uid, rec] of shells) holdQuiet(rec, uid);
+    if (next === quieted) {
+      if (next) {
+        contentSched?.hold(true);
+        freezeGen += 1;
+        freezeMounted();
+      }
       return;
     }
+    quieted = next;
+    freezeGen += 1;
+    if (quieted) {
+      contentSched?.hold(true);
+      freezeMounted();
+      return;
+    }
+    cancelFreezeFrame();
     contentSched?.hold(false);
     if (lastContent) fillContent({ ...lastContent, zoom: zoomCache });
   };
@@ -36923,6 +37049,8 @@ function createItemRenderer({
   const dispose = () => {
     if (disposed) return;
     disposed = true;
+    freezeGen += 1;
+    cancelFreezeFrame();
     stopShellBg();
     tellPane({ open: false });
     if (freshTimer) {

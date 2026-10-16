@@ -4,22 +4,28 @@
 // of the card inside this embed. Tab, Shift+Tab, and Cmd+Enter stay with Roam.
 
 const UID = /^[A-Za-z0-9_-]{9,15}$/;
+// Older graphs and imports have shorter uids. Only trusted where the string can
+// only be a uid: the final segment of an input id, or a data-uid attribute.
+const SHORT_UID = /^[A-Za-z0-9_]{5,15}$/;
 
 // Embed textareas are `block-input-render-block-path-<card>-uuid…-<block>`.
 // The block is the shortest 9–15 char suffix after a hyphen: a uuid piece is
 // 12 hex chars, and a longer match would swallow it. Uids may contain "-" and "_".
+// With no 9–15 suffix, a 5–8 char final segment (after the last hyphen) is the uid.
 function uidFromBlockInput(id) {
   const prefix = "block-input-";
   if (!id.startsWith(prefix)) return null;
   const rest = id.slice(prefix.length);
-  if (UID.test(rest)) return rest;
+  if (UID.test(rest) || SHORT_UID.test(rest)) return rest;
+  const last = rest.slice(rest.lastIndexOf("-") + 1);
+  const short = last.length < 9 && SHORT_UID.test(last) ? last : null;
   for (let i = rest.length - 1; i >= 0; i -= 1) {
     if (rest[i] !== "-") continue;
     const tail = rest.slice(i + 1);
-    if (tail.length > 15) return null;
+    if (tail.length > 15) return short;
     if (UID.test(tail)) return tail;
   }
-  return null;
+  return short;
 }
 
 export function blockUidFromNode(node) {
@@ -30,7 +36,7 @@ export function blockUidFromNode(node) {
     if (fromInput) return fromInput;
     if (UID.test(id)) return id;
     const data = el.dataset?.uid || el.getAttribute?.("data-uid") || "";
-    if (UID.test(data)) return data;
+    if (UID.test(data) || SHORT_UID.test(data)) return data;
     el = el.parentElement;
   }
   return null;

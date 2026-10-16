@@ -1,8 +1,10 @@
-// A board traps overlays. .pxd-root contains layout and clips overflow, and .pxd-world
-// is transformed, so a z-index inside the board cannot paint above it. Fullscreen is
-// also a fixed layer at z-index 40, which covers Blueprint portals that stay near 20.
-// Move a trapped overlay root to the body and give body portals one band. Leave a
-// topbar widget where Roam put it: the top bar itself is raised while a board is up.
+// A board traps overlays. .pxd-root clips overflow, and .pxd-world is transformed, so a
+// z-index inside one card cannot paint above a sibling. Never move a node Roam's React
+// owns. Body portals stay where Blueprint put them; extension.css is their band, and the
+// top bar itself is raised while a board is up. An overlay rendered inside a card
+// (inline popover, autocomplete) raises that card above its siblings until the overlay
+// is gone. .pxd-root overflow:clip still cuts that popover at the board edge.
+// Fullscreen is a fixed layer at z-index 40. CSS lifts body portals above it.
 
 const HOSTS = [
   ".bp3-portal",
@@ -27,9 +29,11 @@ const TRIGGERS = [
   ".bp3-menu",
 ];
 
-const ORDINARY_Z = 2500;
-const DIALOG_Z = 400000;
 const LIFT_FRAMES = 12;
+
+// card element -> how many overlay hosts inside it are still open.
+const raised = new Map();
+let hostCard = new WeakMap();
 
 const isHost = (node) => {
   if (!node || node.nodeType !== 1 || typeof node.matches !== "function") return false;
@@ -54,38 +58,30 @@ const trappedInBoard = (node) => {
   try { return Boolean(node.closest(".pxd-root, .pxd-mount")); } catch { return false; }
 };
 
-const isDialogHost = (host) => {
-  if (!host) return false;
-  if (isHost(host) && typeof host.matches === "function") {
-    try {
-      if (host.matches(".bp3-dialog, .bp3-alert")) return true;
-    } catch { /* selector */ }
-  }
-  try { return Boolean(host.querySelector?.(".bp3-dialog, .bp3-alert")); } catch { return false; }
+const claim = (host) => {
+  if (!host || hostCard.has(host) || !trappedInBoard(host)) return false;
+  let card = null;
+  try { card = host.closest?.(".pxd-item") || null; } catch { card = null; }
+  if (!card || card === host) return false;
+  hostCard.set(host, card);
+  raised.set(card, (raised.get(card) || 0) + 1);
+  try { card.classList.add("pxd-item--pop"); } catch { /* class */ }
+  return true;
 };
 
-const zOf = (node) => {
-  const raw = node?.style?.["z-index"] ?? node?.style?.zIndex ?? "";
-  const n = Number.parseInt(String(raw), 10);
-  return Number.isFinite(n) ? n : 0;
+const releaseRaised = () => {
+  for (const card of raised.keys()) {
+    try { card.classList?.remove("pxd-item--pop"); } catch { /* gone */ }
+  }
+  raised.clear();
+  hostCard = new WeakMap();
 };
 
 export function liftRoamOverlay(node, doc) {
   if (!doc?.body) return false;
   const host = overlayHost(node);
   if (!host) return false;
-  const trapped = trappedInBoard(host);
-  const onBody = host.parentElement === doc.body;
-  if (!trapped && !onBody) return false;
-  const want = isDialogHost(host) ? DIALOG_Z : ORDINARY_Z;
-  const current = zOf(host);
-  let moved = false;
-  if (trapped && !onBody) {
-    try { doc.body.append(host); moved = host.parentElement === doc.body; } catch { return false; }
-  }
-  if (current >= want) return moved;
-  try { host.style?.setProperty?.("z-index", String(want), "important"); } catch { return moved; }
-  return true;
+  return claim(host);
 }
 
 export function liftRoamOverlays(doc) {
@@ -156,6 +152,7 @@ export function installRoamStack(doc) {
     if (raf && typeof view.cancelAnimationFrame === "function") view.cancelAnimationFrame(raf);
     raf = 0;
     framesLeft = 0;
+    releaseRaised();
   };
 }
 

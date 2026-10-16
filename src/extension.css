@@ -221,9 +221,14 @@ body.pxd-has-fullscreen {
 /* The board is a stacking context (contain, and a fixed fullscreen layer at 40).
    Raise Roam's top bar so a date picker or Find or Create that stays in the bar
    paints over the board. Body portals sit above Ask (1000). Dialogs sit above
-   the pin toast (100000). */
+   the pin toast (100000). An overlay inside a card is not moved: the card rises
+   above its siblings. .pxd-root overflow:clip still cuts that popover at the board edge. */
 body.pxd-has-board .rm-topbar {
   z-index: 80;
+}
+
+.pxd-root .pxd-item.pxd-item--pop {
+  z-index: 6;
 }
 
 body.pxd-has-board > .bp3-portal {

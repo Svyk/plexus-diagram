@@ -17,7 +17,7 @@ test("fullscreen stays at 40 and Roam's top bar and portals paint above the boar
   assert.match(css, /body\.pxd-has-board > \.bp3-portal:has\(\.bp3-alert\)/);
 });
 
-test("a trapped overlay moves to the body; a topbar search stays; a dialog outranks a pinned menu", () => {
+test("a trapped overlay is not moved; a topbar search stays; a body portal keeps its inline z-index", () => {
   const stub = createDomStub();
   const restore = stub.install();
   try {
@@ -48,15 +48,15 @@ test("a trapped overlay moves to the body; a topbar search stays; a dialog outra
     dialog.append(dialogBox);
     doc.body.append(mount, topbar, menu, dialog);
 
-    assert.equal(liftRoamOverlay(pop, doc), true);
-    assert.equal(portal.parentElement, doc.body);
-    assert.equal(portal.style["z-index"], "2500");
+    assert.equal(liftRoamOverlay(pop, doc), false);
+    assert.equal(portal.parentElement, root);
+    assert.equal(portal.style["z-index"], undefined);
     assert.equal(liftRoamOverlay(find, doc), false);
     assert.equal(find.parentElement, topbar);
     assert.equal(liftRoamOverlay(menu, doc), false);
     assert.equal(menu.style["z-index"], "4000");
-    assert.equal(liftRoamOverlay(dialog, doc), true);
-    assert.equal(dialog.style["z-index"], "400000");
+    assert.equal(liftRoamOverlay(dialog, doc), false);
+    assert.equal(dialog.style["z-index"], undefined);
     assert.equal(dialog.parentElement, doc.body);
   } finally {
     restore();
@@ -84,28 +84,73 @@ test("hovering a block ref lifts the portal that appears after the pointer; a pl
     stub.flushFrames();
     assert.equal(ignored.parentElement, root, "a card hover does not lift");
     stub.dispatch(ref, "pointerover");
+    const card = doc.createElement("div");
+    card.className = "pxd-item";
     const portal = doc.createElement("div");
     portal.className = "bp3-portal";
     const date = doc.createElement("div");
     date.className = "bp3-datepicker";
     portal.append(date);
-    root.append(portal);
+    card.append(portal);
+    root.append(card);
     stub.flushFrames();
-    assert.equal(portal.parentElement, doc.body);
-    assert.equal(portal.style["z-index"], "2500");
+    assert.equal(portal.parentElement, card);
+    assert.equal(card.classList.contains("pxd-item--pop"), true);
+    assert.equal(portal.style["z-index"], undefined);
     const late = doc.createElement("div");
     late.className = "bp3-portal";
     doc.body.append(late);
     stub.flushMutations();
     stub.flushFrames();
-    assert.equal(late.style["z-index"], "2500");
+    assert.equal(late.parentElement, doc.body);
+    assert.equal(late.style["z-index"], undefined);
     off();
+    assert.equal(card.classList.contains("pxd-item--pop"), false);
     const after = doc.createElement("div");
     after.className = "bp3-portal";
     doc.body.append(after);
     stub.flushMutations();
     stub.flushFrames();
     assert.equal(after.style["z-index"], undefined);
+  } finally {
+    restore();
+  }
+});
+
+test("a trapped overlay stays in its card, the card rises, and uninstall lowers it", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const doc = stub.document;
+    const mount = doc.createElement("div");
+    mount.className = "pxd-mount";
+    const root = doc.createElement("div");
+    root.className = "pxd-root";
+    const card = doc.createElement("div");
+    card.className = "pxd-item";
+    const portal = doc.createElement("div");
+    portal.className = "bp3-portal";
+    const pop = doc.createElement("div");
+    pop.className = "bp3-popover";
+    portal.append(pop);
+    card.append(portal);
+    root.append(card);
+    mount.append(root);
+    const menu = doc.createElement("div");
+    menu.className = "bp3-portal";
+    menu.style.setProperty("z-index", "4000", "important");
+    doc.body.append(mount, menu);
+
+    assert.equal(liftRoamOverlay(pop, doc), true);
+    assert.equal(portal.parentElement, card);
+    assert.equal(card.classList.contains("pxd-item--pop"), true);
+    assert.equal(menu.parentElement, doc.body);
+    assert.equal(liftRoamOverlay(menu, doc), false);
+    assert.equal(menu.style["z-index"], "4000");
+    const off = installRoamStack(doc);
+    off();
+    assert.equal(card.classList.contains("pxd-item--pop"), false);
+    assert.equal(portal.parentElement, card);
   } finally {
     restore();
   }

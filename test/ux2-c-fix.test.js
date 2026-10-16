@@ -227,7 +227,7 @@ function pinsOf(fake) {
   return uid ? fake.block(uid) : null;
 }
 
-test("a figure copy undoes the upload and the pin together", async () => {
+test("a figure copy reuses the uploaded file on redo", async () => {
   const { fake, session } = pinSetup();
   const deleted = [];
   const uploads = [];
@@ -243,28 +243,48 @@ test("a figure copy undoes the upload and the pin together", async () => {
   assert.ok(made.uid);
   assert.ok(pinsOf(fake));
   await session.undo();
-  assert.deepEqual(deleted, ["https://files.test/1.png"]);
+  assert.deepEqual(deleted, []);
   assert.equal(pinsOf(fake), null);
   assert.equal(fake.has(card.uid), true);
   assert.equal(fake.calls.filter((row) => row[0] === "undo").length, 0);
   await session.redo();
   assert.ok(pinsOf(fake));
-  assert.equal(uploads.length, 2);
+  assert.equal(uploads.length, 1);
+  assert.equal(made.url, "https://files.test/1.png");
 
   const again = await session.copyFigureFile({ spec: figurePin, file: { name: "fig.png", type: "image/png" } });
   assert.equal(again.reused, true);
   assert.equal(again.uid, made.uid);
   const before = deleted.length;
   await session.undo();
-  assert.equal(deleted.length, before + 1);
+  assert.equal(deleted.length, before);
   assert.equal(fake.has(made.uid), true);
 
-  deleted.length = 0;
-  const missed = await session.copyFigureFile({ spec: { pdfUid: "pdf1" }, file: { name: "fig.png", type: "image/png" } });
+  const fresh = pinSetup();
+  const dropped = [];
+  fresh.fake.setUpload(async () => "https://files.test/miss.png");
+  fresh.fake.setFileDelete(async ({ url }) => { dropped.push(url); });
+  const stay = await fresh.session.insertParsedCard({ x: 12, y: 12, markdown: "- stay" });
+  const missed = await fresh.session.copyFigureFile({ spec: { pdfUid: "pdf1" }, file: { name: "fig.png", type: "image/png" } });
   assert.equal(missed.ok, false);
-  assert.ok(deleted.includes(missed.url) || deleted.length >= 1);
-  await session.undo();
-  assert.equal(fake.has(card.uid), true);
+  assert.ok(dropped.length >= 1);
+  await fresh.session.undo();
+  assert.equal(fresh.fake.has(stay.uid), false);
+
+  const thrown = pinSetup();
+  const thrownFiles = [];
+  thrown.fake.setUpload(async () => "https://files.test/throw.png");
+  thrown.fake.setFileDelete(async ({ url }) => { thrownFiles.push(url); });
+  const earlier = await thrown.session.insertParsedCard({ x: 14, y: 14, markdown: "- stay" });
+  const orig = thrown.host.createBlock.bind(thrown.host);
+  thrown.host.createBlock = async () => { throw new Error("pin write"); };
+  const failed = await thrown.session.copyFigureFile({ spec: figurePin, file: { name: "fig.png", type: "image/png" } });
+  thrown.host.createBlock = orig;
+  assert.equal(failed.ok, false);
+  assert.ok(thrownFiles.length >= 1);
+  await thrown.session.undo();
+  assert.equal(thrown.fake.has(earlier.uid), false);
+
   const menu = readFileSync(new URL("../src/view/parse-view.js", import.meta.url), "utf8");
   assert.match(menu, /copyFigureFile\(/);
   assert.match(menu, /figureCardMarkdown\(live, parsed\)/);

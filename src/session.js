@@ -2376,7 +2376,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       });
     },
 
-    // The figure file and its pin are one undo. A failed pin deletes the upload before the group closes.
+    // The figure file and its pin are one undo. Redo recreates the pin and reuses the file url.
+    // A failed pin deletes the upload and leaves no undo step.
     copyFigureFile({ spec, file } = {}) {
       if (destroyed || gone) return Promise.resolve({ ok: false, reason: "gone" });
       if (!file && !spec?.pdfUid) return Promise.resolve({ ok: false, reason: "empty" });
@@ -2384,12 +2385,20 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       return queue.run(() => run(async () => {
         const created = [];
         let uploadedUrl = "";
-        let failed = false;
-        let noted = false;
-        const keep = () => {
-          if (noted) return;
-          noted = true;
-          try { host.noteGroupedWrite?.("upload"); } catch { /* host */ }
+        const dropUndo = () => {
+          try { host.setCustomUndo?.(null); } catch { /* host */ }
+        };
+        const discardUpload = async () => {
+          if (!uploadedUrl) return;
+          const url = uploadedUrl;
+          uploadedUrl = "";
+          try { await host.deleteFile?.(url); } catch { /* already gone */ }
+        };
+        const discardBlocks = async () => {
+          for (const row of created.splice(0).reverse()) {
+            if (!row?.uid) continue;
+            try { await host.deleteBlock(row.uid); } catch { /* already gone */ }
+          }
         };
         const custom = {
           async undo() {
@@ -2397,13 +2406,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
               if (!row?.uid) continue;
               try { await host.deleteBlock(row.uid); } catch { /* already gone */ }
             }
-            if (!uploadedUrl) return;
-            const url = uploadedUrl;
-            uploadedUrl = "";
-            try { await host.deleteFile?.(url); } catch { /* already gone */ }
           },
           async redo() {
-            if (failed) return;
             for (const row of created) {
               try {
                 await host.createBlock({
@@ -2416,55 +2420,38 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
                 });
               } catch { /* already there */ }
             }
-            if (file && !uploadedUrl) {
-              try { uploadedUrl = String(await host.uploadFile(file) || ""); } catch { uploadedUrl = ""; }
-            }
           },
         };
         try { host.setCustomUndo?.(custom); } catch { /* host */ }
         if (file) {
           try { uploadedUrl = String(await host.uploadFile(file) || ""); }
           catch {
-            try { host.setCustomUndo?.(null); } catch { /* host */ }
+            dropUndo();
             return { ok: false, uid: "", url: "", reused: false, reason: "upload-failed" };
           }
-          if (uploadedUrl) keep();
         }
         let made = { uid: "", reused: false, created: [] };
         if (spec?.pdfUid) {
           try { made = await writePdfPin(spec) || made; }
           catch {
-            failed = true;
-            for (const row of created.slice().reverse()) {
-              try { await host.deleteBlock(row.uid); } catch { /* gone */ }
-            }
-            if (uploadedUrl) {
-              const url = uploadedUrl;
-              uploadedUrl = "";
-              try { await host.deleteFile?.(url); } catch { /* gone */ }
-            }
-            if (!noted) keep();
+            await discardUpload();
+            await discardBlocks();
+            dropUndo();
             return { ok: false, uid: "", url: "", reused: false, reason: "write-failed" };
           }
           for (const row of made.created || []) created.push(row);
         }
         if (spec?.pdfUid && !made.uid) {
-          failed = true;
-          if (uploadedUrl) {
-            const url = uploadedUrl;
-            uploadedUrl = "";
-            try { await host.deleteFile?.(url); } catch { /* gone */ }
-          }
-          for (const row of created.slice().reverse()) {
-            try { await host.deleteBlock(row.uid); } catch { /* gone */ }
-            created.pop();
-          }
-          if (!noted) keep();
+          await discardUpload();
+          await discardBlocks();
+          dropUndo();
           return { ok: false, uid: "", url: "", reused: false };
         }
-        if (!uploadedUrl && !created.length) {
-          try { host.setCustomUndo?.(null); } catch { /* host */ }
-        }
+        // A reused pin was not created here, so its undo must not delete that pin.
+        // A copy that created nothing must not spend an undo step.
+        if (created.length || made.reused) {
+          try { host.noteGroupedWrite?.("upload"); } catch { /* host */ }
+        } else dropUndo();
         return { ok: true, uid: made.uid || "", url: uploadedUrl, reused: Boolean(made.reused) };
       }));
     },

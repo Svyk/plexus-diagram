@@ -276,7 +276,11 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         : pdfPage && !kids.length && Array.isArray(pdfPage.children) ? pdfPage.children : kids;
       let target;
       if (pdfPage) target = { kind: "block", uid: pdfPage.pdfUid, page: pdfPage.title, ...(pdfPage.pageUid ? { pageUid: pdfPage.pageUid } : {}) };
-      else if (kind === "page") target = { kind: "page", title: cls.title };
+      else if (kind === "page") {
+        const pageRef = refNodes(child).find((ref) => ref?.[":node/title"] === cls.title);
+        const pageUid = typeof pageRef?.[":block/uid"] === "string" ? pageRef[":block/uid"] : "";
+        target = pageUid ? { kind: "page", title: cls.title, uid: pageUid } : { kind: "page", title: cls.title };
+      }
       else if (kind === "block" || kind === "region-ref" || kind === "drawing-ref" || (kind === "pdf" && cls.refUid) || (kind === "highlight" && cls.refUid)) target = { kind: "block", uid: cls.refUid };
       else target = { kind: "self", uid: cuid };
       const openKey = type === "card" ? kidsOpenKey(cardKids) : "";

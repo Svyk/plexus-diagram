@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
 import { buildBoard, diffBoards, worldRects } from "../src/model/board.js";
-import { kidsHeightPlan, peekAllowed, rememberUnfoldedSize, findBlock, childIsOpen, PEEK_HOVER_MS, PEEK_LEAVE_MS } from "../src/model/card-children.js";
+import { kidsHeightPlan, peekAllowed, rememberUnfoldedSize, findBlock, childIsOpen, focusStep, cardOwningBlock, cardOwningByParent, focusOpenBlock, PEEK_HOVER_MS, PEEK_LEAVE_MS } from "../src/model/card-children.js";
 import { editorKeyAction } from "../src/view/editor-keys.js";
 import { createItemRenderer } from "../src/view/cards.js";
 import { createHost } from "../src/host/roam.js";
@@ -551,4 +551,113 @@ test("closing the last pinned peek removes the document pointer listener", (t) =
   assert.ok(downs() > before);
   h.r.closeCardPeek();
   assert.equal(downs(), before);
+});
+
+test("focusStep walks one crumb level and stops on the card", () => {
+  const trail = [{ uid: "kidA00001", label: "child one" }, { uid: "kidA10001", label: "grandchild" }];
+  const mid = focusStep(trail);
+  assert.equal(mid.uid, "kidA00001");
+  assert.deepEqual(mid.trail.map((t) => t.uid), ["kidA00001"]);
+  assert.equal(focusStep(mid.trail).uid, null);
+  assert.deepEqual(focusStep(mid.trail).trail, []);
+  assert.equal(focusStep(null).uid, null);
+});
+
+test("a block uid addresses the card that contains it and opening the card itself does not", () => {
+  const items = new Map([
+    ["noteAAAA1", {
+      uid: "noteAAAA1",
+      type: "card",
+      content: [{ ":block/uid": "kidA00001", children: [{ uid: "kidA10001" }] }],
+    }],
+    ["sectCCCC1", { uid: "sectCCCC1", type: "section", content: [{ uid: "kidA10001" }] }],
+    ["refAAAA01", { uid: "refAAAA01", type: "card", kind: "block", target: { kind: "block", uid: "target01" }, content: [] }],
+  ]);
+  assert.deepEqual(cardOwningBlock(items, "kidA10001"), { cardUid: "noteAAAA1", blockUid: "kidA10001" });
+  assert.equal(cardOwningBlock(items, "noteAAAA1"), null);
+  assert.equal(cardOwningByParent(items, "noteAAAA1", () => ({ parentUid: "board0001" })), null);
+  const parents = { deep00001: "mid000001", mid000001: "noteAAAA1" };
+  assert.deepEqual(
+    cardOwningByParent(items, "deep00001", (uid) => ({ parentUid: parents[uid] || "" })),
+    { cardUid: "noteAAAA1", blockUid: "deep00001" },
+  );
+  assert.deepEqual(
+    cardOwningByParent(items, "underref1", () => ({ parentUid: "target01" })),
+    { cardUid: "refAAAA01", blockUid: "underref1" },
+  );
+  assert.equal(cardOwningByParent(items, "target01", () => ({ parentUid: "page00001" })), null);
+  const calls = [];
+  const records = [{ items, focusInside: (cardUid, blockUid) => calls.push([cardUid, blockUid]) }];
+  assert.equal(focusOpenBlock(records, "kidA10001", () => null), true);
+  assert.deepEqual(calls, [["noteAAAA1", "kidA10001"]]);
+  assert.equal(focusOpenBlock(records, "noteAAAA1", () => null), false);
+  assert.equal(calls.length, 1);
+});
+
+test("openBlock on a child of a page card focuses that card", () => {
+  const page = {
+    uid: "pagecard1",
+    type: "card",
+    kind: "page",
+    target: { kind: "page", title: "Notes", uid: "pageUid01" },
+    content: [],
+  };
+  const items = new Map([["pagecard1", page]]);
+  const parents = { grand0001: "kid000001", kid000001: "pageUid01" };
+  const parentOf = (uid) => ({ parentUid: parents[uid] || "" });
+  assert.deepEqual(
+    cardOwningByParent(items, "kid000001", parentOf),
+    { cardUid: "pagecard1", blockUid: "kid000001" },
+  );
+  assert.deepEqual(
+    cardOwningByParent(items, "grand0001", parentOf),
+    { cardUid: "pagecard1", blockUid: "grand0001" },
+  );
+  assert.equal(cardOwningByParent(items, "pageUid01", () => ({ parentUid: "higher001" })), null);
+  const bare = new Map([["pagecard1", {
+    uid: "pagecard1",
+    type: "card",
+    kind: "page",
+    target: { kind: "page", title: "Notes" },
+    content: [],
+  }]]);
+  assert.deepEqual(
+    cardOwningByParent(bare, "kid000001", parentOf, (title) => (title === "Notes" ? "pageUid01" : "")),
+    { cardUid: "pagecard1", blockUid: "kid000001" },
+  );
+  const calls = [];
+  const records = [{ items, focusInside: (cardUid, blockUid) => calls.push([cardUid, blockUid]) }];
+  assert.equal(focusOpenBlock(records, "grand0001", parentOf), true);
+  assert.deepEqual(calls, [["pagecard1", "grand0001"]]);
+});
+
+test("a grandchild bullet focuses card › parent › child; stepFocus walks back and writes nothing", (t) => {
+  const h = harness({ children: [blk("noteAAAA1", "alpha", { ":x": 0, ":y": 0, ":w": 240, ":h": 100, ":kids": true }, 0, alpha)] });
+  t.after(h.restore);
+  h.show();
+  const cardEl = h.root.querySelector("[data-uid=noteAAAA1]");
+  cardEl.querySelector("[data-pxd-row=kidA10001] .pxd-outline__bullet").click();
+  const crumb = cardEl.querySelector(".pxd-focus__crumb");
+  assert.ok(crumb);
+  assert.match(crumb.textContent, /alpha/);
+  assert.match(crumb.textContent, /child one/);
+  assert.match(crumb.textContent, /grandchild/);
+  assert.equal(cardEl.querySelector("[data-pxd-row=kidB00001]"), null);
+  assert.equal(h.r.stepFocus(), true);
+  const mid = cardEl.querySelector(".pxd-focus__crumb");
+  assert.match(mid.textContent, /alpha/);
+  assert.match(mid.textContent, /child one/);
+  assert.equal(/grandchild/.test(mid.textContent), false);
+  assert.ok(cardEl.querySelector("[data-pxd-row=kidA10001]"));
+  assert.equal(cardEl.querySelector("[data-pxd-row=kidB00001]"), null);
+  assert.equal(h.r.stepFocus(), true);
+  assert.equal(cardEl.querySelector(".pxd-focus__crumb"), null);
+  assert.ok(cardEl.querySelector("[data-pxd-row=kidB00001]"));
+  assert.equal(h.writes.length, 0);
+  assert.equal(h.r.stepFocus(), false);
+  h.r.dispose();
+  const h2 = harness({ children: [blk("noteAAAA1", "alpha", { ":x": 0, ":y": 0, ":w": 240, ":h": 100, ":kids": true }, 0, alpha)] });
+  t.after(h2.restore);
+  h2.show();
+  assert.equal(h2.root.querySelector(".pxd-focus__crumb"), null);
 });

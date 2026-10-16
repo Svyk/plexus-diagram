@@ -42,7 +42,7 @@ import { buildPinChip } from "./pdf-pin-view.js";
 import { isRoamTableString, tableUidOf } from "../model/roam-table.js";
 import { mountRoamTable } from "./table-card.js";
 import { findCell, forgetTableCells, measureCell, revealCell, watchTable } from "./table-cells.js";
-import { childIsOpen, findBlock, PEEK_ANIM_MS, PEEK_HOVER_MS, PEEK_LEAVE_MS, peekAllowed } from "../model/card-children.js";
+import { childIsOpen, findBlock, focusStep, PEEK_ANIM_MS, PEEK_HOVER_MS, PEEK_LEAVE_MS, peekAllowed } from "../model/card-children.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -2724,6 +2724,26 @@ export function createItemRenderer({
     }
     if (editing?.uid === cardUid) return true;
     remountCard(rec);
+    return true;
+  };
+  const stepFocus = () => {
+    if (disposed || cardFocus.size === 0) return false;
+    const preferred = hotRow?.card && cardFocus.has(hotRow.card) ? hotRow.card : null;
+    const cardUid = preferred || cardFocus.keys().next().value;
+    const blockUid = cardFocus.get(cardUid);
+    if (!cardUid || !blockUid) return false;
+    const item = lastBoard?.items.get(cardUid);
+    const rec = shells.get(cardUid);
+    const pageList = rec?.pageBlocks;
+    const contentList = Array.isArray(item?.content) ? item.content : [];
+    const list = Array.isArray(pageList) && pageList.length ? pageList : contentList;
+    const hit = findBlock(list, blockUid, outlineRead);
+    const step = focusStep(hit?.trail);
+    if (step.uid) return focusInside(cardUid, step.uid);
+    cardFocus.delete(cardUid);
+    if (hotRow?.card === cardUid) hotRow = null;
+    if (rec?.peekOpen) rerenderPeek(rec);
+    else if (rec) remountCard(rec);
     return true;
   };
   const peekLive = new Set();
@@ -6618,6 +6638,7 @@ export function createItemRenderer({
     measureContent,
     toggleKids,
     focusInside,
+    stepFocus,
     cancelCardPeek,
     closeCardPeek,
     setPeekBlocked,

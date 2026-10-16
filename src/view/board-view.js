@@ -8860,6 +8860,12 @@ function buildBoardView(onFail, {
       event.stopPropagation();
       return;
     }
+    // A focused child steps back one crumb level. Editing and an open peek close first.
+    if (event.key === "Escape" && !itemsR.isEditing() && itemsR.stepFocus?.()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (event.key === "Escape" && hoverUid) hideHover();
     // Escape closes the Background popover before the controller's chain (selection, up a level, fullscreen) runs.
     if (event.key === "Escape" && chrome.popover.isOpen()) { chrome.popover.close(); noteOverlayClosed(); event.preventDefault(); event.stopPropagation(); return; }
@@ -9862,6 +9868,11 @@ function buildBoardView(onFail, {
       // A board inline on a long page: bring it on screen so the pulse is seen.
       if (ok && !isFullscreen) { try { mountEl?.scrollIntoView?.({ block: "center" }); } catch { /* no layout */ } }
       return ok;
+    },
+    // Session focus of a child block. Nothing is written.
+    focusInside(cardUid, blockUid) {
+      if (disposed) return false;
+      return itemsR.focusInside?.(cardUid, blockUid) === true;
     },
     viewport: () => ({ x: vp.x, y: vp.y, zoom: vp.zoom }),
     restoreViewport(next) {

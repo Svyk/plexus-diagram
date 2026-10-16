@@ -361,6 +361,29 @@ test("selection shows a context bar above the selection and never over it", asyn
   }
 });
 
+test("Escape steps out of a focused child and writes nothing", async () => {
+  const f = mountFixture({ kidsOn: ["cardAAAA1"] });
+  try {
+    await f.flush();
+    await tick(5);
+    f.stub.flushIdle();
+    const card = f.view.root.querySelector("[data-uid=cardAAAA1]");
+    const bullet = card.querySelector(".pxd-outline__bullet");
+    assert.ok(bullet, "the child has a focus bullet");
+    bullet.click();
+    f.stub.flushFrames();
+    assert.ok(card.querySelector(".pxd-focus__crumb"));
+    f.stub.dispatch(f.stub.window, "keydown", { key: "Escape" });
+    f.stub.flushFrames();
+    assert.equal(card.querySelector(".pxd-focus__crumb"), null);
+    assert.ok(card.querySelector("[data-pxd-row=kidAAAA01]"));
+    assert.equal(f.session.mutations.length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("TSK-6 the card color picker stays inside a narrow board", async () => {
   const f = mountFixture();
   try {
@@ -2416,7 +2439,7 @@ test("ED-3: a taller edit previews the section and Esc writes the card height on
   }
 });
 
-test("ED-4: editing pins a page menu to the textarea and lifts it out of the board", async () => {
+test("ED-4: editing leaves a page menu in the card", async () => {
   const f = mountFixture();
   try {
     await f.flush();
@@ -2432,14 +2455,12 @@ test("ED-4: editing pins a page menu to the textarea and lifts it out of the boa
     // Hydrate resolves on a microtask after the last flushed frame. Yield once so the watcher starts.
     await tick();
     f.stub.flushFrames();
-    assert.equal(menu.parentElement === f.stub.document.body, true);
-    assert.equal(menu.closest(".pxd-viewport") === null, true);
-    assert.equal(menu.style.position, "fixed");
-    assert.equal(menu.style.transform, "none");
-    assert.equal(menu.style.left, "100px");
-    assert.equal(menu.style.top, "226px");
+    assert.equal(menu.parentElement === editor, true, "the autocomplete stays in the card");
+    assert.equal(menu.closest(".pxd-viewport") !== null, true);
+    assert.equal(menu.style.position || "", "");
+    assert.equal(menu.style.left || "", "");
     f.stub.flushFrames();
-    assert.equal(f.host.calls.renderBlock, renders, "pinning a menu does not re-render the card");
+    assert.equal(f.host.calls.renderBlock, renders, "leaving the menu in place does not re-render the card");
     menu.remove();
     input.focus();
     f.stub.dispatch(input, "keydown", { key: "Escape" });

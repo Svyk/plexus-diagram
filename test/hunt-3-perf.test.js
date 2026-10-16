@@ -145,8 +145,9 @@ test("the menu loop writes position once while the anchor and the menus stay put
     const menu = doc.createElement("div");
     menu.className = "rm-autocomplete__results";
     menu._rect = box(10, 10, 280, 80);
-    root.append(textarea, menu);
-    doc.body.append(root);
+    // Already on the body. An autocomplete inside the card is not pinned and is not moved.
+    root.append(textarea);
+    doc.body.append(root, menu);
 
     let leftWrites = 0;
     const orig = menu.style.setProperty.bind(menu.style);

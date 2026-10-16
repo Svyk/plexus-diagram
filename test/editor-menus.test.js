@@ -2,11 +2,65 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { placeEditorMenus } from "../src/view/editor-menus.js";
+import { installRoamStack } from "../src/view/roam-stack.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
+
+// React's removeChild throws NotFoundError when a node was moved out from under it.
+const reactRemove = (parent, node) => {
+  if (!parent || node?.parentElement !== parent) {
+    const err = new Error("The node to be removed is not a child of this node.");
+    err.name = "NotFoundError";
+    throw err;
+  }
+  parent.removeChild(node);
+};
 
 const box = (x, y, width, height) => ({ x, y, left: x, top: y, width, height, right: x + width, bottom: y + height });
 
-test("ED-4: a menu inside the board is pinned to the textarea and leaves the scaled viewport", () => {
+test("a block editor and its menus stay in the card while hover and autocomplete run", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const doc = stub.document;
+    doc.body.classList.add("pxd-has-board");
+    const root = doc.createElement("div");
+    root.className = "pxd-root";
+    const card = doc.createElement("div");
+    card.className = "pxd-item";
+    const textarea = doc.createElement("textarea");
+    textarea.className = "rm-block__input";
+    textarea._rect = box(100, 200, 180, 24);
+    const menu = doc.createElement("div");
+    menu.className = "rm-autocomplete__results";
+    const picker = doc.createElement("div");
+    picker.className = "bp3-datepicker";
+    card.append(textarea);
+    root.append(card);
+    doc.body.append(root);
+    const off = installRoamStack(doc);
+    stub.dispatch(card, "pointerover");
+    stub.flushFrames();
+    card.append(menu, picker);
+    stub.flushMutations();
+    const menuHome = menu.parentElement;
+    const pickerHome = picker.parentElement;
+    assert.equal(placeEditorMenus(doc, textarea), 0);
+    assert.equal(textarea.parentElement === card, true, "the textarea stays in the card");
+    assert.equal(menu.parentElement === menuHome, true, "autocomplete stays in the card");
+    assert.equal(picker.parentElement === pickerHome, true, "date picker stays in the card");
+    assert.equal(menuHome === card, true, "autocomplete home is the card");
+    assert.equal(pickerHome === card, true, "date picker home is the card");
+    assert.doesNotThrow(() => reactRemove(menuHome, menu));
+    assert.doesNotThrow(() => reactRemove(pickerHome, picker));
+    assert.equal(card.classList.contains("pxd-item--pop"), true);
+    off();
+    assert.equal(card.classList.contains("pxd-item--pop"), false);
+  } finally {
+    restore();
+  }
+});
+
+test("ED-4: a menu inside the board stays where Roam rendered it", () => {
   const stub = createDomStub();
   const restore = stub.install();
   try {
@@ -25,13 +79,11 @@ test("ED-4: a menu inside the board is pinned to the textarea and leaves the sca
     root.append(viewport);
     stub.document.body.append(root);
 
-    assert.equal(placeEditorMenus(stub.document, textarea), 1);
-    assert.equal(menu.closest(".pxd-viewport"), null);
-    assert.equal(menu.parentElement, stub.document.body);
-    assert.equal(menu.style.position, "fixed");
-    assert.equal(menu.style.transform, "none");
-    assert.equal(menu.style.left, "100px");
-    assert.equal(menu.style.top, "226px");
+    assert.equal(placeEditorMenus(stub.document, textarea), 0);
+    assert.equal(menu.parentElement === viewport, true, "autocomplete stays in the board");
+    assert.equal(menu.style.position || "", "");
+    assert.equal(menu.style.left || "", "");
+    assert.doesNotThrow(() => reactRemove(viewport, menu));
   } finally {
     restore();
   }
@@ -89,7 +141,7 @@ test("ED-4: a portaled date picker is pinned to the card and loses Blueprint's t
   }
 });
 
-test("ED-4: a date picker trapped in the board is pinned to the textarea", () => {
+test("ED-4: a date picker trapped in the board stays in the board", () => {
   const stub = createDomStub();
   const restore = stub.install();
   try {
@@ -105,12 +157,11 @@ test("ED-4: a date picker trapped in the board is pinned to the textarea", () =>
     viewport.append(textarea, picker);
     root.append(viewport);
     stub.document.body.append(root);
-    assert.equal(placeEditorMenus(stub.document, textarea), 1);
-    assert.equal(picker.parentElement, stub.document.body);
-    assert.equal(picker.style.position, "fixed");
-    assert.equal(picker.style.transform, "none");
-    assert.equal(picker.style.left, "100px");
-    assert.equal(picker.style.top, "226px");
+    assert.equal(placeEditorMenus(stub.document, textarea), 0);
+    assert.equal(picker.parentElement === viewport, true, "date picker stays in the board");
+    assert.equal(picker.style.position || "", "");
+    assert.equal(root.style.transform || "", "");
+    assert.doesNotThrow(() => reactRemove(viewport, picker));
   } finally {
     restore();
   }

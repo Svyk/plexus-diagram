@@ -1,6 +1,6 @@
 /* Ask AI chat window, in the style of Live AI Assistant's chat. Appended to the document body and placed by
    ask-ai.js (left/top/width/height inline), so it floats above a fullscreen board (.pxd-mount--fullscreen is
-   z-index 40) and Roam's sidebars. Buttons use two classes: Blueprint's `.bp3-dark button` beats one. */
+   z-index 19) and Roam's sidebars. Buttons use two classes: Blueprint's `.bp3-dark button` beats one. */
 /* Colours: one light set and one dark set (Live AI's dark chat over Blueprint's dark palette). The dark set applies
    under .bp3-dark and with .pxd-ask--dark, which ask-ai.js sets from the board and Roam's own dark markers and
    background (floatingDark). test/ask-dark.test.js checks the text pairs against WCAG AA. */

@@ -8,7 +8,8 @@
 }
 
 .pxd-pdf-chip.pxd-pdf-chip,
-.pxd-boardchip.pxd-boardchip {
+.pxd-boardchip.pxd-boardchip,
+.pxd-zoomchip.pxd-zoomchip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -36,10 +37,17 @@
   white-space: nowrap;
 }
 
+.pxd-zoomchip.pxd-zoomchip {
+  margin: 4px 0 4px 8px;
+  white-space: nowrap;
+}
+
 .bp3-dark .pxd-pdf-chip.pxd-pdf-chip,
 .bp3-dark .pxd-boardchip.pxd-boardchip,
+.bp3-dark .pxd-zoomchip.pxd-zoomchip,
 body.bt-theme-dark .pxd-pdf-chip.pxd-pdf-chip,
-body.bt-theme-dark .pxd-boardchip.pxd-boardchip {
+body.bt-theme-dark .pxd-boardchip.pxd-boardchip,
+body.bt-theme-dark .pxd-zoomchip.pxd-zoomchip {
   border: 1px solid var(--pxd-border, #3b4b58);
   background: transparent;
   color: #e6edf3;

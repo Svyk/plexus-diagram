@@ -172,3 +172,11 @@ test("PGE: page-edit CSS scrolls inside the card and hides the second title and 
   assert.match(css, /\.rm-reference-main/);
   assert.match(css, /font-size: 13px !important/);
 });
+
+test("an editing page card lets an open overlay paint outside the card", () => {
+  const css = readFileSync(new URL("../src/css/page-edit.css", import.meta.url), "utf8");
+  assert.match(css, /\.pxd-item--page\.pxd-item--editing\.pxd-item--pop \{[^}]*overflow:\s*visible/);
+  assert.match(css, /\.pxd-item--page\.pxd-item--editing\.pxd-item--pop > \.pxd-item__body \{[^}]*overflow:\s*visible/);
+  assert.match(css, /\.pxd-item--editing\.pxd-item--pop[^{]*\.pxd-page-edit \{[^}]*overflow:\s*visible/);
+  assert.match(css, /\.pxd-page-edit \{[^}]*overflow: auto/);
+});

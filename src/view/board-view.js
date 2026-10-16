@@ -3835,6 +3835,7 @@ function buildBoardView(onFail, {
   const setViewport = (next) => {
     if (!next) return;
     vp = { x: next.x, y: next.y, zoom: next.zoom };
+    try { sharedBgBudget().noteCamera(); } catch { /* budget */ }
     if (hoverUid) hideHover();
     markViewport();
     // Buttons, Fit, search and edit-zoom change the viewport outside a gesture: re-evaluate LOD + content.
@@ -4116,10 +4117,13 @@ function buildBoardView(onFail, {
   };
   // Shell builds follow the same burst as the reveal cull. The flag is on before the event's hit-test,
   // and off again when the burst ends, which rearms the priority frame and the background pump.
+  const bgHoldKey = {};
   const syncShellHold = () => {
     const hold = deferReveal();
     if (hold) cancelSlice();
     try { itemsR.holdShells?.(hold); } catch { /* renderer */ }
+    // E5: no background slice while a gesture or a wheel burst is open; the quiet after it starts at its settle.
+    try { sharedBgBudget().hold(bgHoldKey, !disposed && !suspended && (gesturing || wheelLayer)); } catch { /* budget */ }
   };
   // "burst": every unattached item and edge (showUnderlay); "cover": only the overview-fast queue.
   let underlayKind = "";
@@ -9609,8 +9613,18 @@ function buildBoardView(onFail, {
   if (typeof MO === "function") {
     try {
       let settle = null;
+      // E5: our own body class (fullscreen) and other extensions toggle html/body classes often; each applyTheme reads
+      // computed style (a forced recalc of the page: getPropertyValue 337 ms in the PhD open tail). Only a change
+      // outside the pxd- classes can change the theme.
+      const classKey = () => [doc.documentElement, doc.body].map((n) => String(n?.className?.baseVal ?? n?.className ?? "").split(/\s+/).filter((c) => c && !c.startsWith("pxd-")).sort().join(" ")).join("|");
+      let lastClassKey = classKey();
       const mo = trackObserver(new MO(() => {
         if (disposed || suspended) return;
+        if (notedSpeedFlags().gestureQuiet !== false) {
+          const key = classKey();
+          if (key === lastClassKey) return;
+          lastClassKey = key;
+        }
         applyTheme();
         settle?.(); // a host background may still be transitioning when its marker class flips: measure once more after it
         settle = timers.later(() => { settle = null; if (!disposed && !suspended) applyTheme(); }, 300);
@@ -10129,6 +10143,8 @@ function buildBoardView(onFail, {
   applyBackground();
   applyMotion();
   applyLod();
+  // E5: an open is a camera change too: the post-open background jobs wait until it has been still for a while.
+  try { sharedBgBudget().noteCamera(); } catch { /* budget */ }
   itemsR.setShowBadges(flag("show-card-badges", true));
   seedSnapshotBadges();
   dirty.viewport = true;
@@ -10342,6 +10358,7 @@ function buildBoardView(onFail, {
       if (disposed || suspended) return;
       suspended = true;
       hitShield.drop();
+      try { sharedBgBudget().hold(bgHoldKey, false); } catch { /* budget */ }
       suspendedBoard = board();
       if (frameHandle) { const cancel = frameHandle; frameHandle = null; cancel(); }
       if (settleTimer) { settleTimer(); settleTimer = null; }
@@ -10626,6 +10643,7 @@ function buildBoardView(onFail, {
       if (disposing) return;
       disposing = true;
       disposed = true;
+      try { sharedBgBudget().hold(bgHoldKey, false); } catch { /* budget */ }
       if (pdfTitleJob) { const stop = pdfTitleJob; pdfTitleJob = null; stop(); }
       if (coverJob) { const stop = coverJob; coverJob = null; stop(); }
       hitShield.drop();

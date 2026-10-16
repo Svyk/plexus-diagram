@@ -1,7 +1,7 @@
 import pkg from "../package.json" with { type: "json" };
 import { createHost } from "./host/roam.js";
 import { acquireSession as acquireSessionDefault, hasSession } from "./session.js";
-import { bindBgBudgetFlag, resetSharedBgBudget, sharedBgBudget } from "./bg-budget.js";
+import { bindBgBudgetFlag, bindBgGestureFlag, resetSharedBgBudget, sharedBgBudget } from "./bg-budget.js";
 import { clearPinnedToast, mountBoardView, viewportStorageId } from "./view/board-view.js";
 import {
   captureSketch,
@@ -300,6 +300,7 @@ export async function installPlexusDiagram({
   try { host.useModelStore?.(modelStore); } catch { /* a host without stored models */ }
   const speedFlags = () => notedSpeedFlags();
   bindBgBudgetFlag(() => speedFlags().bgBudget !== false);
+  bindBgGestureFlag(() => speedFlags().gestureQuiet !== false);
   // Sessions outlive a settings change (they are ref-counted and kept), so they read through this accessor.
   const liveSettings = { get: (id) => settings[id] };
   let stopped = false;

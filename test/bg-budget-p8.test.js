@@ -2,9 +2,9 @@
 // input is active and for 300 ms after it, waits for its first quiet window, and the flag off is plain idle callbacks.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BG_DUTY, BG_QUIET_MS, BG_SLICE_MS, createBgBudget } from "../src/bg-budget.js";
+import { BG_CAMERA_QUIET_MS, BG_DUTY, BG_QUIET_MS, BG_SLICE_MS, createBgBudget } from "../src/bg-budget.js";
 
-function harness({ idleMs = 50, enabled = true } = {}) {
+function harness({ idleMs = 50, enabled = true, gestureQuiet = false } = {}) {
   let t = 10000;
   const idleQ = [];
   const timers = [];
@@ -21,6 +21,7 @@ function harness({ idleMs = 50, enabled = true } = {}) {
     setTimer: (fn, ms) => { const e = { at: t + ms, fn }; timers.push(e); return e; },
     clearTimer: (e) => { const i = timers.indexOf(e); if (i >= 0) timers.splice(i, 1); },
     enabled: () => enabled,
+    gestureQuiet: () => gestureQuiet,
   });
   const h = {
     budget,
@@ -174,4 +175,53 @@ test("cancel drops a waiting job; the flag off is one plain idle callback with t
   off.budget.idle((d) => { seen = d.timeRemaining(); });
   off.idle();
   assert.equal(seen, 50, "no quiet wait and no slice cap with the flag off");
+});
+
+// E5 (perf2, gestureQuiet): the open tail's reader, captures and primes ran inside pan bursts on the PhD main board.
+test("gestureQuiet: nothing runs while a gesture is held, the quiet starts at its release, and the camera must be still 500 ms", () => {
+  const h = harness({ gestureQuiet: true });
+  let runs = 0;
+  h.budget.hold("view", true);
+  h.budget.idle(() => { runs += 1; });
+  for (let i = 0; i < 10; i += 1) { h.idle(); h.wait(400); }
+  assert.equal(runs, 0, "held for 4 s: no slice");
+  h.budget.hold("view", false);
+  h.idle();
+  h.wait(BG_QUIET_MS - 10);
+  h.idle();
+  assert.equal(runs, 0, "the input quiet counts from the release (the settle)");
+  h.wait(400);
+  h.idle();
+  h.wait(400);
+  h.idle();
+  assert.equal(runs, 1);
+  // A camera move (Fit, zoom buttons, an eased move: no input event) holds work back for BG_CAMERA_QUIET_MS.
+  h.budget.noteCamera();
+  h.budget.idle(() => { runs += 1; });
+  h.wait(BG_CAMERA_QUIET_MS - 50);
+  h.idle();
+  assert.equal(runs, 1, "the camera moved under 500 ms ago");
+  h.wait(100);
+  h.idle();
+  h.wait(100);
+  h.idle();
+  assert.equal(runs, 2);
+});
+
+test("gestureQuiet: a slice in progress gets no more time once a gesture is held", () => {
+  const h = harness({ gestureQuiet: true });
+  let parts = 0;
+  h.budget.run(() => { parts += 1; h.advance(2); if (parts === 2) h.budget.hold("view", true); return parts >= 50; });
+  h.idle();
+  assert.equal(parts, 2, "the job yields at the next part boundary");
+});
+
+test("gestureQuiet off keeps the 3.34.0 budget: holds and camera moves are ignored", () => {
+  const h = harness({ gestureQuiet: false });
+  let runs = 0;
+  h.budget.hold("view", true);
+  h.budget.noteCamera();
+  h.budget.idle(() => { runs += 1; });
+  h.idle();
+  assert.equal(runs, 1);
 });

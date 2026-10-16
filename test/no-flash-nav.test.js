@@ -195,3 +195,36 @@ test("E1: resuming a parked big board with shells still queued re-places no edge
     }
   }
 });
+
+test("E5: no background slice runs inside a wheel burst on the board; it runs once the settle has been quiet", async () => {
+  const { bindBgGestureFlag, resetSharedBgBudget, sharedBgBudget, BG_QUIET_MS } = await import("../src/bg-budget.js");
+  for (const on of [true, false]) {
+    bindBgGestureFlag(() => on);
+    resetSharedBgBudget();
+    const m = mountBig({ x: 0, y: 0, zoom: 0.3 });
+    try {
+      await settledIn(m);
+      await tick(600);
+      const runs = [];
+      let inBurst = false;
+      m.stub.dispatch(m.view.root, "wheel", { deltaX: 30, deltaY: 30, deltaMode: 0, clientX: 700, clientY: 450 });
+      m.stub.flushFrames();
+      sharedBgBudget().idle(() => { runs.push(inBurst); }, { label: "test" });
+      const t0 = Date.now();
+      while (Date.now() - t0 < 700) {
+        inBurst = true;
+        m.stub.dispatch(m.view.root, "wheel", { deltaX: 30, deltaY: 30, deltaMode: 0, clientX: 700, clientY: 450 });
+        m.stub.flushFrames();
+        m.stub.flushIdle();
+        await tick(16);
+      }
+      inBurst = false;
+      const t1 = Date.now();
+      while (!runs.length && Date.now() - t1 < 2500) { await tick(30); m.stub.flushTimers(); m.stub.flushFrames(); m.stub.flushIdle(); }
+      if (on) {
+        assert.deepEqual(runs, [false], "the job ran once, after the burst");
+        assert.ok(Date.now() - t1 >= 120 + BG_QUIET_MS - 40, `not before the settle's quiet (${Date.now() - t1} ms)`);
+      } else assert.equal(runs[0], true, "flag off: the 3.34.0 budget ran it inside the burst");
+    } finally { m.done(); bindBgGestureFlag(() => false); resetSharedBgBudget(); }
+  }
+});

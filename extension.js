@@ -14806,6 +14806,40 @@ function rectOf2(frac) {
   if ("rx" in frac) return { x: Number(frac.rx), y: Number(frac.ry), w: Number(frac.rw), h: Number(frac.rh) };
   return { x: Number(frac.x), y: Number(frac.y), w: Number(frac.w), h: Number(frac.h) };
 }
+function finiteRect(frac) {
+  const box2 = rectOf2(frac);
+  if (!box2 || ![box2.x, box2.y, box2.w, box2.h].every(Number.isFinite) || !(box2.w > 0) || !(box2.h > 0)) return null;
+  return box2;
+}
+function rectArea(frac) {
+  const box2 = finiteRect(frac);
+  return box2 ? box2.w * box2.h : 0;
+}
+function overlapArea(a, b) {
+  const A2 = finiteRect(a);
+  const B = finiteRect(b);
+  if (!A2 || !B) return 0;
+  const iw = Math.min(A2.x + A2.w, B.x + B.w) - Math.max(A2.x, B.x);
+  const ih = Math.min(A2.y + A2.h, B.y + B.h) - Math.max(A2.y, B.y);
+  if (iw <= 0 || ih <= 0) return 0;
+  return iw * ih;
+}
+function centreInside(hit, block) {
+  const H = finiteRect(hit);
+  const B = finiteRect(block);
+  if (!H || !B) return false;
+  const cx = H.x + H.w / 2;
+  const cy = H.y + H.h / 2;
+  return cx >= B.x && cx <= B.x + B.w && cy >= B.y && cy <= B.y + B.h;
+}
+function smallerMostlyCovered(hit, block, min) {
+  const inter = overlapArea(hit, block);
+  const hitArea = rectArea(hit);
+  const blockArea = rectArea(block);
+  const smaller = Math.min(hitArea, blockArea);
+  if (!(inter > 0) || !(smaller > 0) || !(inter / smaller > min)) return false;
+  return Math.max(hitArea, blockArea) <= smaller * COVER_AREA_SLACK;
+}
 function tableSize(block) {
   const grid = block?.grid;
   let rows = Number(block?.rows) || (Array.isArray(grid?.ys) ? grid.ys.length - 1 : 0);
@@ -14875,9 +14909,12 @@ function matchParsedBlock(doc, { page, frac } = {}, min = 0.5) {
   const pg = Number(page);
   if (!Number.isInteger(pg) || pg < 1 || !Array.isArray(frac) || frac.length < 4) return null;
   const info = (doc?.pages || []).find((row4) => Number(row4?.n) === pg) || { n: pg, w: 612, h: 792, rotation: 0 };
+  let floor = Number(min);
+  if (!Number.isFinite(floor)) floor = 0.5;
   let best = null;
-  let score = Number(min);
-  if (!Number.isFinite(score)) score = 0.5;
+  let score = floor;
+  let tight = null;
+  let tightArea = Infinity;
   const ids = Array.isArray(doc?.order) && doc.order.length ? doc.order : Object.keys(doc?.blocks || {});
   for (const id of ids) {
     const block = doc?.blocks?.[id];
@@ -14889,19 +14926,20 @@ function matchParsedBlock(doc, { page, frac } = {}, min = 0.5) {
       score = iou6;
       best = block;
     }
+    const area2 = rectArea(box2);
+    if (!(area2 > 0) || area2 >= tightArea) continue;
+    if (centreInside(frac, box2) || smallerMostlyCovered(frac, box2, floor)) {
+      tight = block;
+      tightArea = area2;
+    }
   }
-  return best;
+  if (best) return best;
+  return tight;
 }
 function rectIou(a, b) {
-  const A2 = rectOf2(a);
-  const B = rectOf2(b);
-  if (!A2 || !B) return 0;
-  if (![A2.x, A2.y, A2.w, A2.h, B.x, B.y, B.w, B.h].every(Number.isFinite)) return 0;
-  const iw = Math.min(A2.x + A2.w, B.x + B.w) - Math.max(A2.x, B.x);
-  const ih = Math.min(A2.y + A2.h, B.y + B.h) - Math.max(A2.y, B.y);
-  if (iw <= 0 || ih <= 0) return 0;
-  const inter = iw * ih;
-  const union = A2.w * A2.h + B.w * B.h - inter;
+  const inter = overlapArea(a, b);
+  if (!(inter > 0)) return 0;
+  const union = rectArea(a) + rectArea(b) - inter;
   return union > 0 ? inter / union : 0;
 }
 function findDuplicatePin(regions, { page, frac } = {}, min = PIN_IOU) {
@@ -15192,7 +15230,7 @@ function planPinWrites(spec) {
   creates.push({ role: "pin", parentUid: containerUid, uid: pinUid, string });
   return { uid: pinUid, reused: false, creates, containerUid: spec?.containerUid || "" };
 }
-var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE4, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash, SOURCE_LINE_RE, notedPin, PIN_PENDING_MS;
+var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE4, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash, COVER_AREA_SLACK, SOURCE_LINE_RE, notedPin, PIN_PENDING_MS;
 var init_pdf_pin = __esm({
   "src/model/pdf-pin.js"() {
     init_deeplink();
@@ -15215,6 +15253,7 @@ var init_pdf_pin = __esm({
       { id: "link", label: "Copy link", keys: "" }
     ]);
     squash = (text4) => String(text4 ?? "").replace(/\s+/g, " ").trim();
+    COVER_AREA_SLACK = 4;
     SOURCE_LINE_RE = /^(?:[-*]\s+)?Source::\s*\(\(([\w-]{1,32})\)\)\s*$/;
     notedPin = null;
     PIN_PENDING_MS = 8e3;
@@ -19420,7 +19459,7 @@ var init_settings = __esm({
       [SETTING_IDS.pdfCoverWarm]: () => switchRow(SETTING_IDS.pdfCoverWarm, "Prepare PDF covers in the background", "On. A quiet board prepares a cover for a visible PDF that does not have one: Roam's PDF engine draws page 1 when it is reachable, otherwise a hidden reader does."),
       [SETTING_IDS.highlightOpen]: () => selectRow(SETTING_IDS.highlightOpen, "Highlight click opens", "Reader: the PDF pane scrolls to the highlight. Sidebar: Roam opens the highlight block in the right sidebar. Shift-click always opens the sidebar; the chip's arrow lists every choice.", ["reader", "sidebar"]),
       [SETTING_IDS.pdfDark]: () => selectRow(SETTING_IDS.pdfDark, "PDF pages in dark mode", "When the board is dark. Off keeps white pages. Dim darkens the page. Invert flips the page colors. Marks stay readable.", ["off", "dim", "invert"]),
-      [SETTING_IDS.pdfReaderDark]: () => selectRow(SETTING_IDS.pdfReaderDark, "PDF dark mode", "Off, Follow Roam, or On. Follow Roam is the default. On inverts the page canvas in Roam's PDF window so the page matches a dark graph. Photos that are their own image stay natural. Highlight colours and parsed outlines stay as they are.", ["off", "follow", "on"]),
+      [SETTING_IDS.pdfReaderDark]: () => selectRow(SETTING_IDS.pdfReaderDark, "PDF dark mode", "Off, Follow Roam, or On. Follow Roam is the default. On inverts the page canvas in Roam's own PDF window so the page matches a dark graph. Pictures drawn on the page invert with the text. Plexus paints them back when it can read their place. Highlights and parsed outlines stay. The reader beside the board is left alone.", ["off", "follow", "on"]),
       [SETTING_IDS.parseHelperUrl]: () => inputRow(SETTING_IDS.parseHelperUrl, "Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
       [SETTING_IDS.parseHelperToken]: () => inputRow(SETTING_IDS.parseHelperToken, "Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address.", { password: true, placeholder: "Token" }),
       [SETTING_IDS.parseEngineDefault]: () => selectRow(SETTING_IDS.parseEngineDefault, "Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper.", ["auto", "builtin", "docling"]),
@@ -27908,9 +27947,9 @@ function mountRegionCrop({ doc = globalThis.document, button: button3, region, f
     span.append(frame2);
     try {
       key = region.drawingUid || "";
-      const cacheKey = key || `crop-${span.id || Math.random()}`;
-      key = cacheKey;
-      img.src = takeUrl(cacheKey, file);
+      const cacheKey2 = key || `crop-${span.id || Math.random()}`;
+      key = cacheKey2;
+      img.src = takeUrl(cacheKey2, file);
       const paint2 = () => applyFrame(frame2, img, region.f || region.frac, maxH, region.p);
       if (img.complete && img.naturalWidth) paint2();
       else img.addEventListener("load", paint2, { once: true });
@@ -44590,6 +44629,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (entry && typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
       else if (!entry) delete openGroup.custom;
     },
+    // A file upload does not pass through noteWrite. A group that only uploaded would be dropped.
+    noteGroupedWrite(kind) {
+      noteWrite(typeof kind === "string" && kind ? kind : "upload");
+    },
     async deletePage(uid) {
       stats.writes++;
       await mutate(() => data.page.delete({ page: { uid } }));
@@ -45179,6 +45222,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (!url) throw new Error("upload-failed");
       stats.writes++;
       return url;
+    },
+    async deleteFile(url) {
+      const remove = api3.file?.delete;
+      const target = typeof url === "string" ? url.trim() : "";
+      if (!target || typeof remove !== "function") return false;
+      await remove.call(api3.file, { url: target });
+      return true;
     },
     searchPages(text4, limit = 40) {
       const needle = String(text4 ?? "").toLowerCase();
@@ -48483,7 +48533,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     return plan;
   };
   async function writePdfPin(spec) {
-    if (!spec?.pdfUid || !Array.isArray(spec.frac)) return { uid: "", reused: false };
+    const created = [];
+    if (!spec?.pdfUid || !Array.isArray(spec.frac)) return { uid: "", reused: false, created };
     let kids = [];
     try {
       const raw2 = host.pullTree?.(spec.pdfUid, 2, 200);
@@ -48509,12 +48560,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       containerUid: container?.uid || "",
       pinUid: host.generateUid()
     });
-    if (plan.reused) return { uid: plan.uid, reused: true };
+    if (plan.reused) return { uid: plan.uid, reused: true, created };
     let containerUid = container?.uid || "";
     let pinUid = plan.uid;
     for (const step of plan.creates) {
       const parentUid = step.role === "pin" && !step.parentUid ? containerUid : step.parentUid;
-      if (!parentUid) return { uid: "", reused: false };
+      if (!parentUid) return { uid: "", reused: false, created };
       const made = await host.createBlock({
         parentUid,
         order: "last",
@@ -48524,10 +48575,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         props: step.props
       });
       const id = typeof made === "string" ? made : made?.uid || step.uid || "";
+      if (id) created.push({ uid: id, parentUid, string: step.string, open: step.open, props: step.props ? clone(step.props) : void 0 });
       if (step.role === "container") containerUid = id;
       if (step.role === "pin") pinUid = id || pinUid;
     }
-    return { uid: pinUid, reused: false };
+    return { uid: pinUid, reused: false, created };
   }
   async function citePin(parentUid, pin2) {
     if (!parentUid || !pin2) return "";
@@ -48885,6 +48937,135 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         const writes = Math.max(0, (Number(host.stats?.writes) || 0) - before);
         return { ok: Boolean(made.uid), uid: made.uid || "", reused: Boolean(made.reused), writes };
       });
+    },
+    // The figure file and its pin are one undo. A failed pin deletes the upload before the group closes.
+    copyFigureFile({ spec, file } = {}) {
+      if (destroyed || gone) return Promise.resolve({ ok: false, reason: "gone" });
+      if (!file && !spec?.pdfUid) return Promise.resolve({ ok: false, reason: "empty" });
+      const run = host.group ? (fn) => host.group(fn, "figure") : (fn) => fn();
+      return queue.run(() => run(async () => {
+        const created = [];
+        let uploadedUrl = "";
+        let failed = false;
+        let noted = false;
+        const keep = () => {
+          if (noted) return;
+          noted = true;
+          try {
+            host.noteGroupedWrite?.("upload");
+          } catch {
+          }
+        };
+        const custom = {
+          async undo() {
+            for (const row4 of created.slice().reverse()) {
+              if (!row4?.uid) continue;
+              try {
+                await host.deleteBlock(row4.uid);
+              } catch {
+              }
+            }
+            if (!uploadedUrl) return;
+            const url = uploadedUrl;
+            uploadedUrl = "";
+            try {
+              await host.deleteFile?.(url);
+            } catch {
+            }
+          },
+          async redo() {
+            if (failed) return;
+            for (const row4 of created) {
+              try {
+                await host.createBlock({
+                  parentUid: row4.parentUid,
+                  order: "last",
+                  uid: row4.uid,
+                  string: row4.string,
+                  open: row4.open,
+                  props: row4.props
+                });
+              } catch {
+              }
+            }
+            if (file && !uploadedUrl) {
+              try {
+                uploadedUrl = String(await host.uploadFile(file) || "");
+              } catch {
+                uploadedUrl = "";
+              }
+            }
+          }
+        };
+        try {
+          host.setCustomUndo?.(custom);
+        } catch {
+        }
+        if (file) {
+          try {
+            uploadedUrl = String(await host.uploadFile(file) || "");
+          } catch {
+            try {
+              host.setCustomUndo?.(null);
+            } catch {
+            }
+            return { ok: false, uid: "", url: "", reused: false, reason: "upload-failed" };
+          }
+          if (uploadedUrl) keep();
+        }
+        let made = { uid: "", reused: false, created: [] };
+        if (spec?.pdfUid) {
+          try {
+            made = await writePdfPin(spec) || made;
+          } catch {
+            failed = true;
+            for (const row4 of created.slice().reverse()) {
+              try {
+                await host.deleteBlock(row4.uid);
+              } catch {
+              }
+            }
+            if (uploadedUrl) {
+              const url = uploadedUrl;
+              uploadedUrl = "";
+              try {
+                await host.deleteFile?.(url);
+              } catch {
+              }
+            }
+            if (!noted) keep();
+            return { ok: false, uid: "", url: "", reused: false, reason: "write-failed" };
+          }
+          for (const row4 of made.created || []) created.push(row4);
+        }
+        if (spec?.pdfUid && !made.uid) {
+          failed = true;
+          if (uploadedUrl) {
+            const url = uploadedUrl;
+            uploadedUrl = "";
+            try {
+              await host.deleteFile?.(url);
+            } catch {
+            }
+          }
+          for (const row4 of created.slice().reverse()) {
+            try {
+              await host.deleteBlock(row4.uid);
+            } catch {
+            }
+            created.pop();
+          }
+          if (!noted) keep();
+          return { ok: false, uid: "", url: "", reused: false };
+        }
+        if (!uploadedUrl && !created.length) {
+          try {
+            host.setCustomUndo?.(null);
+          } catch {
+          }
+        }
+        return { ok: true, uid: made.uid || "", url: uploadedUrl, reused: Boolean(made.reused) };
+      }));
     },
     // Notes a kept read on the PDF block's props: one write, one undo step. Nothing else changes.
     noteRead(blockUid3, entry) {
@@ -71578,18 +71759,28 @@ function createParseView({
       }
       if (id === "card" || id === "source") {
         let plain2 = "";
+        let source = "";
         if (isImageCopy(block)) {
           let live2 = block;
           const url2 = String(block.image?.url || block.url || "").trim();
-          if (!url2 && typeof host?.uploadFile === "function") {
+          if (!url2) {
             try {
               const spec = figureImageSpec(block);
               const blob = spec ? await spec.getBlob() : null;
               if (blob) {
                 const name = `${spec.name || "figure"}.png`;
                 const file = typeof File === "function" ? new File([blob], name, { type: blob.type || "image/png" }) : blob;
-                const uploaded = await host.uploadFile(file);
-                if (uploaded) live2 = { ...block, image: { ...block.image || {}, url: String(uploaded) } };
+                const pinSpec = id === "source" ? pinForBlock(block) : null;
+                if (id === "source" && !pinSpec) return false;
+                if (typeof session?.copyFigureFile === "function") {
+                  const made = await session.copyFigureFile({ spec: pinSpec, file });
+                  if (id === "source" && !made?.uid) return false;
+                  if (made?.url) live2 = { ...block, image: { ...block.image || {}, url: String(made.url) } };
+                  if (made?.uid) source = made.uid;
+                } else if (typeof host?.uploadFile === "function") {
+                  const uploaded = await host.uploadFile(file);
+                  if (uploaded) live2 = { ...block, image: { ...block.image || {}, url: String(uploaded) } };
+                }
               }
             } catch {
             }
@@ -71598,10 +71789,11 @@ function createParseView({
         } else {
           plain2 = toMarkdown(parsed, [block.id]);
         }
-        let source = "";
-        if (id === "source") {
+        if (id === "source" && !source) {
           source = await ensurePin(block);
           if (!source) return false;
+        }
+        if (id === "source" && source) {
           try {
             onToast?.(pinnedToast(block.page));
           } catch {
@@ -78246,6 +78438,8 @@ function createReadPane({
     },
     mode: () => viewMode,
     parsedDoc: () => parsedView?.getDoc?.() || null,
+    sourceUrl: () => pdfUrl(),
+    blockUid: () => current3.blockUid || "",
     // U2 contract for OCR sources: pxd-ocr/1 page records (or { pages }) for the open PDF.
     setOcrPages: (pages, opts) => setOcrPages(pages, opts),
     noteScan,
@@ -78260,21 +78454,68 @@ function createReadPane({
 // src/view/pin-reveal.js
 init_pdf();
 var SIDEBARS = ["#right-sidebar", ".rm-right-sidebar", ".rm-sidebar-window"];
-function sidebarPdfContainer(doc) {
-  if (!doc || typeof doc.querySelectorAll !== "function") return null;
+var SIDEBAR_WAIT_MS = 5e3;
+function sidebarRoots(doc) {
+  if (!doc || typeof doc.querySelectorAll !== "function") return [];
+  const roots = [];
   for (const sel of SIDEBARS) {
-    let roots = [];
+    let found = [];
     try {
-      roots = [...doc.querySelectorAll(sel)];
+      found = [...doc.querySelectorAll(sel)];
     } catch {
-      roots = [];
+      found = [];
     }
-    for (const root of roots) {
-      const box2 = root.querySelector?.(".rm-pdf-container") || null;
-      if (box2) return box2;
+    for (const root of found) if (root && !roots.includes(root)) roots.push(root);
+  }
+  return roots;
+}
+function sidebarPdfBoxes(doc) {
+  const out = [];
+  for (const root of sidebarRoots(doc)) {
+    const boxes = root.querySelectorAll?.(".rm-pdf-container") || [];
+    for (const box2 of boxes) {
+      if (!box2 || out.includes(box2) || box2.closest?.(".pxd-read") || box2.closest?.(".pxd-root")) continue;
+      out.push(box2);
     }
   }
-  return null;
+  return out;
+}
+function uidFromWindow(box2) {
+  const win2 = box2?.closest?.(".rm-sidebar-window");
+  const id = String(win2?.id || "");
+  const mark = "sidebar-block-";
+  const at = id.lastIndexOf(mark);
+  if (at < 0) return "";
+  return id.slice(at + mark.length).split(/[^\w-]/)[0] || "";
+}
+function sidebarPdfTarget(box2, readString) {
+  const marked = box2?.closest?.("[data-block-uid]")?.getAttribute?.("data-block-uid") || box2?.getAttribute?.("data-block-uid") || "";
+  const uid = String(marked || uidFromWindow(box2) || "").trim();
+  const stamped = String(box2?.getAttribute?.("data-pdf-url") || box2?.closest?.("[data-pdf-url]")?.getAttribute?.("data-pdf-url") || "").trim();
+  let url = stamped;
+  if (!url && uid && typeof readString === "function") {
+    try {
+      url = pdfMacroUrl(readString(uid) || "") || "";
+    } catch {
+      url = "";
+    }
+  }
+  return { uid, url };
+}
+function pdfTargetsMatch(found, want) {
+  const wantUid = String(want?.uid || "").trim();
+  const wantUrl = String(want?.url || "").trim();
+  if (!wantUid && !wantUrl) return false;
+  const foundUid = String(found?.uid || "").trim();
+  const foundUrl = String(found?.url || "").trim();
+  if (wantUid && foundUid && wantUid === foundUid) return true;
+  if (wantUrl && foundUrl && wantUrl === foundUrl) return true;
+  return false;
+}
+function sidebarPdfContainer(doc, want, readString) {
+  const boxes = sidebarPdfBoxes(doc);
+  if (!want || !String(want.uid || "").trim() && !String(want.url || "").trim()) return boxes[0] || null;
+  return boxes.find((box2) => pdfTargetsMatch(sidebarPdfTarget(box2, readString), want)) || null;
 }
 function readerField(box2) {
   const bar = box2?.querySelector?.(".rm-pdf-toolbar");
@@ -78284,8 +78525,9 @@ function readerField(box2) {
   if (named2) return named2;
   return inputs.find((node2) => /^\d+$/.test(String(node2.value || "").trim())) || inputs[0] || null;
 }
-function jumpSidebarPdf(doc, page) {
-  const box2 = sidebarPdfContainer(doc);
+function jumpSidebarPdf(doc, page, want, readString) {
+  if (!want || !String(want.uid || "").trim() && !String(want.url || "").trim()) return false;
+  const box2 = sidebarPdfContainer(doc, want, readString);
   if (!box2) return false;
   return writeReaderPage(readerField(box2), page);
 }
@@ -78293,6 +78535,61 @@ function sidebarPageEl(box2, n3) {
   if (!box2?.querySelector) return null;
   const want = String(n3);
   return box2.querySelector(`.page[data-page-number="${want}"]`) || null;
+}
+async function waitForSidebarPdf({ doc, want, readString, timeout = SIDEBAR_WAIT_MS, step = 50, now: now4 = () => Date.now(), sleep, alive } = {}) {
+  const start = typeof now4 === "function" ? now4() : Date.now();
+  const clock = typeof now4 === "function" ? now4 : () => Date.now();
+  const found = () => sidebarPdfContainer(doc, want, readString);
+  if (!want || !String(want.uid || "").trim() && !String(want.url || "").trim()) return null;
+  const immediate = found();
+  if (immediate) return immediate;
+  if (typeof sleep !== "function") return null;
+  const pace = Math.max(1, Number(step) || 50);
+  const cap4 = Math.max(1, Math.ceil((Number(timeout) || 0) / pace) + 1);
+  for (let i = 0; i < cap4; i += 1) {
+    const elapsed = clock() - start;
+    if (elapsed >= timeout) break;
+    if (typeof alive === "function" && !alive()) return null;
+    await sleep(Math.min(pace, timeout - elapsed));
+    if (typeof alive === "function" && !alive()) return null;
+    const box2 = found();
+    if (box2) return box2;
+  }
+  return null;
+}
+function watchNodeGone(node2, doc, onGone) {
+  if (!node2 || typeof onGone !== "function") return () => {
+  };
+  if (node2.isConnected === false) {
+    onGone();
+    return () => {
+    };
+  }
+  const Obs = doc?.defaultView?.MutationObserver || globalThis.MutationObserver;
+  const root = doc?.body || doc?.documentElement;
+  if (typeof Obs !== "function" || !root) return () => {
+  };
+  let stopped = false;
+  const stop3 = () => {
+    if (stopped) return;
+    stopped = true;
+    try {
+      obs.disconnect();
+    } catch {
+    }
+  };
+  const obs = new Obs(() => {
+    if (stopped || node2.isConnected !== false) return;
+    stop3();
+    onGone();
+  });
+  try {
+    obs.observe(root, { childList: true, subtree: true });
+  } catch {
+    return () => {
+    };
+  }
+  return stop3;
 }
 
 // src/view/pdf-warm.js
@@ -79141,6 +79438,285 @@ function createPdfWarm({ doc, root, host, store, timers, now: now4, renderFirst 
   };
 }
 
+// src/view/pdf-photo-restore.js
+init_lines();
+var OP_SAVE = 10;
+var OP_RESTORE = 11;
+var OP_TRANSFORM = 12;
+var OP_FORM_BEGIN = 74;
+var OP_FORM_END = 75;
+var OP_MASK = 83;
+var OP_IMAGE = 85;
+var OP_INLINE = 86;
+var OP_REPEAT = 88;
+var MIN_SIDE = 36;
+var installed = /* @__PURE__ */ new WeakMap();
+function unitBox2(ctm) {
+  const pts = [applyPoint(ctm, 0, 0), applyPoint(ctm, 1, 0), applyPoint(ctm, 1, 1), applyPoint(ctm, 0, 1)];
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const p of pts) {
+    if (p[0] < x0) x0 = p[0];
+    if (p[0] > x1) x1 = p[0];
+    if (p[1] < y0) y0 = p[1];
+    if (p[1] > y1) y1 = p[1];
+  }
+  return { x0, y0, x1, y1 };
+}
+function viewportBox2(box2, transform) {
+  const pts = [
+    applyPoint(transform, box2.x0, box2.y0),
+    applyPoint(transform, box2.x1, box2.y0),
+    applyPoint(transform, box2.x1, box2.y1),
+    applyPoint(transform, box2.x0, box2.y1)
+  ];
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const p of pts) {
+    if (p[0] < x0) x0 = p[0];
+    if (p[0] > x1) x1 = p[0];
+    if (p[1] < y0) y0 = p[1];
+    if (p[1] > y1) y1 = p[1];
+  }
+  return { x0, y0, x1, y1 };
+}
+function pushFrac(out, ctm, transform, width, height) {
+  const user = unitBox2(ctm);
+  const side2 = Math.min(Math.abs(user.x1 - user.x0), Math.abs(user.y1 - user.y0));
+  if (!Number.isFinite(side2) || side2 < MIN_SIDE) return;
+  const w = Number(width) || 0;
+  const h = Number(height) || 0;
+  if (!(w > 0) || !(h > 0)) return;
+  const view = viewportBox2(user, transform);
+  const fw = view.x1 - view.x0;
+  const fh = view.y1 - view.y0;
+  if (!(fw > 0) || !(fh > 0)) return;
+  out.push([view.x0 / w, view.y0 / h, fw / w, fh / h]);
+}
+function photoFracs(ops, { transform, width, height } = {}) {
+  const fn = ops?.fnArray || [];
+  const args = ops?.argsArray || [];
+  const m = transform && transform.length >= 6 ? transform : [1, 0, 0, -1, 0, Number(height) || 0];
+  let ctm = [1, 0, 0, 1, 0, 0];
+  const stack = [];
+  const out = [];
+  for (let i = 0; i < fn.length; i += 1) {
+    const op = fn[i];
+    const a = args[i];
+    if (op === OP_SAVE) {
+      stack.push(ctm);
+      continue;
+    }
+    if (op === OP_RESTORE) {
+      const prev = stack.pop();
+      if (prev) ctm = prev;
+      continue;
+    }
+    if (op === OP_TRANSFORM) {
+      if (a && a.length >= 6) ctm = mul(ctm, Array.from(a));
+      continue;
+    }
+    if (op === OP_FORM_BEGIN) {
+      stack.push(ctm);
+      if (a && a[0] && a[0].length >= 6) ctm = mul(ctm, Array.from(a[0]));
+      continue;
+    }
+    if (op === OP_FORM_END) {
+      const prev = stack.pop();
+      if (prev) ctm = prev;
+      continue;
+    }
+    if (op === OP_MASK) continue;
+    if (op === OP_IMAGE || op === OP_INLINE) {
+      pushFrac(out, ctm, m, width, height);
+      continue;
+    }
+    if (op === OP_REPEAT) {
+      const [, sx, sy, positions] = a || [];
+      if (!positions) continue;
+      for (let p = 0; p + 1 < positions.length; p += 2) {
+        pushFrac(out, mul(ctm, [Number(sx) || 0, 0, 0, Number(sy) || 0, positions[p], positions[p + 1]]), m, width, height);
+      }
+    }
+  }
+  return out;
+}
+function shouldRestoreContainer(node2) {
+  if (!node2) return false;
+  if (node2.closest?.(".pxd-read, .pxd-root")) return false;
+  return true;
+}
+function pdfPageOf(page) {
+  const found = page?.pdfPage || page?.pdfPageView?.pdfPage;
+  if (found && typeof found.getOperatorList === "function") return found;
+  return null;
+}
+function viewportOf2(pdfPage) {
+  try {
+    const view = pdfPage.getViewport?.({ scale: 1 }) || null;
+    if (view?.transform?.length >= 6 && view.width > 0 && view.height > 0) return view;
+  } catch {
+  }
+  return null;
+}
+function cacheKey(pdfPage, pageEl) {
+  const fp = pdfPage.fingerprints?.[0] || pdfPage._pdfInfo?.fingerprint || "";
+  const n3 = pageEl.getAttribute?.("data-page-number") || pdfPage.pageNumber || "";
+  if (!fp && n3 === "") return "";
+  return `${fp}:${n3}`;
+}
+function placeOverlay(doc, canvas) {
+  const parent = canvas.parentElement;
+  if (!parent) return null;
+  let overlay = canvas.nextElementSibling;
+  if (!overlay?.classList?.contains("pxd-pdf-photo")) {
+    overlay = doc.createElement("canvas");
+    overlay.className = "pxd-pdf-photo";
+    try {
+      overlay.setAttribute("aria-hidden", "true");
+    } catch {
+    }
+    const style = overlay.style;
+    if (style) {
+      style.position = "absolute";
+      style.left = "0";
+      style.top = "0";
+      style.width = "100%";
+      style.height = "100%";
+      style.pointerEvents = "none";
+      style.filter = "none";
+    }
+    if (canvas.nextElementSibling) parent.insertBefore(overlay, canvas.nextElementSibling);
+    else parent.append(overlay);
+  }
+  return overlay;
+}
+function drawPhotos(canvas, overlay, fracs) {
+  const w = Number(canvas.width) || 0;
+  const h = Number(canvas.height) || 0;
+  overlay.width = w;
+  overlay.height = h;
+  const ctx = overlay.getContext?.("2d");
+  if (!ctx || typeof ctx.drawImage !== "function") return false;
+  try {
+    ctx.clearRect?.(0, 0, w, h);
+  } catch {
+  }
+  let drew = false;
+  for (const frac of fracs) {
+    const sx = frac[0] * w;
+    const sy = frac[1] * h;
+    const sw = frac[2] * w;
+    const sh = frac[3] * h;
+    if (!(sw > 0) || !(sh > 0)) continue;
+    ctx.drawImage(canvas, sx, sy, sw, sh, sx, sy, sw, sh);
+    drew = true;
+  }
+  return drew;
+}
+function installPdfPhotoRestore(doc) {
+  if (!doc?.body || typeof MutationObserver !== "function") return () => {
+  };
+  const prior = installed.get(doc);
+  if (prior) return prior;
+  const seen = /* @__PURE__ */ new WeakMap();
+  const inflight = /* @__PURE__ */ new WeakSet();
+  const cache = /* @__PURE__ */ new Map();
+  let gen = 0;
+  const paint2 = async (canvas, page, sizeKey) => {
+    const ticket = gen;
+    const pdfPage = pdfPageOf(page);
+    if (!pdfPage) return;
+    inflight.add(canvas);
+    try {
+      const key = cacheKey(pdfPage, page);
+      let fracs = key && cache.has(key) ? cache.get(key) : null;
+      if (!fracs) {
+        const list = await pdfPage.getOperatorList();
+        if (ticket !== gen) return;
+        const view = viewportOf2(pdfPage);
+        const width = view?.width || 0;
+        const height = view?.height || 0;
+        const transform = view?.transform || [1, 0, 0, -1, 0, height];
+        fracs = photoFracs(list, { transform, width, height });
+        if (key) cache.set(key, fracs);
+      }
+      if (ticket !== gen) return;
+      if (!fracs.length) {
+        seen.set(canvas, sizeKey);
+        return;
+      }
+      const overlay = placeOverlay(doc, canvas);
+      if (!overlay || ticket !== gen) {
+        overlay?.remove?.();
+        return;
+      }
+      const drew = drawPhotos(canvas, overlay, fracs);
+      if (ticket !== gen || !drew) {
+        overlay.remove?.();
+        return;
+      }
+      seen.set(canvas, sizeKey);
+    } catch {
+    } finally {
+      inflight.delete(canvas);
+    }
+  };
+  const queuePaint = (canvas) => {
+    if (!canvas || canvas.nodeType !== 1 || canvas.classList?.contains("pxd-pdf-photo")) return;
+    const w = Number(canvas.width) || 0;
+    const h = Number(canvas.height) || 0;
+    if (w < 1 || h < 1) return;
+    const page = canvas.closest?.(".page");
+    const box2 = canvas.closest?.(".rm-pdf-container");
+    if (!page || !box2 || !shouldRestoreContainer(box2)) return;
+    const sizeKey = `${w}x${h}`;
+    if (seen.get(canvas) === sizeKey || inflight.has(canvas)) return;
+    void paint2(canvas, page, sizeKey);
+  };
+  const consider = (node2) => {
+    if (!node2 || node2.nodeType !== 1) return;
+    if (String(node2.tagName || "").toUpperCase() === "CANVAS") queuePaint(node2);
+    const nested = node2.querySelectorAll?.("canvas") || [];
+    for (const canvas of nested) queuePaint(canvas);
+  };
+  const obs = new MutationObserver((records) => {
+    for (const rec of records) {
+      const nodes = rec.addedNodes || [];
+      for (const node2 of nodes) consider(node2);
+    }
+  });
+  const stop3 = () => {
+    gen += 1;
+    installed.delete(doc);
+    try {
+      obs.disconnect();
+    } catch {
+    }
+    const photos = doc.querySelectorAll?.(".pxd-pdf-photo") || [];
+    for (const node2 of [...photos]) {
+      try {
+        node2.remove?.();
+      } catch {
+      }
+    }
+  };
+  try {
+    const existing = doc.querySelectorAll?.("canvas") || [];
+    for (const canvas of existing) consider(canvas);
+    obs.observe(doc.body, { childList: true, subtree: true });
+  } catch {
+    return () => {
+    };
+  }
+  installed.set(doc, stop3);
+  return stop3;
+}
+
 // src/view/pdf-reader-dark.js
 var PDF_READER_DARK_CLASS = "pxd-pdf-reader-dark";
 function normalizePdfReaderDark(value) {
@@ -79154,11 +79730,29 @@ function pdfReaderDarkOn(value, doc, background) {
   if (token === "off") return false;
   return hostDark(doc, background);
 }
+var photoStops = /* @__PURE__ */ new WeakMap();
+function startPhotos(doc) {
+  if (!doc?.body || photoStops.has(doc)) return;
+  const stop3 = installPdfPhotoRestore(doc);
+  if (typeof stop3 === "function") photoStops.set(doc, stop3);
+}
+function stopPhotos(doc) {
+  const stop3 = doc ? photoStops.get(doc) : null;
+  if (!stop3) return;
+  photoStops.delete(doc);
+  stop3();
+}
 function applyPdfReaderDark(doc, on) {
   const root = doc?.documentElement;
   if (!root?.classList?.toggle) return false;
-  root.classList.toggle(PDF_READER_DARK_CLASS, Boolean(on));
-  return Boolean(on);
+  const next = Boolean(on);
+  root.classList.toggle(PDF_READER_DARK_CLASS, next);
+  try {
+    if (next) startPhotos(doc);
+    else stopPhotos(doc);
+  } catch {
+  }
+  return next;
 }
 
 // src/view/pdf-flip.js
@@ -91853,48 +92447,129 @@ function buildBoardView(onFail, {
   };
   let sidebarChips = null;
   let sidebarHost = null;
-  function revealSidebarPin(plan) {
-    if (disposed || !plan) return false;
-    const box2 = sidebarPdfContainer(doc);
-    if (!box2) return false;
-    if (Number.isInteger(plan.page) && plan.page >= 1) {
-      try {
-        jumpSidebarPdf(doc, plan.page);
-      } catch {
-      }
-    }
-    const parsed = readPane?.parsedDoc?.() || null;
-    if (!parsed) return true;
-    if (sidebarChips && sidebarHost !== box2) {
-      try {
-        sidebarChips.dispose();
-      } catch {
-      }
-      sidebarChips = null;
-    }
-    sidebarHost = box2;
-    if (!sidebarChips) {
-      sidebarChips = createPageChips({
-        doc,
-        host: box2,
-        getParsed: () => readPane?.parsedDoc?.() || null,
-        pageEl: (n3) => sidebarPageEl(sidebarPdfContainer(doc) || box2, n3),
-        pageOf: (n3) => (readPane?.parsedDoc?.()?.pages || []).find((row4) => row4?.n === n3) || null,
-        storage
-      });
-    }
+  let sidebarGen = 0;
+  let sidebarUnwatch = null;
+  let sidebarWake = null;
+  function pinPdfTarget(plan) {
+    const uid = String(plan?.pdfUid || "").trim();
+    if (!uid) return null;
+    let source = "";
     try {
-      sidebarChips.setShown(true);
+      source = host?.blockString?.(uid) || "";
+    } catch {
+      source = "";
+    }
+    if (!source) {
+      try {
+        const b = board2();
+        if (b) {
+          for (const it of b.items.values()) {
+            if (!it || it.kind !== "pdf") continue;
+            const blockUid3 = it.target?.kind === "block" ? it.target.uid : it.uid;
+            if (it.uid === uid || blockUid3 === uid || it.target?.uid === uid) {
+              source = it.string || "";
+              break;
+            }
+          }
+        }
+      } catch {
+        source = "";
+      }
+    }
+    return { uid, url: pdfMacroUrl(source) || "" };
+  }
+  function parseMatchesPin(want) {
+    if (!want || !readPane?.parsedDoc?.()) return false;
+    return pdfTargetsMatch({
+      uid: readPane?.blockUid?.() || "",
+      url: readPane?.sourceUrl?.() || ""
+    }, want);
+  }
+  function dropSidebarChips() {
+    sidebarUnwatch?.();
+    sidebarUnwatch = null;
+    try {
+      sidebarChips?.dispose?.();
     } catch {
     }
-    const block = matchParsedBlock(parsed, plan);
-    if (block) {
+    sidebarChips = null;
+    sidebarHost = null;
+  }
+  async function revealSidebarPin(plan) {
+    if (disposed || !plan) return false;
+    const want = pinPdfTarget(plan);
+    if (!want) return false;
+    const gen = ++sidebarGen;
+    const alive = () => !disposed && gen === sidebarGen;
+    const started = Date.now();
+    const sleep = (ms) => new Promise((resolve) => {
+      const cancel = timers.later(() => {
+        if (sidebarWake === wake) sidebarWake = null;
+        resolve();
+      }, ms);
+      const wake = () => {
+        cancel();
+        resolve();
+      };
+      sidebarWake?.();
+      sidebarWake = wake;
+    });
+    try {
+      const box2 = await waitForSidebarPdf({
+        doc,
+        want,
+        readString: readBlock,
+        timeout: Math.max(0, SIDEBAR_WAIT_MS - (Date.now() - started)),
+        sleep,
+        alive
+      });
+      if (!alive() || !box2) return false;
+      if (Number.isInteger(plan.page) && plan.page >= 1) {
+        try {
+          jumpSidebarPdf(doc, plan.page, want, readBlock);
+        } catch {
+        }
+      }
+      const pace = 50;
+      const cap4 = Math.ceil(SIDEBAR_WAIT_MS / pace) + 1;
+      for (let i = 0; i < cap4 && Date.now() < started + SIDEBAR_WAIT_MS; i += 1) {
+        if (!alive()) return false;
+        if (parseMatchesPin(want)) break;
+        await sleep(pace);
+      }
+      if (!alive() || !parseMatchesPin(want)) return true;
+      if (sidebarHost !== box2) dropSidebarChips();
+      sidebarHost = box2;
+      sidebarUnwatch?.();
+      sidebarUnwatch = watchNodeGone(box2, doc, () => {
+        if (sidebarHost !== box2) return;
+        dropSidebarChips();
+      });
+      if (!sidebarChips) {
+        sidebarChips = createPageChips({
+          doc,
+          host: box2,
+          getParsed: () => parseMatchesPin(want) ? readPane?.parsedDoc?.() || null : null,
+          pageEl: (n3) => sidebarPageEl(box2, n3),
+          pageOf: (n3) => (readPane?.parsedDoc?.()?.pages || []).find((row4) => row4?.n === n3) || null,
+          storage
+        });
+      }
       try {
-        sidebarChips.flash(block.id);
+        sidebarChips.setShown(true);
       } catch {
       }
+      const block = matchParsedBlock(readPane?.parsedDoc?.() || null, plan);
+      if (block && alive()) {
+        try {
+          sidebarChips.flash(block.id);
+        } catch {
+        }
+      }
+      return true;
+    } catch {
+      return false;
     }
-    return true;
   }
   function openPin(detail) {
     const plan = detail && typeof detail === "object" ? detail : null;
@@ -101617,9 +102292,10 @@ ${url}`;
       };
       step(() => perfLog?.cancelPan?.());
       step(() => {
-        sidebarChips?.dispose?.();
-        sidebarChips = null;
-        sidebarHost = null;
+        sidebarGen += 1;
+        sidebarWake?.();
+        sidebarWake = null;
+        dropSidebarChips();
       });
       step(() => {
         dropTabStrip();

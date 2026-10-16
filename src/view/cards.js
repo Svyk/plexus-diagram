@@ -2078,7 +2078,7 @@ export function createItemRenderer({
         freshen(rec);
         if (frag) (rec.type === "section" ? sectionNodes : itemNodes).append(rec.el);
         else layerOf(rec).append(rec.el);
-      } else if (isAttached(rec)) rec.el.remove();
+      } else if (isAttached(rec)) { rec.el.remove(); noteCanvasDetach(); }
     }
     if (sectionNodes?.childNodes.length) sectionsLayer.append(sectionNodes);
     if (itemNodes?.childNodes.length) itemsLayer.append(itemNodes);
@@ -2094,13 +2094,18 @@ export function createItemRenderer({
     let add = [];
     // Detaching uses a wider box than attaching, so shells on the border do not flip in and out on every settle.
     const far = farRect();
+    let removed = 0;
     for (const [uid, rec] of shells) {
       if (!rec.el) continue;
       const on = isAttached(rec);
       const want = keepAttached(uid, rec, active) || nearView(uid, on ? far : cullRect);
       if (want && !on) add.push(rec);
-      else if (!want && on && !reveal) rec.el.remove();
+      else if (!want && on && !reveal) { rec.el.remove(); removed += 1; }
     }
+    // E2 (perf2): on the overview canvas tier a detached card is a box on the canvas. The canvas was drawn while
+    // these shells were still attached (the tier flips in the camera frame, the detach is the settle's content
+    // pass), so they showed nothing until the next redraw: draw it again in this task, before the frame paints.
+    if (removed) noteCanvasDetach();
     if (!add.length) return add;
     const wanted = add.length;
     if (add.length > budget) {
@@ -2161,6 +2166,18 @@ export function createItemRenderer({
     try { onOverviewQueue?.(); } catch { /* the view paints the cover */ }
   };
   const noteShells = () => { try { onShells?.(); } catch { /* edges follow the shells */ } };
+  // E2 (perf2): on the overview canvas tier a detached card is only a box on the canvas, and the canvas was drawn
+  // while it was still attached (the tier flips in the camera frame; the settle's cull and the content unmounts
+  // detach later). Redraw once per task, in that task, so the frame never paints a card that is in neither.
+  let canvasDetachPending = false;
+  const noteCanvasDetach = () => {
+    if (canvasDetachPending || !canvasCards()) return;
+    canvasDetachPending = true;
+    queueMicrotask(() => {
+      canvasDetachPending = false;
+      if (canvasCards()) { try { onOverviewQueue?.(); } catch { /* the view paints the canvas */ } }
+    });
+  };
   // A wheel, drag-pan, or pinch burst. The view sets this for the whole burst, including the event
   // that opens it. Building or attaching here is the long frame the burst exists to avoid.
   let shellsHeld = false;
@@ -5351,7 +5368,7 @@ export function createItemRenderer({
     rec.contentKey = null;
     mounted.delete(uid);
     contentSched?.drop(uid);
-    if (virtual() && isAttached(rec) && !keepAttached(uid, rec, activeShellUid()) && !nearView(uid, farRect())) rec.el.remove();
+    if (virtual() && isAttached(rec) && !keepAttached(uid, rec, activeShellUid()) && !nearView(uid, farRect())) { rec.el.remove(); noteCanvasDetach(); }
   };
 
   // One card body is one scheduler row. Already mounted bodies return done so renderBlock is not called again.
@@ -6861,7 +6878,7 @@ export function createItemRenderer({
       for (const uid of lastBoard?.order || []) {
         if (!queued.has(uid) || shells.has(uid)) continue;
         const rect = coverShift?.get(uid) || lastRects?.get(uid);
-        if (rect) out.push({ uid, rect });
+        if (rect) out.push({ uid, rect, color: lastBoard.items.get(uid)?.color || "" });
       }
       return out;
     },
@@ -6882,6 +6899,22 @@ export function createItemRenderer({
       const added = cullShells(rect, { reveal: true, budget, ms });
       for (const rec of added) paintOneOffscreen(rec.uid, rec, rect);
       return added.length;
+    },
+    // E3 (perf2): the far shells leave the DOM before a tier flip, so the flip restyles only what stays near
+    // (zoom-in to detail on the PhD main board restyled ~1,500 attached overview shells for a 27-card view).
+    detachFar(rect) {
+      if (disposed || !rect || !virtual()) return 0;
+      cullRect = rect;
+      const active = activeShellUid();
+      const far = farRect();
+      let removed = 0;
+      for (const [uid, rec] of shells) {
+        if (!isAttached(rec) || keepAttached(uid, rec, active) || nearView(uid, far)) continue;
+        rec.el.remove();
+        removed += 1;
+      }
+      if (removed) noteCanvasDetach();
+      return removed;
     },
     // C1: a settle on a big board attaches `{ budget, ms }` per content pass until the view clears it (null).
     sliceAttach(opts) { attachSlice = opts && virtual() ? { budget: opts.budget ?? 48, ms: opts.ms ?? 6 } : null; },

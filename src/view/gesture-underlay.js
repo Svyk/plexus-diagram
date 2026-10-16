@@ -10,6 +10,8 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
   let canvas = null;
   let shown = false;
   let colorCache = null;
+  let lastItems = [];
+  let lastUids = null;
 
   const colors = () => {
     if (colorCache) return colorCache;
@@ -38,9 +40,15 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
       return String(v).trim() || fallback;
     };
     c.palette = {};
-    for (const name of PALETTE) c.palette[name] = read(`--pxd-${name}-line`, c.line);
+    c.fills = {};
+    for (const name of PALETTE) {
+      c.palette[name] = read(`--pxd-${name}-line`, c.line);
+      const fill = read(`--pxd-${name}-fill`, "");
+      c.fills[name] = !fill || fill === "transparent" || /^rgba\([^)]*,\s*0\)$/.test(fill) ? "" : fill;
+    }
     c.accent = read("--pxd-accent", "hsl(175 80% 30%)");
     c.border = read("--pxd-border", c.line);
+    c.borderStrong = read("--pxd-border-strong", c.border);
     return c;
   };
 
@@ -50,7 +58,9 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
   };
 
   // items: [{ uid, rect }] that have no shell in the DOM; edges: [[rectA, rectB]] for edges not in the DOM.
-  const draw = ({ items = [], edges = [], zoom = 1, dpr = 1, styled = false } = {}) => {
+  // styled + tier (E, styledUnderlay): the boxes are drawn the way the cards look on that tier, so a shell that
+  // attaches over its box does not change colour (the plain grey boxes read as cards vanishing on a coloured board).
+  const draw = ({ items = [], edges = [], zoom = 1, dpr = 1, styled = false, tier = "overview" } = {}) => {
     if (!items.length && !edges.length) { hide(); return 0; }
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const { rect: r } of items) { x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y); x1 = Math.max(x1, r.x + r.w); y1 = Math.max(y1, r.y + r.h); }
@@ -58,7 +68,7 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
     const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
     const scale = Math.max(0.01, Math.min(zoom * Math.min(dpr, 1.25), MAX_SIDE / w, MAX_SIDE / h));
     // Colours before the canvas exists. getComputedStyle after create/insert/size forced layout in the shell frame.
-    const c = colors();
+    const c = styled ? paletteColors() : colors();
     if (!canvas) {
       canvas = doc.createElement("canvas");
       canvas.className = "pxd-underlay";
@@ -73,7 +83,7 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
     try { ctx = canvas.getContext?.("2d") || null; } catch { ctx = null; }
     if (!ctx) { hide(); return 0; }
     try {
-      paint(ctx, { items, edges, c, scale, x0, y0, bw, bh, styled });
+      paint(ctx, { items, edges, c, scale, x0, y0, bw, bh, styled, tier });
     } catch {
       // A context that cannot draw shows nothing, the way the board looked before the underlay.
       hide();
@@ -81,15 +91,58 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
     }
     canvas.style.display = "";
     shown = true;
+    lastItems = items;
+    lastUids = null;
     return items.length;
+  };
+  // The uids of the boxes on the canvas now (the paint audit).
+  const drawnUids = () => {
+    if (!shown) return new Set();
+    if (!lastUids) lastUids = new Set(lastItems.map((item) => item.uid));
+    return lastUids;
   };
 
   // C2, the overview tier: items [{ uid, rect, color, dim, hit, selected }] (cards with no shell in the DOM), edges
   // [[rectA, rectB]] (edges not in the DOM). One fill per colour group, one stroke per outline kind, hairline edges.
   const drawOverview = ({ items = [], edges = [], zoom = 1, dpr = 1 } = {}) => {
     if (!items.length && !edges.length) { hide(); return 0; }
-    paletteColors();
-    return draw({ items, edges, zoom, dpr, styled: true });
+    return draw({ items, edges, zoom, dpr, styled: true, tier: "overview" });
+  };
+
+  // Map and detail tiers: a card is --pxd-card under its palette fill, with a 1px border in its line colour
+  // (--pxd-border-strong for an uncoloured card) and an 8px radius (extension.css .pxd-item).
+  const paintCards = (ctx, { items, c, scale }) => {
+    const round = typeof ctx.roundRect === "function";
+    const shape = (r) => { if (round) ctx.roundRect(r.x, r.y, r.w, r.h, 8); else ctx.rect(r.x, r.y, r.w, r.h); };
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = c.card;
+    ctx.beginPath();
+    for (const { rect } of items) shape(rect);
+    ctx.fill();
+    const fills = new Map();
+    const lines = new Map();
+    for (const item of items) {
+      const name = item.color && c.palette?.[item.color] ? item.color : "";
+      const fill = name ? c.fills[name] : "";
+      if (fill) { if (!fills.has(fill)) fills.set(fill, []); fills.get(fill).push(item.rect); }
+      const line = name ? c.palette[name] : c.borderStrong;
+      if (!lines.has(line)) lines.set(line, []);
+      lines.get(line).push(item.rect);
+    }
+    for (const [fill, rects] of fills) {
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      for (const r of rects) shape(r);
+      ctx.fill();
+    }
+    ctx.lineWidth = 1;
+    for (const [line, rects] of lines) {
+      ctx.strokeStyle = line;
+      ctx.beginPath();
+      for (const r of rects) shape(r);
+      ctx.stroke();
+    }
+    ctx.lineWidth = 1 / scale;
   };
 
   const paintStyled = (ctx, { items, c, scale }) => {
@@ -129,7 +182,7 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
     ctx.globalAlpha = 1;
   };
 
-  const paint = (ctx, { items, edges, c, scale, x0, y0, bw, bh, styled = false }) => {
+  const paint = (ctx, { items, edges, c, scale, x0, y0, bw, bh, styled = false, tier = "overview" }) => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, bw, bh);
     ctx.setTransform(scale, 0, 0, scale, -x0 * scale, -y0 * scale);
@@ -145,7 +198,8 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    if (styled) { paintStyled(ctx, { items, c, scale }); return; }
+    if (styled && tier === "overview") { paintStyled(ctx, { items, c, scale }); return; }
+    if (styled) { paintCards(ctx, { items, c, scale }); return; }
     ctx.fillStyle = c.card;
     for (const { rect: r } of items) ctx.fillRect(r.x, r.y, r.w, r.h);
   };
@@ -157,5 +211,5 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
   };
   const dropColors = () => { colorCache = null; };
 
-  return { draw, drawOverview, hide, dispose, dropColors, isShown: () => shown, element: () => canvas };
+  return { draw, drawOverview, hide, dispose, dropColors, drawnUids, isShown: () => shown, element: () => canvas };
 }

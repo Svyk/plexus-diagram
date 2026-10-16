@@ -3901,7 +3901,18 @@ function buildBoardView(onFail, {
     if (name === "data-pxd-lod") root.setAttribute(name, value);
     else root.style.setProperty(name, value);
   };
+  // E probe: attached shells at each tier flip (the restyle the flip costs).
+  const flipStats = { flips: 0, attachedAtFlip: [] };
+  let paintedTier = null;
   const paintTier = () => {
+    if (paintedTier !== tier) {
+      if (paintedTier !== null) {
+        flipStats.flips += 1;
+        flipStats.attachedAtFlip.push(itemsR.attachedCount?.() ?? 0);
+        if (flipStats.attachedAtFlip.length > 20) flipStats.attachedAtFlip.shift();
+      }
+      paintedTier = tier;
+    }
     paintRoot("data-pxd-lod", tier);
     const f = lodFonts(vp.zoom);
     paintRoot("--pxd-map-font", `${f.map}px`);
@@ -3919,7 +3930,10 @@ function buildBoardView(onFail, {
   };
   const applyLod = () => {
     const was = tier;
-    tier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
+    const next = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
+    // E3: a held tier flips with the far shells already out of the DOM (the flip restyles what is attached).
+    if (next !== was && size.width && styledUnderlay()) itemsR.detachFar?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
+    tier = next;
     paintTier();
     paintInvZoom();
     // A tier held through a big-board gesture flips here, with what the frame-time flip does besides painting.
@@ -4094,6 +4108,7 @@ function buildBoardView(onFail, {
   const underlay = createGestureUnderlay({ doc, world, root, before: () => edgesSvg });
   let underlayDrawn = false;
   const deferOn = () => { try { return notedSpeedFlags().deferReveal !== false; } catch { return true; } };
+  const styledUnderlay = () => { try { return notedSpeedFlags().styledUnderlay !== false; } catch { return true; } };
   const deferReveal = () => {
     if (!wheelLayer && !gesturing) return false;
     if (gesturing) { const kind = ctl.gestureKind?.(); if (kind && kind !== "pan" && kind !== "pinch") return false; }
@@ -4108,6 +4123,8 @@ function buildBoardView(onFail, {
   };
   // "burst": every unattached item and edge (showUnderlay); "cover": only the overview-fast queue.
   let underlayKind = "";
+  // The tier the boxes were drawn for: a burst canvas kept through a settle that flipped the tier is drawn again.
+  let underlayTier = "";
   const showUnderlay = () => {
     // C2: the overview canvas is the underlay already. A pan or a zoom burst does not redraw it.
     if (overviewCanvasOn() && paintOverviewCanvas({ band: false })) return;
@@ -4121,7 +4138,7 @@ function buildBoardView(onFail, {
     for (const item of b.items.values()) {
       if (item.type === "section") continue;
       const rect = r.get(item.uid);
-      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect });
+      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect, color: item.color || "" });
     }
     const edges = [];
     if (edgesR.isVirtual?.(b)) {
@@ -4131,7 +4148,8 @@ function buildBoardView(onFail, {
         if (a && c) edges.push([a, c]);
       }
     }
-    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
+    underlayTier = tier;
+    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: styledUnderlay(), tier });
   };
   const endUnderlay = () => { underlayDrawn = false; };
   // Live at map zoom drops the snapshot while shells are still queued. Those cards stay as boxes on the
@@ -4169,7 +4187,7 @@ function buildBoardView(onFail, {
     if (!items.length) { coverUids = new Set(); underlay.hide(); return; }
     coverUids = new Set(items.map((item) => item.uid));
     underlayKind = "cover";
-    underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
+    underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: styledUnderlay(), tier });
   };
   const releaseUnderlay = () => {
     if (overviewCanvasOn() && paintOverviewCanvas()) return;
@@ -4295,7 +4313,8 @@ function buildBoardView(onFail, {
     if (!edgesLeft && !((itemsR.attachLeft?.() || 0) > 0)) { endSlice(); releaseUnderlay(); return; }
     // A burst's canvas (or the overview canvas being left) already shows every box that is not attached; a fit (no
     // burst) or the overview cover draws it.
-    if (underlay.isShown() && (underlayKind === "burst" || underlayKind === "overview")) underlayDrawn = true;
+    const stale = underlayKind === "burst" && styledUnderlay() && underlayTier !== tier;
+    if (underlay.isShown() && !stale && (underlayKind === "burst" || underlayKind === "overview")) underlayDrawn = true;
     else { underlayDrawn = false; showUnderlay(); }
     slicing = true;
     sliceFrame?.();
@@ -4342,7 +4361,10 @@ function buildBoardView(onFail, {
         if (perfNow() - settleWaitAt < SETTLE_WAIT_MS) { armSettle(); return; }
       }
       settleWaitAt = 0;
-      if (gesturing) return;
+      // A Ctrl/pinch wheel zoom is a gesture too (interactions.js ends it 160 ms after the last tick, this timer is
+      // 120 ms): returning here left the burst open for good (wheelLayer stuck on: the board stayed in burst mode, the
+      // overview canvas never redrew, the zoom's edge re-place and the snapshot capture never ran). Wait for it.
+      if (gesturing) { if (wheelLayer) armSettle(); return; }
       hitShield.drop();
       endUnderlay();
       paintGrid();
@@ -10542,7 +10564,29 @@ function buildBoardView(onFail, {
     stats() {
       return { timers: timers.count(), listeners: listeners.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount(), edgePlacements: edgesR.placements?.() ?? 0, edgesAttached: edgesR.attachedCount?.() ?? 0 };
     },
+    // E probe (perf2): what the view shows for the cards in the camera right now. A card is painted by its attached
+    // shell or by a box on the underlay; `missing` cards show nothing (a blank or partial frame when > 0).
+    paintAudit() {
+      const b = board();
+      if (!b || !size.width) return { inView: 0, attached: 0, covered: 0, missing: 0, lod: tier };
+      const view = visibleWorldRect(vp, size, 0);
+      const r = paintRects();
+      const under = underlay.isShown() ? underlay.drawnUids() : null;
+      let inView = 0, attached = 0, covered = 0;
+      for (const item of b.items.values()) {
+        if (item.type === "section") continue;
+        const rect = r.get(item.uid);
+        if (!rect || !rectsIntersect(rect, view)) continue;
+        inView += 1;
+        if (itemsR.attachedUid(item.uid)) attached += 1;
+        else if (under?.has(item.uid)) covered += 1;
+      }
+      return { inView, attached, covered, missing: inView - attached - covered, lod: tier, edges: edgesR.attachedCount?.() ?? 0 };
+    },
     // C2 probe: whether the overview canvas tier is on, and how many times it was drawn.
+    flipStats() {
+      return { flips: flipStats.flips, attachedAtFlip: flipStats.attachedAtFlip.slice() };
+    },
     overviewCanvasStats() {
       return { on: overviewCanvasOn(), draws: ovDraws, items: ovItems, shown: underlay.isShown() && underlayKind === "overview" };
     },

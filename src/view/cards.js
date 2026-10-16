@@ -6916,6 +6916,28 @@ export function createItemRenderer({
       if (removed) noteCanvasDetach();
       return removed;
     },
+    // E2-5 (perf2): a kept big board coming back (crumb back) shows its `n` attached shells nearest the centre of
+    // `rect` at once; the others leave the DOM while it is still parked and come back in the view's slices, so the
+    // un-park renders ~n shells instead of the whole board in one task (PhD MAIN at fit: ~1,500, 514-595 ms).
+    keepNearest(rect, n) {
+      if (disposed || !rect || !virtual()) return 0;
+      const active = activeShellUid();
+      const cx = rect.x + rect.w / 2;
+      const cy = rect.y + rect.h / 2;
+      const list = [];
+      for (const [uid, rec] of shells) {
+        if (!isAttached(rec) || keepAttached(uid, rec, active)) continue;
+        const r = drawnRect(uid, lastRects?.get(uid));
+        list.push([rec, r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity]);
+      }
+      if (list.length <= n) return 0;
+      list.sort((a, b) => a[1] - b[1]);
+      for (let i = n; i < list.length; i += 1) list[i][0].el.remove();
+      cullRect = rect;
+      attachLeft = list.length - n;
+      noteCanvasDetach();
+      return list.length - n;
+    },
     // C1: a settle on a big board attaches `{ budget, ms }` per content pass until the view clears it (null).
     sliceAttach(opts) { attachSlice = opts && virtual() ? { budget: opts.budget ?? 48, ms: opts.ms ?? 6 } : null; },
     attachLeft: () => (virtual() ? attachLeft : 0),

@@ -228,3 +228,84 @@ test("E6: dragLayer off keeps the 3.34.0 drag (every touching edge placed each f
     m.stub.dispatch(el, "pointerup", { clientX: p.clientX + 18, clientY: p.clientY + 12, button: 0, buttons: 0, pointerId: 7 });
   } finally { m.done(); }
 });
+
+// E2-5 (perf2): crumb back to a kept PhD MAIN at fit un-parked ~1,500 attached shells in one task (QA3: 514-595 ms,
+// 3.34.0 311). The un-park now renders the nearest RESUME_SHELLS; the rest come back in slices over styled boxes.
+const builtAtFit = async (flags = {}) => {
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, flags });
+  await settledIn(m);
+  for (let k = 0; k < 40 && m.view.stats().shells < 1570; k += 1) { await tick(100); await m.pump(50); }
+  await tick(700);
+  await m.pump(20);
+  return m;
+};
+test("E2-5: crumb back to a fully built big board un-parks with ~96 shells, slices the rest in, and never misses a card", async () => {
+  const m = await builtAtFit();
+  try {
+    assert.ok(m.view.paintAudit().attached > 1400, `built and attached at fit: ${m.view.paintAudit().attached}`);
+    const before = m.view.stats().edgePlacements;
+    m.view.suspend();
+    assert.equal(m.view.park(), true);
+    m.view.unpark();
+    m.view.resume();
+    const first = m.view.paintAudit();
+    assert.ok(first.attached <= 120, `attached when the board shows again: ${first.attached}`);
+    assert.equal(first.missing, 0, "the rest are boxes");
+    const frames = [];
+    for (let i = 0; i < 60; i += 1) { m.stub.flushFrames(); await null; frames.push(m.view.paintAudit()); }
+    assert.deepEqual(missingFrames(frames), []);
+    assert.equal(frames.at(-1).attached, frames.at(-1).inView, "every in-view shell is back");
+    assert.equal(m.view.stats().edgePlacements, before, "no edge is re-placed");
+  } finally { m.done(); }
+});
+
+test("E2-5: slicedResume off un-parks every attached shell at once (3.34.0 + E)", async () => {
+  const m = await builtAtFit({ slicedResume: false });
+  try {
+    const n = m.view.paintAudit().attached;
+    m.view.suspend();
+    m.view.park();
+    m.view.unpark();
+    m.view.resume();
+    assert.equal(m.view.paintAudit().attached, n);
+  } finally { m.done(); }
+});
+
+// E2-2 (perf2): QA3 zoom-in fit->detail lost up to 123 of 139 in-view cards for ~0.6 s after the flip. When the settle's
+// slices ran out (only built shells count), releaseUnderlay hid the boxes and the cover that should follow returned at
+// once (underlayDrawn still set), and at detail it never drew queued cards. Ctrl-wheel into the part of the board the
+// open had not built yet, fullscreen, real card render cost.
+test("E2-2: a Ctrl-wheel zoom into unbuilt cards keeps a box under every in-view card until its shell is in the DOM", async () => {
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, renderMs: 1 });
+  try {
+    await settledIn(m);
+    const frames = [];
+    const audit = async () => { await null; await null; frames.push(m.view.paintAudit()); };
+    for (let i = 0; i < 9; i += 1) {
+      m.stub.dispatch(m.view.root, "wheel", { deltaX: 0, deltaY: -20, ctrlKey: true, deltaMode: 0, clientX: 1100, clientY: 120 });
+      await tick(16);
+      m.stub.flushFrames();
+      await audit();
+    }
+    for (let i = 0; i < 40; i += 1) { await tick(16); m.stub.flushTimers(); m.stub.flushFrames(); await audit(); m.stub.flushIdle(); }
+    assert.equal(m.view.state().lod, "detail");
+    assert.deepEqual(missingFrames(frames), []);
+    assert.equal(frames.at(-1).attached, frames.at(-1).inView);
+  } finally { m.done(); }
+});
+
+test("E2-2: the cover released when the slices run out draws the in-view cards that have no shell in the DOM", async () => {
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 });
+  try {
+    await m.pump(30);
+    // Park and come back: the resume keeps 96 shells, the slices end once the built ones are back, the queued rest
+    // must stay boxes until the pump builds them.
+    m.view.suspend();
+    m.view.park();
+    m.view.unpark();
+    m.view.resume();
+    let worst = 0;
+    for (let i = 0; i < 80; i += 1) { m.stub.flushFrames(); await null; worst = Math.max(worst, m.view.paintAudit().missing); m.stub.flushIdle(); }
+    assert.equal(worst, 0);
+  } finally { m.done(); }
+});

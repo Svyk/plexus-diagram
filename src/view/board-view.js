@@ -1776,6 +1776,9 @@ function buildBoardView(onFail, {
     return node;
   } : null;
   let paintOverviewCover = () => {};
+  // E2-2: the cover on the underlay holds boxes for in-view cards with no shell in the DOM (refreshGapCover).
+  let gapCover = false;
+  let refreshGapCover = () => {};
   itemsR = createItemRenderer({
     doc,
     host,
@@ -1785,7 +1788,11 @@ function buildBoardView(onFail, {
     timers,
     adoptShell,
     onOverviewQueue: () => paintOverviewCover(),
-    onShells: () => { try { edgesR.flushWaiting?.(); } catch { /* the edge layer follows the shells */ } },
+    onShells: () => {
+      try { edgesR.flushWaiting?.(); } catch { /* the edge layer follows the shells */ }
+      // E2-2: boxes stood in for in-view cards still queued; the ones just built drop off the canvas.
+      if (gapCover) refreshGapCover();
+    },
     tableThumb,
     onTableShown,
     onEditChange: (uid) => {
@@ -4235,14 +4242,16 @@ function buildBoardView(onFail, {
       return;
     }
     if (underlayDrawn) return;
-    try { if (notedSpeedFlags().overviewFast === false) { coverUids = new Set(); return; } } catch { coverUids = new Set(); return; }
+    gapCover = false;
+    try { if (notedSpeedFlags().overviewFast === false) { coverUids = new Set(); if (!paintGapCover()) underlay.hide(); return; } } catch { coverUids = new Set(); return; }
     if (tier === "detail" && itemsR.coverHeld?.() !== true) {
-      const pending = itemsR.pendingBoxes?.() || [];
       coverUids = new Set();
-      if (!pending.length) underlay.hide();
+      if (!paintGapCover()) underlay.hide();
       return;
     }
     const items = itemsR.pendingBoxes?.() || [];
+    // E2-2: a built shell that is not in the DOM yet (a slice still to come) keeps its box as well.
+    if (styledUnderlay()) items.push(...gapBoxes(new Set(items.map((item) => item.uid))));
     if (!items.length) { coverUids = new Set(); underlay.hide(); return; }
     coverUids = new Set(items.map((item) => item.uid));
     underlayKind = "cover";
@@ -4262,7 +4271,41 @@ function buildBoardView(onFail, {
   };
   const releaseUnderlay = () => {
     if (overviewCanvasOn() && paintOverviewCanvas()) return;
+    // E2-2: the cover that follows is drawn here; with underlayDrawn still set it returned at once, and an in-view card
+    // still queued for its shell (a zoom into a part of the board the open had not built yet) showed nothing until the
+    // pump built it (QA3 zoom-in: 123 of 139 cards for ~0.6 s).
+    underlayDrawn = false;
     underlay.hide();
+    paintOverviewCover();
+  };
+  // E2-2 (styledUnderlay): the in-view cards with no shell in the DOM (queued for a build, or built and not attached
+  // yet), as boxes. Drawn after a settle hands off at detail, and redrawn as shells are built until none is left.
+  const gapBoxes = (skip = null) => {
+    const b = board();
+    if (!b || !size.width || !itemsR.isVirtual?.()) return [];
+    const view = visibleWorldRect(vp, size, 0);
+    const r = paintRects();
+    const out = [];
+    for (const item of b.items.values()) {
+      if (item.type === "section" || skip?.has(item.uid)) continue;
+      const rect = r.get(item.uid);
+      if (!rect || !rectsIntersect(rect, view) || itemsR.attachedUid(item.uid)) continue;
+      out.push({ uid: item.uid, rect, color: item.color || "" });
+    }
+    return out;
+  };
+  const paintGapCover = () => {
+    if (!styledUnderlay()) return false;
+    const items = gapBoxes();
+    if (!items.length) return false;
+    gapCover = true;
+    underlayKind = "cover";
+    underlayTier = tier;
+    underlay.draw({ items, edges: [], zoom: vp.zoom, dpr: win?.devicePixelRatio || 1, styled: true, tier });
+    return true;
+  };
+  refreshGapCover = () => {
+    if (disposed || suspended || underlayDrawn || gesturing || wheelLayer || slicing || underlayKind !== "cover") return;
     paintOverviewCover();
   };
   // C2. Overview tier of a big board on the underlay canvas (speed flag overviewCanvas, off by default this round).
@@ -4364,7 +4407,22 @@ function buildBoardView(onFail, {
     dirty.minimap = true;
     }
     suspendedBoard = null;
+    if (!dirty.all) sliceResume();
     schedule();
+  };
+  // E2-5 (perf2, speed flag slicedResume): a kept big board comes back with its RESUME_SHELLS shells nearest the view
+  // centre; the rest leave the DOM before it un-parks and come back in the settle's slices over styled boxes (the
+  // bridge snapshot fades out on top). Crumb back to PhD MAIN at fit rendered ~1,500 shells in one 514-595 ms task.
+  const RESUME_SHELLS = 96;
+  const sliceResume = () => {
+    try { if (notedSpeedFlags().slicedResume === false) return; } catch { return; }
+    if (!sliceWanted() || (itemsR.attachedCount?.() || 0) <= RESUME_SHELLS * 2) return;
+    const rect = visibleWorldRect(vp, size, ATTACH_MARGIN);
+    if (!itemsR.keepNearest?.(rect, RESUME_SHELLS)) return;
+    underlayDrawn = false;
+    showUnderlay();
+    beginSlice();
+    settleAttach();
   };
   const boardPhase = () => (suspended ? "parked" : wheelLayer ? "wheel" : gesturing ? (ctl.gestureKind?.() || "zoom") : slicing ? "slice" : settleTimer ? "settling" : "idle");
   const slicedSettleOn = () => { try { return notedSpeedFlags().slicedSettle !== false; } catch { return true; } };

@@ -14,6 +14,13 @@ const JOB_CAP = 40;
 
 const wordsOf = (lower) => String(lower || "").match(/[a-z0-9]+/g) || [];
 
+// The pause between slices has to wait out its delay. Calling the function now ignores the wait and queues the next slice immediately.
+function timerLater(fn, ms) {
+  const id = setTimeout(fn, ms);
+  try { id?.unref?.(); } catch { /* a browser timer has no unref */ }
+  return () => { try { clearTimeout(id); } catch { /* gone */ } };
+}
+
 function requestResult(req) {
   return new Promise((resolve) => {
     try {
@@ -33,7 +40,7 @@ export function createPdfTextIndex({
   openPdf = null,
   indexedDB: factory = null,
   now = () => Date.now(),
-  later = (fn) => { fn(); },
+  later = timerLater,
   onReady = null,
 } = {}) {
   const docs = [];
@@ -46,6 +53,7 @@ export function createPdfTextIndex({
   let pumping = false;
   let generation = 0;
   let stopIdle = null;
+  let cancelLater = null;
   let dbPromise = null;
   let loaded = null;
 
@@ -194,7 +202,9 @@ export function createPdfTextIndex({
       if (pausedUntil > now()) {
         pumping = false;
         const wait = Math.max(0, pausedUntil - now());
-        later(() => { if (gen === generation) arm(); }, wait);
+        try { cancelLater?.(); } catch { /* gone */ }
+        const cancel = later(() => { cancelLater = null; if (gen === generation) arm(); }, wait);
+        cancelLater = typeof cancel === "function" ? cancel : null;
         return;
       }
       const job = queue[0];
@@ -291,6 +301,8 @@ export function createPdfTextIndex({
     generation += 1;
     try { stopIdle?.(); } catch { /* gone */ }
     stopIdle = null;
+    try { cancelLater?.(); } catch { /* gone */ }
+    cancelLater = null;
     const pending = queue.splice(0);
     queued.clear();
     pumping = false;

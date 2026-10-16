@@ -6373,6 +6373,7 @@ function buildBoardView(onFail, {
     if (!pdfText) {
       pdfText = createPdfTextIndex({
         budget: sharedBgBudget(),
+        later: (fn, ms) => timers.later(fn, ms),
         indexedDB: doc.defaultView?.indexedDB,
         openPdf: (url) => {
           if (disposed) return null;

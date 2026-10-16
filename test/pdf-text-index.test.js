@@ -92,6 +92,44 @@ test("parsed rows are searchable without opening the file, and typing pauses the
   assert.equal(pdf.opens.length, 1);
 });
 
+test("the default pause timer does not re-arm the feed in the same turn", async (t) => {
+  const realSet = globalThis.setTimeout;
+  const realClear = globalThis.clearTimeout;
+  const queued = [];
+  let seq = 1;
+  globalThis.setTimeout = (fn, ms) => {
+    const id = seq;
+    seq += 1;
+    queued.push({ id, fn, ms: Number(ms) || 0 });
+    return id;
+  };
+  globalThis.clearTimeout = (id) => {
+    const i = queued.findIndex((job) => job.id === id);
+    if (i >= 0) queued.splice(i, 1);
+  };
+  t.after(() => {
+    globalThis.setTimeout = realSet;
+    globalThis.clearTimeout = realClear;
+  });
+  let now = 1000;
+  const budget = budgetOf();
+  const index = createPdfTextIndex({
+    budget,
+    now: () => now,
+    openPdf: async () => ({ hash: "h", pageCount: 1, readPage: async () => null, close: async () => {} }),
+  });
+  index.enqueue([{ url: "https://x.test/wait.pdf" }]);
+  index.pause(600);
+  budget.flush();
+  assert.equal(budget.pending(), 0, "a pause does not queue another idle slice immediately");
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].ms, 600);
+  index.stop();
+  assert.equal(queued.length, 0, "stop cancels the pause timer");
+  queued.splice(0).forEach((job) => job.fn());
+  assert.equal(budget.pending(), 0);
+});
+
 function memoryIdb() {
   const databases = new Map();
   return {

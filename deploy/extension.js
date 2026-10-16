@@ -25734,8 +25734,12 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     }
     let parts = [];
     const needle = String(filter.text || "").trim();
-    const kinds = checked.size === ALL_TYPES.length && !wantFigures ? [] : PARSE_PART_TYPES.filter((t) => checked.has(t) && !(wantFigures && t === "figure"));
-    if (typeof on.searchParts === "function" && (checked.size === ALL_TYPES.length || kinds.length > 0) && (needle || kinds.length) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter)) {
+    const textPartKinds = PARSE_PART_TYPES.filter((t) => t !== "figure");
+    const explicitKinds = PARSE_PART_TYPES.filter((t) => checked.has(t) && !(wantFigures && t === "figure"));
+    const allOn = checked.size === ALL_TYPES.length;
+    const wantPdfBody = allOn || checked.has("pdf") || explicitKinds.length > 0;
+    const kinds = allOn && !wantFigures ? [] : explicitKinds.length ? explicitKinds : checked.has("pdf") && needle ? textPartKinds : [];
+    if (typeof on.searchParts === "function" && wantPdfBody && (needle || kinds.length) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter)) {
       const t0 = Date.now();
       try {
         parts = await Promise.resolve(on.searchParts({ text: needle, kinds, pages: filter.pages }, LIMIT)) || [];
@@ -25755,7 +25759,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       if (id !== queryId) return;
     }
     let pdfHits = [];
-    if (bodySearch && typeof on.searchPdfText === "function") {
+    if (bodySearch && wantPdfBody && typeof on.searchPdfText === "function") {
       try {
         const got = on.searchPdfText({ text: needle, pages: filter.pages }, LIMIT);
         if (Array.isArray(got)) pdfHits = got;
@@ -85320,6 +85324,7 @@ var STORE_PDF_TEXT = "pages";
 var PDF_TEXT_V = 1;
 var PAGE_CAP = 80;
 var JOB_CAP = 40;
+var PDF_TEXT_NO_LIB_MS = 6e4;
 var wordsOf3 = (lower4) => String(lower4 || "").match(/[a-z0-9]+/g) || [];
 function timerLater(fn, ms) {
   const id = setTimeout(fn, ms);
@@ -85717,6 +85722,10 @@ ${hit.n}`;
         await dropHandle(handle);
         return false;
       }
+      if (handle?.retry === true && typeof handle.readPage !== "function") {
+        pausedUntil = now4() + PDF_TEXT_NO_LIB_MS;
+        return false;
+      }
       if (!handle || !(handle.pageCount > 0) || typeof handle.readPage !== "function") {
         await dropHandle(handle);
         return true;
@@ -85811,6 +85820,11 @@ ${hit.n}`;
     }
     share.release();
   }
+  function counts() {
+    let pages = 0;
+    for (const doc of docs) pages += Array.isArray(doc.pages) ? doc.pages.length : 0;
+    return { docs: docs.length, pages, queue: queue.length };
+  }
   function enqueue(jobs) {
     for (const job of Array.isArray(jobs) ? jobs : []) {
       const url = String(job?.url || "");
@@ -85821,7 +85835,7 @@ ${hit.n}`;
     }
     arm4();
   }
-  return { search, noteParsed, enqueue, pause, stop: stop3, whenLoaded, docs, version: PDF_TEXT_DB_VERSION };
+  return { search, noteParsed, enqueue, pause, stop: stop3, whenLoaded, counts, docs, version: PDF_TEXT_DB_VERSION };
 }
 
 // src/host/pdf-text-open.js
@@ -85899,6 +85913,53 @@ async function openPdfDocument(lib, url, { allow = () => true } = {}) {
     await destroyPdf(pdf, task);
     return null;
   }
+}
+
+// src/view/pdf-js-for-text.js
+function frameWindows(doc) {
+  let nodes = [];
+  try {
+    nodes = [...doc?.querySelectorAll?.("iframe") || []];
+  } catch {
+    nodes = [];
+  }
+  const out = [];
+  for (const node2 of nodes) {
+    try {
+      const win2 = node2?.contentWindow;
+      if (win2) out.push(win2);
+    } catch {
+    }
+  }
+  return out;
+}
+function pdfJsForText(win2, doc) {
+  const scopes = [win2, ...frameWindows(doc)];
+  const found = [];
+  for (const scope of scopes) {
+    let one = null;
+    try {
+      one = detectPdfjs2(scope);
+    } catch {
+      one = null;
+    }
+    if (one?.lib) found.push(one);
+  }
+  return found.find((one) => one.workerReady) || found[0] || null;
+}
+async function openPdfForText({ disposed = false, url, allow, found, open } = {}) {
+  if (disposed) return null;
+  if (typeof allow === "function" && !allow(url)) return null;
+  const lib = found?.lib;
+  if (!lib || typeof lib.getDocument !== "function") return { retry: true };
+  let handle = null;
+  try {
+    handle = await open(lib, url);
+  } catch {
+    handle = null;
+  }
+  if (handle) return handle;
+  return found.workerReady ? null : { retry: true };
 }
 
 // src/model/image-search.js
@@ -98133,12 +98194,13 @@ function buildBoardView(onFail, {
         budget: sharedBgBudget(),
         later: (fn, ms) => timers.later(fn, ms),
         indexedDB: doc.defaultView?.indexedDB,
-        openPdf: (url) => {
-          if (disposed) return null;
-          const found = detectPdfjs2(win2);
-          if (!found?.workerReady) return null;
-          return openPdfDocument(found.lib, url, { allow: firstPageAllowed });
-        },
+        openPdf: (url) => openPdfForText({
+          disposed,
+          url,
+          allow: firstPageAllowed,
+          found: pdfJsForText(win2, doc),
+          open: (lib) => openPdfDocument(lib, url, { allow: firstPageAllowed })
+        }),
         onReady: () => {
           try {
             panel?.refreshSearch?.();
@@ -98155,7 +98217,7 @@ function buildBoardView(onFail, {
       stopPdfTextFeed?.();
     } catch {
     }
-    stopPdfTextFeed = sharedBgBudget().idle(() => {
+    stopPdfTextFeed = timers.later(() => {
       stopPdfTextFeed = null;
       if (disposed || !panel.isOpen()) return;
       void (async () => {
@@ -98181,7 +98243,7 @@ function buildBoardView(onFail, {
         } catch {
         }
       })();
-    });
+    }, 0);
   };
   const pdfNameInfo = /* @__PURE__ */ new Map();
   const pdfNamesR = () => {
@@ -98467,7 +98529,7 @@ ${url}`;
       },
       searchPdfText: (query, limit) => {
         try {
-          return pdfText ? pdfText.search(query, limit) : [];
+          return pdfTextIndex().search(query, limit);
         } catch {
           return [];
         }
@@ -98514,7 +98576,12 @@ ${url}`;
       },
       searchParts: async (query, limit) => {
         if (typeof host?.listPdfBlocks !== "function") return [];
-        return searchParts(await partsIndex().get(), query, limit);
+        const rows = await partsIndex().get();
+        try {
+          pdfTextIndex().noteParsed(rows);
+        } catch {
+        }
+        return searchParts(rows, query, limit);
       },
       addPart: (payload) => {
         void parseActions().sendParsedToBoard(payload);
@@ -102414,6 +102481,14 @@ ${url}`;
     // P32 live probes: cover source (pdf.js or hidden reader) and the pane's fit path. Read-only.
     pdfProbe() {
       return { covers: coverReport(), fit: readPane?.fitInfo?.() || null, inline: itemsR.inlineUid?.() || "" };
+    },
+    pdfTextStats() {
+      try {
+        const got = pdfText?.counts?.() || { docs: 0, pages: 0, queue: 0 };
+        return { docs: Number(got.docs) || 0, pages: Number(got.pages) || 0, queue: Number(got.queue) || 0 };
+      } catch {
+        return { docs: 0, pages: 0, queue: 0 };
+      }
     },
     dispose() {
       if (disposing) return;
@@ -109776,6 +109851,22 @@ async function installPlexusDiagram({
         return { uid: rec.uid };
       }
     }),
+    pdfText() {
+      const totals = { docs: 0, pages: 0, queue: 0 };
+      for (const rec of mounts.values()) {
+        let got = null;
+        try {
+          got = rec.view?.pdfTextStats?.();
+        } catch {
+          got = null;
+        }
+        if (!got) continue;
+        totals.docs += Number(got.docs) || 0;
+        totals.pages += Number(got.pages) || 0;
+        totals.queue += Number(got.queue) || 0;
+      }
+      return totals;
+    },
     cameraRect(boardUid) {
       const rec = pickCameraMount([...mounts.values()], boardUid, isSidebarMount, currentUid);
       try {

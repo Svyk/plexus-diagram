@@ -8,13 +8,27 @@ import { createDomStub } from "./fixtures/dom-stub.js";
 
 const css = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
 
-test("fullscreen stays at 40 and Roam's top bar and portals paint above the board", () => {
+test("fullscreen sits under Roam's top bar and portals paint above the board", () => {
   const fullscreenZ = Number(/\.pxd-mount--fullscreen \{[^}]*z-index: (\d+)/.exec(css)[1]);
-  assert.equal(fullscreenZ, 40);
+  assert.equal(fullscreenZ, 19);
   assert.match(css, /body\.pxd-has-board \.rm-topbar \{[^}]*z-index:\s*80/);
   assert.match(css, /body\.pxd-has-board > \.bp3-portal \{[^}]*z-index:\s*2500/);
   assert.match(css, /body\.pxd-has-board > \.bp3-portal:has\(\.bp3-dialog\)[^}]*z-index:\s*400000\s*!important/);
   assert.match(css, /body\.pxd-has-board > \.bp3-portal:has\(\.bp3-alert\)/);
+});
+
+// Blueprint's default portal z-index is 20 and is often inline. Inline beats a
+// stylesheet rule that has no !important, so the fullscreen layer has to sit under 20.
+test("fullscreen sits under a portal whose inline z-index is 20", () => {
+  const fullscreenZ = Number(/\.pxd-mount--fullscreen \{[^}]*z-index: (\d+)/.exec(css)[1]);
+  const topbarZ = Number(/body\.pxd-has-board \.rm-topbar \{[^}]*z-index:\s*(\d+)/.exec(css)[1]);
+  assert.ok(fullscreenZ < 20, `fullscreen ${fullscreenZ} is under Blueprint's inline 20`);
+  assert.ok(topbarZ > fullscreenZ, "the top bar stays above the fullscreen layer");
+  const ordinary = /body\.pxd-has-board > \.bp3-portal \{[^}]*\}/.exec(css)?.[0] || "";
+  assert.match(ordinary, /z-index:\s*2500/);
+  assert.doesNotMatch(ordinary, /!important/);
+  assert.match(css, /z-index:\s*400000\s*!important/);
+  assert.match(css, /z-index:\s*400010\s*!important/);
 });
 
 test("dialogs keep a floor; a menu or date portal stacks above it; the pin toast stays below both", () => {

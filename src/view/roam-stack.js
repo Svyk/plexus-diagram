@@ -4,7 +4,7 @@
 // top bar itself is raised while a board is up. An overlay rendered inside a card
 // (inline popover, autocomplete) raises that card above its siblings until the overlay
 // is gone. .pxd-root overflow:clip still cuts that popover at the board edge.
-// Fullscreen is a fixed layer at z-index 40. CSS lifts body portals above it.
+// Fullscreen is a fixed layer at z-index 19, under a portal whose inline z-index is 20.
 // Nothing here listens for pointer movement. A pan must not walk the document.
 // The body observer reads added and removed nodes only, and only while
 // body.pxd-has-board is set.

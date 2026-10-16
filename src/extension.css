@@ -207,7 +207,9 @@ body.roam-body.dark .pxd-root,
 .pxd-mount--fullscreen {
   position: fixed !important;
   /* top/left/right/bottom set by fullscreen.js: below .rm-topbar, right of the left sidebar. */
-  z-index: 40;
+  /* Under Blueprint's inline portal z-index of 20. A calendar or Find or Create
+     result that keeps that inline value then paints above the board. */
+  z-index: 19;
   width: auto !important;
   height: auto !important;
   min-height: 0 !important;
@@ -218,15 +220,16 @@ body.pxd-has-fullscreen {
   overflow: hidden;
 }
 
-/* The board is a stacking context (contain, and a fixed fullscreen layer at 40).
-   Raise Roam's top bar so a date picker or Find or Create that stays in the bar
-   paints over the board. An ordinary body portal clears that layer. No !important
-   on it: an inline z-index Blueprint already set above 40 wins. A bare portal
-   whose inline z-index is 20, and which is not a dialog or a menu, stays at 20.
-   Dialogs keep a floor above the pin toast. A menu, select, or date picker opened
-   from a dialog is its own portal and stacks above that floor. An overlay inside
-   a card is not moved: the card rises above its siblings. .pxd-root overflow:clip
-   still cuts that popover at the board edge. */
+/* The board is a stacking context (contain, and a fixed fullscreen layer at 19).
+   19 is under Blueprint's inline portal default of 20, so a calendar or Find or
+   Create result that keeps that inline value paints above the fullscreen board.
+   The top bar stays at 80. An ordinary body portal is 2500 with no !important:
+   an inline z-index already above 19 still wins, and a dialog menu is not
+   crushed down to 2500. Dialogs keep a floor above the pin toast. A menu,
+   select, or date picker opened from a dialog is its own portal and stacks
+   above that floor. An overlay inside a card is not moved: the card rises
+   above its siblings. .pxd-root overflow:clip still cuts that popover at the
+   board edge. */
 body.pxd-has-board .rm-topbar {
   z-index: 80;
 }

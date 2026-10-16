@@ -19279,7 +19279,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, searchHay: true, tableCaptionEdit: true };
 }
 function parseSpeedFlags(raw) {
   const base = defaultSpeedFlags();
@@ -19733,7 +19733,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "searchHay", "tableCaptionEdit"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -24918,7 +24918,7 @@ function indexUntil(ix, rows, over) {
   ix.ready = true;
   return true;
 }
-function stepPartsIndex(rows, { deadline = null, now: now4 = defaultNow, sliceMs = PARTS_SLICE_MS } = {}) {
+function stepPartsIndex(rows, { deadline = null, now: now4 = defaultNow2, sliceMs = PARTS_SLICE_MS } = {}) {
   sliceCalls += 1;
   const list = Array.isArray(rows) ? rows : [];
   if (!list.length) {
@@ -24948,7 +24948,7 @@ function stepPartsIndex(rows, { deadline = null, now: now4 = defaultNow, sliceMs
   };
   return indexUntil(ix, list, over);
 }
-function schedulePartsIndex(rows, { budget = null, now: now4 = defaultNow, onReady: onReady2 = null, sliceMs = PARTS_SLICE_MS } = {}) {
+function schedulePartsIndex(rows, { budget = null, now: now4 = defaultNow2, onReady: onReady2 = null, sliceMs = PARTS_SLICE_MS } = {}) {
   if (!Array.isArray(rows) || !rows.length || typeof budget?.run !== "function") return () => {
   };
   let stopped = false;
@@ -25230,7 +25230,7 @@ function partSnippet(text4, needle, width = SNIPPET_W) {
     after: `${t.slice(at + n3.length, end)}${end < t.length ? "…" : ""}`
   };
 }
-var PART_OF, SNIPPET_W, squash2, partIndexes, scratch, wordBuf, postingAdds, sliceCalls, lastSliceMs, PARTS_SLICE_MS, defaultNow, PART_LABELS;
+var PART_OF, SNIPPET_W, squash2, partIndexes, scratch, wordBuf, postingAdds, sliceCalls, lastSliceMs, PARTS_SLICE_MS, defaultNow2, PART_LABELS;
 var init_parts_search = __esm({
   "src/model/parts-search.js"() {
     init_library();
@@ -25244,7 +25244,7 @@ var init_parts_search = __esm({
     sliceCalls = 0;
     lastSliceMs = 0;
     PARTS_SLICE_MS = 8;
-    defaultNow = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
+    defaultNow2 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
     PART_LABELS = { paragraph: "Paragraph", table: "Table", figure: "Figure", caption: "Caption", heading: "Heading", formula: "Formula" };
   }
 });
@@ -36316,6 +36316,93 @@ function createItemRenderer({
       rec.pageCaretOff = null;
     };
   };
+  const openTableCaption = (uid, rec, item) => {
+    const table = rec.body?.querySelector?.(".pxd-roam-table") || null;
+    const captionCard = Boolean(item.tableUid);
+    const initial = captionCard ? String(item.string || "") : String(item.title || "");
+    const field = el2("textarea", "pxd-table-caption");
+    field.setAttribute("rows", "1");
+    field.setAttribute("aria-label", "Table caption");
+    field.value = initial;
+    let closed = false;
+    const stopPointer = (event) => event.stopPropagation?.();
+    let onKey = () => {
+    };
+    let onBlur = () => {
+    };
+    const finish = (commit) => {
+      if (closed) return;
+      closed = true;
+      field.removeEventListener("keydown", onKey);
+      field.removeEventListener("blur", onBlur);
+      field.removeEventListener("pointerdown", stopPointer);
+      field.removeEventListener("mousedown", stopPointer);
+      const text4 = String(field.value ?? "");
+      const write = Boolean(commit) && captionCard && text4 !== initial && !isRoamTableString(text4);
+      if (editing?.editor === field) editing = null;
+      try {
+        field.remove();
+      } catch {
+      }
+      rec.el.classList.remove("pxd-item--editing");
+      releaseEditLock(rec);
+      const live2 = lastBoard?.items.get(uid) || item;
+      if (shells.has(uid)) paintShell(rec, live2);
+      try {
+        onEditChange?.(null);
+      } catch {
+      }
+      if (write) {
+        try {
+          session?.setString?.(uid, text4);
+        } catch {
+        }
+      }
+    };
+    onKey = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        finish(false);
+      } else if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        finish(true);
+      }
+    };
+    onBlur = () => finish(true);
+    field.addEventListener("keydown", onKey);
+    field.addEventListener("blur", onBlur);
+    field.addEventListener("pointerdown", stopPointer);
+    field.addEventListener("mousedown", stopPointer);
+    rec.header?.replaceChildren?.(field);
+    editing = {
+      uid,
+      rec,
+      editor: field,
+      targetUid: item.uid,
+      item,
+      ready: true,
+      tableCaption: true,
+      tableNode: table,
+      finish,
+      fadeCancel: null,
+      releaseCancel: null
+    };
+    rec.el.classList.add("pxd-item--editing");
+    const pinned2 = rec.el.style?.height;
+    if (pinned2 && rec.el.style?.setProperty) rec.el.style.setProperty("height", pinned2, "important");
+    try {
+      onEditChange?.(uid);
+    } catch {
+    }
+    try {
+      field.focus({ preventScroll: true });
+    } catch {
+      field.focus?.();
+    }
+    return true;
+  };
   const enterEdit = async (uid, { row: row4 = "", offset } = {}) => {
     const rec = shells.get(uid);
     const item = lastBoard?.items.get(uid);
@@ -36353,6 +36440,7 @@ function createItemRenderer({
       }
     }
     if (editing) await exitEdit();
+    if (tableUidOf(item) && speedOf().tableCaptionEdit !== false) return openTableCaption(uid, rec, item);
     if (!host?.renderBlock) {
       host?.openBlock?.(uid);
       return false;
@@ -36558,6 +36646,10 @@ function createItemRenderer({
       const active2 = doc.activeElement;
       if (active2 && e2.editor.contains?.(active2)) active2.blur?.();
       endStickyEdit();
+      return;
+    }
+    if (e2.tableCaption) {
+      e2.finish?.(true);
       return;
     }
     editing = null;
@@ -36912,7 +37004,12 @@ function createItemRenderer({
       doc.removeEventListener?.("pointerdown", onOutsidePeek, true);
       outsidePeekOn = false;
     }
-    if (editing) {
+    if (editing?.tableCaption) {
+      try {
+        editing.finish?.(false);
+      } catch {
+      }
+    } else if (editing) {
       const e2 = editing;
       clearEditFade(e2);
       editing = null;
@@ -53547,6 +53644,13 @@ function hayOf(item, resolve) {
   for (const kid of kids) bits.push(plainText(kid?.[":block/string"] ?? kid?.string ?? "", 500));
   return bits.filter(Boolean).join("\n").toLowerCase();
 }
+function edgeText(edge) {
+  return `${edge?.label || ""}
+${plainText(edge?.string, 500)}`.toLowerCase();
+}
+function edgeSig(edge) {
+  return `${edge?.uid ?? ""}|${edge?.from ?? ""}|${edge?.to ?? ""}|${edge?.label ?? ""}|${edge?.string ?? ""}`;
+}
 function findOnBoard(board2, query, nested = [], resolve) {
   const q2 = String(query || "").trim().toLowerCase();
   if (!q2 || !board2?.items) return [];
@@ -53556,8 +53660,7 @@ function findOnBoard(board2, query, nested = [], resolve) {
     hits.push({ uid: item.uid, focus: item.uid, kind: item.type === "section" ? "section" : "card" });
   }
   for (const edge of board2.edges?.values?.() || []) {
-    const label = `${edge.label || ""}
-${plainText(edge.string, 500)}`.toLowerCase();
+    const label = edgeText(edge);
     if (!label.includes(q2)) continue;
     hits.push({ uid: edge.uid, focus: edge.from, kind: "edge" });
   }
@@ -53568,6 +53671,356 @@ ${plainText(edge.string, 500)}`.toLowerCase();
     }
   }
   return hits;
+}
+var HAY_SLICE_MS = 8;
+var defaultNow = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
+function createHayIndex({ resolve, now: now4 = defaultNow, sliceMs = HAY_SLICE_MS } = {}) {
+  const itemHay = /* @__PURE__ */ new Map();
+  const edgeHay = /* @__PURE__ */ new Map();
+  const nestHay = /* @__PURE__ */ new Map();
+  const refCache = /* @__PURE__ */ new Map();
+  const pending = /* @__PURE__ */ new Set();
+  let resolveCalls = 0;
+  let hayBuilds = 0;
+  let sliceCalls2 = 0;
+  let lastSliceMs2 = 0;
+  let lastSliceBuilds = 0;
+  let boardRef = null;
+  let nestList = [];
+  let nestOrder = [];
+  let phase = "need";
+  let scanned = false;
+  let cursor = 0;
+  let ids = [];
+  let seenItems = /* @__PURE__ */ new Set();
+  let seenEdges = /* @__PURE__ */ new Set();
+  let structuralPending = false;
+  let nestCursor = 0;
+  let nestStage = "start";
+  let nestIds = [];
+  let nestEdgeIds = [];
+  let nestItemCursor = 0;
+  let nestEdgeCursor = 0;
+  let nestKeyBuf = "";
+  let nestRows = [];
+  let nestParent = "";
+  function resolveOnce(uid) {
+    if (refCache.has(uid)) return refCache.get(uid);
+    resolveCalls += 1;
+    let text4 = null;
+    try {
+      text4 = typeof resolve === "function" ? resolve(uid) : null;
+    } catch {
+      text4 = null;
+    }
+    const out = typeof text4 === "string" ? text4 : null;
+    refCache.set(uid, out);
+    return out;
+  }
+  function writeItem(item) {
+    if (!item?.uid) return;
+    pending.delete(item.uid);
+    const sig = itemSig(item);
+    const prev = itemHay.get(item.uid);
+    if (prev && prev.sig === sig) return;
+    hayBuilds += 1;
+    itemHay.set(item.uid, { sig, hay: hayOf(item, resolveOnce) });
+  }
+  function writeEdge(edge) {
+    if (!edge?.uid) return;
+    pending.delete(edge.uid);
+    const sig = edgeSig(edge);
+    const prev = edgeHay.get(edge.uid);
+    if (prev && prev.sig === sig) return;
+    hayBuilds += 1;
+    edgeHay.set(edge.uid, { sig, hay: edgeText(edge) });
+  }
+  function consider2(uid) {
+    pending.delete(uid);
+    const item = boardRef?.items?.get?.(uid);
+    if (item) {
+      writeItem(item);
+      return;
+    }
+    if (itemHay.has(uid)) itemHay.delete(uid);
+    const edge = boardRef?.edges?.get?.(uid);
+    if (edge) {
+      writeEdge(edge);
+      return;
+    }
+    if (edgeHay.has(uid)) edgeHay.delete(uid);
+  }
+  function addDirty(dirty) {
+    if (!dirty || typeof dirty[Symbol.iterator] !== "function" || typeof dirty === "string") return;
+    for (const uid of dirty) if (uid) pending.add(uid);
+  }
+  function sweepMembership() {
+    const live2 = new Set(boardRef?.items?.keys?.() || []);
+    for (const uid of [...itemHay.keys()]) if (!live2.has(uid)) itemHay.delete(uid);
+    for (const uid of live2) if (!itemHay.has(uid)) pending.add(uid);
+    const liveE = new Set(boardRef?.edges?.keys?.() || []);
+    for (const uid of [...edgeHay.keys()]) if (!liveE.has(uid)) edgeHay.delete(uid);
+    for (const uid of liveE) if (!edgeHay.has(uid)) pending.add(uid);
+    structuralPending = false;
+  }
+  function resetNestWalk() {
+    nestCursor = 0;
+    nestStage = "start";
+    nestIds = [];
+    nestEdgeIds = [];
+    nestItemCursor = 0;
+    nestEdgeCursor = 0;
+    nestKeyBuf = "";
+    nestRows = [];
+    nestParent = "";
+  }
+  function ready() {
+    return scanned && phase === "done" && pending.size === 0 && !structuralPending;
+  }
+  function note(board2, nested = []) {
+    boardRef = board2 || null;
+    nestList = Array.isArray(nested) ? nested : [];
+    nestOrder = [];
+    for (const nest of nestList) {
+      if (nest?.parentUid && nest?.board?.items) nestOrder.push(nest.parentUid);
+    }
+    pending.clear();
+    structuralPending = false;
+    seenItems = /* @__PURE__ */ new Set();
+    seenEdges = /* @__PURE__ */ new Set();
+    cursor = 0;
+    ids = boardRef?.items ? [...boardRef.items.keys()] : [];
+    resetNestWalk();
+    phase = boardRef?.items ? "items" : "done";
+    scanned = phase === "done";
+  }
+  function touch(board2, dirty, structural = false) {
+    if (board2) boardRef = board2;
+    if (!boardRef?.items) return;
+    addDirty(dirty);
+    if (structural || !dirty) structuralPending = true;
+    if (!scanned || phase !== "done") return;
+    if (structuralPending || pending.size > 4) {
+      phase = "rescan";
+      return;
+    }
+    while (pending.size) {
+      const uid = pending.values().next().value;
+      consider2(uid);
+    }
+    phase = "done";
+  }
+  function advanceNest() {
+    if (nestCursor >= nestList.length) {
+      const live2 = new Set(nestOrder);
+      for (const uid of [...nestHay.keys()]) if (!live2.has(uid)) nestHay.delete(uid);
+      phase = pending.size || structuralPending ? "rescan" : "done";
+      return;
+    }
+    const nest = nestList[nestCursor];
+    if (!nest?.board?.items || !nest.parentUid) {
+      nestCursor += 1;
+      nestStage = "start";
+      return;
+    }
+    if (nestStage === "start") {
+      nestParent = nest.parentUid;
+      nestIds = [...nest.board.items.keys()];
+      nestEdgeIds = [...nest.board.edges?.keys?.() || []];
+      nestItemCursor = 0;
+      nestEdgeCursor = 0;
+      nestKeyBuf = "";
+      nestRows = [];
+      nestStage = "key-items";
+      return;
+    }
+    if (nestStage === "key-items") {
+      if (nestItemCursor < nestIds.length) {
+        const item = nest.board.items.get(nestIds[nestItemCursor++]);
+        if (item) nestKeyBuf += `${item.uid}:${itemSig(item)}
+`;
+        return;
+      }
+      nestStage = "key-edges";
+      return;
+    }
+    if (nestStage === "key-edges") {
+      if (nestEdgeCursor < nestEdgeIds.length) {
+        const edge = nest.board.edges.get(nestEdgeIds[nestEdgeCursor++]);
+        if (edge) nestKeyBuf += `e:${edgeSig(edge)}
+`;
+        return;
+      }
+      const prev = nestHay.get(nestParent);
+      if (prev && prev.key === nestKeyBuf) {
+        nestCursor += 1;
+        nestStage = "start";
+        return;
+      }
+      nestStage = "hay-items";
+      nestItemCursor = 0;
+      nestEdgeCursor = 0;
+      return;
+    }
+    if (nestStage === "hay-items") {
+      if (nestItemCursor < nestIds.length) {
+        const item = nest.board.items.get(nestIds[nestItemCursor++]);
+        if (item) {
+          hayBuilds += 1;
+          nestRows.push({ uid: item.uid, hay: hayOf(item, resolveOnce) });
+        }
+        return;
+      }
+      nestStage = "hay-edges";
+      return;
+    }
+    if (nestStage === "hay-edges") {
+      if (nestEdgeCursor < nestEdgeIds.length) {
+        const edge = nest.board.edges.get(nestEdgeIds[nestEdgeCursor++]);
+        if (edge) {
+          hayBuilds += 1;
+          nestRows.push({ uid: edge.uid, hay: edgeText(edge) });
+        }
+        return;
+      }
+      nestHay.set(nestParent, { key: nestKeyBuf, rows: nestRows });
+      nestCursor += 1;
+      nestStage = "start";
+    }
+  }
+  function step(deadline) {
+    sliceCalls2 += 1;
+    if (!boardRef) return false;
+    if (!boardRef.items) {
+      phase = "done";
+      scanned = true;
+      lastSliceBuilds = 0;
+      lastSliceMs2 = 0;
+      return true;
+    }
+    if (ready()) return true;
+    let starved = false;
+    if (typeof deadline?.timeRemaining === "function") {
+      try {
+        starved = deadline.timeRemaining() <= 0;
+      } catch {
+        starved = false;
+      }
+    }
+    const t0 = now4();
+    let checks = 0;
+    const before = hayBuilds;
+    const over = () => {
+      checks += 1;
+      lastSliceMs2 = now4() - t0;
+      if (starved && checks >= 1) return true;
+      return lastSliceMs2 >= sliceMs;
+    };
+    let spins = 0;
+    while (phase !== "done") {
+      if (++spins > 1e5) break;
+      if (over()) {
+        lastSliceBuilds = hayBuilds - before;
+        return false;
+      }
+      if (phase === "items") {
+        if (cursor >= ids.length) {
+          phase = "item-drop";
+          continue;
+        }
+        const uid = ids[cursor++];
+        const item = boardRef.items.get(uid);
+        if (!item) continue;
+        seenItems.add(uid);
+        writeItem(item);
+        continue;
+      }
+      if (phase === "item-drop") {
+        for (const uid of [...itemHay.keys()]) if (!seenItems.has(uid)) itemHay.delete(uid);
+        phase = "edges";
+        cursor = 0;
+        ids = [...boardRef.edges?.keys?.() || []];
+        seenEdges = /* @__PURE__ */ new Set();
+        continue;
+      }
+      if (phase === "edges") {
+        if (cursor >= ids.length) {
+          phase = "edge-drop";
+          continue;
+        }
+        const uid = ids[cursor++];
+        const edge = boardRef.edges?.get?.(uid);
+        if (!edge) continue;
+        seenEdges.add(uid);
+        writeEdge(edge);
+        continue;
+      }
+      if (phase === "edge-drop") {
+        for (const uid of [...edgeHay.keys()]) if (!seenEdges.has(uid)) edgeHay.delete(uid);
+        phase = "nests";
+        resetNestWalk();
+        continue;
+      }
+      if (phase === "nests") {
+        advanceNest();
+        continue;
+      }
+      if (phase === "rescan") {
+        if (structuralPending) sweepMembership();
+        if (!pending.size && !structuralPending) {
+          phase = "done";
+          continue;
+        }
+        const uid = pending.values().next().value;
+        if (uid == null) {
+          phase = "done";
+          continue;
+        }
+        consider2(uid);
+        continue;
+      }
+      phase = "done";
+    }
+    if (phase === "done") scanned = true;
+    lastSliceBuilds = hayBuilds - before;
+    if (!lastSliceMs2) lastSliceMs2 = now4() - t0;
+    return ready();
+  }
+  function find(board2, query) {
+    const q2 = String(query || "").trim().toLowerCase();
+    if (!q2 || !board2?.items) return [];
+    const hits = [];
+    for (const item of board2.items.values()) {
+      const row4 = itemHay.get(item.uid);
+      if (!row4 || !row4.hay.includes(q2)) continue;
+      hits.push({ uid: item.uid, focus: item.uid, kind: item.type === "section" ? "section" : "card" });
+    }
+    for (const edge of board2.edges?.values?.() || []) {
+      const row4 = edgeHay.get(edge.uid);
+      if (!row4 || !row4.hay.includes(q2)) continue;
+      hits.push({ uid: edge.uid, focus: edge.from, kind: "edge" });
+    }
+    for (const parentUid of nestOrder) {
+      const pack = nestHay.get(parentUid);
+      if (!pack) continue;
+      for (const row4 of pack.rows) {
+        if (!row4.hay.includes(q2)) continue;
+        hits.push({ uid: row4.uid, focus: parentUid, kind: "nested", via: parentUid });
+      }
+    }
+    return hits;
+  }
+  return {
+    note,
+    touch,
+    step,
+    find,
+    ready,
+    blockText: resolveOnce,
+    stats() {
+      return { hayBuilds, resolveCalls, sliceCalls: sliceCalls2, lastSliceMs: lastSliceMs2, lastSliceBuilds, ready: ready() };
+    }
+  };
 }
 
 // src/model/attr-styles.js
@@ -101675,13 +102128,122 @@ ${url}`;
     const edges = q2 ? new Set((hits || []).filter((h) => h.kind === "edge").map((h) => h.uid)) : null;
     edgesR.setSearch(edges);
   };
+  let hay = null;
+  let hayStop = null;
+  let hayNoted = false;
+  let hayNestsReady = false;
+  let hayNests = [];
+  let hayPlan = null;
+  const blockResolve = (uid) => {
+    try {
+      return host?.blockString?.(uid) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const ensureHay = () => {
+    if (!hay) hay = createHayIndex({ resolve: blockResolve });
+    return hay;
+  };
+  const resetHayNests = () => {
+    hayPlan = null;
+    hayNests = [];
+    hayNestsReady = false;
+    hayNoted = false;
+  };
+  const advanceNests = (b) => {
+    const ix = ensureHay();
+    if (!hayPlan || hayPlan.uid !== b.uid) {
+      hayPlan = { uid: b.uid, items: [...b.items.values()], di: 0, list: [], seen: /* @__PURE__ */ new Set(), pi: 0, discovering: true };
+      hayNests = [];
+    }
+    const plan = hayPlan;
+    const t0 = globalThis.performance?.now?.() ?? Date.now();
+    const elapsed = () => (globalThis.performance?.now?.() ?? Date.now()) - t0;
+    while (plan.discovering) {
+      if (plan.di >= plan.items.length) {
+        plan.discovering = false;
+        break;
+      }
+      if (elapsed() >= 8) return "yield";
+      const item = plan.items[plan.di++];
+      let target = null;
+      if (item?.kind === "board") target = item.uid;
+      else if (item?.kind === "block" && item.target?.uid) {
+        const text4 = ix.blockText(item.target.uid);
+        if (classifyString(text4 || "").kind === "board") target = item.target.uid;
+      }
+      if (!target || target === b.uid || plan.seen.has(target)) continue;
+      plan.seen.add(target);
+      plan.list.push({ parentUid: item.uid, target });
+    }
+    if (plan.pi < plan.list.length) {
+      const spec = plan.list[plan.pi++];
+      let raw = null;
+      try {
+        raw = host?.pullBoard?.(spec.target, { prime: false });
+      } catch {
+        raw = null;
+      }
+      let child = null;
+      if (raw) {
+        try {
+          child = buildBoard(raw);
+        } catch {
+          child = null;
+        }
+      }
+      if (child?.items) hayNests.push({ parentUid: spec.parentUid, board: child });
+      if (plan.pi < plan.list.length || elapsed() >= 8) return "yield";
+    }
+    return "done";
+  };
+  const hayPart = (deadline) => {
+    if (notedSpeedFlags().searchHay === false) return true;
+    const b = board2();
+    if (!b?.items) return true;
+    const ix = ensureHay();
+    if (!hayNestsReady) {
+      if (advanceNests(b) === "yield") return false;
+      hayNestsReady = true;
+    }
+    if (!hayNoted) {
+      ix.note(b, hayNests);
+      hayNoted = true;
+    }
+    return ix.step(deadline);
+  };
+  const armHay = () => {
+    if (notedSpeedFlags().searchHay === false) return;
+    if (hayStop) return;
+    const ix = ensureHay();
+    if (hayNoted && hayNestsReady && ix.ready()) return;
+    hayStop = sharedBgBudget().run((deadline) => {
+      let done3 = false;
+      try {
+        done3 = hayPart(deadline) === true;
+      } catch (err) {
+        done3 = true;
+        console.error("[plexus-diagram] search hay", err);
+      }
+      if (done3) hayStop = null;
+      return done3;
+    }, { partMs: 1e6, label: "search-hay" });
+  };
   const searchFilter = (text4) => {
     const b = board2();
     const q2 = String(text4 || "").trim().toLowerCase();
     searchQuery = q2;
     searchIndex = -1;
     setRootFlag("searching", Boolean(q2));
-    searchMatches = b && q2 ? findOnBoard(b, q2, nestedBoards(b), (uid) => host?.blockString?.(uid)) : [];
+    if (!b || !q2) searchMatches = [];
+    else if (notedSpeedFlags().searchHay !== false) {
+      const ix = ensureHay();
+      if (!ix.ready()) armHay();
+      searchMatches = ix.ready() ? ix.find(b, q2) : findOnBoard(b, q2, nestedBoards(b), blockResolve);
+    } else {
+      searchMatches = findOnBoard(b, q2, nestedBoards(b), blockResolve);
+    }
     paintSearch(b, searchMatches, q2);
     return searchMatches.length;
   };
@@ -102861,11 +103423,22 @@ ${url}`;
     const hostNode = tablePointerTarget(node2);
     return Boolean(hostNode && root.contains(hostNode));
   };
+  const tablePressSkip = ".pxd-table-overlay, .pxd-roam-table__open, .rg-root, .rg-col-resize, .rg-row-resize, .pxd-table-caption";
+  const shieldTablePress = (event) => {
+    try {
+      if (notedSpeedFlags().tableCaptionEdit === false) return;
+    } catch {
+      return;
+    }
+    if (event.target?.closest?.(tablePressSkip)) return;
+    event.preventDefault();
+  };
   let onBoardPointerDown;
   listen(root, "pointerdown", onBoardPointerDown = (event) => {
     if (leavesBoardPointer(event.target) || inReaderText(event.target)) return;
     if (inRoamTable(event.target) && !event.__pxdGrab) {
       tablePointer = event.target;
+      shieldTablePress(event);
       return;
     }
     if (pdfClickShield(event.target)) return;
@@ -102982,7 +103555,14 @@ ${url}`;
   for (const type of ["mousedown", "mouseup"]) {
     listen(root, type, (event) => {
       if (type === "mousedown" && stealPinPress(event)) return;
-      if (leavesBoardPointer(event.target) || inReaderText(event.target) || inRoamTable(event.target)) return;
+      if (leavesBoardPointer(event.target) || inReaderText(event.target)) return;
+      if (inRoamTable(event.target)) {
+        if (type === "mousedown") {
+          shieldTablePress(event);
+          if (event.defaultPrevented) event.stopPropagation();
+        }
+        return;
+      }
       const native = nativeClickKind(event.target);
       if (native === "checkbox" || native === "image") return;
       const editing = itemsR.editingUid();
@@ -103796,6 +104376,7 @@ ${url}`;
       }
     }
     if (inputFocused && itemsR.isEditing()) {
+      if (event.target?.closest?.(".pxd-table-caption")) return;
       const ta = String(event.target?.tagName || "").toLowerCase() === "textarea" ? event.target : doc.activeElement;
       if (ta && String(ta.tagName || "").toLowerCase() === "textarea") {
         const uid = itemsR.editingUid();
@@ -103987,6 +104568,12 @@ ${url}`;
       }
     } else dirty.all = true;
     if (!d || d.has?.(boardUid)) applyBackground();
+    if (notedSpeedFlags().searchHay !== false) {
+      const ix = ensureHay();
+      if (structural) resetHayNests();
+      ix.touch(b, d, Boolean(structural));
+      armHay();
+    }
     ctl.reconcile();
     dirty.selection = true;
     schedule();
@@ -103996,6 +104583,7 @@ ${url}`;
     if (laterCtl.isOpen()) laterCtl.refresh();
     panel.refreshViews?.();
   }));
+  if (notedSpeedFlags().searchHay !== false) armHay();
   subs.push(session.on("links", () => {
     if (disposed || suspended) return;
     dirty.links = true;
@@ -105348,6 +105936,13 @@ ${url}`;
         offPartsChange?.();
         partsIdx?.dispose();
         partsIdx = null;
+      });
+      step(() => {
+        try {
+          hayStop?.();
+        } catch {
+        }
+        hayStop = null;
       });
       step(() => imgIndex?.dispose());
       step(() => {

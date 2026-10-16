@@ -5,7 +5,7 @@ import test from "node:test";
 
 import { createHost } from "../src/host/roam.js";
 import { createPartsIndex } from "../src/host/parts-index.js";
-import { searchParts } from "../src/model/parts-search.js";
+import { buildPartsIndex, searchParts } from "../src/model/parts-search.js";
 import { createPanel } from "../src/view/panel.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
@@ -124,4 +124,35 @@ test("typing with the PDF filter calls q() and pull() only on the first search",
     assert.equal(env.reads.pull, pullAfterFirst, `pull() ran again while typing "${text}"`);
   }
   assert.ok(f.root.querySelector(".pxd-panel__row"), "a PDF whose string holds the phrase is still a hit");
+});
+
+test("part search looks up an index after the rows are indexed", () => {
+  const blocks = {};
+  const order = [];
+  for (let page = 1; page <= 80; page += 1) {
+    for (let i = 0; i < 20; i += 1) {
+      const id = `b${page}-${i}`;
+      blocks[id] = {
+        id,
+        type: "para",
+        page,
+        text: `Page ${page} paragraph ${i} lorem ipsum dolor sit amet consectetur adipiscing elit`,
+      };
+      order.push(id);
+    }
+  }
+  blocks["b40-3"].text += " drains seasonal peak flow";
+  const rows = buildPartsIndex({ sha256: "big", blocks, order }, { docTitle: "Report" });
+  assert.ok(rows.length > 1000);
+  let reads = 0;
+  for (const row of rows) {
+    const lower = row.lower;
+    Object.defineProperty(row, "lower", { get() { reads += 1; return lower; } });
+  }
+  searchParts(rows, { text: "lorem" });
+  reads = 0;
+  const hit = searchParts(rows, { text: "drains seasonal peak", kinds: ["paragraph"], pages: "p. 30-50" });
+  assert.equal(hit.length, 1);
+  assert.equal(hit[0].page, 40);
+  assert.equal(reads, 0, "a later key still read part text");
 });

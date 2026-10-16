@@ -2,7 +2,7 @@
 // Rebuilt after invalidate() (the panel calls it on open); a doc that did not change is not re-indexed.
 
 import { parsedDocTitle, pdfFileTitle } from "../model/pdf.js";
-import { buildPartsIndex } from "../model/parts-search.js";
+import { buildPartsIndex, warmPartsIndex } from "../model/parts-search.js";
 import { readableParse, subscribeParseStored } from "./parse-store.js";
 
 // Same options the reader uses for the plain built-in parse.
@@ -55,7 +55,10 @@ export function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS
       }
       out.push(...part);
     }
-    if (mine === epoch) rows = out;
+    if (mine === epoch) {
+      warmPartsIndex(out);
+      if (mine === epoch) rows = out;
+    }
     return out;
   };
 

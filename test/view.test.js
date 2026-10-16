@@ -2312,6 +2312,9 @@ test("NP-9: native embeds keep a shield until edit, and a drag still moves the c
   try {
     await f.flush();
     const root = f.view.root;
+    // Slow runners can finish the card body a few frames later: wait by time, not by a frame count.
+    const until = Date.now() + 2000;
+    while (!root.querySelector("[data-uid=np9hl0001] .pxd-embed-shield") && Date.now() < until) await f.flush();
     const hl = root.querySelector("[data-uid=np9hl0001]");
     assert.ok(hl.querySelector(".pxd-embed-shield"), "pdf-highlight keeps a shield");
     drag(hl.querySelector(".pxd-embed-shield"));

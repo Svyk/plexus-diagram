@@ -108538,11 +108538,21 @@ async function installPlexusDiagram({
     } catch {
     }
     const nodes = doc?.querySelectorAll?.("[class*='pxd-']");
+    const roots = [doc?.documentElement, doc?.body, doc?.head].filter(Boolean);
+    const anchors = [".roam-app", ".roam-body", "#app"].map((sel) => {
+      try {
+        return doc?.querySelector?.(sel);
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+    const isHostNode = (el2) => roots.includes(el2) || anchors.some((anchor) => anchor === el2 || el2.contains?.(anchor));
     for (const el2 of [...nodes || []]) {
       try {
         const classes = String(el2.getAttribute?.("class") ?? el2.className ?? "").split(/\s+/).filter(Boolean);
-        if (classes.some((name) => /^(rm-|roam-)/.test(name))) {
+        if (isHostNode(el2) || classes.some((name) => /^(rm-|roam-)/.test(name))) {
           for (const name of classes) if (name.startsWith("pxd-")) el2.classList.remove(name);
+          for (const attr of Array.from(el2.attributes || [], (a) => a.name)) if (attr.startsWith("data-pxd-")) el2.removeAttribute(attr);
         } else {
           el2.remove();
         }
@@ -113233,6 +113243,12 @@ async function installPlexusDiagram({
     bindExternalNav();
     lifecycle.add(installRoamStack(doc));
     lifecycle.add(() => syncBoardClass(doc, false));
+    lifecycle.add(() => {
+      try {
+        doc.body?.classList?.remove?.("pxd-has-fullscreen");
+      } catch {
+      }
+    });
     lifecycle.event(win2, "hashchange", onHash);
     lifecycle.event(win2, "popstate", onNavigate);
   }

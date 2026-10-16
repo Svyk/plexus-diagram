@@ -440,6 +440,79 @@ test("a missing pdf.js retries after 60s and a null open still finishes the job"
   assert.equal(index.counts().queue, 0);
 });
 
+function mixedPage() {
+  const words = [];
+  for (let i = 0; i < 160; i += 1) {
+    if (i === 10) words.push("mmmmmm10");
+    else if (i >= 80) words.push(`zz${String(i).padStart(3, "0")}`);
+    else words.push(`aa${String(i).padStart(3, "0")}`);
+  }
+  return words.join(" ");
+}
+
+const LONG_ROW = {
+  sha256: "long", url: "https://x.test/long.pdf", pdfUid: "pl", docTitle: "Long", page: 1, kind: "paragraph", text: mixedPage(),
+};
+
+test("a long page indexes one word chunk and waits out a keystroke", async () => {
+  let now = 0;
+  const later = [];
+  const budget = budgetOf();
+  const index = createPdfTextIndex({
+    budget,
+    now: () => now,
+    later: (fn, ms) => { later.push({ fn, at: now + ms }); return () => {}; },
+    openPdf: async () => { throw new Error("no file"); },
+  });
+  index.noteParsed([LONG_ROW]);
+  assert.equal(index.search({ text: "aa000" }).length, 1);
+  assert.equal(index.search({ text: "mmmmmm10" }).length, 1);
+  assert.equal(index.search({ text: "zz080" }).length, 0);
+  index.pause(300);
+  budget.flush();
+  await tick();
+  assert.equal(index.search({ text: "zz080" }).length, 0);
+  now = 300;
+  later.splice(0).forEach((job) => { if (job.at <= now) job.fn(); });
+  budget.flush();
+  await tick();
+  assert.equal(index.search({ text: "zz080" }).length, 1);
+});
+
+test("a posting slice stops once the clock passes 16 ms", async () => {
+  let step = 0;
+  const index = createPdfTextIndex({
+    budget: budgetOf(),
+    now: () => { step += 1; return step * 10; },
+    openPdf: async () => null,
+  });
+  index.noteParsed([LONG_ROW]);
+  assert.equal(index.search({ text: "aa000" }).length, 1);
+  assert.equal(index.search({ text: "mmmmmm10" }).length, 0);
+});
+
+test("noteParsed while paused does not index until the pause ends", async () => {
+  let now = 0;
+  const later = [];
+  const budget = budgetOf();
+  const index = createPdfTextIndex({
+    budget,
+    now: () => now,
+    later: (fn, ms) => { later.push({ fn, at: now + ms }); return () => {}; },
+    openPdf: async () => null,
+  });
+  index.pause(300);
+  index.noteParsed([LONG_ROW]);
+  budget.flush();
+  await tick();
+  assert.equal(index.search({ text: "aa000" }).length, 0);
+  now = 300;
+  later.splice(0).forEach((job) => { if (job.at <= now) job.fn(); });
+  budget.flush();
+  await tick();
+  assert.equal(index.search({ text: "aa000" }).length, 1);
+});
+
 test("a null open still finishes the job", async () => {
   const budget = budgetOf();
   let opens = 0;

@@ -14902,6 +14902,31 @@ function figureCardMarkdown(block, doc) {
   const image = `![${alt}](${url})`;
   return caption ? `${image} ${caption}` : image;
 }
+function figureCopySize(block, doc, { source = false } = {}) {
+  const caption = pinCaption(block, doc);
+  const lines = caption ? Math.min(FIGURE_COPY_MAX_LINES, Math.max(1, Math.ceil(caption.length / FIGURE_COPY_CHARS))) : 0;
+  const chip = source ? FIGURE_COPY_CHIP : 0;
+  let image = 0;
+  const box2 = block?.bbox;
+  if (Array.isArray(box2) && box2.length >= 4) {
+    const bw = Number(box2[2]) - Number(box2[0]);
+    const bh = Number(box2[3]) - Number(box2[1]);
+    if (bw > 0 && bh > 0) image = Math.round((FIGURE_COPY_W - FIGURE_COPY_PAD) * (bh / bw));
+  }
+  if (!(image > 0)) image = FIGURE_COPY_IMAGE_MIN;
+  else image = Math.min(FIGURE_COPY_IMAGE_CAP, image);
+  let h = FIGURE_COPY_PAD + image + lines * FIGURE_COPY_LINE + chip;
+  if (h > FIGURE_COPY_MAX) {
+    const keep = chip + (lines ? FIGURE_COPY_LINE : 0);
+    const room = Math.max(FIGURE_COPY_IMAGE_MIN, FIGURE_COPY_MAX - FIGURE_COPY_PAD - keep);
+    image = Math.min(image, room);
+    const textRoom = FIGURE_COPY_MAX - FIGURE_COPY_PAD - image - chip;
+    const fit3 = Math.max(lines ? 1 : 0, Math.min(lines, Math.floor(textRoom / FIGURE_COPY_LINE)));
+    h = FIGURE_COPY_PAD + image + fit3 * FIGURE_COPY_LINE + chip;
+    if (h > FIGURE_COPY_MAX) h = FIGURE_COPY_MAX;
+  }
+  return { w: FIGURE_COPY_W, h: Math.round(h) };
+}
 function isSourceAttrString(text4) {
   return SOURCE_RE.test(String(text4 ?? "").trim());
 }
@@ -15091,7 +15116,27 @@ function writeWithSource(storage, on) {
   }
   return next;
 }
-function cardJsonPayload({ markdown = "", size = null, kind = "card", source = "" } = {}) {
+function tableSnapshot(table) {
+  if (!table || typeof table !== "object" || Array.isArray(table)) return null;
+  const cells = [];
+  for (const cell of Array.isArray(table.cells) ? table.cells : []) {
+    if (!cell || typeof cell !== "object") continue;
+    const row4 = {
+      r: Number.isInteger(cell.r) ? cell.r : 0,
+      c: Number.isInteger(cell.c) ? cell.c : 0,
+      text: String(cell.text ?? "")
+    };
+    if (Number.isInteger(cell.colSpan) && cell.colSpan > 1) row4.colSpan = cell.colSpan;
+    if (Number.isInteger(cell.rowSpan) && cell.rowSpan > 1) row4.rowSpan = cell.rowSpan;
+    cells.push(row4);
+  }
+  const snap = { cells };
+  if (Number.isInteger(table.rows)) snap.rows = table.rows;
+  if (Number.isInteger(table.cols)) snap.cols = table.cols;
+  if (table.grid && typeof table.grid === "object") snap.grid = table.grid;
+  return snap;
+}
+function cardJsonPayload({ markdown = "", size = null, kind = "card", source = "", table = null, caption = "" } = {}) {
   const body = {
     markdown: String(markdown ?? ""),
     size: { w: Number(size?.w) > 0 ? Number(size.w) : 280, h: Number(size?.h) > 0 ? Number(size.h) : 160 },
@@ -15099,6 +15144,12 @@ function cardJsonPayload({ markdown = "", size = null, kind = "card", source = "
   };
   const pin2 = String(source ?? "").trim();
   if (UID_RE4.test(pin2)) body.source = pin2;
+  if (body.kind === "table") {
+    const snap = tableSnapshot(table);
+    if (snap) body.table = snap;
+    const cap4 = String(caption ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
+    if (cap4) body.caption = cap4;
+  }
   return body;
 }
 function parseCardJson(raw) {
@@ -15117,7 +15168,7 @@ function pasteCardPlan(data, point) {
   if (!parsed) return null;
   const copied = planCopiedSource({ markdown: parsed.markdown, source: parsed.source || "" });
   if (!copied.markdown.trim()) return null;
-  return {
+  const plan = {
     x: Number.isFinite(point?.x) ? point.x : 0,
     y: Number.isFinite(point?.y) ? point.y : 0,
     w: parsed.size.w,
@@ -15125,6 +15176,12 @@ function pasteCardPlan(data, point) {
     markdown: copied.markdown,
     sourceUid: copied.sourceUid || ""
   };
+  if (parsed.kind === "table" && parsed.table) {
+    plan.kind = "table";
+    plan.table = parsed.table;
+    plan.caption = String(parsed.caption || "");
+  }
+  return plan;
 }
 function pinDeepLink({ graph, pageUid: pageUid2, pinUid } = {}) {
   const g = String(graph ?? "").trim();
@@ -15150,6 +15207,11 @@ function pinClickMode({ shiftKey = false, metaKey: metaKey2 = false, ctrlKey = f
   if (shiftKey) return "sidebar";
   if (metaKey2 || ctrlKey) return "main";
   return "popover";
+}
+function sourceOpenPlan({ sidebar = false, card: card2 = false } = {}) {
+  if (sidebar) return "sidebar";
+  if (card2) return "reader";
+  return "roam";
 }
 function pinOpenPlan(region) {
   if (!region || region.kind !== "pdf" || region.supported === false) return null;
@@ -15230,7 +15292,7 @@ function planPinWrites(spec) {
   creates.push({ role: "pin", parentUid: containerUid, uid: pinUid, string });
   return { uid: pinUid, reused: false, creates, containerUid: spec?.containerUid || "" };
 }
-var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE4, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash, COVER_AREA_SLACK, SOURCE_LINE_RE, notedPin, PIN_PENDING_MS;
+var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE4, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash, COVER_AREA_SLACK, FIGURE_COPY_W, FIGURE_COPY_PAD, FIGURE_COPY_LINE, FIGURE_COPY_CHIP, FIGURE_COPY_CHARS, FIGURE_COPY_MAX_LINES, FIGURE_COPY_IMAGE_CAP, FIGURE_COPY_IMAGE_MIN, FIGURE_COPY_MAX, SOURCE_LINE_RE, notedPin, PIN_PENDING_MS;
 var init_pdf_pin = __esm({
   "src/model/pdf-pin.js"() {
     init_deeplink();
@@ -15254,6 +15316,15 @@ var init_pdf_pin = __esm({
     ]);
     squash = (text4) => String(text4 ?? "").replace(/\s+/g, " ").trim();
     COVER_AREA_SLACK = 4;
+    FIGURE_COPY_W = 280;
+    FIGURE_COPY_PAD = 26;
+    FIGURE_COPY_LINE = 20;
+    FIGURE_COPY_CHIP = 28;
+    FIGURE_COPY_CHARS = 42;
+    FIGURE_COPY_MAX_LINES = 6;
+    FIGURE_COPY_IMAGE_CAP = 360;
+    FIGURE_COPY_IMAGE_MIN = 72;
+    FIGURE_COPY_MAX = 520;
     SOURCE_LINE_RE = /^(?:[-*]\s+)?Source::\s*\(\(([\w-]{1,32})\)\)\s*$/;
     notedPin = null;
     PIN_PENDING_MS = 8e3;
@@ -48834,7 +48905,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     // grid falls back to native when the API is missing. flat repeats covered cells.
     // notes: the parse's footnote blocks on the table's page ([{ id, mark, text }]) for cell marks.
     // The card is a folded caption block (caption: the parse's table caption, else "Table · N rows") with the table under it.
-    insertParsedTable({ x, y, table, mode = "auto", notes, pin: pin2, caption } = {}) {
+    insertParsedTable({ x, y, table, mode = "auto", notes, pin: pin2, caption, sourceUid } = {}) {
       if (!board2 || destroyed || gone) return Promise.resolve(void 0);
       const asked = mode === "grid" || mode === "native" || mode === "flat" ? mode : "auto";
       const format = footnoteFormatNow();
@@ -48883,6 +48954,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           return { ok: false, reason: "empty" };
         }
         if (pin2) await citePin(uid2, pin2);
+        else if (sourceUid && sourceAttrString(sourceUid)) await host.createBlock({ parentUid: uid2, order: "last", string: sourceAttrString(sourceUid) });
         repull();
         return { ok: true, uid: card2, tableUid: uid2, path, w: size.w, h: size.h };
       });
@@ -48938,7 +49010,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         return { ok: Boolean(made.uid), uid: made.uid || "", reused: Boolean(made.reused), writes };
       });
     },
-    // The figure file and its pin are one undo. A failed pin deletes the upload before the group closes.
+    // The figure file and its pin are one undo. Redo recreates the pin and reuses the file url.
+    // A failed pin deletes the upload and leaves no undo step.
     copyFigureFile({ spec, file } = {}) {
       if (destroyed || gone) return Promise.resolve({ ok: false, reason: "gone" });
       if (!file && !spec?.pdfUid) return Promise.resolve({ ok: false, reason: "empty" });
@@ -48946,14 +49019,28 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return queue.run(() => run(async () => {
         const created = [];
         let uploadedUrl = "";
-        let failed = false;
-        let noted = false;
-        const keep = () => {
-          if (noted) return;
-          noted = true;
+        const dropUndo = () => {
           try {
-            host.noteGroupedWrite?.("upload");
+            host.setCustomUndo?.(null);
           } catch {
+          }
+        };
+        const discardUpload = async () => {
+          if (!uploadedUrl) return;
+          const url = uploadedUrl;
+          uploadedUrl = "";
+          try {
+            await host.deleteFile?.(url);
+          } catch {
+          }
+        };
+        const discardBlocks = async () => {
+          for (const row4 of created.splice(0).reverse()) {
+            if (!row4?.uid) continue;
+            try {
+              await host.deleteBlock(row4.uid);
+            } catch {
+            }
           }
         };
         const custom = {
@@ -48965,16 +49052,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
               } catch {
               }
             }
-            if (!uploadedUrl) return;
-            const url = uploadedUrl;
-            uploadedUrl = "";
-            try {
-              await host.deleteFile?.(url);
-            } catch {
-            }
           },
           async redo() {
-            if (failed) return;
             for (const row4 of created) {
               try {
                 await host.createBlock({
@@ -48988,13 +49067,6 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
               } catch {
               }
             }
-            if (file && !uploadedUrl) {
-              try {
-                uploadedUrl = String(await host.uploadFile(file) || "");
-              } catch {
-                uploadedUrl = "";
-              }
-            }
           }
         };
         try {
@@ -49005,65 +49077,34 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           try {
             uploadedUrl = String(await host.uploadFile(file) || "");
           } catch {
-            try {
-              host.setCustomUndo?.(null);
-            } catch {
-            }
+            dropUndo();
             return { ok: false, uid: "", url: "", reused: false, reason: "upload-failed" };
           }
-          if (uploadedUrl) keep();
         }
         let made = { uid: "", reused: false, created: [] };
         if (spec?.pdfUid) {
           try {
             made = await writePdfPin(spec) || made;
           } catch {
-            failed = true;
-            for (const row4 of created.slice().reverse()) {
-              try {
-                await host.deleteBlock(row4.uid);
-              } catch {
-              }
-            }
-            if (uploadedUrl) {
-              const url = uploadedUrl;
-              uploadedUrl = "";
-              try {
-                await host.deleteFile?.(url);
-              } catch {
-              }
-            }
-            if (!noted) keep();
+            await discardUpload();
+            await discardBlocks();
+            dropUndo();
             return { ok: false, uid: "", url: "", reused: false, reason: "write-failed" };
           }
           for (const row4 of made.created || []) created.push(row4);
         }
         if (spec?.pdfUid && !made.uid) {
-          failed = true;
-          if (uploadedUrl) {
-            const url = uploadedUrl;
-            uploadedUrl = "";
-            try {
-              await host.deleteFile?.(url);
-            } catch {
-            }
-          }
-          for (const row4 of created.slice().reverse()) {
-            try {
-              await host.deleteBlock(row4.uid);
-            } catch {
-            }
-            created.pop();
-          }
-          if (!noted) keep();
+          await discardUpload();
+          await discardBlocks();
+          dropUndo();
           return { ok: false, uid: "", url: "", reused: false };
         }
-        if (!uploadedUrl && !created.length) {
+        if (created.length || made.reused) {
           try {
-            host.setCustomUndo?.(null);
+            host.noteGroupedWrite?.("upload");
           } catch {
           }
-        }
+        } else dropUndo();
         return { ok: true, uid: made.uid || "", url: uploadedUrl, reused: Boolean(made.reused) };
       }));
     },
@@ -71018,6 +71059,7 @@ function createParseMotion({ doc, overlayHost = null, overlayPage = 0, headHost 
 
 // src/view/parse-view.js
 init_parse_to_roam_md();
+init_roam_table();
 var PARSE_MIME2 = "application/x-plexus-parse";
 var BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
 var SYNC_MS = 250;
@@ -71800,7 +71842,14 @@ function createParseView({
           }
         }
         const copied = planCopiedSource({ markdown: plain2, source });
-        const json = cardJsonPayload({ markdown: copied.markdown, size: { w: 280, h: 160 }, kind: block.type || "card", source: copied.sourceUid });
+        const size = isImageCopy(block) ? figureCopySize(block, parsed, { source: Boolean(copied.sourceUid || source) }) : { w: 280, h: 160 };
+        const json = cardJsonPayload({
+          markdown: copied.markdown,
+          size,
+          kind: block.type || "card",
+          source: copied.sourceUid,
+          ...block.type === "table" ? { table: block, caption: parsedTableCaption(block, parsed) } : {}
+        });
         const text4 = source ? `${plain2}
 ${sourceAttrString(source)}` : plain2;
         return writeTyped({ "text/plain": text4, [CARD_JSON_MIME]: JSON.stringify(json) });
@@ -78480,19 +78529,50 @@ function sidebarPdfBoxes(doc) {
   }
   return out;
 }
+function windowOf(box2) {
+  return box2?.closest?.(".rm-sidebar-window") || null;
+}
 function uidFromWindow(box2) {
-  const win2 = box2?.closest?.(".rm-sidebar-window");
-  const id = String(win2?.id || "");
+  const id = String(windowOf(box2)?.id || "");
   const mark = "sidebar-block-";
   const at = id.lastIndexOf(mark);
   if (at < 0) return "";
   return id.slice(at + mark.length).split(/[^\w-]/)[0] || "";
 }
+function uidInWindow(box2) {
+  const win2 = windowOf(box2) || box2;
+  const node2 = win2?.querySelector?.("[data-block-uid], [data-uid]");
+  return String(node2?.getAttribute?.("data-block-uid") || node2?.getAttribute?.("data-uid") || "").trim();
+}
+function urlPath(url) {
+  const text4 = String(url || "").trim();
+  if (!text4) return "";
+  try {
+    const parsed = new URL(text4);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return text4.split("#")[0].split("?")[0];
+  }
+}
+function idEndsWithUid(id, uid) {
+  const text4 = String(id || "");
+  const want = String(uid || "");
+  if (!text4 || want.length < 4) return false;
+  if (text4 === want) return true;
+  const at = text4.lastIndexOf(want);
+  if (at < 0 || at + want.length !== text4.length) return false;
+  const prev = text4[at - 1];
+  return prev === "-" || prev === "_" || /[^\w]/.test(prev);
+}
 function sidebarPdfTarget(box2, readString) {
   const marked = box2?.closest?.("[data-block-uid]")?.getAttribute?.("data-block-uid") || box2?.getAttribute?.("data-block-uid") || "";
-  const uid = String(marked || uidFromWindow(box2) || "").trim();
+  const uid = String(marked || uidFromWindow(box2) || uidInWindow(box2) || "").trim();
   const stamped = String(box2?.getAttribute?.("data-pdf-url") || box2?.closest?.("[data-pdf-url]")?.getAttribute?.("data-pdf-url") || "").trim();
   let url = stamped;
+  if (!url) {
+    const src = String(box2?.querySelector?.("iframe")?.getAttribute?.("src") || "").trim();
+    if (/^https?:\/\//.test(src)) url = src.split("#")[0];
+  }
   if (!url && uid && typeof readString === "function") {
     try {
       url = pdfMacroUrl(readString(uid) || "") || "";
@@ -78500,7 +78580,7 @@ function sidebarPdfTarget(box2, readString) {
       url = "";
     }
   }
-  return { uid, url };
+  return { uid, url, windowId: String(windowOf(box2)?.id || "") };
 }
 function pdfTargetsMatch(found, want) {
   const wantUid = String(want?.uid || "").trim();
@@ -78509,7 +78589,8 @@ function pdfTargetsMatch(found, want) {
   const foundUid = String(found?.uid || "").trim();
   const foundUrl = String(found?.url || "").trim();
   if (wantUid && foundUid && wantUid === foundUid) return true;
-  if (wantUrl && foundUrl && wantUrl === foundUrl) return true;
+  if (wantUid && idEndsWithUid(found?.windowId, wantUid)) return true;
+  if (wantUrl && foundUrl && (wantUrl === foundUrl || urlPath(wantUrl) === urlPath(foundUrl))) return true;
   return false;
 }
 function sidebarPdfContainer(doc, want, readString) {
@@ -92447,6 +92528,7 @@ function buildBoardView(onFail, {
   };
   let sidebarChips = null;
   let sidebarHost = null;
+  let sidebarParsed = null;
   let sidebarGen = 0;
   let sidebarUnwatch = null;
   let sidebarWake = null;
@@ -92494,6 +92576,17 @@ function buildBoardView(onFail, {
     }
     sidebarChips = null;
     sidebarHost = null;
+    sidebarParsed = null;
+  }
+  function boardPdfItem(pdfUid) {
+    const b = board2();
+    if (!b || !pdfUid) return null;
+    for (const it of b.items.values()) {
+      if (!it || it.kind !== "pdf") continue;
+      const blockUid3 = it.target?.kind === "block" ? it.target.uid : it.uid;
+      if (it.uid === pdfUid || blockUid3 === pdfUid || it.target?.uid === pdfUid) return it;
+    }
+    return null;
   }
   async function revealSidebarPin(plan) {
     if (disposed || !plan) return false;
@@ -92530,15 +92623,19 @@ function buildBoardView(onFail, {
         } catch {
         }
       }
-      const pace = 50;
-      const cap4 = Math.ceil(SIDEBAR_WAIT_MS / pace) + 1;
-      for (let i = 0; i < cap4 && Date.now() < started + SIDEBAR_WAIT_MS; i += 1) {
-        if (!alive()) return false;
-        if (parseMatchesPin(want)) break;
-        await sleep(pace);
+      let parsed = parseMatchesPin(want) ? readPane?.parsedDoc?.() || null : null;
+      if (!parsed && want.url) {
+        try {
+          parsed = await loadParsedFor({ url: want.url });
+        } catch {
+          parsed = null;
+        }
       }
-      if (!alive() || !parseMatchesPin(want)) return true;
+      if (!alive()) return false;
+      sidebarParsed = parsed || null;
+      if (!sidebarParsed) return true;
       if (sidebarHost !== box2) dropSidebarChips();
+      sidebarParsed = parsed;
       sidebarHost = box2;
       sidebarUnwatch?.();
       sidebarUnwatch = watchNodeGone(box2, doc, () => {
@@ -92549,9 +92646,9 @@ function buildBoardView(onFail, {
         sidebarChips = createPageChips({
           doc,
           host: box2,
-          getParsed: () => parseMatchesPin(want) ? readPane?.parsedDoc?.() || null : null,
+          getParsed: () => sidebarParsed,
           pageEl: (n3) => sidebarPageEl(box2, n3),
-          pageOf: (n3) => (readPane?.parsedDoc?.()?.pages || []).find((row4) => row4?.n === n3) || null,
+          pageOf: (n3) => (sidebarParsed?.pages || []).find((row4) => row4?.n === n3) || null,
           storage
         });
       }
@@ -92559,7 +92656,7 @@ function buildBoardView(onFail, {
         sidebarChips.setShown(true);
       } catch {
       }
-      const block = matchParsedBlock(readPane?.parsedDoc?.() || null, plan);
+      const block = matchParsedBlock(sidebarParsed, plan);
       if (block && alive()) {
         try {
           sidebarChips.flash(block.id);
@@ -92571,20 +92668,64 @@ function buildBoardView(onFail, {
       return false;
     }
   }
+  function openCopiedSource(plan, { shift = false } = {}) {
+    if (!plan?.pdfUid) return false;
+    if (shift) {
+      try {
+        host?.openInSidebar?.(plan.pdfUid);
+      } catch {
+      }
+      try {
+        revealSidebarPin(plan);
+      } catch {
+      }
+      return true;
+    }
+    const want = pinPdfTarget(plan);
+    const sidebar = Boolean(want && sidebarPdfContainer(doc, want, readBlock));
+    const choice = sourceOpenPlan({ sidebar, card: Boolean(boardPdfItem(plan.pdfUid)) });
+    if (choice === "reader") return openPin(plan);
+    if (choice === "sidebar") {
+      try {
+        revealSidebarPin(plan);
+      } catch {
+      }
+      return true;
+    }
+    try {
+      host?.openInSidebar?.(plan.pdfUid);
+    } catch {
+    }
+    void revealSidebarPin(plan).then((found) => {
+      if (found || disposed) return;
+      let pageUid2 = "";
+      try {
+        pageUid2 = host?.blockPageUid?.(plan.pdfUid) || "";
+      } catch {
+        pageUid2 = "";
+      }
+      const fallback = pinOpenFallback({ opened: false, plan, pageUid: pageUid2, now: Date.now() });
+      if (fallback?.openPage) {
+        notePendingPin(fallback.pending);
+        try {
+          host?.openPage?.(fallback.openPage);
+        } catch {
+        }
+        return;
+      }
+      try {
+        host?.openBlock?.(plan.pdfUid);
+      } catch {
+      }
+    });
+    return true;
+  }
   function openPin(detail) {
     const plan = detail && typeof detail === "object" ? detail : null;
     const pdfUid = plan?.pdfUid || "";
     const b = board2();
     if (disposed || !b || !pdfUid) return false;
-    let item = null;
-    for (const it of b.items.values()) {
-      if (!it || it.kind !== "pdf") continue;
-      const blockUid4 = it.target?.kind === "block" ? it.target.uid : it.uid;
-      if (it.uid === pdfUid || blockUid4 === pdfUid || it.target?.uid === pdfUid) {
-        item = it;
-        break;
-      }
-    }
+    const item = boardPdfItem(pdfUid);
     if (!item) {
       try {
         revealSidebarPin(plan);
@@ -92619,18 +92760,7 @@ function buildBoardView(onFail, {
     region.uid = pinUid;
     const plan = pinOpenPlan(region);
     if (!plan) return false;
-    if (event?.shiftKey) {
-      try {
-        host?.openInSidebar?.(plan.pdfUid);
-      } catch {
-      }
-      try {
-        revealSidebarPin(plan);
-      } catch {
-      }
-      return true;
-    }
-    return openPin(plan);
+    return openCopiedSource(plan, { shift: Boolean(event?.shiftKey) });
   };
   let parseActionsObj = null;
   const revealParsed = (uids) => {
@@ -100168,34 +100298,7 @@ ${url}`;
     lastRefAt = now4;
     if (pinJump) {
       dismissRoamHoverPopups();
-      if (pinJump.mode === "sidebar") {
-        try {
-          host?.openInSidebar?.(pinJump.plan.pdfUid);
-        } catch {
-        }
-        try {
-          revealSidebarPin(pinJump.plan);
-        } catch {
-        }
-        return true;
-      }
-      const opened = openPin(pinJump.plan);
-      if (!opened) {
-        let pageUid2 = "";
-        try {
-          pageUid2 = host?.blockPageUid?.(pinJump.plan.pdfUid) || "";
-        } catch {
-          pageUid2 = "";
-        }
-        const fallback = pinOpenFallback({ opened: false, plan: pinJump.plan, pageUid: pageUid2, now: now4 });
-        if (fallback?.openPage) {
-          notePendingPin(fallback.pending);
-          try {
-            host?.openPage?.(fallback.openPage);
-          } catch {
-          }
-        }
-      }
+      openCopiedSource(pinJump.plan, { shift: pinJump.mode === "sidebar" });
       return true;
     }
     if (event.shiftKey) api3.ui.rightSidebar?.addWindow?.({ window: { type: page ? "outline" : "block", "block-uid": uid } });
@@ -101089,14 +101192,22 @@ ${url}`;
       pasteCardJson: (data) => {
         const plan = pasteCardPlan(data, pastePoint());
         if (!plan) return;
-        Promise.resolve(session.insertParsedCard?.({
+        const insert = plan.kind === "table" && plan.table ? session.insertParsedTable?.({
+          x: plan.x,
+          y: plan.y,
+          table: plan.table,
+          caption: plan.caption,
+          mode: "native",
+          ...plan.sourceUid ? { sourceUid: plan.sourceUid } : {}
+        }) : session.insertParsedCard?.({
           x: plan.x,
           y: plan.y,
           w: plan.w,
           h: plan.h,
           markdown: plan.markdown,
           ...plan.sourceUid ? { sourceUid: plan.sourceUid } : {}
-        })).then(afterCreate("Pasted")).catch(() => {
+        });
+        Promise.resolve(insert).then(afterCreate("Pasted")).catch(() => {
         });
       },
       editorPaste

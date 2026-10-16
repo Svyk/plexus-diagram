@@ -13,6 +13,7 @@ import { SPLIT_WATCH_MIN } from "../src/host/split-watch.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 import { BIG_BUDGETS_PATH, checkBigCeilings, lowerBigCeilings, readBigBudgets } from "../tools/live/big-board-budgets.mjs";
+import { dragSelection, mountBig, settledIn, zoomBurst } from "./fixtures/big-mount.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const counts = {};
@@ -109,6 +110,56 @@ test("the DOM near the view stays bounded at detail and at map zoom, and dispose
   }
   assert.ok(counts.attachedShellsAtDetail < 200, `shells at detail: ${counts.attachedShellsAtDetail}`);
   assert.ok(counts.attachedShellsAtMap < 1524, `shells at map: ${counts.attachedShellsAtMap}`);
+});
+
+// perf2 lane E: no-flash counts. A swap frame is a frame where an in-view card is neither an attached shell nor a
+// box on the underlay. Edge churn per nav: edges re-placed plus edge elements replaced when a parked board resumes.
+test("no-flash counts: swap frames, edge churn on a crumb back, shells restyled by a tier flip, edges placed per drag frame", async () => {
+  let swap = 0;
+  for (const [vp, dir, ticks] of [[{ x: -2000, y: -1500, zoom: 1 }, 1, 14], [{ x: 300, y: 20, zoom: 0.1 }, -1, 16]]) {
+    const m = mountBig(vp);
+    try {
+      await settledIn(m);
+      const frames = await zoomBurst(m, dir, ticks);
+      swap += frames.filter((f) => f.missing > 0).length;
+      if (dir < 0) counts.shellsAtZoomInFlip = m.view.flipStats().attachedAtFlip.at(-1) ?? 9999;
+    } finally { m.done(); }
+  }
+  {
+    const m = mountBig({ x: 300, y: 20, zoom: 0.1 });
+    try {
+      await m.pump(30);
+      const placed = m.view.stats().edgePlacements;
+      const els = new Set(m.view.root.querySelectorAll(".pxd-edge"));
+      m.view.suspend();
+      m.view.park();
+      m.view.unpark();
+      m.view.resume();
+      for (let i = 0; i < 6; i += 1) {
+        m.stub.flushFrames();
+        await tick(0);
+        if (m.view.paintAudit().missing > 0) swap += 1;
+      }
+      const after = new Set(m.view.root.querySelectorAll(".pxd-edge"));
+      counts.edgeChurnPerCrumbBack = (m.view.stats().edgePlacements - placed) + [...els].filter((el) => !after.has(el)).length;
+    } finally { m.done(); }
+  }
+  counts.swapFramesMissingCards = swap;
+  {
+    const { m, el, p } = await dragSelection({});
+    try {
+      m.stub.dispatch(el, "pointerdown", { ...p, button: 0, buttons: 1, pointerId: 7 });
+      let most = 0;
+      for (let i = 1; i <= 8; i += 1) {
+        const p0 = m.view.stats().edgePlacements;
+        m.stub.dispatch(el, "pointermove", { clientX: p.clientX + i * 3, clientY: p.clientY + i * 2, buttons: 1, pointerId: 7 });
+        m.stub.flushFrames();
+        most = Math.max(most, m.view.stats().edgePlacements - p0);
+      }
+      m.stub.dispatch(el, "pointerup", { clientX: p.clientX + 24, clientY: p.clientY + 16, button: 0, buttons: 0, pointerId: 7 });
+      counts.edgesPlacedPerDragFrame = most;
+    } finally { m.done(); }
+  }
 });
 
 test("every count is at or under its checked-in ceiling", () => {

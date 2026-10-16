@@ -7,5 +7,9 @@
   "listenersPerBigBoard": 48,
   "attachedShellsAtMap": 900,
   "attachedEdgesAtMap": 2000,
-  "domNodesAtMap": 25000
+  "domNodesAtMap": 25000,
+  "swapFramesMissingCards": 0,
+  "edgeChurnPerCrumbBack": 0,
+  "shellsAtZoomInFlip": 120,
+  "edgesPlacedPerDragFrame": 300
 }

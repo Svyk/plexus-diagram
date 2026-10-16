@@ -1,0 +1,148 @@
+// Lane C fix round 3. Live paste drops the custom card MIME, so every insert and
+// paste path has to share one planner. Each entry point has its own assertion.
+import { readFileSync } from "node:fs";
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { parseClipboard } from "../src/model/clipboard.js";
+import { handleParseDrop } from "../src/model/drop.js";
+import { copiedPartPlan, copyMenuPlan, figureCopySize } from "../src/model/pdf-pin.js";
+import { placementContent, createParseActions } from "../src/view/parse-actions.js";
+import { runChipAction } from "../src/view/page-chips.js";
+
+const src = (rel) => readFileSync(new URL(rel, import.meta.url), "utf8");
+
+const FIGURE_TEXT = "![Figure](https://files/a.png) Figure 1. Long caption that wraps onto a second line of the card.";
+const SOURCE = "Source:: ((pinuid01))";
+
+function clip(text) {
+  return { getData: (type) => (type === "text/plain" ? text : ""), files: [] };
+}
+
+const figureBlock = {
+  id: "f1",
+  type: "figure",
+  page: 1,
+  bbox: [0, 0, 400, 220],
+  caption: "Figure 1. Presumptive positives per month. Peaks follow wet-clean months and the second line is clipped.",
+  image: { url: "https://files/a.png" },
+};
+
+test("clipboard text of a copied figure keeps a height above 160", () => {
+  const parsed = parseClipboard(clip(`${FIGURE_TEXT}\n${SOURCE}`));
+  assert.equal(parsed.kind, "card-json");
+  assert.equal(parsed.data.source, "pinuid01");
+  assert.ok(parsed.data.size.h > 160, `expected h > 160, got ${parsed.data.size.h}`);
+  assert.match(parsed.data.markdown, /!\[[^\]]*\]\(https:\/\/files\/a\.png\)/);
+  assert.match(parsed.data.markdown, /Figure 1\./);
+  assert.doesNotMatch(parsed.data.markdown, /Source::/);
+  assert.doesNotMatch(parsed.data.markdown, /pxd-size::/);
+
+  const sized = parseClipboard(clip(`${FIGURE_TEXT}\npxd-size:: 280 220\n${SOURCE}`));
+  assert.equal(sized.data.size.h, 220);
+  assert.equal(sized.data.size.w, 280);
+  assert.doesNotMatch(sized.data.markdown, /pxd-size::/);
+  assert.equal(copiedPartPlan({ markdown: `${FIGURE_TEXT}\n${SOURCE}` }).image, true);
+});
+
+test("the gutter chip, the session action, and the shortcut share copiedPartPlan", () => {
+  const chips = src("../src/view/page-chips.js");
+  assert.match(chips, /copiedPartPlan\(/);
+  assert.match(chips, /altKey && event\.shiftKey \? "source"/);
+  const seen = [];
+  const doc = { blocks: { f1: figureBlock }, order: ["f1"] };
+  runChipAction({
+    act: "card",
+    ids: ["f1"],
+    block: figureBlock,
+    doc,
+    withSource: true,
+  }, {
+    session: { insertParsedCard: (arg) => { seen.push(arg); } },
+    payload: () => ({ ids: ["f1"] }),
+  });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].withSource, true);
+  assert.ok(seen[0].h > 160, `chip insert h ${seen[0].h}`);
+  assert.equal(seen[0].w, 280);
+
+  const actionsSrc = src("../src/view/parse-actions.js");
+  assert.match(actionsSrc, /copiedPartPlan\(/);
+  const plain = placementContent(doc, ["f1"], "card");
+  const cited = placementContent(doc, ["f1"], "card", null, true);
+  assert.equal(plain.content.kind, "figure");
+  assert.ok(plain.height > 160, `placement h ${plain.height}`);
+  assert.ok(cited.height > plain.height, `source chip did not grow the card (${plain.height} -> ${cited.height})`);
+
+  const menu = copyMenuPlan({ id: "source", block: figureBlock, doc, source: "pinuid01" });
+  assert.equal(menu.sourceUid, "pinuid01");
+  assert.ok(menu.size.h > 160);
+  assert.match(menu.text, /pxd-size:: 280 \d+/);
+  assert.match(menu.text, /Source:: \(\(pinuid01\)\)/);
+  const pasted = parseClipboard(clip(menu.text));
+  assert.ok(pasted.data.size.h > 160, `shortcut paste h ${pasted.data.size.h}`);
+  assert.equal(pasted.data.source, "pinuid01");
+  const view = src("../src/view/parse-view.js");
+  assert.match(view, /copyMenuPlan\(/);
+  assert.match(view, /figureCardMarkdown\(live, parsed\)/);
+});
+
+test("a figure drop and a parse-actions insert use the shared height", async () => {
+  const dropSrc = src("../src/model/drop.js");
+  assert.match(dropSrc, /copiedPartPlan\(/);
+  const board = src("../src/view/board-view.js");
+  const dropAt = board.indexOf("if (list.length === 1 && list[0].parse)");
+  const drop = board.slice(dropAt, dropAt + 700);
+  assert.match(drop, /gestureSource\(/);
+  assert.match(drop, /handleParseDrop\(/);
+  const menuAt = board.indexOf("const pasteFromMenu");
+  const menu = board.slice(menuAt, board.indexOf("const pasteImages", menuAt));
+  assert.match(menu, /parseClipboard\(/);
+
+  const doc = {
+    sha256: "sha",
+    engine: "builtin",
+    optsHash: "opt",
+    order: ["f1"],
+    blocks: { f1: { ...figureBlock, image: { url: "https://x/f.png" } } },
+  };
+  const sizes = [];
+  const res = await handleParseDrop({
+    payload: { sha256: "sha", engine: "builtin", optsHash: "opt", kind: "figure", ids: ["f1"], withSource: true },
+    store: { async getParse() { return doc; } },
+    session: {
+      async insertParsedCard({ w, h }) {
+        sizes.push({ w, h });
+        return { ok: true, uid: "fig1" };
+      },
+    },
+    point: { x: 4, y: 8 },
+  });
+  assert.equal(res.ok, true);
+  const bare = figureCopySize(doc.blocks.f1, doc, { source: false });
+  assert.ok(sizes[0].h > bare.h, `drop h ${sizes[0].h} did not grow past ${bare.h} for the chip`);
+  assert.ok(sizes[0].h > 160);
+
+  const seen = [];
+  const actions = createParseActions({
+    session: { insertParsedCard: async (arg) => { seen.push(arg); return { ok: true, uid: "c1" }; } },
+    store: { getParse: async () => doc },
+  });
+  const inserted = await actions.insertParsedCard({
+    sha256: "sha", engine: "builtin", optsHash: "opt", ids: ["f1"], withSource: true, pdfUid: "pdf1",
+  });
+  assert.equal(inserted.ok, true);
+  assert.ok(seen[0].h > 160, `session insert h ${seen[0].h}`);
+  assert.equal(seen[0].w, 280);
+});
+
+test("the Source chip sits under the caption instead of over it", () => {
+  const css = src("../src/css/source-chip.css");
+  assert.match(css, /pxd-item__body:has\(> \.pxd-chip--source\)/);
+  assert.match(css, /max-height:\s*360px/);
+  const rule = css.slice(css.indexOf(".pxd-item__body:has(> .pxd-chip--source) > .pxd-chip--source"));
+  assert.doesNotMatch(rule, /margin-top:\s*auto/);
+  assert.match(rule, /margin-top:\s*4px/);
+  assert.match(rule, /position:\s*relative/);
+  assert.match(rule, /z-index:\s*2/);
+});

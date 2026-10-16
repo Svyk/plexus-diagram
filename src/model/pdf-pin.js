@@ -150,6 +150,8 @@ const FIGURE_COPY_CHARS = 42;
 const FIGURE_COPY_MAX_LINES = 6;
 const FIGURE_COPY_IMAGE_CAP = 360;
 const FIGURE_COPY_IMAGE_MIN = 72;
+// A copied image with no crop box. 72px clips a real picture under a two-line caption.
+const FIGURE_COPY_IMAGE_SLOT = 200;
 const FIGURE_COPY_MAX = 520;
 
 export function figureCopySize(block, doc, { source = false } = {}) {
@@ -165,8 +167,10 @@ export function figureCopySize(block, doc, { source = false } = {}) {
     const bh = Number(box[3]) - Number(box[1]);
     if (bw > 0 && bh > 0) image = Math.round((FIGURE_COPY_W - FIGURE_COPY_PAD) * (bh / bw));
   }
-  if (!(image > 0)) image = FIGURE_COPY_IMAGE_MIN;
-  else image = Math.min(FIGURE_COPY_IMAGE_CAP, image);
+  if (!(image > 0)) {
+    const url = String(block?.image?.url || block?.url || "").trim();
+    image = url ? FIGURE_COPY_IMAGE_SLOT : FIGURE_COPY_IMAGE_MIN;
+  } else image = Math.min(FIGURE_COPY_IMAGE_CAP, image);
   let h = FIGURE_COPY_PAD + image + lines * FIGURE_COPY_LINE + chip;
   if (h > FIGURE_COPY_MAX) {
     const keep = chip + (lines ? FIGURE_COPY_LINE : 0);
@@ -264,6 +268,7 @@ export function sourceAttrString(uid) {
 }
 
 const SOURCE_LINE_RE = /^(?:[-*]\s+)?Source::\s*\(\(([\w-]{1,32})\)\)\s*$/;
+const SIZE_LINE_RE = /^(?:[-*]\s+)?pxd-size::\s*(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$/;
 
 function blankBullet(line) {
   return /^[-*•]\s*$/.test(String(line ?? "").trim());
@@ -319,6 +324,99 @@ export function planCopiedSource({ markdown = "", source = "" } = {}) {
   const text = oneBulletTree(body.join("\n"));
   if (!text && pin) return { markdown: `- ${sourceAttrString(pin)}`, sourceUid: "", sourced: true };
   return { markdown: text, sourceUid: text ? pin : "", sourced: found && Boolean(text || pin) };
+}
+
+// Pull the machine size line and the Source citation off the raw copy. They must not become bullets.
+function splitMarks(markdown) {
+  let sourceUid = "";
+  let size = null;
+  const body = [];
+  for (const line of String(markdown ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")) {
+    const src = SOURCE_LINE_RE.exec(line.trim());
+    if (src) {
+      if (!sourceUid) sourceUid = src[1];
+      continue;
+    }
+    const sized = SIZE_LINE_RE.exec(line.trim());
+    if (sized) {
+      const w = Number(sized[1]);
+      const h = Number(sized[2]);
+      if (w > 0 && h > 0) size = { w: Math.round(w), h: Math.round(h) };
+      continue;
+    }
+    body.push(line);
+  }
+  return { body: body.join("\n"), sourceUid, size };
+}
+
+function isCropBlock(block) {
+  return Boolean(block && (block.type === "figure" || (block.type === "formula" && !block.latex)));
+}
+
+function imageFace(text) {
+  const body = String(text ?? "");
+  const match = /!\[([^\]]*)\]\(([^)\s]+)\)/.exec(body);
+  if (!match) return null;
+  const caption = body.replace(/!\[[^\]]*\]\([^)]+\)/g, " ").replace(/\s+/g, " ").trim();
+  return { url: match[2], caption, markdown: body.trim() };
+}
+
+// One plan for every copy, paste, drop, and chip insert. A figure carries a height that fits the
+// picture, the caption, and the Source chip. A size line wins, because the custom clipboard MIME
+// does not survive a live paste. Table detection is added on top of this same plan.
+export function copiedPartPlan({ block = null, doc = null, markdown = "", source = "", withSource = false } = {}) {
+  const split = splitMarks(markdown);
+  let sourceUid = split.sourceUid;
+  const given = String(source ?? "").trim();
+  if (!sourceUid && UID_RE.test(given)) sourceUid = given;
+  const sourced = Boolean(sourceUid) || withSource === true;
+  const crop = isCropBlock(block);
+  const face = imageFace(split.body);
+  if (crop || face) {
+    const live = crop ? block : { type: "figure", caption: face.caption, image: { url: face.url } };
+    const text = (crop ? figureCardMarkdown(block, doc) : "") || face?.markdown || split.body.trim();
+    const size = split.size || figureCopySize(live, crop ? doc : null, { source: sourced });
+    return {
+      kind: "card",
+      markdown: text,
+      sourceUid,
+      size,
+      sourced,
+      sized: Boolean(split.size),
+      image: true,
+      caption: "",
+      table: null,
+    };
+  }
+  const copied = planCopiedSource({ markdown: split.body, source: sourceUid });
+  return {
+    kind: "card",
+    markdown: copied.markdown,
+    sourceUid: copied.sourceUid,
+    size: split.size || { w: 280, h: 160 },
+    sourced: copied.sourced,
+    sized: Boolean(split.size),
+    image: false,
+    caption: "",
+    table: null,
+  };
+}
+
+// Plain text for Copy as card / Copy with source. The size rides in the text because the JSON MIME is dropped.
+export function copyMenuPlan({ id, block = null, doc = null, markdown = "", source = "" } = {}) {
+  if (id !== "source" && id !== "card") return null;
+  const plan = copiedPartPlan({ block, doc, markdown, source, withSource: id === "source" });
+  const raw = splitMarks(markdown).body.trim();
+  const body = raw || plan.markdown;
+  const lines = [];
+  if (body) lines.push(body);
+  if (plan.image && plan.size && plan.size.w > 0 && plan.size.h > 0) {
+    lines.push(`pxd-size:: ${Math.round(plan.size.w)} ${Math.round(plan.size.h)}`);
+  }
+  const pin = id === "source" ? (UID_RE.test(String(source ?? "").trim()) ? String(source).trim() : plan.sourceUid) : "";
+  const cite = sourceAttrString(pin);
+  if (cite) lines.push(cite);
+  return { ...plan, sourceUid: pin || plan.sourceUid, text: lines.join("\n") };
 }
 
 // A click on a card's ((pin)) ref. A pdf pin opens the reader at that region.

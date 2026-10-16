@@ -2,7 +2,7 @@
 // { sha256, engine, optsHash, ids, pdfUid, kind }; the session wants converted content.
 
 import { planParseInsert, PARSE_MISSING_TOAST, textCardMarkdown } from "../model/drop.js";
-import { pinSpecFromBlock } from "../model/pdf-pin.js";
+import { copiedPartPlan, pinSpecFromBlock } from "../model/pdf-pin.js";
 import { findSourceCard } from "../model/ask-basket.js";
 import { toRoamMarkdown } from "../model/parse-to-roam-md.js";
 import { selectBlocks, tableGrid } from "../model/parse-schema.js";
@@ -54,7 +54,15 @@ function pinFor(doc, payload) {
 // Pure. What the click-to-place preview shows for a chip action, and how wide it is (board px).
 // A table previews its first rows at the inserted table's width; a figure its crop; text its words.
 // width and height are the footprint the insert will really take (the session's card clamp applied), board px.
-export function placementContent(doc, ids, act, extra = null) {
+function cropSize(doc, payload, blocks) {
+  if (!blocks || blocks.length !== 1) return null;
+  const block = blocks[0];
+  if (block?.type !== "figure" && !(block?.type === "formula" && !block.latex)) return null;
+  const plan = copiedPartPlan({ block, doc, withSource: Boolean(payload?.withSource) });
+  return plan?.image && plan.size ? plan.size : null;
+}
+
+export function placementContent(doc, ids, act, extra = null, withSource = false) {
   const blocks = selectBlocks(doc, ids);
   const first = blocks[0] || null;
   if (!first) return { content: { kind: "text", text: "" }, width: CARD_SIZE.w, height: CARD_SIZE.h };
@@ -66,7 +74,12 @@ export function placementContent(doc, ids, act, extra = null) {
     return { content: { kind: "table", rows, rowCap: 8, colCap: 12, page: first.page, mode: extra?.mode || "grid" }, width, height };
   }
   if (blocks.length === 1 && first.type === "figure") {
-    return { content: { kind: "figure", text: first.caption && doc?.blocks?.[first.caption]?.text ? doc.blocks[first.caption].text : "", page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
+    const plan = copiedPartPlan({ block: first, doc, withSource: Boolean(withSource) });
+    return {
+      content: { kind: "figure", text: first.caption && doc?.blocks?.[first.caption]?.text ? doc.blocks[first.caption].text : "", page: first.page },
+      width: plan.size?.w || CARD_SIZE.w,
+      height: plan.size?.h || CARD_SIZE.h,
+    };
   }
   const text = blocks.map((b) => (b.type === "list" ? (b.items || []).map((item) => item.text).join(" ") : b.text || b.latex || "")).join(" ");
   return { content: { kind: "text", text, page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
@@ -190,8 +203,10 @@ export function createParseActions({ session, store, placeBeside, toast, select,
         return res || { ok: false, reason: "no-session" };
       }
       if (plan.action === "card") {
-        const at = where(payload, CARD_SIZE);
-        const res = await session?.insertParsedCard?.({ ...at, markdown: plan.markdown, ...(pin ? { pin } : {}) });
+        const one = selectBlocks(withImages, payload.ids);
+        const sized = cropSize(withImages, payload, one);
+        const at = where(payload, sized || CARD_SIZE);
+        const res = await session?.insertParsedCard?.({ ...at, markdown: plan.markdown, ...(sized ? { w: sized.w, h: sized.h } : {}), ...(pin ? { pin } : {}) });
         if (res?.ok) {
           pick(res.uid ? [res.uid] : []);
           say("Sent 1 card to the board");
@@ -256,10 +271,12 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       const doc = await load(payload);
       if (!doc) return { ok: false, reason: "missing-cache" };
       const withImages = await withUploadedImages(doc, payload.ids);
+      const blocks = selectBlocks(withImages, payload.ids);
       const { markdown } = toRoamMarkdown(withImages, payload.ids, { footnoteFormat: fnFormat() });
-      const at = where(payload, CARD_SIZE);
+      const sized = cropSize(withImages, payload, blocks);
+      const at = where(payload, sized || CARD_SIZE);
       const pin = pinFor(withImages, payload);
-      const res = await session?.insertParsedCard?.({ ...at, markdown, ...(pin ? { pin } : {}) });
+      const res = await session?.insertParsedCard?.({ ...at, markdown, ...(sized ? { w: sized.w, h: sized.h } : {}), ...(pin ? { pin } : {}) });
       if (res?.ok) {
         pick(res.uid ? [res.uid] : []);
         say("Card inserted");

@@ -7,7 +7,7 @@
 // With a `gutter` (part-gutter.js) any parsed part under the pointer gets the pane's Ask AI / Copy pill instead of
 // the per-box copy icon; the icons stay in the layer for their click, menu and keyboard paths.
 
-import { gestureSource, readWithSource, writeWithSource, COPY_MENU } from "../model/pdf-pin.js";
+import { copiedPartPlan, gestureSource, readWithSource, writeWithSource, COPY_MENU } from "../model/pdf-pin.js";
 import { bboxToPagePercent, bboxToPageRect } from "./parse-overlay.js";
 import { askAiIcon } from "./ask-icon.js";
 import { floatingDark } from "./theme-follow.js";
@@ -1053,7 +1053,7 @@ export function createPageChips({
 
 // Maps a chip action onto the session/actions object. Returns false when nothing was called.
 // client: the placed ghost's top-left in client px (click-to-place); the insert lands there.
-export function runChipAction({ act, ids, extra, block, client, withSource }, { session, payload, copy, latex } = {}) {
+export function runChipAction({ act, ids, extra, block, client, withSource, doc }, { session, payload, copy, latex } = {}) {
   const blocks = ids || [];
   if (act === "with-source" || act === "pin-ref") return false;
   if (act === "copy") { copy?.(blocks); return true; }
@@ -1067,6 +1067,13 @@ export function runChipAction({ act, ids, extra, block, client, withSource }, { 
   const body = payload(blocks);
   const merged = extra ? { ...body, ...extra } : { ...body };
   if (withSource) merged.withSource = true;
+  if (block && (block.type === "figure" || block.type === "formula")) {
+    const plan = copiedPartPlan({ block, doc, withSource: Boolean(withSource) });
+    if (plan?.image && plan.size) {
+      merged.w = plan.size.w;
+      merged.h = plan.size.h;
+    }
+  }
   fn(client && Number.isFinite(client.x) && Number.isFinite(client.y) ? { ...merged, client: { x: client.x, y: client.y } } : merged);
   return true;
 }

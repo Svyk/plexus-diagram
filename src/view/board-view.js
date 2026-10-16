@@ -75,7 +75,7 @@ import {
 } from "../model/geometry.js";
 import { itemSig } from "../model/boardsnap.js";
 import { captionForView, selectionViewRect } from "../model/view-save.js";
-import { PLEXUS_MIME, copyPayload, editorPastePlan, imageMarkdown, inlineAtCaret, parsePastedText } from "../model/clipboard.js";
+import { PLEXUS_MIME, copyPayload, editorPastePlan, imageMarkdown, inlineAtCaret, parseClipboard, parsePastedText } from "../model/clipboard.js";
 import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../model/export.js";
 import { createInteractions, emptyLabelShouldDeleteEdge, whyLabelField } from "./interactions.js";
 import { openPagePicker } from "./board-picker.js";
@@ -5038,6 +5038,28 @@ function buildBoardView(onFail, {
   const pasteEntries = (entries, at = pastePoint()) => {
     Promise.resolve(session.pasteText?.(entries, { x: at.x, y: at.y })).then(afterCreate("Pasted")).catch(() => {});
   };
+  const pasteCardAt = (data, at = pastePoint()) => {
+    const plan = pasteCardPlan(data, at);
+    if (!plan) return;
+    const insert = plan.kind === "table" && plan.table
+      ? session.insertParsedTable?.({
+        x: plan.x,
+        y: plan.y,
+        table: plan.table,
+        caption: plan.caption,
+        mode: "native",
+        ...(plan.sourceUid ? { sourceUid: plan.sourceUid } : {}),
+      })
+      : session.insertParsedCard?.({
+        x: plan.x,
+        y: plan.y,
+        w: plan.w,
+        h: plan.h,
+        markdown: plan.markdown,
+        ...(plan.sourceUid ? { sourceUid: plan.sourceUid } : {}),
+      });
+    Promise.resolve(insert).then(afterCreate("Pasted")).catch(() => {});
+  };
   const pasteFromMenu = async (at, clone) => {
     let text = null;
     try { text = await globalThis.navigator?.clipboard?.readText?.(); } catch { text = null; }
@@ -5047,7 +5069,9 @@ function buildBoardView(onFail, {
       try { data = JSON.parse(lastPayload.mime); } catch { data = null; }
       if (data && Array.isArray(data.items)) { pastePlexus(data, { clone }, at); return; }
     }
-    const entries = parsePastedText(text ?? "");
+    const parsed = parseClipboard({ getData: (type) => (type === "text/plain" ? (text ?? "") : ""), files: [] });
+    if (parsed?.kind === "card-json") { pasteCardAt(parsed.data, at); return; }
+    const entries = parsed?.kind === "text" ? parsed.entries : parsePastedText(text ?? "");
     if (entries.length) pasteEntries(entries, at);
     else toast("Nothing to paste");
   };
@@ -9113,28 +9137,7 @@ function buildBoardView(onFail, {
       pastePlexus: (data, opts) => pastePlexus(data, opts),
       pasteText: (entries) => pasteEntries(entries),
       pasteImages: (files) => { void pasteImages(files); },
-      pasteCardJson: (data) => {
-        const plan = pasteCardPlan(data, pastePoint());
-        if (!plan) return;
-        const insert = plan.kind === "table" && plan.table
-          ? session.insertParsedTable?.({
-            x: plan.x,
-            y: plan.y,
-            table: plan.table,
-            caption: plan.caption,
-            mode: "native",
-            ...(plan.sourceUid ? { sourceUid: plan.sourceUid } : {}),
-          })
-          : session.insertParsedCard?.({
-            x: plan.x,
-            y: plan.y,
-            w: plan.w,
-            h: plan.h,
-            markdown: plan.markdown,
-            ...(plan.sourceUid ? { sourceUid: plan.sourceUid } : {}),
-          });
-        Promise.resolve(insert).then(afterCreate("Pasted")).catch(() => {});
-      },
+      pasteCardJson: (data) => { pasteCardAt(data, pastePoint()); },
       editorPaste,
     },
   });

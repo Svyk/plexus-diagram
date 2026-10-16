@@ -5,7 +5,7 @@
 // so those rects share an origin. Fullscreen drops that border.
 
 import { boundsOf, displayRects, routedEdge } from "../model/board.js";
-import { center, edgePath, fitViewport, worldToScreen } from "../model/geometry.js";
+import { center, edgePath, fitViewport, lodFonts, lodTier, worldToScreen } from "../model/geometry.js";
 import { PALETTE, cssColor, hexColor } from "../model/schema.js";
 import { routeAround } from "../model/section6.js";
 
@@ -44,6 +44,7 @@ function cleanItem(item) {
     title: String(item.title || "").slice(0, TITLE_MAX),
     color: typeof item.color === "string" ? item.color : "",
     fill: typeof item.fill === "string" ? item.fill : "",
+    ...(item.s ? { s: 1 } : {}),
   };
 }
 
@@ -224,6 +225,7 @@ export function captureSketch(board) {
       title: item.title || "",
       color: item.color || "",
       fill: item.fill || "",
+      s: item.type === "section" ? 1 : 0,
     });
     if (clean) items.push(clean);
   }
@@ -273,7 +275,11 @@ export function removeSketch(mountEl) {
 
 // Paint card rects, titles, colours, and edge paths. No listeners, so a key
 // during the handoff cannot land here. Returns null when the sketch is unusable.
-export function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER } = {}) {
+// look (E2-3, perf2, styledUnderlay): { cls, vars } of a board root to copy. The sketch had no stylesheet, so it
+// painted bare titles on a see-through layer: a nested enter showed what looked like Roam's outline text for ~0.5 s
+// (QA3). With a look the layer is a .pxd-root with that theme, and each card has the live card's classes, header and
+// body, so the board's own CSS draws its fill, border, radius and title at this camera's tier.
+export function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER, look = null } = {}) {
   if (!doc || !mountEl || !isSketchViewport(vp)) return null;
   const parsed = sketch?.items ? sketch : null;
   if (!parsed || !Array.isArray(parsed.items)) return null;
@@ -281,7 +287,7 @@ export function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORD
   let layer;
   try {
     layer = doc.createElement("div");
-    layer.className = "pxd-sketch";
+    layer.className = look ? ["pxd-root", ...(look.cls || []), "pxd-sketch"].join(" ") : "pxd-sketch";
     layer.setAttribute("data-pxd-sketch", "1");
     layer.setAttribute("aria-hidden", "true");
     layer.style.position = "absolute";
@@ -292,6 +298,22 @@ export function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORD
     layer.style.overflow = "hidden";
     layer.style.pointerEvents = "none";
     layer.style.zIndex = "1";
+    if (look) {
+      // A .pxd-root has a 1px border: that border is the inset (the live root's own border), and fullscreen has none.
+      if (inset > 0) for (const side of ["left", "top", "right", "bottom"]) layer.style[side] = "0";
+      else layer.style.border = "none";
+      layer.style.width = "auto";
+      layer.style.height = "auto";
+      layer.style.margin = "0";
+      for (const [name, value] of Object.entries(look.vars || {})) { try { layer.style.setProperty(name, value); } catch { /* stub style */ } }
+      const f = lodFonts(vp.zoom);
+      layer.setAttribute("data-pxd-lod", lodTier(vp.zoom, "detail", { threshold: Number(look.threshold) > 0 ? Number(look.threshold) : 0.45 }));
+      try {
+        layer.style.setProperty("--pxd-map-font", `${f.map}px`);
+        layer.style.setProperty("--pxd-ui", String(f.ui));
+        layer.style.setProperty("--pxd-overview-font", `${f.section}px`);
+      } catch { /* stub style */ }
+    }
 
     const world = doc.createElement("div");
     world.className = "pxd-sketch__world";
@@ -312,6 +334,9 @@ export function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORD
     edges.style.top = "0";
     edges.style.overflow = "visible";
     edges.style.pointerEvents = "none";
+    // Sections sit under the edges and the cards, as on the live board.
+    const sections = look ? doc.createElement("div") : null;
+    if (sections) world.append(sections);
     world.append(edges);
     for (const edge of Array.isArray(parsed.edges) ? parsed.edges : []) {
       const clean = cleanEdge(edge);
@@ -327,7 +352,7 @@ export function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORD
       const clean = cleanItem(item);
       if (!clean) continue;
       const card = doc.createElement("div");
-      card.className = "pxd-sketch__card";
+      card.className = !look ? "pxd-sketch__card" : clean.s ? "pxd-section pxd-sketch__card" : "pxd-item pxd-item--card pxd-sketch__card";
       card.setAttribute("data-uid", clean.uid);
       card.style.position = "absolute";
       card.style.left = "0";
@@ -346,11 +371,16 @@ export function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORD
         if (accent) card.style.background = accent;
       }
       const title = doc.createElement("div");
-      title.className = "pxd-sketch__title";
+      title.className = look ? (clean.s ? "pxd-section__title pxd-sketch__title" : "pxd-item__header pxd-sketch__title") : "pxd-sketch__title";
       title.style.pointerEvents = "none";
       title.textContent = clean.title;
       card.append(title);
-      world.append(card);
+      if (look && !clean.s) {
+        const body = doc.createElement("div");
+        body.className = "pxd-item__body";
+        card.append(body);
+      }
+      (sections && clean.s ? sections : world).append(card);
     }
     placeLayer(mountEl, layer);
     return layer;

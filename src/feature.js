@@ -94,7 +94,7 @@ import { bindErrorStats, bindSpeedFlagSource, clearErrorStats, normalizeSetting,
 import { applyPdfReaderDark, pdfReaderDarkOn } from "./view/pdf-reader-dark.js";
 import { sampleRoam } from "./view/theme-follow.js";
 import { INTEGRATION_EVENTS } from "./model/detect.js";
-import { createPerfLog, perfNow } from "./perf-log.js";
+import { createPerfLog, hasLiveCard, perfNow } from "./perf-log.js";
 import { createShiftWatch } from "./view/shift-watch.js";
 
 // Roam reports `extension.version` as "DEV" for URL / local developer installs,
@@ -856,12 +856,33 @@ export async function installPlexusDiagram({
         size: sketchMountSize(rec),
       });
       anchorMount(rec.mountEl);
-      const layer = paintSketch(doc, rec.mountEl, sketch, vp, { inset: rec.fullscreen ? 0 : SKETCH_ROOT_BORDER });
+      const look = speedFlags().styledUnderlay !== false ? sketchLook(rec) : null;
+      const layer = paintSketch(doc, rec.mountEl, sketch, vp, { inset: rec.fullscreen ? 0 : SKETCH_ROOT_BORDER, look });
       return layer ? vp : null;
     } catch {
       try { removeSketch(rec?.mountEl); } catch { /* the live mount still proceeds */ }
       return null;
     }
+  }
+
+  // E2-3: the theme of the board root this mount showed last (a parked or live root here, else any board on the page):
+  // its pxd-root-- classes and inline custom properties (theme follow writes the palette there).
+  function sketchLook(rec) {
+    let src = null;
+    try { src = rec.mountEl?.querySelector?.(".pxd-root:not(.pxd-sketch)") || doc.querySelector?.(".pxd-root:not(.pxd-sketch)") || null; } catch { src = null; }
+    const cls = [];
+    const vars = {};
+    if (src) {
+      for (const name of String(src.className || "").split(/\s+/)) {
+        if (name.startsWith("pxd-root--") && name !== "pxd-root--fullscreen") cls.push(name);
+      }
+      const style = src.style;
+      for (let i = 0; i < (style?.length || 0); i += 1) {
+        const name = style[i];
+        if (typeof name === "string" && name.startsWith("--pxd-")) vars[name] = style.getPropertyValue(name);
+      }
+    } else if (isDarkTheme(rec)) cls.push("pxd-root--dark");
+    return { cls, vars };
   }
 
   function forgetSketch(rec) {
@@ -1616,7 +1637,7 @@ export async function installPlexusDiagram({
     const finish = () => cancelSketchHandoff(rec);
     const look = () => {
       if (handoff.cancelled || handoff.holdRaf != null || handoff.soonTimer != null) return;
-      if (!rec.mountEl?.querySelector?.(".pxd-item")) return;
+      if (!hasLiveCard(rec.mountEl)) return;
       try { handoff.observer?.disconnect?.(); } catch { /* already gone */ }
       handoff.observer = null;
       const raf = globalThis.requestAnimationFrame;
@@ -1711,7 +1732,9 @@ export async function installPlexusDiagram({
     detachSketchInput(handoff);
     let view;
     try {
-      view = callMountView(rec, autofocus, viewport);
+      // E2-3: the live board takes the camera the sketch painted at (a board with no stored camera refitted a frame
+      // later at another zoom, after the sketch).
+      view = callMountView(rec, autofocus, viewport || (steadyCamera() && handoff.vp ? { ...handoff.vp } : null));
     } catch (error) {
       handoff.cancelled = true;
       clearSketchHandoffTimers(handoff);

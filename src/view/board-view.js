@@ -158,7 +158,6 @@ import { boardCramped, freeBoardArea, pdfDockLift } from "../model/card-face.js"
 import { createPresenter } from "./present.js";
 import { createClipboardIO, dragHasImages, filesFromDataTransfer, pdfFilesFromDataTransfer, writeClipboard } from "./clipboard-io.js";
 import { applyFullscreenChrome, watchRouteExit } from "./fullscreen.js";
-import { createZoomVars, ZOOM_VARS } from "./zoom-vars.js";
 import { embedOwnerUid } from "../discovery.js";
 import {
   ATTRIBUTE_TEMPLATE,
@@ -3994,27 +3993,10 @@ function buildBoardView(onFail, {
   // same tier and fonts, and every attribute or inherited-variable write on the root restyles the whole board
   // (PhD main board: 3,500 elements per settle).
   const rootPainted = new Map();
-  // C3 (zoom-vars.js): on a big board the zoom variables go to the board's own rule; leaving that mode writes them
-  // back on the root and empties the rule. --pxd-ui has no reader and is not written there.
-  const zoomVars = createZoomVars(doc, root);
-  let zoomScoped = false;
-  const scopedVars = () => {
-    let on = false;
-    try { on = notedSpeedFlags().scopedZoomVars !== false && Boolean(itemsR?.isVirtual?.()); } catch { on = false; }
-    if (on === zoomScoped) return on;
-    zoomScoped = on;
-    if (!on) {
-      zoomVars.clear();
-      for (const name of ZOOM_VARS) if (rootPainted.has(name)) root.style.setProperty(name, rootPainted.get(name));
-    }
-    return on;
-  };
   const paintRoot = (name, value) => {
     if (rootPainted.get(name) === value) return;
     rootPainted.set(name, value);
     if (name === "data-pxd-lod") root.setAttribute(name, value);
-    else if (ZOOM_VARS.includes(name) && scopedVars() && zoomVars.set(name, value)) { /* the board's rule */ }
-    else if (name === "--pxd-ui" && scopedVars()) { /* no reader */ }
     else root.style.setProperty(name, value);
   };
   // E probe: attached shells at each tier flip (the restyle the flip costs).
@@ -4041,8 +4023,8 @@ function buildBoardView(onFail, {
   const paintInvZoom = () => {
     if (vp.zoom === invZoomAt) return;
     invZoomAt = vp.zoom;
-    paintRoot("--pxd-inv-zoom", String(invZoom(vp.zoom)));
-    paintRoot("--pxd-screen-px", String(screenPx(vp.zoom)));
+    root.style.setProperty("--pxd-inv-zoom", String(invZoom(vp.zoom)));
+    root.style.setProperty("--pxd-screen-px", String(screenPx(vp.zoom)));
   };
   const applyLod = () => {
     const was = tier;
@@ -11247,7 +11229,6 @@ function buildBoardView(onFail, {
       });
       step(() => subs.splice(0).forEach((off) => { try { off?.(); } catch { /* already off */ } }));
       step(() => routeOff());
-      step(() => zoomVars.dispose());
       step(() => fsDispose());
       step(() => { if (!root.hasAttribute?.("data-pxd-parked")) applyFullscreenChrome(mountEl, false, doc); });
       step(() => { try { vpStore.set(vpId, vp); } catch { /* the store can refuse a write */ } });

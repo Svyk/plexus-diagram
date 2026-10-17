@@ -1,9 +1,7 @@
 // UX4 lane C: C2 (the Roam outline under a fullscreen board) and C3 (zoom cost on the big board).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
-import { ZOOM_VAR_CONSUMERS, ZOOM_VARS } from "../src/view/zoom-vars.js";
-import { invZoom, lodFonts, screenPx } from "../src/model/geometry.js";
+import { readFileSync } from "node:fs";
 import { mountBig, settledIn } from "./fixtures/big-mount.js";
 import { applyFullscreenChrome, FS_COVER_CLASS, holdFsCover } from "../src/view/fullscreen.js";
 
@@ -122,77 +120,6 @@ test("C3 zoomHeads: a zoom-out settle on a new zoom step re-sizes the arrow head
   }
   assert.ok(compared > 200, `compared ${compared}`);
   assert.equal(on.audit.missing, 0);
-});
-
-// C3 scopedZoomVars: every rule that reads a zoom variable sits on a consumer class or inside one.
-test("C3 scopedZoomVars: every var() read of a zoom variable is on a ZOOM_VAR_CONSUMERS class or inside one", () => {
-  const files = [new URL("../src/extension.css", import.meta.url), ...readdirSync(new URL("../src/css/", import.meta.url)).filter((f) => f.endsWith(".css")).map((f) => new URL(`../src/css/${f}`, import.meta.url))];
-  const reads = new RegExp(`var\\((${ZOOM_VARS.join("|")})\\b`);
-  const bad = [];
-  let seen = 0;
-  for (const file of files) {
-    const text = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-    for (const m of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-      if (!reads.test(m[2])) continue;
-      const sels = [];
-      let depth = 0, cur = "";
-      for (const ch of m[1]) { if (ch === "(") depth += 1; if (ch === ")") depth -= 1; if (ch === "," && depth === 0) { sels.push(cur); cur = ""; } else cur += ch; }
-      sels.push(cur);
-      for (const sel of sels) {
-        seen += 1;
-        const classes = [...sel.matchAll(/\.([\w-]+)/g)].map((x) => x[1]);
-        if (!classes.some((c) => ZOOM_VAR_CONSUMERS.some((k) => c === k || c.startsWith(`${k}--`)))) bad.push(`${String(file).split("/").pop()}: ${sel.trim()}`);
-      }
-    }
-  }
-  assert.ok(seen > 30, `found ${seen}`);
-  assert.deepEqual(bad, []);
-});
-
-// A stylesheet stand-in for the stub: <style>.sheet.cssRules[0].style.
-function withSheets(m) {
-  const rules = [];
-  const create = m.stub.document.createElement.bind(m.stub.document);
-  m.stub.document.createElement = (tag, ...rest) => {
-    const el = create(tag, ...rest);
-    if (String(tag).toLowerCase() === "style") {
-      const props = new Map();
-      const rule = { style: { setProperty: (k, v) => props.set(k, v), removeProperty: (k) => props.delete(k), getPropertyValue: (k) => props.get(k) ?? "" }, props };
-      rules.push(rule);
-      el.sheet = { cssRules: [rule] };
-    }
-    return el;
-  };
-  return rules;
-}
-
-async function zoomVarsRun(flags) {
-  const m = mountBig({ x: -400, y: -300, zoom: 0.5 }, { flags, fullscreen: true, prep: () => {} });
-  const rules = withSheets(m);
-  try {
-    await settledIn(m);
-    const root = m.view.root;
-    let rootWrites = 0;
-    const set = root.style.setProperty.bind(root.style);
-    root.style.setProperty = (k, v) => { if (ZOOM_VARS.includes(k) || k === "--pxd-ui") rootWrites += 1; return set(k, v); };
-    for (let i = 0; i < 4; i += 1) { m.stub.dispatch(root, "wheel", { deltaX: 0, deltaY: 60, ctrlKey: true, deltaMode: 0, clientX: 700, clientY: 450 }); m.stub.flushFrames(); }
-    for (let i = 0; i < 30; i += 1) { await tick(30); m.stub.flushTimers(); m.stub.flushFrames(); m.stub.flushIdle(); }
-    const z = m.view.viewport().zoom;
-    return { z, rootWrites, rule: rules[0]?.props, zv: root.getAttribute("data-pxd-zv"), audit: m.view.paintAudit() };
-  } finally { m.done(); }
-}
-
-test("C3 scopedZoomVars: a zoom on the big board writes the zoom variables into the board's own rule, not on the root", async () => {
-  const on = await zoomVarsRun({});
-  assert.equal(on.rootWrites, 0, "no root variable write");
-  assert.ok(on.zv, "the root names its rule");
-  assert.equal(on.rule.get("--pxd-inv-zoom"), String(invZoom(on.z)));
-  assert.equal(on.rule.get("--pxd-screen-px"), String(screenPx(on.z)));
-  assert.equal(on.rule.get("--pxd-map-font"), `${lodFonts(on.z).map}px`);
-  assert.equal(on.rule.get("--pxd-overview-font"), `${lodFonts(on.z).section}px`);
-  assert.equal(on.audit.missing, 0);
-  const off = await zoomVarsRun({ scopedZoomVars: false });
-  assert.ok(off.rootWrites >= 3, `3.36.0 writes the root: ${off.rootWrites}`);
 });
 
 // C3 zoomHeads, zoom-in: the far edges a detail settle will park are not resized first.

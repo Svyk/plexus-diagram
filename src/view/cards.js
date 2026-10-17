@@ -6725,6 +6725,10 @@ export function createItemRenderer({
         if (hit && (!hit.uid || hit.uid === uid)) {
           const mark = hit.task ? (TASK_MARK.exec(String(item.string || ""))?.[0].length || 0) : 0;
           caretOff = hit.offset + mark;
+        } else if (hit?.uid && speedOf().childCaret !== false && rec.body?.querySelector?.(`[data-pxd-row="${hit.uid}"]`)) {
+          // UX3 A3: a child row. The editor focuses that block, at the clicked letter, with the row kept in place.
+          caretRow = hit.uid;
+          caretOff = hit.offset;
         }
       }
     }
@@ -6851,8 +6855,20 @@ export function createItemRenderer({
       // hydrate-quiet window (250 ms or more) before the first focus, so a new card showed a caret but keys typed
       // in that gap went nowhere or landed after Roam swapped the input. The quiet wait still runs, and focus is only
       // taken again if Roam replaced the input meanwhile.
-      early = await waitNoteInput(editor, uid, row);
+      const noteRow = caretRow || row;
+      early = await waitNoteInput(editor, uid, noteRow);
       if (disposed || editing?.uid !== uid) return false;
+      // The click on the row's view did not land (Roam focused another block): ask Roam for the row, as page cards do.
+      if (noteRow && caretOff != null && early && !String(early.id || "").endsWith(`-${noteRow}`)) {
+        const win = pageEditWindowId(editor);
+        const place = host?.api?.ui?.setBlockFocusAndSelection;
+        if (win && typeof place === "function") {
+          try {
+            place({ location: { "block-uid": noteRow, "window-id": win }, selection: { start: caretOff, end: caretOff } });
+          } catch { /* api */ }
+          early = null;
+        }
+      }
       if (early) {
         scaleCardEditor(editor, zoomCache);
         focusRoamInput(early);
@@ -6865,7 +6881,7 @@ export function createItemRenderer({
       if (disposed || editing?.uid !== uid) return false;
       if (rowOffset !== null) {
         for (const node of editor.querySelectorAll?.(".rm-block__input") || []) {
-          if (String(node.id || node.getAttribute?.("id") || "").endsWith(`-${row}`)) { input = node; break; }
+          if (String(node.id || node.getAttribute?.("id") || "").endsWith(`-${noteRow}`)) { input = node; break; }
         }
         if (input) {
           const delta = (Number(input.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0) - rowOffset;

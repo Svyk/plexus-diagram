@@ -77,7 +77,11 @@ function mount({ cards, zoom = 1, settings, host: hostExtra = {} } = {}) {
   const calls = { renderString: 0, renderBlock: [], focus: [] };
   const host = {
     graph: "Svy",
-    renderString(el, string) { calls.renderString += 1; el.textContent = string; },
+    renderString(el, string) {
+      calls.renderString += 1;
+      const doc = el.ownerDocument || globalThis.document;
+      el.replaceChildren(doc.createTextNode(string));
+    },
     renderBlock(el, uid) { calls.renderBlock.push(uid); },
     renderPage() {},
     unmount() {},
@@ -367,6 +371,120 @@ test("A2: at overview zoom no card body mounts a renderString root", async () =>
     assert.equal(f.calls.renderString, 0);
     assert.equal(f.view.root.querySelectorAll(".pxd-rs__live").length, 0);
   } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+// ---- A3: the caret lands in the clicked block at the clicked character, at every depth.
+async function settleEdit(stub) {
+  const real = Date.now;
+  let clock = real() + 50;
+  Date.now = () => clock;
+  try {
+    for (let i = 0; i < 10; i += 1) {
+      clock += 200;
+      stub.flushFrames();
+      await tick();
+    }
+  } finally {
+    Date.now = real;
+  }
+}
+
+// Roam's editor for the card: view divs that turn into a textarea when clicked, ids ending in the block uid.
+function roamEditorHost(placed, inputTop) {
+  return {
+    renderBlock(el) {
+      const doc = el.ownerDocument || globalThis.document;
+      const make = (uid, parent) => {
+        const box = doc.createElement("div");
+        box.className = "roam-block-container";
+        const main = doc.createElement("div");
+        main.className = "rm-block-main";
+        const view = doc.createElement("div");
+        view.className = "rm-block__input rm-block__input--view";
+        view.id = `block-input-WIN1-body-outline-cardHE001-${uid}`;
+        const swap = () => {
+          const ta = doc.createElement("textarea");
+          ta.className = "rm-block__input";
+          ta.id = view.id;
+          ta.value = uid;
+          ta.setSelectionRange = (start, end) => { ta.selectionStart = start; ta.selectionEnd = end; };
+          if (inputTop[uid] != null) ta._rect = { left: 0, top: inputTop[uid], width: 200, height: 18, right: 200, bottom: inputTop[uid] + 18, x: 0, y: inputTop[uid] };
+          view.remove();
+          main.append(ta);
+        };
+        view.addEventListener("mousedown", swap, { once: true });
+        if (inputTop[uid] != null) view._rect = { left: 0, top: inputTop[uid], width: 200, height: 18, right: 200, bottom: inputTop[uid] + 18, x: 0, y: inputTop[uid] };
+        main.append(view);
+        box.append(main);
+        const kids = doc.createElement("div");
+        kids.className = "rm-block-children";
+        box.append(kids);
+        parent.append(box);
+        return kids;
+      };
+      const wrap = doc.createElement("div");
+      wrap.className = "rm-api-render--block";
+      el.append(wrap);
+      const top = make("cardHE001", wrap);
+      const child = make("kidT00001", top);
+      const grand = make("kidZ00001", child);
+      make("kidX00001", grand);
+    },
+    api: { ui: { setBlockFocusAndSelection: (arg) => { placed.push(arg); } } },
+  };
+}
+
+test("A3: double-click on a depth-2 row edits that block with the caret at the clicked letter, and the row does not move", async () => {
+  const placed = [];
+  const f = mount({ host: roamEditorHost(placed, { kidZ00001: 70 }) });
+  try {
+    await show(f);
+    const card = f.view.root.querySelector("[data-uid=cardHE001]");
+    const body = card.querySelector(".pxd-item__body");
+    body._rect = { left: 0, top: 0, width: 260, height: 220, right: 260, bottom: 220, x: 0, y: 0 };
+    const row = card.querySelector("[data-pxd-row=kidZ00001]");
+    row._rect = { left: 0, top: 60, width: 200, height: 22, right: 200, bottom: 82, x: 0, y: 60 };
+    const live = row.querySelector(".pxd-rs__live");
+    const text = live.firstChild;
+    assert.equal(text.nodeType, 3);
+    f.stub.document.caretPositionFromPoint = () => ({ offsetNode: text, offset: 4 });
+    f.stub.window.event = { type: "dblclick", clientX: 50, clientY: 66, target: live };
+    f.stub.dispatch(live, "dblclick", { clientX: 50, clientY: 66 });
+    await settleEdit(f.stub);
+    f.stub.window.event = undefined;
+    assert.equal(card.classList.contains("pxd-item--editing"), true);
+    const ta = card.querySelector("textarea");
+    assert.ok(ta, "the clicked block has the textarea");
+    assert.ok(ta.id.endsWith("-kidZ00001"), `focused ${ta.id}`);
+    assert.equal(ta.selectionStart, 4);
+    // The editor row sat 10px lower than the display row; the body scrolls so it is back under the pointer.
+    assert.equal(body.scrollTop, 10);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("A3: childCaret off keeps the 3.34.0 entry (the card's own block)", async () => {
+  noteSpeedFlags({ childCaret: false });
+  const placed = [];
+  const f = mount({ host: roamEditorHost(placed, {}) });
+  try {
+    await show(f);
+    const card = f.view.root.querySelector("[data-uid=cardHE001]");
+    const live = card.querySelector("[data-pxd-row=kidZ00001] .pxd-rs__live");
+    f.stub.document.caretPositionFromPoint = () => ({ offsetNode: live.firstChild, offset: 4 });
+    f.stub.window.event = { type: "dblclick", clientX: 50, clientY: 66, target: live };
+    f.stub.dispatch(live, "dblclick", { clientX: 50, clientY: 66 });
+    await settleEdit(f.stub);
+    f.stub.window.event = undefined;
+    const ta = card.querySelector("textarea");
+    assert.ok(ta.id.endsWith("-cardHE001"));
+  } finally {
+    noteSpeedFlags(null);
     f.view.dispose();
     f.restore();
   }

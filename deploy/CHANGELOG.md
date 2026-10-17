@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.36.0 — 2026-10-17
+
+Child focus that works where you click, and steadier editing and zooming.
+
+- **Child focus from the bullet gutter.** Clicking anywhere in a child's bullet gutter focuses it, at every depth, and you can pick a child from the Children peek.
+- **Edit the focused block.** Editing a focused card edits the focused block under the crumb.
+- **Arrows onto folded cards.** An arrow held over a folded card unfolds it and can drop on a child row, stored as a block ref.
+- **Fold clears focus.** Fold and unfold clear a child focus and restore the folded size.
+- **Long editors scroll.** Long page and note editors stay inside the card and scroll, with the caret row kept in view.
+- **Reference Path line.** The Reference Path extension's line no longer reaches outside the card while editing.
+- **Page cards on zoom-in.** Page cards keep their last rows on zoom-in instead of empty boxes.
+
 ## 3.35.0 — 2026-10-16
 
 Cards that read and edit like Roam, and a faster board.

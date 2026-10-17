@@ -2578,6 +2578,13 @@ export function createItemRenderer({
         // Roam owns the open editor. A pull-watch echo of its text must not repaint this card or remount it.
         if (!fresh && editing?.uid === uid) {
           if (rect && (!rec.rect || rec.rect.x !== rect.x || rec.rect.y !== rect.y || rec.rect.w !== rect.w || rec.rect.h !== rect.h)) position(rec, rect);
+          // UX3 A5: Shift+Enter in a card turns its children on while the editor is open. kidsoff hides the editor's
+          // child outline, so the new child row would stay invisible until Escape.
+          if (isKidsCard(item) && rec.kidsOn !== Boolean(item.kids)) {
+            rec.kidsOn = Boolean(item.kids);
+            rec.el.classList.toggle("pxd-item--kids", rec.kidsOn);
+            rec.el.classList.toggle("pxd-item--kidsoff", !rec.kidsOn);
+          }
         } else {
           noteRender(uid);
           paintShell(rec, item);

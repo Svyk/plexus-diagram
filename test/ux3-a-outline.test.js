@@ -58,7 +58,8 @@ function mount({ cards, zoom = 1, settings, host: hostExtra = {} } = {}) {
     links: [],
     coveredEdges: new Set(),
     mutations,
-    on() { return () => {}; },
+    listeners: {},
+    on(name, fn) { session.listeners[name] = fn; return () => {}; },
     release() {},
     setLinkMode() {},
     commitMove: rec("commitMove"),
@@ -561,6 +562,43 @@ test("A4: a page card's focused block has the same zoomed ring", async () => {
     assert.deepEqual(crumbLabels(card), ["Pathogen Page", "Related", "Powdered Infant Formula · Biosensors · AOAC"]);
     const prow = card.querySelector("[data-pxd-row=rowRef001]").parentElement;
     assert.equal(prow.classList.contains("pxd-outline--zoomed"), true);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+// ---- A5: a new card and its first children look like Roam while typing and stay exactly so after Escape.
+test("A5: parent, child and grandchild typed in a new card show Roam's outline while editing and the same rows after Escape", async () => {
+  const placed = [];
+  const f = mount({ cards: [{ uid: "cardHE001", string: "he" }], host: roamEditorHost(placed, {}) });
+  try {
+    await show(f);
+    const card = f.view.root.querySelector("[data-uid=cardHE001]");
+    f.stub.dispatch(card, "dblclick", { clientX: 40, clientY: 10 });
+    await settleEdit(f.stub);
+    assert.equal(card.classList.contains("pxd-item--editing"), true);
+    assert.equal(card.classList.contains("pxd-item--ol"), true, "the editor has Roam's bullets and thread from the first frame");
+    // Shift+Enter on the top block, then a grandchild: the model path writes the blocks and turns children on.
+    const next = buildBoard(pulled([{ uid: "cardHE001", string: "he", plexus: { ":kids": true }, children: [
+      blk("kidT00001", "test", [blk("kidZ00001", "[[Todd Zenger]]", [blk("kidX00001", "TEST")])]),
+    ] }]));
+    f.session.board = next;
+    f.session.rects = worldRects(next);
+    f.session.listeners.change?.({ dirty: new Set(["cardHE001"]), structural: false });
+    await settleEdit(f.stub);
+    assert.equal(card.classList.contains("pxd-item--editing"), true);
+    assert.equal(card.classList.contains("pxd-item--kidsoff"), false, "children are not hidden in the editor once they exist");
+    assert.equal(card.classList.contains("pxd-item--ol"), true);
+    f.stub.dispatch(f.stub.window, "keydown", { key: "Escape" });
+    await settleEdit(f.stub);
+    await show(f);
+    assert.equal(card.classList.contains("pxd-item--editing"), false);
+    const body = card.querySelector(".pxd-item__body");
+    assert.deepEqual(rowTree(body), [
+      { uid: "kidT00001", kids: [{ uid: "kidZ00001", kids: [{ uid: "kidX00001", kids: [] }] }] },
+    ]);
+    assert.equal(card.querySelector("[data-pxd-row=kidX00001] .pxd-outline__bullet") != null, true);
   } finally {
     f.view.dispose();
     f.restore();

@@ -66,56 +66,35 @@ export function fullscreenInsets(root = globalThis.document) {
 
 // C2 (UX4, speed flag fsCover): `body.pxd-fs-cover` hides the article's own content under a fullscreen board
 // (extension.css, native guard). Roam renders the zoomed board block's children there, and they showed through for
-// about a second while the big board zoomed (zoom-slow-outline.jpg frames 18-19). A board disposed while the route
-// still opens that same board is about to be mounted again (Roam re-rendered the block): the cover stays for
-// COVER_HOLD_MS so the gap is the article background, not the outline. A route change drops it at once.
+// about a second while the big board zoomed (zoom-slow-outline.jpg frames 18-19). The feature holds the cover while a
+// fullscreen board it unmounted on its own route mounts again (Roam re-rendered the block): the gap is then the
+// article background, not the outline. feature.js drops the hold (reconcile, route change, unload).
 export const FS_COVER_CLASS = "pxd-fs-cover";
 export const COVER_HOLD_MS = 1500;
-let coverDrop = null;
+let coverHeld = false;
 const coverOn = () => { try { return notedSpeedFlags().fsCover !== false; } catch { return true; } };
-function routeHash(root) {
-  return root?.defaultView?.location?.hash ?? globalThis.location?.hash ?? "";
-}
-function cancelCoverDrop() {
-  const drop = coverDrop;
-  coverDrop = null;
-  drop?.cancel();
-}
-function setCover(root, on, holdFor = null) {
+function setCover(root, on) {
   const body = root?.body;
   if (!body?.classList) return;
-  cancelCoverDrop();
   if (on) {
+    coverHeld = false;
     if (coverOn()) body.classList.add(FS_COVER_CLASS);
-    return;
-  }
-  if (!body.classList.contains?.(FS_COVER_CLASS)) return;
-  if (!holdFor || routeLeftZoomedDiagram(holdFor, routeHash(root))) {
+  } else if (!coverHeld) {
     body.classList.remove(FS_COVER_CLASS);
-    return;
   }
-  const win = root.defaultView || globalThis.window;
-  const drop = () => { if (coverDrop !== entry) return; coverDrop = null; entry.cancel(); body.classList.remove(FS_COVER_CLASS); };
-  const later = typeof win?.setTimeout === "function" ? win : globalThis;
-  const id = later.setTimeout(drop, COVER_HOLD_MS);
-  const entry = {
-    cancel() {
-      later.clearTimeout(id);
-      win?.removeEventListener?.("hashchange", drop);
-      win?.removeEventListener?.("popstate", drop);
-    },
-  };
-  win?.addEventListener?.("hashchange", drop);
-  win?.addEventListener?.("popstate", drop);
-  coverDrop = entry;
+}
+export function holdFsCover(root, on) {
+  const body = root?.body;
+  if (!body?.classList) return;
+  coverHeld = Boolean(on) && coverOn() && body.classList.contains(FS_COVER_CLASS);
+  if (!coverHeld && !body.classList.contains("pxd-has-fullscreen")) body.classList.remove(FS_COVER_CLASS);
 }
 
 // Toggle fullscreen chrome on the mount element. Returns a disposer that stops following.
-// holdFor: the board uid of a view being disposed (see setCover).
-export function applyFullscreenChrome(mount, on, root = globalThis.document, { holdFor = null } = {}) {
+export function applyFullscreenChrome(mount, on, root = globalThis.document) {
   mount?.classList?.toggle?.("pxd-mount--fullscreen", Boolean(on));
   root?.body?.classList?.toggle?.("pxd-has-fullscreen", Boolean(on));
-  setCover(root, Boolean(on), holdFor);
+  setCover(root, Boolean(on));
   if (!on) {
     if (mount?.style) {
       for (const k of ["top", "left", "right", "bottom", "width", "height", "minHeight"]) mount.style[k] = "";

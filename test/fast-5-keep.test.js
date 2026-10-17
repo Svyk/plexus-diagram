@@ -5,6 +5,7 @@ import test from "node:test";
 import { createLifecycle } from "../src/lifecycle.js";
 import { installPlexusDiagram } from "../src/feature.js";
 import { sketchKey } from "../src/view/sketch.js";
+import { applyFullscreenChrome } from "../src/view/fullscreen.js";
 
 class El {
   constructor(doc, tag = "div") {
@@ -974,6 +975,41 @@ test("a board reattached from the pool still opens nested boards", async () => {
     assert.equal(t.views.length, 2, "the nested board mounted");
     assert.equal(t.created.filter((uid) => uid === "boardBBB2").length, 1);
   } finally {
+    await t.lifecycle.dispose().catch(() => {});
+    t.restore();
+  }
+});
+
+// UX4 C2: Roam re-rendered the zoomed board block (its native left and came back on the same route). The article cover
+// under the fullscreen board stays through the gap, so the zoomed block's outline never shows; a route change drops it.
+test("C2: a fullscreen board unmounted on its own route holds the article cover until it is back or the hold expires", async () => {
+  const t = await openBoards();
+  const realNow = Date.now;
+  try {
+    t.views[0].args.onRequestFullscreen(true);
+    const body = t.doc.body;
+    body.classList.add("pxd-has-fullscreen", "pxd-fs-cover");
+    globalThis.location.hash = "#/app/Svy/page/boardAAA1";
+    // The real view's dispose or park leaves fullscreen: applyFullscreenChrome(false) drops pxd-has-fullscreen.
+    t.views[0].setFullscreen = (on) => { if (!on) body.classList.remove("pxd-has-fullscreen"); applyFullscreenChrome(null, on, t.doc); };
+    leaveNative(t, diagramNative(t.doc.app));
+    assert.ok(body.classList.contains("pxd-fs-cover"), "held while the board is away");
+    runIntervals(t);
+    assert.ok(body.classList.contains("pxd-fs-cover"), "a reconcile tick inside the hold keeps it");
+    Date.now = () => realNow() + 2000;
+    runIntervals(t);
+    assert.ok(!body.classList.contains("pxd-fs-cover"), "the hold expires when no fullscreen board came back");
+    Date.now = realNow;
+    arrive(t, "boardAAA1");
+    body.classList.add("pxd-has-fullscreen", "pxd-fs-cover");
+    t.views[0].args.onRequestFullscreen(true);
+    leaveNative(t, diagramNative(t.doc.app));
+    assert.ok(body.classList.contains("pxd-fs-cover"));
+    globalThis.location.hash = "#/app/Svy/page/otherPage";
+    for (const fn of [...(t.winListeners.get("hashchange") || [])]) fn({ newURL: "https://roamresearch.com/#/app/Svy/page/otherPage" });
+    assert.ok(!body.classList.contains("pxd-fs-cover"), "a route change drops the hold at once");
+  } finally {
+    Date.now = realNow;
     await t.lifecycle.dispose().catch(() => {});
     t.restore();
   }

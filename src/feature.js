@@ -21,7 +21,7 @@ import { boardStamp, itemSig, tableGrid } from "./model/boardsnap.js";
 import { renderTableThumb, tableThumbKey, thumbBox } from "./view/table-thumb.js";
 import { tableUidOf } from "./model/roam-table.js";
 import { shouldNudgeQueries } from "./model/query-fold.js";
-import { applyFullscreenChrome } from "./view/fullscreen.js";
+import { applyFullscreenChrome, COVER_HOLD_MS, holdFsCover } from "./view/fullscreen.js";
 import { installRoamStack, syncBoardClass } from "./view/roam-stack.js";
 import { focusOpenBlock } from "./model/card-children.js";
 import { zoomBoardTarget } from "./model/zoom-board.js";
@@ -589,6 +589,7 @@ export async function installPlexusDiagram({
   lifecycle.add(() => {
     for (const native of [...convertButtons.keys()]) dropConvert(native);
     for (const rec of [...mounts.values()]) unmount(rec);
+    dropCoverHold(true);
     disposeAlive();
     for (const observer of portalObservers.values()) observer.disconnect();
     portalObservers.clear();
@@ -2801,8 +2802,21 @@ export async function installPlexusDiagram({
     }
   }
 
+  // C2 (UX4): a fullscreen board unmounted while the route still opens it is about to come back; its cover stays.
+  let coverHold = null;
+  function dropCoverHold(force = false) {
+    if (!coverHold) return;
+    if (!force && Date.now() - coverHold.at < COVER_HOLD_MS && !routeLeftZoomedDiagram(coverHold.uid)) return;
+    coverHold = null;
+    holdFsCover(doc, false);
+  }
+
   function unmount(rec) {
     if (!rec || !mounts.has(rec.native)) return;
+    if (rec.fullscreen && !stopped && !routeLeftZoomedDiagram(rec.uid)) {
+      coverHold = { uid: rec.uid, at: Date.now() };
+      holdFsCover(doc, true);
+    }
     // A zoomed board opens fullscreen. Leaving the page leaves fullscreen first, so that board
     // can be kept too; fullscreen-on-zoom puts it back when the page returns.
     if (rec.fullscreen && pageLeft(rec) && rec.view && !rec.view.sketchStandIn) setFullscreen(rec, false);
@@ -3634,6 +3648,7 @@ export async function installPlexusDiagram({
     if (!doc) return;
     tryPendingPin();
     for (const diagram of doc.querySelectorAll(".rm-diagram")) consider(diagram);
+    dropCoverHold();
   }
 
   function onHash(event) {
@@ -3644,6 +3659,7 @@ export async function installPlexusDiagram({
   }
 
   function onNavigate() {
+    if (coverHold && routeLeftZoomedDiagram(coverHold.uid)) dropCoverHold(true);
     mountFail.clear();
     pathCache.clear();
     // The route changed. A uid classified on the previous page has to be read again.

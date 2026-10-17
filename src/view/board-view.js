@@ -7848,7 +7848,10 @@ function buildBoardView(onFail, {
     }
     paintSearch(board(), searchMatches, searchQuery);
     const countEl = root.querySelector(".pxd-search__count");
-    if (countEl) countEl.textContent = `${searchIndex + 1}/${searchMatches.length}`;
+    // PERF5-P3: edit the count's text node in place (a child-list change restyles every shell under Roam's :has()).
+    const label = `${searchIndex + 1}/${searchMatches.length}`;
+    const node = countEl?.firstChild;
+    if (node?.nodeType === 3) { if (node.textContent !== label) node.textContent = label; } else if (countEl) countEl.textContent = label;
   };
 
   // ------------------------------------------------------------ editing

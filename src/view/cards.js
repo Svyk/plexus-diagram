@@ -2639,10 +2639,13 @@ export function createItemRenderer({
   // ---------------------------------------------------------------- CH-1/CH-3: children badge and peek
   let peek = null; // { node, rec, off }
   let peekTimer = null;
+  let peekLeave = null;
   const peekRoot = () => itemsLayer?.closest?.(".pxd-root") || null;
   const closePeek = () => {
     peekTimer?.();
     peekTimer = null;
+    peekLeave?.();
+    peekLeave = null;
     if (!peek) return;
     const p = peek;
     peek = null;
@@ -2663,20 +2666,55 @@ export function createItemRenderer({
     if (disposed || peek || !root || !rec.kidsBtn || !item || !isKidsCard(item) || editing || paused) return;
     peekRowsOf(rec, item, (rows) => {
       if (disposed || peek || !rec.kidsBtn?.isConnected || !rows.length) return;
-      const node = el("div", "pxd-kids-peek", root);
-      node.setAttribute("role", "tooltip");
-      for (const c of rows) {
-        el("div", "pxd-kids-peek__row", node).textContent = plainText(childString(c), PEEK_TEXT_MAX);
-        for (const g of visibleKids(childKids(c)).slice(0, PEEK_SUB)) {
-          el("div", "pxd-kids-peek__row pxd-kids-peek__row--sub", node).textContent = plainText(childString(g), PEEK_TEXT_MAX);
+      // UX4 B1: the peek is a menu of the card's children. A click on a row shows the card focused on that block
+      // (crumb, no write), the same as a bullet click on the unfolded card. Off: a tooltip that closes on any press.
+      const pick = speedOf().peekPick !== false;
+      const node = el("div", pick ? "pxd-kids-peek pxd-kids-peek--pick" : "pxd-kids-peek", root);
+      node.setAttribute("role", pick ? "menu" : "tooltip");
+      const addRow = (block, sub) => {
+        const row = el("div", sub ? "pxd-kids-peek__row pxd-kids-peek__row--sub" : "pxd-kids-peek__row", node);
+        row.textContent = plainText(childString(block), PEEK_TEXT_MAX);
+        const uid = childUid(block);
+        if (pick && uid) {
+          row.setAttribute("role", "menuitem");
+          row.setAttribute("data-pxd-peek-row", uid);
         }
+      };
+      for (const c of rows) {
+        addRow(c, false);
+        for (const g of visibleKids(childKids(c)).slice(0, PEEK_SUB)) addRow(g, true);
       }
       placeNearAnchor(node, rec.kidsBtn.getBoundingClientRect(), root, { gap: 6 });
-      const close = () => closePeek();
-      doc.addEventListener?.("pointerdown", close, true);
-      doc.addEventListener?.("wheel", close, true);
-      peek = { node, rec, off: () => { doc.removeEventListener?.("pointerdown", close, true); doc.removeEventListener?.("wheel", close, true); } };
+      const close = (event) => {
+        if (pick && node.contains?.(event?.target)) return;
+        closePeek();
+      };
+      const offs = [];
+      const on = (target, type, fn, capture) => {
+        target.addEventListener?.(type, fn, capture);
+        offs.push(() => target.removeEventListener?.(type, fn, capture));
+      };
+      on(doc, "pointerdown", close, true);
+      on(doc, "wheel", close, true);
+      if (pick) {
+        for (const type of ["pointerdown", "mousedown", "dblclick", "wheel"]) on(node, type, stopPress);
+        on(node, "mouseenter", () => { peekLeave?.(); peekLeave = null; });
+        on(node, "mouseleave", () => leavePeekSoon());
+        on(node, "click", (event) => {
+          stopPress(event);
+          const blockUid = event.target?.closest?.("[data-pxd-peek-row]")?.getAttribute?.("data-pxd-peek-row");
+          if (!blockUid) return;
+          closePeek();
+          focusInside(rec.uid, blockUid);
+        });
+      }
+      peek = { node, rec, off: () => { for (const off of offs) off(); } };
     });
+  };
+  // The pointer crosses the gap from the Children button to the peek. Close only if it does not arrive.
+  const leavePeekSoon = () => {
+    peekLeave?.();
+    peekLeave = later(() => { peekLeave = null; closePeek(); }, PEEK_LEAVE_MS);
   };
   const dropKidsBadge = (rec) => {
     if (!rec.kidsBtn) return;
@@ -2691,6 +2729,15 @@ export function createItemRenderer({
     if (!isKidsCard(item)) return false;
     const rec = shells.get(uid);
     if (rec?.peekOpen) dropPeek(rec);
+    // UX4 B1/B3: a folded card that shows a child focus (peek pick, link, zoom chip) folds back with no write.
+    if (!item.kids && revealCards.has(uid) && speedOf().foldResets !== false) {
+      dropFocus(uid);
+      if (rec) {
+        remountCard(rec);
+        settleReveal(rec, uid);
+      }
+      return true;
+    }
     dropFocus(uid);
     const on = !item.kids;
     const extra = on ? Math.ceil((Number(rec?.kidRows) || 0) * KID_ROW_H + 8) : 0;
@@ -2719,7 +2766,10 @@ export function createItemRenderer({
         if (event.buttons || peek || peekTimer) return;
         peekTimer = later(() => openPeek(rec), PEEK_DELAY_MS);
       });
-      on("mouseleave", () => closePeek());
+      on("mouseleave", () => {
+        if (peek?.rec === rec && speedOf().peekPick !== false) { peekTimer?.(); peekTimer = null; leavePeekSoon(); return; }
+        closePeek();
+      });
       rec.kidsBtn = btn;
     }
     rec.kidsBtn.textContent = text;
@@ -2838,6 +2888,10 @@ export function createItemRenderer({
       const crumbRec = shells.get(item.uid);
       const onCrumb = (event) => {
         stopPress(event);
+        if (editing?.uid === item.uid && !editing.sticky) {
+          void exitEdit().then(() => { if (!disposed) onCrumb(event); });
+          return;
+        }
         if (!focusId) {
           cardFocus.delete(item.uid);
           revealCards.delete(item.uid);
@@ -6739,6 +6793,7 @@ export function createItemRenderer({
     // window.event lives only for this turn. Read the dblclick before the first await, while the rest
     // string is still in the card. A keyboard Enter has no letter to land on, so it keeps Roam's caret.
     const click = doc.defaultView?.event;
+    let ownHit = false;
     if (item.kind !== "page" && caretOff == null) {
       const type = String(click?.type || "");
       const mouse = type === "dblclick" || type === "click" || type === "pointerdown" || type === "pointerup" || type === "mousedown" || type === "mouseup";
@@ -6748,6 +6803,7 @@ export function createItemRenderer({
       if (mouse && Number.isFinite(x) && Number.isFinite(y) && (!target || rec.el.contains?.(target))) {
         const hit = noteCaretAtPoint(doc, x, y);
         if (hit && (!hit.uid || hit.uid === uid)) {
+          ownHit = true;
           const mark = hit.task ? (TASK_MARK.exec(String(item.string || ""))?.[0].length || 0) : 0;
           caretOff = hit.offset + mark;
         } else if (hit?.uid && speedOf().childCaret !== false && rec.body?.querySelector?.(`[data-pxd-row="${hit.uid}"]`)) {
@@ -6761,6 +6817,15 @@ export function createItemRenderer({
     if (tableUidOf(item) && speedOf().tableCaptionEdit !== false) return openTableCaption(uid, rec, item);
     if (!host?.renderBlock) { host?.openBlock?.(uid); return false; }
     const targetUid = item.target.kind === "block" ? item.target.uid : item.uid;
+    // UX4 B1: a card focused on a child edits that block, as Roam edits a zoomed block. The crumb stays above the
+    // editor. A click on the card's own text leaves the focus and edits the whole card.
+    let focusUid = "";
+    if (item.kind !== "page" && speedOf().editFocus !== false && cardFocus.has(uid)) {
+      if (ownHit) {
+        dropFocus(uid);
+        remountCard(rec);
+      } else focusUid = cardFocus.get(uid) || "";
+    }
     const heavyUid = ownHeavyUid(item);
     if (heavyUid) {
       if (pdfOpenUid && pdfOpenUid !== heavyUid) {
@@ -6800,8 +6865,17 @@ export function createItemRenderer({
     }
     const ghost = el("div", "pxd-item__ghost");
     ghost.setAttribute("aria-hidden", "true");
-    for (const node of [...(rec.body.children || [])]) ghost.append(node);
+    // Focus edit: the card's own text and the crumb stay in place above the editor, so the focused rows do not move.
+    const head = focusUid ? [...(rec.body.children || [])].filter((node) => node.classList?.contains("pxd-item__string") || node.classList?.contains("pxd-focus__crumb")) : [];
+    rec.headRoots = head.filter((node) => (rec.roots || []).includes(node));
+    if (rec.headRoots.length) rec.roots = rec.roots.filter((node) => !rec.headRoots.includes(node));
+    for (const node of [...(rec.body.children || [])]) if (!head.includes(node)) ghost.append(node);
     rec.body.append(ghost);
+    if (focusUid) {
+      rec.el.classList.add("pxd-item--focusedit");
+      const top = Number(ghost.offsetTop) || 0;
+      if (top > 0) rec.el.style.setProperty?.("--pxd-focus-top", `${top}px`);
+    }
     rec.ghost = ghost;
     rec.contentKey = null;
     mounted.delete(uid);
@@ -6812,11 +6886,18 @@ export function createItemRenderer({
     if (!pageEdit && speedOf().editBulletFocus !== false) {
       const onEditBullet = (event) => {
         const bullet = event.target?.closest?.(".rm-bullet");
-        if (!bullet || !editor.contains?.(bullet) || !bullet.closest?.(".rm-block-children")) return;
+        if (!bullet || !editor.contains?.(bullet) || (!focusUid && !bullet.closest?.(".rm-block-children"))) return;
         const main = bullet.closest?.(".rm-block-main");
         const input = main?.querySelector?.(".rm-block__input, textarea, [id^='block-input-']");
         const blockUid = input ? blockUidFromNode(input) : null;
         if (!blockUid || blockUid === uid || blockUid === targetUid) return;
+        if (blockUid === focusUid) {
+          // The zoomed block's own bullet would zoom Roam's main window. The card is already on it.
+          event.preventDefault?.();
+          event.stopImmediatePropagation?.();
+          event.stopPropagation?.();
+          return;
+        }
         event.preventDefault?.();
         event.stopImmediatePropagation?.();
         event.stopPropagation?.();
@@ -6828,7 +6909,7 @@ export function createItemRenderer({
     }
     // Rule 19.1: stop pointer/wheel at the overlay boundary BEFORE the synthetic focus click.
     for (const type of EDITOR_STOPPED) editor.addEventListener(type, stopEvent);
-    editing = { uid, rec, editor, targetUid, item, ready: false, fadeCancel: null, releaseCancel: null };
+    editing = { uid, rec, editor, targetUid, focusUid, item, ready: false, fadeCancel: null, releaseCancel: null };
     if (pageEdit) {
       const h = rec.el.style?.height || (Number(rec.rect?.h) > 0 ? `${Math.round(Number(rec.rect.h))}px` : "");
       if (h && rec.el.style?.setProperty) rec.el.style.setProperty("height", h, "important");
@@ -6853,7 +6934,7 @@ export function createItemRenderer({
         if (pageUid && host.renderPage) host.renderPage(editor, pageUid, { "hide-mentions?": true });
         else host.renderBlock(editor, item.uid);
       } else {
-        host.renderBlock(editor, targetUid);
+        host.renderBlock(editor, focusUid || targetUid);
       }
     } catch { ok = false; }
     if (!ok) { await exitEdit({ silent: true }); return false; }
@@ -6899,7 +6980,7 @@ export function createItemRenderer({
       // hydrate-quiet window (250 ms or more) before the first focus, so a new card showed a caret but keys typed
       // in that gap went nowhere or landed after Roam swapped the input. The quiet wait still runs, and focus is only
       // taken again if Roam replaced the input meanwhile.
-      const noteRow = caretRow || row;
+      const noteRow = caretRow || row || focusUid;
       early = await waitNoteInput(editor, uid, noteRow);
       if (disposed || editing?.uid !== uid) return false;
       // The click on the row's view did not land (Roam focused another block): ask Roam for the row, as page cards do.
@@ -7002,6 +7083,12 @@ export function createItemRenderer({
     for (const type of EDITOR_STOPPED) editor.removeEventListener(type, stopEvent);
     editor.__pxdBulletOff?.();
     dropStaticLayer(rec);
+    for (const node of rec.headRoots || []) {
+      try { host?.unmount?.(node); } catch { /* not a roam root */ }
+    }
+    rec.headRoots = null;
+    rec.el.classList.remove("pxd-item--focusedit");
+    rec.el.style.removeProperty?.("--pxd-focus-top");
     try { host?.unmount?.(editor); } catch { /* not mounted */ }
     editor.remove();
     rec.el.classList.remove("pxd-item--editing");

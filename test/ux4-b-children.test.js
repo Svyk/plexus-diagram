@@ -235,3 +235,114 @@ test("B3: Escape to the top from a focus on a folded card (focused through a pee
     f.restore();
   }
 });
+
+test("B1: hover the Children button, move into the peek, click a depth-2 row: the card shows that block focused, with no write; the Children button folds it back", async () => {
+  const f = mount();
+  try {
+    await show(f);
+    const card = f.view.root.querySelector("[data-uid=cardTT001]");
+    const h = card.style.height;
+    const kidsBtn = card.querySelector(".pxd-kids");
+    f.stub.dispatch(kidsBtn, "mouseenter", {});
+    await tick(450);
+    await show(f);
+    const peek = f.view.root.querySelector(".pxd-kids-peek");
+    assert.ok(peek, "the peek opens on hover");
+    f.stub.dispatch(kidsBtn, "mouseleave", {});
+    f.stub.dispatch(peek, "mouseenter", {});
+    await tick(450);
+    assert.ok(peek.isConnected, "the peek stays open while the pointer crosses into it");
+    const row = peek.querySelector("[data-pxd-peek-row=kidZ00001]");
+    assert.ok(row, "depth-2 rows are pickable");
+    realClick(f.stub, row);
+    await show(f);
+    assert.equal(peek.isConnected, false);
+    assert.deepEqual(crumbLabels(card), ["This is a test", "test", "Todd Zenger"]);
+    assert.equal(card.querySelector("[data-pxd-row=kidZ00001]").classList.contains("pxd-outline--zoomed"), true);
+    assert.equal(f.mutations.length, 0, "picking a child writes nothing");
+    realClick(f.stub, card.querySelector(".pxd-kids"));
+    await show(f);
+    assert.equal(f.mutations.length, 0, "folding back a peek pick writes nothing");
+    assert.deepEqual(crumbLabels(card), []);
+    assert.deepEqual(rowUids(card), []);
+    assert.equal(card.style.height, h);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+async function settleEdit(stub) {
+  const real = Date.now;
+  let clock = real() + 50;
+  Date.now = () => clock;
+  try {
+    for (let i = 0; i < 10; i += 1) {
+      clock += 200;
+      stub.flushFrames();
+      await tick();
+    }
+  } finally {
+    Date.now = real;
+  }
+}
+
+// Roam's editor: one root block with a bullet and children, ids ending in the block uid.
+function editorHost(rendered) {
+  return {
+    renderBlock(el, uid) {
+      rendered.push(uid);
+      const doc = el.ownerDocument || globalThis.document;
+      const wrap = doc.createElement("div");
+      wrap.className = "rm-api-render--block";
+      const box = doc.createElement("div");
+      box.className = "roam-block-container";
+      const main = doc.createElement("div");
+      main.className = "rm-block-main";
+      const controls = doc.createElement("div");
+      controls.className = "controls";
+      const bullet = doc.createElement("span");
+      bullet.className = "rm-bullet";
+      controls.append(bullet);
+      const ta = doc.createElement("textarea");
+      ta.className = "rm-block__input";
+      ta.id = `block-input-WIN1-body-outline-page0001-${uid}`;
+      ta.setSelectionRange = () => {};
+      main.append(controls, ta);
+      box.append(main);
+      wrap.append(box);
+      el.append(wrap);
+    },
+  };
+}
+
+test("B1: editing a card focused on a child edits that block (Roam's zoom): the crumb stays, the editor mounts the focused block, Escape keeps the focus", async () => {
+  const rendered = [];
+  const f = mount({ cards: userCards(true), host: editorHost(rendered) });
+  try {
+    await show(f);
+    const card = f.view.root.querySelector("[data-uid=cardTT001]");
+    realClick(f.stub, card.querySelector("[data-pxd-row=kidZ00001] .pxd-outline__bullet"));
+    await show(f);
+    assert.deepEqual(crumbLabels(card), ["This is a test", "test", "Todd Zenger"]);
+    const row = card.querySelector("[data-pxd-row=kidX00001] .pxd-block__text");
+    f.stub.dispatch(row, "dblclick", { clientX: 60, clientY: 80 });
+    await settleEdit(f.stub);
+    assert.equal(card.classList.contains("pxd-item--editing"), true);
+    assert.deepEqual(rendered, ["kidZ00001"], "the editor mounts the focused block, not the whole card");
+    assert.equal(card.classList.contains("pxd-item--focusedit"), true);
+    const body = card.querySelector(".pxd-item__body");
+    const crumb = card.querySelector(".pxd-focus__crumb");
+    assert.equal(crumb?.parentElement, body, "the crumb stays on screen above the editor, outside the fading static layer");
+    assert.deepEqual(crumbLabels(card), ["This is a test", "test", "Todd Zenger"]);
+    f.stub.dispatch(f.stub.window, "keydown", { key: "Escape" });
+    await settleEdit(f.stub);
+    await show(f);
+    assert.equal(card.classList.contains("pxd-item--editing"), false);
+    assert.equal(card.classList.contains("pxd-item--focusedit"), false);
+    assert.deepEqual(crumbLabels(card), ["This is a test", "test", "Todd Zenger"]);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});

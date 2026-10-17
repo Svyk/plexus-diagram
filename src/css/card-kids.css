@@ -171,3 +171,23 @@
     animation: none;
   }
 }
+
+/* UX4 B1: the Children peek is a menu. A row click focuses that block on the card. */
+.pxd-root .pxd-kids-peek.pxd-kids-peek--pick {
+  pointer-events: auto;
+}
+
+.pxd-root .pxd-kids-peek--pick .pxd-kids-peek__row[data-pxd-peek-row] {
+  margin: 0 -6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-kids-peek--pick .pxd-kids-peek__row--sub[data-pxd-peek-row] {
+  padding-left: 20px;
+}
+
+.pxd-root .pxd-kids-peek--pick .pxd-kids-peek__row[data-pxd-peek-row]:hover {
+  background: var(--pxd-hover, rgba(127, 127, 127, 0.16));
+}

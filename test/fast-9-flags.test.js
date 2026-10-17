@@ -559,7 +559,8 @@ test("budgeted mounting off mounts every card body in one turn, and page rows st
     child("noteC0003", "Note three", 2),
     child("pagecard1", "[[Lab Page]]", 3),
   ], {
-    settings: { "speed-flags": '{"budgetedMount":false}' },
+    // richRows (UX3 A2) renders a page card's first screen at mount; off here so the row stays on the idle path.
+    settings: { "speed-flags": '{"budgetedMount":false,"richRows":false}' },
     pageOutline() {
       return {
         uid: "labpage1",

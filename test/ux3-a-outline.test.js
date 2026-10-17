@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { CHILD_GROW_H, CHILD_ROW_H } from "../src/model/card-children.js";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { noteSpeedFlags } from "../src/settings.js";
 import { mountBoardView } from "../src/view/board-view.js";
@@ -208,7 +209,7 @@ const TOKENS = (() => {
 })();
 
 // Resolves calc() over px, var(), and the editor's --pxd-ed-z (1 at zoom 1, the zoom otherwise).
-function px(value, z = 1) {
+function px(value, z = 1, font = 14) {
   if (value === undefined) return NaN;
   let expr = String(value);
   for (let i = 0; i < 4; i += 1) {
@@ -217,7 +218,7 @@ function px(value, z = 1) {
       return TOKENS[name] !== undefined ? `(${TOKENS[name]})` : (fb ?? "NaN");
     });
   }
-  expr = expr.replace(/calc/g, "").replace(/(-?\d*\.?\d+)px/g, "$1");
+  expr = expr.replace(/calc/g, "").replace(/(-?\d*\.?\d+)px/g, "$1").replace(/(-?\d*\.?\d+)em/g, `($1*${font})`);
   if (/[^\d\s.+\-*/()]/.test(expr)) return NaN;
   return Function(`"use strict"; return (${expr});`)();
 }
@@ -259,9 +260,13 @@ test("A1: display rows and the Roam editor put the text at the same x for depth 
 
 test("A1: the row pitch, bullet box and thread line are the same in display and edit", () => {
   for (const z of [1, 0.6]) {
+    // Roam's own `.roam-block { min-height: calc(1.5em + 8px) }` rules every inactive editor row, so the editor
+    // declares no row height of its own and the display row must resolve to the same one. The em base is the font
+    // (14px text: 29px; at the editor's z-scaled font the same formula gives 29 x z).
+    assert.equal(decl(`${E} .rm-block-children .rm-block-main`, "min-height"), undefined, "the editor row keeps Roam's own height");
     const row = px(decl(`${D} .pxd-outline__line`, "min-height"));
-    const editRow = px(decl(`${E} .rm-block-children .rm-block-main`, "min-height"), z) / z;
-    assert.equal(row, editRow);
+    assert.equal(row, 29);
+    assert.equal(px(decl(`${D} .pxd-outline__line`, "min-height"), 1, 16), 32, "derived from the em, not a fixed number");
     assert.equal(decl(`${D} .pxd-block.pxd-outline`, "margin"), "0");
     assert.equal(decl(`${E} .roam-block-container`, "margin"), "0");
     // Bullet: the same dot in the same box.
@@ -603,4 +608,19 @@ test("A5: parent, child and grandchild typed in a new card show Roam's outline w
     f.view.dispose();
     f.restore();
   }
+});
+
+test("A1 fix: display row min-height is the same declaration as Roam's editor row, and the card grows by one row", () => {
+  const ROAM_ROW = "calc(1.5em + 8px)";
+  assert.equal(decl(`${D} .pxd-outline__line`, "min-height"), "var(--pxd-ol-row)");
+  assert.equal(TOKENS["--pxd-ol-row"], ROAM_ROW);
+  assert.equal(decl(`${D} .pxd-outline__line`, "padding-top"), "var(--pxd-ol-pad)");
+  assert.equal(px(TOKENS["--pxd-ol-pad"]), 4);
+  assert.equal(TOKENS["--pxd-ol-lh"], "1.5");
+  assert.equal(decl(`${D} .pxd-outline__line > .pxd-block__text`, "line-height"), "var(--pxd-ol-lh)");
+  // Depth 1..3 rows stack at one pitch in both modes: 29 per row at 14px text.
+  const pitch = px(TOKENS["--pxd-ol-row"]);
+  assert.deepEqual([0, 1, 2, 3].map((d) => d * pitch), [0, 29, 58, 87]);
+  assert.equal(CHILD_ROW_H, pitch);
+  assert.equal(CHILD_GROW_H, pitch);
 });

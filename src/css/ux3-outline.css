@@ -10,7 +10,9 @@
   --pxd-ol-gap: 4px;
   --pxd-ol-indent: 20px;
   --pxd-ol-caret: 12px;
-  --pxd-ol-row: 22px;
+  --pxd-ol-row: calc(1.5em + 8px);
+  --pxd-ol-pad: 4px;
+  --pxd-ol-lh: 1.5;
   --pxd-ol-dot: 5px;
   --pxd-ol-line: 1px;
 }
@@ -25,7 +27,10 @@
   display: flex;
   align-items: flex-start;
   gap: 0;
+  box-sizing: border-box;
   min-height: var(--pxd-ol-row);
+  padding-top: var(--pxd-ol-pad);
+  padding-bottom: var(--pxd-ol-pad);
 }
 
 .pxd-root .pxd-item.pxd-item--ol .pxd-outline__bullet {
@@ -34,7 +39,7 @@
   justify-content: center;
   flex: 0 0 var(--pxd-ol-bullet);
   width: var(--pxd-ol-bullet);
-  height: 1.4em;
+  height: calc(var(--pxd-ol-lh) * 1em);
   margin-right: var(--pxd-ol-gap);
   font-size: inherit;
   line-height: inherit;
@@ -53,11 +58,11 @@
 .pxd-root .pxd-item.pxd-item--ol .pxd-outline__caret {
   position: absolute;
   left: calc(-1 * var(--pxd-ol-caret));
-  top: 0;
+  top: var(--pxd-ol-pad);
   width: var(--pxd-ol-caret);
-  height: 1.4em;
+  height: calc(var(--pxd-ol-lh) * 1em);
   font-size: 10px;
-  line-height: 1.4em;
+  line-height: calc(var(--pxd-ol-lh) * 1em);
   text-align: center;
   opacity: 0;
   transition: opacity 120ms;
@@ -71,7 +76,7 @@
 .pxd-root .pxd-item.pxd-item--ol .pxd-outline__line > .pxd-block__text {
   flex: 1 1 auto;
   min-width: 0;
-  line-height: 1.4;
+  line-height: var(--pxd-ol-lh);
 }
 
 .pxd-root .pxd-item.pxd-item--ol .pxd-block__children {
@@ -123,7 +128,6 @@
 
 .pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-children .rm-block-main {
   position: relative;
-  min-height: calc(var(--pxd-ol-row) * var(--pxd-ed-z, 1)) !important;
 }
 
 .pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-children .rm-block-main > :is(.controls, .rm-block__controls) {
@@ -135,8 +139,8 @@
   width: calc(var(--pxd-ol-bullet) * var(--pxd-ed-z, 1)) !important;
   min-width: 0 !important;
   max-width: none !important;
-  height: calc(1.4em * var(--pxd-ed-z, 1));
-  margin-top: 0 !important;
+  height: calc(var(--pxd-ol-lh) * 1em);
+  margin-top: calc(var(--pxd-ol-pad) * var(--pxd-ed-z, 1)) !important;
   margin-right: calc(var(--pxd-ol-gap) * var(--pxd-ed-z, 1)) !important;
   margin-bottom: 0 !important;
   margin-left: 0 !important;
@@ -150,7 +154,7 @@
   left: calc(-1 * var(--pxd-ol-caret) * var(--pxd-ed-z, 1));
   top: 0;
   width: calc(var(--pxd-ol-caret) * var(--pxd-ed-z, 1)) !important;
-  height: calc(1.4em * var(--pxd-ed-z, 1));
+  height: calc(var(--pxd-ol-lh) * 1em);
   margin: 0 !important;
   padding: 0 !important;
   display: flex;
@@ -164,7 +168,7 @@
   justify-content: center;
   width: calc(var(--pxd-ol-bullet) * var(--pxd-ed-z, 1)) !important;
   min-width: 0 !important;
-  height: calc(1.4em * var(--pxd-ed-z, 1));
+  height: calc(var(--pxd-ol-lh) * 1em);
   margin: 0 !important;
   padding: 0 !important;
   visibility: visible;
@@ -195,10 +199,10 @@
   display: none !important;
 }
 
-/* The display text is 1.4 lines; at zoom 1 card-edit.css pins the editor to 19.5px. Off zoom 1 the counter-scale
-   writes an inline !important line-height (1.4 x font x zoom), which still wins. */
+/* The display text is Roam's own row: a 1.5 line with 4px above and below (min-height 1.5em + 8px, 29px at 14px). At
+   zoom 1 card-edit.css pins the editor to 19.5px. Off zoom 1 the counter-scale writes an inline !important line-height. */
 .pxd-root .pxd-item.pxd-item--ol.pxd-item--editing:not(.pxd-item--page):not(.pxd-item--text) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) :is(textarea.rm-block-input, textarea.rm-block__input, .rm-block__input, .rm-block__input--view) {
-  line-height: 1.4 !important;
+  line-height: var(--pxd-ol-lh) !important;
 }
 
 /* UX3 A4. The block a card is focused on (crumb) shows Roam's zoomed ring on its bullet; note and page cards alike. */

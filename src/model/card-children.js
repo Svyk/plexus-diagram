@@ -5,7 +5,9 @@ export const KIDS_H_CAP = 900;
 export const PEEK_HOVER_MS = 800;
 export const PEEK_LEAVE_MS = 400;
 export const PEEK_ANIM_MS = 200;
-export const CHILD_GROW_H = 30;
+// One Roam outline row: min-height calc(1.5em + 8px) at the card's 14px text.
+export const CHILD_ROW_H = 29;
+export const CHILD_GROW_H = CHILD_ROW_H;
 
 export function childIsOpen(block) {
   if (!block || typeof block !== "object") return true;

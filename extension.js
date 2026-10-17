@@ -504,9 +504,9 @@ function distributeRects(list, axis2) {
     return h ? { uid: r.uid, x: p, y: r.y } : { uid: r.uid, x: r.x, y: p };
   });
 }
-function gridBackground(vp, style, base = GRID_PITCH) {
+function gridBackground(vp, style, base2 = GRID_PITCH) {
   if (style === "plain") return null;
-  let size = base * vp.zoom;
+  let size = base2 * vp.zoom;
   while (size > 0 && size < MIN_GRID_PITCH) size *= 5;
   const mod = (v) => (v % size + size) % size;
   return { size, x: mod(vp.x), y: mod(vp.y), major: size * 5 };
@@ -1007,18 +1007,18 @@ function serializeItemLayout(layout) {
   return out;
 }
 function withBoardMarker(plexus, on) {
-  const base = isObject(plexus) ? plainKeys(plexus) : {};
+  const base2 = isObject(plexus) ? plainKeys(plexus) : {};
   if (on) {
-    delete base.native;
-    return { ...base, v: SCHEMA_VERSION };
+    delete base2.native;
+    return { ...base2, v: SCHEMA_VERSION };
   }
-  delete base.v;
-  delete base.bg;
-  delete base.bgColor;
-  delete base.bgImage;
-  delete base.lodZoom;
-  delete base.dock;
-  return { ...base, native: true };
+  delete base2.v;
+  delete base2.bg;
+  delete base2.bgColor;
+  delete base2.bgImage;
+  delete base2.lodZoom;
+  delete base2.dock;
+  return { ...base2, native: true };
 }
 function dailyPageTitle(date) {
   const d = date instanceof Date ? date : new Date(date);
@@ -3600,8 +3600,8 @@ function pdfPageBaseTitle({ display = "", alias = "", refs = [], fileName: fileN
   if (meaningful(file) && !looksRandomName(raw.replace(/_+/g, " ").trim())) return file;
   return `PDF ${shortDate(now5)}`;
 }
-function uniquePageTitle(base, taken) {
-  const root = cleanPageTitle(base, TITLE_MAX) || `PDF ${shortDate()}`;
+function uniquePageTitle(base2, taken) {
+  const root = cleanPageTitle(base2, TITLE_MAX) || `PDF ${shortDate()}`;
   const used = (t) => {
     try {
       return typeof taken === "function" && taken(t) === true;
@@ -4124,10 +4124,10 @@ function sectionNoteUid(board2, sectionUid) {
   return null;
 }
 function displayRects(board2, stored) {
-  const base = stored ?? (board2 ? worldRects(board2) : /* @__PURE__ */ new Map());
-  if (!board2) return new Map(base);
+  const base2 = stored ?? (board2 ? worldRects(board2) : /* @__PURE__ */ new Map());
+  if (!board2) return new Map(base2);
   const out = /* @__PURE__ */ new Map();
-  for (const [uid, r] of base) {
+  for (const [uid, r] of base2) {
     if (!r || anchorUid(board2, uid) !== uid) continue;
     const item = board2.items.get(uid);
     const next = item?.type === "section" && item.collapsed ? { x: r.x, y: r.y, w: r.w, h: COLLAPSED_SECTION_H } : item?.type === "card" && item.collapsed ? { x: r.x, y: r.y, w: r.w, h: Math.min(r.h, COLLAPSED_CARD_H) } : item?.type === "text" && item.look === "sticky" && item.min ? { x: r.x, y: r.y, w: r.w, h: STICKY_HEADER_H } : { x: r.x, y: r.y, w: r.w, h: r.h };
@@ -4745,17 +4745,17 @@ function piecesOf(item, transform, fonts) {
   const angle = Math.atan2(m[1], m[0]);
   const rotated = Math.abs(angle) > 0.01;
   const x = m[4];
-  const base = m[5];
+  const base2 = m[5];
   const scaleX = Math.hypot(m[0], m[1]) / (Math.hypot(item.transform[0], item.transform[1]) || 1);
   const width = (item.width || 0) * scaleX;
   const flags = fontFlags(item.fontName, fonts);
   const ocrWord = item.fontName === "ocr";
-  if (!str3.trim()) return [{ space: true, x0: x, x1: x + width, base, size, rotated, angle }];
+  if (!str3.trim()) return [{ space: true, x0: x, x1: x + width, base: base2, size, rotated, angle }];
   const spaced = letterSpaced(str3) ? str3.replace(/\s+/g, "") : null;
   if (spaced) {
     let math = 0;
     for (const ch of spaced) if (isMathChar(ch)) math++;
-    return [{ text: spaced, x0: x, x1: x + width, base, size, font: item.fontName, fontName: flags.name, bold: flags.bold, italic: flags.italic, mathFont: flags.math, mono: flags.mono, mathChars: math, rotated, angle, leadingSpace: false, trailingSpace: false, spaced: true }];
+    return [{ text: spaced, x0: x, x1: x + width, base: base2, size, font: item.fontName, fontName: flags.name, bold: flags.bold, italic: flags.italic, mathFont: flags.math, mono: flags.mono, mathChars: math, rotated, angle, leadingSpace: false, trailingSpace: false, spaced: true }];
   }
   const perChar = width / Math.max(1, str3.length);
   const out = [];
@@ -4766,7 +4766,7 @@ function piecesOf(item, transform, fonts) {
     const start = match.index;
     const end = start + match[0].length;
     if (match[1]) {
-      out.push({ space: true, x0: x + start * perChar, x1: x + end * perChar, base, size, rotated });
+      out.push({ space: true, x0: x + start * perChar, x1: x + end * perChar, base: base2, size, rotated });
     } else {
       let math = 0;
       for (const ch of match[2]) if (isMathChar(ch)) math++;
@@ -4774,7 +4774,7 @@ function piecesOf(item, transform, fonts) {
         text: match[2],
         x0: x + start * perChar,
         x1: x + end * perChar,
-        base,
+        base: base2,
         size,
         font: item.fontName,
         fontName: flags.name,
@@ -5102,15 +5102,15 @@ function makeLine(words) {
     size = k;
   }
   if (!size) size = Math.max(...words.map((w) => w.size));
-  const base = median(words.filter((w) => !w.sup && !w.sub).map((w) => w.base)) ?? words[0].base;
+  const base2 = median(words.filter((w) => !w.sup && !w.sub).map((w) => w.base)) ?? words[0].base;
   return {
     words,
     text: words.map((w) => w.text).join(" "),
     x0: Math.min(...words.map((w) => w.x0)),
     x1: Math.max(...words.map((w) => w.x1)),
-    y0: base - size * 0.8,
-    y1: base + size * 0.22,
-    base,
+    y0: base2 - size * 0.8,
+    y1: base2 + size * 0.22,
+    base: base2,
     size,
     chars,
     bold: chars > 0 && bold / chars >= 0.6,
@@ -6271,13 +6271,13 @@ function assembleTable(gridIn, segs, boxes, words, ysAll, usedWords, pageRules) 
   const cells = [];
   for (const cellsIn of regions.values()) {
     const r0 = Math.min(...cellsIn.map((x) => x[0]));
-    const r1 = Math.max(...cellsIn.map((x) => x[0]));
+    const r12 = Math.max(...cellsIn.map((x) => x[0]));
     const c0 = Math.min(...cellsIn.map((x) => x[1]));
     const c1 = Math.max(...cellsIn.map((x) => x[1]));
-    if ((r1 - r0 + 1) * (c1 - c0 + 1) === cellsIn.length) {
-      if (c1 > c0 && tokensSplitColumns(words, xs2, ys2, r0, r1, c0, c1)) {
+    if ((r12 - r0 + 1) * (c1 - c0 + 1) === cellsIn.length) {
+      if (c1 > c0 && tokensSplitColumns(words, xs2, ys2, r0, r12, c0, c1)) {
         for (const [r, c] of cellsIn) cells.push({ r, c, rowSpan: 1, colSpan: 1 });
-      } else cells.push({ r: r0, c: c0, rowSpan: r1 - r0 + 1, colSpan: c1 - c0 + 1 });
+      } else cells.push({ r: r0, c: c0, rowSpan: r12 - r0 + 1, colSpan: c1 - c0 + 1 });
     } else {
       splitFixes += cellsIn.length;
       for (const [r, c] of cellsIn) cells.push({ r, c, rowSpan: 1, colSpan: 1 });
@@ -6461,8 +6461,8 @@ function finishTable(grid, cells, boxes, ysAll, usedWords, splitFixes, released,
     released
   };
 }
-function tokensSplitColumns(words, xs2, ys2, r0, r1, c0, c1) {
-  const box2 = { x0: xs2[c0], x1: xs2[c1 + 1], y0: ys2[r0], y1: ys2[r1 + 1] };
+function tokensSplitColumns(words, xs2, ys2, r0, r12, c0, c1) {
+  const box2 = { x0: xs2[c0], x1: xs2[c1 + 1], y0: ys2[r0], y1: ys2[r12 + 1] };
   const rows = rowsBetween(words, box2);
   if (!rows.length) return false;
   const inner = xs2.slice(c0 + 1, c1 + 1);
@@ -6711,8 +6711,8 @@ function headingLevel(line, { bodySize, classes, nextIsBody = true, isolated = f
   return 0;
 }
 function refineBodyHeadingLevels(headings, { classes }) {
-  const base = classes.length + 1;
-  const body = headings.filter((h) => h.level === base && !numberedDepth(h.text) && h.spans && h.spans.length);
+  const base2 = classes.length + 1;
+  const body = headings.filter((h) => h.level === base2 && !numberedDepth(h.text) && h.spans && h.spans.length);
   if (body.length < 2) return headings;
   const key = (h) => {
     const s = h.spans[0];
@@ -6724,7 +6724,7 @@ function refineBodyHeadingLevels(headings, { classes }) {
     return sb - sa || ia - ib;
   });
   if (ranks.length < 2) return headings;
-  for (const h of body) h.level = Math.min(6, base + ranks.indexOf(key(h)));
+  for (const h of body) h.level = Math.min(6, base2 + ranks.indexOf(key(h)));
   return headings;
 }
 function numberedDepth(text4) {
@@ -6757,9 +6757,9 @@ function equationRowSignals(words, { column = null } = {}) {
   if (!words.length) return { number: null, lead: false, delimiters: false, math: false };
   const sorted = [...words].sort((a, b) => a.x0 - b.x0);
   const last = sorted[sorted.length - 1];
-  const base = sorted.filter((w) => !w.sup && !w.sub);
-  const first = base[0] || sorted[0];
-  const second = base[1];
+  const base2 = sorted.filter((w) => !w.sup && !w.sub);
+  const first = base2[0] || sorted[0];
+  const second = base2[1];
   const colW = column ? column.x1 - column.x0 : Infinity;
   const number = EQ_NUMBER_RE.test(last.text) && (!column || last.x1 >= column.x1 - 0.12 * colW) ? last.text : null;
   const NAME2 = /^[A-Za-z][⁰-⁹₀-₉0-9′*ʹ]*$/;
@@ -7215,13 +7215,13 @@ function centredLine(row4, w, words, em) {
   return false;
 }
 function bandRows(words) {
-  const base = baselineGroups(words);
+  const base2 = baselineGroups(words);
   const floating = [];
   const keep = [];
-  for (let i = 0; i < base.length; i++) {
-    const g = base[i];
-    const prev = base[i - 1];
-    const next = base[i + 1];
+  for (let i = 0; i < base2.length; i++) {
+    const g = base2[i];
+    const prev = base2[i - 1];
+    const next = base2[i + 1];
     const bridges = g.words.length === 1 && prev && next && g.y0 < prev.y1 - 1 && g.y1 > next.y0 + 1 && !(prev.y0 < next.y1 - 1 && prev.y1 > next.y0 + 1);
     if (bridges) floating.push(g.words[0]);
     else keep.push(...g.words);
@@ -8019,13 +8019,13 @@ function tableFromBand(band, words) {
   return table;
 }
 function hasSubRows(words, band) {
-  const base = baselineGroups(words);
-  if (base.length < 2) return false;
+  const base2 = baselineGroups(words);
+  if (base2.length < 2) return false;
   let numeric = 0;
   let labels = 0;
   const soft = [];
   const value = (t) => isNumericText(t.text) || /^[-–—.]{1,3}$|^n\/?a$/i.test(t.text);
-  for (const g of base) {
+  for (const g of base2) {
     const toks = tokenizeLine({ words: [...g.words].sort((a, b) => a.x0 - b.x0), size: g.size });
     if (toks.filter(value).length >= 2) numeric++;
     const first = toks[0];
@@ -8040,7 +8040,7 @@ function hasSubRows(words, band) {
   if (soft.length < 3) return false;
   soft.sort((a, b) => a - b);
   const med = soft[soft.length >> 1];
-  const tol = Math.max(8, 0.8 * (base[0]?.size || 10));
+  const tol = Math.max(8, 0.8 * (base2[0]?.size || 10));
   const tight = soft.filter((x) => Math.abs(x - med) <= tol).length;
   return tight >= 3 && tight / soft.length >= 0.6;
 }
@@ -8058,12 +8058,12 @@ function numericGrid(run) {
   return n3 >= 4;
 }
 function headerRowGroups(words) {
-  const base = baselineGroups(words);
-  const toks = base.map((g) => tokenizeLine({ words: [...g.words].sort((a, b) => a.x0 - b.x0), size: g.size }));
+  const base2 = baselineGroups(words);
+  const toks = base2.map((g) => tokenizeLine({ words: [...g.words].sort((a, b) => a.x0 - b.x0), size: g.size }));
   const groups2 = [];
-  for (let i = 0; i < base.length; i++) {
-    const g = base[i];
-    const prev = base[i - 1];
+  for (let i = 0; i < base2.length; i++) {
+    const g = base2[i];
+    const prev = base2[i - 1];
     let split = i === 0;
     if (!split) {
       const spans = toks[i - 1].some((t) => toks[i].filter((u) => u.x0 < t.x1 - 1 && u.x1 > t.x0 + 1).length >= 2);
@@ -11537,8 +11537,8 @@ function joinLines(lines, { collectRefs = true, keepHyphenSet = null } = {}) {
       } else if (/^[A-Za-z0-9]/.test(t)) glue = "";
     }
     if (!text4) glue = "";
-    const base = text4.length + glue.length;
-    for (const r of refs) footnoteRefs.push({ mark: r.mark, at: base + r.at });
+    const base2 = text4.length + glue.length;
+    for (const r of refs) footnoteRefs.push({ mark: r.mark, at: base2 + r.at });
     text4 += glue + t;
   }
   return { text: text4.replace(/\s+/g, " ").trim(), footnoteRefs };
@@ -11695,16 +11695,16 @@ function repairYearHeader(table) {
       years.forEach((y, i) => {
         if (y != null) votes.set(y - step * i, (votes.get(y - step * i) || 0) + 1);
       });
-      let base = null;
+      let base2 = null;
       let n3 = 0;
       for (const [k, v] of votes) if (v > n3) {
         n3 = v;
-        base = k;
+        base2 = k;
       }
       if (n3 < 0.6 * years.filter((y) => y != null).length || n3 < 3) continue;
       years.forEach((y, i) => {
         if (y == null) return;
-        const want = base + step * i;
+        const want = base2 + step * i;
         if (want === y || editDistance(String(want), String(y)) !== 1) return;
         fixed.push({ r, c: row4[i].c, from: row4[i].text, to: String(want) });
         row4[i].text = String(want);
@@ -12129,20 +12129,20 @@ function blankRepeatedFill(table) {
       let c1 = c + 1;
       while (c1 < table.cols && fillOf(r, c1) === text4) c1++;
       if (c1 - c < 3) continue;
-      let r1 = r + 1;
-      while (r1 < table.rows) {
+      let r12 = r + 1;
+      while (r12 < table.rows) {
         let same2 = true;
-        for (let k = c; k < c1; k++) if (fillOf(r1, k) !== text4) same2 = false;
+        for (let k = c; k < c1; k++) if (fillOf(r12, k) !== text4) same2 = false;
         if (!same2) break;
-        r1++;
+        r12++;
       }
-      if (r1 - r < 3 || !otherIn(c, c1, text4)) continue;
+      if (r12 - r < 3 || !otherIn(c, c1, text4)) continue;
       const blank = (rr, k) => {
         const cell = plain2(rr, k);
         if (cell && String(cell.text || "").trim() === text4) cell.text = "";
       };
-      for (let rr = r; rr < r1; rr++) for (let k = c; k < c1; k++) blank(rr, k);
-      for (const rr of [r - 1, r1]) {
+      for (let rr = r; rr < r12; rr++) for (let k = c; k < c1; k++) blank(rr, k);
+      for (const rr of [r - 1, r12]) {
         if (rr < start || rr >= table.rows) continue;
         for (let k = c; k < c1; k++) if (fillOf(rr, k) === text4) blank(rr, k);
       }
@@ -12216,10 +12216,10 @@ function blankDecimalRun(table) {
         r++;
         continue;
       }
-      let r1 = r + 1;
-      while (r1 < table.rows && textOf2(r1, c) === token) r1++;
-      if (r1 - r >= 3) {
-        for (let rr = r; rr < r1; rr++) {
+      let r12 = r + 1;
+      while (r12 < table.rows && textOf2(r12, c) === token) r12++;
+      if (r12 - r >= 3) {
+        for (let rr = r; rr < r12; rr++) {
           let other = false;
           for (let k = 1; k < table.cols; k++) {
             if (k === c) continue;
@@ -12231,7 +12231,7 @@ function blankDecimalRun(table) {
           }
         }
       }
-      r = r1;
+      r = r12;
     }
   }
 }
@@ -12610,10 +12610,10 @@ function cropBoxes(table, cell, empty) {
   const row4 = table.cells.filter((k) => k.r === cell.r && k.wbase != null);
   if (!row4.length || !cell.bbox) return [];
   const bases = row4.map((k) => k.wbase).sort((a, b) => a - b);
-  const base = bases[bases.length >> 1];
+  const base2 = bases[bases.length >> 1];
   const size = Math.max(...row4.map((k) => k.wsize || 0)) || cell.bbox[3] - cell.bbox[1];
-  const band0 = base - 0.65 * size;
-  const band1 = base + 0.12 * size;
+  const band0 = base2 - 0.65 * size;
+  const band1 = base2 + 0.12 * size;
   let y0 = band0;
   let y1 = band1;
   const ink = row4.map((k) => k.wbox).filter((b) => b && b[3] > b[1]);
@@ -12758,9 +12758,9 @@ function boxOf4(item) {
   const y0 = Number(item?.y0);
   const y1 = Number(item?.y1);
   if (Number.isFinite(y0) && Number.isFinite(y1)) return [x, y0, x + w, y1];
-  const base = Number(t[5]) || 0;
+  const base2 = Number(t[5]) || 0;
   const size = Math.abs(Number(t[0]) || 0);
-  return [x, base - 0.8 * size, x + w, base + 0.22 * size];
+  return [x, base2 - 0.8 * size, x + w, base2 + 0.22 * size];
 }
 function iou(a, b) {
   const ix = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
@@ -12966,11 +12966,11 @@ function snapOnto(item, line) {
   const hosts = line.items.map((entry) => entry.item).filter((it) => it?.transform);
   if (!hosts.length) return { ...item, fontName: item.fontName || "ocr" };
   const size = median6(hosts.map((it) => Math.abs(Number(it.transform[0]) || it.height || 10)));
-  const base = median6(hosts.map((it) => Number(it.transform[5]) || 0));
+  const base2 = median6(hosts.map((it) => Number(it.transform[5]) || 0));
   const sample = hosts[hosts.length >> 1];
-  const sampleBase = Number(sample.transform[5]) || base;
-  const y0 = Number.isFinite(Number(sample.y0)) ? base + (Number(sample.y0) - sampleBase) : base - 0.8 * size;
-  const y1 = Number.isFinite(Number(sample.y1)) ? base + (Number(sample.y1) - sampleBase) : base + 0.22 * size;
+  const sampleBase = Number(sample.transform[5]) || base2;
+  const y0 = Number.isFinite(Number(sample.y0)) ? base2 + (Number(sample.y0) - sampleBase) : base2 - 0.8 * size;
+  const y1 = Number.isFinite(Number(sample.y1)) ? base2 + (Number(sample.y1) - sampleBase) : base2 + 0.22 * size;
   const x = Number(item.transform?.[4]) || 0;
   return {
     ...item,
@@ -12978,7 +12978,7 @@ function snapOnto(item, line) {
     height: Math.max(1, Math.abs(y1 - y0)),
     y0,
     y1,
-    transform: [size, 0, 0, size, x, base]
+    transform: [size, 0, 0, size, x, base2]
   };
 }
 function voteItems(visionItems, otherItems, lexicon, regions) {
@@ -13075,9 +13075,9 @@ function reframeItems(items, from, to) {
     const dx = Number(t[4]) - cx;
     const dy = Number(t[5]) - cy;
     const x = cx + dx * cos + dy * sin;
-    const base = cy - dx * sin + dy * cos;
-    const shift = base - Number(t[5]);
-    const next = { ...item, transform: [t[0], t[1], t[2], t[3], x, base] };
+    const base2 = cy - dx * sin + dy * cos;
+    const shift = base2 - Number(t[5]);
+    const next = { ...item, transform: [t[0], t[1], t[2], t[3], x, base2] };
     if (Number.isFinite(item.y0)) next.y0 = item.y0 + shift;
     if (Number.isFinite(item.y1)) next.y1 = item.y1 + shift;
     return next;
@@ -15846,9 +15846,9 @@ function freshId(used) {
 }
 function mergeScoped(baseDoc, scopedPageResult, bbox) {
   const target = targetOf(bbox);
-  const base = baseDoc && typeof baseDoc === "object" ? baseDoc : {};
-  const baseBlocks = base.blocks && typeof base.blocks === "object" ? base.blocks : {};
-  const baseOrder = Array.isArray(base.order) ? base.order : [];
+  const base2 = baseDoc && typeof baseDoc === "object" ? baseDoc : {};
+  const baseBlocks = base2.blocks && typeof base2.blocks === "object" ? base2.blocks : {};
+  const baseOrder = Array.isArray(base2.order) ? base2.order : [];
   let page = target.page;
   if (page == null && target.bbox) {
     let best = 0;
@@ -15904,15 +15904,15 @@ function mergeScoped(baseDoc, scopedPageResult, bbox) {
   const grouped = [];
   const index = /* @__PURE__ */ new Map();
   for (const id of order) {
-    const engine = blocks[id]?.engine || base.engine || "builtin";
+    const engine = blocks[id]?.engine || base2.engine || "builtin";
     if (!index.has(engine)) {
       const entry = { engine, ids: [] };
       if (engine === "docling") {
         entry.engineVersion = scopedPageResult?.engineVersion || null;
         entry.bbox = target.bbox;
         if (page != null) entry.page = page;
-      } else if (base.engineVersion) {
-        entry.engineVersion = base.engineVersion;
+      } else if (base2.engineVersion) {
+        entry.engineVersion = base2.engineVersion;
       }
       index.set(engine, entry);
       grouped.push(entry);
@@ -15920,7 +15920,7 @@ function mergeScoped(baseDoc, scopedPageResult, bbox) {
     index.get(engine).ids.push(id);
   }
   return {
-    ...base,
+    ...base2,
     schema: SCHEMA2,
     engine: "mixed",
     sources: grouped,
@@ -17643,9 +17643,9 @@ var init_arrow_home = __esm({
 
 // src/model/info.js
 function nextPanelWidth(current3, delta, { min = PANEL_WIDTH_MIN, max = PANEL_WIDTH_MAX } = {}) {
-  const base = Number(current3);
+  const base2 = Number(current3);
   const d = Number(delta);
-  const start = Number.isFinite(base) ? base : PANEL_WIDTH_DEFAULT;
+  const start = Number.isFinite(base2) ? base2 : PANEL_WIDTH_DEFAULT;
   const next = start + (Number.isFinite(d) ? d : 0);
   return Math.min(max, Math.max(min, Math.round(next)));
 }
@@ -17901,10 +17901,10 @@ function libraryCardBase(row4) {
 }
 function recentDailyTitles(days = 14, now5 = /* @__PURE__ */ new Date()) {
   const n3 = Math.max(1, Math.min(366, Math.floor(Number(days) || 14)));
-  const base = now5 instanceof Date ? now5 : new Date(now5);
+  const base2 = now5 instanceof Date ? now5 : new Date(now5);
   const titles = [];
   for (let i = 0; i < n3; i += 1) {
-    const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() - i, 12, 0, 0, 0);
+    const d = new Date(base2.getFullYear(), base2.getMonth(), base2.getDate() - i, 12, 0, 0, 0);
     titles.push(dailyPageTitle(d));
   }
   return titles;
@@ -18981,9 +18981,9 @@ function panFps(deltas) {
     const n3 = Number(value);
     if (Number.isFinite(n3) && n3 > 0) finite9.push(n3);
   }
-  const median7 = percentile(finite9, 0.5);
-  if (!(median7 > 0)) return null;
-  return 1e3 / median7;
+  const median8 = percentile(finite9, 0.5);
+  if (!(median8 > 0)) return null;
+  return 1e3 / median8;
 }
 function numText(value) {
   if (!Number.isFinite(value)) return "—";
@@ -19286,23 +19286,23 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: true };
 }
 function parseSpeedFlags(raw) {
-  const base = defaultSpeedFlags();
-  if (raw == null || raw === "") return base;
+  const base2 = defaultSpeedFlags();
+  if (raw == null || raw === "") return base2;
   let obj = raw;
   if (typeof raw === "string") {
     const text4 = raw.trim();
-    if (!text4) return base;
+    if (!text4) return base2;
     try {
       obj = JSON.parse(text4);
     } catch {
-      return base;
+      return base2;
     }
   }
-  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return base;
-  const out = { ...base };
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return base2;
+  const out = { ...base2 };
   for (const name of SPEED_FLAG_NAMES) {
     if (!Object.prototype.hasOwnProperty.call(obj, name)) continue;
     const value = obj[name];
@@ -19740,7 +19740,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -19971,16 +19971,16 @@ function kidsHeightPlan({ on, h, extraH = 0, memory, cap: cap4 = KIDS_H_CAP } = 
     unfoldedH: memory?.unfoldedH,
     userSized: memory?.userSized === true
   };
-  const base = Number.isFinite(Number(h)) ? Number(h) : 0;
+  const base2 = Number.isFinite(Number(h)) ? Number(h) : 0;
   if (on) {
-    mem.foldedH = base;
-    const grown = Math.min(cap4, Math.ceil(base + Math.max(0, Number(extraH) || 0)));
+    mem.foldedH = base2;
+    const grown = Math.min(cap4, Math.ceil(base2 + Math.max(0, Number(extraH) || 0)));
     const remembered = mem.userSized && Number.isFinite(Number(mem.unfoldedH)) ? Number(mem.unfoldedH) : null;
-    const target = remembered != null && remembered > base ? Math.min(cap4, remembered) : grown;
+    const target = remembered != null && remembered > base2 ? Math.min(cap4, remembered) : grown;
     mem.unfoldedH = target;
     return { h: target, memory: mem };
   }
-  return { h: mem.foldedH != null ? mem.foldedH : base, memory: mem };
+  return { h: mem.foldedH != null ? mem.foldedH : base2, memory: mem };
 }
 function rememberUnfoldedSize(memory, h) {
   const mem = {
@@ -21171,13 +21171,13 @@ function placePopover({ anchor, size, viewport: viewport2, bounds, gap = POP_GAP
   };
   const alongOf = (side2, h) => {
     const vertical = side2 === "below" || side2 === "above";
-    const base = vertical ? anchor.left : anchor.top;
-    const out = [base];
+    const base2 = vertical ? anchor.left : anchor.top;
+    const out = [base2];
     for (const o of wall) {
       if (vertical) out.push(o.right + gap / 2, o.left - gap / 2 - width);
       else out.push(o.bottom + gap / 2, o.top - gap / 2 - h);
     }
-    return out.sort((a, b) => Math.abs(a - base) - Math.abs(b - base));
+    return out.sort((a, b) => Math.abs(a - base2) - Math.abs(b - base2));
   };
   const fitsSide = (side2) => {
     if (side2 === "below") return box2.bottom - edge - (anchor.bottom + gap) >= size.h;
@@ -21949,9 +21949,9 @@ var init_relchips = __esm({
       return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
     };
     endName = (name, blockText3) => {
-      const base = clip3(name, NAME_MAX) || "card";
+      const base2 = clip3(name, NAME_MAX) || "card";
       const block = clip3(endpointDisplayText(blockText3), BLOCK_MAX);
-      return block ? `${base} ▸ “${block}”` : base;
+      return block ? `${base2} ▸ “${block}”` : base2;
     };
     ROW_PAD = 10;
     clamp013 = (n3) => Number.isFinite(n3) ? Math.min(1, Math.max(0, n3)) : 0.5;
@@ -22026,8 +22026,8 @@ function dueChip(content, today = /* @__PURE__ */ new Date()) {
 function shortDay(day, today = /* @__PURE__ */ new Date()) {
   if (!day) return "";
   const now5 = dayOf(today);
-  const base = `${SHORT_MONTHS[day.m - 1]} ${day.d}`;
-  return now5 && day.y !== now5.y ? `${base}, ${day.y}` : base;
+  const base2 = `${SHORT_MONTHS[day.m - 1]} ${day.d}`;
+  return now5 && day.y !== now5.y ? `${base2}, ${day.y}` : base2;
 }
 function dayChoices(today = /* @__PURE__ */ new Date()) {
   const at = (n3) => iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + n3));
@@ -23021,8 +23021,8 @@ var init_progressive = __esm({
 function officeFormatFromName(name) {
   const text4 = String(name || "");
   if (ENC.test(text4)) return null;
-  const base = text4.split(/[?#]/)[0];
-  const match = /\.([A-Za-z0-9]+)$/.exec(base);
+  const base2 = text4.split(/[?#]/)[0];
+  const match = /\.([A-Za-z0-9]+)$/.exec(base2);
   if (!match) return null;
   const ext = match[1].toLowerCase();
   return OFFICE_EXT.has(ext) ? ext : null;
@@ -23879,8 +23879,8 @@ function pageNode(title, now5) {
 }
 function dateOfName(name, now5) {
   const key = String(name).trim().toLowerCase();
-  const base = now5 instanceof Date ? now5 : new Date(now5 ?? Date.now());
-  const day = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 12, 0, 0, 0);
+  const base2 = now5 instanceof Date ? now5 : new Date(now5 ?? Date.now());
+  const day = new Date(base2.getFullYear(), base2.getMonth(), base2.getDate(), 12, 0, 0, 0);
   if (key === "today") return day.getTime();
   if (key === "yesterday") return new Date(day.getTime() - DAY4).getTime();
   if (key === "tomorrow") return new Date(day.getTime() + DAY4).getTime();
@@ -24289,8 +24289,8 @@ function createQueryCards({ doc = globalThis.document, host, storage, graph = ""
     let partial = false;
     let stale = false;
     const label = (extra) => {
-      const base = parsed.title || "Query";
-      count.textContent = extra ? `${base} · ${extra}` : base;
+      const base2 = parsed.title || "Query";
+      count.textContent = extra ? `${base2} · ${extra}` : base2;
     };
     const paint2 = () => {
       const hidden = paintList(list, rows, shown);
@@ -27948,7 +27948,7 @@ function placeEditorMenus(doc, anchor) {
     pin(menu, left, top);
     placed += 1;
   };
-  for (const menu of doc.querySelectorAll?.(MENU_SELECTOR) || []) {
+  for (const menu of openMenus(doc)) {
     if (!menu || menu === anchor) continue;
     const pageMenu = typeof menu.matches === "function" && menu.matches(".rm-autocomplete__results");
     const inBoard = Boolean(menu.closest?.(".pxd-root"));
@@ -28005,13 +28005,14 @@ function menuToken(menu) {
   return `${token}.${open ? 1 : 0}`;
 }
 function editorMenuSig(doc, anchor) {
-  const box2 = anchor.getBoundingClientRect?.() || {};
-  const n3 = (value) => Math.round(Number(value) || 0);
   let menus = "";
-  for (const menu of doc.querySelectorAll?.(MENU_SELECTOR) || []) {
+  for (const menu of openMenus(doc)) {
     if (!menu || menu === anchor) continue;
     menus += `${menuToken(menu)},`;
   }
+  if (!menus) return "";
+  const box2 = anchor.getBoundingClientRect?.() || {};
+  const n3 = (value) => Math.round(Number(value) || 0);
   return `${n3(box2.left)},${n3(box2.top)},${n3(box2.width)},${n3(box2.height)}|${menus}`;
 }
 function stopMenuHub(hub) {
@@ -28117,10 +28118,20 @@ function nudgeEditorMenus(doc) {
   if (!hub || !hub.entries.length) return;
   startMenuLoop(hub);
 }
-var MENU_SELECTOR, claimed, menuSerial, menuIdentity, computedTransform, portalShift, releaseAncestorTransforms, pin, menusByDoc;
+var MENU_SELECTOR, MENU_CLASSES, openMenus, claimed, menuSerial, menuIdentity, computedTransform, portalShift, releaseAncestorTransforms, pin, menusByDoc;
 var init_editor_menus = __esm({
   "src/view/editor-menus.js"() {
     MENU_SELECTOR = ".rm-autocomplete__results, .bp3-datepicker, .rm-date-picker";
+    MENU_CLASSES = ["rm-autocomplete__results", "bp3-datepicker", "rm-date-picker"];
+    openMenus = (doc) => {
+      if (typeof doc?.getElementsByClassName !== "function") return [...doc?.querySelectorAll?.(MENU_SELECTOR) || []];
+      const out = [];
+      for (const name of MENU_CLASSES) {
+        const list = doc.getElementsByClassName(name);
+        for (let i = 0; i < (list?.length || 0); i += 1) if (!out.includes(list[i])) out.push(list[i]);
+      }
+      return out;
+    };
     claimed = /* @__PURE__ */ new WeakSet();
     menuSerial = 0;
     menuIdentity = /* @__PURE__ */ new WeakMap();
@@ -28183,14 +28194,14 @@ function editorCounterScale(zoom, baseFont = 14) {
   const z = Number(zoom);
   if (!(z > 0) || !Number.isFinite(z) || nearOne(z)) return null;
   const font = Number(baseFont);
-  const base = font > 0 && Number.isFinite(font) ? font : 14;
+  const base2 = font > 0 && Number.isFinite(font) ? font : 14;
   return {
     z,
     width: `${z * 100}%`,
     height: `${z * 100}%`,
     transform: `scale(${1 / z})`,
-    fontPx: base * z,
-    linePx: base * REST_LINE * z
+    fontPx: base2 * z,
+    linePx: base2 * REST_LINE * z
   };
 }
 function applyEditorCounterScale(editor, zoom, baseFont = 14, paintLine = false) {
@@ -30137,8 +30148,8 @@ function focusRoamInput(el2) {
   return true;
 }
 function pageEditScrollTop(scrollTop, inputOffset, rowOffset, zoom) {
-  const base = Number(scrollTop);
-  const top = Number.isFinite(base) ? base : 0;
+  const base2 = Number(scrollTop);
+  const top = Number.isFinite(base2) ? base2 : 0;
   const row4 = Number(rowOffset);
   const input = Number(inputOffset);
   if (!Number.isFinite(row4) || !Number.isFinite(input)) return Math.max(0, top);
@@ -30826,10 +30837,10 @@ function createItemRenderer({
     item && (item.collapsed || item.open === false || isKidsCard(item) && !item.kids)
   );
   const revealHeight = (item, shownH) => {
-    const base = Number(shownH) > 0 ? Number(shownH) : 0;
-    if (!needsRevealRoom(item)) return base;
+    const base2 = Number(shownH) > 0 ? Number(shownH) : 0;
+    if (!needsRevealRoom(item)) return base2;
     const stored = Number(item?.h) > 0 ? Number(item.h) : 0;
-    return Math.max(base, stored, REVEAL_H);
+    return Math.max(base2, stored, REVEAL_H);
   };
   let hotRow = null;
   let peekBlocked = false;
@@ -31803,8 +31814,8 @@ function createItemRenderer({
         else rec.refTitle = typeof refString === "string" ? firstLine(refString).slice(0, REF_TITLE_MAX) : "";
       } else rec.refTitle = "";
     }
-    const base = item.type === "section" ? "pxd-section" : `pxd-item pxd-item--${item.type} pxd-item--${item.kind}`;
-    const cls = [base];
+    const base2 = item.type === "section" ? "pxd-section" : `pxd-item pxd-item--${item.type} pxd-item--${item.kind}`;
+    const cls = [base2];
     if (PALETTE.includes(item.color)) cls.push(`pxd-c-${item.color}`);
     if (item.collapsed && item.type !== "section" && !revealing(item)) cls.push("pxd-item--collapsed");
     if (item.type === "section" && item.collapsed) cls.push("pxd-section--collapsed");
@@ -39474,12 +39485,12 @@ function chooseTable(fresh, layer) {
 function round2(n3) {
   return Math.round(n3 * 1e3) / 1e3;
 }
-function mergeOcrDocument(base, fresh, { pages = [] } = {}) {
+function mergeOcrDocument(base2, fresh, { pages = [] } = {}) {
   const set = new Set(pages);
   const doc = { ...fresh, blocks: { ...fresh.blocks }, pages: fresh.pages.map((p) => ({ ...p })) };
   const choices = [];
-  const layerTables = Object.values(base?.blocks || {}).filter((b) => b.type === "table" && set.has(b.page));
-  const basePages = new Map((base?.pages || []).map((p) => [p.n, p]));
+  const layerTables = Object.values(base2?.blocks || {}).filter((b) => b.type === "table" && set.has(b.page));
+  const basePages = new Map((base2?.pages || []).map((p) => [p.n, p]));
   for (const page of doc.pages) {
     if (!set.has(page.n)) continue;
     const was = basePages.get(page.n);
@@ -41008,10 +41019,10 @@ function flatRows(table) {
 }
 var PX_PER_PT2 = 96 / 72;
 function toGridModelSpec(table) {
-  const base = toGridSpec(table);
-  const cols = base.rows[0]?.length || 0;
+  const base2 = toGridSpec(table);
+  const cols = base2.rows[0]?.length || 0;
   const columnAlignments = Array.from({ length: cols }, () => "");
-  for (const a of base.alignments) if (a.col < cols) columnAlignments[a.col] = a.align;
+  for (const a of base2.alignments) if (a.col < cols) columnAlignments[a.col] = a.align;
   let widths = null;
   const xs2 = table?.grid?.xs;
   if (Array.isArray(xs2) && xs2.length === cols + 1) {
@@ -41023,9 +41034,9 @@ function toGridModelSpec(table) {
     if (!Object.keys(widths).length) widths = null;
   }
   return {
-    rows: base.rows,
-    merges: base.merges,
-    headerRows: base.headerRows.length,
+    rows: base2.rows,
+    merges: base2.merges,
+    headerRows: base2.headerRows.length,
     columnAlignments: columnAlignments.some(Boolean) ? columnAlignments : null,
     widths,
     enhance: true
@@ -42353,7 +42364,7 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
     if (phase !== "done" || !fieldsOk) return "bad";
     if (fieldAt >= fieldIds.length) return "ok";
     const ids = fieldIds.slice(fieldAt, fieldAt + batch);
-    const base = fieldAt;
+    const base2 = fieldAt;
     fieldAt += ids.length;
     const res = pullMany(SLICED_FIELD_PATTERN, ids);
     calls += 1;
@@ -42363,7 +42374,7 @@ function createSlicedRead({ rootEid, pullMany, stamp: stamp2, clock = () => Date
     }
     for (let j = 0; j < ids.length; j += 1) {
       const now5 = res[j];
-      if (!now5 || now5[":db/id"] !== ids[j] || fieldKey(now5) !== fieldSnap[base + j]) {
+      if (!now5 || now5[":db/id"] !== ids[j] || fieldKey(now5) !== fieldSnap[base2 + j]) {
         fieldsOk = false;
         return "bad";
       }
@@ -43819,6 +43830,7 @@ function createTaskProbe({ now: now5 = () => globalThis.performance?.now ? globa
   return {
     span,
     longTasks,
+    spans: () => spans.slice(),
     observe,
     clear: () => {
       spans.length = 0;
@@ -48477,9 +48489,9 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
             if (typeof uid !== "string" || !uid) return;
             const o = chunk[j];
             const title = node2[":node/title"];
-            const base = { uid, edited: edited ? o.time : null, tags: [], onBoard: false };
+            const base2 = { uid, edited: edited ? o.time : null, tags: [], onBoard: false };
             if (typeof title === "string") {
-              if (!title.startsWith("roam/")) rows2.push({ ...base, kind: "page", title });
+              if (!title.startsWith("roam/")) rows2.push({ ...base2, kind: "page", title });
               return;
             }
             const string = typeof node2[":block/string"] === "string" ? node2[":block/string"] : "";
@@ -48489,10 +48501,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
               if (!wantBoard) return;
               const props = node2[":block/props"] && typeof node2[":block/props"] === "object" ? plainKeys(node2[":block/props"]) : {};
               if (props?.plexus?.v !== 2) return;
-              rows2.push({ ...base, kind: "board", title: parseBoardTitle(string) || "Untitled board", string, pageTitle: typeof pageTitle === "string" ? pageTitle : "", onBoard: true });
+              rows2.push({ ...base2, kind: "board", title: parseBoardTitle(string) || "Untitled board", string, pageTitle: typeof pageTitle === "string" ? pageTitle : "", onBoard: true });
               return;
             }
-            rows2.push({ ...base, kind: "block", string, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
+            rows2.push({ ...base2, kind: "block", string, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
           });
           for (const row4 of pass(rows2)) {
             if (kept.length < keepMax) kept.push(row4);
@@ -49285,12 +49297,12 @@ function planNative(board2, source, gen) {
   for (const g of groups2) {
     const s = sectionOf.get(g.key);
     const parent = g.parentNode ? sectionOf.get(g.parentNode) : null;
-    const base = parent ? { x: parent.abs.x, y: parent.abs.y } : { x: 0, y: 0 };
+    const base2 = parent ? { x: parent.abs.x, y: parent.abs.y } : { x: 0, y: 0 };
     s.entry.parent = parent ? parent.uid : null;
     s.entry.layout = {
       type: "section",
-      x: round13(s.abs.x - base.x),
-      y: round13(s.abs.y - base.y),
+      x: round13(s.abs.x - base2.x),
+      y: round13(s.abs.y - base2.y),
       w: round13(s.abs.w),
       h: round13(s.abs.h),
       ...g.style || {}
@@ -50741,15 +50753,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   }
   function itemPlexus(id, patch) {
     const item = board2.items.get(id);
-    const base = rawPlexus(id);
-    const merged = { ...base, type: item?.type ?? base.type, ...patch };
+    const base2 = rawPlexus(id);
+    const merged = { ...base2, type: item?.type ?? base2.type, ...patch };
     const known2 = serializeItemLayout(merged);
-    return { ...unknownKeys(base, ITEM_KEYS), ...known2 };
+    return { ...unknownKeys(base2, ITEM_KEYS), ...known2 };
   }
   function edgePlexus(id, patch) {
-    const base = rawPlexus(id);
-    const merged = { ...normalizeEdge(base), ...patch };
-    return { ...unknownKeys(base, EDGE_KEYS), ...serializeEdge(merged) };
+    const base2 = rawPlexus(id);
+    const merged = { ...normalizeEdge(base2), ...patch };
+    return { ...unknownKeys(base2, EDGE_KEYS), ...serializeEdge(merged) };
   }
   const clampSize = (type, w, h) => ({
     w: Math.max(MIN_SIZES[type]?.w ?? 1, w),
@@ -52613,8 +52625,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     setSectionDefaults(patch = {}) {
       return txn((t) => {
         if (!board2.enhanced) return false;
-        const base = rawPlexus(uid);
-        const prevDefaults = base.defaults && typeof base.defaults === "object" && !Array.isArray(base.defaults) ? base.defaults : {};
+        const base2 = rawPlexus(uid);
+        const prevDefaults = base2.defaults && typeof base2.defaults === "object" && !Array.isArray(base2.defaults) ? base2.defaults : {};
         const section2 = prevDefaults.section && typeof prevDefaults.section === "object" ? { ...prevDefaults.section } : {};
         for (const k of SECTION_STYLE_KEYS) {
           if (!Object.prototype.hasOwnProperty.call(patch, k)) continue;
@@ -52622,13 +52634,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           else section2[k] = patch[k];
         }
         const clean2 = normalizeSectionDefaults(section2);
-        const next = { ...base, defaults: { ...prevDefaults } };
+        const next = { ...base2, defaults: { ...prevDefaults } };
         if (Object.keys(clean2).length) next.defaults.section = clean2;
         else {
           delete next.defaults.section;
           if (!Object.keys(next.defaults).length) delete next.defaults;
         }
-        if (stable(next) !== stable(base)) t.props(uid, next);
+        if (stable(next) !== stable(base2)) t.props(uid, next);
         return true;
       });
     },
@@ -52784,14 +52796,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           zoom = picked;
         }
         if (dock != null && !DOCK_POSITIONS.includes(dock)) return false;
-        const base = rawPlexus(uid);
-        const next = { ...base };
+        const base2 = rawPlexus(uid);
+        const next = { ...base2 };
         for (const [key, value] of [["bg", bg], ["bgColor", tone], ["bgImage", image], ["lodZoom", zoom], ["dock", dock]]) {
           if (value === void 0) continue;
           if (value === null) delete next[key];
           else next[key] = value;
         }
-        if (stable(next) !== stable(base)) t.props(uid, next);
+        if (stable(next) !== stable(base2)) t.props(uid, next);
         return true;
       });
     },
@@ -53043,8 +53055,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return txn((t) => {
         if (!trailByUid(id)) return;
         t.string(id, trailString(name));
-        const base = rawPlexus(id);
-        if (base.type !== "trail") t.props(id, { ...base, type: "trail" });
+        const base2 = rawPlexus(id);
+        if (base2.type !== "trail") t.props(id, { ...base2, type: "trail" });
       });
     },
     deleteTrail(id) {
@@ -55101,6 +55113,119 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     colorCache = null;
   };
   return { draw, drawOverview, hide, dispose, dropColors, drawnUids, covers: covers2, stats: () => ({ ...counts }), isShown: () => shown, element: () => canvas };
+}
+
+// src/input-profile.js
+var KEY_EVENTS = /* @__PURE__ */ new Set(["keydown", "keypress", "beforeinput", "input", "keyup"]);
+var MAX_ENTRIES = 400;
+var base = (url) => {
+  const s = String(url || "");
+  if (!s) return "";
+  const cut = s.split(/[?#]/)[0];
+  return cut.slice(cut.lastIndexOf("/") + 1) || cut;
+};
+var median7 = (list) => {
+  if (!list.length) return 0;
+  const s = [...list].sort((a, b) => a - b);
+  return Math.round(s[Math.floor(s.length / 2)] * 10) / 10;
+};
+var r1 = (n3) => Math.round((Number(n3) || 0) * 10) / 10;
+function createInputProfile({ win: win2 = globalThis, spans = () => [] } = {}) {
+  let events = [];
+  let frames = [];
+  let observers = [];
+  let armedAt = 0;
+  const now5 = () => win2?.performance?.now ? win2.performance.now() : Date.now();
+  const watch = (type, opts, sink) => {
+    const PO = win2?.PerformanceObserver;
+    if (typeof PO !== "function") return false;
+    try {
+      const o = new PO((list) => {
+        for (const e2 of list.getEntries()) {
+          sink.push(e2);
+          if (sink.length > MAX_ENTRIES) sink.shift();
+        }
+      });
+      o.observe({ type, buffered: false, ...opts });
+      observers.push(o);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const disarm2 = () => {
+    for (const o of observers) {
+      try {
+        o.disconnect();
+      } catch {
+      }
+    }
+    observers = [];
+  };
+  const arm4 = () => {
+    disarm2();
+    events = [];
+    frames = [];
+    armedAt = now5();
+    const ev = watch("event", { durationThreshold: 16 }, events);
+    const lf = watch("long-animation-frame", {}, frames);
+    return { armed: true, event: ev, loaf: lf };
+  };
+  const summary = () => {
+    const keys = events.filter((e2) => KEY_EVENTS.has(e2.name)).map((e2) => {
+      const start = Number(e2.startTime) || 0;
+      const ps = Number(e2.processingStart) || start;
+      const pe = Number(e2.processingEnd) || ps;
+      const end = start + (Number(e2.duration) || 0);
+      return { at: Math.round(start - armedAt), type: e2.name, ms: r1(e2.duration), delay: r1(ps - start), handlers: r1(pe - ps), present: r1(end - pe) };
+    });
+    const bySrc = /* @__PURE__ */ new Map();
+    let renderSum = 0;
+    let styleSum = 0;
+    let scriptSum = 0;
+    let forcedSum = 0;
+    const plexusSpans = spans() || [];
+    let plexusMs = 0;
+    const frameRows2 = frames.map((f) => {
+      const start = Number(f.startTime) || 0;
+      const end = start + (Number(f.duration) || 0);
+      const render = f.renderStart > 0 ? end - f.renderStart : 0;
+      const style = f.styleAndLayoutStart > 0 ? end - f.styleAndLayoutStart : 0;
+      renderSum += render;
+      styleSum += style;
+      for (const s of f.scripts || []) {
+        const key = `${base(s.sourceURL)}|${s.sourceFunctionName || ""}|${s.invokerType || ""}:${String(s.invoker || "").slice(0, 60)}`;
+        const row4 = bySrc.get(key) || { src: base(s.sourceURL), fn: s.sourceFunctionName || "", invoker: `${s.invokerType || ""}:${String(s.invoker || "").slice(0, 60)}`, ms: 0, forcedMs: 0, n: 0 };
+        row4.ms += Number(s.duration) || 0;
+        row4.forcedMs += Number(s.forcedStyleAndLayoutDuration) || 0;
+        row4.n += 1;
+        bySrc.set(key, row4);
+        scriptSum += Number(s.duration) || 0;
+        forcedSum += Number(s.forcedStyleAndLayoutDuration) || 0;
+      }
+      let px = 0;
+      for (const s of plexusSpans) if (s.start < end && s.start + s.ms > start) px += Math.min(end, s.start + s.ms) - Math.max(start, s.start);
+      plexusMs += px;
+      return { at: Math.round(start - armedAt), ms: r1(f.duration), blocking: r1(f.blockingDuration), render: r1(render), styleLayout: r1(style), scripts: (f.scripts || []).length, plexus: r1(px) };
+    });
+    const scripts = [...bySrc.values()].map((s) => ({ ...s, ms: r1(s.ms), forcedMs: r1(s.forcedMs) })).sort((a, b) => b.ms - a.ms).slice(0, 15);
+    const keydowns = keys.filter((k) => k.type === "keydown");
+    return {
+      sinceMs: Math.round(now5() - armedAt),
+      keys: keydowns.length,
+      key: { ms: median7(keydowns.map((k) => k.ms)), delay: median7(keydowns.map((k) => k.delay)), handlers: median7(keydowns.map((k) => k.handlers)), present: median7(keydowns.map((k) => k.present)) },
+      events: keys.slice(-60),
+      frames: { n: frameRows2.length, ms: r1(frameRows2.reduce((n3, f) => n3 + f.ms, 0)), render: r1(renderSum), styleLayout: r1(styleSum), script: r1(scriptSum), forced: r1(forcedSum), plexus: r1(plexusMs), list: frameRows2.slice(-40) },
+      scripts
+    };
+  };
+  return {
+    read({ reset = false } = {}) {
+      if (!observers.length || reset) return arm4();
+      return summary();
+    },
+    dispose: disarm2
+  };
 }
 
 // src/view/board-view.js
@@ -58358,13 +58483,13 @@ function fingerPair(points) {
   return { a, b, dist: pointerDistance(a, b), mid: pointerMidpoint(a, b) };
 }
 function pinchViewport(vp, { dist0 = 0, mid0, dist = 0, mid } = {}) {
-  const base = { x: Number(vp?.x) || 0, y: Number(vp?.y) || 0, zoom: Number(vp?.zoom) || 1 };
+  const base2 = { x: Number(vp?.x) || 0, y: Number(vp?.y) || 0, zoom: Number(vp?.zoom) || 1 };
   const from = mid0 || { x: 0, y: 0 };
   const to = mid || from;
   const dx = to.x - from.x;
   const dy = to.y - from.y;
-  let zoomed = base;
-  if (dist0 > 0 && dist > 0 && dist !== dist0) zoomed = zoomAt(base, from, dist / dist0);
+  let zoomed = base2;
+  if (dist0 > 0 && dist > 0 && dist !== dist0) zoomed = zoomAt(base2, from, dist / dist0);
   return { x: zoomed.x + dx, y: zoomed.y + dy, zoom: zoomed.zoom };
 }
 function longPressAt(movement, elapsed = LONG_PRESS_MS) {
@@ -60936,14 +61061,14 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
       return false;
     }
   }
-  async function readJob(base, token, jobId, { onProgress, onPage, signal }) {
+  async function readJob(base2, token, jobId, { onProgress, onPage, signal }) {
     const headers = { Authorization: `Bearer ${token}` };
-    const events = await call(`${base}/v1/jobs/${encodeURIComponent(jobId)}/events`, {
+    const events = await call(`${base2}/v1/jobs/${encodeURIComponent(jobId)}/events`, {
       method: "GET",
       headers
     }, signal);
     await readSSE(events, { onProgress, onPage });
-    const finalRes = await call(`${base}/v1/jobs/${encodeURIComponent(jobId)}`, {
+    const finalRes = await call(`${base2}/v1/jobs/${encodeURIComponent(jobId)}`, {
       method: "GET",
       headers
     }, signal);
@@ -61009,7 +61134,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     });
     return res.status === 204 || res.status === 200;
   }
-  async function reparseTable({ bytes, sha256, page, bbox, base, onProgress, onPage, signal } = {}) {
+  async function reparseTable({ bytes, sha256, page, bbox, base: base2, onProgress, onPage, signal } = {}) {
     if (emptyBytes(bytes)) throw helperError("empty-pdf", "empty-pdf");
     const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
@@ -61033,7 +61158,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     }, signal);
     const job = await readJobId(posted);
     const doc = await readJob(url, token, job.job, { onProgress, onPage, signal });
-    const merged = base ? mergeScoped(base, doc, { page, bbox }) : null;
+    const merged = base2 ? mergeScoped(base2, doc, { page, bbox }) : null;
     return { doc, merged, cached: false, sha256: sha, job: job.job };
   }
   async function ocr({ bytes, sha256, pages, cells, signal, onChunk } = {}) {
@@ -61441,15 +61566,15 @@ function softenPhrase(text4) {
 function wordItem(text4, x0, x1, box2, conf) {
   const width = Math.max(0.4, x1 - x0);
   const size = Math.max(0.5, box2.y1 - box2.y0);
-  const base = box2.y1 - 0.2 * size;
+  const base2 = box2.y1 - 0.2 * size;
   const sized = round22(size);
   return {
     str: text4,
-    transform: [sized, 0, 0, sized, round22(x0), round22(base)],
+    transform: [sized, 0, 0, sized, round22(x0), round22(base2)],
     width: round22(width),
     height: sized,
-    y0: round22(base - 0.8 * sized),
-    y1: round22(base + 0.22 * sized),
+    y0: round22(base2 - 0.8 * sized),
+    y1: round22(base2 + 0.22 * sized),
     fontName: "ocr",
     conf: bucketConf(conf),
     mean: round3(conf)
@@ -61535,37 +61660,37 @@ function bodySizeOf2(items) {
   const source = wordy.length >= 4 ? wordy : items;
   const plain2 = source.filter((item) => TALL_RE.test(item.str) && !DESC_RE.test(item.str));
   const pool = (plain2.length ? plain2 : source).map((item) => item.transform[0]).sort((a, b) => a - b);
-  const median7 = pool[pool.length >> 1] || items[0].transform[0];
-  let body = median7;
+  const median8 = pool[pool.length >> 1] || items[0].transform[0];
+  let body = median8;
   const sorted = items.map((item) => item.transform[5]).sort((a, b) => a - b);
   const bases = [];
-  for (const base of sorted) {
-    if (!bases.length || base - bases[bases.length - 1] > 0.35 * median7) bases.push(base);
+  for (const base2 of sorted) {
+    if (!bases.length || base2 - bases[bases.length - 1] > 0.35 * median8) bases.push(base2);
   }
   const gaps = [];
   for (let i = 1; i < bases.length; i++) {
     const gap = bases[i] - bases[i - 1];
-    if (gap > 0.4 * median7 && gap < 2.5 * median7) gaps.push(gap);
+    if (gap > 0.4 * median8 && gap < 2.5 * median8) gaps.push(gap);
   }
   if (gaps.length >= 4) {
     gaps.sort((a, b) => a - b);
     const pitch = gaps[gaps.length >> 1];
-    if (pitch < 0.7 * median7) body = pitch / 0.95;
+    if (pitch < 0.7 * median8) body = pitch / 0.95;
   }
-  return { body, median: median7 };
+  return { body, median: median8 };
 }
 function baselineRows2(sorted) {
   const rows = [];
   let row4 = null;
   for (const item of sorted) {
-    const base = item.transform[5];
+    const base2 = item.transform[5];
     const size = item.transform[0] || 1;
-    if (row4 && base - row4.last <= 0.3 * size && base - row4.first <= 0.45 * size) {
+    if (row4 && base2 - row4.last <= 0.3 * size && base2 - row4.first <= 0.45 * size) {
       row4.items.push(item);
-      row4.last = base;
+      row4.last = base2;
       continue;
     }
-    row4 = { first: base, last: base, items: [item] };
+    row4 = { first: base2, last: base2, items: [item] };
     rows.push(row4);
   }
   return rows.map((r) => r.items);
@@ -61574,9 +61699,9 @@ function rowBaseline(row4) {
   const pairs = row4.map((item) => [item.transform[5], Math.max(0.1, item.width || 0)]).sort((a, b) => a[0] - b[0]);
   const total = pairs.reduce((s, p) => s + p[1], 0);
   let acc = 0;
-  for (const [base, w] of pairs) {
+  for (const [base2, w] of pairs) {
     acc += w;
-    if (acc >= total / 2) return base;
+    if (acc >= total / 2) return base2;
   }
   return pairs[pairs.length - 1][0];
 }
@@ -61584,19 +61709,19 @@ function snapOcrItems(items) {
   if (!items.length) return [];
   items = withoutEchoes(items);
   if (!items.length) return [];
-  const { body, median: median7 } = bodySizeOf2(items);
+  const { body, median: median8 } = bodySizeOf2(items);
   const kept = [];
   for (const item of items) {
     const size = item.transform[0];
-    if (size < 0.45 * median7 && !(item.conf >= 1 && NUMBERISH_RE.test(item.str))) continue;
-    if (size >= 0.45 * median7 && size <= 1.5 * median7 && body > 0) {
-      const base = item.transform[5];
+    if (size < 0.45 * median8 && !(item.conf >= 1 && NUMBERISH_RE.test(item.str))) continue;
+    if (size >= 0.45 * median8 && size <= 1.5 * median8 && body > 0) {
+      const base2 = item.transform[5];
       const sized = round22(body);
       item.transform[0] = sized;
       item.transform[3] = sized;
       item.height = sized;
-      item.y0 = round22(base - 0.8 * sized);
-      item.y1 = round22(base + 0.22 * sized);
+      item.y0 = round22(base2 - 0.8 * sized);
+      item.y1 = round22(base2 + 0.22 * sized);
     }
     kept.push(item);
   }
@@ -61714,14 +61839,14 @@ function absorbGapFragments(lines, items, squeezed = []) {
   const band = (i) => [items[i].y0 ?? items[i].transform[5] - 0.8 * itemSize(items[i]), items[i].y1 ?? items[i].transform[5] + 0.2 * itemSize(items[i])];
   const span = (idx) => idx.map(band).reduce((a, b) => [Math.min(a[0], b[0]), Math.max(a[1], b[1])]);
   const hostFor = (idx, exclude) => {
-    const base = items[idx[0]].transform[5];
+    const base2 = items[idx[0]].transform[5];
     const size = itemSize(items[idx[0]]);
     const x0 = Math.min(...idx.map(mid));
     const x1 = Math.max(...idx.map(mid));
     const [fy0, fy1] = span(idx);
     return lines.find((host) => {
       if (host === exclude || host.idx.length < 3 || host.idx.length <= idx.length) return false;
-      if (Math.abs(base - items[host.idx[0]].transform[5]) > 0.8 * host.size || Math.abs(size - host.size) > 0.3 * host.size) return false;
+      if (Math.abs(base2 - items[host.idx[0]].transform[5]) > 0.8 * host.size || Math.abs(size - host.size) > 0.3 * host.size) return false;
       const sorted = [...host.idx].sort((a, b) => left(a) - left(b));
       const inGap = sorted.some((i, k) => k > 0 && right(sorted[k - 1]) <= x0 + 0.5 && left(i) >= x1 - 0.5);
       if (!inGap) return false;
@@ -61938,10 +62063,10 @@ function lineItems(old, tokens2, confs) {
   }
   if (tokens2.length === old.length) {
     const bases = old.map((t) => t.transform[5]).sort((a, b) => a - b);
-    const base = bases[bases.length >> 1];
+    const base2 = bases[bases.length >> 1];
     return old.map((it, k) => {
-      const dy = base - it.transform[5];
-      const moved = dy ? { transform: [...it.transform.slice(0, 5), base], ...it.y0 != null ? { y0: r22(it.y0 + dy), y1: r22(it.y1 + dy) } : {} } : {};
+      const dy = base2 - it.transform[5];
+      const moved = dy ? { transform: [...it.transform.slice(0, 5), base2], ...it.y0 != null ? { y0: r22(it.y0 + dy), y1: r22(it.y1 + dy) } : {} } : {};
       return { ...it, ...moved, str: tokens2[k], conf: bucketConf(tokConf[k]) };
     });
   }
@@ -62731,8 +62856,8 @@ function alignedNumericColumns(words, { minRows = MIN_NUMERIC_ROWS, minCols = MI
   }
   if (nums.length < minRows * minCols) return false;
   const widths = nums.map((item) => item[2]).filter((width) => width > 0).sort((a, b) => a - b);
-  const median7 = widths.length ? widths[Math.floor(widths.length / 2)] : 8;
-  const tol = Math.max(8, median7 * 0.6);
+  const median8 = widths.length ? widths[Math.floor(widths.length / 2)] : 8;
+  const tol = Math.max(8, median8 * 0.6);
   nums.sort((a, b) => a[0] - b[0]);
   const columns = [];
   for (const [x, y] of nums) {
@@ -62772,8 +62897,8 @@ function labeledDecimalColumn(words) {
   }
   if (nums.length < MIN_NUMERIC_ROWS) return false;
   const widths = nums.map((item) => item[2]).filter((width) => width > 0).sort((a, b) => a - b);
-  const median7 = widths.length ? widths[Math.floor(widths.length / 2)] : 8;
-  const tol = Math.max(8, median7 * 0.6);
+  const median8 = widths.length ? widths[Math.floor(widths.length / 2)] : 8;
+  const tol = Math.max(8, median8 * 0.6);
   nums.sort((a, b) => a[0] - b[0]);
   const columns = [];
   for (const [x, y] of nums) {
@@ -62965,11 +63090,11 @@ function dropCaptionRow(table, words) {
   const above = /* @__PURE__ */ new Set();
   const inside8 = /* @__PURE__ */ new Set();
   for (const word of words || []) {
-    const base = word.base ?? word.y1 ?? 0;
+    const base2 = word.base ?? word.y1 ?? 0;
     const size = word.size || 8;
     for (const key of String(word.text || "").toLowerCase().split(/[^a-z0-9.]+/)) {
       if (key.length < 2) continue;
-      if (base < top + 0.3 * size) above.add(key);
+      if (base2 < top + 0.3 * size) above.add(key);
       else inside8.add(key);
     }
   }
@@ -64103,14 +64228,14 @@ function captionPlatePages(doc, pages) {
   }
   return out;
 }
-async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, onProgress, lexicon = null, lines = true, alt = null } = {}) {
+async function readScan({ helper, bytes, sha256, base: base2, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, onProgress, lexicon = null, lines = true, alt = null } = {}) {
   if (!helper || typeof helper.ocr !== "function") throw new Error("helper has no ocr");
-  const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n3) => !from || !to || n3 >= from && n3 <= to);
+  const wanted = (pages && pages.length ? pages : scanPagesOf(base2)).filter((n3) => !from || !to || n3 >= from && n3 <= to);
   const high = helper.vlmHigh === true && typeof helper.vlm === "function";
-  const layerPages = high ? textLayerPages(base, { from, to }).filter((n3) => !wanted.includes(n3)) : [];
+  const layerPages = high ? textLayerPages(base2, { from, to }).filter((n3) => !wanted.includes(n3)) : [];
   if (!wanted.length && !layerPages.length) {
-    tidyDocumentTables(base);
-    return { doc: base, choices: [], rereads: [], pages: [] };
+    tidyDocumentTables(base2);
+    return { doc: base2, choices: [], rereads: [], pages: [] };
   }
   const throwIfAborted3 = () => {
     if (signal && signal.aborted) throw Object.assign(new Error("parse aborted"), { name: "AbortError" });
@@ -64145,9 +64270,9 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
   }
   const ask2 = (req) => helper.ocr({ bytes, sha256, cells: req, signal });
   const scanOptions = { ...options, releaseHandwriting: high };
-  let merged = wanted.length ? mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options: scanOptions, from, to, sha256 }) : { doc: base, choices: [], records: records || [] };
+  let merged = wanted.length ? mergeOcrPageRecords({ base: base2, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options: scanOptions, from, to, sha256 }) : { doc: base2, choices: [], records: records || [] };
   const lined = wanted.length && lines ? await rereadLines({ doc: merged.doc, ocrPages: got?.pages || [], ocr: ask2, lexicon, signal, onPhase }) : { pages: got?.pages || [], applied: [] };
-  if (lined.applied.length) merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records, pages: wanted, numPages, info, options: scanOptions, from, to, sha256 });
+  if (lined.applied.length) merged = mergeOcrPageRecords({ base: base2, ocrPages: lined.pages, records, pages: wanted, numPages, info, options: scanOptions, from, to, sha256 });
   const doc = merged.doc;
   const next = merged.records;
   let vlmApplied = [];
@@ -64280,16 +64405,16 @@ async function rereadCells({ doc, ocr, signal, onPhase } = {}) {
   }
   return rereads;
 }
-function mergeOcrPageRecords({ base, ocrPages, records, pages, numPages, info = null, options = {}, from, to, sha256 } = {}) {
-  const wanted = pages && pages.length ? pages : scanPagesOf(base);
+function mergeOcrPageRecords({ base: base2, ocrPages, records, pages, numPages, info = null, options = {}, from, to, sha256 } = {}) {
+  const wanted = pages && pages.length ? pages : scanPagesOf(base2);
   const byPage = new Map((ocrPages || []).map((p) => [p.n, p]));
   const next = (records || []).map((rec) => byPage.has(rec.n) ? parsePageGeometry(byPage.get(rec.n), rec.n) : rec);
   for (const n3 of wanted) if (byPage.has(n3) && !next.some((r) => r.n === n3)) next.push(parsePageGeometry(byPage.get(n3), n3));
   next.sort((a, b) => a.n - b.n);
   const lo = from ?? next[0]?.n ?? 1;
   const hi = to ?? next[next.length - 1]?.n ?? numPages;
-  const fresh = assembleDocument(next, { numPages: numPages || base?.pageCount || hi, info, sha256: sha256 || base?.sha256 || null, options: { ...base?.options || {}, ...options, ocr: "vision" }, from: lo, to: hi });
-  const merged = mergeOcrDocument(base, fresh, { pages: wanted });
+  const fresh = assembleDocument(next, { numPages: numPages || base2?.pageCount || hi, info, sha256: sha256 || base2?.sha256 || null, options: { ...base2?.options || {}, ...options, ocr: "vision" }, from: lo, to: hi });
+  const merged = mergeOcrDocument(base2, fresh, { pages: wanted });
   return { doc: merged.doc, choices: merged.choices, records: next };
 }
 
@@ -67205,14 +67330,14 @@ function parseAnswer(answer) {
     const raw = lines[i];
     const item = BULLET.exec(raw);
     if (item && TABLE_MACRO.test(item[3].trim())) {
-      const base = indentOf(item);
+      const base2 = indentOf(item);
       const rows = [];
       let row4 = null;
       let rowIndent = -1;
       let j = i + 1;
       for (; j < lines.length; j += 1) {
         const next = BULLET.exec(lines[j]);
-        if (!next || indentOf(next) <= base) break;
+        if (!next || indentOf(next) <= base2) break;
         const at = indentOf(next);
         if (!row4 || at <= rowIndent) {
           row4 = [];
@@ -67789,11 +67914,11 @@ function toMarkdownBytes(bytes, format) {
     const len0 = WASM_VECTOR_LEN;
     wasm.toMarkdownBytes(retptr, ptr0, len0, isLikeNone(format) ? 13 : (__wbindgen_enum_Format.indexOf(format) + 1 || 13) - 1);
     var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-    var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+    var r12 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
     var r23 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
     var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
     var ptr2 = r0;
-    var len2 = r1;
+    var len2 = r12;
     if (r3) {
       ptr2 = 0;
       len2 = 0;
@@ -68090,8 +68215,8 @@ var ANYDOC_MANIFEST = Object.freeze({
 var ANYDOC_CACHE = "plexus-diagram-models";
 var ANYDOC_ORIGIN = "https://svyk.github.io/plexus-diagram";
 function anydocAssetUrl(name, origin = ANYDOC_ORIGIN) {
-  const base = String(origin || ANYDOC_ORIGIN).replace(/\/$/, "");
-  return `${base}/assets/anydoc/${name}`;
+  const base2 = String(origin || ANYDOC_ORIGIN).replace(/\/$/, "");
+  return `${base2}/assets/anydoc/${name}`;
 }
 function asBytes(value) {
   if (value instanceof Uint8Array) return value;
@@ -70656,8 +70781,8 @@ function customItems(rows, tag) {
 function withStyle(systemPrompt, style) {
   const s = String(style?.prompt ?? "").trim();
   if (!s) return String(systemPrompt ?? "");
-  const base = String(systemPrompt ?? "").trim();
-  return `${base ? `${base}
+  const base2 = String(systemPrompt ?? "").trim();
+  return `${base2 ? `${base2}
 
 ` : ""}${STYLE_INTRO}${s}`;
 }
@@ -71105,16 +71230,16 @@ function partBase(part) {
 function describeParts(parts) {
   return (parts || []).filter(Boolean).map((p, i) => {
     const pdf = partPdfName(p);
-    const base = partBase(p);
+    const base2 = partBase(p);
     const thumb2 = p.image && typeof p.image.thumb === "string" ? p.image.thumb : "";
     return {
       n: i + 1,
       key: p.key,
       type: partType(p),
-      base,
+      base: base2,
       pdf,
-      full: `${base} · ${pdf}`,
-      short: `${clipText(base, 30)} · ${clipText(pdf, 26)}`,
+      full: `${base2} · ${pdf}`,
+      short: `${clipText(base2, 30)} · ${clipText(pdf, 26)}`,
       thumb: thumb2
     };
   });
@@ -72272,11 +72397,11 @@ ${lines.join("\n")}` : "";
     const t = ta();
     if (!t) return;
     const untouched = !t.value || t.value === lastPrefill;
-    const base = untouched ? "" : t.value;
-    const caret = !untouched && Number.isInteger(t.selectionStart) ? Math.min(t.selectionStart, base.length) : base.length;
-    const before = base.slice(0, caret);
+    const base2 = untouched ? "" : t.value;
+    const caret = !untouched && Number.isInteger(t.selectionStart) ? Math.min(t.selectionStart, base2.length) : base2.length;
+    const before = base2.slice(0, caret);
     const lead = before && !/\s$/.test(before) ? " " : "";
-    const next = `${before}${lead}${trigger}${base.slice(caret)}`;
+    const next = `${before}${lead}${trigger}${base2.slice(caret)}`;
     const at = before.length + lead.length + trigger.length;
     if (untouched) lastPrefill = "";
     t.value = next;
@@ -72373,8 +72498,8 @@ ${lines.join("\n")}` : "";
   };
   const paintContext = () => {
     paintChips();
-    const base = !multi ? entries.find((e2) => e2.hasBlocks && !e2.isWhole) : null;
-    s.addWhole.hidden = !base || entries.some((e2) => e2.isWhole && e2.parsed === base.parsed);
+    const base2 = !multi ? entries.find((e2) => e2.hasBlocks && !e2.isWhole) : null;
+    s.addWhole.hidden = !base2 || entries.some((e2) => e2.isWhole && e2.parsed === base2.parsed);
     paintThumb3();
     paintNote();
     paintQuick();
@@ -72468,9 +72593,9 @@ ${lines.join("\n")}` : "";
     const t = ta();
     if (!t) return;
     const untouched = !t.value || t.value === lastPrefill;
-    const base = untouched ? "" : t.value;
-    const caret = !untouched && Number.isInteger(t.selectionStart) ? t.selectionStart : base.length;
-    const next = insertToken(base, caret, atToken(n3));
+    const base2 = untouched ? "" : t.value;
+    const caret = !untouched && Number.isInteger(t.selectionStart) ? t.selectionStart : base2.length;
+    const next = insertToken(base2, caret, atToken(n3));
     if (untouched) lastPrefill = "";
     t.value = next.text;
     try {
@@ -73329,9 +73454,9 @@ ${note}` };
       return { sources: { ...sources }, logDays, mentions: mentions.slice(), style, effort };
     },
     addWholeDoc: () => {
-      const base = entries.find((e2) => e2.hasBlocks && !e2.isWhole);
-      if (!base) return;
-      addEntry({ ...base.opts, blockId: "", blockIds: null, selection: "", page: null, image: null, wholeDoc: true });
+      const base2 = entries.find((e2) => e2.hasBlocks && !e2.isWhole);
+      if (!base2) return;
+      addEntry({ ...base2.opts, blockId: "", blockIds: null, selection: "", page: null, image: null, wholeDoc: true });
       focus();
     },
     togglePreview: () => {
@@ -73555,9 +73680,9 @@ function chartTitle({ label = "Figure", page = null, docTitle = "" } = {}) {
 }
 function chartNote(modelName = "", extra = []) {
   const who = squash5(modelName);
-  const base = who ? `Values read from the chart by ${who}; approximate.` : "Values read from the chart by a model; approximate.";
+  const base2 = who ? `Values read from the chart by ${who}; approximate.` : "Values read from the chart by a model; approximate.";
   const more = (Array.isArray(extra) ? extra : []).map((t) => squash5(t)).filter(Boolean);
-  return [base, ...more].join(" ");
+  return [base2, ...more].join(" ");
 }
 function stripFence(text4) {
   const m = /```(?:json|JSON)?\s*([\s\S]*?)```/.exec(text4);
@@ -73669,8 +73794,8 @@ function normalizeChart(raw) {
     }
     if (points.every((p) => typeof p.x === "number")) points.sort((a, b) => a.x - b.x);
     let name = text3(entry.name ?? entry.label ?? entry.series) || `Series ${series.length + 1}`;
-    let base = name;
-    for (let n3 = 2; used.has(name.toLowerCase()); n3 += 1) name = `${base} (${n3})`;
+    let base2 = name;
+    for (let n3 = 2; used.has(name.toLowerCase()); n3 += 1) name = `${base2} (${n3})`;
     used.add(name.toLowerCase());
     series.push({ name, points });
     if (series.length >= MAX_SERIES) break;
@@ -76686,32 +76811,32 @@ function createParseView({
     const incoming = (Array.isArray(ocrPages) ? ocrPages : []).filter((p) => p && Number.isFinite(Number(p.n)));
     const pages = scanPagesOf(parsed).filter((n3) => incoming.some((p) => Number(p.n) === n3));
     if (!pages.length) return false;
-    const base = parsed;
+    const base2 = parsed;
     const gen = targetGen;
     try {
       const pdf = typeof getPdf === "function" ? await getPdf() : null;
-      if (dead || parsed !== base) return false;
-      const [from, to] = base.stats?.range || [1, base.pageCount || 1];
+      if (dead || parsed !== base2) return false;
+      const [from, to] = base2.stats?.range || [1, base2.pageCount || 1];
       const recs = records.length ? records : [];
       if (!recs.length) {
         for (let n3 = from; n3 <= to; n3 += 1) {
           if (pages.includes(n3)) continue;
           recs.push(await geometryOf(n3, pdf));
-          if (dead || parsed !== base) return false;
+          if (dead || parsed !== base2) return false;
         }
       }
       const t0 = now5();
-      let merged = mergeOcrPageRecords({ base, ocrPages: incoming, records: recs, pages, numPages: base.pageCount, from, to, sha256: base.sha256 });
+      let merged = mergeOcrPageRecords({ base: base2, ocrPages: incoming, records: recs, pages, numPages: base2.pageCount, from, to, sha256: base2.sha256 });
       if (typeof readCells === "function") {
         try {
           const lined = await rereadLines({ doc: merged.doc, ocrPages: incoming, ocr: readCells, lexicon, signal, onPhase });
-          if (lined.applied.length && !dead && parsed === base) {
-            merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records: recs, pages, numPages: base.pageCount, from, to, sha256: base.sha256 });
+          if (lined.applied.length && !dead && parsed === base2) {
+            merged = mergeOcrPageRecords({ base: base2, ocrPages: lined.pages, records: recs, pages, numPages: base2.pageCount, from, to, sha256: base2.sha256 });
             merged.doc.ocr = { ...merged.doc.ocr || {}, lines: lined.applied.length };
             const read2 = merged.records.filter((rec) => rec?.ocr && pages.includes(rec.n));
             if (read2.length) {
               try {
-                onOcrPages?.(read2, base.sha256);
+                onOcrPages?.(read2, base2.sha256);
               } catch {
               }
             }
@@ -76719,7 +76844,7 @@ function createParseView({
         } catch {
         }
       }
-      if (dead || parsed !== base) return false;
+      if (dead || parsed !== base2) return false;
       records = merged.records;
       merged.doc.ocr = { ...merged.doc.ocr || {}, source: "browser" };
       if (typeof readCells === "function") {
@@ -76729,7 +76854,7 @@ function createParseView({
         } catch {
         }
       }
-      await finishDoc(merged.doc, (base.stats?.ms || 0) + (now5() - t0), gen);
+      await finishDoc(merged.doc, (base2.stats?.ms || 0) + (now5() - t0), gen);
       return true;
     } catch {
       return false;
@@ -82475,15 +82600,15 @@ function createFirstPageRenderer({ doc, lib, timers, now: now5 } = {}) {
         count.failed += 1;
         return null;
       }
-      const base = page.getViewport({ scale: 1 });
-      const pageW = Number(base?.width) || 0;
-      const box2 = maxW > pageW ? sharpBox(pageW, base?.height, maxW) : scaleBox(pageW, base?.height, maxW);
+      const base2 = page.getViewport({ scale: 1 });
+      const pageW = Number(base2?.width) || 0;
+      const box2 = maxW > pageW ? sharpBox(pageW, base2?.height, maxW) : scaleBox(pageW, base2?.height, maxW);
       if (!box2) {
         destroy();
         count.failed += 1;
         return null;
       }
-      const scale = box2.w / Number(base.width);
+      const scale = box2.w / Number(base2.width);
       const viewport2 = page.getViewport({ scale });
       const canvas = doc.createElement("canvas");
       canvas.width = box2.w;
@@ -83768,14 +83893,14 @@ function createPdfFlip({ doc, win: win2, lib = null, timers = null, urlOf = null
       return;
     }
     if (mine !== renderSeq || loadGen !== gen || pdf !== docPdf || !proxy) return;
-    let base = null;
+    let base2 = null;
     try {
-      base = proxy.getViewport({ scale: 1 });
+      base2 = proxy.getViewport({ scale: 1 });
     } catch {
       return;
     }
-    const bw = Number(base?.width) || 0;
-    const bh = Number(base?.height) || 0;
+    const bw = Number(base2?.width) || 0;
+    const bh = Number(base2?.height) || 0;
     if (bw < 1 || bh < 1) return;
     const fit3 = Math.min(px.cssW / bw, px.cssH / bh);
     let view = null;
@@ -84242,6 +84367,7 @@ function paintSuggest(doc, svg, lines) {
 }
 
 // src/view/edges.js
+init_settings();
 var SVG_NS6 = "http://www.w3.org/2000/svg";
 var PAIR_OFFSET = 18;
 var LABEL_HIDE_ZOOM = 0.3;
@@ -84428,7 +84554,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const dragBy = (dx, dy) => {
     if (!drag) return;
     drag.layer.style.transform = dx || dy ? `translate(${dx}px, ${dy}px)` : "";
-    for (const [rec, base] of drag.recs) if (rec.label && base) rec.label.style.transform = `translate(${dx}px, ${dy}px) ${base}`;
+    for (const [rec, base2] of drag.recs) if (rec.label && base2) rec.label.style.transform = `translate(${dx}px, ${dy}px) ${base2}`;
   };
   const endDrag = (ctx) => {
     if (!drag) return;
@@ -84437,10 +84563,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     for (const rec of crossing || []) if (!rec.parked && edgeEls.has(rec.uid) && rec.g.parentElement === cross) edgeHost.append(rec.g);
     for (const rec of links || []) if (rec.g.parentElement === cross) edgeHost.append(rec.g);
     cross?.remove();
-    for (const [rec, base] of recs) {
+    for (const [rec, base2] of recs) {
       if (rec.parked || !edgeEls.has(rec.uid)) continue;
       edgeHost.append(rec.g);
-      if (rec.label && base) rec.label.style.transform = base;
+      if (rec.label && base2) rec.label.style.transform = base2;
       const edge = ctx?.board?.edges.get(rec.uid);
       if (edge && ctx.rects) placeEdge(ctx.board, edge, rec, ctx.rects, ctx.zoom ?? zoomCache);
     }
@@ -85191,8 +85317,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     const rec = edgeEls.get(uid);
     if (!rec) return;
     const cur = String(rec.g.getAttribute("class") || "");
-    const base = cur.replace(/\s*pxd-edge--selected/g, "");
-    const next = on ? `${base} pxd-edge--selected` : base;
+    const base2 = cur.replace(/\s*pxd-edge--selected/g, "");
+    const next = on ? `${base2} pxd-edge--selected` : base2;
     if (cur !== next) setClass(rec.g, next);
     if (Boolean(rec.label.classList.contains("pxd-label--selected")) !== on) {
       rec.label.classList.toggle("pxd-label--selected", on);
@@ -85208,8 +85334,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     const rec = linkEls.get(key);
     if (!rec) return;
     const cur = String(rec.g.getAttribute("class") || "");
-    const base = cur.replace(/\s*pxd-link--selected/g, "");
-    const next = on ? `${base} pxd-link--selected` : base;
+    const base2 = cur.replace(/\s*pxd-link--selected/g, "");
+    const next = on ? `${base2} pxd-link--selected` : base2;
     if (cur !== next) setClass(rec.g, next);
     if (Boolean(rec.label.classList.contains("pxd-label--selected")) !== on) {
       rec.label.classList.toggle("pxd-label--selected", on);
@@ -85305,10 +85431,20 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       el2.setAttribute("height", String(r.h));
     });
   };
+  const setLayerDim = (on) => {
+    for (const node2 of [svg, labelsLayer]) {
+      if (!node2 || typeof node2.hasAttribute !== "function" || node2.hasAttribute("data-pxd-search-dim") === on) continue;
+      if (on) node2.setAttribute("data-pxd-search-dim", "");
+      else node2.removeAttribute("data-pxd-search-dim");
+    }
+  };
+  const layerDim = () => Boolean(searchEdges) && searchEdges.size === 0 && notedSpeedFlags().searchLayerDim !== false;
   const applySearchClasses = () => {
+    const layer = layerDim();
+    setLayerDim(layer);
     for (const [uid, rec] of edgeEls) {
       const on = Boolean(searchEdges?.has(uid));
-      const dim = dimmed(rec) || (searchEdges ? !on : false);
+      const dim = dimmed(rec) || (searchEdges && !layer ? !on : false);
       rec.g.classList.toggle("pxd-edge--hit", on);
       rec.g.classList.toggle("pxd-edge--dim", dim);
       rec.label.classList.toggle("pxd-label--dim", dim);
@@ -85321,7 +85457,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const setFocus = (set) => {
     focusSet = set && set.size !== void 0 ? set : null;
     for (const rec of [...edgeEls.values(), ...linkEls.values()]) {
-      const dim = dimmed(rec) || (searchEdges ? !searchEdges.has(rec.g?.dataset?.uid) : false);
+      const dim = dimmed(rec) || (searchEdges && !layerDim() ? !searchEdges.has(rec.g?.dataset?.uid) : false);
       rec.g.classList.toggle("pxd-edge--dim", dim);
       rec.label.classList.toggle("pxd-label--dim", dim);
     }
@@ -86904,10 +87040,15 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   searchInput.setAttribute("aria-label", "Search this board");
   searchInput.placeholder = "Search this board…";
   searchInput.setAttribute("placeholder", "Search this board…");
-  const searchCount = el2("span", "pxd-search__count", search, "");
+  const searchCount = el2("span", "pxd-search__count", search);
+  const countText2 = doc.createTextNode("");
+  searchCount.append(countText2);
+  const setCount = (text4) => {
+    if (countText2.textContent !== text4) countText2.textContent = text4;
+  };
   listen(searchInput, "input", () => {
     const n3 = on.searchFilter?.(searchInput.value || "") ?? 0;
-    searchCount.textContent = searchInput.value ? `${n3}` : "";
+    setCount(searchInput.value ? `${n3}` : "");
   });
   listen(searchInput, "keydown", (event) => {
     event.stopPropagation();
@@ -86933,7 +87074,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     close() {
       search.style.display = "none";
       searchInput.value = "";
-      searchCount.textContent = "";
+      setCount("");
       on.searchFilter?.("");
       on.searchClosed?.();
     },
@@ -88143,17 +88284,17 @@ function mountKanban({
     const board2 = getBoard?.();
     const uid = board2?.uid;
     if (!uid || typeof host?.updateProps !== "function") return;
-    let base = null;
+    let base2 = null;
     if (typeof host.pullProps === "function") {
       try {
-        base = readPlexus(host.pullProps(uid));
+        base2 = readPlexus(host.pullProps(uid));
       } catch {
-        base = null;
+        base2 = null;
       }
     }
-    if (!base || typeof base !== "object") base = board2?.plexus && typeof board2.plexus === "object" ? board2.plexus : null;
-    if (!base || base.kanban === next) return;
-    const copy = { ...base, kanban: next };
+    if (!base2 || typeof base2 !== "object") base2 = board2?.plexus && typeof board2.plexus === "object" ? board2.plexus : null;
+    if (!base2 || base2.kanban === next) return;
+    const copy = { ...base2, kanban: next };
     if (board2?.plexus && typeof board2.plexus === "object") board2.plexus.kanban = next;
     try {
       const write = host.updateProps(uid, copy);
@@ -90806,8 +90947,8 @@ var LEXICON_FILE = {
 function dictLines(text4) {
   return String(text4 || "").replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.length > 0);
 }
-function joinUrl(base, path) {
-  return `${String(base || "").replace(/\/$/, "")}/${String(path || "").replace(/^\//, "")}`;
+function joinUrl(base2, path) {
+  return `${String(base2 || "").replace(/\/$/, "")}/${String(path || "").replace(/^\//, "")}`;
 }
 
 // src/model/ocr/components.js
@@ -91679,10 +91820,10 @@ function inkRows(mask, pageW, proj, c0, c1) {
   for (let y = top; y <= bottom; y++) if (rows[y] > max) {
     max = rows[y];
   }
-  let base = peak;
+  let base2 = peak;
   for (let y = bottom; y >= peak; y--) {
     if (rows[y] >= 0.25 * max) {
-      base = y;
+      base2 = y;
       break;
     }
   }
@@ -91693,7 +91834,7 @@ function inkRows(mask, pageW, proj, c0, c1) {
       break;
     }
   }
-  return { base: proj.y0 + base + 1, top: proj.y0 + top, bottom: proj.y0 + bottom + 1, capTop: proj.y0 + capTop };
+  return { base: proj.y0 + base2 + 1, top: proj.y0 + top, bottom: proj.y0 + bottom + 1, capTop: proj.y0 + capTop };
 }
 function inkHeight(proj) {
   if (proj.top < 0) return 0;
@@ -91763,10 +91904,10 @@ function sizeFromInk(text4, capH) {
   if (/[A-Z0-9bdfhklt]/.test(text4)) return capH / 0.64;
   return null;
 }
-function dashRuns(mask, pageW, proj, c0, c1, base, capH) {
+function dashRuns(mask, pageW, proj, c0, c1, base2, capH) {
   if (!(capH > 4)) return [];
-  const lo = base - 0.65 * capH;
-  const hi = base - 0.15 * capH;
+  const lo = base2 - 0.65 * capH;
+  const hi = base2 - 0.15 * capH;
   const kind = new Uint8Array(c1 - c0);
   for (let x = c0; x < c1; x++) {
     let top = -1;
@@ -91936,12 +92077,12 @@ function rowsOf(items) {
   const rows = [];
   for (const it of sorted) {
     const size = it.transform[0];
-    const base = it.transform[5];
+    const base2 = it.transform[5];
     let best = null;
     for (const row4 of rows) {
       const last = row4[row4.length - 1];
       if (it.transform[4] < last.transform[4] + last.width - 0.5) continue;
-      const d = Math.abs(last.transform[5] - base);
+      const d = Math.abs(last.transform[5] - base2);
       if (d <= 0.3 * Math.max(size, last.transform[0]) && (!best || d < best.d)) best = { row: row4, d };
     }
     if (best) best.row.push(it);
@@ -91989,10 +92130,10 @@ function rotateItems(items, degrees, w, h, scaleX, scaleY) {
     const dx = it.transform[4] * scaleX - cx;
     const dy = it.transform[5] * scaleY - cy;
     const x = (cx + dx * cos + dy * sin) / scaleX;
-    const base = (cy - dx * sin + dy * cos) / scaleY;
-    const shift = base - it.transform[5];
+    const base2 = (cy - dx * sin + dy * cos) / scaleY;
+    const shift = base2 - it.transform[5];
     it.transform[4] = r23(x);
-    it.transform[5] = r23(base);
+    it.transform[5] = r23(base2);
     if (Number.isFinite(it.y0)) it.y0 = r23(it.y0 + shift);
     if (Number.isFinite(it.y1)) it.y1 = r23(it.y1 + shift);
   }
@@ -92085,9 +92226,9 @@ function prepareCrop(rgb, width, height, box2) {
 function blitLeft(dest, batch, destW, src, srcW, height) {
   const plane = height * destW;
   const srcPlane = height * srcW;
-  const base = batch * 3 * plane;
+  const base2 = batch * 3 * plane;
   for (let c = 0; c < 3; c++) {
-    const d0 = base + c * plane;
+    const d0 = base2 + c * plane;
     const s0 = c * srcPlane;
     for (let y = 0; y < height; y++) {
       dest.set(src.subarray(s0 + y * srcW, s0 + (y + 1) * srcW), d0 + y * destW);
@@ -92250,8 +92391,8 @@ async function readSegments(image, w, h, boxes, mask, scaleX, scaleY, runRec, di
       let box2 = boxPt;
       if (ink) {
         const own2 = inkRows(mask, w, crop.proj, Math.max(0, word.x0 - crop.proj.x0), Math.min(crop.proj.w, word.x1 - crop.proj.x0));
-        const base = (own2 ? own2.base : ink.base) / scaleY;
-        box2 = { ...boxPt, y1: base + 0.2 * size, y0: base - 0.8 * size };
+        const base2 = (own2 ? own2.base : ink.base) / scaleY;
+        box2 = { ...boxPt, y1: base2 + 0.2 * size, y0: base2 - 0.8 * size };
       }
       items.push(wordItem(word.text, word.x0 / scaleX, word.x1 / scaleX, box2, word.conf));
     }
@@ -92280,8 +92421,8 @@ async function readOrphans(image, w, h, boxes, mask, items, scaleX, scaleY, runR
   const crops = [];
   const out = [];
   const place3 = (text4, blob, conf) => {
-    const base = blobBaseline(blob, em) / scaleY;
-    const box2 = { x0: blob.x0 / scaleX, x1: blob.x1 / scaleX, y1: base + 0.2 * emPt, y0: base - 0.8 * emPt };
+    const base2 = blobBaseline(blob, em) / scaleY;
+    const box2 = { x0: blob.x0 / scaleX, x1: blob.x1 / scaleX, y1: base2 + 0.2 * emPt, y0: base2 - 0.8 * emPt };
     out.push(wordItem(text4, box2.x0, box2.x1, box2, conf));
   };
   for (const blob of blobs) {
@@ -94593,15 +94734,15 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
         return;
       }
       if (!live2 || mine !== seq || !proxy) return;
-      let base = null;
+      let base2 = null;
       try {
-        base = proxy.getViewport({ scale: 1 });
+        base2 = proxy.getViewport({ scale: 1 });
       } catch {
         return;
       }
       const width = Number(stage.clientWidth) || 600;
       const dpr = Number(win2?.devicePixelRatio) || 1;
-      const scale = width / (Number(base?.width) || width);
+      const scale = width / (Number(base2?.width) || width);
       let view = null;
       try {
         view = proxy.getViewport({ scale: scale * dpr });
@@ -96568,6 +96709,7 @@ function buildBoardView(onFail, {
   let size = { width: 0, height: 0 };
   let rootRect = { left: 0, top: 0, width: 0, height: 0 };
   let disposed = false;
+  let inputProfile = null;
   let disposing = false;
   let released = false;
   let gesturing = false;
@@ -97034,8 +97176,8 @@ function buildBoardView(onFail, {
   let itemsReady = false;
   const paintRects = () => {
     const b = board2();
-    const base = effectiveRects();
-    const shown = b ? displayRects(b, base) : base;
+    const base2 = effectiveRects();
+    const shown = b ? displayRects(b, base2) : base2;
     if (!b || !itemsReady) return shown;
     let out = shown;
     for (const item of b.items.values()) {
@@ -100409,8 +100551,13 @@ function buildBoardView(onFail, {
   const RESUME_SLICE_SHELLS = 24;
   const SLICE_LONG_MS = 50;
   const SLICE_SHORT_MS = 24;
+  const SLICE_GROW_MAX = 384;
+  const SLICE_MS_MAX = 40;
   let sliceShells = SETTLE_SHELLS;
   let sliceAt = 0;
+  let sliceJs = 0;
+  let lastGap = 0;
+  let lastShells = 0;
   const sliceLog = [];
   const adaptiveOn = () => {
     try {
@@ -100419,12 +100566,28 @@ function buildBoardView(onFail, {
       return false;
     }
   };
+  const growOn = () => {
+    try {
+      return notedSpeedFlags().sliceGrow !== false;
+    } catch {
+      return false;
+    }
+  };
   const sliceEdgeBudget = () => adaptiveOn() ? Math.round(SETTLE_EDGES * sliceShells / SETTLE_SHELLS) : SETTLE_EDGES;
+  const sliceMs = () => adaptiveOn() && growOn() && sliceShells > SETTLE_SHELLS ? Math.min(SLICE_MS_MAX, SETTLE_SLICE_MS * sliceShells / SETTLE_SHELLS) : SETTLE_SLICE_MS;
   const adaptSlice = () => {
     const gap = sliceAt ? perfNow3() - sliceAt : 0;
+    const used = sliceShells;
     if (!adaptiveOn()) sliceShells = SETTLE_SHELLS;
-    else if (gap > SLICE_LONG_MS) sliceShells = Math.max(SLICE_MIN_SHELLS, Math.floor(sliceShells / 2));
-    else if (gap && gap < SLICE_SHORT_MS) sliceShells = Math.min(SETTLE_SHELLS, sliceShells * 2);
+    else if (gap > SLICE_LONG_MS) {
+      const scaled = lastGap > 0 && used > lastShells && gap >= lastGap * 1.6;
+      if (growOn() && !scaled && sliceJs * 4 < gap) sliceShells = Math.min(SLICE_GROW_MAX, sliceShells * 2);
+      else sliceShells = Math.max(SLICE_MIN_SHELLS, Math.floor(sliceShells / 2));
+    } else if (gap && gap < SLICE_SHORT_MS && sliceShells < SETTLE_SHELLS) sliceShells = Math.min(SETTLE_SHELLS, sliceShells * 2);
+    if (gap) {
+      lastGap = gap;
+      lastShells = used;
+    }
     sliceLog.push(sliceShells);
     if (sliceLog.length > 60) sliceLog.shift();
   };
@@ -100503,13 +100666,16 @@ function buildBoardView(onFail, {
     if (!slicing) sliceShells = start || SETTLE_SHELLS;
     if (!adaptiveOn()) sliceShells = SETTLE_SHELLS;
     sliceAt = 0;
+    sliceJs = 0;
+    lastGap = 0;
+    lastShells = 0;
     if (sliceWanted()) {
       sliceLog.push(sliceShells);
       if (sliceLog.length > 60) sliceLog.shift();
-      itemsR.sliceAttach?.({ budget: sliceShells, ms: SETTLE_SLICE_MS });
+      itemsR.sliceAttach?.({ budget: sliceShells, ms: sliceMs() });
     } else endSlice();
   };
-  const sliceEdges = (rect) => rect ? edgesR.cull?.(rect, { budget: sliceEdgeBudget(), ms: SETTLE_SLICE_MS }) || 0 : 0;
+  const sliceEdges = (rect) => rect ? edgesR.cull?.(rect, { budget: sliceEdgeBudget(), ms: sliceMs() }) || 0 : 0;
   const sliceStep = () => {
     sliceFrame = null;
     if (!slicing) return;
@@ -100523,9 +100689,11 @@ function buildBoardView(onFail, {
     }
     const rect = visibleWorldRect(vp, size, ATTACH_MARGIN);
     adaptSlice();
-    if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, sliceShells, SETTLE_SLICE_MS);
+    const t0 = perfNow3();
+    if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, sliceShells, sliceMs());
     const edgesLeft = sliceEdges(rect);
     sliceAt = perfNow3();
+    sliceJs = sliceAt - t0;
     if (edgesLeft || (itemsR.attachLeft?.() || 0) > 0) {
       sliceFrame = timers.frame(sliceStep, "slice");
       return;
@@ -101081,11 +101249,11 @@ function buildBoardView(onFail, {
     });
   };
   const lanePaintRects = () => {
-    const base = paintRects();
-    if (!lanePreviewLayout) return base;
-    const merged = new Map(base);
+    const base2 = paintRects();
+    if (!lanePreviewLayout) return base2;
+    const merged = new Map(base2);
     for (const [uid, rect] of lanePreviewLayout) {
-      const own2 = base.get(uid);
+      const own2 = base2.get(uid);
       merged.set(uid, { x: rect.x, y: rect.y, w: Number.isFinite(rect.w) ? rect.w : own2?.w, h: Number.isFinite(rect.h) ? rect.h : own2?.h });
     }
     return merged;
@@ -102824,19 +102992,19 @@ function buildBoardView(onFail, {
       await session.setHighlighterTags(flag2);
       return;
     }
-    let base = null;
+    let base2 = null;
     try {
-      if (typeof host?.pullProps === "function") base = readPlexus(host.pullProps(boardUid));
+      if (typeof host?.pullProps === "function") base2 = readPlexus(host.pullProps(boardUid));
     } catch {
-      base = null;
+      base2 = null;
     }
     const live2 = board2()?.plexus;
-    if (!base || typeof base !== "object") base = live2 && typeof live2 === "object" ? live2 : null;
-    if (live2 && typeof live2 === "object" && live2.v === 2 && (!base || base.v !== 2)) base = live2;
-    if (!base || typeof base !== "object") return;
-    if (board2()?.enhanced && base.v !== 2) return;
-    if (base.highlighterTags === flag2) return;
-    const next = { ...base, highlighterTags: flag2 };
+    if (!base2 || typeof base2 !== "object") base2 = live2 && typeof live2 === "object" ? live2 : null;
+    if (live2 && typeof live2 === "object" && live2.v === 2 && (!base2 || base2.v !== 2)) base2 = live2;
+    if (!base2 || typeof base2 !== "object") return;
+    if (board2()?.enhanced && base2.v !== 2) return;
+    if (base2.highlighterTags === flag2) return;
+    const next = { ...base2, highlighterTags: flag2 };
     if (live2 && typeof live2 === "object") live2.highlighterTags = flag2;
     if (typeof host?.updateProps !== "function") return;
     try {
@@ -104611,7 +104779,11 @@ ${url}`;
     }
     paintSearch(board2(), searchMatches, searchQuery);
     const countEl = root.querySelector(".pxd-search__count");
-    if (countEl) countEl.textContent = `${searchIndex + 1}/${searchMatches.length}`;
+    const label = `${searchIndex + 1}/${searchMatches.length}`;
+    const node2 = countEl?.firstChild;
+    if (node2?.nodeType === 3) {
+      if (node2.textContent !== label) node2.textContent = label;
+    } else if (countEl) countEl.textContent = label;
   };
   const enterEdit = async (uid, opts) => {
     ctl.select([uid]);
@@ -107963,6 +108135,12 @@ ${url}`;
     longTasks() {
       return sharedTaskProbe().longTasks();
     },
+    // PERF5-P1 probe: first call arms Event Timing + Long Animation Frames, later calls return per-key delay / handlers /
+    // presentation, slow frames with their render and style+layout phases, and scripts by source file (input-profile.js).
+    typingProfile(opts) {
+      if (!inputProfile) inputProfile = createInputProfile({ win: globalThis, spans: () => sharedTaskProbe().spans() });
+      return inputProfile.read(opts);
+    },
     // Card bodies that took 50 ms or more to mount ({ uid, kind, ms, at }), to name a long "content" task.
     slowMounts() {
       return itemsR.slowMounts?.() || [];
@@ -108242,6 +108420,8 @@ ${url}`;
       if (disposing) return;
       disposing = true;
       disposed = true;
+      inputProfile?.dispose();
+      inputProfile = null;
       try {
         sharedBgBudget().hold(bgHoldKey, false);
       } catch {
@@ -112491,9 +112671,9 @@ async function installPlexusDiagram({
     }
   };
   const thumbKeyOf = (item, dark) => {
-    const base = tableThumbKey(item, itemSig(item));
+    const base2 = tableThumbKey(item, itemSig(item));
     const box2 = thumbBox(item);
-    return base ? `${base}:${box2.width}x${box2.height}:${dark ? "d" : "l"}` : "";
+    return base2 ? `${base2}:${box2.width}x${box2.height}:${dark ? "d" : "l"}` : "";
   };
   function tableThumbFor(rec, item) {
     if (!snapAllowed()) return null;

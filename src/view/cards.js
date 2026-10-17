@@ -7510,6 +7510,7 @@ export function createItemRenderer({
       detachFocusGuard();
       for (const type of EDITOR_STOPPED) e.editor.removeEventListener(type, stopEvent);
       e.editor.__pxdBulletOff?.();
+      e.editor.__pxdCaretOff?.();
       e.rec.ghost?.remove();
       e.rec.ghost = null;
       try { host?.unmount?.(e.editor); } catch { /* not mounted */ }

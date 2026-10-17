@@ -43,6 +43,7 @@ import { isRoamTableString, tableUidOf } from "../model/roam-table.js";
 import { mountRoamTable } from "./table-card.js";
 import { createBucketHost } from "./buckets.js";
 import { findCell, forgetTableCells, measureCell, revealCell, watchTable } from "./table-cells.js";
+import { blockUidFromNode } from "./editor-keys.js";
 import { childIsOpen, findBlock, focusStep, PEEK_ANIM_MS, PEEK_HOVER_MS, PEEK_LEAVE_MS, peekAllowed } from "../model/card-children.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
@@ -2805,6 +2806,8 @@ export function createItemRenderer({
       }
     }
   };
+  // UX3 A4: the focused block's bullet carries Roam's zoomed ring, on note and page cards alike.
+  const markZoomed = (row) => { row?.classList?.add("pxd-outline--zoomed"); };
   const paintCrumb = (parent, item, trail) => {
     const crumb = el("div", "pxd-focus__crumb", parent);
     const addBtn = (label, focusId) => {
@@ -2849,6 +2852,7 @@ export function createItemRenderer({
       }
     }
     renderBlocks(body, list, 1, budget, { viewOnly, cardUid: item?.uid || "" });
+    if (focusUid) markZoomed(body.querySelector?.(`.pxd-block[data-pxd-row="${focusUid}"]`));
   };
   const remountCard = (rec) => {
     const item = lastBoard?.items.get(rec?.uid);
@@ -3763,6 +3767,7 @@ export function createItemRenderer({
       paintCrumb(holder, { uid: rec.uid, string: rec.pageTitle, title: rec.pageTitle, kind: "page" }, focused.trail);
       const b = { n: 0, more: 0, roots: [], live: firstScreenRows(rec) };
       renderOutline(holder, [focused.block], b, rec);
+      markZoomed(holder.querySelector?.(`[data-pxd-row="${focusUid}"]`)?.parentElement);
       rec.pageRoots = [...b.roots];
       onPageLayout?.(rec.uid);
       return b.roots;
@@ -6782,6 +6787,24 @@ export function createItemRenderer({
     mounted.delete(uid);
     const editor = el("div", pageEdit ? "pxd-item__editor pxd-page-edit" : "pxd-item__editor", rec.body);
     if (taskPad) editor.style.setProperty("--pxd-task-pad", `${taskPad}px`);
+    // UX3 A4: a child's Roam bullet in a note editor focuses that block on the card, as the display bullet does.
+    // Capture on the editor, registered before Roam mounts its root here, so Roam's own zoom never runs.
+    if (!pageEdit && speedOf().editBulletFocus !== false) {
+      const onEditBullet = (event) => {
+        const bullet = event.target?.closest?.(".rm-bullet");
+        if (!bullet || !editor.contains?.(bullet) || !bullet.closest?.(".rm-block-children")) return;
+        const main = bullet.closest?.(".rm-block-main");
+        const input = main?.querySelector?.(".rm-block__input, textarea, [id^='block-input-']");
+        const blockUid = input ? blockUidFromNode(input) : null;
+        if (!blockUid || blockUid === uid || blockUid === targetUid) return;
+        event.preventDefault?.();
+        event.stopImmediatePropagation?.();
+        event.stopPropagation?.();
+        if (event.type !== "click") return;
+        void exitEdit().then(() => { if (!disposed) focusInside(uid, blockUid); });
+      };
+      for (const type of ["click", "dblclick"]) editor.addEventListener(type, onEditBullet, true);
+    }
     // Rule 19.1: stop pointer/wheel at the overlay boundary BEFORE the synthetic focus click.
     for (const type of EDITOR_STOPPED) editor.addEventListener(type, stopEvent);
     editing = { uid, rec, editor, targetUid, item, ready: false, fadeCancel: null, releaseCancel: null };

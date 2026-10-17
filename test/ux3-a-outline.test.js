@@ -417,6 +417,13 @@ function roamEditorHost(placed, inputTop) {
         };
         view.addEventListener("mousedown", swap, { once: true });
         if (inputTop[uid] != null) view._rect = { left: 0, top: inputTop[uid], width: 200, height: 18, right: 200, bottom: inputTop[uid] + 18, x: 0, y: inputTop[uid] };
+        const controls = doc.createElement("div");
+        controls.className = "controls rm-block__controls";
+        const bullet = doc.createElement("span");
+        bullet.className = "rm-bullet";
+        bullet.setAttribute("data-test-uid", uid);
+        controls.append(bullet);
+        main.append(controls);
         main.append(view);
         box.append(main);
         const kids = doc.createElement("div");
@@ -485,6 +492,76 @@ test("A3: childCaret off keeps the 3.34.0 entry (the card's own block)", async (
     assert.ok(ta.id.endsWith("-cardHE001"));
   } finally {
     noteSpeedFlags(null);
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+// ---- A4: child focus on note cards is the page-card focus: bullet in display or edit, crumb, Escape steps back.
+function crumbLabels(card) {
+  const crumb = card.querySelector(".pxd-focus__crumb");
+  return crumb ? [...crumb.querySelectorAll("button")].map((btn) => btn.textContent) : [];
+}
+
+test("A4: a display bullet at depth 3 focuses that block with the crumb; the focused bullet has the zoomed ring; Escape steps back", async () => {
+  const f = mount();
+  try {
+    await show(f);
+    const card = f.view.root.querySelector("[data-uid=cardHE001]");
+    const bullet = card.querySelector("[data-pxd-row=kidX00001] .pxd-outline__bullet");
+    assert.ok(bullet, "the depth-3 row has a bullet");
+    bullet.click();
+    f.stub.flushFrames();
+    assert.deepEqual(crumbLabels(card), ["he", "test", "Todd Zenger", "TEST"]);
+    const focused = card.querySelector("[data-pxd-row=kidX00001]");
+    assert.equal(focused.classList.contains("pxd-outline--zoomed"), true);
+    f.stub.dispatch(f.stub.window, "keydown", { key: "Escape" });
+    f.stub.flushFrames();
+    assert.deepEqual(crumbLabels(card), ["he", "test", "Todd Zenger"]);
+    assert.equal(card.querySelector("[data-pxd-row=kidZ00001]").classList.contains("pxd-outline--zoomed"), true);
+    assert.equal(f.session.mutations.length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("A4: a Roam bullet clicked in the card editor leaves edit and focuses that block on the card (no Roam zoom)", async () => {
+  const placed = [];
+  const f = mount({ host: roamEditorHost(placed, {}) });
+  try {
+    await show(f);
+    const card = f.view.root.querySelector("[data-uid=cardHE001]");
+    f.stub.dispatch(card, "dblclick", { clientX: 40, clientY: 10 });
+    await settleEdit(f.stub);
+    assert.equal(card.classList.contains("pxd-item--editing"), true);
+    const bullet = [...card.querySelectorAll(".pxd-item__editor .rm-bullet")].find((b) => b.getAttribute("data-test-uid") === "kidZ00001");
+    assert.ok(bullet);
+    let roamSaw = 0;
+    f.stub.document.addEventListener("click", () => { roamSaw += 1; });
+    f.stub.dispatch(bullet, "click", { clientX: 30, clientY: 40 });
+    await settleEdit(f.stub);
+    assert.equal(roamSaw, 0, "Roam's own bullet click (zoom the main window) never sees it");
+    assert.equal(card.classList.contains("pxd-item--editing"), false);
+    assert.deepEqual(crumbLabels(card), ["he", "test", "Todd Zenger"]);
+    assert.equal(f.session.mutations.length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("A4: a page card's focused block has the same zoomed ring", async () => {
+  const f = mount({ cards: pageCards(), host: pageHost });
+  try {
+    await show(f);
+    const card = f.view.root.querySelector("[data-uid=cardPG001]");
+    card.querySelector("[data-pxd-row=rowRef001] .pxd-outline__bullet").click();
+    f.stub.flushFrames();
+    assert.deepEqual(crumbLabels(card), ["Pathogen Page", "Related", "Powdered Infant Formula · Biosensors · AOAC"]);
+    const prow = card.querySelector("[data-pxd-row=rowRef001]").parentElement;
+    assert.equal(prow.classList.contains("pxd-outline--zoomed"), true);
+  } finally {
     f.view.dispose();
     f.restore();
   }

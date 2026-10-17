@@ -200,3 +200,8 @@
 .pxd-root .pxd-item.pxd-item--ol.pxd-item--editing:not(.pxd-item--page):not(.pxd-item--text) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) :is(textarea.rm-block-input, textarea.rm-block__input, .rm-block__input, .rm-block__input--view) {
   line-height: 1.4 !important;
 }
+
+/* UX3 A4. The block a card is focused on (crumb) shows Roam's zoomed ring on its bullet; note and page cards alike. */
+.pxd-root .pxd-outline--zoomed > :is(.pxd-outline__line, .pxd-row) > .pxd-outline__bullet::before {
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 30%, transparent);
+}

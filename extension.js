@@ -86010,6 +86010,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     render,
     update,
     resizeHeads,
+    placedZoom: () => zoomCache,
     reveal,
     cull,
     // Every built edge group, in the DOM or parked (lenses paint parked edges too).
@@ -101277,8 +101278,9 @@ function buildBoardView(onFail, {
       vpStore.set(vpId, vp);
       if (vp.zoom !== edgesZoomAt) {
         const full = edgeZoomKey(vp.zoom) !== edgeZoomKey(edgesZoomAt);
+        const zoomedOut = vp.zoom < (Number.isFinite(edgesZoomAt) ? edgesZoomAt : Number(edgesR.placedZoom?.()) || 0);
         edgesZoomAt = vp.zoom;
-        const heads = full && zoomHeadsOn() && !dirty.all && !dirty.structural ? edgesR.resizeHeads?.(vp.zoom, size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null) : null;
+        const heads = full && zoomHeadsOn() && zoomedOut && !dirty.all && !dirty.structural ? edgesR.resizeHeads?.(vp.zoom, size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null) : null;
         if (heads) {
           for (const uid of heads) dirty.edges.add(uid);
           for (const e2 of board2()?.edges.values() || []) if (e2.fromBlock || e2.toBlock) dirty.edges.add(e2.uid);

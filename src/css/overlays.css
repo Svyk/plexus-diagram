@@ -301,6 +301,12 @@
   opacity: 0.18;
 }
 
+/* PERF5-P3: search with no edge hit dims each layer once (edges.js setLayerDim). */
+.pxd-root .pxd-edges[data-pxd-search-dim],
+.pxd-root .pxd-labels[data-pxd-search-dim] {
+  opacity: 0.18;
+}
+
 .bp3-dark .pxd-root .pxd-quicklook,
 body.bt-theme-dark .pxd-root .pxd-quicklook,
 .rm-dark-theme .pxd-root .pxd-quicklook,

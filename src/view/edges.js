@@ -13,6 +13,7 @@ import { PALETTE, hexColor } from "../model/schema.js";
 import { highlightPill } from "../model/pdf-chips.js";
 import { whyTip } from "../model/why.js";
 import { paintSuggest } from "./suggest-lines.js";
+import { notedSpeedFlags } from "../settings.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const PAIR_OFFSET = 18;
@@ -1101,10 +1102,22 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   };
 
   // Focus mode: connections and derived links not fully inside `set` are dimmed. null clears.
+  // PERF5-P3: a search with no edge among its hits dims the edge and label layers with one attribute each. A class on
+  // every edge and label was 4,200 class changes on the first key of a 2,100-edge board (flag searchLayerDim).
+  const setLayerDim = (on) => {
+    for (const node of [svg, labelsLayer]) {
+      if (!node || typeof node.hasAttribute !== "function" || node.hasAttribute("data-pxd-search-dim") === on) continue;
+      if (on) node.setAttribute("data-pxd-search-dim", "");
+      else node.removeAttribute("data-pxd-search-dim");
+    }
+  };
+  const layerDim = () => Boolean(searchEdges) && searchEdges.size === 0 && notedSpeedFlags().searchLayerDim !== false;
   const applySearchClasses = () => {
+    const layer = layerDim();
+    setLayerDim(layer);
     for (const [uid, rec] of edgeEls) {
       const on = Boolean(searchEdges?.has(uid));
-      const dim = dimmed(rec) || (searchEdges ? !on : false);
+      const dim = dimmed(rec) || (searchEdges && !layer ? !on : false);
       rec.g.classList.toggle("pxd-edge--hit", on);
       rec.g.classList.toggle("pxd-edge--dim", dim);
       rec.label.classList.toggle("pxd-label--dim", dim);
@@ -1117,7 +1130,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   const setFocus = (set) => {
     focusSet = set && set.size !== undefined ? set : null;
     for (const rec of [...edgeEls.values(), ...linkEls.values()]) {
-      const dim = dimmed(rec) || (searchEdges ? !searchEdges.has(rec.g?.dataset?.uid) : false);
+      const dim = dimmed(rec) || (searchEdges && !layerDim() ? !searchEdges.has(rec.g?.dataset?.uid) : false);
       rec.g.classList.toggle("pxd-edge--dim", dim);
       rec.label.classList.toggle("pxd-label--dim", dim);
     }

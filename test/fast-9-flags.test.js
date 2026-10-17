@@ -69,6 +69,7 @@ const ALL_ON = {
   foldResets: true,
   peekPick: true,
   editFocus: true,
+  childDrop: true,
 };
 
 test("the panel has no speed-flags control, and bad JSON leaves the defaults (every flag on but edgeFingerprint, overviewCanvas, idlePark, quietBodies and sliceGrow)", () => {

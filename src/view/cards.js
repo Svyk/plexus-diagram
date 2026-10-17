@@ -87,6 +87,7 @@ const BOARD_KEY_DEPTH = 3;
 const BOARD_KEY_NODES = 400;
 const KID_ROW_H = 22;
 const PEEK_DELAY_MS = 400;
+const DROP_PEEK_MS = 500;
 const PEEK_TOP = 12;
 const PEEK_SUB = 4;
 const PEEK_TEXT_MAX = 140;
@@ -2995,6 +2996,48 @@ export function createItemRenderer({
     remountCard(rec);
     if (item) bumpRevealHeight(rec, item);
     return rowReady(rec, blockUid);
+  };
+  // UX4 B2: an arrow held over a folded card with children unfolds it after a short wait, session-only (the zoom-chip
+  // reveal), so a child row can take the drop. Leaving the card, or ending the drag, folds it back.
+  let dropReveal = null; // { uid, timer, shown }
+  const unrevealDrop = (entry) => {
+    entry.timer?.();
+    entry.timer = null;
+    if (!entry.shown || cardFocus.has(entry.uid)) return;
+    revealCards.delete(entry.uid);
+    const rec = shells.get(entry.uid);
+    if (rec && !disposed) {
+      remountCard(rec);
+      settleReveal(rec, entry.uid);
+    }
+  };
+  const dropRevealOn = (uid) => {
+    const want = uid && speedOf().childDrop !== false ? uid : null;
+    if ((dropReveal?.uid || null) === want) return;
+    if (dropReveal) {
+      const prev = dropReveal;
+      dropReveal = null;
+      unrevealDrop(prev);
+    }
+    if (!want || disposed) return;
+    const item = lastBoard?.items.get(want);
+    const rec = shells.get(want);
+    if (!item || !rec || lod !== "detail" || editing?.uid === want || !needsRevealRoom(item) || revealing(item)) return;
+    const count = item.kind === "note" ? visibleKids(item.content).length : Number(rec.kidCount) || 0;
+    if (count <= 0) return;
+    const entry = { uid: want, timer: null, shown: false };
+    entry.timer = later(() => {
+      entry.timer = null;
+      if (dropReveal !== entry || disposed) return;
+      const live = lastBoard?.items.get(want);
+      if (!live || editing?.uid === want) return;
+      entry.shown = true;
+      revealCards.add(want);
+      rec.el.classList.remove("pxd-item--collapsed");
+      remountCard(rec);
+      bumpRevealHeight(rec, live);
+    }, DROP_PEEK_MS);
+    dropReveal = entry;
   };
   // The card block itself has no child row. A child waits until its row is actually in the DOM.
   const unfoldForFocus = (cardUid, blockUid) => {
@@ -7438,6 +7481,7 @@ export function createItemRenderer({
     setFocus,
     setSelection,
     setHover,
+    dropRevealOn,
     enterEdit,
     exitEdit,
     editingUid: () => editing?.uid ?? null,

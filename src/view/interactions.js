@@ -292,8 +292,10 @@ export function createInteractions({ actions, settings } = {}) {
     if (!item) { call("clearBlockTarget"); return null; }
     const text = String(item.string ?? "").trim();
     const refCard = /^\(\(([\w-]+)\)\)$/.test(text) || /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i.test(text);
+    // UX4 B2: a note card with children takes an arrow end on a child row (board-view checks the childDrop flag).
+    const noteKids = item.kind === "note" && Array.isArray(item.content) && item.content.length > 0;
     const marked = item.kind === "page" || item.kind === "image" || item.kind === "pdf" || item.kind === "block"
-      || refCard || Boolean(tableUidOf(item));
+      || refCard || noteKids || Boolean(tableUidOf(item));
     if (!marked) { call("clearBlockTarget"); return null; }
     const bt = call("blockTarget", ev.client || null);
     return bt && bt.uid === uid ? bt : null;

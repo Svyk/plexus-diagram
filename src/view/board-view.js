@@ -8191,6 +8191,8 @@ function buildBoardView(onFail, {
     },
     onHover: (uid) => {
       itemsR.setHover(uid);
+      const kind = ctl.gestureKind?.();
+      itemsR.dropRevealOn?.(kind === "connect" || kind === "edge-end" ? uid : null);
       pdfHoverUid = typeof uid === "string" ? uid : "";
       syncPdfFlip();
     },
@@ -8556,7 +8558,16 @@ function buildBoardView(onFail, {
         targetEl.classList.add(targetCls);
         return { uid, row: region || pin, header: false, region: Boolean(region) };
       }
-      if (!card.classList.contains("pxd-item--page")) return null;
+      if (!card.classList.contains("pxd-item--page")) {
+        // UX4 B2: a child row of a note or block card takes the arrow end. Anywhere else on the card is the whole card.
+        if (notedSpeedFlags().childDrop === false) return null;
+        const kid = node.closest?.("[data-pxd-row]");
+        if (!kid || !card.contains(kid) || kid.closest?.(".pxd-item__editor")) return null;
+        targetEl = kid;
+        targetCls = "pxd-row--target";
+        targetEl.classList.add(targetCls);
+        return { uid, row: kid.getAttribute?.("data-pxd-row") || kid.dataset?.pxdRow || null, header: false };
+      }
       const row = node.closest?.("[data-pxd-row]");
       const header = row ? null : node.closest?.(".pxd-item__header");
       targetEl = row || header || null;

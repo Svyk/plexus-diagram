@@ -346,3 +346,81 @@ test("B1: editing a card focused on a child edits that block (Roam's zoom): the 
     f.restore();
   }
 });
+
+// ---- B2: drop an arrow onto a child of a folded card.
+function dragArrow(f, { from, to, waitMs = 0 }) {
+  const port = f.view.root.querySelector(`[data-uid=${from}] .pxd-port`);
+  assert.ok(port, "the source card has a connect port");
+  const base = { pointerId: 1, isPrimary: true, pointerType: "mouse", button: 0 };
+  f.stub.dispatch(port, "pointerdown", { ...base, buttons: 1, clientX: 660, clientY: 60 });
+  return {
+    move: (x, y) => f.stub.dispatch(f.stub.document, "pointermove", { ...base, buttons: 1, clientX: x, clientY: y }),
+    up: (x, y) => f.stub.dispatch(f.stub.document, "pointerup", { ...base, buttons: 0, clientX: x, clientY: y }),
+  };
+}
+
+test("B2: an arrow held over a folded card with children unfolds it (no write); dropping on a child row connects to that block; the card folds back", async () => {
+  const f = mount();
+  try {
+    await show(f);
+    const card = f.view.root.querySelector("[data-uid=cardTT001]");
+    const h = card.style.height;
+    // The element under the pointer: the Todd Zenger row once it exists, else the card body.
+    f.stub.document.elementsFromPoint = () => {
+      const row = card.querySelector("[data-pxd-row=kidZ00001] .pxd-block__text");
+      return row ? [row, card] : [card.querySelector(".pxd-item__body") || card, card];
+    };
+    const g = dragArrow(f, { from: "cardSR001" });
+    g.move(500, 60);
+    g.move(100, 60);
+    assert.deepEqual(rowUids(card), [], "no unfold before the hover wait");
+    await tick(560);
+    f.stub.flushFrames();
+    assert.deepEqual(rowUids(card), ["kidT00001", "kidZ00001", "kidX00001", "kidD00001", "kidH00001"], "the hover unfolds the card");
+    assert.equal(f.mutations.length, 0, "unfold on hover writes nothing");
+    g.move(100, 62);
+    assert.equal(card.querySelector("[data-pxd-row=kidZ00001]").classList.contains("pxd-row--target"), true, "the row under the pointer is the drop target");
+    g.up(100, 62);
+    await tick();
+    const adds = f.mutations.filter((m) => m[0] === "addEdge");
+    assert.equal(adds.length, 1);
+    assert.equal(adds[0][1].from, "cardSR001");
+    assert.equal(adds[0][1].to, "cardTT001");
+    assert.equal(adds[0][1].toBlock, "kidZ00001", "the arrow ends on the child block");
+    await show(f);
+    assert.deepEqual(rowUids(card), [], "the card folds back after the drop");
+    assert.equal(card.style.height, h);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("B2: leaving the card without dropping folds it back; dropping on the card's own text keeps the whole-card arrow", async () => {
+  const f = mount();
+  try {
+    await show(f);
+    const card = f.view.root.querySelector("[data-uid=cardTT001]");
+    f.stub.document.elementsFromPoint = () => [card.querySelector(".pxd-item__string") || card, card];
+    const g = dragArrow(f, { from: "cardSR001" });
+    g.move(100, 60);
+    await tick(560);
+    f.stub.flushFrames();
+    assert.equal(rowUids(card).length, 5);
+    g.move(330, 300);
+    f.stub.flushFrames();
+    assert.deepEqual(rowUids(card), [], "leaving the hover refolds");
+    g.move(100, 20);
+    await tick(560);
+    g.up(100, 20);
+    await tick();
+    const adds = f.mutations.filter((m) => m[0] === "addEdge");
+    assert.equal(adds.length, 1);
+    assert.equal(adds[0][1].to, "cardTT001");
+    assert.equal(adds[0][1].toBlock, undefined);
+    assert.equal(f.mutations.filter((m) => m[0] !== "addEdge").length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});

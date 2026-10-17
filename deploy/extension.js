@@ -20074,14 +20074,15 @@ function focusOpenBlock(records, blockUid3, parentOf, pageUidOf) {
   }
   return hit;
 }
-var KIDS_H_CAP, PEEK_HOVER_MS, PEEK_LEAVE_MS, PEEK_ANIM_MS, CHILD_GROW_H, eachItem, nodeRead, pageUidMemo, pageTargetUid, cardForParent;
+var KIDS_H_CAP, PEEK_HOVER_MS, PEEK_LEAVE_MS, PEEK_ANIM_MS, CHILD_ROW_H, CHILD_GROW_H, eachItem, nodeRead, pageUidMemo, pageTargetUid, cardForParent;
 var init_card_children = __esm({
   "src/model/card-children.js"() {
     KIDS_H_CAP = 900;
     PEEK_HOVER_MS = 800;
     PEEK_LEAVE_MS = 400;
     PEEK_ANIM_MS = 200;
-    CHILD_GROW_H = 30;
+    CHILD_ROW_H = 29;
+    CHILD_GROW_H = CHILD_ROW_H;
     eachItem = (items) => {
       if (!items) return [];
       if (typeof items.values === "function") return [...items.values()];

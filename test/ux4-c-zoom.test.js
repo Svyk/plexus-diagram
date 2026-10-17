@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { mountBig, settledIn } from "./fixtures/big-mount.js";
-import { FS_COVER_CLASS } from "../src/view/fullscreen.js";
+import { applyFullscreenChrome, FS_COVER_CLASS, holdFsCover } from "../src/view/fullscreen.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const css = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
@@ -51,28 +51,28 @@ test("C2: the cover rule hides the article and keeps the mounts visible; no :has
   for (const line of css.split("\n")) if (line.includes(FS_COVER_CLASS)) assert.ok(!line.includes(":has("), line);
 });
 
-test("C2: a fullscreen board disposed on its own zoomed route keeps the cover through the remount gap; a route change drops it", async () => {
+test("C2: a held cover outlives the fullscreen chrome until the hold is dropped; a new fullscreen board takes it over", async () => {
   const m = mountBig({ x: 0, y: 0, zoom: 0.3 }, { fullscreen: true });
-  const body = m.stub.document.body;
-  const win = m.stub.document.defaultView;
+  const doc = m.stub.document;
+  const body = doc.body;
   try {
     await settledIn(m);
     assert.ok(body.classList.contains(FS_COVER_CLASS));
-    win.location.hash = `#/app/Svy/page/${m.board.uid}`;
-    m.view.dispose();
-    assert.ok(body.classList.contains(FS_COVER_CLASS), "held for the remount");
+    holdFsCover(doc, true);
+    applyFullscreenChrome(m.mountEl, false, doc);
     assert.ok(!body.classList.contains("pxd-has-fullscreen"));
-    m.stub.flushTimers();
-    assert.ok(!body.classList.contains(FS_COVER_CLASS), "dropped when no board came back");
+    assert.ok(body.classList.contains(FS_COVER_CLASS), "held through the remount gap");
+    applyFullscreenChrome(m.mountEl, true, doc);
+    holdFsCover(doc, false);
+    assert.ok(body.classList.contains(FS_COVER_CLASS), "a fullscreen board is back: the cover stays");
+    applyFullscreenChrome(m.mountEl, false, doc);
+    assert.ok(!body.classList.contains(FS_COVER_CLASS), "its hold was taken over, so leaving fullscreen drops it");
+    applyFullscreenChrome(m.mountEl, true, doc);
+    holdFsCover(doc, true);
+    applyFullscreenChrome(m.mountEl, false, doc);
+    holdFsCover(doc, false);
+    assert.ok(!body.classList.contains(FS_COVER_CLASS), "a dropped hold with no fullscreen board uncovers");
   } finally { m.done(); }
-  const n = mountBig({ x: 0, y: 0, zoom: 0.3 }, { fullscreen: true });
-  try {
-    await settledIn(n);
-    const w = n.stub.document.defaultView;
-    w.location.hash = "#/app/Svy/page/someOtherPage";
-    n.view.dispose();
-    assert.ok(!n.stub.document.body.classList.contains(FS_COVER_CLASS), "another route: no hold");
-  } finally { n.done(); }
 });
 
 test("C2: fsCover off adds no cover (3.36.0)", async () => {

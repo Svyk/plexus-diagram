@@ -624,3 +624,30 @@ test("A1 fix: display row min-height is the same declaration as Roam's editor ro
   assert.equal(CHILD_ROW_H, pitch);
   assert.equal(CHILD_GROW_H, pitch);
 });
+
+test("A1 fix 2: the card's own string is a full row, and the editor row box scales with the zoom (29 x z on screen)", () => {
+  // Depth 0: display top row has the same box as a child row.
+  const top = `${D} > .pxd-item__body > .pxd-item__string`;
+  assert.equal(decl(top, "min-height"), "var(--pxd-ol-row)");
+  assert.equal(decl(top, "padding-top"), "var(--pxd-ol-pad)");
+  assert.equal(decl(top, "padding-bottom"), "var(--pxd-ol-pad)");
+  assert.equal(decl(top, "line-height"), "var(--pxd-ol-lh)");
+  assert.equal(px(decl(top, "min-height")), 29);
+  // Editor row: every inactive row (depth 0 included) is Roam's .roam-block, px parts multiplied by the zoom.
+  const row = `${E} .roam-block`;
+  for (const z of [1, 0.69, 1.5]) {
+    const font = 14 * z;
+    const minH = px(decl(row, "min-height"), z, font);
+    assert.ok(Math.abs(minH - 29 * z) < 1e-9, `zoom ${z}: editor row ${minH} vs ${29 * z}`);
+    assert.ok(Math.abs(px(decl(row, "padding-top"), z, font) - 4 * z) < 1e-9);
+    assert.ok(Math.abs(px(decl(row, "padding-bottom"), z, font) - 4 * z) < 1e-9);
+    // Bullet offset inside the row scales the same way.
+    const controls = `${E} .rm-block-children .rm-block-main > :is(.controls, .rm-block__controls)`;
+    assert.ok(Math.abs(px(decl(controls, "margin-top"), z, font) - 4 * z) < 1e-9);
+  }
+  // At zoom 0.69 the display row is 29 world px, drawn at 0.69 by the board transform: 20.01 on screen.
+  assert.ok(Math.abs(px(decl(row, "min-height"), 0.69, 14 * 0.69) - 29 * 0.69) < 1e-9);
+  assert.ok(Math.abs(29 * 0.69 - 20.01) < 1e-9);
+  // Same top-of-row y at every depth: row tops are equal when the box (padding + min-height) is.
+  for (const d of [0, 1, 2, 3]) assert.equal(d * px(decl(top, "min-height")), d * 29);
+});

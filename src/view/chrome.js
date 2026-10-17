@@ -1177,10 +1177,16 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   searchInput.setAttribute("aria-label", "Search this board");
   searchInput.placeholder = "Search this board…";
   searchInput.setAttribute("placeholder", "Search this board…");
-  const searchCount = el("span", "pxd-search__count", search, "");
+  const searchCount = el("span", "pxd-search__count", search);
+  // PERF5-P3: the count changes on every key. Replacing its text node is a child-list change inside the board, and
+  // Roam's :has() anchors above the board then restyle every element with an inline style (every shell). Setting the
+  // one text node's own text is a character-data change, which :has() does not track.
+  const countText = doc.createTextNode("");
+  searchCount.append(countText);
+  const setCount = (text) => { if (countText.textContent !== text) countText.textContent = text; };
   listen(searchInput, "input", () => {
     const n = on.searchFilter?.(searchInput.value || "") ?? 0;
-    searchCount.textContent = searchInput.value ? `${n}` : "";
+    setCount(searchInput.value ? `${n}` : "");
   });
   listen(searchInput, "keydown", (event) => {
     event.stopPropagation();
@@ -1197,7 +1203,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     close() {
       search.style.display = "none";
       searchInput.value = "";
-      searchCount.textContent = "";
+      setCount("");
       on.searchFilter?.("");
       on.searchClosed?.();
     },

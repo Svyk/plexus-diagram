@@ -330,6 +330,8 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
     },
     querySelector(sel) { return document.body.querySelector(sel); },
     querySelectorAll(sel) { return document.body.querySelectorAll(sel); },
+    // A browser keeps this collection live and cached until the DOM changes; the stub walks each call.
+    getElementsByClassName(name) { return document.body.querySelectorAll(`.${name}`); },
     elementsFromPoint: null,
     activeElement: null,
     contains(node) { return document.body.contains(node) || node === document.body; },

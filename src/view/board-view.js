@@ -12,6 +12,7 @@ import { sharedBgBudget } from "../bg-budget.js";
 import { createHitShield } from "./hit-shield.js";
 import { createGestureUnderlay } from "./gesture-underlay.js";
 import { sharedTaskProbe } from "../long-tasks.js";
+import { createInputProfile } from "../input-profile.js";
 import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, readPlexus, semanticRef, plainText } from "../model/schema.js";
 import { TABLE_SIZE, keyGate, ownershipOf, tablePointerTarget } from "../model/roam-table.js";
 import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../model/drawing-card.js";
@@ -1298,6 +1299,7 @@ function buildBoardView(onFail, {
   let size = { width: 0, height: 0 };
   let rootRect = { left: 0, top: 0, width: 0, height: 0 };
   let disposed = false;
+  let inputProfile = null;
   let disposing = false;
   let released = false;
   let gesturing = false;
@@ -4537,16 +4539,33 @@ function buildBoardView(onFail, {
   const RESUME_SLICE_SHELLS = 24;
   const SLICE_LONG_MS = 50;
   const SLICE_SHORT_MS = 24;
+  // PERF5-P4 (speed flag sliceGrow): live, most of a long slice frame is a fixed cost of any frame that attaches into the
+  // board (Roam's :has() anchors restyle every inline-styled element: QA5 zoom-out settle 36-40 tasks / 5.5 s with
+  // 2-8 ms of Plexus each). Halving there doubles the frames that pay it. A long frame in which the slice's own script
+  // was under a quarter of it doubles the budget instead (up to SLICE_GROW_MAX, the script budget scaled with it); a
+  // frame that grew with the slice (1.6x the last one after a bigger slice) still halves it.
+  const SLICE_GROW_MAX = 384;
+  const SLICE_MS_MAX = 40;
   let sliceShells = SETTLE_SHELLS;
   let sliceAt = 0;
+  let sliceJs = 0;
+  let lastGap = 0;
+  let lastShells = 0;
   const sliceLog = [];
   const adaptiveOn = () => { try { return notedSpeedFlags().adaptiveSlices !== false; } catch { return false; } };
+  const growOn = () => { try { return notedSpeedFlags().sliceGrow !== false; } catch { return false; } };
   const sliceEdgeBudget = () => (adaptiveOn() ? Math.round((SETTLE_EDGES * sliceShells) / SETTLE_SHELLS) : SETTLE_EDGES);
+  const sliceMs = () => (adaptiveOn() && growOn() && sliceShells > SETTLE_SHELLS ? Math.min(SLICE_MS_MAX, (SETTLE_SLICE_MS * sliceShells) / SETTLE_SHELLS) : SETTLE_SLICE_MS);
   const adaptSlice = () => {
     const gap = sliceAt ? perfNow() - sliceAt : 0;
+    const used = sliceShells;
     if (!adaptiveOn()) sliceShells = SETTLE_SHELLS;
-    else if (gap > SLICE_LONG_MS) sliceShells = Math.max(SLICE_MIN_SHELLS, Math.floor(sliceShells / 2));
-    else if (gap && gap < SLICE_SHORT_MS) sliceShells = Math.min(SETTLE_SHELLS, sliceShells * 2);
+    else if (gap > SLICE_LONG_MS) {
+      const scaled = lastGap > 0 && used > lastShells && gap >= lastGap * 1.6;
+      if (growOn() && !scaled && sliceJs * 4 < gap) sliceShells = Math.min(SLICE_GROW_MAX, sliceShells * 2);
+      else sliceShells = Math.max(SLICE_MIN_SHELLS, Math.floor(sliceShells / 2));
+    } else if (gap && gap < SLICE_SHORT_MS && sliceShells < SETTLE_SHELLS) sliceShells = Math.min(SETTLE_SHELLS, sliceShells * 2);
+    if (gap) { lastGap = gap; lastShells = used; }
     sliceLog.push(sliceShells);
     if (sliceLog.length > 60) sliceLog.shift();
   };
@@ -4626,14 +4645,17 @@ function buildBoardView(onFail, {
     if (!slicing) sliceShells = start || SETTLE_SHELLS;
     if (!adaptiveOn()) sliceShells = SETTLE_SHELLS;
     sliceAt = 0;
+    sliceJs = 0;
+    lastGap = 0;
+    lastShells = 0;
     if (sliceWanted()) {
       sliceLog.push(sliceShells);
       if (sliceLog.length > 60) sliceLog.shift();
-      itemsR.sliceAttach?.({ budget: sliceShells, ms: SETTLE_SLICE_MS });
+      itemsR.sliceAttach?.({ budget: sliceShells, ms: sliceMs() });
     }
     else endSlice();
   };
-  const sliceEdges = (rect) => (rect ? edgesR.cull?.(rect, { budget: sliceEdgeBudget(), ms: SETTLE_SLICE_MS }) || 0 : 0);
+  const sliceEdges = (rect) => (rect ? edgesR.cull?.(rect, { budget: sliceEdgeBudget(), ms: sliceMs() }) || 0 : 0);
   const sliceStep = () => {
     sliceFrame = null;
     if (!slicing) return;
@@ -4641,9 +4663,11 @@ function buildBoardView(onFail, {
     if (gesturing || wheelLayer) { cancelSlice(); return; }
     const rect = visibleWorldRect(vp, size, ATTACH_MARGIN);
     adaptSlice();
-    if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, sliceShells, SETTLE_SLICE_MS);
+    const t0 = perfNow();
+    if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, sliceShells, sliceMs());
     const edgesLeft = sliceEdges(rect);
     sliceAt = perfNow();
+    sliceJs = sliceAt - t0;
     if (edgesLeft || (itemsR.attachLeft?.() || 0) > 0) { sliceFrame = timers.frame(sliceStep, "slice"); return; }
     endSlice();
     releaseUnderlay();
@@ -7846,7 +7870,10 @@ function buildBoardView(onFail, {
     }
     paintSearch(board(), searchMatches, searchQuery);
     const countEl = root.querySelector(".pxd-search__count");
-    if (countEl) countEl.textContent = `${searchIndex + 1}/${searchMatches.length}`;
+    // PERF5-P3: edit the count's text node in place (a child-list change restyles every shell under Roam's :has()).
+    const label = `${searchIndex + 1}/${searchMatches.length}`;
+    const node = countEl?.firstChild;
+    if (node?.nodeType === 3) { if (node.textContent !== label) node.textContent = label; } else if (countEl) countEl.textContent = label;
   };
 
   // ------------------------------------------------------------ editing
@@ -10872,6 +10899,12 @@ function buildBoardView(onFail, {
     longTasks() {
       return sharedTaskProbe().longTasks();
     },
+    // PERF5-P1 probe: first call arms Event Timing + Long Animation Frames, later calls return per-key delay / handlers /
+    // presentation, slow frames with their render and style+layout phases, and scripts by source file (input-profile.js).
+    typingProfile(opts) {
+      if (!inputProfile) inputProfile = createInputProfile({ win: globalThis, spans: () => sharedTaskProbe().spans() });
+      return inputProfile.read(opts);
+    },
     // Card bodies that took 50 ms or more to mount ({ uid, kind, ms, at }), to name a long "content" task.
     slowMounts() {
       return itemsR.slowMounts?.() || [];
@@ -11122,6 +11155,8 @@ function buildBoardView(onFail, {
       if (disposing) return;
       disposing = true;
       disposed = true;
+      inputProfile?.dispose();
+      inputProfile = null;
       try { sharedBgBudget().hold(bgHoldKey, false); } catch { /* budget */ }
       if (pdfTitleJob) { const stop = pdfTitleJob; pdfTitleJob = null; stop(); }
       if (coverJob) { const stop = coverJob; coverJob = null; stop(); }

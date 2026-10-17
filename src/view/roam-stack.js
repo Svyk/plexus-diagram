@@ -9,6 +9,8 @@
 // The body observer reads added and removed nodes only, and only while
 // body.pxd-has-board is set.
 
+import { notedSpeedFlags } from "../settings.js";
+
 const HOSTS = [
   ".bp3-portal",
   ".bp3-overlay",
@@ -27,9 +29,17 @@ const raised = new Map();
 let hostCard = new WeakMap();
 const liveHosts = new Set();
 
+// UX4 B4: Roam wraps every active block textarea in .rm-autocomplete__wrapper, so it is not an overlay. Lifting the
+// card on it unclipped every page-card editor for the whole edit, and a long page painted over the board. The
+// results list inside it is the overlay. Off (flag editClip): the 3.35.0 host list.
+const wrapperIsHost = () => {
+  try { return notedSpeedFlags().editClip === false; } catch { return false; }
+};
+
 const isHost = (node) => {
   if (!node || node.nodeType !== 1 || typeof node.matches !== "function") return false;
   for (const sel of HOSTS) {
+    if (sel === ".rm-autocomplete__wrapper" && !wrapperIsHost()) continue;
     try { if (node.matches(sel)) return true; } catch { /* selector */ }
   }
   return false;
@@ -96,6 +106,7 @@ const hostsInside = (node) => {
   if (!node || typeof node.querySelectorAll !== "function") return [];
   const out = [];
   for (const sel of HOSTS) {
+    if (sel === ".rm-autocomplete__wrapper" && !wrapperIsHost()) continue;
     let list = [];
     try { list = node.querySelectorAll(sel) || []; } catch { list = []; }
     for (const hit of list) out.push(hit);

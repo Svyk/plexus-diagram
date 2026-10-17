@@ -6950,6 +6950,35 @@ export function createItemRenderer({
       for (const type of ["click", "dblclick"]) editor.addEventListener(type, onEditBullet, true);
       editor.__pxdBulletOff = () => { for (const type of ["click", "dblclick"]) editor.removeEventListener(type, onEditBullet, true); };
     }
+    // UX4 B4: Roam scrolls the window to its caret, not the card. Keep the caret row inside the card's own scroller
+    // (the page editor, or a note card's body) while typing and moving between blocks.
+    if (speedOf().editClip !== false) {
+      let caretFrame = false;
+      const keepCaret = () => {
+        caretFrame = false;
+        if (editing?.editor !== editor) return;
+        const active = doc.activeElement;
+        if (!active || !editor.contains?.(active)) return;
+        const scroller = pageEdit ? editor : rec.body;
+        const box = scroller?.getBoundingClientRect?.();
+        const row = active.getBoundingClientRect?.();
+        if (!box || !row || !(box.height > 0)) return;
+        const z = zoomCache || 1;
+        const pad = 8;
+        let delta = 0;
+        if (row.bottom > box.bottom - pad) delta = Math.min(row.bottom - box.bottom + pad, row.top - box.top - pad);
+        else if (row.top < box.top + pad) delta = row.top - box.top - pad;
+        if (!delta) return;
+        scroller.scrollTop = Math.max(0, (Number(scroller.scrollTop) || 0) + delta / z);
+      };
+      const onCaretKey = () => {
+        if (caretFrame) return;
+        caretFrame = true;
+        frameLater(keepCaret);
+      };
+      for (const type of ["input", "keyup"]) editor.addEventListener(type, onCaretKey);
+      editor.__pxdCaretOff = () => { for (const type of ["input", "keyup"]) editor.removeEventListener(type, onCaretKey); };
+    }
     // Rule 19.1: stop pointer/wheel at the overlay boundary BEFORE the synthetic focus click.
     for (const type of EDITOR_STOPPED) editor.addEventListener(type, stopEvent);
     editing = { uid, rec, editor, targetUid, focusUid, item, ready: false, fadeCancel: null, releaseCancel: null };
@@ -7125,6 +7154,7 @@ export function createItemRenderer({
     const contentH = Number(editor.scrollHeight) || 0;
     for (const type of EDITOR_STOPPED) editor.removeEventListener(type, stopEvent);
     editor.__pxdBulletOff?.();
+    editor.__pxdCaretOff?.();
     dropStaticLayer(rec);
     for (const node of rec.headRoots || []) {
       try { host?.unmount?.(node); } catch { /* not a roam root */ }

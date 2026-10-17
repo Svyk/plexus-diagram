@@ -62,7 +62,10 @@ const noteBodyMs = (uid, ms) => {
 const UNMOUNT_AFTER_MS = UNMOUNT_GRACE_MS;
 const HYDRATE_CAP_MS = 900;
 const CONTENT_LIMIT = 12;
-const CONTENT_DEPTH = 2;
+// UX3 A1: rows show to the depth Roam shows (open blocks only). CONTENT_LIMIT still caps the rows; key and poster
+// walks stop after CONTENT_NODES blocks.
+const CONTENT_DEPTH = 32;
+const CONTENT_NODES = 64;
 const OUTLINE_CAP = 300;
 const OUTLINE_FETCH = 2000;
 const PAGE_WATCH_MAX = 8;
@@ -436,7 +439,7 @@ function kidRowsOf(list, depth = 1, budget = { n: 0 }) {
     if (budget.n >= CONTENT_LIMIT) break;
     budget.n += 1;
     const kids = childKids(c);
-    if (kids.length && depth < CONTENT_DEPTH) kidRowsOf(kids, depth + 1, budget);
+    if (kids.length && childIsOpen(c) && depth < CONTENT_DEPTH) kidRowsOf(kids, depth + 1, budget);
   }
   return budget.n;
 }
@@ -475,9 +478,16 @@ function cardContentKey(item, live = false, pdfOpen = false, chipSig = "", cover
     walkBoard(item.content || [], 1);
     return parts.join("\u0001");
   }
+  let nodes = CONTENT_NODES;
   const walk = (kids, depth) => {
     if (depth > CONTENT_DEPTH) return;
-    for (const c of kids) { parts.push(childString(c), childIsOpen(c) ? "o" : "x"); walk(childKids(c), depth + 1); }
+    parts.push(`#${kids.length}`);
+    for (const c of kids) {
+      if (nodes-- <= 0) return;
+      const open = childIsOpen(c);
+      parts.push(childString(c), open ? "o" : "x");
+      if (open) walk(childKids(c), depth + 1);
+    }
   };
   walk(item.content || [], 1);
   return parts.join("\u0001");
@@ -1036,9 +1046,11 @@ export function createItemRenderer({
       try { text = host?.blockString?.(item.target.uid) || ""; } catch { text = ""; }
       pushString(text, item.target.uid);
     } else pushString(item.string || "", item.uid);
+    let nodes = CONTENT_NODES;
     const walk = (list, depth) => {
       if (!Array.isArray(list) || depth > CONTENT_DEPTH) return;
       for (const child of list) {
+        if (nodes-- <= 0) return;
         pushString(childString(child), childUid(child) || item.uid);
         walk(childKids(child), depth + 1);
       }
@@ -1792,6 +1804,7 @@ export function createItemRenderer({
     if (item.type !== "section") {
       if (isKidsCard(item)) {
         cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
+        if (speedOf().roamOutline !== false) cls.push("pxd-item--ol");
         const kidsOn = Boolean(item.kids);
         if (rec.kidsOn !== undefined && rec.kidsOn !== kidsOn && !motionInstant()) {
           cls.push("pxd-item--kids-anim");
@@ -2728,6 +2741,7 @@ export function createItemRenderer({
         continue;
       }
       const row = el("div", "pxd-block pxd-outline", parent);
+      row.classList.toggle("pxd-outline--closed", visibleKids(childKids(b)).length > 0 && !childIsOpen(b));
       row.dataset.uid = rowUid;
       row.setAttribute("data-uid", rowUid);
       row.setAttribute("data-pxd-row", rowUid);
@@ -2749,6 +2763,7 @@ export function createItemRenderer({
           caret.setAttribute("aria-expanded", next ? "true" : "false");
           caret.textContent = next ? "\u25BE" : "\u25B8";
           caret.setAttribute("aria-label", next ? "Fold" : "Unfold");
+          row.classList.toggle("pxd-outline--closed", !next);
           let wrap = null;
           for (const child of row.children || []) if (child.classList?.contains("pxd-block__children")) wrap = child;
           if (wrap && next && wrap.getAttribute("data-pxd-filled") !== "1") {

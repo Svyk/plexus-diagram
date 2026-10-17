@@ -1,0 +1,202 @@
+/* UX3 A1. Note and block cards draw their children with Roam's outline geometry, in display and in edit, so entering
+   edit does not move a row. One set of numbers for both: a 16px bullet box with a 5px dot, 4px to the text, 20px
+   indent per level (a child's bullet sits under its parent's text), a 1px thread line under the parent's bullet, and
+   the fold caret hanging left of the bullet. The card's own block has no bullet in either mode.
+   The note editor is laid out at screen size under a 1/zoom counter-scale (editor-scale.js), so every editor number
+   is multiplied by --pxd-ed-z. Gated by .pxd-item--ol (speed flag roamOutline). */
+
+.pxd-root .pxd-item.pxd-item--ol {
+  --pxd-ol-bullet: 16px;
+  --pxd-ol-gap: 4px;
+  --pxd-ol-indent: 20px;
+  --pxd-ol-caret: 12px;
+  --pxd-ol-row: 22px;
+  --pxd-ol-dot: 5px;
+  --pxd-ol-line: 1px;
+}
+
+/* Display rows. */
+.pxd-root .pxd-item.pxd-item--ol .pxd-block.pxd-outline {
+  margin: 0;
+}
+
+.pxd-root .pxd-item.pxd-item--ol .pxd-outline__line {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  min-height: var(--pxd-ol-row);
+}
+
+.pxd-root .pxd-item.pxd-item--ol .pxd-outline__bullet {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 var(--pxd-ol-bullet);
+  width: var(--pxd-ol-bullet);
+  height: 1.4em;
+  margin-right: var(--pxd-ol-gap);
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.pxd-root .pxd-item.pxd-item--ol .pxd-outline__bullet::before {
+  width: var(--pxd-ol-dot);
+  height: var(--pxd-ol-dot);
+}
+
+/* Roam's closed bullet: the dot with a soft ring. */
+.pxd-root .pxd-item.pxd-item--ol .pxd-outline--closed > .pxd-outline__line > .pxd-outline__bullet::before {
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 30%, transparent);
+}
+
+.pxd-root .pxd-item.pxd-item--ol .pxd-outline__caret {
+  position: absolute;
+  left: calc(-1 * var(--pxd-ol-caret));
+  top: 0;
+  width: var(--pxd-ol-caret);
+  height: 1.4em;
+  font-size: 10px;
+  line-height: 1.4em;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+.pxd-root .pxd-item.pxd-item--ol .pxd-outline__line:hover > .pxd-outline__caret,
+.pxd-root .pxd-item.pxd-item--ol .pxd-outline__caret:focus-visible {
+  opacity: 1;
+}
+
+.pxd-root .pxd-item.pxd-item--ol .pxd-outline__line > .pxd-block__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.4;
+}
+
+.pxd-root .pxd-item.pxd-item--ol .pxd-block__children {
+  position: relative;
+  margin-left: var(--pxd-ol-indent);
+  padding-left: 0;
+  border-left: 0;
+}
+
+.pxd-root .pxd-item.pxd-item--ol .pxd-block__children::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--pxd-ol-bullet) / 2 - var(--pxd-ol-indent));
+  width: var(--pxd-ol-line);
+  background: var(--pxd-border);
+  pointer-events: none;
+}
+
+/* The Roam editor (host.renderBlock) on the same numbers. card-edit.css hides every .controls in a note editor;
+   children get theirs back here. */
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .roam-block-container {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) > .rm-api-render--block > .roam-block-container > .rm-block-main {
+  min-height: 0 !important;
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) > .rm-api-render--block > .roam-block-container > .rm-block-main > :is(.controls, .rm-block__controls) {
+  display: none !important;
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-children {
+  position: relative;
+  margin-top: 0 !important;
+  margin-right: 0 !important;
+  margin-bottom: 0 !important;
+  margin-left: calc(var(--pxd-ol-indent) * var(--pxd-ed-z, 1)) !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) > .rm-api-render--block > .roam-block-container > .rm-block-children {
+  margin-left: 0 !important;
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-children .rm-block-main {
+  position: relative;
+  min-height: calc(var(--pxd-ol-row) * var(--pxd-ed-z, 1)) !important;
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-children .rm-block-main > :is(.controls, .rm-block__controls) {
+  display: flex !important;
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 calc(var(--pxd-ol-bullet) * var(--pxd-ed-z, 1));
+  width: calc(var(--pxd-ol-bullet) * var(--pxd-ed-z, 1)) !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: calc(1.4em * var(--pxd-ed-z, 1));
+  margin-top: 0 !important;
+  margin-right: calc(var(--pxd-ol-gap) * var(--pxd-ed-z, 1)) !important;
+  margin-bottom: 0 !important;
+  margin-left: 0 !important;
+  padding: 0 !important;
+  font-size: inherit !important;
+  overflow: visible;
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-children .rm-block-main > :is(.controls, .rm-block__controls) :is(.block-expand, .rm-caret) {
+  position: absolute;
+  left: calc(-1 * var(--pxd-ol-caret) * var(--pxd-ed-z, 1));
+  top: 0;
+  width: calc(var(--pxd-ol-caret) * var(--pxd-ed-z, 1)) !important;
+  height: calc(1.4em * var(--pxd-ed-z, 1));
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-children .rm-bullet {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--pxd-ol-bullet) * var(--pxd-ed-z, 1)) !important;
+  min-width: 0 !important;
+  height: calc(1.4em * var(--pxd-ed-z, 1));
+  margin: 0 !important;
+  padding: 0 !important;
+  visibility: visible;
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-children .rm-bullet__inner {
+  width: calc(var(--pxd-ol-dot) * var(--pxd-ed-z, 1)) !important;
+  height: calc(var(--pxd-ol-dot) * var(--pxd-ed-z, 1)) !important;
+  margin: 0 !important;
+  border-radius: 50%;
+  background-color: var(--pxd-muted);
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-children > .rm-multibar {
+  position: absolute !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: calc((var(--pxd-ol-bullet) / 2 - var(--pxd-ol-indent)) * var(--pxd-ed-z, 1)) !important;
+  width: calc(var(--pxd-ol-line) * var(--pxd-ed-z, 1)) !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: var(--pxd-border) !important;
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) > .rm-api-render--block > .roam-block-container > .rm-block-children > .rm-multibar {
+  display: none !important;
+}
+
+/* The display text is 1.4 lines; at zoom 1 card-edit.css pins the editor to 19.5px. Off zoom 1 the counter-scale
+   writes an inline !important line-height (1.4 x font x zoom), which still wins. */
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing:not(.pxd-item--page):not(.pxd-item--text) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) :is(textarea.rm-block-input, textarea.rm-block__input, .rm-block__input, .rm-block__input--view) {
+  line-height: 1.4 !important;
+}

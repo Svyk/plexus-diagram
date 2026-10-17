@@ -10,6 +10,20 @@
 // rendered inside the card is left where it is.
 
 const MENU_SELECTOR = ".rm-autocomplete__results, .bp3-datepicker, .rm-date-picker";
+const MENU_CLASSES = ["rm-autocomplete__results", "bp3-datepicker", "rm-date-picker"];
+
+// PERF5-P2: the open menus, without a document walk on a steady frame. getElementsByClassName returns a live collection
+// the browser caches until the DOM changes, so an edit frame with no menu reads three lengths of 0. querySelectorAll walked
+// the whole Roam document every frame while a card was edited.
+const openMenus = (doc) => {
+  if (typeof doc?.getElementsByClassName !== "function") return [...(doc?.querySelectorAll?.(MENU_SELECTOR) || [])];
+  const out = [];
+  for (const name of MENU_CLASSES) {
+    const list = doc.getElementsByClassName(name);
+    for (let i = 0; i < (list?.length || 0); i += 1) if (!out.includes(list[i])) out.push(list[i]);
+  }
+  return out;
+};
 const claimed = new WeakSet();
 let menuSerial = 0;
 const menuIdentity = new WeakMap();
@@ -97,7 +111,7 @@ export function placeEditorMenus(doc, anchor) {
     placed += 1;
   };
 
-  for (const menu of doc.querySelectorAll?.(MENU_SELECTOR) || []) {
+  for (const menu of openMenus(doc)) {
     if (!menu || menu === anchor) continue;
     const pageMenu = typeof menu.matches === "function" && menu.matches(".rm-autocomplete__results");
     const inBoard = Boolean(menu.closest?.(".pxd-root"));
@@ -170,14 +184,16 @@ function menuToken(menu) {
 
 // Identity of the menus plus the anchor box. Style writes are not part of it,
 // so a pin we just applied does not look like a new menu on the next frame.
+// No menu: no anchor read either (a layout read in rAF every frame of an edit).
 function editorMenuSig(doc, anchor) {
-  const box = anchor.getBoundingClientRect?.() || {};
-  const n = (value) => Math.round(Number(value) || 0);
   let menus = "";
-  for (const menu of doc.querySelectorAll?.(MENU_SELECTOR) || []) {
+  for (const menu of openMenus(doc)) {
     if (!menu || menu === anchor) continue;
     menus += `${menuToken(menu)},`;
   }
+  if (!menus) return "";
+  const box = anchor.getBoundingClientRect?.() || {};
+  const n = (value) => Math.round(Number(value) || 0);
   return `${n(box.left)},${n(box.top)},${n(box.width)},${n(box.height)}|${menus}`;
 }
 

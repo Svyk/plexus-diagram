@@ -166,3 +166,46 @@ test("ED-4: a date picker trapped in the board stays in the board", () => {
     restore();
   }
 });
+
+// PERF5-P2: the menu loop runs every frame while a card is edited. It must not scan the document with
+// querySelectorAll or read the anchor's layout on a frame with no Roam menu open.
+test("P2: an edit frame with no Roam menu does no document querySelectorAll and no anchor layout read", async () => {
+  const { registerEditorMenus, nudgeEditorMenus } = await import("../src/view/editor-menus.js");
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const doc = stub.document;
+    const root = doc.createElement("div");
+    root.className = "pxd-root";
+    const textarea = doc.createElement("textarea");
+    textarea.className = "rm-block__input";
+    textarea._rect = box(100, 200, 180, 24);
+    root.append(textarea);
+    doc.body.append(root);
+    let qsa = 0;
+    let reads = 0;
+    const realQsa = doc.querySelectorAll;
+    doc.querySelectorAll = (sel) => { qsa += 1; return realQsa.call(doc, sel); };
+    const realRect = textarea.getBoundingClientRect;
+    textarea.getBoundingClientRect = () => { reads += 1; return realRect.call(textarea); };
+    const off = registerEditorMenus(doc, { root, anchor: () => textarea });
+    nudgeEditorMenus(doc);
+    for (let i = 0; i < 10; i += 1) stub.flushFrames();
+    assert.equal(qsa, 0, "no document-wide querySelectorAll per frame");
+    assert.equal(reads, 0, "no anchor layout read without a menu");
+    // A portaled autocomplete appears: the next frame pins it at the anchor.
+    const portal = doc.createElement("div");
+    portal.className = "bp3-portal";
+    const menu = doc.createElement("div");
+    menu.className = "rm-autocomplete__results";
+    menu._rect = box(0, 0, 200, 100);
+    portal.append(menu);
+    doc.body.append(portal);
+    stub.flushFrames();
+    assert.ok(reads > 0, "the anchor is read once a menu exists");
+    assert.equal(menu.style.getPropertyValue?.("position") || menu.style.position, "fixed");
+    off();
+  } finally {
+    restore();
+  }
+});

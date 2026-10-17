@@ -11225,7 +11225,7 @@ function buildBoardView(onFail, {
       step(() => subs.splice(0).forEach((off) => { try { off?.(); } catch { /* already off */ } }));
       step(() => routeOff());
       step(() => fsDispose());
-      step(() => { if (!root.hasAttribute?.("data-pxd-parked")) applyFullscreenChrome(mountEl, false, doc); });
+      step(() => { if (!root.hasAttribute?.("data-pxd-parked")) applyFullscreenChrome(mountEl, false, doc, { holdFor: isFullscreen ? boardUid : null }); });
       step(() => { try { vpStore.set(vpId, vp); } catch { /* the store can refuse a write */ } });
       step(() => vpStore.flush?.());
       step(() => resumeTimer?.());

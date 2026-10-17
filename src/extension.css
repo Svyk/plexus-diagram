@@ -273,6 +273,18 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   pointer-events: none !important;
 }
 
+/* C2 (UX4, speed flag fsCover, fullscreen.js): under a fullscreen board the article's own content is hidden. Roam
+   renders the zoomed board block's children there; on the big board they showed through for about a second while
+   the board's layer was not painted during a zoom. The mounts stay visible: an explicit value on them, so their
+   subtree keeps its computed style and the class toggle restyles only these few elements. */
+body.pxd-fs-cover .roam-article {
+  visibility: hidden;
+}
+
+body.pxd-fs-cover .roam-article .pxd-mount {
+  visibility: visible;
+}
+
 /* ------------------------------------------------------------------ layers */
 
 .pxd-viewport {

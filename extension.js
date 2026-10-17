@@ -19286,7 +19286,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true };
 }
 function parseSpeedFlags(raw) {
   const base2 = defaultSpeedFlags();
@@ -19740,7 +19740,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -20770,6 +20770,7 @@ var init_tooltip_text = __esm({
       "relpop.board": e("Open on board", "Go to the board and select this connection."),
       "relpop.sidebar": e("Open in sidebar", "Open the board in the right sidebar."),
       "edge.row": e("Linked block", "An arrow on the board ends on this block."),
+      "edge.child": e("Arrow to a child block", "This arrow ends on a child block of the folded card. Click the dot, or Alt+click the arrow, to unfold the card at that block."),
       // ---- PDF parse (settings descriptions, and the flat-merge chip)
       "page-chip.table": e("Table", "Insert this table as a Roam Grid with its merged cells: a preview follows the pointer, click the board to place it, Esc cancels. Open the arrow for native, flat, Markdown, a card or Insert beside PDF."),
       "page-chip.more": e("More ways", "Other ways to insert this block, including Insert beside PDF."),
@@ -32247,11 +32248,11 @@ function createItemRenderer({
       return false;
     }
   };
-  let coverHeld = false;
+  let coverHeld2 = false;
   const noteOverviewQueue = () => {
-    if (shellQueue.length && overviewFastOn()) coverHeld = true;
-    if (!overviewFastOn() && !coverHeld) return;
-    if (!shellQueue.length) coverHeld = false;
+    if (shellQueue.length && overviewFastOn()) coverHeld2 = true;
+    if (!overviewFastOn() && !coverHeld2) return;
+    if (!shellQueue.length) coverHeld2 = false;
     try {
       onOverviewQueue?.();
     } catch {
@@ -33564,6 +33565,13 @@ function createItemRenderer({
   const tableHostOf = (rec) => rec?.el?.classList?.contains?.("pxd-item--roam-table") ? rec.el.querySelector?.(".pxd-roam-table") ?? null : null;
   const armLayoutWatch = (rec) => {
     const tableHost = rec.pageHolder ? null : tableHostOf(rec);
+    if (!rec.layoutWatch && !disposed && !rec.pageHolder && !tableHost && rec.body && layoutSet.has(rec.uid) && speedOf().childEndMark !== false) {
+      const body = rec.body;
+      const onScroll = () => pingNoteLayout(rec);
+      body.addEventListener?.("scroll", onScroll, { passive: true });
+      rec.layoutWatch = { off: () => body.removeEventListener?.("scroll", onScroll, { passive: true }) };
+      return;
+    }
     if (rec.layoutWatch || disposed || !rec.pageHolder && !tableHost || !layoutSet.has(rec.uid)) return;
     const RO = doc.defaultView?.ResizeObserver || globalThis.ResizeObserver;
     if (typeof RO !== "function") return;
@@ -34346,12 +34354,52 @@ function createItemRenderer({
     }
     return pts.length >= 3 ? pts : null;
   };
+  const childEndOn = () => speedOf().childEndMark !== false;
+  const noteRowOf = (rec, rowUid) => {
+    if (!rec?.body || rec.pageHolder || !rowUid || rowUid === rec.uid || !childEndOn() || tableHostOf(rec)) return null;
+    const row4 = rec.body.querySelector?.(`[data-pxd-row="${rowUid}"]`);
+    if (!row4 || row4.closest?.(".pxd-item__editor")) return null;
+    return childWithClass(row4, "pxd-outline__line") || row4;
+  };
+  const noteLayoutDue = /* @__PURE__ */ new Set();
+  const pingNoteLayout = (rec) => {
+    if (!rec || rec.pageHolder || !layoutSet.has(rec.uid) || !childEndOn() || noteLayoutDue.has(rec.uid)) return;
+    noteLayoutDue.add(rec.uid);
+    frameLater(() => {
+      noteLayoutDue.delete(rec.uid);
+      if (!disposed && shells.get(rec.uid) === rec) onPageLayout?.(rec.uid);
+    });
+  };
+  const foldedChild = (uid, rowUid) => {
+    const rec = shells.get(uid);
+    const item = lastBoard?.items.get(uid);
+    if (!rec || !item || !rowUid || rowUid === uid || !childEndOn() || rec.pageHolder || !isKidsCard(item)) return false;
+    if (tableHostOf(rec)) return false;
+    return !noteRowOf(rec, rowUid);
+  };
+  const setKidsTarget = (uid, color, on) => {
+    const btn2 = shells.get(uid)?.kidsBtn;
+    if (!btn2) return;
+    btn2.classList.toggle("pxd-kids--target", Boolean(on));
+    if (on && color) btn2.style.setProperty("--pxd-kids-dot", color);
+    else btn2.style.removeProperty("--pxd-kids-dot");
+  };
   const measureRow = (uid, rowUid) => {
     const rec = shells.get(uid);
     const marked = rec ? markOf(rec, rowUid) : null;
     if (marked) return measureMarked(rec, marked);
     const table = rec && !rec.pageHolder && editing?.uid !== uid ? tableHostOf(rec) : null;
     if (table) return measureCell({ card: rec.el, host: table, body: rec.body, uid: rowUid, zoom: zoomCache || 1, pullTree: host?.pullTree });
+    if (rec && !rec.pageHolder && editing?.uid !== uid) {
+      const line = noteRowOf(rec, rowUid);
+      if (!line) return null;
+      const r3 = line.getBoundingClientRect();
+      if (!r3 || !r3.width && !r3.height) return null;
+      const z2 = zoomCache || 1;
+      const card3 = rec.el.getBoundingClientRect();
+      const body2 = rec.body.getBoundingClientRect();
+      return { bodyTop: round17((body2.top - card3.top) / z2), bodyBottom: round17((body2.bottom - card3.top) / z2), rowTop: round17((r3.top - card3.top) / z2), rowHeight: round17(r3.height / z2), rowLeft: round17((r3.left - card3.left) / z2), rowRight: round17((r3.right - card3.left) / z2), rendered: true };
+    }
     const holder = rec?.pageHolder;
     if (!rec?.body || !holder || holder.isConnected === false || editing?.uid === uid || !rec.pageKey) return null;
     const z = zoomCache || 1;
@@ -34368,6 +34416,8 @@ function createItemRenderer({
   const rowOf = (uid, rowUid) => {
     const rec = shells.get(uid);
     if (rec?.pageHolder) return rec.pageHolder.querySelector?.(`[data-pxd-row="${rowUid}"]`) ?? null;
+    const note = noteRowOf(rec, rowUid);
+    if (note) return note;
     const table = tableHostOf(rec);
     return table ? findCell(table, rowUid, { pullTree: host?.pullTree }) : null;
   };
@@ -34422,6 +34472,27 @@ function createItemRenderer({
     if (row4 && !row4.hasAttribute?.("data-pxd-row")) {
       if (on) row4.setAttribute("data-pxd-hot", "");
       else row4.removeAttribute("data-pxd-hot");
+    }
+    if (row4 && noteRowOf(shells.get(uid), rowUid) === row4) paintNoteTarget(row4, "hot", on);
+  };
+  const noteTargets = /* @__PURE__ */ new Map();
+  const paintNoteTarget = (line, why, on) => {
+    const set = noteTargets.get(line) || /* @__PURE__ */ new Set();
+    if (on) set.add(why);
+    else set.delete(why);
+    if (set.size) noteTargets.set(line, set);
+    else noteTargets.delete(line);
+    line.classList?.toggle("pxd-row--target", set.size > 0);
+  };
+  let selectedRows = [];
+  const setRowsSelected = (ends) => {
+    for (const line of selectedRows) paintNoteTarget(line, "sel", false);
+    selectedRows = [];
+    for (const { card: card2, row: row4 } of ends || []) {
+      const line = noteRowOf(shells.get(card2), row4);
+      if (!line) continue;
+      paintNoteTarget(line, "sel", true);
+      selectedRows.push(line);
     }
   };
   const revealRow = (uid, rowUid) => {
@@ -35641,6 +35712,7 @@ function createItemRenderer({
             }
           }
           paintPinChip(body, blocks);
+          if (!sync2) pingNoteLayout(rec);
         };
         if (tree && typeof tree.then === "function") {
           if (revealing(item)) {
@@ -35687,6 +35759,7 @@ function createItemRenderer({
     }
     rec.roots = budget.roots;
     rec.contentKey = contentKeyFor(item, rec.stickyLive);
+    pingNoteLayout(rec);
   };
   const regionWindow = () => doc.defaultView || globalThis;
   const roamPlexus2 = () => {
@@ -38034,7 +38107,7 @@ function createItemRenderer({
     pauseShells,
     resumeShells,
     promoteQueue,
-    coverHeld: () => coverHeld,
+    coverHeld: () => coverHeld2,
     queuedCount: () => shellQueue.length,
     pendingBoxes() {
       const queued = new Set(shellQueue);
@@ -38148,6 +38221,9 @@ function createItemRenderer({
     },
     drawnRect: (uid, rect) => drawnRect(uid, rect ?? lastRects?.get(uid)) ?? null,
     measureRow,
+    foldedChild,
+    setKidsTarget,
+    setRowsSelected,
     setLayoutWatch,
     markRows,
     setRowHot,
@@ -59178,6 +59254,10 @@ function createInteractions({ actions, settings } = {}) {
       }
       case "edge":
         if (t.uid) selectEdge(t.uid);
+        if (t.uid && ev.alt) {
+          const end2 = call("childEndOf", t.uid);
+          if (end2) call("revealBlockEnd", t.uid, end2);
+        }
         return;
       case "label":
         if (t.uid) {
@@ -84640,7 +84720,7 @@ var setClass = (el2, name) => {
   el2.setAttribute("class", name);
   if (el2.classList && !el2.classList.contains(name.split(" ")[0])) el2.className = name;
 };
-function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText: blockText3, onHover, virtualOff = () => false, deferPark = () => false, onParkDue = null, bucketed = () => false } = {}) {
+function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText: blockText3, onHover, virtualOff = () => false, deferPark = () => false, onParkDue = null, bucketed = () => false, childHint = null } = {}) {
   const edgeHost = svg ? createBucketHost(svg, { doc, svg: true, on: bucketed }) : null;
   const labelHost = labelsLayer ? createBucketHost(labelsLayer, { doc, on: bucketed }) : null;
   const edgeEls = /* @__PURE__ */ new Map();
@@ -85000,6 +85080,58 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     bend.g.remove();
     delete rec.bends[end];
   };
+  const CHILD_R = 3;
+  const placeChildMark = (rec, end, spec, zoom) => {
+    const marks = rec.childMarks || (rec.childMarks = {});
+    let node2 = marks[end];
+    if (!spec) {
+      if (node2) {
+        node2.remove();
+        delete marks[end];
+      }
+      if (!marks.from && !marks.to) rec.childMarks = null;
+      return;
+    }
+    if (!node2) {
+      node2 = mk("circle", "pxd-edge__child", rec.g);
+      node2.setAttribute("data-end", end);
+      node2.dataset.end = end;
+      node2.setAttribute("data-tip", "edge.child");
+      marks[end] = node2;
+    }
+    const r = CHILD_R * screenPx(zoom);
+    const back = spec.offset + r * 1.4;
+    const dx = Math.cos(spec.angle), dy = Math.sin(spec.angle);
+    node2.setAttribute("r", String(Math.round(r * 100) / 100));
+    node2.setAttribute("cx", String(Math.round((spec.point.x + spec.sign * dx * back) * 100) / 100));
+    node2.setAttribute("cy", String(Math.round((spec.point.y + spec.sign * dy * back) * 100) / 100));
+    if (node2.__pxdUid !== spec.uid) {
+      node2.__pxdUid = spec.uid;
+      let text4 = "";
+      try {
+        text4 = String(blockText3?.(spec.uid) ?? "").trim().slice(0, 120);
+      } catch {
+        text4 = "";
+      }
+      node2.setAttribute("data-tip-extra", text4 || "Block");
+    }
+  };
+  const placeChildMarks = (board2, edge, rec, geo, zoom, size) => {
+    if (typeof childHint !== "function" && !rec.childMarks) return;
+    const m = measures.get(edge.uid);
+    const hint = (end) => {
+      const card2 = end === "from" ? edge.from : edge.to;
+      const block = end === "from" ? edge.fromBlock : edge.toBlock;
+      if (!geo || !block || m?.[end] || (end === "from" ? geo.fromBlockAnchored || geo.fromHome : geo.toBlockAnchored || geo.toHome)) return false;
+      try {
+        return childHint?.(card2, block) === true;
+      } catch {
+        return false;
+      }
+    };
+    placeChildMark(rec, "to", hint("to") ? { point: geo.end, angle: geo.endAngle, sign: -1, offset: edge.dir === "none" ? 0 : size, uid: edge.toBlock } : null, zoom);
+    placeChildMark(rec, "from", hint("from") ? { point: geo.start, angle: geo.startAngle, sign: 1, offset: edge.dir === "two" ? size : 0, uid: edge.fromBlock } : null, zoom);
+  };
   const PILL_CHAR = 6;
   const PILL_PAD = 16;
   const PILL_MIN = 40;
@@ -85241,6 +85373,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (!geo) {
       rec.g.setAttribute("display", "none");
       rec.label.style.display = "none";
+      placeChildMarks(board2, edge, rec, null, zoom, 0);
       placeInner(rec, edge, null, zoom);
       paintPagePills(board2, edge, rec, null);
       return;
@@ -85292,6 +85425,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
         placeBend(rec, end, end === "from" ? geo.start : geo.end, end === "from" ? geo.fromClamp : geo.toClamp, zoom, end === "from" ? geo.fromSide : geo.toSide, end === "from" ? geo.fromW : geo.toW);
       }
     }
+    placeChildMarks(board2, edge, rec, geo, zoom, size);
     placeEnds(rec, geo);
     paintPagePills(board2, edge, rec, geo);
     rec.label.style.transform = `translate(${geo.mid.x}px, ${geo.mid.y}px) translate(-50%, -50%)`;
@@ -85423,6 +85557,37 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       }
     }
     labelsLayer?.classList.toggle("pxd-labels--hidden", zoom < LABEL_HIDE_ZOOM);
+  };
+  const resizeHeads = (zoom, near2 = null) => {
+    zoomCache = zoom;
+    const again = [];
+    const board2 = lastPass?.board;
+    const far = near2 && board2 && virtualEdges(board2) ? lastPass.rects : null;
+    if (far) view = near2;
+    for (const [uid, rec] of edgeEls) {
+      if (rec.parked || rec.stale || !rec.geo) continue;
+      if (far) {
+        const edge = board2.edges.get(uid);
+        if (edge && edgeFar(board2, edge, far)) {
+          rec.stale = true;
+          continue;
+        }
+      }
+      if (rec.inner || rec.bends || rec.childMarks) {
+        again.push(uid);
+        continue;
+      }
+      if (rec.dir === "none" || rec.g.getAttribute("display") === "none") continue;
+      const size = arrowSize(zoom, rec.weight);
+      rec.head.setAttribute("d", arrowHeadPath(rec.geo.end, rec.geo.endAngle, size));
+      if (rec.dir === "two") rec.tail.setAttribute("d", arrowHeadPath(rec.geo.start, rec.geo.startAngle + Math.PI, size));
+    }
+    for (const rec of linkEls.values()) {
+      if (!rec.geo || rec.g.getAttribute("display") === "none") continue;
+      rec.head.setAttribute("d", arrowHeadPath(rec.geo.end, rec.geo.endAngle, arrowSize(zoom, 1) * 0.8));
+    }
+    labelsLayer?.classList.toggle("pxd-labels--hidden", zoom < LABEL_HIDE_ZOOM);
+    return again;
   };
   const flushWaiting = () => {
     if (!lastPass || !waiting.size) return 0;
@@ -85844,6 +86009,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     },
     render,
     update,
+    resizeHeads,
     reveal,
     cull,
     // Every built edge group, in the DOM or parked (lenses paint parked edges too).
@@ -95432,6 +95598,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
 
 // src/view/fullscreen.js
 init_discovery();
+init_settings();
 var SIDEBAR_SELECTORS = [".roam-sidebar-container", ".rm-left-sidebar", "#roam-sidebar-container"];
 var RIGHT_SIDEBAR_SELECTORS = ["#right-sidebar", ".rm-right-sidebar", '[class*="right-sidebar"]'];
 var RIGHT_INSET_COLLAPSE_PX = 8;
@@ -95477,9 +95644,38 @@ function fullscreenInsets(root = globalThis.document) {
   if (Number.isFinite(Number(rect.bottom)) && Number.isFinite(vh) && vh > 0) bottom = Math.max(0, Math.round(vh - rect.bottom));
   return { top: Math.round(top), left, right, bottom };
 }
+var FS_COVER_CLASS = "pxd-fs-cover";
+var COVER_HOLD_MS = 1500;
+var coverHeld = false;
+var coverOn = () => {
+  try {
+    return notedSpeedFlags().fsCover !== false;
+  } catch {
+    return true;
+  }
+};
+var hasClass3 = (body, name) => Boolean(body?.classList?.contains?.(name));
+var setClass2 = (body, name, on) => body?.classList?.toggle?.(name, Boolean(on));
+function setCover(root, on) {
+  const body = root?.body;
+  if (!body?.classList) return;
+  if (on) {
+    coverHeld = false;
+    if (coverOn()) setClass2(body, FS_COVER_CLASS, true);
+  } else if (!coverHeld) {
+    setClass2(body, FS_COVER_CLASS, false);
+  }
+}
+function holdFsCover(root, on) {
+  const body = root?.body;
+  if (!body?.classList) return;
+  coverHeld = Boolean(on) && coverOn() && hasClass3(body, FS_COVER_CLASS);
+  if (!coverHeld && !hasClass3(body, "pxd-has-fullscreen")) setClass2(body, FS_COVER_CLASS, false);
+}
 function applyFullscreenChrome(mount, on, root = globalThis.document) {
   mount?.classList?.toggle?.("pxd-mount--fullscreen", Boolean(on));
   root?.body?.classList?.toggle?.("pxd-has-fullscreen", Boolean(on));
+  setCover(root, Boolean(on));
   if (!on) {
     if (mount?.style) {
       for (const k of ["top", "left", "right", "bottom", "width", "height", "minHeight"]) mount.style[k] = "";
@@ -99702,7 +99898,8 @@ function buildBoardView(onFail, {
     },
     onLabelCommit: (uid, label) => session.updateEdge?.(uid, { label }),
     blockText: (uid) => host?.blockString?.(uid),
-    onHover: (uid, on) => hoverRows(uid, on)
+    onHover: (uid, on) => hoverRows(uid, on),
+    childHint: (cardUid, blockUid3) => itemsR.foldedChild?.(cardUid, blockUid3) === true
   });
   edgesR.setCanvasTier?.(() => overviewCanvasOn());
   let edgeParkJob = null;
@@ -100091,6 +100288,43 @@ function buildBoardView(onFail, {
     if (!e2) return;
     if (e2.fromBlock) itemsR.setRowHot(e2.from, e2.fromBlock, on);
     if (e2.toBlock) itemsR.setRowHot(e2.to, e2.toBlock, on);
+    paintKidsDots(e2, "hot", on);
+  };
+  const kidsDots = /* @__PURE__ */ new Map();
+  const paintKidsDots = (e2, why, on) => {
+    for (const end of ["from", "to"]) {
+      const card2 = end === "from" ? e2.from : e2.to;
+      const block = end === "from" ? e2.fromBlock : e2.toBlock;
+      const reasons = kidsDots.get(card2) || /* @__PURE__ */ new Map();
+      if (on && block && itemsR.foldedChild?.(card2, block)) reasons.set(why, edgeTone(e2));
+      else reasons.delete(why);
+      if (reasons.size) kidsDots.set(card2, reasons);
+      else kidsDots.delete(card2);
+      const color = reasons.get("hot") || reasons.get("sel") || null;
+      itemsR.setKidsTarget?.(card2, color, Boolean(color));
+    }
+  };
+  let selectedChildEdge = null;
+  const syncChildEnds = () => {
+    const prev = selectedChildEdge ? board2()?.edges.get(selectedChildEdge) : null;
+    if (prev) paintKidsDots(prev, "sel", false);
+    selectedChildEdge = null;
+    const e2 = selection.edge ? board2()?.edges.get(selection.edge) : null;
+    const ends = [];
+    if (e2?.fromBlock) ends.push({ card: e2.from, row: e2.fromBlock });
+    if (e2?.toBlock) ends.push({ card: e2.to, row: e2.toBlock });
+    itemsR.setRowsSelected?.(ends);
+    if (e2 && ends.length) {
+      selectedChildEdge = e2.uid;
+      paintKidsDots(e2, "sel", true);
+    }
+  };
+  const childEndOf = (edgeUid) => {
+    const e2 = board2()?.edges.get(edgeUid);
+    if (!e2) return null;
+    if (e2.toBlock && itemsR.foldedChild?.(e2.to, e2.toBlock)) return "to";
+    if (e2.fromBlock && itemsR.foldedChild?.(e2.from, e2.fromBlock)) return "from";
+    return null;
   };
   let regionOn = [];
   const syncRegionMarks = () => {
@@ -100494,6 +100728,13 @@ function buildBoardView(onFail, {
   let minimapAt = -Infinity;
   const MINIMAP_WHEEL_MS = 150;
   const perfNow3 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
+  const zoomHeadsOn = () => {
+    try {
+      return notedSpeedFlags().zoomHeads !== false;
+    } catch {
+      return true;
+    }
+  };
   const edgeZoomKey = (z) => !(z > 0) ? "" : `${z >= 0.6 ? "hi" : Math.round(Math.log(z) / Math.log(1.25))}:${z < 0.3}`;
   const underlay = createGestureUnderlay({ doc, world, root, before: () => edgesSvg });
   let underlayDrawn = false;
@@ -101037,7 +101278,11 @@ function buildBoardView(onFail, {
       if (vp.zoom !== edgesZoomAt) {
         const full = edgeZoomKey(vp.zoom) !== edgeZoomKey(edgesZoomAt);
         edgesZoomAt = vp.zoom;
-        if (full) {
+        const heads = full && zoomHeadsOn() && !dirty.all && !dirty.structural ? edgesR.resizeHeads?.(vp.zoom, size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null) : null;
+        if (heads) {
+          for (const uid of heads) dirty.edges.add(uid);
+          for (const e2 of board2()?.edges.values() || []) if (e2.fromBlock || e2.toBlock) dirty.edges.add(e2.uid);
+        } else if (full) {
           dirty.edges = new Set(board2()?.edges.keys() || []);
           dirty.links = true;
         } else {
@@ -105340,6 +105585,7 @@ ${url}`;
       dirty.selection = true;
       panel.setSelection(singleItem());
       syncRegionMarks();
+      syncChildEnds();
       schedule();
     },
     onTool: (tool, locked) => {
@@ -105549,6 +105795,7 @@ ${url}`;
     blockTarget: (pt) => blockTargetAt(pt),
     clearBlockTarget: () => clearBlockTarget(),
     revealBlockEnd: (edgeUid, end) => revealBlockEnd(edgeUid, end),
+    childEndOf: (edgeUid) => childEndOf(edgeUid),
     openOutside: (uid) => openOutside(uid),
     updateEdge: (uid, patch) => session.updateEdge?.(uid, patch),
     commitMove: (uids, dx, dy) => session.commitMove?.(uids, dx, dy),
@@ -105912,6 +106159,7 @@ ${url}`;
     const block = end === "from" ? e2.fromBlock : e2.toBlock;
     if (!block) return false;
     if (itemsR.revealRow(card2, block)) return true;
+    if (itemsR.foldedChild?.(card2, block)) return itemsR.unfoldForFocus?.(card2, block) === true;
     host?.openInSidebar?.(block, "block");
     return false;
   };
@@ -105937,6 +106185,8 @@ ${url}`;
     }
     const endHandle = t.closest(".pxd-edge__end");
     if (endHandle) return { kind: "edge-end", uid: endHandle.closest(".pxd-edge")?.dataset?.uid || endHandle.closest(".pxd-edge")?.getAttribute?.("data-uid"), end: endHandle.dataset?.end || endHandle.getAttribute?.("data-end") };
+    const childMark = t.closest(".pxd-edge__child");
+    if (childMark) return { kind: "edge-marker", uid: childMark.closest(".pxd-edge")?.dataset?.uid || childMark.closest(".pxd-edge")?.getAttribute?.("data-uid"), end: childMark.dataset?.end || childMark.getAttribute?.("data-end") };
     const clamped = t.closest(".pxd-edge__bend--clamped");
     if (clamped) return { kind: "edge-marker", uid: clamped.closest(".pxd-edge")?.dataset?.uid || clamped.closest(".pxd-edge")?.getAttribute?.("data-uid"), end: clamped.dataset?.end || clamped.getAttribute?.("data-end") };
     const label = t.closest(".pxd-label");
@@ -112582,6 +112832,7 @@ async function installPlexusDiagram({
   lifecycle.add(() => {
     for (const native of [...convertButtons.keys()]) dropConvert(native);
     for (const rec of [...mounts.values()]) unmount(rec);
+    dropCoverHold(true);
     disposeAlive();
     for (const observer of portalObservers.values()) observer.disconnect();
     portalObservers.clear();
@@ -115011,8 +115262,19 @@ async function installPlexusDiagram({
       unmount(rec);
     }
   }
+  let coverHold = null;
+  function dropCoverHold(force = false) {
+    if (!coverHold) return;
+    if (!force && Date.now() - coverHold.at < COVER_HOLD_MS && !routeLeftZoomedDiagram(coverHold.uid)) return;
+    coverHold = null;
+    holdFsCover(doc, false);
+  }
   function unmount(rec) {
     if (!rec || !mounts.has(rec.native)) return;
+    if (rec.fullscreen && !stopped && !routeLeftZoomedDiagram(rec.uid)) {
+      coverHold = { uid: rec.uid, at: Date.now() };
+      holdFsCover(doc, true);
+    }
     if (rec.fullscreen && pageLeft(rec) && rec.view && !rec.view.sketchStandIn) setFullscreen(rec, false);
     const keep = pageLeft(rec) && canPool(rec);
     const viewport2 = keep ? cameraOf(rec) : null;
@@ -115931,6 +116193,7 @@ async function installPlexusDiagram({
     if (!doc) return;
     tryPendingPin();
     for (const diagram of doc.querySelectorAll(".rm-diagram")) consider2(diagram);
+    dropCoverHold();
   }
   function onHash(event) {
     rememberPin(hashFromUrl(event?.newURL) || event?.newURL || "");
@@ -115939,6 +116202,7 @@ async function installPlexusDiagram({
     onNavigate();
   }
   function onNavigate() {
+    if (coverHold && routeLeftZoomedDiagram(coverHold.uid)) dropCoverHold(true);
     mountFail.clear();
     pathCache.clear();
     negativeUntil.clear();

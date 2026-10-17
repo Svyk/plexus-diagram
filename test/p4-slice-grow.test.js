@@ -24,7 +24,7 @@ const steppedClock = async (fn) => {
 const crumbBack = (m) => { m.view.suspend(); m.view.park(); m.view.unpark(); m.view.resume(); };
 
 test("P4: long browser-bound slice frames grow the slice budget (24 -> 384), so fewer frames pay the fixed cost", async () => {
-  const m = await builtAtFit();
+  const m = await builtAtFit({ sliceGrow: true });
   try {
     await steppedClock(async (clock) => {
       crumbBack(m);
@@ -36,7 +36,7 @@ test("P4: long browser-bound slice frames grow the slice budget (24 -> 384), so 
 });
 
 test("P4: a frame that grew with the slice halves it back; short frames keep a grown budget", async () => {
-  const m = await builtAtFit();
+  const m = await builtAtFit({ sliceGrow: true });
   try {
     await steppedClock(async (clock) => {
       crumbBack(m);

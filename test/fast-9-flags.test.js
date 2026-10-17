@@ -65,10 +65,10 @@ const ALL_ON = {
   childCaret: true,
   editBulletFocus: true,
   searchLayerDim: true,
-  sliceGrow: true,
+  sliceGrow: false,
 };
 
-test("the panel has no speed-flags control, and bad JSON leaves the defaults (every flag on but edgeFingerprint, overviewCanvas, idlePark and quietBodies)", () => {
+test("the panel has no speed-flags control, and bad JSON leaves the defaults (every flag on but edgeFingerprint, overviewCanvas, idlePark, quietBodies and sliceGrow)", () => {
   assert.equal(createSettingsPanel().settings.some((row) => row.id === "speed-flags"), false);
   assert.equal(Object.hasOwn(settingsDefaults(), "speed-flags"), false);
   assert.deepEqual(flagsDefault(), ALL_ON);

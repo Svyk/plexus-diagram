@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.35.0 — 2026-10-16
+
+Cards that read and edit like Roam, and a faster board.
+
+- **Children look like Roam.** Cards with children show Roam's bullets and thread in display and in edit with the same row geometry, so entering edit no longer jumps.
+- **Full-length rows.** Page cards and child rows render links and bold at full length instead of plain cut text.
+- **Click a child to edit it.** Clicking a child row edits that block at the clicked letter.
+- **Focus a child while editing.** Clicking a child's bullet while editing focuses it on the card with the crumb.
+- **New children show at once.** A new child appears while you type.
+- **Faster search.** Board search is many times faster per key (about 350 ms down to about 20 ms) and dims arrows by layer.
+- **Smoother big boards.** Zoom-in, zoom-out and pan at fit are smoother on big boards (round 4: no :has() invalidation, bucketed layers, no zoom layer, main-thread fade, 12-at-a-time hand-back).
+- **One undo after a big drag.** One Cmd+Z after a big drag restores the layout.
+- **Child focus at any depth.** Cmd+. focuses a child at any depth.
+- **Table captions.** Double-click a table caption to edit it.
+- **Safe disable.** Disabling the extension no longer blanks Roam.
+- **Typing profile probe.** A probe for profiling typing latency.
+
 ## 3.34.0 — 2026-10-16
 
 PDF sources, dark PDFs, searching inside PDFs, and Roam popups that stay on top.

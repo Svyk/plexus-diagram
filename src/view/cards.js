@@ -3482,6 +3482,14 @@ export function createItemRenderer({
   const tableHostOf = (rec) => (rec?.el?.classList?.contains?.("pxd-item--roam-table") ? rec.el.querySelector?.(".pxd-roam-table") ?? null : null);
   const armLayoutWatch = (rec) => {
     const tableHost = rec.pageHolder ? null : tableHostOf(rec);
+    // UX4 C1: a note card with a child-row arrow end follows its body's scroll; content changes ping from the mount.
+    if (!rec.layoutWatch && !disposed && !rec.pageHolder && !tableHost && rec.body && layoutSet.has(rec.uid) && speedOf().childEndMark !== false) {
+      const body = rec.body;
+      const onScroll = () => pingNoteLayout(rec);
+      body.addEventListener?.("scroll", onScroll, { passive: true });
+      rec.layoutWatch = { off: () => body.removeEventListener?.("scroll", onScroll, { passive: true }) };
+      return;
+    }
     if (rec.layoutWatch || disposed || (!rec.pageHolder && !tableHost) || !layoutSet.has(rec.uid)) return;
     const RO = doc.defaultView?.ResizeObserver || globalThis.ResizeObserver;
     if (typeof RO !== "function") return;
@@ -4213,12 +4221,55 @@ export function createItemRenderer({
     }
     return pts.length >= 3 ? pts : null;
   };
+  // UX4 C1 (speed flag childEndMark): a note or block card's child row is an arrow end like a page card's row. The end
+  // sits on the row's own line (the row element also holds its children). A folded card has no row: the arrow keeps the
+  // card edge and the edge layer draws the child mark (foldedChild).
+  const childEndOn = () => speedOf().childEndMark !== false;
+  const noteRowOf = (rec, rowUid) => {
+    if (!rec?.body || rec.pageHolder || !rowUid || rowUid === rec.uid || !childEndOn() || tableHostOf(rec)) return null;
+    const row = rec.body.querySelector?.(`[data-pxd-row="${rowUid}"]`);
+    if (!row || row.closest?.(".pxd-item__editor")) return null;
+    return childWithClass(row, "pxd-outline__line") || row;
+  };
+  const noteLayoutDue = new Set();
+  const pingNoteLayout = (rec) => {
+    if (!rec || rec.pageHolder || !layoutSet.has(rec.uid) || !childEndOn() || noteLayoutDue.has(rec.uid)) return;
+    noteLayoutDue.add(rec.uid);
+    frameLater(() => {
+      noteLayoutDue.delete(rec.uid);
+      if (!disposed && shells.get(rec.uid) === rec) onPageLayout?.(rec.uid);
+    });
+  };
+  const foldedChild = (uid, rowUid) => {
+    const rec = shells.get(uid);
+    const item = lastBoard?.items.get(uid);
+    if (!rec || !item || !rowUid || rowUid === uid || !childEndOn() || rec.pageHolder || !isKidsCard(item)) return false;
+    if (tableHostOf(rec)) return false;
+    return !noteRowOf(rec, rowUid);
+  };
+  const setKidsTarget = (uid, color, on) => {
+    const btn = shells.get(uid)?.kidsBtn;
+    if (!btn) return;
+    btn.classList.toggle("pxd-kids--target", Boolean(on));
+    if (on && color) btn.style.setProperty("--pxd-kids-dot", color);
+    else btn.style.removeProperty("--pxd-kids-dot");
+  };
   const measureRow = (uid, rowUid) => {
     const rec = shells.get(uid);
     const marked = rec ? markOf(rec, rowUid) : null;
     if (marked) return measureMarked(rec, marked);
     const table = rec && !rec.pageHolder && editing?.uid !== uid ? tableHostOf(rec) : null;
     if (table) return measureCell({ card: rec.el, host: table, body: rec.body, uid: rowUid, zoom: zoomCache || 1, pullTree: host?.pullTree });
+    if (rec && !rec.pageHolder && editing?.uid !== uid) {
+      const line = noteRowOf(rec, rowUid);
+      if (!line) return null;
+      const r = line.getBoundingClientRect();
+      if (!r || (!r.width && !r.height)) return null;
+      const z = zoomCache || 1;
+      const card = rec.el.getBoundingClientRect();
+      const body = rec.body.getBoundingClientRect();
+      return { bodyTop: round1((body.top - card.top) / z), bodyBottom: round1((body.bottom - card.top) / z), rowTop: round1((r.top - card.top) / z), rowHeight: round1(r.height / z), rowLeft: round1((r.left - card.left) / z), rowRight: round1((r.right - card.left) / z), rendered: true };
+    }
     const holder = rec?.pageHolder;
     if (!rec?.body || !holder || holder.isConnected === false || editing?.uid === uid || !rec.pageKey) return null;
     const z = zoomCache || 1;
@@ -4237,6 +4288,8 @@ export function createItemRenderer({
   const rowOf = (uid, rowUid) => {
     const rec = shells.get(uid);
     if (rec?.pageHolder) return rec.pageHolder.querySelector?.(`[data-pxd-row="${rowUid}"]`) ?? null;
+    const note = noteRowOf(rec, rowUid);
+    if (note) return note;
     const table = tableHostOf(rec);
     return table ? findCell(table, rowUid, { pullTree: host?.pullTree }) : null;
   };
@@ -4288,6 +4341,26 @@ export function createItemRenderer({
     const row = rowOf(uid, rowUid);
     row?.classList?.toggle("pxd-row--hot", Boolean(on));
     if (row && !row.hasAttribute?.("data-pxd-row")) { if (on) row.setAttribute("data-pxd-hot", ""); else row.removeAttribute("data-pxd-hot"); }
+    if (row && noteRowOf(shells.get(uid), rowUid) === row) paintNoteTarget(row, "hot", on);
+  };
+  // UX4 C1: a note card's child row shows the drop-target look while an arrow to it is hovered or selected.
+  const noteTargets = new Map(); // line -> Set("hot" | "sel")
+  const paintNoteTarget = (line, why, on) => {
+    const set = noteTargets.get(line) || new Set();
+    if (on) set.add(why); else set.delete(why);
+    if (set.size) noteTargets.set(line, set); else noteTargets.delete(line);
+    line.classList?.toggle("pxd-row--target", set.size > 0);
+  };
+  let selectedRows = [];
+  const setRowsSelected = (ends) => {
+    for (const line of selectedRows) paintNoteTarget(line, "sel", false);
+    selectedRows = [];
+    for (const { card, row } of ends || []) {
+      const line = noteRowOf(shells.get(card), row);
+      if (!line) continue;
+      paintNoteTarget(line, "sel", true);
+      selectedRows.push(line);
+    }
   };
   // Scrolls the body so the row is centered and flashes it. False when the row is not on screen to scroll to.
   const revealRow = (uid, rowUid) => {
@@ -5393,6 +5466,7 @@ export function createItemRenderer({
             }
           }
           paintPinChip(body, blocks);
+          if (!sync) pingNoteLayout(rec);
         };
         if (tree && typeof tree.then === "function") {
           if (revealing(item)) {
@@ -5434,6 +5508,7 @@ export function createItemRenderer({
     }
     rec.roots = budget.roots;
     rec.contentKey = contentKeyFor(item, rec.stickyLive);
+    pingNoteLayout(rec);
   };
 
   const regionWindow = () => doc.defaultView || globalThis;
@@ -7709,6 +7784,9 @@ export function createItemRenderer({
     },
     drawnRect: (uid, rect) => drawnRect(uid, rect ?? lastRects?.get(uid)) ?? null,
     measureRow,
+    foldedChild,
+    setKidsTarget,
+    setRowsSelected,
     setLayoutWatch,
     markRows,
     setRowHot,

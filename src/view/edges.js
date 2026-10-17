@@ -41,7 +41,7 @@ const setClass = (el, name) => {
   if (el.classList && !el.classList.contains(name.split(" ")[0])) el.className = name;
 };
 
-export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText, onHover, virtualOff = () => false, deferPark = () => false, onParkDue = null, bucketed = () => false } = {}) {
+export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText, onHover, virtualOff = () => false, deferPark = () => false, onParkDue = null, bucketed = () => false, childHint = null } = {}) {
   // R4 (bucketLayers): on a big board edges and labels sit in buckets (buckets.js), so parking or adding one edge
   // restyles its bucket, not every later edge.
   const edgeHost = svg ? createBucketHost(svg, { doc, svg: true, on: bucketed }) : null;
@@ -407,6 +407,50 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     bend.g.remove();
     delete rec.bends[end];
   };
+  // UX4 C1 (childEndMark, via childHint): an end on a child block of a folded card stays on the card edge and gets a
+  // quiet mark: a hollow dot in the arrow's colour on the line, just behind the head (or ahead of the tail). One
+  // <circle> per such end, placed with the edge; nothing per frame. The dot is the end's tooltip and click target.
+  const CHILD_R = 3;
+  const placeChildMark = (rec, end, spec, zoom) => {
+    const marks = rec.childMarks || (rec.childMarks = {});
+    let node = marks[end];
+    if (!spec) {
+      if (node) { node.remove(); delete marks[end]; }
+      if (!marks.from && !marks.to) rec.childMarks = null;
+      return;
+    }
+    if (!node) {
+      node = mk("circle", "pxd-edge__child", rec.g);
+      node.setAttribute("data-end", end);
+      node.dataset.end = end;
+      node.setAttribute("data-tip", "edge.child");
+      marks[end] = node;
+    }
+    const r = CHILD_R * screenPx(zoom);
+    const back = spec.offset + r * 1.4;
+    const dx = Math.cos(spec.angle), dy = Math.sin(spec.angle);
+    node.setAttribute("r", String(Math.round(r * 100) / 100));
+    node.setAttribute("cx", String(Math.round((spec.point.x + spec.sign * dx * back) * 100) / 100));
+    node.setAttribute("cy", String(Math.round((spec.point.y + spec.sign * dy * back) * 100) / 100));
+    if (node.__pxdUid !== spec.uid) {
+      node.__pxdUid = spec.uid;
+      let text = "";
+      try { text = String(blockText?.(spec.uid) ?? "").trim().slice(0, 120); } catch { text = ""; }
+      node.setAttribute("data-tip-extra", text || "Block");
+    }
+  };
+  const placeChildMarks = (board, edge, rec, geo, zoom, size) => {
+    if (typeof childHint !== "function" && !rec.childMarks) return;
+    const m = measures.get(edge.uid);
+    const hint = (end) => {
+      const card = end === "from" ? edge.from : edge.to;
+      const block = end === "from" ? edge.fromBlock : edge.toBlock;
+      if (!geo || !block || m?.[end] || (end === "from" ? geo.fromBlockAnchored || geo.fromHome : geo.toBlockAnchored || geo.toHome)) return false;
+      try { return childHint?.(card, block) === true; } catch { return false; }
+    };
+    placeChildMark(rec, "to", hint("to") ? { point: geo.end, angle: geo.endAngle, sign: -1, offset: edge.dir === "none" ? 0 : size, uid: edge.toBlock } : null, zoom);
+    placeChildMark(rec, "from", hint("from") ? { point: geo.start, angle: geo.startAngle, sign: 1, offset: edge.dir === "two" ? size : 0, uid: edge.fromBlock } : null, zoom);
+  };
   const PILL_CHAR = 6;
   const PILL_PAD = 16;
   const PILL_MIN = 40;
@@ -653,6 +697,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     if (!geo) {
       rec.g.setAttribute("display", "none");
       rec.label.style.display = "none";
+      placeChildMarks(board, edge, rec, null, zoom, 0);
       placeInner(rec, edge, null, zoom);
       paintPagePills(board, edge, rec, null);
       return;
@@ -701,6 +746,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         placeBend(rec, end, end === "from" ? geo.start : geo.end, end === "from" ? geo.fromClamp : geo.toClamp, zoom, end === "from" ? geo.fromSide : geo.toSide, end === "from" ? geo.fromW : geo.toW);
       }
     }
+    placeChildMarks(board, edge, rec, geo, zoom, size);
     placeEnds(rec, geo);
     paintPagePills(board, edge, rec, geo);
     rec.label.style.transform = `translate(${geo.mid.x}px, ${geo.mid.y}px) translate(-50%, -50%)`;
@@ -860,7 +906,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         const edge = board.edges.get(uid);
         if (edge && edgeFar(board, edge, far)) { rec.stale = true; continue; }
       }
-      if (rec.inner || rec.bends) { again.push(uid); continue; }
+      if (rec.inner || rec.bends || rec.childMarks) { again.push(uid); continue; }
       if (rec.dir === "none" || rec.g.getAttribute("display") === "none") continue;
       const size = arrowSize(zoom, rec.weight);
       rec.head.setAttribute("d", arrowHeadPath(rec.geo.end, rec.geo.endAngle, size));

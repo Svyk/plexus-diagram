@@ -206,6 +206,7 @@ export const TIP_TEXT = {
   "relpop.board": e("Open on board", "Go to the board and select this connection."),
   "relpop.sidebar": e("Open in sidebar", "Open the board in the right sidebar."),
   "edge.row": e("Linked block", "An arrow on the board ends on this block."),
+  "edge.child": e("Arrow to a child block", "This arrow ends on a child block of the folded card. Click the dot, or Alt+click the arrow, to unfold the card at that block."),
 
   // ---- PDF parse (settings descriptions, and the flat-merge chip)
   "page-chip.table": e("Table", "Insert this table as a Roam Grid with its merged cells: a preview follows the pointer, click the board to place it, Esc cancels. Open the arrow for native, flat, Markdown, a card or Insert beside PDF."),

@@ -249,3 +249,25 @@ body.roam-body.dark .pxd-root .pxd-row.pxd-row--linked:hover,
   outline: 2px solid var(--pxd-accent);
   outline-offset: -2px;
 }
+
+/* UX4 C1 (childEndMark): an arrow to a child of a folded card. A hollow dot in the arrow's colour on the line behind
+   the head, screen-sized; it is the end's tooltip and click target (unfolds the card at that child). */
+.pxd-root .pxd-edge__child {
+  fill: var(--pxd-surface);
+  stroke: var(--pxd-line, var(--pxd-edge));
+  stroke-width: calc(1.5px * var(--pxd-screen-px, 1));
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* ...and the folded card's Children badge carries a dot in that colour while the arrow is hovered or selected. */
+.pxd-root .pxd-kids.pxd-kids--target::after {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-left: 4px;
+  border-radius: 50%;
+  vertical-align: middle;
+  background: var(--pxd-kids-dot, var(--pxd-accent));
+}

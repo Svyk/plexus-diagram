@@ -401,6 +401,11 @@ export function createInteractions({ actions, settings } = {}) {
       }
       case "edge":
         if (t.uid) selectEdge(t.uid);
+        // UX4 C1: Alt+click on an arrow to a child of a folded card unfolds the card at that child (no write).
+        if (t.uid && ev.alt) {
+          const end = call("childEndOf", t.uid);
+          if (end) call("revealBlockEnd", t.uid, end);
+        }
         return;
       case "label":
         if (t.uid) {

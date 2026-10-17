@@ -3510,6 +3510,7 @@ function buildBoardView(onFail, {
     onLabelCommit: (uid, label) => session.updateEdge?.(uid, { label }),
     blockText: (uid) => host?.blockString?.(uid),
     onHover: (uid, on) => hoverRows(uid, on),
+    childHint: (cardUid, blockUid) => itemsR.foldedChild?.(cardUid, blockUid) === true,
   });
   edgesR.setCanvasTier?.(() => overviewCanvasOn());
   // E3-1: far edges left by a settle are parked here, in background slices once the camera has been still.
@@ -3854,6 +3855,42 @@ function buildBoardView(onFail, {
     if (!e) return;
     if (e.fromBlock) itemsR.setRowHot(e.from, e.fromBlock, on);
     if (e.toBlock) itemsR.setRowHot(e.to, e.toBlock, on);
+    paintKidsDots(e, "hot", on);
+  };
+  // UX4 C1: an arrow to a child of a folded card puts a dot in its colour on that card's Children badge while the arrow
+  // is hovered or selected; a selected arrow to a shown child row gives the row the drop-target look.
+  const kidsDots = new Map(); // card uid -> Map(why -> color)
+  const paintKidsDots = (e, why, on) => {
+    for (const end of ["from", "to"]) {
+      const card = end === "from" ? e.from : e.to;
+      const block = end === "from" ? e.fromBlock : e.toBlock;
+      const reasons = kidsDots.get(card) || new Map();
+      if (on && block && itemsR.foldedChild?.(card, block)) reasons.set(why, edgeTone(e));
+      else reasons.delete(why);
+      if (reasons.size) kidsDots.set(card, reasons); else kidsDots.delete(card);
+      const color = reasons.get("hot") || reasons.get("sel") || null;
+      itemsR.setKidsTarget?.(card, color, Boolean(color));
+    }
+  };
+  let selectedChildEdge = null;
+  const syncChildEnds = () => {
+    const prev = selectedChildEdge ? board()?.edges.get(selectedChildEdge) : null;
+    if (prev) paintKidsDots(prev, "sel", false);
+    selectedChildEdge = null;
+    const e = selection.edge ? board()?.edges.get(selection.edge) : null;
+    const ends = [];
+    if (e?.fromBlock) ends.push({ card: e.from, row: e.fromBlock });
+    if (e?.toBlock) ends.push({ card: e.to, row: e.toBlock });
+    itemsR.setRowsSelected?.(ends);
+    if (e && ends.length) { selectedChildEdge = e.uid; paintKidsDots(e, "sel", true); }
+  };
+  // The end of `edgeUid` that is a child of a folded card ("to" first), or null.
+  const childEndOf = (edgeUid) => {
+    const e = board()?.edges.get(edgeUid);
+    if (!e) return null;
+    if (e.toBlock && itemsR.foldedChild?.(e.to, e.toBlock)) return "to";
+    if (e.fromBlock && itemsR.foldedChild?.(e.from, e.fromBlock)) return "from";
+    return null;
   };
   let regionOn = [];
   const syncRegionMarks = () => {
@@ -8187,6 +8224,7 @@ function buildBoardView(onFail, {
       dirty.selection = true;
       panel.setSelection(singleItem());
       syncRegionMarks();
+      syncChildEnds();
       schedule();
     },
     onTool: (tool, locked) => {
@@ -8350,6 +8388,7 @@ function buildBoardView(onFail, {
     blockTarget: (pt) => blockTargetAt(pt),
     clearBlockTarget: () => clearBlockTarget(),
     revealBlockEnd: (edgeUid, end) => revealBlockEnd(edgeUid, end),
+    childEndOf: (edgeUid) => childEndOf(edgeUid),
     openOutside: (uid) => openOutside(uid),
     updateEdge: (uid, patch) => session.updateEdge?.(uid, patch),
     commitMove: (uids, dx, dy) => session.commitMove?.(uids, dx, dy),
@@ -8650,6 +8689,8 @@ function buildBoardView(onFail, {
     const block = end === "from" ? e.fromBlock : e.toBlock;
     if (!block) return false;
     if (itemsR.revealRow(card, block)) return true;
+    // UX4 C1: a child of a folded card: unfold it for this session and focus that child under the crumb (no write).
+    if (itemsR.foldedChild?.(card, block)) return itemsR.unfoldForFocus?.(card, block) === true;
     host?.openInSidebar?.(block, "block");
     return false;
   };
@@ -8678,6 +8719,8 @@ function buildBoardView(onFail, {
     }
     const endHandle = t.closest(".pxd-edge__end");
     if (endHandle) return { kind: "edge-end", uid: endHandle.closest(".pxd-edge")?.dataset?.uid || endHandle.closest(".pxd-edge")?.getAttribute?.("data-uid"), end: endHandle.dataset?.end || endHandle.getAttribute?.("data-end") };
+    const childMark = t.closest(".pxd-edge__child");
+    if (childMark) return { kind: "edge-marker", uid: childMark.closest(".pxd-edge")?.dataset?.uid || childMark.closest(".pxd-edge")?.getAttribute?.("data-uid"), end: childMark.dataset?.end || childMark.getAttribute?.("data-end") };
     const clamped = t.closest(".pxd-edge__bend--clamped");
     if (clamped) return { kind: "edge-marker", uid: clamped.closest(".pxd-edge")?.dataset?.uid || clamped.closest(".pxd-edge")?.getAttribute?.("data-uid"), end: clamped.dataset?.end || clamped.getAttribute?.("data-end") };
     const label = t.closest(".pxd-label");

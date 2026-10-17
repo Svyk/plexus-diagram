@@ -71,6 +71,7 @@ const ALL_ON = {
   editFocus: true,
   childDrop: true,
   editClip: true,
+  refPathContain: true,
 };
 
 test("the panel has no speed-flags control, and bad JSON leaves the defaults (every flag on but edgeFingerprint, overviewCanvas, idlePark, quietBodies and sliceGrow)", () => {

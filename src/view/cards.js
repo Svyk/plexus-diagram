@@ -6579,6 +6579,15 @@ export function createItemRenderer({
   // block drag-select on the mousedown it gets from the editor and disarms it only in a document-level
   // bubble mouseup listener. Stopping mouseup leaves that state armed, and the next block that appears
   // under the resting pointer (the one Enter creates) turns the text edit into a block selection.
+  // UX4 B5: Reference Path boxes on the board's ancestors (outside .pxd-root) are hidden while a card editor is open.
+  // On <body>, not <html>: the live harness teardown drops <html> when it carries pxd classes.
+  let bodyMarked = false;
+  const markEditingBody = (on) => {
+    const want = Boolean(on) && speedOf().refPathContain !== false;
+    if (want === bodyMarked) return;
+    bodyMarked = want;
+    try { doc.body?.classList?.toggle?.("pxd-editing-active", want); } catch { /* no body */ }
+  };
   const EDITOR_STOPPED = ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown"];
 
   const EDIT_FADE_MS = 80;
@@ -6982,6 +6991,7 @@ export function createItemRenderer({
     // Rule 19.1: stop pointer/wheel at the overlay boundary BEFORE the synthetic focus click.
     for (const type of EDITOR_STOPPED) editor.addEventListener(type, stopEvent);
     editing = { uid, rec, editor, targetUid, focusUid, item, ready: false, fadeCancel: null, releaseCancel: null };
+    markEditingBody(true);
     if (pageEdit) {
       const h = rec.el.style?.height || (Number(rec.rect?.h) > 0 ? `${Math.round(Number(rec.rect.h))}px` : "");
       if (h && rec.el.style?.setProperty) rec.el.style.setProperty("height", h, "important");
@@ -7155,6 +7165,7 @@ export function createItemRenderer({
     for (const type of EDITOR_STOPPED) editor.removeEventListener(type, stopEvent);
     editor.__pxdBulletOff?.();
     editor.__pxdCaretOff?.();
+    markEditingBody(false);
     dropStaticLayer(rec);
     for (const node of rec.headRoots || []) {
       try { host?.unmount?.(node); } catch { /* not a roam root */ }
@@ -7407,6 +7418,7 @@ export function createItemRenderer({
   const dispose = () => {
     if (disposed) return;
     disposed = true;
+    markEditingBody(false);
     freezeGen += 1;
     cancelFreezeFrame();
     stopShellBg();

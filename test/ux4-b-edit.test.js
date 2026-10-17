@@ -89,3 +89,47 @@ test("B4: while typing, the caret row is kept inside the card editor's own scrol
     f.restore();
   }
 });
+
+// ---- B5: Roam's Reference Path draws a ::before box on every ancestor .rm-block-main of the focused block. The board
+// block's own ancestors sit outside the board, so their boxes ran from the card to the page's left edge.
+import { readFileSync } from "node:fs";
+
+const UX4_CSS = readFileSync(new URL("../src/css/ux4-children.css", import.meta.url), "utf8");
+
+test("B5: while a card editor is open, Reference Path boxes on ancestors outside the board are hidden; inside the card they stay", async () => {
+  const rule = /body\.pxd-editing-active \[data-reference-path-has-style\]:not\(\.pxd-root \*\) > div\.controls span\.bp3-popover-target::before\s*\{[^}]*display:\s*none\s*!important/;
+  assert.match(UX4_CSS, rule, "one rule, gated on the body class, that skips anything inside a board root");
+  assert.doesNotMatch(UX4_CSS, /:has\(/, "no :has()");
+  const rendered = [];
+  const f = mount({ cards: [{ uid: "cardRP001", string: "test", children: [blk("kidRP0001", "[[Test Callouts]]")] }], host: editorHost(rendered) });
+  try {
+    await show(f);
+    const doc = f.stub.document;
+    // An ancestor outside the board and a row inside the card both carry the plugin's attribute.
+    const outside = doc.createElement("div");
+    outside.className = "rm-block-main";
+    outside.setAttribute("data-reference-path-has-style", "true");
+    doc.body.append(outside);
+    const card = f.view.root.querySelector("[data-uid=cardRP001]");
+    assert.equal(outside.closest(".pxd-root"), null, "the outside box is not under a board root, so the rule matches it");
+    assert.equal(doc.body.classList.contains("pxd-editing-active"), false);
+    f.stub.dispatch(card.querySelector(".pxd-item__string"), "dblclick", { clientX: 30, clientY: 10 });
+    await settleEdit(f.stub);
+    assert.equal(card.classList.contains("pxd-item--editing"), true);
+    assert.equal(doc.body.classList.contains("pxd-editing-active"), true);
+    const inside = card.querySelector(".rm-block-main");
+    inside.setAttribute("data-reference-path-has-style", "true");
+    assert.ok(inside.closest(".pxd-root"), "a box inside the card is under the board root, so the rule skips it");
+    f.stub.dispatch(f.stub.window, "keydown", { key: "Escape" });
+    await settleEdit(f.stub);
+    assert.equal(card.classList.contains("pxd-item--editing"), false);
+    assert.equal(doc.body.classList.contains("pxd-editing-active"), false, "the outside path is back once the editor closes");
+    f.stub.dispatch(card.querySelector(".pxd-item__string"), "dblclick", { clientX: 30, clientY: 10 });
+    await settleEdit(f.stub);
+    assert.equal(doc.body.classList.contains("pxd-editing-active"), true);
+    f.view.dispose();
+    assert.equal(doc.body.classList.contains("pxd-editing-active"), false, "dispose clears it");
+  } finally {
+    f.restore();
+  }
+});

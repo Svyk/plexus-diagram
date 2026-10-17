@@ -19286,7 +19286,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true };
 }
 function parseSpeedFlags(raw) {
   const base = defaultSpeedFlags();
@@ -19740,7 +19740,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -29951,6 +29951,87 @@ var init_table_cells = __esm({
   }
 });
 
+// src/view/editor-keys.js
+function uidFromBlockInput(id) {
+  const prefix = "block-input-";
+  if (!id.startsWith(prefix)) return null;
+  const rest = id.slice(prefix.length);
+  if (UID7.test(rest) || SHORT_UID.test(rest)) return rest;
+  const last = rest.slice(rest.lastIndexOf("-") + 1);
+  const short = last.length < 9 && SHORT_UID.test(last) ? last : null;
+  for (let i = rest.length - 1; i >= 0; i -= 1) {
+    if (rest[i] !== "-") continue;
+    const tail = rest.slice(i + 1);
+    if (tail.length > 15) return short;
+    if (UID7.test(tail)) return tail;
+  }
+  return short;
+}
+function blockUidFromNode(node2) {
+  let el2 = node2;
+  while (el2 && el2.nodeType === 1) {
+    const id = String(el2.id || el2.getAttribute?.("id") || "");
+    const fromInput = uidFromBlockInput(id);
+    if (fromInput) return fromInput;
+    if (UID7.test(id)) return id;
+    const data = el2.dataset?.uid || el2.getAttribute?.("data-uid") || "";
+    if (UID7.test(data) || SHORT_UID.test(data)) return data;
+    el2 = el2.parentElement;
+  }
+  return null;
+}
+function inputBlockRole(node2, rootUid) {
+  const uid = blockUidFromNode(node2);
+  const editor = node2?.closest?.(".pxd-item__editor") || null;
+  const nest = node2?.closest?.(".rm-block-children") || null;
+  if (nest && inside4(nest, editor)) return { role: "child", uid };
+  if (uid && rootUid && uid !== rootUid) return { role: "child", uid };
+  return { role: "root", uid: uid || rootUid || null };
+}
+function editorKeyAction({
+  key,
+  shift = false,
+  meta = false,
+  ctrl = false,
+  alt = false,
+  autocomplete = false,
+  isRoot = false,
+  fresh = false,
+  value = "",
+  selectionStart = 0,
+  selectionEnd = 0,
+  enterMode = "newline"
+} = {}) {
+  if (autocomplete) return { type: "roam" };
+  const mod = Boolean(meta || ctrl);
+  if (key === "Tab" && !alt) return { type: "roam" };
+  if (key === "Enter" && mod && !shift && !alt) return { type: "roam" };
+  if (key === "Enter" && shift && !mod && !alt && isRoot) return { type: "make-child" };
+  if (key === "Enter" && isRoot && !shift && !mod && !alt && enterMode !== "child") return { type: "newline" };
+  if (key === "Backspace" && isRoot && fresh && !mod && !alt) {
+    const text4 = String(value ?? "");
+    const start = Math.min(selectionStart, selectionEnd);
+    const end = Math.max(selectionStart, selectionEnd);
+    if (!text4.trim() && start === end) return { type: "delete-card" };
+  }
+  return { type: "roam" };
+}
+var UID7, SHORT_UID, inside4;
+var init_editor_keys = __esm({
+  "src/view/editor-keys.js"() {
+    UID7 = /^[A-Za-z0-9_-]{9,15}$/;
+    SHORT_UID = /^[A-Za-z0-9_]{5,15}$/;
+    inside4 = (node2, ancestor) => {
+      let el2 = node2;
+      while (el2 && el2.nodeType === 1) {
+        if (el2 === ancestor) return true;
+        el2 = el2.parentElement;
+      }
+      return false;
+    };
+  }
+});
+
 // src/view/cards.js
 function bodyStyleOf(doc) {
   const view = doc?.defaultView || globalThis;
@@ -30249,7 +30330,7 @@ function kidRowsOf(list, depth = 1, budget = { n: 0 }) {
     if (budget.n >= CONTENT_LIMIT) break;
     budget.n += 1;
     const kids = childKids(c);
-    if (kids.length && depth < CONTENT_DEPTH) kidRowsOf(kids, depth + 1, budget);
+    if (kids.length && childIsOpen(c) && depth < CONTENT_DEPTH) kidRowsOf(kids, depth + 1, budget);
   }
   return budget.n;
 }
@@ -30298,11 +30379,15 @@ function cardContentKey(item, live2 = false, pdfOpen = false, chipSig = "", cove
     walkBoard(item.content || [], 1);
     return parts.join("");
   }
+  let nodes = CONTENT_NODES;
   const walk3 = (kids, depth) => {
     if (depth > CONTENT_DEPTH) return;
+    parts.push(`#${kids.length}`);
     for (const c of kids) {
-      parts.push(childString5(c), childIsOpen(c) ? "o" : "x");
-      walk3(childKids(c), depth + 1);
+      if (nodes-- <= 0) return;
+      const open = childIsOpen(c);
+      parts.push(childString5(c), open ? "o" : "x");
+      if (open) walk3(childKids(c), depth + 1);
     }
   };
   walk3(item.content || [], 1);
@@ -30909,9 +30994,11 @@ function createItemRenderer({
       }
       pushString(text4, item.target.uid);
     } else pushString(item.string || "", item.uid);
+    let nodes = CONTENT_NODES;
     const walk3 = (list, depth) => {
       if (!Array.isArray(list) || depth > CONTENT_DEPTH) return;
       for (const child of list) {
+        if (nodes-- <= 0) return;
         pushString(childString5(child), childUid(child) || item.uid);
         walk3(childKids(child), depth + 1);
       }
@@ -31741,6 +31828,7 @@ function createItemRenderer({
     if (item.type !== "section") {
       if (isKidsCard(item)) {
         cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
+        if (speedOf().roamOutline !== false) cls.push("pxd-item--ol");
         const kidsOn = Boolean(item.kids);
         if (rec.kidsOn !== void 0 && rec.kidsOn !== kidsOn && !motionInstant()) {
           cls.push("pxd-item--kids-anim");
@@ -32519,6 +32607,11 @@ function createItemRenderer({
         }
         if (!fresh && editing?.uid === uid) {
           if (rect && (!rec.rect || rec.rect.x !== rect.x || rec.rect.y !== rect.y || rec.rect.w !== rect.w || rec.rect.h !== rect.h)) position(rec, rect);
+          if (isKidsCard(item) && rec.kidsOn !== Boolean(item.kids)) {
+            rec.kidsOn = Boolean(item.kids);
+            rec.el.classList.toggle("pxd-item--kids", rec.kidsOn);
+            rec.el.classList.toggle("pxd-item--kidsoff", !rec.kidsOn);
+          }
         } else {
           noteRender(uid);
           paintShell(rec, item);
@@ -32690,6 +32783,7 @@ function createItemRenderer({
         continue;
       }
       const row4 = el2("div", "pxd-block pxd-outline", parent);
+      row4.classList.toggle("pxd-outline--closed", visibleKids(childKids(b)).length > 0 && !childIsOpen(b));
       row4.dataset.uid = rowUid;
       row4.setAttribute("data-uid", rowUid);
       row4.setAttribute("data-pxd-row", rowUid);
@@ -32711,6 +32805,7 @@ function createItemRenderer({
           caret.setAttribute("aria-expanded", next ? "true" : "false");
           caret.textContent = next ? "▾" : "▸";
           caret.setAttribute("aria-label", next ? "Fold" : "Unfold");
+          row4.classList.toggle("pxd-outline--closed", !next);
           let wrap = null;
           for (const child of row4.children || []) if (child.classList?.contains("pxd-block__children")) wrap = child;
           if (wrap && next && wrap.getAttribute("data-pxd-filled") !== "1") {
@@ -32753,6 +32848,9 @@ function createItemRenderer({
         } else setHidden2(wrap, true);
       }
     }
+  };
+  const markZoomed = (row4) => {
+    row4?.classList?.add("pxd-outline--zoomed");
   };
   const paintCrumb = (parent, item, trail) => {
     const crumb = el2("div", "pxd-focus__crumb", parent);
@@ -32798,6 +32896,7 @@ function createItemRenderer({
       }
     }
     renderBlocks(body, list, 1, budget, { viewOnly, cardUid: item?.uid || "" });
+    if (focusUid) markZoomed(body.querySelector?.(`.pxd-block[data-pxd-row="${focusUid}"]`));
   };
   const remountCard = (rec) => {
     const item = lastBoard?.items.get(rec?.uid);
@@ -33319,7 +33418,7 @@ function createItemRenderer({
     holdHeight(line, KID_ROW_H);
     const heavy = isHeavyRow(string);
     const plain2 = el2("div", `pxd-block__text pxd-block__plain${heavy ? " pxd-block__plain--heavy" : ""}`, line);
-    plain2.textContent = heavy ? "…" : plainText(string);
+    plain2.textContent = heavy ? "…" : plainText(string, Infinity);
     plain2.setAttribute("data-pxd-plain", uid);
     rec.rowTable.set(uid, { line, plain: plain2, string, heavy });
     const io = heavy ? rec.rowIOHeavy : rec.rowIO;
@@ -33461,6 +33560,10 @@ function createItemRenderer({
       holdHeight(row4, embedBoxFor(uid).h);
       const root = renderRoot(line, s, "pxd-rs pxd-block__text", uid);
       if (root.classList?.contains("pxd-embed-live") || root.querySelector?.(".pxd-rs__live")) b.roots.push(root);
+    } else if (b.live > 0 && !isHeavyRow(s)) {
+      b.live -= 1;
+      holdHeight(line, KID_ROW_H);
+      b.roots.push(renderRowRoot(line, s, "pxd-rs pxd-block__text", uid));
     } else {
       holdHeight(line, KID_ROW_H);
       addPlainRow(rec, line, s, uid);
@@ -33472,7 +33575,7 @@ function createItemRenderer({
       if (filled) return;
       filled = true;
       startRows();
-      const sub = { n: b.n, more: 0, roots: [] };
+      const sub = { n: b.n, more: 0, roots: [], live: 0 };
       renderOutline(wrap, row4.__pxdKids || [], sub, rec, depth + 1, uid);
       b.n = sub.n;
       if (sub.more) moreRow(wrap, sub.more, rec.pageTitle, rec.pageUid);
@@ -33570,7 +33673,7 @@ function createItemRenderer({
       entry.string = spec.string;
       entry.heavy = heavy;
       entry.plain.classList.toggle("pxd-block__plain--heavy", heavy);
-      entry.plain.textContent = heavy ? "…" : plainText(spec.string);
+      entry.plain.textContent = heavy ? "…" : plainText(spec.string, Infinity);
       return;
     }
     const live2 = [...line?.children || []].find((node2) => node2.classList?.contains("pxd-rs") || node2.classList?.contains("pxd-embed-live") || node2.classList?.contains("pxd-rs--board"));
@@ -33639,7 +33742,7 @@ function createItemRenderer({
       } catch {
       }
     }
-    if (inner) inner.textContent = plainText(spec.string);
+    if (inner) inner.textContent = plainText(spec.string, Infinity);
   };
   const syncFold = (prow, spec) => {
     const fold = childWithClass(childWithClass(prow, "pxd-row"), "pxd-row__fold");
@@ -33748,6 +33851,12 @@ function createItemRenderer({
     onPageLayout?.(rec.uid);
     return bucket.roots;
   };
+  const FIRST_SCREEN_MAX = 24;
+  const firstScreenRows = (rec) => {
+    if (lod !== "detail" || speedOf().richRows === false) return 0;
+    const h = Number(rec?.rect?.h || lastBoard?.items.get(rec?.uid)?.h) || 0;
+    return Math.min(FIRST_SCREEN_MAX, Math.ceil(h / KID_ROW_H) + 1);
+  };
   const paintPage = (rec, holder, p) => {
     rec.pageBlocks = p?.blocks || [];
     const focusUid = cardFocus.get(rec.uid) || "";
@@ -33774,8 +33883,9 @@ function createItemRenderer({
       rec.pageUid = p?.uid || rec.pageUid || null;
       rec.pageKey = `focus:${focusUid}`;
       paintCrumb(holder, { uid: rec.uid, string: rec.pageTitle, title: rec.pageTitle, kind: "page" }, focused.trail);
-      const b2 = { n: 0, more: 0, roots: [] };
+      const b2 = { n: 0, more: 0, roots: [], live: firstScreenRows(rec) };
       renderOutline(holder, [focused.block], b2, rec);
+      markZoomed(holder.querySelector?.(`[data-pxd-row="${focusUid}"]`)?.parentElement);
       rec.pageRoots = [...b2.roots];
       onPageLayout?.(rec.uid);
       return b2.roots;
@@ -33807,7 +33917,7 @@ function createItemRenderer({
     }
     rec.pageUid = p.uid || null;
     rec.pageKey = pageKeyOf(p.blocks);
-    const b = { n: 0, more: 0, roots: [] };
+    const b = { n: 0, more: 0, roots: [], live: firstScreenRows(rec) };
     renderOutline(holder, p.blocks || [], b, rec);
     if (!b.n) el2("div", "pxd-item__placeholder", holder).textContent = "Empty page";
     if (b.more) moreRow(holder, b.more, rec.pageTitle, rec.pageUid);
@@ -36947,6 +37057,9 @@ function createItemRenderer({
         if (hit && (!hit.uid || hit.uid === uid)) {
           const mark = hit.task ? TASK_MARK.exec(String(item.string || ""))?.[0].length || 0 : 0;
           caretOff = hit.offset + mark;
+        } else if (hit?.uid && speedOf().childCaret !== false && rec.body?.querySelector?.(`[data-pxd-row="${hit.uid}"]`)) {
+          caretRow = hit.uid;
+          caretOff = hit.offset;
         }
       }
     }
@@ -37008,6 +37121,27 @@ function createItemRenderer({
     mounted.delete(uid);
     const editor = el2("div", pageEdit ? "pxd-item__editor pxd-page-edit" : "pxd-item__editor", rec.body);
     if (taskPad) editor.style.setProperty("--pxd-task-pad", `${taskPad}px`);
+    if (!pageEdit && speedOf().editBulletFocus !== false) {
+      const onEditBullet = (event) => {
+        const bullet2 = event.target?.closest?.(".rm-bullet");
+        if (!bullet2 || !editor.contains?.(bullet2) || !bullet2.closest?.(".rm-block-children")) return;
+        const main = bullet2.closest?.(".rm-block-main");
+        const input2 = main?.querySelector?.(".rm-block__input, textarea, [id^='block-input-']");
+        const blockUid3 = input2 ? blockUidFromNode(input2) : null;
+        if (!blockUid3 || blockUid3 === uid || blockUid3 === targetUid) return;
+        event.preventDefault?.();
+        event.stopImmediatePropagation?.();
+        event.stopPropagation?.();
+        if (event.type !== "click") return;
+        void exitEdit().then(() => {
+          if (!disposed) focusInside(uid, blockUid3);
+        });
+      };
+      for (const type of ["click", "dblclick"]) editor.addEventListener(type, onEditBullet, true);
+      editor.__pxdBulletOff = () => {
+        for (const type of ["click", "dblclick"]) editor.removeEventListener(type, onEditBullet, true);
+      };
+    }
     for (const type of EDITOR_STOPPED) editor.addEventListener(type, stopEvent);
     editing = { uid, rec, editor, targetUid, item, ready: false, fadeCancel: null, releaseCancel: null };
     if (pageEdit) {
@@ -37077,8 +37211,20 @@ function createItemRenderer({
         }
       }
     } else {
-      early = await waitNoteInput(editor, uid, row4);
+      const noteRow = caretRow || row4;
+      early = await waitNoteInput(editor, uid, noteRow);
       if (disposed || editing?.uid !== uid) return false;
+      if (noteRow && caretOff != null && early && !String(early.id || "").endsWith(`-${noteRow}`)) {
+        const win2 = pageEditWindowId(editor);
+        const place3 = host?.api?.ui?.setBlockFocusAndSelection;
+        if (win2 && typeof place3 === "function") {
+          try {
+            place3({ location: { "block-uid": noteRow, "window-id": win2 }, selection: { start: caretOff, end: caretOff } });
+          } catch {
+          }
+          early = null;
+        }
+      }
       if (early) {
         scaleCardEditor(editor, zoomCache);
         focusRoamInput(early);
@@ -37094,7 +37240,7 @@ function createItemRenderer({
       if (disposed || editing?.uid !== uid) return false;
       if (rowOffset !== null) {
         for (const node2 of editor.querySelectorAll?.(".rm-block__input") || []) {
-          if (String(node2.id || node2.getAttribute?.("id") || "").endsWith(`-${row4}`)) {
+          if (String(node2.id || node2.getAttribute?.("id") || "").endsWith(`-${noteRow}`)) {
             input = node2;
             break;
           }
@@ -37171,6 +37317,7 @@ function createItemRenderer({
     applyEditorCounterScale(editor, 1);
     const contentH = Number(editor.scrollHeight) || 0;
     for (const type of EDITOR_STOPPED) editor.removeEventListener(type, stopEvent);
+    editor.__pxdBulletOff?.();
     dropStaticLayer(rec);
     try {
       host?.unmount?.(editor);
@@ -37530,6 +37677,7 @@ function createItemRenderer({
       editing = null;
       detachFocusGuard();
       for (const type of EDITOR_STOPPED) e2.editor.removeEventListener(type, stopEvent);
+      e2.editor.__pxdBulletOff?.();
       e2.rec.ghost?.remove();
       e2.rec.ghost = null;
       try {
@@ -37806,7 +37954,7 @@ function createItemRenderer({
     dispose
   };
 }
-var SIDES3, CHUNK_MS, LRU_CAP, SLOW_BODY_MS, slowBodies, noteBodyMs, UNMOUNT_AFTER_MS, HYDRATE_CAP_MS, CONTENT_LIMIT, CONTENT_DEPTH, OUTLINE_CAP, OUTLINE_FETCH, PAGE_WATCH_MAX, PAGE_REFRESH_MS, BLOCK_REFRESH_MS, GROW_CAP, HEADER_H, META_H, REF_TITLE_MAX, HEADER_TEXT_MAX, TINY_MINI_PX, ATTR_CHIPS_MAX, SVG_NS4, ROW_BOARD_W, ROW_BOARD_H, ROW_BOARD_THUMBS, BOARD_KEY_DEPTH, BOARD_KEY_NODES, KID_ROW_H, PEEK_DELAY_MS, PEEK_TOP, PEEK_SUB, PEEK_TEXT_MAX, now2, HL_NAMES2, NOTE_CARET_SKIP, childString5, childKids, childUid, childProps, KIDS_KINDS, isKidsCard, isSticky, STICKY_TITLE_MAX, stickyTitleOf, isTaskAttrString, skipChildString, visibleKids, taskBlockOn, statusSig, TASK_MARK, isTaskCard, regionHubs;
+var SIDES3, CHUNK_MS, LRU_CAP, SLOW_BODY_MS, slowBodies, noteBodyMs, UNMOUNT_AFTER_MS, HYDRATE_CAP_MS, CONTENT_LIMIT, CONTENT_DEPTH, CONTENT_NODES, OUTLINE_CAP, OUTLINE_FETCH, PAGE_WATCH_MAX, PAGE_REFRESH_MS, BLOCK_REFRESH_MS, GROW_CAP, HEADER_H, META_H, REF_TITLE_MAX, HEADER_TEXT_MAX, TINY_MINI_PX, ATTR_CHIPS_MAX, SVG_NS4, ROW_BOARD_W, ROW_BOARD_H, ROW_BOARD_THUMBS, BOARD_KEY_DEPTH, BOARD_KEY_NODES, KID_ROW_H, PEEK_DELAY_MS, PEEK_TOP, PEEK_SUB, PEEK_TEXT_MAX, now2, HL_NAMES2, NOTE_CARET_SKIP, childString5, childKids, childUid, childProps, KIDS_KINDS, isKidsCard, isSticky, STICKY_TITLE_MAX, stickyTitleOf, isTaskAttrString, skipChildString, visibleKids, taskBlockOn, statusSig, TASK_MARK, isTaskCard, regionHubs;
 var init_cards = __esm({
   "src/view/cards.js"() {
     init_card_face();
@@ -37849,6 +37997,7 @@ var init_cards = __esm({
     init_table_card();
     init_buckets();
     init_table_cells();
+    init_editor_keys();
     init_card_children();
     SIDES3 = ["top", "right", "bottom", "left"];
     CHUNK_MS = 8;
@@ -37865,7 +38014,8 @@ var init_cards = __esm({
     UNMOUNT_AFTER_MS = UNMOUNT_GRACE_MS;
     HYDRATE_CAP_MS = 900;
     CONTENT_LIMIT = 12;
-    CONTENT_DEPTH = 2;
+    CONTENT_DEPTH = 32;
+    CONTENT_NODES = 64;
     OUTLINE_CAP = 300;
     OUTLINE_FETCH = 2e3;
     PAGE_WATCH_MAX = 8;
@@ -61476,7 +61626,7 @@ function r22(n3) {
 function itemSize(it) {
   return Math.abs(it.transform?.[0] || it.height || 0);
 }
-function inside4(it, boxes) {
+function inside5(it, boxes) {
   const size = itemSize(it);
   const cx = it.transform[4] + (it.width || 0) / 2;
   const cy = it.transform[5] - 0.35 * size;
@@ -61499,7 +61649,7 @@ function textLines(page, tableBoxes = []) {
       if (it.y1 - it.y0 <= 1.25 * size) squeezed.push(i);
       return;
     }
-    if (inside4(it, tableBoxes)) return;
+    if (inside5(it, tableBoxes)) return;
     cand.push(i);
   });
   cand.sort((a, b) => items[a].transform[5] - items[b].transform[5] || items[a].transform[4] - items[b].transform[4]);
@@ -61941,7 +62091,7 @@ function unionBox(a, b) {
   if (!b || b.length < 4) return a;
   return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])];
 }
-function inside5(word, box2) {
+function inside6(word, box2) {
   if (!box2) return false;
   const cx = ((word.x0 ?? 0) + (word.x1 ?? 0)) / 2;
   const cy = word.base != null ? word.base - 0.25 * (word.size || 8) : ((word.y0 ?? 0) + (word.y1 ?? 0)) / 2;
@@ -62245,7 +62395,7 @@ function evidenceFromRecords(records) {
   }));
 }
 function evidenceIn(page, box2) {
-  const words = (page?.words || []).filter((word) => inside5(word, box2));
+  const words = (page?.words || []).filter((word) => inside6(word, box2));
   return { words, rows: baselineRows3(words), rules: page?.rules || [], box: box2 };
 }
 function scoreTable(table, evidence, { reading = false } = {}) {
@@ -66051,11 +66201,11 @@ function boardZoom(root, win2 = root?.ownerDocument?.defaultView || globalThis) 
   const px = parseFloat(raw);
   return px > 0 ? clamp3(1 / px, MIN_SCALE, MAX_SCALE) : 1;
 }
-var inside6 = (r, x, y) => Boolean(r) && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+var inside7 = (r, x, y) => Boolean(r) && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
 function zoneAt(x, y, { rootRect = null, paneRect = null, blocked: blocked3 = [] } = {}) {
-  if (!inside6(rootRect, x, y)) return "out";
-  if (inside6(paneRect, x, y)) return "pane";
-  for (const r of blocked3 || []) if (inside6(r, x, y)) return "blocked";
+  if (!inside7(rootRect, x, y)) return "out";
+  if (inside7(paneRect, x, y)) return "pane";
+  for (const r of blocked3 || []) if (inside7(r, x, y)) return "blocked";
   return "board";
 }
 function zoneScale(zone, zoom) {
@@ -84052,82 +84202,7 @@ function openRegionDeleteDialog(doc, { message = "", onDelete, onOpen, onCancel 
 // src/view/board-view.js
 init_region_menu();
 init_offscreen();
-
-// src/view/editor-keys.js
-var UID7 = /^[A-Za-z0-9_-]{9,15}$/;
-var SHORT_UID = /^[A-Za-z0-9_]{5,15}$/;
-function uidFromBlockInput(id) {
-  const prefix = "block-input-";
-  if (!id.startsWith(prefix)) return null;
-  const rest = id.slice(prefix.length);
-  if (UID7.test(rest) || SHORT_UID.test(rest)) return rest;
-  const last = rest.slice(rest.lastIndexOf("-") + 1);
-  const short = last.length < 9 && SHORT_UID.test(last) ? last : null;
-  for (let i = rest.length - 1; i >= 0; i -= 1) {
-    if (rest[i] !== "-") continue;
-    const tail = rest.slice(i + 1);
-    if (tail.length > 15) return short;
-    if (UID7.test(tail)) return tail;
-  }
-  return short;
-}
-function blockUidFromNode(node2) {
-  let el2 = node2;
-  while (el2 && el2.nodeType === 1) {
-    const id = String(el2.id || el2.getAttribute?.("id") || "");
-    const fromInput = uidFromBlockInput(id);
-    if (fromInput) return fromInput;
-    if (UID7.test(id)) return id;
-    const data = el2.dataset?.uid || el2.getAttribute?.("data-uid") || "";
-    if (UID7.test(data) || SHORT_UID.test(data)) return data;
-    el2 = el2.parentElement;
-  }
-  return null;
-}
-var inside7 = (node2, ancestor) => {
-  let el2 = node2;
-  while (el2 && el2.nodeType === 1) {
-    if (el2 === ancestor) return true;
-    el2 = el2.parentElement;
-  }
-  return false;
-};
-function inputBlockRole(node2, rootUid) {
-  const uid = blockUidFromNode(node2);
-  const editor = node2?.closest?.(".pxd-item__editor") || null;
-  const nest = node2?.closest?.(".rm-block-children") || null;
-  if (nest && inside7(nest, editor)) return { role: "child", uid };
-  if (uid && rootUid && uid !== rootUid) return { role: "child", uid };
-  return { role: "root", uid: uid || rootUid || null };
-}
-function editorKeyAction({
-  key,
-  shift = false,
-  meta = false,
-  ctrl = false,
-  alt = false,
-  autocomplete = false,
-  isRoot = false,
-  fresh = false,
-  value = "",
-  selectionStart = 0,
-  selectionEnd = 0,
-  enterMode = "newline"
-} = {}) {
-  if (autocomplete) return { type: "roam" };
-  const mod = Boolean(meta || ctrl);
-  if (key === "Tab" && !alt) return { type: "roam" };
-  if (key === "Enter" && mod && !shift && !alt) return { type: "roam" };
-  if (key === "Enter" && shift && !mod && !alt && isRoot) return { type: "make-child" };
-  if (key === "Enter" && isRoot && !shift && !mod && !alt && enterMode !== "child") return { type: "newline" };
-  if (key === "Backspace" && isRoot && fresh && !mod && !alt) {
-    const text4 = String(value ?? "");
-    const start = Math.min(selectionStart, selectionEnd);
-    const end = Math.max(selectionStart, selectionEnd);
-    if (!text4.trim() && start === end) return { type: "delete-card" };
-  }
-  return { type: "roam" };
-}
+init_editor_keys();
 
 // src/view/edges.js
 init_buckets();

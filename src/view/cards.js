@@ -2760,7 +2760,7 @@ export function createItemRenderer({
         rec.kidsOffs.push(() => btn.removeEventListener(type, fn));
       };
       for (const type of ["pointerdown", "mousedown", "dblclick"]) {
-        on(type, (event) => { stopEvent(event); peekTimer?.(); peekTimer = null; });
+        on(type, (event) => { stopPress(event); peekTimer?.(); peekTimer = null; });
       }
       on("click", (event) => { stopEvent(event); closePeek(); toggleKids(rec.uid); });
       on("mouseenter", (event) => {
@@ -3580,7 +3580,7 @@ export function createItemRenderer({
       fold.type = "button";
       fold.setAttribute("aria-label", folded ? "Unfold" : "Fold");
       fold.setAttribute("aria-expanded", folded ? "false" : "true");
-      for (const type of ["pointerdown", "mousedown", "dblclick"]) fold.addEventListener(type, stopEvent);
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) fold.addEventListener(type, stopPress);
     }
     const focusBullet = el("button", "pxd-outline__bullet", line);
     focusBullet.type = "button";

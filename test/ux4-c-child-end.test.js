@@ -61,7 +61,7 @@ function mountChild({ kids = false, flags = {} } = {}) {
     uid: board.uid, board, rects: worldRects(board), links: [], coveredEdges: new Set(), mutations,
     on() { return () => {}; }, release() {}, setLinkMode() {},
     commitMove: rec("commitMove"), commitRects: rec("commitRects"), setKids: rec("setKids"), setBlockOpen: rec("setBlockOpen"),
-    growToFit: rec("growToFit"), updateEdge: rec("updateEdge"), addEdge: rec("addEdge"), setString: rec("setString"),
+    growToFit: rec("growToFit"), undo: rec("undo"), redo: rec("redo"), updateEdge: rec("updateEdge"), addEdge: rec("addEdge"), setString: rec("setString"),
   };
   const host = {
     graph: "Svy",
@@ -172,5 +172,46 @@ test("C1: Alt+click on the arrow unfolds the folded card at the child; a plain c
     await show(f);
     assert.deepEqual(crumbLabels(card(f)), ["This is a test", "test"]);
     assert.deepEqual(f.mutations.filter((m) => !["commitRects", "growToFit"].includes(m[0])), []);
+  } finally { f.done(); }
+});
+
+// Browser default: a pointer press on a button focuses it unless mousedown was cancelled.
+function pressLikeBrowser(stub, target) {
+  const base = { clientX: 30, clientY: 30, pointerId: 1, isPrimary: true, pointerType: "mouse", button: 0 };
+  const down = stub.dispatch(target, "pointerdown", { ...base, buttons: 1 });
+  const mouse = stub.dispatch(target, "mousedown", { ...base, buttons: 1 });
+  if (!down.defaultPrevented && !mouse.defaultPrevented) target.focus();
+  stub.dispatch(target, "pointerup", { ...base, buttons: 0 });
+  stub.dispatch(target, "mouseup", { ...base, buttons: 0 });
+  stub.dispatch(target, "click", { ...base, buttons: 0, detail: 1 });
+}
+
+test("C4: after two clicks on the Children badge it does not hold focus, and Cmd+Z reaches the board undo", async () => {
+  const f = mountChild();
+  try {
+    await show(f);
+    f.root.focus();
+    const badge = card(f).querySelector(".pxd-kids");
+    pressLikeBrowser(f.stub, badge);
+    await show(f);
+    pressLikeBrowser(f.stub, card(f).querySelector(".pxd-kids"));
+    await show(f);
+    assert.notEqual(f.stub.document.activeElement?.className, "pxd-kids", "the badge keeps no focus after a pointer click");
+    const undos = () => f.mutations.filter((row) => row[0] === "undo").length;
+    const ev = f.stub.dispatch(f.stub.document.activeElement, "keydown", { key: "z", metaKey: true });
+    assert.equal(ev.defaultPrevented, true);
+    assert.equal(undos(), 1);
+  } finally { f.done(); }
+});
+
+test("C4: Cmd+Z with the badge focused from the keyboard still reaches the board undo", async () => {
+  const f = mountChild();
+  try {
+    await show(f);
+    const badge = card(f).querySelector(".pxd-kids");
+    badge.focus();
+    const ev = f.stub.dispatch(badge, "keydown", { key: "z", metaKey: true });
+    assert.equal(ev.defaultPrevented, true);
+    assert.equal(f.mutations.filter((row) => row[0] === "undo").length, 1);
   } finally { f.done(); }
 });

@@ -4798,8 +4798,11 @@ function buildBoardView(onFail, {
       // A pan settle on the PhD main board re-placed all 2,114 edges (~0.4 s each time the wheel paused).
       if (vp.zoom !== edgesZoomAt) {
         const full = edgeZoomKey(vp.zoom) !== edgeZoomKey(edgesZoomAt);
+        const zoomedOut = vp.zoom < (Number.isFinite(edgesZoomAt) ? edgesZoomAt : Number(edgesR.placedZoom?.()) || 0);
         edgesZoomAt = vp.zoom;
-        const heads = full && zoomHeadsOn() && !dirty.all && !dirty.structural ? edgesR.resizeHeads?.(vp.zoom, size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null) : null;
+        // Zoom-out only: a zoom-in's old path (every edge dirty, EDGE_SLICE a frame, the far ones parked by the cull)
+        // kept the settle task smaller than resizing the near heads in it (bench, 3x CPU: max 431-467 vs 511-575 ms).
+        const heads = full && zoomHeadsOn() && zoomedOut && !dirty.all && !dirty.structural ? edgesR.resizeHeads?.(vp.zoom, size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null) : null;
         if (heads) {
           for (const uid of heads) dirty.edges.add(uid);
           for (const e of board()?.edges.values() || []) if (e.fromBlock || e.toBlock) dirty.edges.add(e.uid);

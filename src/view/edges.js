@@ -1336,6 +1336,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     render,
     update,
     resizeHeads,
+    placedZoom: () => zoomCache,
     reveal,
     cull,
     // Every built edge group, in the DOM or parked (lenses paint parked edges too).

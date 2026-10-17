@@ -142,12 +142,12 @@ async function zoomInHeads(flags) {
   } finally { m.done(); }
 }
 
-test("C3 zoomHeads: a zoom-in settle resizes only the heads near the new view; the attached heads match the full re-place", async () => {
+test("C3 zoomHeads: a zoom-in keeps the sliced full re-place; its heads match zoomHeads off and nothing is missing", async () => {
   const on = await zoomInHeads({});
   const off = await zoomInHeads({ zoomHeads: false });
   assert.equal(on.zoom, off.zoom);
   assert.ok(on.attached > 1000, `attached at overview: ${on.attached}`);
-  assert.ok(on.headWrites < on.attached / 3, `head writes ${on.headWrites} of ${on.attached}`);
+  assert.equal(on.headWrites, off.headWrites, "zoom-in is the 3.36.0 path");
   let compared = 0;
   for (const [uid, d] of on.shown) {
     if (!off.shown.has(uid)) continue;

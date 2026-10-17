@@ -2262,7 +2262,9 @@ test("HB-3: Cmd+F finds three hits, cycles them, and does nothing when the board
     assert.equal(f.root.querySelector(".pxd-search__count").textContent, "1");
     assert.equal(shell(f, "nestCARD9").classList.contains("pxd-item--hit"), true);
     assert.equal(shell(f, "cardAAAA1").classList.contains("pxd-item--dim"), true);
-    assert.equal(f.root.querySelector("[data-uid=edgeFFFF6]").classList.contains("pxd-edge--dim"), true);
+    // PERF5-P3 (searchLayerDim): no edge is a hit, so the edge layer is dimmed by one attribute, not a class per edge.
+    assert.equal(f.root.querySelector(".pxd-edges").hasAttribute("data-pxd-search-dim"), true);
+    assert.equal(f.root.querySelector("[data-uid=edgeFFFF6]").classList.contains("pxd-edge--dim"), false);
   } finally {
     f.view.dispose();
     f.restore();

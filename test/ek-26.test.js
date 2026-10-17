@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 
 import { buildBoard, displayRects, worldRects, STICKY_HEADER_H } from "../src/model/board.js";
 import { normalizeItemLayout, serializeItemLayout } from "../src/model/schema.js";
+import { noteSpeedFlags } from "../src/settings.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { createHost } from "../src/host/roam.js";
 import { acquireSession, resetSessions } from "../src/session.js";
@@ -348,6 +349,8 @@ test("EK-3: every row paints at once as plain text with data-pxd-row; the live r
 test("EK-3: first paint is plain text only; no renderString runs until the idle queue does", () => {
   const stub = createDomStub();
   const restore = stub.install();
+  // UX3 A2 renders the first screen at mount (richRows); these pin the plain-first path.
+  noteSpeedFlags({ richRows: false });
   try {
     const doc = stub.document;
     let rs = 0;
@@ -374,12 +377,14 @@ test("EK-3: first paint is plain text only; no renderString runs until the idle 
     assert.equal(card.querySelectorAll(".pxd-block__plain").length, 40);
     assert.equal(card.querySelector(".pxd-block__plain").textContent, "row number 0");
     r.dispose();
-  } finally { restore(); }
+  } finally { noteSpeedFlags(null); restore(); }
 });
 
 test("EK-3: revealRow renders the row before it scrolls to it", () => {
   const stub = createDomStub();
   const restore = stub.install();
+  // UX3 A2 renders the first screen at mount (richRows); these pin the plain-first path.
+  noteSpeedFlags({ richRows: false });
   try {
     const doc = stub.document;
     let rs = 0;
@@ -407,7 +412,7 @@ test("EK-3: revealRow renders the row before it scrolls to it", () => {
     assert.equal(rs, 1, "that one row is live now");
     assert.equal(row.querySelector(".pxd-block__plain"), null);
     r.dispose();
-  } finally { restore(); }
+  } finally { noteSpeedFlags(null); restore(); }
 });
 
 test("EK-3: a pulled outline is reused while its page watch is armed and dropped by the watch", () => {

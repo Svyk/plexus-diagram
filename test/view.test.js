@@ -1047,7 +1047,8 @@ test("X3: the editor never stops mouseup, so Roam's document-level mouseup can d
     const input = editor.querySelector("textarea");
     assert.equal(editor.listeners.get("mouseup")?.size ?? 0, 0, "no stopEvent registered for mouseup");
     for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown"]) {
-      assert.equal(editor.listeners.get(type)?.size, 1, `${type} stays stopped at the editor`);
+      // UX3 A4 adds a capture listener for Roam bullets on click/dblclick; the bubble stopEvent stays one.
+      assert.equal([...(editor.listeners.get(type)?.values() || [])].filter((entry) => !entry.capture).length, 1, `${type} stays stopped at the editor`);
     }
     const seen = [];
     const onUp = (ev) => seen.push(ev.type);

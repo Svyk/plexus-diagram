@@ -6811,6 +6811,7 @@ export function createItemRenderer({
         void exitEdit().then(() => { if (!disposed) focusInside(uid, blockUid); });
       };
       for (const type of ["click", "dblclick"]) editor.addEventListener(type, onEditBullet, true);
+      editor.__pxdBulletOff = () => { for (const type of ["click", "dblclick"]) editor.removeEventListener(type, onEditBullet, true); };
     }
     // Rule 19.1: stop pointer/wheel at the overlay boundary BEFORE the synthetic focus click.
     for (const type of EDITOR_STOPPED) editor.addEventListener(type, stopEvent);
@@ -6986,6 +6987,7 @@ export function createItemRenderer({
     applyEditorCounterScale(editor, 1);
     const contentH = Number(editor.scrollHeight) || 0;
     for (const type of EDITOR_STOPPED) editor.removeEventListener(type, stopEvent);
+    editor.__pxdBulletOff?.();
     dropStaticLayer(rec);
     try { host?.unmount?.(editor); } catch { /* not mounted */ }
     editor.remove();
@@ -7260,6 +7262,7 @@ export function createItemRenderer({
       editing = null;
       detachFocusGuard();
       for (const type of EDITOR_STOPPED) e.editor.removeEventListener(type, stopEvent);
+      e.editor.__pxdBulletOff?.();
       e.rec.ghost?.remove();
       e.rec.ghost = null;
       try { host?.unmount?.(e.editor); } catch { /* not mounted */ }

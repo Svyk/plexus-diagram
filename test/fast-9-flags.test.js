@@ -61,6 +61,7 @@ const ALL_ON = {
   mainFade: true,
   canvasCovers: true,
   roamOutline: true,
+  richRows: true,
 };
 
 test("the panel has no speed-flags control, and bad JSON leaves the defaults (every flag on but edgeFingerprint, overviewCanvas, idlePark and quietBodies)", () => {

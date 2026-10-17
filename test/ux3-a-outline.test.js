@@ -278,3 +278,96 @@ test("A1: the row pitch, bullet box and thread line are the same in display and 
   }
 });
 
+// ---- A2: rows render like the editor (Roam's renderString), not stripped plain text.
+const LONG = `${"Cronobacter sakazakii is the flagship pathogen risk for powdered infant formula ".repeat(4)}end-of-row`;
+function pageCards() {
+  return [
+    { uid: "cardPG001", string: "[[Pathogen Page]]", plexus: { ":h": 240 } },
+  ];
+}
+const pageHost = {
+  pageUid: (t) => `uid-${t}`,
+  watchPage: () => () => {},
+  pageOutline: (title) => ({
+    uid: `uid-${title}`,
+    title,
+    exists: true,
+    blocks: [
+      { uid: "rowRel001", string: "Related", children: [
+        { uid: "rowRef001", string: "[[Powdered Infant Formula]] · [[Biosensors]] · **AOAC**", children: [] },
+      ] },
+      { uid: "rowLong01", string: LONG, children: [] },
+      { uid: "rowHeavy1", string: "{{[[roam/render]]: ((abcDEF123))}}", children: [] },
+    ],
+  }),
+};
+
+// A real IntersectionObserver reports later (or, on a busy window, not before the user looks).
+class SilentIO {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+test("A2: a page card's first screen of rows is Roam's rendering (links, bold), full length; heavy rows keep the placeholder", async () => {
+  const f = mount({ cards: pageCards(), host: pageHost });
+  const prevIO = globalThis.IntersectionObserver;
+  globalThis.IntersectionObserver = SilentIO;
+  f.stub.window.IntersectionObserver = SilentIO;
+  try {
+    await show(f);
+    const card = f.view.root.querySelector("[data-uid=cardPG001]");
+    const textOf = (uid) => card.querySelector(`[data-pxd-row=${uid}]`);
+    const ref = textOf("rowRef001");
+    assert.ok(ref.querySelector(".pxd-rs__live"), "the ref row is a renderString root");
+    assert.equal(ref.querySelector(".pxd-block__plain"), null);
+    assert.match(ref.textContent, /\[\[Powdered Infant Formula\]\]/, "refs are not stripped");
+    const long = textOf("rowLong01");
+    assert.ok(long.querySelector(".pxd-rs__live"));
+    assert.ok(long.textContent.includes("end-of-row"), "a long row wraps, it is not cut with an ellipsis");
+    assert.equal(long.textContent.includes("…"), false);
+    const heavy = textOf("rowHeavy1");
+    assert.equal(heavy.querySelector(".pxd-block__plain--heavy")?.textContent, "…");
+  } finally {
+    globalThis.IntersectionObserver = prevIO;
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("A2: plain rows painted before the upgrade are not cut at 200 characters", async () => {
+  noteSpeedFlags({ richRows: false });
+  const f = mount({ cards: pageCards(), host: pageHost });
+  const prevIO = globalThis.IntersectionObserver;
+  globalThis.IntersectionObserver = SilentIO;
+  f.stub.window.IntersectionObserver = SilentIO;
+  try {
+    await show(f);
+    const card = f.view.root.querySelector("[data-uid=cardPG001]");
+    const plain = card.querySelector("[data-pxd-row=rowLong01] .pxd-block__plain");
+    assert.ok(plain, "richRows off keeps the plain first paint");
+    assert.ok(plain.textContent.endsWith("end-of-row"));
+  } finally {
+    noteSpeedFlags(null);
+    globalThis.IntersectionObserver = prevIO;
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("A2: at overview zoom no card body mounts a renderString root", async () => {
+  const cards = [
+    { uid: "cardHE001", string: "he", plexus: { ":kids": true }, children: heTree() },
+    ...pageCards(),
+  ];
+  const f = mount({ cards, zoom: 0.1, host: pageHost });
+  try {
+    await show(f);
+    assert.equal(f.view.state().lod === "detail", false);
+    assert.equal(f.calls.renderString, 0);
+    assert.equal(f.view.root.querySelectorAll(".pxd-rs__live").length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});

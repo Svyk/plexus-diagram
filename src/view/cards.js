@@ -3340,7 +3340,7 @@ export function createItemRenderer({
     holdHeight(line, KID_ROW_H);
     const heavy = isHeavyRow(string);
     const plain = el("div", `pxd-block__text pxd-block__plain${heavy ? " pxd-block__plain--heavy" : ""}`, line);
-    plain.textContent = heavy ? "\u2026" : plainText(string);
+    plain.textContent = heavy ? "\u2026" : plainText(string, Infinity);
     plain.setAttribute("data-pxd-plain", uid);
     rec.rowTable.set(uid, { line, plain, string, heavy });
     const io = heavy ? rec.rowIOHeavy : rec.rowIO;
@@ -3472,6 +3472,11 @@ export function createItemRenderer({
       holdHeight(row, embedBoxFor(uid).h);
       const root = renderRoot(line, s, "pxd-rs pxd-block__text", uid);
       if (root.classList?.contains("pxd-embed-live") || root.querySelector?.(".pxd-rs__live")) b.roots.push(root);
+    } else if (b.live > 0 && !isHeavyRow(s)) {
+      // UX3 A2: the first screen of rows is Roam's rendering at first paint, not stripped text waiting for an upgrade.
+      b.live -= 1;
+      holdHeight(line, KID_ROW_H);
+      b.roots.push(renderRowRoot(line, s, "pxd-rs pxd-block__text", uid));
     } else {
       holdHeight(line, KID_ROW_H);
       addPlainRow(rec, line, s, uid);
@@ -3483,7 +3488,7 @@ export function createItemRenderer({
       if (filled) return;
       filled = true;
       startRows();
-      const sub = { n: b.n, more: 0, roots: [] };
+      const sub = { n: b.n, more: 0, roots: [], live: 0 };
       renderOutline(wrap, row.__pxdKids || [], sub, rec, depth + 1, uid);
       b.n = sub.n;
       if (sub.more) moreRow(wrap, sub.more, rec.pageTitle, rec.pageUid);
@@ -3567,7 +3572,7 @@ export function createItemRenderer({
       entry.string = spec.string;
       entry.heavy = heavy;
       entry.plain.classList.toggle("pxd-block__plain--heavy", heavy);
-      entry.plain.textContent = heavy ? "\u2026" : plainText(spec.string);
+      entry.plain.textContent = heavy ? "\u2026" : plainText(spec.string, Infinity);
       return;
     }
     const live = [...(line?.children || [])].find((node) => node.classList?.contains("pxd-rs") || node.classList?.contains("pxd-embed-live") || node.classList?.contains("pxd-rs--board"));
@@ -3620,7 +3625,7 @@ export function createItemRenderer({
     if (inner && host?.renderString) {
       try { host.renderString(inner, spec.string); return; } catch { /* plain text below */ }
     }
-    if (inner) inner.textContent = plainText(spec.string);
+    if (inner) inner.textContent = plainText(spec.string, Infinity);
   };
   const syncFold = (prow, spec) => {
     const fold = childWithClass(childWithClass(prow, "pxd-row"), "pxd-row__fold");
@@ -3728,6 +3733,13 @@ export function createItemRenderer({
     onPageLayout?.(rec.uid);
     return bucket.roots;
   };
+  // UX3 A2: rows that fit the card at first paint render live (detail tier only; bodies do not mount below it).
+  const FIRST_SCREEN_MAX = 24;
+  const firstScreenRows = (rec) => {
+    if (lod !== "detail" || speedOf().richRows === false) return 0;
+    const h = Number(rec?.rect?.h || lastBoard?.items.get(rec?.uid)?.h) || 0;
+    return Math.min(FIRST_SCREEN_MAX, Math.ceil(h / KID_ROW_H) + 1);
+  };
   // First paint builds the outline. A later refresh patches rows in place.
   const paintPage = (rec, holder, p) => {
     rec.pageBlocks = p?.blocks || [];
@@ -3749,7 +3761,7 @@ export function createItemRenderer({
       rec.pageUid = p?.uid || rec.pageUid || null;
       rec.pageKey = `focus:${focusUid}`;
       paintCrumb(holder, { uid: rec.uid, string: rec.pageTitle, title: rec.pageTitle, kind: "page" }, focused.trail);
-      const b = { n: 0, more: 0, roots: [] };
+      const b = { n: 0, more: 0, roots: [], live: firstScreenRows(rec) };
       renderOutline(holder, [focused.block], b, rec);
       rec.pageRoots = [...b.roots];
       onPageLayout?.(rec.uid);
@@ -3776,7 +3788,7 @@ export function createItemRenderer({
     }
     rec.pageUid = p.uid || null;
     rec.pageKey = pageKeyOf(p.blocks);
-    const b = { n: 0, more: 0, roots: [] };
+    const b = { n: 0, more: 0, roots: [], live: firstScreenRows(rec) };
     renderOutline(holder, p.blocks || [], b, rec);
     if (!b.n) el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
     if (b.more) moreRow(holder, b.more, rec.pageTitle, rec.pageUid);

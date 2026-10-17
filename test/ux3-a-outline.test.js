@@ -651,3 +651,31 @@ test("A1 fix 2: the card's own string is a full row, and the editor row box scal
   // Same top-of-row y at every depth: row tops are equal when the box (padding + min-height) is.
   for (const d of [0, 1, 2, 3]) assert.equal(d * px(decl(top, "min-height")), d * 29);
 });
+
+test("A1 fix 3: the editor's bullet column heights are px x zoom, so a row's main box is not taller than its text box", () => {
+  const controls = `${E} .rm-block-children .rm-block-main > :is(.controls, .rm-block__controls)`;
+  const caret = `${controls} :is(.block-expand, .rm-caret)`;
+  const bullet = `${E} .rm-block-children .rm-bullet`;
+  // The editor root's font is not scaled (only the textarea and view nodes are), so em here would stay 14px at any zoom:
+  // 21px + 4 x z of margin = 23.76 at z 0.69 against the 20.01 row.
+  for (const sel of [controls, caret, bullet]) {
+    assert.doesNotMatch(String(decl(sel, "height")), /\bem\b/, `${sel}: no em height`);
+    for (const z of [1, 0.69, 1.5]) assert.ok(Math.abs(px(decl(sel, "height"), z) - 21 * z) < 1e-9, `${sel} at ${z}`);
+  }
+  for (const z of [1, 0.69, 1.5]) {
+    const colH = px(decl(controls, "height"), z) + px(decl(controls, "margin-top"), z);
+    const rowH = px(decl(`${E} .roam-block`, "min-height"), z, 14 * z);
+    assert.ok(colH <= rowH + 1e-9, `zoom ${z}: bullet column ${colH} fits the row ${rowH}`);
+    // A parent's first child sits one row below it, and depth 3 sits 3 rows below the card top: 29 x 3 x z.
+    assert.ok(Math.abs(3 * rowH - 87 * z) < 1e-9);
+  }
+  assert.ok(Math.abs(3 * 29 * 0.69 - 60.03) < 1e-9);
+});
+
+test("A1 fix 3: the active textarea keeps Roam's 4px x zoom top padding, so the text does not move on activation", () => {
+  const ta = `${D}.pxd-item--editing:not(.pxd-item--page):not(.pxd-item--text) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) textarea:is(.rm-block-input, .rm-block__input)`;
+  for (const z of [1, 0.69, 1.5]) {
+    assert.ok(Math.abs(px(decl(ta, "padding-top"), z, 14 * z) - 4 * z) < 1e-9);
+    assert.ok(Math.abs(px(decl(ta, "padding-bottom"), z, 14 * z) - 4 * z) < 1e-9);
+  }
+});

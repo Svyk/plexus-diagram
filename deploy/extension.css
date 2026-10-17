@@ -14788,6 +14788,26 @@ body.roam-body.dark .pxd-root .pxd-tooltip.pxd-chrome,
   pointer-events: none;
 }
 
+/* The card's own string is the first row, in the same box as every child row. */
+.pxd-root .pxd-item.pxd-item--ol > .pxd-item__body > .pxd-item__string {
+  box-sizing: border-box;
+  min-height: var(--pxd-ol-row);
+  padding-top: var(--pxd-ol-pad);
+  padding-bottom: var(--pxd-ol-pad);
+  line-height: var(--pxd-ol-lh);
+}
+
+/* Editor rows: Roam's `.roam-block` box (min-height 1.5em + 8px, 4px above and below). The editor is laid out at
+   screen size under a 1/zoom counter-scale, so the em part scales with the font but the px parts must be multiplied
+   by --pxd-ed-z (the zoom; unset at zoom 1) to stay 29 x zoom on screen. */
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .roam-block {
+  box-sizing: border-box;
+  min-height: calc(var(--pxd-ol-lh) * 1em + 2 * var(--pxd-ol-pad) * var(--pxd-ed-z, 1)) !important;
+  padding-top: calc(var(--pxd-ol-pad) * var(--pxd-ed-z, 1)) !important;
+  padding-bottom: calc(var(--pxd-ol-pad) * var(--pxd-ed-z, 1)) !important;
+  margin-top: 0 !important;
+}
+
 /* The Roam editor (host.renderBlock) on the same numbers. card-edit.css hides every .controls in a note editor;
    children get theirs back here. */
 .pxd-root .pxd-item.pxd-item--ol.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .roam-block-container {

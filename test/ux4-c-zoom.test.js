@@ -83,3 +83,41 @@ test("C2: fsCover off adds no cover (3.36.0)", async () => {
     assert.ok(!m.stub.document.body.classList.contains(FS_COVER_CLASS));
   } finally { m.done(); }
 });
+
+// C3 zoomHeads: a settle on a new zoom step resizes the heads in place; the full re-place gives the same heads.
+async function zoomOutHeads(flags) {
+  const m = mountBig({ x: -400, y: -300, zoom: 0.5 }, { flags, fullscreen: true });
+  try {
+    await settledIn(m);
+    // Line paths of the edges already on the board: a full re-place writes each of them again.
+    let rewrites = 0;
+    const lines = [...m.view.root.querySelectorAll(".pxd-edge__line")];
+    for (const line of lines) {
+      const set = line.setAttribute.bind(line);
+      line.setAttribute = (name, value) => { if (name === "d") rewrites += 1; return set(name, value); };
+    }
+    for (let i = 0; i < 3; i += 1) { m.stub.dispatch(m.view.root, "wheel", { deltaX: 0, deltaY: 60, ctrlKey: true, deltaMode: 0, clientX: 700, clientY: 450 }); m.stub.flushFrames(); }
+    for (let i = 0; i < 30; i += 1) { await tick(30); m.stub.flushTimers(); m.stub.flushFrames(); m.stub.flushIdle(); }
+    await m.pump(40);
+    const heads = new Map();
+    for (const g of m.view.root.querySelectorAll(".pxd-edge")) heads.set(g.getAttribute("data-uid") || g.dataset?.uid, g.querySelector(".pxd-edge__head")?.getAttribute("d"));
+    return { zoom: m.view.viewport().zoom, attached: lines.length, placed: rewrites, heads, audit: m.view.paintAudit() };
+  } finally { m.done(); }
+}
+
+test("C3 zoomHeads: a zoom-out settle on a new zoom step re-sizes the arrow heads without re-placing every edge; heads match the full re-place", async () => {
+  const on = await zoomOutHeads({});
+  const off = await zoomOutHeads({ zoomHeads: false });
+  assert.equal(on.zoom, off.zoom);
+  assert.ok(on.attached > 300, `attached before the zoom: ${on.attached}`);
+  assert.ok(off.placed >= on.attached * 0.9, `full re-place: ${off.placed} of ${off.attached}`);
+  assert.ok(on.placed < on.attached / 10, `on ${on.placed} vs off ${off.placed} (attached ${on.attached})`);
+  let compared = 0;
+  for (const [uid, d] of on.heads) {
+    if (!off.heads.has(uid)) continue;
+    assert.equal(d, off.heads.get(uid), uid);
+    compared += 1;
+  }
+  assert.ok(compared > 200, `compared ${compared}`);
+  assert.equal(on.audit.missing, 0);
+});

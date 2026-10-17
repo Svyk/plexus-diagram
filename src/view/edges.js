@@ -841,6 +841,30 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     labelsLayer?.classList.toggle("pxd-labels--hidden", zoom < LABEL_HIDE_ZOOM);
   };
 
+  // C3 (UX4, speed flag zoomHeads): a settle at a new zoom step changes only what the zoom sizes: arrow and link heads,
+  // the label cut-off, and the screen-pixel pieces of block-end edges. The path, classes and label stay as they are.
+  // A full re-place repainted and re-routed every edge (PhD main board zoom-out: 2,100 edges, 250 a frame, ~9 frames
+  // of 50-110 ms). Returns the uids that still need a whole re-place (inner marks, bends). A parked edge is placed whole
+  // at the new zoom when it comes back (zoomCache).
+  const resizeHeads = (zoom) => {
+    zoomCache = zoom;
+    const again = [];
+    for (const [uid, rec] of edgeEls) {
+      if (rec.parked || rec.stale || !rec.geo) continue;
+      if (rec.inner || rec.bends) { again.push(uid); continue; }
+      if (rec.dir === "none" || rec.g.getAttribute("display") === "none") continue;
+      const size = arrowSize(zoom, rec.weight);
+      rec.head.setAttribute("d", arrowHeadPath(rec.geo.end, rec.geo.endAngle, size));
+      if (rec.dir === "two") rec.tail.setAttribute("d", arrowHeadPath(rec.geo.start, rec.geo.startAngle + Math.PI, size));
+    }
+    for (const rec of linkEls.values()) {
+      if (!rec.geo || rec.g.getAttribute("display") === "none") continue;
+      rec.head.setAttribute("d", arrowHeadPath(rec.geo.end, rec.geo.endAngle, arrowSize(zoom, 1) * 0.8));
+    }
+    labelsLayer?.classList.toggle("pxd-labels--hidden", zoom < LABEL_HIDE_ZOOM);
+    return again;
+  };
+
   // Shells that landed after the open. Only the edges that were waiting are placed.
   const flushWaiting = () => {
     if (!lastPass || !waiting.size) return 0;
@@ -1256,6 +1280,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     setCanvasTier: (on) => { canvasTier = typeof on === "function" ? on : () => Boolean(on); },
     render,
     update,
+    resizeHeads,
     reveal,
     cull,
     // Every built edge group, in the DOM or parked (lenses paint parked edges too).

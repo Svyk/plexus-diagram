@@ -4227,6 +4227,7 @@ function buildBoardView(onFail, {
   const MINIMAP_WHEEL_MS = 150;
   const perfNow = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
   // Arrow heads are max(8 + 2w, 6 / zoom): above 0.6 they do not change; below, in 25% steps.
+  const zoomHeadsOn = () => { try { return notedSpeedFlags().zoomHeads !== false; } catch { return true; } };
   const edgeZoomKey = (z) => (!(z > 0) ? "" : `${z >= 0.6 ? "hi" : Math.round(Math.log(z) / Math.log(1.25))}:${z < 0.3}`);
   // A camera frame attaches what it brings near, a few shells and edges at a time. (One batch every ~90 ms with a
   // larger budget was tried on the PhD main board and measured worse: bigger batches, longer recalcs.)
@@ -4761,7 +4762,11 @@ function buildBoardView(onFail, {
       if (vp.zoom !== edgesZoomAt) {
         const full = edgeZoomKey(vp.zoom) !== edgeZoomKey(edgesZoomAt);
         edgesZoomAt = vp.zoom;
-        if (full) {
+        const heads = full && zoomHeadsOn() && !dirty.all && !dirty.structural ? edgesR.resizeHeads?.(vp.zoom) : null;
+        if (heads) {
+          for (const uid of heads) dirty.edges.add(uid);
+          for (const e of board()?.edges.values() || []) if (e.fromBlock || e.toBlock) dirty.edges.add(e.uid);
+        } else if (full) {
           dirty.edges = new Set(board()?.edges.keys() || []);
           dirty.links = true;
         } else {

@@ -73,21 +73,23 @@ export const FS_COVER_CLASS = "pxd-fs-cover";
 export const COVER_HOLD_MS = 1500;
 let coverHeld = false;
 const coverOn = () => { try { return notedSpeedFlags().fsCover !== false; } catch { return true; } };
+const hasClass = (body, name) => Boolean(body?.classList?.contains?.(name));
+const setClass = (body, name, on) => body?.classList?.toggle?.(name, Boolean(on));
 function setCover(root, on) {
   const body = root?.body;
   if (!body?.classList) return;
   if (on) {
     coverHeld = false;
-    if (coverOn()) body.classList.add(FS_COVER_CLASS);
+    if (coverOn()) setClass(body, FS_COVER_CLASS, true);
   } else if (!coverHeld) {
-    body.classList.remove(FS_COVER_CLASS);
+    setClass(body, FS_COVER_CLASS, false);
   }
 }
 export function holdFsCover(root, on) {
   const body = root?.body;
   if (!body?.classList) return;
-  coverHeld = Boolean(on) && coverOn() && body.classList.contains(FS_COVER_CLASS);
-  if (!coverHeld && !body.classList.contains("pxd-has-fullscreen")) body.classList.remove(FS_COVER_CLASS);
+  coverHeld = Boolean(on) && coverOn() && hasClass(body, FS_COVER_CLASS);
+  if (!coverHeld && !hasClass(body, "pxd-has-fullscreen")) setClass(body, FS_COVER_CLASS, false);
 }
 
 // Toggle fullscreen chrome on the mount element. Returns a disposer that stops following.

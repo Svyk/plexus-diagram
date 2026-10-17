@@ -27,6 +27,7 @@ class El {
       add: (...names) => names.forEach((n) => cls.add(n)),
       remove: (...names) => names.forEach((n) => cls.delete(n)),
       contains: (n) => cls.has(n),
+      toggle: (n, force) => { const on = force === undefined ? !cls.has(n) : Boolean(force); if (on) cls.add(n); else cls.delete(n); return on; },
     };
   }
   get tagName() { return this.tag.toUpperCase(); }

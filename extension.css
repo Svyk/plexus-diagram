@@ -14850,7 +14850,7 @@ body.roam-body.dark .pxd-root .pxd-tooltip.pxd-chrome,
   width: calc(var(--pxd-ol-bullet) * var(--pxd-ed-z, 1)) !important;
   min-width: 0 !important;
   max-width: none !important;
-  height: calc(var(--pxd-ol-lh) * 1em);
+  height: calc(var(--pxd-ol-lh) * 14px * var(--pxd-ed-z, 1));
   margin-top: calc(var(--pxd-ol-pad) * var(--pxd-ed-z, 1)) !important;
   margin-right: calc(var(--pxd-ol-gap) * var(--pxd-ed-z, 1)) !important;
   margin-bottom: 0 !important;
@@ -14865,7 +14865,7 @@ body.roam-body.dark .pxd-root .pxd-tooltip.pxd-chrome,
   left: calc(-1 * var(--pxd-ol-caret) * var(--pxd-ed-z, 1));
   top: 0;
   width: calc(var(--pxd-ol-caret) * var(--pxd-ed-z, 1)) !important;
-  height: calc(var(--pxd-ol-lh) * 1em);
+  height: calc(var(--pxd-ol-lh) * 14px * var(--pxd-ed-z, 1));
   margin: 0 !important;
   padding: 0 !important;
   display: flex;
@@ -14879,7 +14879,7 @@ body.roam-body.dark .pxd-root .pxd-tooltip.pxd-chrome,
   justify-content: center;
   width: calc(var(--pxd-ol-bullet) * var(--pxd-ed-z, 1)) !important;
   min-width: 0 !important;
-  height: calc(var(--pxd-ol-lh) * 1em);
+  height: calc(var(--pxd-ol-lh) * 14px * var(--pxd-ed-z, 1));
   margin: 0 !important;
   padding: 0 !important;
   visibility: visible;
@@ -14919,6 +14919,13 @@ body.roam-body.dark .pxd-root .pxd-tooltip.pxd-chrome,
 /* UX3 A4. The block a card is focused on (crumb) shows Roam's zoomed ring on its bullet; note and page cards alike. */
 .pxd-root .pxd-outline--zoomed > :is(.pxd-outline__line, .pxd-row) > .pxd-outline__bullet::before {
   box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 30%, transparent);
+}
+
+/* Roam's own textarea carries the same 4px above and below as the view row (`.rm-block-input` padding), so a block does
+   not shift when it becomes active. card-edit.css zeroes that padding; give it back in outline cards, times the zoom. */
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing:not(.pxd-item--page):not(.pxd-item--text) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) textarea:is(.rm-block-input, .rm-block__input) {
+  padding-top: calc(var(--pxd-ol-pad) * var(--pxd-ed-z, 1)) !important;
+  padding-bottom: calc(var(--pxd-ol-pad) * var(--pxd-ed-z, 1)) !important;
 }
 
 /* MEM-2. Why popover. Border carries the edge. Height stays auto on pxd-root. */

@@ -239,7 +239,8 @@ test("at map zoom only the shells within a third of a screen of the view are att
 
 // F2 (Fable round): a settle after a zoom re-placed every attached edge in one task. It is sliced over frames now.
 test("a zoom settle re-places edges a slice per frame, not all in one", async (t) => {
-  noteSpeedFlags({ overviewCanvas: false });
+  // UX4 C3: zoomHeads resizes heads instead of re-placing; this pins the full re-place path it falls back to.
+  noteSpeedFlags({ overviewCanvas: false, zoomHeads: false });
   t.after(() => noteSpeedFlags(null));
   const m = mount({ x: 0, y: 0, zoom: 0.2 });
   try {

@@ -4539,16 +4539,33 @@ function buildBoardView(onFail, {
   const RESUME_SLICE_SHELLS = 24;
   const SLICE_LONG_MS = 50;
   const SLICE_SHORT_MS = 24;
+  // PERF5-P4 (speed flag sliceGrow): live, most of a long slice frame is a fixed cost of any frame that attaches into the
+  // board (Roam's :has() anchors restyle every inline-styled element: QA5 zoom-out settle 36-40 tasks / 5.5 s with
+  // 2-8 ms of Plexus each). Halving there doubles the frames that pay it. A long frame in which the slice's own script
+  // was under a quarter of it doubles the budget instead (up to SLICE_GROW_MAX, the script budget scaled with it); a
+  // frame that grew with the slice (1.6x the last one after a bigger slice) still halves it.
+  const SLICE_GROW_MAX = 384;
+  const SLICE_MS_MAX = 40;
   let sliceShells = SETTLE_SHELLS;
   let sliceAt = 0;
+  let sliceJs = 0;
+  let lastGap = 0;
+  let lastShells = 0;
   const sliceLog = [];
   const adaptiveOn = () => { try { return notedSpeedFlags().adaptiveSlices !== false; } catch { return false; } };
+  const growOn = () => { try { return notedSpeedFlags().sliceGrow !== false; } catch { return false; } };
   const sliceEdgeBudget = () => (adaptiveOn() ? Math.round((SETTLE_EDGES * sliceShells) / SETTLE_SHELLS) : SETTLE_EDGES);
+  const sliceMs = () => (adaptiveOn() && growOn() && sliceShells > SETTLE_SHELLS ? Math.min(SLICE_MS_MAX, (SETTLE_SLICE_MS * sliceShells) / SETTLE_SHELLS) : SETTLE_SLICE_MS);
   const adaptSlice = () => {
     const gap = sliceAt ? perfNow() - sliceAt : 0;
+    const used = sliceShells;
     if (!adaptiveOn()) sliceShells = SETTLE_SHELLS;
-    else if (gap > SLICE_LONG_MS) sliceShells = Math.max(SLICE_MIN_SHELLS, Math.floor(sliceShells / 2));
-    else if (gap && gap < SLICE_SHORT_MS) sliceShells = Math.min(SETTLE_SHELLS, sliceShells * 2);
+    else if (gap > SLICE_LONG_MS) {
+      const scaled = lastGap > 0 && used > lastShells && gap >= lastGap * 1.6;
+      if (growOn() && !scaled && sliceJs * 4 < gap) sliceShells = Math.min(SLICE_GROW_MAX, sliceShells * 2);
+      else sliceShells = Math.max(SLICE_MIN_SHELLS, Math.floor(sliceShells / 2));
+    } else if (gap && gap < SLICE_SHORT_MS && sliceShells < SETTLE_SHELLS) sliceShells = Math.min(SETTLE_SHELLS, sliceShells * 2);
+    if (gap) { lastGap = gap; lastShells = used; }
     sliceLog.push(sliceShells);
     if (sliceLog.length > 60) sliceLog.shift();
   };
@@ -4628,14 +4645,17 @@ function buildBoardView(onFail, {
     if (!slicing) sliceShells = start || SETTLE_SHELLS;
     if (!adaptiveOn()) sliceShells = SETTLE_SHELLS;
     sliceAt = 0;
+    sliceJs = 0;
+    lastGap = 0;
+    lastShells = 0;
     if (sliceWanted()) {
       sliceLog.push(sliceShells);
       if (sliceLog.length > 60) sliceLog.shift();
-      itemsR.sliceAttach?.({ budget: sliceShells, ms: SETTLE_SLICE_MS });
+      itemsR.sliceAttach?.({ budget: sliceShells, ms: sliceMs() });
     }
     else endSlice();
   };
-  const sliceEdges = (rect) => (rect ? edgesR.cull?.(rect, { budget: sliceEdgeBudget(), ms: SETTLE_SLICE_MS }) || 0 : 0);
+  const sliceEdges = (rect) => (rect ? edgesR.cull?.(rect, { budget: sliceEdgeBudget(), ms: sliceMs() }) || 0 : 0);
   const sliceStep = () => {
     sliceFrame = null;
     if (!slicing) return;
@@ -4643,9 +4663,11 @@ function buildBoardView(onFail, {
     if (gesturing || wheelLayer) { cancelSlice(); return; }
     const rect = visibleWorldRect(vp, size, ATTACH_MARGIN);
     adaptSlice();
-    if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, sliceShells, SETTLE_SLICE_MS);
+    const t0 = perfNow();
+    if ((itemsR.attachLeft?.() || 0) > 0) itemsR.reveal?.(rect, sliceShells, sliceMs());
     const edgesLeft = sliceEdges(rect);
     sliceAt = perfNow();
+    sliceJs = sliceAt - t0;
     if (edgesLeft || (itemsR.attachLeft?.() || 0) > 0) { sliceFrame = timers.frame(sliceStep, "slice"); return; }
     endSlice();
     releaseUnderlay();

@@ -60,6 +60,8 @@ const ALL_ON = {
   zoomNoLayer: true,
   mainFade: true,
   canvasCovers: true,
+  searchLayerDim: true,
+  sliceGrow: true,
 };
 
 test("the panel has no speed-flags control, and bad JSON leaves the defaults (every flag on but edgeFingerprint, overviewCanvas, idlePark and quietBodies)", () => {

@@ -45,8 +45,8 @@ test("E3-5: crumb back trims the kept board to 48 shells while it is still parke
   } finally { m.done(); }
 });
 
-test("E3-5: the slice budget halves after a long frame (down to 12) and doubles back after short ones (up to 48)", async () => {
-  const m = await builtAtFit();
+test("E3-5: with sliceGrow off, the slice budget halves after a long frame (down to 12) and doubles back after short ones (up to 48)", async () => {
+  const m = await builtAtFit({ sliceGrow: false });
   try {
     await steppedClock(async (clock) => {
       m.view.suspend();

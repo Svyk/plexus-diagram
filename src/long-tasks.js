@@ -67,6 +67,7 @@ export function createTaskProbe({ now = () => (globalThis.performance?.now ? glo
   return {
     span,
     longTasks,
+    spans: () => spans.slice(),
     observe,
     clear: () => { spans.length = 0; tasks.length = 0; },
     dispose: () => { try { observer?.disconnect?.(); } catch { /* gone */ } observer = null; },

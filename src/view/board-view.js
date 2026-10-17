@@ -12,6 +12,7 @@ import { sharedBgBudget } from "../bg-budget.js";
 import { createHitShield } from "./hit-shield.js";
 import { createGestureUnderlay } from "./gesture-underlay.js";
 import { sharedTaskProbe } from "../long-tasks.js";
+import { createInputProfile } from "../input-profile.js";
 import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, readPlexus, semanticRef, plainText } from "../model/schema.js";
 import { TABLE_SIZE, keyGate, ownershipOf, tablePointerTarget } from "../model/roam-table.js";
 import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../model/drawing-card.js";
@@ -1298,6 +1299,7 @@ function buildBoardView(onFail, {
   let size = { width: 0, height: 0 };
   let rootRect = { left: 0, top: 0, width: 0, height: 0 };
   let disposed = false;
+  let inputProfile = null;
   let disposing = false;
   let released = false;
   let gesturing = false;
@@ -10872,6 +10874,12 @@ function buildBoardView(onFail, {
     longTasks() {
       return sharedTaskProbe().longTasks();
     },
+    // PERF5-P1 probe: first call arms Event Timing + Long Animation Frames, later calls return per-key delay / handlers /
+    // presentation, slow frames with their render and style+layout phases, and scripts by source file (input-profile.js).
+    typingProfile(opts) {
+      if (!inputProfile) inputProfile = createInputProfile({ win: globalThis, spans: () => sharedTaskProbe().spans() });
+      return inputProfile.read(opts);
+    },
     // Card bodies that took 50 ms or more to mount ({ uid, kind, ms, at }), to name a long "content" task.
     slowMounts() {
       return itemsR.slowMounts?.() || [];
@@ -11122,6 +11130,8 @@ function buildBoardView(onFail, {
       if (disposing) return;
       disposing = true;
       disposed = true;
+      inputProfile?.dispose();
+      inputProfile = null;
       try { sharedBgBudget().hold(bgHoldKey, false); } catch { /* budget */ }
       if (pdfTitleJob) { const stop = pdfTitleJob; pdfTitleJob = null; stop(); }
       if (coverJob) { const stop = coverJob; coverJob = null; stop(); }

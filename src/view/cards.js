@@ -3861,9 +3861,54 @@ export function createItemRenderer({
     const h = Number(rec?.rect?.h || lastBoard?.items.get(rec?.uid)?.h) || 0;
     return Math.min(FIRST_SCREEN_MAX, Math.ceil(h / KID_ROW_H) + 1);
   };
+  // UX4 B6: a page card that turns detail before the content pass reaches it was an empty box for up to seconds on a
+  // big board (zoom-in from overview). Its last outline is still cached: paint those rows as plain text at once. The
+  // real mount replaces them in the same task (mountContentBody clears and paints synchronously), so the card never
+  // shows an empty body between them. No Roam roots, no listeners, no data-pxd-row (not an arrow target).
+  // The last outline each page card painted. Kept after the page watch (and outlineCache) is released at overview: a
+  // preview may be stale, the mount that replaces it is not. Insertion order is the LRU.
+  const previewRows = new Map();
+  const PREVIEW_TITLES = 600;
+  const notePreview = (title, blocks) => {
+    if (!title || !Array.isArray(blocks) || !blocks.length || speedOf().steadyRows === false) return;
+    previewRows.delete(title);
+    previewRows.set(title, blocks);
+    if (previewRows.size > PREVIEW_TITLES) previewRows.delete(previewRows.keys().next().value);
+  };
+  const PREVIEW_DEPTH = 6;
+  const PREVIEW_CAP = 80;
+  const paintPagePreview = (rec, item) => {
+    if (lod !== "detail" || item?.kind !== "page" || !rec?.body || speedOf().steadyRows === false) return false;
+    if (mounted.has(rec.uid) || editing?.uid === rec.uid || item.collapsed || item.open === false) return false;
+    if (rec.body.firstElementChild || rec.body.children?.length) return false;
+    const blocks = previewRows.get(item.title);
+    if (!blocks?.length || cardFocus.has(rec.uid)) return false;
+    const holder = el("div", "pxd-item__page pxd-item__page--preview", rec.body);
+    holder.setAttribute("aria-hidden", "true");
+    let left = firstScreenRows(rec) || 12;
+    const walk = (parent, list, depth) => {
+      for (const c of list || []) {
+        if (left <= 0) return;
+        const str = childString(c);
+        if (skipChildString(str)) continue;
+        left -= 1;
+        const row = el("div", "pxd-block pxd-prow", parent);
+        const line = el("div", "pxd-row", row);
+        holdHeight(line, KID_ROW_H);
+        const kids = childKids(c);
+        if (kids.length) el("span", "pxd-row__fold", line);
+        el("span", "pxd-outline__bullet", line);
+        el("div", "pxd-block__text pxd-block__plain", line).textContent = isHeavyRow(str) ? "\u2026" : plainText(str, Infinity);
+        if (kids.length && c.open !== false && depth < PREVIEW_DEPTH) walk(el("div", "pxd-block__children", row), kids, depth + 1);
+      }
+    };
+    walk(holder, blocks, 0);
+    return true;
+  };
   // First paint builds the outline. A later refresh patches rows in place.
   const paintPage = (rec, holder, p) => {
     rec.pageBlocks = p?.blocks || [];
+    if (p?.exists) notePreview(p.title || rec.pageTitle, p.blocks);
     const focusUid = cardFocus.get(rec.uid) || "";
     const focused = focusUid ? findBlock(rec.pageBlocks, focusUid, outlineRead) : null;
     if (focused) {
@@ -5937,6 +5982,13 @@ export function createItemRenderer({
       for (const [uid] of ranked.slice(0, LRU_CAP)) next.add(uid);
     }
     wanted = next;
+    if (lod === "detail") {
+      for (const uid of next) {
+        if (mounted.has(uid)) continue;
+        const rec = shells.get(uid);
+        if (rec?.type === "card") paintPagePreview(rec, lastBoard.items.get(uid));
+      }
+    }
     const t = now();
     for (const uid of next) if (mounted.has(uid)) mounted.set(uid, t);
     for (const uid of shells.keys()) if (!next.has(uid)) contentSched.want(uid, false);
@@ -6087,6 +6139,16 @@ export function createItemRenderer({
         }
       }
       if (moved && lastContent && !quieted) fillContent({ ...lastContent, tier: lod, zoom: zoomCache });
+      // UX4 B6: the content pass after a zoom-in waits for the gesture to settle. Page cards in view show their
+      // cached rows meanwhile instead of an empty box (cullRect is the view the flip was cut for).
+      if (lod === "detail" && speedOf().steadyRows !== false) {
+        let left = PREVIEW_CAP;
+        for (const [uid, rec] of shells) {
+          if (left <= 0) break;
+          if (rec.type !== "card" || !isAttached(rec) || !nearView(uid)) continue;
+          if (paintPagePreview(rec, lastBoard?.items.get(uid))) left -= 1;
+        }
+      }
     }
     if (prev !== lod) for (const rec of shells.values()) if (rec.kidsBtn || rec.kidCount > 0) syncKidsBadge(rec);
     if (showBadges && (prev === "detail") !== (lod === "detail")) {

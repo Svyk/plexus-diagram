@@ -281,7 +281,8 @@ body.pxd-fs-cover .roam-article {
   visibility: hidden;
 }
 
-body.pxd-fs-cover .roam-article .pxd-mount {
+body.pxd-fs-cover .roam-article .pxd-mount,
+body.pxd-fs-cover .roam-article .pxd-mount--fullscreen {
   visibility: visible;
 }
 

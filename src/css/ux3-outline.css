@@ -236,3 +236,38 @@
   padding-top: calc(var(--pxd-ol-pad) * var(--pxd-ed-z, 1)) !important;
   padding-bottom: calc(var(--pxd-ol-pad) * var(--pxd-ed-z, 1)) !important;
 }
+
+/* UX4 B1. The bullet's click target is the whole bullet gutter: the row's full height (the line's 4px padding included)
+   from the bullet's left edge to where the text starts (16px box + 4px gap), and for a nested row also back across the
+   20px indent column under its parent's text. The dot does not move; clicks on the text are untouched. */
+.pxd-root .pxd-item.pxd-item--ol .pxd-outline__line > .pxd-outline__bullet,
+.pxd-root .pxd-item.pxd-item--ol .pxd-row > .pxd-outline__bullet {
+  position: relative;
+  align-self: stretch;
+  height: auto;
+  align-items: flex-start;
+  padding-top: calc((var(--pxd-ol-lh) * 1em - var(--pxd-ol-dot)) / 2);
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-item.pxd-item--ol .pxd-outline__line > .pxd-outline__bullet::after,
+.pxd-root .pxd-item.pxd-item--ol .pxd-row > .pxd-outline__bullet::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: calc(-1 * var(--pxd-ol-gap));
+  top: calc(-1 * var(--pxd-ol-pad));
+  bottom: calc(-1 * var(--pxd-ol-pad));
+  cursor: pointer;
+}
+
+.pxd-root .pxd-item.pxd-item--ol .pxd-block__children .pxd-outline__line > .pxd-outline__bullet::after,
+.pxd-root .pxd-item.pxd-item--ol .pxd-block__children .pxd-row > .pxd-outline__bullet::after {
+  left: calc(-1 * var(--pxd-ol-indent));
+}
+
+.pxd-root .pxd-item.pxd-item--ol .pxd-outline__caret,
+.pxd-root .pxd-item.pxd-item--ol .pxd-row__fold {
+  z-index: 1;
+}

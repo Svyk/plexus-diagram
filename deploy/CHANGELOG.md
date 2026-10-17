@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.37.0 — 2026-10-17
+
+Arrows that reach a child block, and steadier fullscreen and zoom.
+
+- **Arrows to a child block.** An arrow to a child block ends on that row when the card is open, and shows a child mark and a badge dot when the card is folded. Click the mark or Alt-click the arrow to open that child.
+- **Fullscreen repaint.** Fullscreen boards keep Roam's page covered while they repaint.
+- **Zoom-out arrowheads.** Zooming out resizes arrowheads in place.
+- **Undo after the badge.** Cmd+Z works after clicking the Children badge.
+
 ## 3.36.0 — 2026-10-17
 
 Child focus that works where you click, and steadier editing and zooming.

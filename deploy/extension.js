@@ -19286,7 +19286,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true };
 }
 function parseSpeedFlags(raw) {
   const base2 = defaultSpeedFlags();
@@ -19740,7 +19740,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -30843,6 +30843,13 @@ function createItemRenderer({
     return Math.max(base2, stored, REVEAL_H);
   };
   let hotRow = null;
+  const dropFocus = (uid) => {
+    if (!uid || speedOf().foldResets === false) return false;
+    const had = cardFocus.delete(uid);
+    const shown = revealCards.delete(uid);
+    if (hotRow?.card === uid) hotRow = null;
+    return had || shown;
+  };
   let peekBlocked = false;
   let focusSet = null;
   let badgeMap = /* @__PURE__ */ new Map();
@@ -31842,6 +31849,7 @@ function createItemRenderer({
         cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
         if (speedOf().roamOutline !== false) cls.push("pxd-item--ol");
         const kidsOn = Boolean(item.kids);
+        if (rec.kidsOn !== void 0 && rec.kidsOn !== kidsOn) dropFocus(item.uid);
         if (rec.kidsOn !== void 0 && rec.kidsOn !== kidsOn && !motionInstant()) {
           cls.push("pxd-item--kids-anim");
           rec.kidsAnim = true;
@@ -32665,10 +32673,13 @@ function createItemRenderer({
   };
   let peek = null;
   let peekTimer = null;
+  let peekLeave = null;
   const peekRoot = () => itemsLayer?.closest?.(".pxd-root") || null;
   const closePeek = () => {
     peekTimer?.();
     peekTimer = null;
+    peekLeave?.();
+    peekLeave = null;
     if (!peek) return;
     const p = peek;
     peek = null;
@@ -32693,23 +32704,60 @@ function createItemRenderer({
     if (disposed || peek || !root || !rec.kidsBtn || !item || !isKidsCard(item) || editing || paused) return;
     peekRowsOf(rec, item, (rows) => {
       if (disposed || peek || !rec.kidsBtn?.isConnected || !rows.length) return;
-      const node2 = el2("div", "pxd-kids-peek", root);
-      node2.setAttribute("role", "tooltip");
-      for (const c of rows) {
-        el2("div", "pxd-kids-peek__row", node2).textContent = plainText(childString5(c), PEEK_TEXT_MAX);
-        for (const g of visibleKids(childKids(c)).slice(0, PEEK_SUB)) {
-          el2("div", "pxd-kids-peek__row pxd-kids-peek__row--sub", node2).textContent = plainText(childString5(g), PEEK_TEXT_MAX);
+      const pick2 = speedOf().peekPick !== false;
+      const node2 = el2("div", pick2 ? "pxd-kids-peek pxd-kids-peek--pick" : "pxd-kids-peek", root);
+      node2.setAttribute("role", pick2 ? "menu" : "tooltip");
+      const addRow = (block, sub) => {
+        const row4 = el2("div", sub ? "pxd-kids-peek__row pxd-kids-peek__row--sub" : "pxd-kids-peek__row", node2);
+        row4.textContent = plainText(childString5(block), PEEK_TEXT_MAX);
+        const uid = childUid(block);
+        if (pick2 && uid) {
+          row4.setAttribute("role", "menuitem");
+          row4.setAttribute("data-pxd-peek-row", uid);
         }
+      };
+      for (const c of rows) {
+        addRow(c, false);
+        for (const g of visibleKids(childKids(c)).slice(0, PEEK_SUB)) addRow(g, true);
       }
       placeNearAnchor(node2, rec.kidsBtn.getBoundingClientRect(), root, { gap: 6 });
-      const close = () => closePeek();
-      doc.addEventListener?.("pointerdown", close, true);
-      doc.addEventListener?.("wheel", close, true);
+      const close = (event) => {
+        if (pick2 && node2.contains?.(event?.target)) return;
+        closePeek();
+      };
+      const offs = [];
+      const on = (target, type, fn, capture) => {
+        target.addEventListener?.(type, fn, capture);
+        offs.push(() => target.removeEventListener?.(type, fn, capture));
+      };
+      on(doc, "pointerdown", close, true);
+      on(doc, "wheel", close, true);
+      if (pick2) {
+        for (const type of ["pointerdown", "mousedown", "dblclick", "wheel"]) on(node2, type, stopPress);
+        on(node2, "mouseenter", () => {
+          peekLeave?.();
+          peekLeave = null;
+        });
+        on(node2, "mouseleave", () => leavePeekSoon());
+        on(node2, "click", (event) => {
+          stopPress(event);
+          const blockUid3 = event.target?.closest?.("[data-pxd-peek-row]")?.getAttribute?.("data-pxd-peek-row");
+          if (!blockUid3) return;
+          closePeek();
+          focusInside(rec.uid, blockUid3);
+        });
+      }
       peek = { node: node2, rec, off: () => {
-        doc.removeEventListener?.("pointerdown", close, true);
-        doc.removeEventListener?.("wheel", close, true);
+        for (const off of offs) off();
       } };
     });
+  };
+  const leavePeekSoon = () => {
+    peekLeave?.();
+    peekLeave = later(() => {
+      peekLeave = null;
+      closePeek();
+    }, PEEK_LEAVE_MS);
   };
   const dropKidsBadge = (rec) => {
     if (!rec.kidsBtn) return;
@@ -32723,6 +32771,16 @@ function createItemRenderer({
     const item = lastBoard?.items.get(uid);
     if (!isKidsCard(item)) return false;
     const rec = shells.get(uid);
+    if (rec?.peekOpen) dropPeek(rec);
+    if (!item.kids && revealCards.has(uid) && speedOf().foldResets !== false) {
+      dropFocus(uid);
+      if (rec) {
+        remountCard(rec);
+        settleReveal(rec, uid);
+      }
+      return true;
+    }
+    dropFocus(uid);
     const on = !item.kids;
     const extra = on ? Math.ceil((Number(rec?.kidRows) || 0) * KID_ROW_H + 8) : 0;
     void session?.setKids?.(uid, on, extra);
@@ -32757,7 +32815,15 @@ function createItemRenderer({
         if (event.buttons || peek || peekTimer) return;
         peekTimer = later(() => openPeek(rec), PEEK_DELAY_MS);
       });
-      on("mouseleave", () => closePeek());
+      on("mouseleave", () => {
+        if (peek?.rec === rec && speedOf().peekPick !== false) {
+          peekTimer?.();
+          peekTimer = null;
+          leavePeekSoon();
+          return;
+        }
+        closePeek();
+      });
       rec.kidsBtn = btn2;
     }
     rec.kidsBtn.textContent = text4;
@@ -32874,6 +32940,12 @@ function createItemRenderer({
       const crumbRec = shells.get(item.uid);
       const onCrumb = (event) => {
         stopPress(event);
+        if (editing?.uid === item.uid && !editing.sticky) {
+          void exitEdit().then(() => {
+            if (!disposed) onCrumb(event);
+          });
+          return;
+        }
         if (!focusId) {
           cardFocus.delete(item.uid);
           revealCards.delete(item.uid);
@@ -32977,6 +33049,46 @@ function createItemRenderer({
     remountCard(rec);
     if (item) bumpRevealHeight(rec, item);
     return rowReady(rec, blockUid3);
+  };
+  let dropReveal = null;
+  const unrevealDrop = (entry) => {
+    entry.timer?.();
+    entry.timer = null;
+    if (!entry.shown || cardFocus.has(entry.uid)) return;
+    revealCards.delete(entry.uid);
+    const rec = shells.get(entry.uid);
+    if (rec && !disposed) {
+      remountCard(rec);
+      settleReveal(rec, entry.uid);
+    }
+  };
+  const dropRevealOn = (uid) => {
+    const want = uid && speedOf().childDrop !== false ? uid : null;
+    if ((dropReveal?.uid || null) === want) return;
+    if (dropReveal) {
+      const prev = dropReveal;
+      dropReveal = null;
+      unrevealDrop(prev);
+    }
+    if (!want || disposed) return;
+    const item = lastBoard?.items.get(want);
+    const rec = shells.get(want);
+    if (!item || !rec || lod !== "detail" || editing?.uid === want || !needsRevealRoom(item) || revealing(item)) return;
+    const count = item.kind === "note" ? visibleKids(item.content).length : Number(rec.kidCount) || 0;
+    if (count <= 0) return;
+    const entry = { uid: want, timer: null, shown: false };
+    entry.timer = later(() => {
+      entry.timer = null;
+      if (dropReveal !== entry || disposed) return;
+      const live2 = lastBoard?.items.get(want);
+      if (!live2 || editing?.uid === want) return;
+      entry.shown = true;
+      revealCards.add(want);
+      rec.el.classList.remove("pxd-item--collapsed");
+      remountCard(rec);
+      bumpRevealHeight(rec, live2);
+    }, DROP_PEEK_MS);
+    dropReveal = entry;
   };
   const unfoldForFocus = (cardUid, blockUid3) => {
     if (!cardUid) return false;
@@ -33869,8 +33981,47 @@ function createItemRenderer({
     const h = Number(rec?.rect?.h || lastBoard?.items.get(rec?.uid)?.h) || 0;
     return Math.min(FIRST_SCREEN_MAX, Math.ceil(h / KID_ROW_H) + 1);
   };
+  const previewRows = /* @__PURE__ */ new Map();
+  const PREVIEW_TITLES = 600;
+  const notePreview = (title, blocks) => {
+    if (!title || !Array.isArray(blocks) || !blocks.length || speedOf().steadyRows === false) return;
+    previewRows.delete(title);
+    previewRows.set(title, blocks);
+    if (previewRows.size > PREVIEW_TITLES) previewRows.delete(previewRows.keys().next().value);
+  };
+  const PREVIEW_DEPTH = 6;
+  const PREVIEW_CAP = 80;
+  const paintPagePreview = (rec, item) => {
+    if (lod !== "detail" || item?.kind !== "page" || !rec?.body || speedOf().steadyRows === false) return false;
+    if (mounted.has(rec.uid) || editing?.uid === rec.uid || item.collapsed || item.open === false) return false;
+    if (rec.body.firstElementChild || rec.body.children?.length) return false;
+    const blocks = previewRows.get(item.title);
+    if (!blocks?.length || cardFocus.has(rec.uid)) return false;
+    const holder = el2("div", "pxd-item__page pxd-item__page--preview", rec.body);
+    holder.setAttribute("aria-hidden", "true");
+    let left = firstScreenRows(rec) || 12;
+    const walk3 = (parent, list, depth) => {
+      for (const c of list || []) {
+        if (left <= 0) return;
+        const str3 = childString5(c);
+        if (skipChildString(str3)) continue;
+        left -= 1;
+        const row4 = el2("div", "pxd-block pxd-prow", parent);
+        const line = el2("div", "pxd-row", row4);
+        holdHeight(line, KID_ROW_H);
+        const kids = childKids(c);
+        if (kids.length) el2("span", "pxd-row__fold", line);
+        el2("span", "pxd-outline__bullet", line);
+        el2("div", "pxd-block__text pxd-block__plain", line).textContent = isHeavyRow(str3) ? "…" : plainText(str3, Infinity);
+        if (kids.length && c.open !== false && depth < PREVIEW_DEPTH) walk3(el2("div", "pxd-block__children", row4), kids, depth + 1);
+      }
+    };
+    walk3(holder, blocks, 0);
+    return true;
+  };
   const paintPage = (rec, holder, p) => {
     rec.pageBlocks = p?.blocks || [];
+    if (p?.exists) notePreview(p.title || rec.pageTitle, p.blocks);
     const focusUid = cardFocus.get(rec.uid) || "";
     const focused = focusUid ? findBlock(rec.pageBlocks, focusUid, outlineRead) : null;
     if (focused) {
@@ -36150,6 +36301,13 @@ function createItemRenderer({
       for (const [uid] of ranked.slice(0, LRU_CAP)) next.add(uid);
     }
     wanted = next;
+    if (lod === "detail") {
+      for (const uid of next) {
+        if (mounted.has(uid)) continue;
+        const rec = shells.get(uid);
+        if (rec?.type === "card") paintPagePreview(rec, lastBoard.items.get(uid));
+      }
+    }
     const t = now2();
     for (const uid of next) if (mounted.has(uid)) mounted.set(uid, t);
     for (const uid of shells.keys()) if (!next.has(uid)) contentSched.want(uid, false);
@@ -36290,6 +36448,14 @@ function createItemRenderer({
         }
       }
       if (moved && lastContent && !quieted) fillContent({ ...lastContent, tier: lod, zoom: zoomCache });
+      if (lod === "detail" && speedOf().steadyRows !== false) {
+        let left = PREVIEW_CAP;
+        for (const [uid, rec] of shells) {
+          if (left <= 0) break;
+          if (rec.type !== "card" || !isAttached(rec) || !nearView(uid)) continue;
+          if (paintPagePreview(rec, lastBoard?.items.get(uid))) left -= 1;
+        }
+      }
     }
     if (prev !== lod) {
       for (const rec of shells.values()) if (rec.kidsBtn || rec.kidCount > 0) syncKidsBadge(rec);
@@ -36782,6 +36948,16 @@ function createItemRenderer({
   };
   const recoverFocus = () => armFloor();
   const stopEvent = (event) => event.stopPropagation();
+  let bodyMarked = false;
+  const markEditingBody = (on) => {
+    const want = Boolean(on) && speedOf().refPathContain !== false;
+    if (want === bodyMarked) return;
+    bodyMarked = want;
+    try {
+      doc.body?.classList?.toggle?.("pxd-editing-active", want);
+    } catch {
+    }
+  };
   const EDITOR_STOPPED = ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown"];
   const EDIT_FADE_MS = 80;
   const boxHeight = (node2) => {
@@ -37058,6 +37234,7 @@ function createItemRenderer({
     if (isSticky(item)) return focusSticky(uid);
     if (item.kind === "pdf" && onReadPane) return false;
     const click = doc.defaultView?.event;
+    let ownHit = false;
     if (item.kind !== "page" && caretOff == null) {
       const type = String(click?.type || "");
       const mouse = type === "dblclick" || type === "click" || type === "pointerdown" || type === "pointerup" || type === "mousedown" || type === "mouseup";
@@ -37067,6 +37244,7 @@ function createItemRenderer({
       if (mouse && Number.isFinite(x) && Number.isFinite(y) && (!target || rec.el.contains?.(target))) {
         const hit = noteCaretAtPoint(doc, x, y);
         if (hit && (!hit.uid || hit.uid === uid)) {
+          ownHit = true;
           const mark = hit.task ? TASK_MARK.exec(String(item.string || ""))?.[0].length || 0 : 0;
           caretOff = hit.offset + mark;
         } else if (hit?.uid && speedOf().childCaret !== false && rec.body?.querySelector?.(`[data-pxd-row="${hit.uid}"]`)) {
@@ -37082,6 +37260,13 @@ function createItemRenderer({
       return false;
     }
     const targetUid = item.target.kind === "block" ? item.target.uid : item.uid;
+    let focusUid = "";
+    if (item.kind !== "page" && speedOf().editFocus !== false && cardFocus.has(uid)) {
+      if (ownHit) {
+        dropFocus(uid);
+        remountCard(rec);
+      } else focusUid = cardFocus.get(uid) || "";
+    }
     const heavyUid = ownHeavyUid(item);
     if (heavyUid) {
       if (pdfOpenUid && pdfOpenUid !== heavyUid) {
@@ -37126,8 +37311,16 @@ function createItemRenderer({
     }
     const ghost = el2("div", "pxd-item__ghost");
     ghost.setAttribute("aria-hidden", "true");
-    for (const node2 of [...rec.body.children || []]) ghost.append(node2);
+    const head = focusUid ? [...rec.body.children || []].filter((node2) => node2.classList?.contains("pxd-item__string") || node2.classList?.contains("pxd-focus__crumb")) : [];
+    rec.headRoots = head.filter((node2) => (rec.roots || []).includes(node2));
+    if (rec.headRoots.length) rec.roots = rec.roots.filter((node2) => !rec.headRoots.includes(node2));
+    for (const node2 of [...rec.body.children || []]) if (!head.includes(node2)) ghost.append(node2);
     rec.body.append(ghost);
+    if (focusUid) {
+      rec.el.classList.add("pxd-item--focusedit");
+      const top = Number(ghost.offsetTop) || 0;
+      if (top > 0) rec.el.style.setProperty?.("--pxd-focus-top", `${top}px`);
+    }
     rec.ghost = ghost;
     rec.contentKey = null;
     mounted.delete(uid);
@@ -37136,11 +37329,17 @@ function createItemRenderer({
     if (!pageEdit && speedOf().editBulletFocus !== false) {
       const onEditBullet = (event) => {
         const bullet2 = event.target?.closest?.(".rm-bullet");
-        if (!bullet2 || !editor.contains?.(bullet2) || !bullet2.closest?.(".rm-block-children")) return;
+        if (!bullet2 || !editor.contains?.(bullet2) || !focusUid && !bullet2.closest?.(".rm-block-children")) return;
         const main = bullet2.closest?.(".rm-block-main");
         const input2 = main?.querySelector?.(".rm-block__input, textarea, [id^='block-input-']");
         const blockUid3 = input2 ? blockUidFromNode(input2) : null;
         if (!blockUid3 || blockUid3 === uid || blockUid3 === targetUid) return;
+        if (blockUid3 === focusUid) {
+          event.preventDefault?.();
+          event.stopImmediatePropagation?.();
+          event.stopPropagation?.();
+          return;
+        }
         event.preventDefault?.();
         event.stopImmediatePropagation?.();
         event.stopPropagation?.();
@@ -37154,8 +37353,38 @@ function createItemRenderer({
         for (const type of ["click", "dblclick"]) editor.removeEventListener(type, onEditBullet, true);
       };
     }
+    if (speedOf().editClip !== false) {
+      let caretFrame = false;
+      const keepCaret = () => {
+        caretFrame = false;
+        if (editing?.editor !== editor) return;
+        const active2 = doc.activeElement;
+        if (!active2 || !editor.contains?.(active2)) return;
+        const scroller = pageEdit ? editor : rec.body;
+        const box2 = scroller?.getBoundingClientRect?.();
+        const row5 = active2.getBoundingClientRect?.();
+        if (!box2 || !row5 || !(box2.height > 0)) return;
+        const z = zoomCache || 1;
+        const pad2 = 8;
+        let delta = 0;
+        if (row5.bottom > box2.bottom - pad2) delta = Math.min(row5.bottom - box2.bottom + pad2, row5.top - box2.top - pad2);
+        else if (row5.top < box2.top + pad2) delta = row5.top - box2.top - pad2;
+        if (!delta) return;
+        scroller.scrollTop = Math.max(0, (Number(scroller.scrollTop) || 0) + delta / z);
+      };
+      const onCaretKey = () => {
+        if (caretFrame) return;
+        caretFrame = true;
+        frameLater(keepCaret);
+      };
+      for (const type of ["input", "keyup"]) editor.addEventListener(type, onCaretKey);
+      editor.__pxdCaretOff = () => {
+        for (const type of ["input", "keyup"]) editor.removeEventListener(type, onCaretKey);
+      };
+    }
     for (const type of EDITOR_STOPPED) editor.addEventListener(type, stopEvent);
-    editing = { uid, rec, editor, targetUid, item, ready: false, fadeCancel: null, releaseCancel: null };
+    editing = { uid, rec, editor, targetUid, focusUid, item, ready: false, fadeCancel: null, releaseCancel: null };
+    markEditingBody(true);
     if (pageEdit) {
       const h = rec.el.style?.height || (Number(rec.rect?.h) > 0 ? `${Math.round(Number(rec.rect.h))}px` : "");
       if (h && rec.el.style?.setProperty) rec.el.style.setProperty("height", h, "important");
@@ -37180,7 +37409,7 @@ function createItemRenderer({
         if (pageUid2 && host.renderPage) host.renderPage(editor, pageUid2, { "hide-mentions?": true });
         else host.renderBlock(editor, item.uid);
       } else {
-        host.renderBlock(editor, targetUid);
+        host.renderBlock(editor, focusUid || targetUid);
       }
     } catch {
       ok = false;
@@ -37223,7 +37452,7 @@ function createItemRenderer({
         }
       }
     } else {
-      const noteRow = caretRow || row4;
+      const noteRow = caretRow || row4 || focusUid;
       early = await waitNoteInput(editor, uid, noteRow);
       if (disposed || editing?.uid !== uid) return false;
       if (noteRow && caretOff != null && early && !String(early.id || "").endsWith(`-${noteRow}`)) {
@@ -37330,7 +37559,18 @@ function createItemRenderer({
     const contentH = Number(editor.scrollHeight) || 0;
     for (const type of EDITOR_STOPPED) editor.removeEventListener(type, stopEvent);
     editor.__pxdBulletOff?.();
+    editor.__pxdCaretOff?.();
+    markEditingBody(false);
     dropStaticLayer(rec);
+    for (const node2 of rec.headRoots || []) {
+      try {
+        host?.unmount?.(node2);
+      } catch {
+      }
+    }
+    rec.headRoots = null;
+    rec.el.classList.remove("pxd-item--focusedit");
+    rec.el.style.removeProperty?.("--pxd-focus-top");
     try {
       host?.unmount?.(editor);
     } catch {
@@ -37649,6 +37889,7 @@ function createItemRenderer({
   const dispose = () => {
     if (disposed) return;
     disposed = true;
+    markEditingBody(false);
     freezeGen += 1;
     cancelFreezeFrame();
     stopShellBg();
@@ -37690,6 +37931,7 @@ function createItemRenderer({
       detachFocusGuard();
       for (const type of EDITOR_STOPPED) e2.editor.removeEventListener(type, stopEvent);
       e2.editor.__pxdBulletOff?.();
+      e2.editor.__pxdCaretOff?.();
       e2.rec.ghost?.remove();
       e2.rec.ghost = null;
       try {
@@ -37773,6 +38015,7 @@ function createItemRenderer({
     setFocus,
     setSelection,
     setHover,
+    dropRevealOn,
     enterEdit,
     exitEdit,
     editingUid: () => editing?.uid ?? null,
@@ -37966,7 +38209,7 @@ function createItemRenderer({
     dispose
   };
 }
-var SIDES3, CHUNK_MS, LRU_CAP, SLOW_BODY_MS, slowBodies, noteBodyMs, UNMOUNT_AFTER_MS, HYDRATE_CAP_MS, CONTENT_LIMIT, CONTENT_DEPTH, CONTENT_NODES, OUTLINE_CAP, OUTLINE_FETCH, PAGE_WATCH_MAX, PAGE_REFRESH_MS, BLOCK_REFRESH_MS, GROW_CAP, HEADER_H, META_H, REF_TITLE_MAX, HEADER_TEXT_MAX, TINY_MINI_PX, ATTR_CHIPS_MAX, SVG_NS4, ROW_BOARD_W, ROW_BOARD_H, ROW_BOARD_THUMBS, BOARD_KEY_DEPTH, BOARD_KEY_NODES, KID_ROW_H, PEEK_DELAY_MS, PEEK_TOP, PEEK_SUB, PEEK_TEXT_MAX, now2, HL_NAMES2, NOTE_CARET_SKIP, childString5, childKids, childUid, childProps, KIDS_KINDS, isKidsCard, isSticky, STICKY_TITLE_MAX, stickyTitleOf, isTaskAttrString, skipChildString, visibleKids, taskBlockOn, statusSig, TASK_MARK, isTaskCard, regionHubs;
+var SIDES3, CHUNK_MS, LRU_CAP, SLOW_BODY_MS, slowBodies, noteBodyMs, UNMOUNT_AFTER_MS, HYDRATE_CAP_MS, CONTENT_LIMIT, CONTENT_DEPTH, CONTENT_NODES, OUTLINE_CAP, OUTLINE_FETCH, PAGE_WATCH_MAX, PAGE_REFRESH_MS, BLOCK_REFRESH_MS, GROW_CAP, HEADER_H, META_H, REF_TITLE_MAX, HEADER_TEXT_MAX, TINY_MINI_PX, ATTR_CHIPS_MAX, SVG_NS4, ROW_BOARD_W, ROW_BOARD_H, ROW_BOARD_THUMBS, BOARD_KEY_DEPTH, BOARD_KEY_NODES, KID_ROW_H, PEEK_DELAY_MS, DROP_PEEK_MS, PEEK_TOP, PEEK_SUB, PEEK_TEXT_MAX, now2, HL_NAMES2, NOTE_CARET_SKIP, childString5, childKids, childUid, childProps, KIDS_KINDS, isKidsCard, isSticky, STICKY_TITLE_MAX, stickyTitleOf, isTaskAttrString, skipChildString, visibleKids, taskBlockOn, statusSig, TASK_MARK, isTaskCard, regionHubs;
 var init_cards = __esm({
   "src/view/cards.js"() {
     init_card_face();
@@ -38048,6 +38291,7 @@ var init_cards = __esm({
     BOARD_KEY_NODES = 400;
     KID_ROW_H = 22;
     PEEK_DELAY_MS = 400;
+    DROP_PEEK_MS = 500;
     PEEK_TOP = 12;
     PEEK_SUB = 4;
     PEEK_TEXT_MAX = 140;
@@ -58819,7 +59063,8 @@ function createInteractions({ actions, settings } = {}) {
     }
     const text4 = String(item.string ?? "").trim();
     const refCard = /^\(\(([\w-]+)\)\)$/.test(text4) || /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i.test(text4);
-    const marked = item.kind === "page" || item.kind === "image" || item.kind === "pdf" || item.kind === "block" || refCard || Boolean(tableUidOf(item));
+    const noteKids = item.kind === "note" && Array.isArray(item.content) && item.content.length > 0;
+    const marked = item.kind === "page" || item.kind === "image" || item.kind === "pdf" || item.kind === "block" || refCard || noteKids || Boolean(tableUidOf(item));
     if (!marked) {
       call("clearBlockTarget");
       return null;
@@ -105104,6 +105349,8 @@ ${url}`;
     },
     onHover: (uid) => {
       itemsR.setHover(uid);
+      const kind = ctl.gestureKind?.();
+      itemsR.dropRevealOn?.(kind === "connect" || kind === "edge-end" ? uid : null);
       pdfHoverUid = typeof uid === "string" ? uid : "";
       syncPdfFlip();
     },
@@ -105572,7 +105819,15 @@ ${url}`;
         targetEl.classList.add(targetCls);
         return { uid, row: region || pin2, header: false, region: Boolean(region) };
       }
-      if (!card2.classList.contains("pxd-item--page")) return null;
+      if (!card2.classList.contains("pxd-item--page")) {
+        if (notedSpeedFlags().childDrop === false) return null;
+        const kid = node2.closest?.("[data-pxd-row]");
+        if (!kid || !card2.contains(kid) || kid.closest?.(".pxd-item__editor")) return null;
+        targetEl = kid;
+        targetCls = "pxd-row--target";
+        targetEl.classList.add(targetCls);
+        return { uid, row: kid.getAttribute?.("data-pxd-row") || kid.dataset?.pxdRow || null, header: false };
+      }
       const row4 = node2.closest?.("[data-pxd-row]");
       const header = row4 ? null : node2.closest?.(".pxd-item__header");
       targetEl = row4 || header || null;
@@ -109631,6 +109886,7 @@ function renderTableThumb(doc, grid, { dark = false, width = THUMB_W, height: bo
 init_roam_table();
 
 // src/view/roam-stack.js
+init_settings();
 var HOSTS = [
   ".bp3-portal",
   ".bp3-overlay",
@@ -109646,9 +109902,17 @@ var HOSTS = [
 var raised = /* @__PURE__ */ new Map();
 var hostCard = /* @__PURE__ */ new WeakMap();
 var liveHosts = /* @__PURE__ */ new Set();
+var wrapperIsHost = () => {
+  try {
+    return notedSpeedFlags().editClip === false;
+  } catch {
+    return false;
+  }
+};
 var isHost = (node2) => {
   if (!node2 || node2.nodeType !== 1 || typeof node2.matches !== "function") return false;
   for (const sel of HOSTS) {
+    if (sel === ".rm-autocomplete__wrapper" && !wrapperIsHost()) continue;
     try {
       if (node2.matches(sel)) return true;
     } catch {
@@ -109728,6 +109992,7 @@ var hostsInside = (node2) => {
   if (!node2 || typeof node2.querySelectorAll !== "function") return [];
   const out = [];
   for (const sel of HOSTS) {
+    if (sel === ".rm-autocomplete__wrapper" && !wrapperIsHost()) continue;
     let list = [];
     try {
       list = node2.querySelectorAll(sel) || [];

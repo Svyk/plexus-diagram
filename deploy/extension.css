@@ -4571,6 +4571,26 @@ body.roam-body.dark .pxd-addboard.pxd-addboard {
   }
 }
 
+/* UX4 B1: the Children peek is a menu. A row click focuses that block on the card. */
+.pxd-root .pxd-kids-peek.pxd-kids-peek--pick {
+  pointer-events: auto;
+}
+
+.pxd-root .pxd-kids-peek--pick .pxd-kids-peek__row[data-pxd-peek-row] {
+  margin: 0 -6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-kids-peek--pick .pxd-kids-peek__row--sub[data-pxd-peek-row] {
+  padding-left: 20px;
+}
+
+.pxd-root .pxd-kids-peek--pick .pxd-kids-peek__row[data-pxd-peek-row]:hover {
+  background: var(--pxd-hover, rgba(127, 127, 127, 0.16));
+}
+
 /* NAV-1. Board chips. A border and a clear fill. The label is content-width. */
 
 .pxd-cardchip-row.pxd-cardchip-row {
@@ -14932,6 +14952,95 @@ body.roam-body.dark .pxd-root .pxd-tooltip.pxd-chrome,
 .pxd-root .pxd-item.pxd-item--ol.pxd-item--editing:not(.pxd-item--page):not(.pxd-item--text) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) textarea:is(.rm-block-input, .rm-block__input) {
   padding-top: calc(var(--pxd-ol-pad) * var(--pxd-ed-z, 1)) !important;
   padding-bottom: calc(var(--pxd-ol-pad) * var(--pxd-ed-z, 1)) !important;
+}
+
+/* UX4 lane B. Card children: focus edit (B1). */
+
+/* B1. A card focused on a child edits that block, as Roam edits a zoomed block. The card's own text and the crumb stay
+   above the editor, so the static layer and the editor share the third grid row and the focused rows do not move. */
+.pxd-item.pxd-item--editing.pxd-item--focusedit.pxd-item--xfade > .pxd-item__body > .pxd-item__string {
+  grid-area: 1 / 1;
+}
+
+.pxd-item.pxd-item--editing.pxd-item--focusedit.pxd-item--xfade > .pxd-item__body > .pxd-focus__crumb {
+  grid-area: 2 / 1;
+}
+
+.pxd-item.pxd-item--editing.pxd-item--focusedit.pxd-item--xfade > .pxd-item__body > .pxd-item__ghost,
+.pxd-item.pxd-item--editing.pxd-item--focusedit.pxd-item--xfade > .pxd-item__body > .pxd-item__editor {
+  grid-area: 3 / 1;
+}
+
+/* Off zoom 1 the editor is absolutely placed at the body's padding edge. --pxd-focus-top is where the rows start. */
+.pxd-root .pxd-item.pxd-item--editing.pxd-item--focusedit:not(.pxd-item--page):not(.pxd-item--text) > .pxd-item__body > .pxd-item__editor[style*="--pxd-ed-z"]:not(.pxd-page-edit) {
+  top: var(--pxd-focus-top, 10px) !important;
+  height: calc(var(--pxd-ed-z) * 100% - (var(--pxd-focus-top, 10px) + 10px) * var(--pxd-ed-z)) !important;
+}
+
+/* The focused block is a depth-1 row in display: bullet with the zoomed ring, children one indent in. The editor's
+   top block takes the same geometry instead of the card's own bullet-less top row. */
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing.pxd-item--focusedit > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) > .rm-api-render--block > .roam-block-container > .rm-block-main {
+  position: relative;
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing.pxd-item--focusedit > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) > .rm-api-render--block > .roam-block-container > .rm-block-main > :is(.controls, .rm-block__controls) {
+  display: flex !important;
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 calc(var(--pxd-ol-bullet) * var(--pxd-ed-z, 1));
+  width: calc(var(--pxd-ol-bullet) * var(--pxd-ed-z, 1)) !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: calc(var(--pxd-ol-lh) * 14px * var(--pxd-ed-z, 1));
+  margin-top: calc(var(--pxd-ol-pad) * var(--pxd-ed-z, 1)) !important;
+  margin-right: calc(var(--pxd-ol-gap) * var(--pxd-ed-z, 1)) !important;
+  margin-bottom: 0 !important;
+  margin-left: 0 !important;
+  padding: 0 !important;
+  font-size: inherit !important;
+  overflow: visible;
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing.pxd-item--focusedit > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) > .rm-api-render--block > .roam-block-container > .rm-block-main > :is(.controls, .rm-block__controls) :is(.block-expand, .rm-caret) {
+  display: none !important;
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing.pxd-item--focusedit > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) > .rm-api-render--block > .roam-block-container > .rm-block-main .rm-bullet {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--pxd-ol-bullet) * var(--pxd-ed-z, 1)) !important;
+  min-width: 0 !important;
+  height: calc(var(--pxd-ol-lh) * 14px * var(--pxd-ed-z, 1));
+  margin: 0 !important;
+  padding: 0 !important;
+  visibility: visible;
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing.pxd-item--focusedit > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) > .rm-api-render--block > .roam-block-container > .rm-block-main .rm-bullet__inner {
+  width: calc(var(--pxd-ol-dot) * var(--pxd-ed-z, 1)) !important;
+  height: calc(var(--pxd-ol-dot) * var(--pxd-ed-z, 1)) !important;
+  margin: 0 !important;
+  border-radius: 50%;
+  background-color: var(--pxd-muted);
+  box-shadow: 0 0 0 calc(3px * var(--pxd-ed-z, 1)) color-mix(in srgb, var(--pxd-muted) 30%, transparent);
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing.pxd-item--focusedit > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) > .rm-api-render--block > .roam-block-container > .rm-block-children {
+  margin-left: calc(var(--pxd-ol-indent) * var(--pxd-ed-z, 1)) !important;
+}
+
+.pxd-root .pxd-item.pxd-item--ol.pxd-item--editing.pxd-item--focusedit > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) > .rm-api-render--block > .roam-block-container > .rm-block-children > .rm-multibar {
+  display: block !important;
+}
+
+/* B5. Roam's Reference Path draws a ::before box on every ancestor .rm-block-main of the block being edited. A card
+   editor's ancestors include the board block and its page, outside the board, so the line ran from the card to the
+   page's left edge. While a card editor is open (body class from the view), boxes outside any board root are hidden.
+   The path inside the card stays. */
+body.pxd-editing-active [data-reference-path-has-style]:not(.pxd-root *) > div.controls span.bp3-popover-target::before {
+  display: none !important;
 }
 
 /* MEM-2. Why popover. Border carries the edge. Height stays auto on pxd-root. */

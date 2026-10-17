@@ -66,6 +66,7 @@ const ALL_ON = {
   editBulletFocus: true,
   searchLayerDim: true,
   sliceGrow: false,
+  foldResets: true,
 };
 
 test("the panel has no speed-flags control, and bad JSON leaves the defaults (every flag on but edgeFingerprint, overviewCanvas, idlePark, quietBodies and sliceGrow)", () => {

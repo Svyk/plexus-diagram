@@ -897,6 +897,15 @@ export function createItemRenderer({
     return Math.max(base, stored, REVEAL_H);
   };
   let hotRow = null;
+  // Session-only focus and reveal of one card, dropped when the card folds or unfolds. The contentKey carries the
+  // focus, so the next sync remounts the card's own outline.
+  const dropFocus = (uid) => {
+    if (!uid || speedOf().foldResets === false) return false;
+    const had = cardFocus.delete(uid);
+    const shown = revealCards.delete(uid);
+    if (hotRow?.card === uid) hotRow = null;
+    return had || shown;
+  };
   let peekBlocked = false;
   let focusSet = null;
   let badgeMap = new Map();
@@ -1807,6 +1816,8 @@ export function createItemRenderer({
         cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
         if (speedOf().roamOutline !== false) cls.push("pxd-item--ol");
         const kidsOn = Boolean(item.kids);
+        // UX4 B3: fold and unfold go back to the card's own outline. A child focus kept the crumb and rows on a folded card.
+        if (rec.kidsOn !== undefined && rec.kidsOn !== kidsOn) dropFocus(item.uid);
         if (rec.kidsOn !== undefined && rec.kidsOn !== kidsOn && !motionInstant()) {
           cls.push("pxd-item--kids-anim");
           rec.kidsAnim = true;
@@ -2679,6 +2690,8 @@ export function createItemRenderer({
     const item = lastBoard?.items.get(uid);
     if (!isKidsCard(item)) return false;
     const rec = shells.get(uid);
+    if (rec?.peekOpen) dropPeek(rec);
+    dropFocus(uid);
     const on = !item.kids;
     const extra = on ? Math.ceil((Number(rec?.kidRows) || 0) * KID_ROW_H + 8) : 0;
     void session?.setKids?.(uid, on, extra);

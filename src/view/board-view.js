@@ -4780,7 +4780,7 @@ function buildBoardView(onFail, {
       if (vp.zoom !== edgesZoomAt) {
         const full = edgeZoomKey(vp.zoom) !== edgeZoomKey(edgesZoomAt);
         edgesZoomAt = vp.zoom;
-        const heads = full && zoomHeadsOn() && !dirty.all && !dirty.structural ? edgesR.resizeHeads?.(vp.zoom) : null;
+        const heads = full && zoomHeadsOn() && !dirty.all && !dirty.structural ? edgesR.resizeHeads?.(vp.zoom, size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null) : null;
         if (heads) {
           for (const uid of heads) dirty.edges.add(uid);
           for (const e of board()?.edges.values() || []) if (e.fromBlock || e.toBlock) dirty.edges.add(e.uid);

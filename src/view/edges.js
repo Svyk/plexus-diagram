@@ -846,11 +846,20 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   // A full re-place repainted and re-routed every edge (PhD main board zoom-out: 2,100 edges, 250 a frame, ~9 frames
   // of 50-110 ms). Returns the uids that still need a whole re-place (inner marks, bends). A parked edge is placed whole
   // at the new zoom when it comes back (zoomCache).
-  const resizeHeads = (zoom) => {
+  // near: the settled camera's attach rect. On a virtual board an edge far from it is only marked stale (the settle's cull
+  // parks it, and reveal or cull places it whole when it comes back); a zoom-in to detail left ~2,000 such heads to write.
+  const resizeHeads = (zoom, near = null) => {
     zoomCache = zoom;
     const again = [];
+    const board = lastPass?.board;
+    const far = near && board && virtualEdges(board) ? lastPass.rects : null;
+    if (far) view = near;
     for (const [uid, rec] of edgeEls) {
       if (rec.parked || rec.stale || !rec.geo) continue;
+      if (far) {
+        const edge = board.edges.get(uid);
+        if (edge && edgeFar(board, edge, far)) { rec.stale = true; continue; }
+      }
       if (rec.inner || rec.bends) { again.push(uid); continue; }
       if (rec.dir === "none" || rec.g.getAttribute("display") === "none") continue;
       const size = arrowSize(zoom, rec.weight);

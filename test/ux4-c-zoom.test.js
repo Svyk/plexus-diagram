@@ -194,3 +194,39 @@ test("C3 scopedZoomVars: a zoom on the big board writes the zoom variables into 
   const off = await zoomVarsRun({ scopedZoomVars: false });
   assert.ok(off.rootWrites >= 3, `3.36.0 writes the root: ${off.rootWrites}`);
 });
+
+// C3 zoomHeads, zoom-in: the far edges a detail settle will park are not resized first.
+async function zoomInHeads(flags) {
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags, fullscreen: true });
+  try {
+    await settledIn(m);
+    let headWrites = 0;
+    const heads = [...m.view.root.querySelectorAll(".pxd-edge__head")];
+    for (const head of heads) {
+      const set = head.setAttribute.bind(head);
+      head.setAttribute = (name, value) => { if (name === "d") headWrites += 1; return set(name, value); };
+    }
+    for (let i = 0; i < 12; i += 1) { m.stub.dispatch(m.view.root, "wheel", { deltaX: 0, deltaY: -60, ctrlKey: true, deltaMode: 0, clientX: 700, clientY: 450 }); m.stub.flushFrames(); }
+    for (let i = 0; i < 30; i += 1) { await tick(30); m.stub.flushTimers(); m.stub.flushFrames(); m.stub.flushIdle(); }
+    await m.pump(60);
+    const shown = new Map();
+    for (const g of m.view.root.querySelectorAll(".pxd-edge")) shown.set(g.getAttribute("data-uid") || g.dataset?.uid, g.querySelector(".pxd-edge__head")?.getAttribute("d"));
+    return { zoom: m.view.viewport().zoom, attached: heads.length, headWrites, shown, audit: m.view.paintAudit() };
+  } finally { m.done(); }
+}
+
+test("C3 zoomHeads: a zoom-in settle resizes only the heads near the new view; the attached heads match the full re-place", async () => {
+  const on = await zoomInHeads({});
+  const off = await zoomInHeads({ zoomHeads: false });
+  assert.equal(on.zoom, off.zoom);
+  assert.ok(on.attached > 1000, `attached at overview: ${on.attached}`);
+  assert.ok(on.headWrites < on.attached / 3, `head writes ${on.headWrites} of ${on.attached}`);
+  let compared = 0;
+  for (const [uid, d] of on.shown) {
+    if (!off.shown.has(uid)) continue;
+    assert.equal(d, off.shown.get(uid), uid);
+    compared += 1;
+  }
+  assert.ok(compared > 20, `compared ${compared}`);
+  assert.equal(on.audit.missing, 0);
+});

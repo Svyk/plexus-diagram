@@ -418,6 +418,69 @@ function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", o
     toSide
   };
 }
+function samplesInside(geo, cubic, box2) {
+  const x0 = box2.x + CROSS_INSET;
+  const y0 = box2.y + CROSS_INSET;
+  const x1 = box2.x + box2.w - CROSS_INSET;
+  const y1 = box2.y + box2.h - CROSS_INSET;
+  if (x1 <= x0 || y1 <= y0) return 0;
+  const pts = geo.points || [];
+  let n3 = 0;
+  const hit = (x, y) => {
+    if (x > x0 && x < x1 && y > y0 && y < y1) n3 += 1;
+  };
+  if (cubic && pts.length === 4) {
+    const [p0, p1, p2, p3] = pts;
+    for (let i = 1; i < CROSS_STEPS; i++) {
+      const t = i / CROSS_STEPS;
+      const u = 1 - t;
+      const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+      hit(a * p0.x + b * p1.x + c * p2.x + d * p3.x, a * p0.y + b * p1.y + c * p2.y + d * p3.y);
+    }
+    return n3;
+  }
+  const per = Math.max(2, Math.ceil(CROSS_STEPS / Math.max(1, pts.length - 1)));
+  for (let s = 1; s < pts.length; s++) {
+    for (let i = s === 1 ? 1 : 0; i < per; i++) {
+      const t = i / per;
+      hit(pts[s - 1].x + (pts[s].x - pts[s - 1].x) * t, pts[s - 1].y + (pts[s].y - pts[s - 1].y) * t);
+    }
+  }
+  return n3;
+}
+function rowEndPath(args, rowEnd2) {
+  const geo = edgePath(args);
+  if (rowEnd2 !== "from" && rowEnd2 !== "to") return geo;
+  if (Array.isArray(args.via) && args.via.length) return geo;
+  const freeKey = rowEnd2 === "to" ? "fromSide" : "toSide";
+  if (rowEnd2 === "to" ? args.fromPoint : args.toPoint) return geo;
+  const rowBox = rowEnd2 === "to" ? args.b : args.a;
+  const freeBox = rowEnd2 === "to" ? args.a : args.b;
+  if (!rowBox || !freeBox || rectsIntersect(rowBox, freeBox)) return geo;
+  const cubic = args.route !== "straight" && args.route !== "elbow";
+  const across = samplesInside(geo, cubic, rowBox);
+  if (!across) return geo;
+  let best = geo;
+  let bestAcross = across;
+  let bestOwn = samplesInside(geo, cubic, freeBox);
+  const rowSide = rowEnd2 === "to" ? geo.toSide : geo.fromSide;
+  const tried = /* @__PURE__ */ new Set([geo[freeKey]]);
+  for (const side2 of [rowSide, ...SIDES]) {
+    if (tried.has(side2)) continue;
+    tried.add(side2);
+    const next = edgePath({ ...args, [freeKey]: side2 });
+    const a = samplesInside(next, cubic, rowBox);
+    if (a > bestAcross) continue;
+    const own2 = samplesInside(next, cubic, freeBox);
+    if (a < bestAcross || own2 < bestOwn) {
+      best = next;
+      bestAcross = a;
+      bestOwn = own2;
+      if (!a && !own2) break;
+    }
+  }
+  return best;
+}
 function arrowHeadPath(point, angle, size) {
   const dx = Math.cos(angle);
   const dy = Math.sin(angle);
@@ -511,7 +574,7 @@ function gridBackground(vp, style, base2 = GRID_PITCH) {
   const mod = (v) => (v % size + size) % size;
   return { size, x: mod(vp.x), y: mod(vp.y), major: size * 5 };
 }
-var num, clampNum, screenPx, invZoom, CONE, SIDES, INNER_NOTCH, INNER_MIN, CELL_INSET, NORMALS, xs, ys, EPS, GRID_PITCH, MIN_GRID_PITCH;
+var num, clampNum, screenPx, invZoom, CONE, SIDES, INNER_NOTCH, INNER_MIN, CELL_INSET, NORMALS, CROSS_STEPS, CROSS_INSET, xs, ys, EPS, GRID_PITCH, MIN_GRID_PITCH;
 var init_geometry = __esm({
   "src/model/geometry.js"() {
     init_shapes();
@@ -533,6 +596,8 @@ var init_geometry = __esm({
       bottom: { x: 0, y: 1 },
       left: { x: -1, y: 0 }
     };
+    CROSS_STEPS = 24;
+    CROSS_INSET = 2;
     xs = (r) => [r.x, r.x + r.w / 2, r.x + r.w];
     ys = (r) => [r.y, r.y + r.h / 2, r.y + r.h];
     EPS = 1e-6;
@@ -84916,6 +84981,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       inner: !an.clamped ? { rect, side: an.side, point: an.point, rowLeft: spec.rowLeft, rowRight: spec.rowRight, cell: spec.cell === true } : null
     };
   };
+  const rowEndOf = (fromRow, toRow) => fromRow === toRow ? null : fromRow ? "from" : "to";
   const geometryFor = (board2, edge, rects, depth = 0) => {
     if (!board2 || !edge || depth > 1) return null;
     const fromItem = board2.items.get(edge.from);
@@ -84944,6 +85010,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       let toInnerSpec2 = null;
       let fromReady2 = null;
       let toReady2 = null;
+      let fromRow2 = false;
+      let toRow2 = false;
       const m2 = edge.fromBlock || edge.toBlock ? measures.get(edge.uid) : null;
       if (m2?.from && edge.fromBlock && !fromEdge) {
         const hit = endOn(m2.from, a, b);
@@ -84952,7 +85020,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
           fromSide2 = hit.side;
           fromClamp2 = hit.clamp ?? null;
           if (hit.region) fromReady2 = hit.inner || null;
-          else fromInnerSpec2 = hit.inner || null;
+          else {
+            fromInnerSpec2 = hit.inner || null;
+            fromRow2 = true;
+          }
         }
       }
       if (m2?.to && edge.toBlock && !toEdge) {
@@ -84962,10 +85033,13 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
           toSide2 = hit.side;
           toClamp2 = hit.clamp ?? null;
           if (hit.region) toReady2 = hit.inner || null;
-          else toInnerSpec2 = hit.inner || null;
+          else {
+            toInnerSpec2 = hit.inner || null;
+            toRow2 = true;
+          }
         }
       }
-      const geo2 = edgePath({ a, b, fromSide: fromSide2, toSide: toSide2, route: edge.route, offset: pairOffset2(board2, edge), fromPoint: fromPoint2, toPoint: toPoint2 });
+      const geo2 = rowEndPath({ a, b, fromSide: fromSide2, toSide: toSide2, route: edge.route, offset: pairOffset2(board2, edge), fromPoint: fromPoint2, toPoint: toPoint2 }, rowEndOf(fromRow2, toRow2));
       geo2.fromClamp = fromClamp2;
       geo2.toClamp = toClamp2;
       geo2.fromW = a.w;
@@ -84998,6 +85072,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     let toInnerSpec = null;
     let fromReady = null;
     let toReady = null;
+    let fromRow = false;
+    let toRow = false;
     const m = edge.fromBlock || edge.toBlock ? measures.get(edge.uid) : null;
     if (m) {
       if (m.from && edge.fromBlock && routed.from === edge.from) {
@@ -85007,7 +85083,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
           fromSide = hit.side;
           fromClamp = hit.clamp ?? null;
           if (hit.region) fromReady = hit.inner || null;
-          else fromInnerSpec = hit.inner || null;
+          else {
+            fromInnerSpec = hit.inner || null;
+            fromRow = true;
+          }
         }
       }
       if (m.to && edge.toBlock && routed.to === edge.to) {
@@ -85017,13 +85096,16 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
           toSide = hit.side;
           toClamp = hit.clamp ?? null;
           if (hit.region) toReady = hit.inner || null;
-          else toInnerSpec = hit.inner || null;
+          else {
+            toInnerSpec = hit.inner || null;
+            toRow = true;
+          }
         }
       }
     }
     if (routed.fromHome && fromClamp == null) fromClamp = "top";
     if (routed.toHome && toClamp == null) toClamp = "top";
-    const geo = edgePath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset2(board2, edge), via, fromPoint, toPoint });
+    const geo = rowEndPath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset2(board2, edge), via, fromPoint, toPoint }, rowEndOf(fromRow, toRow));
     geo.fromClamp = fromClamp;
     geo.toClamp = toClamp;
     geo.fromW = routed.a.w;

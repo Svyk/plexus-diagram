@@ -7,7 +7,7 @@ import { createBucketHost } from "./buckets.js";
 import { shownEdgeLabel } from "../model/arrow-home.js";
 import { edgeAnchor, routedEdge } from "../model/board.js";
 import { edgeMayTarget, regionInnerEnd } from "../model/endpoints.js";
-import { arrowHeadPath, arrowSize, blockAnchor, blockInner, center, edgePath, screenPx, sidePoint } from "../model/geometry.js";
+import { arrowHeadPath, arrowSize, blockAnchor, blockInner, center, edgePath, rowEndPath, screenPx, sidePoint } from "../model/geometry.js";
 import { routeAround } from "../model/section6.js";
 import { PALETTE, hexColor } from "../model/schema.js";
 import { highlightPill } from "../model/pdf-chips.js";
@@ -242,6 +242,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       inner: !an.clamped ? { rect, side: an.side, point: an.point, rowLeft: spec.rowLeft, rowRight: spec.rowRight, cell: spec.cell === true } : null,
     };
   };
+  // PXD-3: the end that sits on a row, when only one does; the path then keeps clear of that row's card.
+  const rowEndOf = (fromRow, toRow) => (fromRow === toRow ? null : fromRow ? "from" : "to");
   const geometryFor = (board, edge, rects, depth = 0) => {
     if (!board || !edge || depth > 1) return null;
     const fromItem = board.items.get(edge.from);
@@ -270,6 +272,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       let toInnerSpec = null;
       let fromReady = null;
       let toReady = null;
+      let fromRow = false;
+      let toRow = false;
       const m = edge.fromBlock || edge.toBlock ? measures.get(edge.uid) : null;
       if (m?.from && edge.fromBlock && !fromEdge) {
         const hit = endOn(m.from, a, b);
@@ -278,7 +282,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
           fromSide = hit.side;
           fromClamp = hit.clamp ?? null;
           if (hit.region) fromReady = hit.inner || null;
-          else fromInnerSpec = hit.inner || null;
+          else { fromInnerSpec = hit.inner || null; fromRow = true; }
         }
       }
       if (m?.to && edge.toBlock && !toEdge) {
@@ -288,10 +292,10 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
           toSide = hit.side;
           toClamp = hit.clamp ?? null;
           if (hit.region) toReady = hit.inner || null;
-          else toInnerSpec = hit.inner || null;
+          else { toInnerSpec = hit.inner || null; toRow = true; }
         }
       }
-      const geo = edgePath({ a, b, fromSide, toSide, route: edge.route, offset: pairOffset(board, edge), fromPoint, toPoint });
+      const geo = rowEndPath({ a, b, fromSide, toSide, route: edge.route, offset: pairOffset(board, edge), fromPoint, toPoint }, rowEndOf(fromRow, toRow));
       geo.fromClamp = fromClamp;
       geo.toClamp = toClamp;
       geo.fromW = a.w;
@@ -324,6 +328,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     let toInnerSpec = null;
     let fromReady = null;
     let toReady = null;
+    let fromRow = false;
+    let toRow = false;
     const m = edge.fromBlock || edge.toBlock ? measures.get(edge.uid) : null;
     if (m) {
       if (m.from && edge.fromBlock && routed.from === edge.from) {
@@ -333,7 +339,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
           fromSide = hit.side;
           fromClamp = hit.clamp ?? null;
           if (hit.region) fromReady = hit.inner || null;
-          else fromInnerSpec = hit.inner || null;
+          else { fromInnerSpec = hit.inner || null; fromRow = true; }
         }
       }
       if (m.to && edge.toBlock && routed.to === edge.to) {
@@ -343,7 +349,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
           toSide = hit.side;
           toClamp = hit.clamp ?? null;
           if (hit.region) toReady = hit.inner || null;
-          else toInnerSpec = hit.inner || null;
+          else { toInnerSpec = hit.inner || null; toRow = true; }
         }
       }
     }
@@ -351,7 +357,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     // a pill on the board card's edge, labelled with the moved card. No inner segment into the card.
     if (routed.fromHome && fromClamp == null) fromClamp = "top";
     if (routed.toHome && toClamp == null) toClamp = "top";
-    const geo = edgePath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset(board, edge), via, fromPoint, toPoint });
+    const geo = rowEndPath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset(board, edge), via, fromPoint, toPoint }, rowEndOf(fromRow, toRow));
     geo.fromClamp = fromClamp;
     geo.toClamp = toClamp;
     geo.fromW = routed.a.w;

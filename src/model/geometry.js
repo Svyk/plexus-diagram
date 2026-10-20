@@ -407,6 +407,77 @@ export function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "cu
   };
 }
 
+// PXD-3: how much of a path runs inside `box` (inset a little, so ends on its border do not count), as samples.
+const CROSS_STEPS = 24;
+const CROSS_INSET = 2;
+function samplesInside(geo, cubic, box) {
+  const x0 = box.x + CROSS_INSET;
+  const y0 = box.y + CROSS_INSET;
+  const x1 = box.x + box.w - CROSS_INSET;
+  const y1 = box.y + box.h - CROSS_INSET;
+  if (x1 <= x0 || y1 <= y0) return 0;
+  const pts = geo.points || [];
+  let n = 0;
+  const hit = (x, y) => { if (x > x0 && x < x1 && y > y0 && y < y1) n += 1; };
+  if (cubic && pts.length === 4) {
+    const [p0, p1, p2, p3] = pts;
+    for (let i = 1; i < CROSS_STEPS; i++) {
+      const t = i / CROSS_STEPS;
+      const u = 1 - t;
+      const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+      hit(a * p0.x + b * p1.x + c * p2.x + d * p3.x, a * p0.y + b * p1.y + c * p2.y + d * p3.y);
+    }
+    return n;
+  }
+  const per = Math.max(2, Math.ceil(CROSS_STEPS / Math.max(1, pts.length - 1)));
+  for (let s = 1; s < pts.length; s++) {
+    for (let i = s === 1 ? 1 : 0; i < per; i++) {
+      const t = i / per;
+      hit(pts[s - 1].x + (pts[s].x - pts[s - 1].x) * t, pts[s - 1].y + (pts[s].y - pts[s - 1].y) * t);
+    }
+  }
+  return n;
+}
+
+// PXD-3: an arrow with one end on a row (or cell) of a card. The row end sits on the card's side edge at the row's y,
+// facing out; the other end's stored side can still aim the path back through that card (a card below leaving from
+// its top port ran behind the card and curled round into the row). The stored side stays unless its path crosses the
+// row's card; then the other end takes the side whose path crosses it least, then crosses its own card least, the
+// row's side first (the arrow wraps round the outside of the card). `rowEnd` is "from" or "to"; args as edgePath's.
+export function rowEndPath(args, rowEnd) {
+  const geo = edgePath(args);
+  if (rowEnd !== "from" && rowEnd !== "to") return geo;
+  if (Array.isArray(args.via) && args.via.length) return geo;
+  const freeKey = rowEnd === "to" ? "fromSide" : "toSide";
+  if (rowEnd === "to" ? args.fromPoint : args.toPoint) return geo;
+  const rowBox = rowEnd === "to" ? args.b : args.a;
+  const freeBox = rowEnd === "to" ? args.a : args.b;
+  if (!rowBox || !freeBox || rectsIntersect(rowBox, freeBox)) return geo;
+  const cubic = args.route !== "straight" && args.route !== "elbow";
+  const across = samplesInside(geo, cubic, rowBox);
+  if (!across) return geo;
+  let best = geo;
+  let bestAcross = across;
+  let bestOwn = samplesInside(geo, cubic, freeBox);
+  const rowSide = rowEnd === "to" ? geo.toSide : geo.fromSide;
+  const tried = new Set([geo[freeKey]]);
+  for (const side of [rowSide, ...SIDES]) {
+    if (tried.has(side)) continue;
+    tried.add(side);
+    const next = edgePath({ ...args, [freeKey]: side });
+    const a = samplesInside(next, cubic, rowBox);
+    if (a > bestAcross) continue;
+    const own = samplesInside(next, cubic, freeBox);
+    if (a < bestAcross || own < bestOwn) {
+      best = next;
+      bestAcross = a;
+      bestOwn = own;
+      if (!a && !own) break;
+    }
+  }
+  return best;
+}
+
 export function arrowHeadPath(point, angle, size) {
   const dx = Math.cos(angle);
   const dy = Math.sin(angle);

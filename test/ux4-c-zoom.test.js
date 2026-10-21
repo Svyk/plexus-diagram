@@ -85,8 +85,9 @@ test("C2: fsCover off adds no cover (3.36.0)", async () => {
 });
 
 // C3 zoomHeads: a settle on a new zoom step resizes the heads in place; the full re-place gives the same heads.
+// The zoom lands at overview, where the DOM arrows exist only with overviewCanvas off (on, they are canvas hairlines).
 async function zoomOutHeads(flags) {
-  const m = mountBig({ x: -400, y: -300, zoom: 0.5 }, { flags, fullscreen: true });
+  const m = mountBig({ x: -400, y: -300, zoom: 0.5 }, { flags: { overviewCanvas: false, ...flags }, fullscreen: true });
   try {
     await settledIn(m);
     // Line paths of the edges already on the board: a full re-place writes each of them again.
@@ -122,9 +123,10 @@ test("C3 zoomHeads: a zoom-out settle on a new zoom step re-sizes the arrow head
   assert.equal(on.audit.missing, 0);
 });
 
-// C3 zoomHeads, zoom-in: the far edges a detail settle will park are not resized first.
+// C3 zoomHeads, zoom-in: the far edges a detail settle will park are not resized first. It starts from DOM arrows at
+// overview (overviewCanvas off).
 async function zoomInHeads(flags) {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags, fullscreen: true });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: false, ...flags }, fullscreen: true });
   try {
     await settledIn(m);
     let headWrites = 0;

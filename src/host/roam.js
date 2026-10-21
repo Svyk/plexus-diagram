@@ -431,6 +431,26 @@ function trimTree(node, depth, budget) {
   return out;
 }
 
+// PXD-4: rows for a page card's plain preview. A folded block keeps its child count (`kids`), not its children, so a
+// big folded block does not use up the budget the blocks after it need.
+function previewTree(node, depth, budget) {
+  const out = [];
+  if (depth < 1) return out;
+  for (const c of sortedKids(node)) {
+    if (budget.left <= 0) break;
+    budget.left--;
+    const folded = c[":block/open"] === false;
+    const kids = Array.isArray(c[":block/children"]) ? c[":block/children"].length : 0;
+    out.push({
+      uid: c[":block/uid"],
+      string: c[":block/string"] ?? "",
+      ...(folded ? { open: false, kids } : {}),
+      children: folded ? [] : previewTree(c, depth - 1, budget),
+    });
+  }
+  return out;
+}
+
 function highlightTreeNodes(node) {
   const out = [];
   for (const child of sortedKids(node)) {
@@ -2789,6 +2809,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const res = pull(BOARD_PATTERN, [":node/title", title]);
       if (!res || !res[":block/uid"]) return { uid: null, exists: false, blocks: [] };
       return { uid: res[":block/uid"], exists: true, blocks: trimTree(res, 64, { left: limit }) };
+    },
+
+    // PXD-4: the outline a page card's preview paints before any card of that page mounted this session: the page as
+    // the board's ref read left it in the session cache. Never reads Roam; null when the page is not cached.
+    cachedPageOutline(title, limit = 48) {
+      const node = cache.pageOf(String(title ?? ""));
+      if (!node?.[":block/uid"]) return null;
+      return { uid: node[":block/uid"], exists: true, blocks: previewTree(node, 8, { left: limit }) };
     },
 
     // One pull watch on a page, for a page card on screen. The caller releases it.

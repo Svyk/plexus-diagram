@@ -26,12 +26,14 @@ function seededHost() {
     ],
   });
   fake.seedPage({ title: "Beta", uid: "pgBeta001", children: [{ uid: "be1", string: "beta row" }] });
+  fake.seedPage({ title: "Empty", uid: "pgEmpty01" });
   fake.seedBoard({
     uid: "board0001",
     props: { plexus: { v: 2 } },
     children: [
       { uid: "cardA0001", string: "[[Alpha]]", props: props(0, 0) },
       { uid: "cardB0001", string: "[[Beta]]", props: props(400, 0) },
+      { uid: "cardE0001", string: "[[Empty]]", props: props(800, 0) },
     ],
   });
   return { fake, host };
@@ -54,6 +56,7 @@ test("PXD-4 host: cachedPageOutline answers only from the board's ref read and n
   assert.equal(out.blocks[1].kids, 300, "a folded block keeps its child count");
   assert.deepEqual(out.blocks[1].children, [], "and not its 300 children, which would use up the rows after it");
   assert.equal(host.cachedPageOutline("Beta").blocks[0].string, "beta row");
+  assert.deepEqual(host.cachedPageOutline("Empty"), { uid: "pgEmpty01", exists: true, blocks: [] }, "a cached page with no children");
   assert.equal(host.cachedPageOutline("Gamma"), null, "a page that is not a card on the board");
 });
 
@@ -171,6 +174,18 @@ test("PXD-4: a page the board read has not cached yet stays an empty box until t
     assert.equal(body.querySelector(".pxd-item__page--preview"), null);
     assert.equal(body.textContent.trim(), "");
     assert.equal(t.reads.outline, 0);
+  } finally {
+    t.done();
+  }
+});
+
+test("PXD-4: a cached page with no children previews as \"Empty page\", as it mounts", () => {
+  const { t, body } = firstZoomIn(null, { cached: (title) => ({ uid: `uid-${title}`, exists: true, blocks: [] }) });
+  try {
+    const preview = body.querySelector(".pxd-item__page--preview");
+    assert.ok(preview);
+    assert.equal(preview.querySelector(".pxd-item__placeholder")?.textContent, "Empty page");
+    assert.equal(preview.querySelectorAll(".pxd-prow").length, 0);
   } finally {
     t.done();
   }

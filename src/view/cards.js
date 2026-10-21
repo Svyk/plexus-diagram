@@ -3901,10 +3901,11 @@ export function createItemRenderer({
     if (cardFocus.has(rec.uid)) return false;
     let blocks = previewRows.get(item.title);
     if (!blocks?.length) blocks = seededRows(item);
-    if (!blocks?.length) return false;
+    if (!blocks) return false;
     const holder = el("div", "pxd-item__page pxd-item__page--preview", rec.body);
     holder.setAttribute("aria-hidden", "true");
-    let left = firstScreenRows(rec) || 12;
+    const rows = firstScreenRows(rec) || 12;
+    let left = rows;
     const walk = (parent, list, depth) => {
       for (const c of list || []) {
         if (left <= 0) return;
@@ -3922,6 +3923,8 @@ export function createItemRenderer({
       }
     };
     walk(holder, blocks, 0);
+    // As the mount: a page with no row to show (a cached page with no children) reads "Empty page".
+    if (left === rows) el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
     return true;
   };
   // First paint builds the outline. A later refresh patches rows in place.

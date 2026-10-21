@@ -34017,10 +34017,11 @@ function createItemRenderer({
     if (cardFocus.has(rec.uid)) return false;
     let blocks = previewRows.get(item.title);
     if (!blocks?.length) blocks = seededRows(item);
-    if (!blocks?.length) return false;
+    if (!blocks) return false;
     const holder = el2("div", "pxd-item__page pxd-item__page--preview", rec.body);
     holder.setAttribute("aria-hidden", "true");
-    let left = firstScreenRows(rec) || 12;
+    const rows = firstScreenRows(rec) || 12;
+    let left = rows;
     const walk3 = (parent, list, depth) => {
       for (const c of list || []) {
         if (left <= 0) return;
@@ -34038,6 +34039,7 @@ function createItemRenderer({
       }
     };
     walk3(holder, blocks, 0);
+    if (left === rows) el2("div", "pxd-item__placeholder", holder).textContent = "Empty page";
     return true;
   };
   const paintPage = (rec, holder, p) => {

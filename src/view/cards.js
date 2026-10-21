@@ -44,6 +44,7 @@ import { mountRoamTable } from "./table-card.js";
 import { createBucketHost } from "./buckets.js";
 import { findCell, forgetTableCells, measureCell, revealCell, watchTable } from "./table-cells.js";
 import { blockUidFromNode } from "./editor-keys.js";
+import { quietTextarea } from "./quiet-textarea.js";
 import { childIsOpen, findBlock, focusStep, PEEK_ANIM_MS, PEEK_HOVER_MS, PEEK_LEAVE_MS, peekAllowed } from "../model/card-children.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
@@ -6675,8 +6676,18 @@ export function createItemRenderer({
     floor.cancel = frameLater(() => floorTick(e));
     return true;
   };
+  // PXD-1: each Roam textarea that takes focus in the card types without rewriting its text child, which restyled
+  // the whole board twice a key (quiet-textarea.js). A sticky's textarea already has focus when the floor attaches.
+  const quietInput = (node) => {
+    try { if (speedOf().quietTextarea === false) return; } catch { /* default on */ }
+    quietTextarea(node);
+  };
   const attachFloor = (e) => {
-    const onIn = () => { e.ready = true; };
+    const onIn = (event) => {
+      e.ready = true;
+      quietInput(event?.target);
+    };
+    if (e.editor.contains?.(doc.activeElement)) quietInput(doc.activeElement);
     const onOut = (event) => {
       if (editing !== e || !e.ready) return;
       const to = event.relatedTarget;

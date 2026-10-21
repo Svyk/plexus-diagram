@@ -296,7 +296,7 @@ function blockInner({ rect, side: side2, point, rowLeft, rowRight, cell = false 
     angle: right ? Math.PI : 0
   };
 }
-function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0, via, fromPoint, toPoint } = {}) {
+function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0, via, fromPoint, toPoint, wrap = false } = {}) {
   if (fromSide === "auto" || toSide === "auto") {
     const auto = autoSides(a, b);
     if (fromSide === "auto") fromSide = auto.fromSide;
@@ -346,10 +346,10 @@ function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", o
     const toH = nt.y === 0;
     const pts = [start, s1];
     if (fromH && toH) {
-      const mx = (s1.x + e1.x) / 2;
+      const mx = wrap && nf.x === nt.x ? nf.x > 0 ? Math.max(s1.x, e1.x) : Math.min(s1.x, e1.x) : (s1.x + e1.x) / 2;
       pts.push({ x: mx, y: s1.y }, { x: mx, y: e1.y });
     } else if (!fromH && !toH) {
-      const my = (s1.y + e1.y) / 2;
+      const my = wrap && nf.y === nt.y ? nf.y > 0 ? Math.max(s1.y, e1.y) : Math.min(s1.y, e1.y) : (s1.y + e1.y) / 2;
       pts.push({ x: s1.x, y: my }, { x: e1.x, y: my });
     } else if (fromH) {
       pts.push({ x: e1.x, y: s1.y });
@@ -418,34 +418,47 @@ function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", o
     toSide
   };
 }
-function samplesInside(geo, cubic, box2) {
+function chordInside(p, q2, x0, y0, x1, y1) {
+  const dx = q2.x - p.x;
+  const dy = q2.y - p.y;
+  let t0 = 0;
+  let t1 = 1;
+  for (const [d, room] of [[-dx, p.x - x0], [dx, x1 - p.x], [-dy, p.y - y0], [dy, y1 - p.y]]) {
+    if (d === 0) {
+      if (room <= 0) return 0;
+      continue;
+    }
+    const r = room / d;
+    if (d < 0) {
+      if (r > t1) return 0;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return 0;
+      if (r < t1) t1 = r;
+    }
+  }
+  return t1 > t0 ? (t1 - t0) * Math.hypot(dx, dy) : 0;
+}
+function lengthInside(geo, cubic, box2) {
   const x0 = box2.x + CROSS_INSET;
   const y0 = box2.y + CROSS_INSET;
   const x1 = box2.x + box2.w - CROSS_INSET;
   const y1 = box2.y + box2.h - CROSS_INSET;
   if (x1 <= x0 || y1 <= y0) return 0;
   const pts = geo.points || [];
-  let n3 = 0;
-  const hit = (x, y) => {
-    if (x > x0 && x < x1 && y > y0 && y < y1) n3 += 1;
-  };
+  let line = pts;
   if (cubic && pts.length === 4) {
     const [p0, p1, p2, p3] = pts;
-    for (let i = 1; i < CROSS_STEPS; i++) {
+    line = [p0];
+    for (let i = 1; i <= CROSS_STEPS; i++) {
       const t = i / CROSS_STEPS;
       const u = 1 - t;
       const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
-      hit(a * p0.x + b * p1.x + c * p2.x + d * p3.x, a * p0.y + b * p1.y + c * p2.y + d * p3.y);
-    }
-    return n3;
-  }
-  const per = Math.max(2, Math.ceil(CROSS_STEPS / Math.max(1, pts.length - 1)));
-  for (let s = 1; s < pts.length; s++) {
-    for (let i = s === 1 ? 1 : 0; i < per; i++) {
-      const t = i / per;
-      hit(pts[s - 1].x + (pts[s].x - pts[s - 1].x) * t, pts[s - 1].y + (pts[s].y - pts[s - 1].y) * t);
+      line.push({ x: a * p0.x + b * p1.x + c * p2.x + d * p3.x, y: a * p0.y + b * p1.y + c * p2.y + d * p3.y });
     }
   }
+  let n3 = 0;
+  for (let i = 1; i < line.length; i++) n3 += chordInside(line[i - 1], line[i], x0, y0, x1, y1);
   return n3;
 }
 function rowEndPath(args, rowEnd2) {
@@ -458,20 +471,25 @@ function rowEndPath(args, rowEnd2) {
   const freeBox = rowEnd2 === "to" ? args.a : args.b;
   if (!rowBox || !freeBox || rectsIntersect(rowBox, freeBox)) return geo;
   const cubic = args.route !== "straight" && args.route !== "elbow";
-  const across = samplesInside(geo, cubic, rowBox);
+  let across = lengthInside(geo, cubic, rowBox);
   if (!across) return geo;
   let best = geo;
+  if (args.route === "elbow") {
+    best = edgePath({ ...args, wrap: true });
+    across = lengthInside(best, cubic, rowBox);
+    if (!across) return best;
+  }
   let bestAcross = across;
-  let bestOwn = samplesInside(geo, cubic, freeBox);
+  let bestOwn = lengthInside(best, cubic, freeBox);
   const rowSide = rowEnd2 === "to" ? geo.toSide : geo.fromSide;
   const tried = /* @__PURE__ */ new Set([geo[freeKey]]);
   for (const side2 of [rowSide, ...SIDES]) {
     if (tried.has(side2)) continue;
     tried.add(side2);
-    const next = edgePath({ ...args, [freeKey]: side2 });
-    const a = samplesInside(next, cubic, rowBox);
+    const next = edgePath({ ...args, [freeKey]: side2, wrap: true });
+    const a = lengthInside(next, cubic, rowBox);
     if (a > bestAcross) continue;
-    const own2 = samplesInside(next, cubic, freeBox);
+    const own2 = lengthInside(next, cubic, freeBox);
     if (a < bestAcross || own2 < bestOwn) {
       best = next;
       bestAcross = a;
@@ -596,8 +614,8 @@ var init_geometry = __esm({
       bottom: { x: 0, y: 1 },
       left: { x: -1, y: 0 }
     };
-    CROSS_STEPS = 24;
-    CROSS_INSET = 2;
+    CROSS_STEPS = 32;
+    CROSS_INSET = 1;
     xs = (r) => [r.x, r.x + r.w / 2, r.x + r.w];
     ys = (r) => [r.y, r.y + r.h / 2, r.y + r.h];
     EPS = 1e-6;

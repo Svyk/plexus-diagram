@@ -1,5 +1,6 @@
 // R4: leaving the overview canvas tier built a 30-shell chunk of map shells in one foreground task (QA5 C hand-back at
 // 0.3: a 551 ms freeze). With adaptiveSlices the hand-back's chunks start at 12 and double after a short frame.
+// canvasPrebuild off: the queue still waits on the canvas tier, as when the zoom comes before the background build ends.
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -8,7 +9,7 @@ import { missingFrames, mountBig, settledIn } from "./fixtures/big-mount.js";
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
 async function handBack(flags) {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true, ...flags }, fullscreen: true });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true, canvasPrebuild: false, ...flags }, fullscreen: true });
   await settledIn(m);
   const frames = [];
   for (let i = 0; i < 7; i += 1) {

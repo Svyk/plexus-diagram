@@ -78,6 +78,43 @@ test("PXD-3: a row on the source card, the target below arriving at its top port
   assert.equal(inside(geo, below), 0);
 });
 
+test("PXD-3: a corner clip between two samples still counts as crossing the card", () => {
+  const left = { x: -325, y: 300, w: 300, h: 170 };
+  const an = rowEnd(left, 40);
+  assert.equal(an.side, "left");
+  const args = { a: left, b: target, fromSide: "right", toSide: an.side, route: "curve", toPoint: an.point };
+  assert.ok(inside(edgePath(args), target, 256) > 0, "the plain curve clips the card's bottom-left corner");
+  const geo = rowEndPath(args, "to");
+  assert.notEqual(geo.fromSide, "right");
+  assert.equal(inside(geo, target, 256), 0);
+});
+
+test("PXD-3: elbow stubs that face the same way meet on the outer lane; a plain elbow keeps the halfway lane", () => {
+  const narrow = { x: 75, y: 300, w: 160, h: 100 };
+  const an = rowEnd(narrow, 40);
+  const args = { a: narrow, b: target, fromSide: "top", toSide: an.side, route: "elbow", toPoint: an.point };
+  const geo = rowEndPath(args, "to");
+  assert.equal(geo.fromSide, "right");
+  assert.equal(inside(geo, target), 0);
+  assert.ok(geo.points.every((p) => p.x <= target.x || p.x >= target.x + target.w || p.y <= target.y || p.y >= target.y + target.h), `no corner inside the card: ${geo.d}`);
+  const plain = edgePath({ ...args, fromSide: "right" });
+  assert.ok(inside(plain, target) > 0, "without wrap the same-facing lane sits halfway, inside the card");
+});
+
+test("PXD-3: curve and elbow arrows from a card to a row never cross the row's card, wherever the card is", () => {
+  for (const route of ["curve", "elbow"]) for (const [w, h] of [[300, 170], [160, 100], [500, 200]]) for (const rowTop of [-60, 40, 240]) {
+    for (let x = -700; x <= 700; x += 50) for (let y = -600; y <= 600; y += 50) {
+      const src = { x, y, w, h };
+      if (src.x < target.x + target.w + 10 && target.x < src.x + src.w + 10 && src.y < target.y + target.h + 10 && target.y < src.y + src.h + 10) continue;
+      for (const fromSide of ["top", "right", "bottom", "left", "auto"]) {
+        const an = rowEnd(src, rowTop);
+        const geo = rowEndPath({ a: src, b: target, fromSide, toSide: an.side, route, toPoint: an.point }, "to");
+        if (inside(geo, target, 128)) assert.fail(`${route} from ${JSON.stringify(src)} side ${fromSide} row ${rowTop}: ${geo.d}`);
+      }
+    }
+  }
+});
+
 test("PXD-3: a path that already clears the card, bends, a fixed far end, overlapping cards and no row end are left alone", () => {
   const right = { x: 600, y: 0, w: 260, h: 200 };
   const an = rowEnd(right);

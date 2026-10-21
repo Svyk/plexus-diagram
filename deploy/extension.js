@@ -19286,7 +19286,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, seedRows: true };
 }
 function parseSpeedFlags(raw) {
   const base2 = defaultSpeedFlags();
@@ -19740,7 +19740,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "seedRows"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -33999,12 +33999,25 @@ function createItemRenderer({
   };
   const PREVIEW_DEPTH = 6;
   const PREVIEW_CAP = 80;
+  const PREVIEW_SEED_ROWS = 4 * FIRST_SCREEN_MAX;
+  const seededRows = (item) => {
+    if (speedOf().seedRows === false) return null;
+    let got = null;
+    try {
+      got = host?.cachedPageOutline?.(item.target?.title || item.title, PREVIEW_SEED_ROWS);
+    } catch {
+      got = null;
+    }
+    return got?.exists && Array.isArray(got.blocks) ? got.blocks : null;
+  };
   const paintPagePreview = (rec, item) => {
     if (lod !== "detail" || item?.kind !== "page" || !rec?.body || speedOf().steadyRows === false) return false;
     if (mounted.has(rec.uid) || editing?.uid === rec.uid || item.collapsed || item.open === false) return false;
     if (rec.body.firstElementChild || rec.body.children?.length) return false;
-    const blocks = previewRows.get(item.title);
-    if (!blocks?.length || cardFocus.has(rec.uid)) return false;
+    if (cardFocus.has(rec.uid)) return false;
+    let blocks = previewRows.get(item.title);
+    if (!blocks?.length) blocks = seededRows(item);
+    if (!blocks?.length) return false;
     const holder = el2("div", "pxd-item__page pxd-item__page--preview", rec.body);
     holder.setAttribute("aria-hidden", "true");
     let left = firstScreenRows(rec) || 12;
@@ -34018,7 +34031,7 @@ function createItemRenderer({
         const line = el2("div", "pxd-row", row4);
         holdHeight(line, KID_ROW_H);
         const kids = childKids(c);
-        if (kids.length) el2("span", "pxd-row__fold", line);
+        if (kids.length || c.kids > 0) el2("span", "pxd-row__fold", line);
         el2("span", "pxd-outline__bullet", line);
         el2("div", "pxd-block__text pxd-block__plain", line).textContent = isHeavyRow(str3) ? "…" : plainText(str3, Infinity);
         if (kids.length && c.open !== false && depth < PREVIEW_DEPTH) walk3(el2("div", "pxd-block__children", row4), kids, depth + 1);
@@ -44720,6 +44733,23 @@ function trimTree(node2, depth, budget) {
   }
   return out;
 }
+function previewTree(node2, depth, budget) {
+  const out = [];
+  if (depth < 1) return out;
+  for (const c of sortedKids2(node2)) {
+    if (budget.left <= 0) break;
+    budget.left--;
+    const folded = c[":block/open"] === false;
+    const kids = Array.isArray(c[":block/children"]) ? c[":block/children"].length : 0;
+    out.push({
+      uid: c[":block/uid"],
+      string: c[":block/string"] ?? "",
+      ...folded ? { open: false, kids } : {},
+      children: folded ? [] : previewTree(c, depth - 1, budget)
+    });
+  }
+  return out;
+}
 function highlightTreeNodes(node2) {
   const out = [];
   for (const child of sortedKids2(node2)) {
@@ -47196,6 +47226,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const res = pull(BOARD_PATTERN, [":node/title", title]);
       if (!res || !res[":block/uid"]) return { uid: null, exists: false, blocks: [] };
       return { uid: res[":block/uid"], exists: true, blocks: trimTree(res, 64, { left: limit }) };
+    },
+    // PXD-4: the outline a page card's preview paints before any card of that page mounted this session: the page as
+    // the board's ref read left it in the session cache. Never reads Roam; null when the page is not cached.
+    cachedPageOutline(title, limit = 48) {
+      const node2 = cache.pageOf(String(title ?? ""));
+      if (!node2?.[":block/uid"]) return null;
+      return { uid: node2[":block/uid"], exists: true, blocks: previewTree(node2, 8, { left: limit }) };
     },
     // One pull watch on a page, for a page card on screen. The caller releases it.
     // A page already inside an open board shares that board's watch instead of adding another.

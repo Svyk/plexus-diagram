@@ -67,23 +67,23 @@
 }
 
 /* RF-5 (2.4), PO-5 (2.5): page cards scroll inside, so their resize grips are a generous 12px band that sits above
-   the scrollbar; the corner is 16px and never lets the scrollbar take it. Every size is screen px: the board root
+   the scrollbar; the corner is 16px and never lets the scrollbar take it. Every size is screen px: the board view
    publishes --pxd-inv-zoom (1/zoom) and the world scale turns it back into the same on-screen size. */
-.pxd-root .pxd-item.pxd-item--page > .pxd-grip {
+.pxd-root .pxd-item.pxd-item--page .pxd-grip {
   z-index: 4;
 }
 
-.pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--right {
+.pxd-root .pxd-item.pxd-item--page .pxd-grip.pxd-grip--right {
   right: calc(-6px * var(--pxd-inv-zoom, 1));
   width: calc(12px * var(--pxd-inv-zoom, 1));
 }
 
-.pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--bottom {
+.pxd-root .pxd-item.pxd-item--page .pxd-grip.pxd-grip--bottom {
   bottom: calc(-6px * var(--pxd-inv-zoom, 1));
   height: calc(12px * var(--pxd-inv-zoom, 1));
 }
 
-.pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--corner {
+.pxd-root .pxd-item.pxd-item--page .pxd-grip.pxd-grip--corner {
   right: calc(-6px * var(--pxd-inv-zoom, 1));
   bottom: calc(-6px * var(--pxd-inv-zoom, 1));
   width: calc(16px * var(--pxd-inv-zoom, 1));
@@ -91,19 +91,19 @@
 }
 
 /* Hand tool: grips show on hover so it is clear a press resizes. */
-.pxd-root[data-tool="hand"] .pxd-item:hover > .pxd-grip.pxd-grip--corner,
-.pxd-root[data-tool="hand"] .pxd-section:hover > .pxd-grip.pxd-grip--corner {
+.pxd-root[data-tool="hand"] .pxd-item:hover .pxd-grip.pxd-grip--corner,
+.pxd-root[data-tool="hand"] .pxd-section:hover .pxd-grip.pxd-grip--corner {
   border-color: var(--pxd-accent);
 }
 
-.pxd-root[data-tool="hand"] .pxd-item:hover > .pxd-grip.pxd-grip--right,
-.pxd-root[data-tool="hand"] .pxd-section:hover > .pxd-grip.pxd-grip--right {
+.pxd-root[data-tool="hand"] .pxd-item:hover .pxd-grip.pxd-grip--right,
+.pxd-root[data-tool="hand"] .pxd-section:hover .pxd-grip.pxd-grip--right {
   border-right: 2px solid var(--pxd-accent);
   box-sizing: border-box;
 }
 
-.pxd-root[data-tool="hand"] .pxd-item:hover > .pxd-grip.pxd-grip--bottom,
-.pxd-root[data-tool="hand"] .pxd-section:hover > .pxd-grip.pxd-grip--bottom {
+.pxd-root[data-tool="hand"] .pxd-item:hover .pxd-grip.pxd-grip--bottom,
+.pxd-root[data-tool="hand"] .pxd-section:hover .pxd-grip.pxd-grip--bottom {
   border-bottom: 2px solid var(--pxd-accent);
   box-sizing: border-box;
 }

@@ -42,7 +42,7 @@ function rootVars(root) {
 
 const skipChrome = (el) => {
   const cls = typeof el.getAttribute === "function" ? String(el.getAttribute("class") || "") : "";
-  return /(^|\s)(pxd-ports|pxd-grip|pxd-port|pxd-item__editor|pxd-ctx|pxd-tip|pxd-table-thumb)(\s|$)/.test(cls);
+  return /(^|\s)(pxd-ports|pxd-handles|pxd-grip|pxd-port|pxd-item__editor|pxd-ctx|pxd-tip|pxd-table-thumb)(\s|$)/.test(cls);
 };
 
 // Reads classes, inline styles, attributes and text only. No layout read, no Roam call.

@@ -424,6 +424,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       node.setAttribute("data-end", end);
       node.dataset.end = end;
       node.setAttribute("data-tip", "edge.child");
+      styleZoomReader(node);
       marks[end] = node;
     }
     const r = CHILD_R * screenPx(zoom);
@@ -592,9 +593,24 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       c.setAttribute("r", "6");
       c.setAttribute("data-end", end);
       c.dataset.end = end;
+      styleZoomReader(c);
       rec.ends[end] = c;
     }
     placeEnds(rec, rec.geo);
+  };
+  // PXD-2 (zoomVarScope): the board writes its zoom variables on the card layers, so this layer has none. Its two
+  // readers, the end handles and the child marks, carry them inline. Null leaves them to the root (flag off).
+  let zoomVars = null;
+  const styleZoomReader = (node) => {
+    if (!zoomVars) return;
+    for (const [name, value] of zoomVars) node.style?.setProperty?.(name, value);
+  };
+  const setZoomVars = (vars) => {
+    zoomVars = vars ? Object.entries(vars).filter(([, value]) => value != null) : null;
+    for (const rec of edgeEls.values()) {
+      if (rec.ends) { styleZoomReader(rec.ends.from); styleZoomReader(rec.ends.to); }
+      if (rec.childMarks) for (const node of Object.values(rec.childMarks)) styleZoomReader(node);
+    }
   };
 
   const dimmed = (e) => Boolean(focusSet) && !(focusSet.has(e.from) && focusSet.has(e.to));
@@ -1336,6 +1352,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     render,
     update,
     resizeHeads,
+    setZoomVars,
     placedZoom: () => zoomCache,
     reveal,
     cull,

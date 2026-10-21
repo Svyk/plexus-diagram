@@ -50,11 +50,11 @@ test("RF-1: opening the panel marks the root and publishes its width for the min
 // ------------------------------------------------------------------ RF-5 generous page-card grips
 test("RF-5: page cards get a 12px grip band and a 16px corner above the scrollbar; the Hand tool shows the grips", async () => {
   const page = await css("page-card.css");
-  assert.match(page, /\.pxd-item\.pxd-item--page > \.pxd-grip \{\s*z-index: 4;/);
+  assert.match(page, /\.pxd-item\.pxd-item--page \.pxd-grip \{\s*z-index: 4;/);
   assert.match(page, /\.pxd-grip\.pxd-grip--right \{\s*right: calc\(-6px \* var\(--pxd-inv-zoom, 1\)\);\s*width: calc\(12px \* var\(--pxd-inv-zoom, 1\)\);/);
   assert.match(page, /\.pxd-grip\.pxd-grip--bottom \{\s*bottom: calc\(-6px \* var\(--pxd-inv-zoom, 1\)\);\s*height: calc\(12px \* var\(--pxd-inv-zoom, 1\)\);/);
   assert.match(page, /\.pxd-grip\.pxd-grip--corner \{\s*right: calc\(-6px \* var\(--pxd-inv-zoom, 1\)\);\s*bottom: calc\(-6px \* var\(--pxd-inv-zoom, 1\)\);\s*width: calc\(16px \* var\(--pxd-inv-zoom, 1\)\);\s*height: calc\(16px \* var\(--pxd-inv-zoom, 1\)\);/);
-  assert.match(page, /\.pxd-root\[data-tool="hand"\] \.pxd-item:hover > \.pxd-grip\.pxd-grip--corner/);
+  assert.match(page, /\.pxd-root\[data-tool="hand"\] \.pxd-item:hover \.pxd-grip\.pxd-grip--corner/);
 });
 
 // ------------------------------------------------------------------ RF-6 strings

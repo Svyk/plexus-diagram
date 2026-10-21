@@ -24,10 +24,13 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 export const easeOut = (t) => 1 - (1 - clamp(t, 0, 1)) ** 3;
 
-// Board zoom from the root's --pxd-screen-px (1 / zoom), set by the board view.
+// Board zoom from --pxd-screen-px (1 / zoom), set by the board view on its cards layer (zoomVarScope) or on the root.
 export function boardZoom(root, win = root?.ownerDocument?.defaultView || globalThis) {
   let raw = "";
   try { raw = root?.style?.getPropertyValue?.("--pxd-screen-px") || ""; } catch { raw = ""; }
+  if (!raw) {
+    try { raw = root?.querySelector?.(".pxd-items")?.style?.getPropertyValue?.("--pxd-screen-px") || ""; } catch { raw = ""; }
+  }
   if (!raw) {
     try { raw = win?.getComputedStyle?.(root)?.getPropertyValue?.("--pxd-screen-px") || ""; } catch { raw = ""; }
   }

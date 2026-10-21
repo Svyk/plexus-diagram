@@ -339,7 +339,8 @@ for (const name of ["chrome.css", "background.css"]) {
     const css = await read(name);
     assert.equal((css.match(/{/g) || []).length, (css.match(/}/g) || []).length);
     assert.ok(!/:is\(|:where\(/.test(css), "no :is/:where");
-    assert.ok(!/!important/.test(css));
+    // Only a tone's --pxd-surface is !important (the Follow Roam theme writes --pxd-surface inline on the root).
+    assert.ok(!/!important/.test(css.replace(/--pxd-surface:[^;]*!important;/g, "")));
     const rules = ruleList(css);
     assert.ok(rules.length > 10);
     for (const rule of rules) {
@@ -379,6 +380,16 @@ test("background.css: grid pattern, paper and ten palette tones with light and d
   assert.ok(media, "prefers-color-scheme dark block");
   assert.match(css, /:root:not\(\.bp3-light\) \.pxd-root\.pxd-bg-paper/);
   assert.match(css, /:root:not\(\.bp3-light\) \.pxd-root\.pxd-bg-pink/);
+  // PXD-7: Follow Roam writes --pxd-surface inline on the root, so a tone that is not !important never shows.
+  const tones = rules.filter((r) => r.selectors.some((s) => /\.pxd-bg-[a-z]+/.test(s)));
+  assert.equal(tones.length, 77, "eleven tones, light + five dark signals + the OS-dark block");
+  for (const rule of tones) assert.match(rule.body, /--pxd-surface:[^;]*!important;/, rule.selectors[0]);
+});
+
+test("PXD-7: the grid pattern repeats; only a board image is painted once", async () => {
+  const css = await readFile(new URL("../extension.css", import.meta.url), "utf8");
+  // The 3.x overlays rule `.pxd-root .pxd-grid { background-repeat: no-repeat }` drew one dot or line tile.
+  assert.equal(/\.pxd-grid[^{]*\{[^}]*background-repeat/.test(css), false);
 });
 
 test("chrome.css covers popover, menu, back-to-content and panel classes the JS emits", async () => {

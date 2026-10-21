@@ -332,6 +332,99 @@ test("background: the popover writes through the session and 'Use as default' ca
   }
 });
 
+test("PXD-7: Flat grey replaces the default pattern and tone; the board's own pattern and colour still show", async () => {
+  const f = mountFixture({ settings: { grid: "lines", "board-tone": "blue", "look-canvas": "flat-grey" } });
+  const change = (rootPlexus) => {
+    f.session.setBoard(buildBoard(pulled({ rootPlexus })));
+    f.session.emit("change", { dirty: new Set(["board0001"]), structural: false });
+    f.stub.flushFrames();
+  };
+  try {
+    await f.flush();
+    const grid = f.root.querySelector(".pxd-grid");
+    assert.ok(grid.classList.contains("pxd-grid--plain"), "the flat canvas has no grid");
+    assert.ok(f.root.classList.contains("pxd-look--flat"));
+    assert.equal(f.root.classList.contains("pxd-bg-blue"), false, "the grey stands in for the default tone");
+    assert.deepEqual([f.view.state().pattern, f.view.state().tone], ["plain", null]);
+    // the board's own pattern shows on the grey canvas, painted at the board's pitch
+    change({ ":bg": "dots" });
+    assert.ok(grid.classList.contains("pxd-grid--dots"));
+    assert.ok(f.root.classList.contains("pxd-look--flat"));
+    assert.match(grid.style.backgroundSize, /^[\d.]+px [\d.]+px$/);
+    assert.equal(f.root.querySelector(".pxd-popover--bg .pxd-seg__btn--on")?.dataset.value, "dots");
+    // the board's own tone replaces the grey
+    change({ ":bg": "lines", ":bgColor": "teal" });
+    assert.ok(grid.classList.contains("pxd-grid--lines"));
+    assert.ok(f.root.classList.contains("pxd-bg-teal"));
+    assert.equal(f.root.classList.contains("pxd-look--flat"), false);
+    // and so does its own hex colour; the default pattern stays dropped
+    change({ ":bgColor": "#123456" });
+    assert.ok(grid.classList.contains("pxd-grid--plain"));
+    assert.equal(f.root.classList.contains("pxd-look--flat"), false);
+    assert.equal(f.root.classList.contains("pxd-bg-teal"), false);
+    assert.equal(f.root.style.backgroundColor, "#123456");
+    // back to the Dots canvas: the defaults apply again
+    change({});
+    f.view.setSettings({ grid: "lines", "board-tone": "blue", "look-canvas": "dots" });
+    f.stub.flushFrames();
+    assert.ok(grid.classList.contains("pxd-grid--lines"));
+    assert.ok(f.root.classList.contains("pxd-bg-blue"));
+    assert.equal(f.root.classList.contains("pxd-look--flat"), false);
+    assert.equal(f.root.style.backgroundColor, "");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("PXD-7: 'Use as default' under Flat grey switches the canvas back to Dots so the saved default shows", async () => {
+  const defaults = [];
+  const f = mountFixture({
+    settings: { "look-canvas": "flat-grey" },
+    viewOptions: { onSetDefaults: (patch) => defaults.push(patch) },
+    rootPlexus: { ":bg": "lines", ":bgColor": "teal" },
+  });
+  try {
+    await f.flush();
+    const pop = f.root.querySelector(".pxd-popover--bg");
+    pop.querySelector(".pxd-bg__default").click();
+    assert.deepEqual(defaults.pop(), { grid: "lines", "board-tone": "teal", "look-canvas": "dots" });
+    // a board with no background of its own is the flat canvas already: nothing to switch
+    f.session.setBoard(buildBoard(pulled()));
+    f.session.emit("change", { dirty: new Set(["board0001"]), structural: false });
+    f.stub.flushFrames();
+    pop.querySelector(".pxd-bg__default").click();
+    assert.deepEqual(defaults.pop(), { grid: "plain", "board-tone": "none" });
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("PXD-7: a background image is painted once, cover; the pattern pitch never resizes it", async () => {
+  const f = mountFixture({ rootPlexus: { ":bg": "dots", ":bgImage": "https://example.com/a.png" } });
+  try {
+    await f.flush();
+    const grid = f.root.querySelector(".pxd-grid");
+    assert.equal(grid.style.backgroundRepeat, "no-repeat");
+    assert.equal(grid.style.backgroundSize, "cover");
+    key(f, "=", { ctrlKey: true });
+    await settleWait(f);
+    assert.equal(grid.style.backgroundSize, "cover");
+    assert.equal(grid.style.backgroundPosition, "center");
+    // removing the image hands the grid back to the pattern, which tiles again
+    f.session.setBoard(buildBoard(pulled({ rootPlexus: { ":bg": "dots" } })));
+    f.session.emit("change", { dirty: new Set(["board0001"]), structural: false });
+    f.stub.flushFrames();
+    assert.equal(grid.style.backgroundRepeat, "");
+    assert.equal(grid.style.backgroundImage, "");
+    assert.match(grid.style.backgroundSize, /^[\d.]+px [\d.]+px$/);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("background: a refused write (not an enhanced board) tells the user", async () => {
   const f = mountFixture();
   try {

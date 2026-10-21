@@ -1,5 +1,7 @@
 /* G3. Three optional Heptabase looks, off unless the root carries the class.
-   Flat grey drops the grid. Pastel washes a section with its colour.
+   Flat grey is the grey canvas; the view drops the grid by picking the plain pattern, so a board's own
+   pattern still shows, and leaves this class off a board with its own colour.
+   Pastel washes a section with its colour.
    Tint moves a highlight's colour onto the card and hides the bar.
    Dark keeps a coloured border and a fill of at most 6%. Host markers decide dark, not the OS scheme. */
 
@@ -11,15 +13,6 @@
 .pxd-root.pxd-look--flat {
   --pxd-bg: #f2f2f0;
   background-color: #f2f2f0;
-}
-
-.pxd-root.pxd-look--flat .pxd-grid {
-  background-image: none;
-}
-
-.pxd-root.pxd-look--flat .pxd-grid::before {
-  content: none;
-  background-image: none;
 }
 
 .pxd-root.pxd-look--pastel .pxd-section {

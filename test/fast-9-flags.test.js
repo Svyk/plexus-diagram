@@ -76,6 +76,7 @@ const ALL_ON = {
   fsCover: true,
   zoomHeads: true,
   childEndMark: true,
+  quietTextarea: true,
   canvasPrebuild: true,
 };
 

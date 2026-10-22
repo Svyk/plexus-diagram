@@ -313,6 +313,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     const routed = routedEdge(board, edge, rects);
     if (!routed) return null;
     let via = edge.via;
+    let around;
     if ((!via || !via.length) && edge.route === "around") {
       const obstacles = [];
       for (const [uid, rect] of rects) {
@@ -321,6 +322,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         if (item?.type === "card" || item?.type === "text") obstacles.push(rect);
       }
       via = routeAround(center(routed.a), center(routed.b), obstacles);
+      around = obstacles;
     }
     let fromSide = edge.fromSide;
     let toSide = edge.toSide;
@@ -361,7 +363,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     // a pill on the board card's edge, labelled with the moved card. No inner segment into the card.
     if (routed.fromHome && fromClamp == null) fromClamp = "top";
     if (routed.toHome && toClamp == null) toClamp = "top";
-    const geo = rowEndPath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset(board, edge), via, fromPoint, toPoint }, rowEndOf(fromRow, toRow));
+    const geo = rowEndPath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset(board, edge), via, around, fromPoint, toPoint }, rowEndOf(fromRow, toRow));
     if (fromRow) fromInnerSpec = innerOn(fromInnerSpec, geo.fromSide, geo.start);
     if (toRow) toInnerSpec = innerOn(toInnerSpec, geo.toSide, geo.end);
     geo.fromClamp = fromClamp;

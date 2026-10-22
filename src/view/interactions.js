@@ -639,7 +639,10 @@ export function createInteractions({ actions, settings } = {}) {
           g.exclude = new Set(g.uids);
           for (const u of g.uids) for (const d of descendantsOf(b, u)) g.exclude.add(d);
         }
-        const hit = hitTest(b, ev.world, r, { exclude: g.exclude });
+        // An unfolded card is drawn taller than its rect; its drawn box keeps the hover on its lower rows.
+        const open = call("revealedRects", r);
+        const hr = open?.size ? { get: (u) => open.get(u) || r.get(u) } : r;
+        const hit = hitTest(b, ev.world, hr, { exclude: g.exclude });
         const drop = hit?.part === "body" && (b.items.get(hit.uid)?.kind === "board" && b.items.get(hit.uid)?.enhanced) ? hit.uid : null;
         // A task dropped on a daily-page card or a section named for a day takes that day as its due date.
         const day = !drop && !ev.shift ? dayTargetOf(b, hit) : null;

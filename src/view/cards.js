@@ -3113,6 +3113,20 @@ export function createItemRenderer({
     if (!(h > shown.h)) return shown;
     return { ...shown, h };
   };
+  // PXD-5: an unfolded card is drawn taller than its hit rect (all its rows sit below a collapsed card's header). A card
+  // drag hit-tests these boxes, or the rows below the stored height could not take the drop. Only taller cards are in it.
+  const revealedRects = (rects) => {
+    const out = new Map();
+    for (const uid of revealCards) {
+      const item = lastBoard?.items.get(uid);
+      const rect = rects?.get(uid);
+      const rec = shells.get(uid);
+      if (!item || !rect || !rec || rec.peekH > 0) continue;
+      const h = revealHeight(item, shownRect(uid, rect).h);
+      if (h > rect.h) out.set(uid, { ...rect, h });
+    }
+    return out;
+  };
   const stepFocus = () => {
     if (disposed || cardFocus.size === 0) return false;
     const preferred = hotRow?.card && cardFocus.has(hotRow.card) ? hotRow.card : null;
@@ -7753,6 +7767,7 @@ export function createItemRenderer({
     unfoldForFocus,
     rowMounted,
     cardWorldRect,
+    revealedRects,
     stepFocus,
     cancelCardPeek,
     closeCardPeek,

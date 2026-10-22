@@ -8407,6 +8407,7 @@ function buildBoardView(onFail, {
     clearBlockTarget: () => clearBlockTarget(),
     // PXD-5: a card held over a folded card with children unfolds it (the arrow's hover wait); null folds it back.
     dropReveal: (uid) => itemsR.dropRevealOn?.(notedSpeedFlags().cardRowDrop === false ? null : uid),
+    revealedRects: (rects) => (notedSpeedFlags().cardRowDrop === false ? null : itemsR.revealedRects?.(rects) || null),
     rowDropGhost: (uids) => itemsR.ghostMoving?.(uids),
     // The hover unfold stays (session-only) so the new ref shows; the gesture end right after would fold it back.
     refIntoRow: async (uids, cardUid, rowUid) => {

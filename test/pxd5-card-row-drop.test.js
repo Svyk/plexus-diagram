@@ -215,6 +215,91 @@ test("PXD-5: Shift held while moving lights no row and does not unfold", async (
   }
 });
 
+// The unfold draws the card at least 160 px tall, from the top; the rows below the stored 120 px (or below a collapsed
+// card's 32 px header) are on screen and must take the drop too.
+async function dropBelowStoredHeight(f, hover, row) {
+  const { held, target } = stackUnderPointer(f);
+  const g = dragCard(f, "cardSR001");
+  g.move(300, hover);
+  g.move(100, hover);
+  await tick(560);
+  f.stub.flushFrames();
+  assert.equal(rowUids(target).length, 5, "the hover unfolds the card");
+  g.move(100, row);
+  assert.equal(rowUids(target).length, 5, "the card stays unfolded under the pointer");
+  assert.equal(target.querySelector("[data-pxd-row=kidZ00001]").classList.contains("pxd-row--target"), true, "the row is lit");
+  assert.equal(held.classList.contains("pxd-item--rowdrop"), true);
+  g.up(100, row);
+  await tick();
+  assert.deepEqual(f.mutations.filter((m) => m[0] === "refIntoRow").map((m) => m.slice(1)), [[["cardSR001"], "kidZ00001"]]);
+  assert.equal(f.mutations.filter((m) => m[0] === "commitMove").length, 0);
+}
+
+test("PXD-5: a row the unfold draws below the card's stored height takes the drop", async () => {
+  const f = mount();
+  try {
+    await show(f);
+    await dropBelowStoredHeight(f, 60, 140);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("PXD-5: a collapsed card's rows take the drop once the hover unfolds it", async () => {
+  const f = mount({ cards: [{ ...userCards()[0], plexus: { ":collapsed": true } }, userCards()[1]] });
+  try {
+    await show(f);
+    await dropBelowStoredHeight(f, 16, 62);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("PXD-5: the target left open by a drop takes the next card straight onto a row below its stored height", async () => {
+  const f = mount();
+  try {
+    await show(f);
+    await dropBelowStoredHeight(f, 60, 62);
+    await show(f);
+    const { target } = stackUnderPointer(f);
+    assert.equal(rowUids(target).length, 5, "still unfolded after the drop");
+    const g = dragCard(f, "cardSR001");
+    g.move(300, 140);
+    g.move(100, 140);
+    assert.equal(target.querySelector("[data-pxd-row=kidZ00001]").classList.contains("pxd-row--target"), true, "lit with no wait");
+    g.up(100, 140);
+    await tick();
+    assert.equal(f.mutations.filter((m) => m[0] === "refIntoRow").length, 2);
+    assert.equal(f.mutations.filter((m) => m[0] === "commitMove").length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("PXD-5: before the unfold, a point below the card's stored height is not over the card", async () => {
+  const f = mount();
+  try {
+    await show(f);
+    const { target } = stackUnderPointer(f);
+    const g = dragCard(f, "cardSR001");
+    g.move(300, 140);
+    g.move(100, 140);
+    await tick(560);
+    f.stub.flushFrames();
+    assert.deepEqual(rowUids(target), [], "no unfold from below the card");
+    g.up(100, 140);
+    await tick();
+    assert.equal(f.mutations.filter((m) => m[0] === "refIntoRow").length, 0);
+    assert.equal(f.mutations.filter((m) => m[0] === "commitMove").length, 1);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("PXD-5: a drop on the target card's own text, not a row, is a plain move", async () => {
   const f = mount();
   try {

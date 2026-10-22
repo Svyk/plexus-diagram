@@ -4175,6 +4175,11 @@ body.roam-body.dark .pxd-root .pxd-row.pxd-row--linked:hover,
   background: var(--pxd-kids-dot, var(--pxd-accent));
 }
 
+/* PXD-5: a card held over another card's child row lets the lit row show through it. */
+.pxd-root .pxd-item.pxd-item--rowdrop {
+  opacity: 0.45;
+}
+
 /* NP-1. A block-look card is a plain Roam block: no title row, 14px text, root bullet hidden. */
 
 .pxd-root:not(:is([data-pxd-lod="map"],[data-pxd-lod="overview"])) .pxd-item.pxd-card--block:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header {

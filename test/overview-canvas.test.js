@@ -58,9 +58,10 @@ const withFrozenClock = async (fn) => {
   try { await fn(); } finally { globalThis.performance.now = realNow; }
 };
 
+// canvasPrebuild off: the 3.37.0 canvas tier, where the queue waits (pxd6-canvas-prebuild.test.js has it on).
 test("an overview open with overviewCanvas builds no card shell and draws the cards on the canvas", async () => {
   await withFrozenClock(async () => {
-    const m = mount(OVERVIEW);
+    const m = mount(OVERVIEW, { overviewCanvas: true, canvasPrebuild: false });
     try {
       await m.pump(60);
       await m.settle();
@@ -146,7 +147,7 @@ test("zooming into the map band brings shells back nearest-first under the budge
 
 test("at overview a click selects from the model on release, a drag pans, and hover builds nothing", async () => {
   await withFrozenClock(async () => {
-    const m = mount(OVERVIEW);
+    const m = mount(OVERVIEW, { overviewCanvas: true, canvasPrebuild: false });
     try {
       await m.pump(60);
       await m.settle();

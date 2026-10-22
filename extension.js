@@ -19499,7 +19499,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, zoomVarScope: true, handlesWrap: true, seedRows: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: true, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, zoomVarScope: true, handlesWrap: true, seedRows: true, canvasPrebuild: true };
 }
 function parseSpeedFlags(raw) {
   const base2 = defaultSpeedFlags();
@@ -19953,7 +19953,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "zoomVarScope", "handlesWrap", "seedRows"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "zoomVarScope", "handlesWrap", "seedRows", "canvasPrebuild"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -32339,6 +32339,13 @@ function createItemRenderer({
   const virtual = () => !virtualOff && (lastBoard?.items?.size || 0) > VIRTUAL_MIN;
   let canvasOn = false;
   const canvasCards = () => canvasOn && virtual();
+  const canvasPrebuild = () => {
+    try {
+      return speedOf().canvasPrebuild !== false;
+    } catch {
+      return false;
+    }
+  };
   const keepOnCanvas = (item) => item?.type === "section" || item?.type === "card" && item.kind === "board";
   const isAttached = (rec) => Boolean(rec?.el?.parentElement);
   const activeShellUid = () => {
@@ -32537,8 +32544,9 @@ function createItemRenderer({
     if (shellsLive) armShellPump();
   };
   const pumpChunk = ({ limit = 40, priority = false } = {}) => {
-    if (shellsHeld || canvasCards()) return false;
-    if (shellQueue.length) noteOverviewQueue();
+    const onCanvas = canvasCards();
+    if (shellsHeld || onCanvas && !canvasPrebuild()) return false;
+    if (shellQueue.length && !onCanvas) noteOverviewQueue();
     const t0 = now2();
     const built = [];
     let taken = 0;
@@ -32569,7 +32577,10 @@ function createItemRenderer({
       if (taken && lastContent) paintOffscreen(lastContent.visibleRect);
     }
     if (pendingView && !pendingView.size) viewBuilt();
-    if (!shellQueue.length) noteOverviewQueue();
+    if (!shellQueue.length) {
+      if (onCanvas) coverHeld2 = false;
+      else noteOverviewQueue();
+    }
     if (built.length) noteShells();
     return shellQueue.length === 0;
   };
@@ -32619,6 +32630,7 @@ function createItemRenderer({
     if (!shellsLive || shellsHeld) return;
     if (canvasCards()) {
       stopShellBg();
+      if (canvasPrebuild() && shellQueue.length && typeof timers?.bgRun === "function") shellBg = timers.bgRun(() => pumpChunk(), { label: "shells", partMs: 4 });
       return;
     }
     stopShellBg();
@@ -36756,6 +36768,7 @@ function createItemRenderer({
     if (!canvasWas && canvasOn) {
       stopShellBg();
       if (virtual()) for (const uid of shellQueue.filter((u) => keepOnCanvas(lastBoard?.items.get(u)))) ensureShell(uid);
+      armShellPump();
     }
     setZoom(zoom);
     closePeek();

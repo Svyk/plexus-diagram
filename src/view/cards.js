@@ -3039,6 +3039,25 @@ export function createItemRenderer({
     }, DROP_PEEK_MS);
     dropReveal = entry;
   };
+  // PXD-5: a card dropped on a revealed row leaves the target unfolded (session-only, like the zoom chip), so the new
+  // ref shows. The gesture end no longer folds it back.
+  const keepDropReveal = (uid) => {
+    if (!dropReveal || dropReveal.uid !== uid) return;
+    dropReveal.timer?.();
+    dropReveal = null;
+  };
+  // PXD-5: the held cards turn see-through while a child row under them is the drop target. null clears.
+  let ghosted = [];
+  const ghostMoving = (uids) => {
+    for (const el of ghosted) el.classList.remove("pxd-item--rowdrop");
+    ghosted = [];
+    for (const uid of uids || []) {
+      const rec = shells.get(uid);
+      if (!rec) continue;
+      rec.el.classList.add("pxd-item--rowdrop");
+      ghosted.push(rec.el);
+    }
+  };
   // The card block itself has no child row. A child waits until its row is actually in the DOM.
   const unfoldForFocus = (cardUid, blockUid) => {
     if (!cardUid) return false;
@@ -7662,6 +7681,8 @@ export function createItemRenderer({
     setSelection,
     setHover,
     dropRevealOn,
+    keepDropReveal,
+    ghostMoving,
     enterEdit,
     exitEdit,
     editingUid: () => editing?.uid ?? null,

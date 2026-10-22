@@ -568,6 +568,10 @@ export function topLevelOf(board, uids) {
   return list.filter((u) => !hasAncestorIn(board, u, set));
 }
 
+// PXD-5: a card that a drop on another card's child row turns into a ref. Not a section frame, and not a nested
+// board (its ref would mount the whole board inside the row).
+export const rowDroppable = (item) => Boolean(item && item.type !== "section" && item.kind !== "board");
+
 export function containerAt(board, point, { exclude = new Set(), rects } = {}) {
   const r = rects ?? worldRects(board);
   const ex = exclude instanceof Set ? exclude : new Set(exclude);

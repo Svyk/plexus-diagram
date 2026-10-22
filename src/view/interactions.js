@@ -29,19 +29,28 @@
 //   closeOverlay() overlayEscapeRecent()                   — Gallery/Timeline/Graph close; true for 600ms after an overlay, search or popover closed
 //   closeQuickLook() exitPresent() exitFocus()             — each returns true when it closed something (Escape chain)
 //   fitHeight(uid)  fitSection(uid)  resetSize(uids)       — double-click on a bottom / corner grip (a section fits its contents)
+//   dropReveal(uid|null) rowDropGhost(uids|null)           — PXD-5: a held card unfolds a folded card / turns see-through over a lit row
+//   refIntoRow(uids, cardUid, rowUid)                      — PXD-5: a card drop on another card's child row (the cards snap back)
 // Keydown events may carry tabOwned:false (focus is not on the board itself); Tab is then left to Roam and the browser.
 // Escape order: gesture, quick look, presentation, edit, focus, selection, popBoard, fullscreen.
 
 import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES, STICKY_SIZE } from "../model/schema.js";
 import { clampPdfCard } from "../model/pdf.js";
 import { TABLE_SIZE, tableUidOf } from "../model/roam-table.js";
-import { descendantsOf, findEdge, hitTest, itemsInPolygon, itemsInRect, outlineOrder, topLevelOf, boundsOf } from "../model/board.js";
+import { descendantsOf, findEdge, hitTest, itemsInPolygon, itemsInRect, outlineOrder, rowDroppable, topLevelOf, boundsOf } from "../model/board.js";
 import { clampToBox, edgeMayTarget, pointInside, regionBoxFrac, regionPolyFrac } from "../model/endpoints.js";
 import { regionDrawMode, setRegionDrawMode } from "../model/image-region.js";
 import { GRID_PITCH, nearestInDirection, nearestSide, snapMove, snapToGrid, zoomAt } from "../model/geometry.js";
 import { fingerPair, pinchViewport } from "../model/touch.js";
 import { SHORTCUTS, findShortcut } from "./shortcuts.js";
-import { isoDay, parseRoamDay } from "../model/tasks.js";
+import { isTaskString, isoDay, parseRoamDay } from "../model/tasks.js";
+
+// PXD-5: a card whose child rows can take a held card: a page card, a block card, or a note card with children.
+// Not a table card.
+function showsRows(item) {
+  if (!item || item.type !== "card" || tableUidOf(item)) return false;
+  return item.kind === "page" || item.kind === "block" || (item.kind === "note" && Array.isArray(item.content) && item.content.length > 0);
+}
 
 // The day a drop target stands for: a page card or a section whose title is a Roam daily-page title.
 function dayTargetOf(b, hit) {
@@ -62,6 +71,7 @@ const ARROW_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
 export const REGION_HINT = "⌥ to mark a region · P switches pen";
 export const REGION_BOX_HINT = "Drag a box on the image · P switches to pen · Esc cancels";
 export const REGION_PEN_HINT = "Draw around the region · P switches to box · Esc cancels";
+export const ROW_DROP_HINT = "Drop adds a ref under this row · ⇧ moves the card";
 
 // Delete / Backspace in an empty arrow label deletes the arrow. A label with text still edits.
 export function emptyLabelShouldDeleteEdge({ key, meta, ctrl, alt, shift, edgeSelected, inLabel, empty } = {}) {
@@ -246,7 +256,9 @@ export function createInteractions({ actions, settings } = {}) {
   };
   const end = () => {
     const moved = Boolean(state.gesture?.moved);
+    const ghosted = Boolean(state.gesture?.rowDrop);
     state.gesture = null;
+    if (ghosted) call("rowDropGhost", null);
     call("showMarquee", null);
     call("showLasso", null);
     call("showRegionPen", null);
@@ -638,6 +650,24 @@ export function createInteractions({ actions, settings } = {}) {
           if (!drop) call("onHover", day ? day.uid : null);
         }
         if (drop !== (g.drop ?? null)) { g.drop = drop; call("onHover", drop); }
+        // PXD-5: over another card's child row the drop adds the held cards' refs under that row. Shift moves as
+        // usual, and a task over a day card keeps the due-date drop.
+        if (g.refs === undefined) {
+          g.refs = g.uids.some((u) => rowDroppable(b.items.get(u)));
+          g.tasks = g.uids.some((u) => { const it = b.items.get(u); return it?.kind === "note" && isTaskString(it.string); });
+        }
+        const rowCard = g.refs && !drop && !ev.shift && !(day && g.tasks) && showsRows(b.items.get(hit?.uid)) ? hit.uid : null;
+        call("dropReveal", rowCard);
+        let row = null;
+        if (rowCard) {
+          const bt = call("blockTarget", ev.client || null, { rowsOnly: true, exclude: g.exclude });
+          row = bt && bt.uid === rowCard && bt.row ? bt.row : null;
+          if (!row && bt) call("clearBlockTarget");
+        } else call("clearBlockTarget");
+        if (Boolean(row) !== Boolean(g.rowDrop)) call("rowDropGhost", row ? g.uids : null);
+        g.rowDrop = row ? { card: rowCard, row } : null;
+        if (row || g.hinted) call("connectHint", row ? ROW_DROP_HINT : null, ev.screen);
+        g.hinted = Boolean(row);
       }
       return;
     }
@@ -784,6 +814,10 @@ export function createInteractions({ actions, settings } = {}) {
           call("duplicateItems", g.uids, { dx: g.dx || 0, dy: g.dy || 0, asRef: Boolean(g.asRef) });
         } else if (g.moved && g.drop) {
           call("moveIntoBoard", g.uids, g.drop, g.dx || 0, g.dy || 0);
+        } else if (g.moved && g.rowDrop && !ev.shift) {
+          // PXD-5: the held cards go back where they started; their refs land under the row.
+          call("previewMove", g.uids, 0, 0);
+          call("refIntoRow", g.uids, g.rowDrop.card, g.rowDrop.row);
         } else if (g.moved && g.day && !ev.shift) {
           call("rescheduleTasks", g.uids, g.day);
           if (g.uids.length) call("commitMove", g.uids, g.dx || 0, g.dy || 0);

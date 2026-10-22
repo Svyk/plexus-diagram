@@ -5,7 +5,9 @@ import test, { afterEach } from "node:test";
 import { createHost } from "../src/host/roam.js";
 import { acquireSession, resetSessions } from "../src/session.js";
 import { noteSpeedFlags } from "../src/settings.js";
+import { mountBoardView } from "../src/view/board-view.js";
 import { ROW_DROP_HINT, createInteractions } from "../src/view/interactions.js";
+import { createDomStub } from "./fixtures/dom-stub.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { mount as mountWith, show, testTree, tick } from "./fixtures/ux4-b.js";
 import "../src/session-clip.js";
@@ -303,3 +305,73 @@ test("PXD-5: a held section never lights a row", () => {
   assert.equal(calls.some((c) => c[0] === "blockTarget" || c[0] === "refIntoRow"), false);
   assert.ok(calls.some((c) => c[0] === "commitMove"));
 });
+
+// ---- a block card shows the new ref under its row (its rows come from outside the board)
+
+test("PXD-5: a drop on a block card's child row repaints that card with the new ref, and Undo takes it out again", async () => {
+  const stub = createDomStub({ width: 1600, height: 900 });
+  const restore = stub.install();
+  const fake = createFakeRoam({ echoDelay: 0 });
+  fake.roamWatch = true;
+  stub.localStorage.setItem("plexus-diagram:vp:g:b1", JSON.stringify({ x: 0, y: 0, zoom: 1 }));
+  fake.seedPage({ title: "Source Page", uid: "pgSrc001", children: [{ uid: "srcBlock1", string: "the source block", children: [{ uid: "srcRow001", string: "block row" }] }] });
+  const host = createHost({ api: fake.api, storage: stub.localStorage, graph: "g" });
+  fake.seedBoard({
+    uid: "b1",
+    props: { plexus: { v: 2 } },
+    children: [
+      { uid: "dragMe01", string: "dragged note", props: { plexus: { x: 0, y: 0, w: 280, h: 160 } } },
+      { uid: "blockCd01", string: "((srcBlock1))", props: { plexus: { x: 800, y: 0, w: 280, h: 220, kids: true } } },
+    ],
+  });
+  const session = acquireSession("b1", { host, settings: null, linkDelay: 0, raf: (fn) => fn() });
+  const mountEl = stub.document.createElement("div");
+  stub.document.body.append(mountEl);
+  const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "test" });
+  const settle = async (ms) => {
+    const end = Date.now() + ms;
+    do {
+      stub.flushFrames();
+      stub.flushIdle();
+      stub.flushMutations();
+      await tick(40);
+      await fake.flush();
+    } while (Date.now() < end);
+    stub.flushFrames();
+  };
+  const card = () => view.root.querySelector("[data-uid=blockCd01]");
+  const rowTexts = () => [...card().querySelectorAll("[data-pxd-row]")].map((n) => String(n.textContent || "").replace(/\s+/g, " ").trim());
+  try {
+    await settle(400);
+    assert.deepEqual(rowTexts(), ["[string:block row]"], "the block card shows its source's row");
+    const held = view.root.querySelector("[data-uid=dragMe01]");
+    stub.document.elementsFromPoint = () => {
+      const row = card().querySelector("[data-pxd-row=srcRow001]");
+      return row ? [held, row, card()] : [held, card()];
+    };
+    const base = { pointerId: 1, isPrimary: true, pointerType: "mouse", button: 0 };
+    stub.dispatch(held, "pointerdown", { ...base, buttons: 1, clientX: 140, clientY: 80 });
+    stub.dispatch(stub.document, "pointermove", { ...base, buttons: 1, clientX: 500, clientY: 60 });
+    stub.dispatch(stub.document, "pointermove", { ...base, buttons: 1, clientX: 900, clientY: 60 });
+    assert.equal(card().querySelector("[data-pxd-row=srcRow001]").classList.contains("pxd-row--target"), true, "the block card's row is lit");
+    stub.dispatch(stub.document, "pointerup", { ...base, buttons: 0, clientX: 900, clientY: 60 });
+    await settle(900);
+    assert.deepEqual(fake.children("srcRow001").map((u) => fake.block(u).string), ["((dragMe01))"], "Roam has the ref under the row");
+    assert.equal(rowTexts().length, 2, "the block card repainted with the new child row");
+    assert.match(rowTexts()[1], /\(\(dragMe01\)\)/);
+    assert.deepEqual(plexusXY(fake, "dragMe01"), { x: 0, y: 0 }, "the held card did not move");
+    stub.dispatch(view.root.querySelector(".pxd-toast__action"), "click", {});
+    await settle(900);
+    assert.deepEqual(fake.children("srcRow001"), [], "Undo removed the ref");
+    assert.deepEqual(rowTexts(), ["[string:block row]"], "the block card repainted without it");
+  } finally {
+    view.dispose();
+    resetSessions();
+    restore();
+  }
+});
+
+function plexusXY(fake, uid) {
+  const p = fake.props(uid)?.plexus || {};
+  return { x: p.x, y: p.y };
+}

@@ -202,6 +202,8 @@ extendSession((session, api) => {
         return tableUid ? `((${tableUid}))` : api.refOf(id);
       }).filter((s) => s !== `((${rowUid}))`), api.emit);
       if (!refs.length) return Promise.resolve(null);
+      // Before the write: a view showing this row from outside the board (a block card) arms a watch on it.
+      api.emit("rowref", rowUid);
       return api.txn((t) => {
         const made = refs.map((string) => t.create({ parent: rowUid, string }));
         return { added: made.length, undo: () => api.txn((u) => { for (const id of made) u.del(id); }) };

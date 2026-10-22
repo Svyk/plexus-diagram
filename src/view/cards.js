@@ -1364,6 +1364,8 @@ export function createItemRenderer({
     rec.pageUnwatch = null;
     try { rec.blockUnwatch?.(); } catch { /* already off */ }
     rec.blockUnwatch = null;
+    try { rec.refRowsOff?.(); } catch { /* already off */ }
+    rec.refRowsOff = null;
     try { rec.authorUnwatch?.(); } catch { /* already off */ }
     rec.authorUnwatch = null;
     try { rec.contentUnwatch?.(); } catch { /* already off */ }
@@ -5322,6 +5324,45 @@ export function createItemRenderer({
     };
   };
 
+  // PXD-5: a block card reads its source's rows once at mount, and its watch follows the source's own string. A row
+  // that took a card drop is watched as well, so the new ref, its undo and later edits under that row repaint the card.
+  // rec.refRows outlives a remount; the watches are re-armed with the content.
+  const armRefRows = (rec) => {
+    if (disposed || rec.refRowsOff || !rec.refRows?.size || typeof host?.watchBlock !== "function") return;
+    let pending = null;
+    const offs = [];
+    for (const row of rec.refRows) {
+      try {
+        const off = host.watchBlock(row, () => {
+          if (pending) return;
+          pending = later(() => {
+            pending = null;
+            if (!disposed && shells.get(rec.uid) === rec) remountCard(rec);
+          }, BLOCK_REFRESH_MS);
+        });
+        if (typeof off === "function") offs.push(off);
+      } catch { /* no watch: the rows refresh on the next mount */ }
+    }
+    rec.refRowsOff = () => {
+      rec.refRowsOff = null;
+      pending?.();
+      pending = null;
+      for (const off of offs) { try { off(); } catch { /* already off */ } }
+    };
+  };
+  // The session announces the row before it writes a ref under it. Every mounted block card showing that row follows it.
+  const followRefRows = (rowUid) => {
+    if (disposed || !rowUid) return;
+    for (const [uid, rec] of shells) {
+      if (!rec.blockUnwatch || lastBoard?.items.get(uid)?.kind !== "block") continue;
+      if (rec.refRows?.has(rowUid) || !rec.el?.querySelector?.(`[data-pxd-row="${rowUid}"]`)) continue;
+      if (!rec.refRows) rec.refRows = new Set();
+      rec.refRows.add(rowUid);
+      rec.refRowsOff?.();
+      armRefRows(rec);
+    }
+  };
+
   const mountContentBody = (rec, item) => {
     rec.pullGen = (rec.pullGen || 0) + 1;
     const gen = rec.pullGen;
@@ -5514,6 +5555,7 @@ export function createItemRenderer({
           apply(tree, true);
         }
         armBlockWatch(rec, item);
+        armRefRows(rec);
       }
     } else if (isQueryString(item.string) && host?.renderBlock) {
       budget.roots.push(mountQuery(body, item.uid, item.string));
@@ -7703,6 +7745,7 @@ export function createItemRenderer({
     dropRevealOn,
     keepDropReveal,
     ghostMoving,
+    followRefRows,
     enterEdit,
     exitEdit,
     editingUid: () => editing?.uid ?? null,

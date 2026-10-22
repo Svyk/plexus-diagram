@@ -10147,6 +10147,8 @@ function buildBoardView(onFail, {
   subs.push(session.on("links", () => { if (disposed || suspended) return; dirty.links = true; schedule(); }));
   subs.push(session.on("sync", (state) => { if (disposed || suspended) return; chrome.toolbar.setSync(state); }));
   subs.push(session.on("toast", (t) => { if (disposed || suspended) return; chrome.toast.show(t); }));
+  // PXD-5: a ref is about to land under this row. A block card reads its rows from outside the board, so it watches it.
+  subs.push(session.on("rowref", (rowUid) => { if (disposed || suspended) return; itemsR.followRefRows?.(rowUid); }));
   tableCtl = mountTable({
     doc,
     root,

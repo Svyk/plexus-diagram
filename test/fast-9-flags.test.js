@@ -42,7 +42,7 @@ const ALL_ON = {
   trustSnapshot: true,
   overviewFast: true,
   slicedSettle: true,
-  overviewCanvas: false,
+  overviewCanvas: true,
   steadyCamera: true,
   keepFullscreen: true,
   styledUnderlay: true,
@@ -80,10 +80,11 @@ const ALL_ON = {
   zoomVarScope: true,
   handlesWrap: true,
   seedRows: true,
+  canvasPrebuild: true,
   cardRowDrop: true,
 };
 
-test("the panel has no speed-flags control, and bad JSON leaves the defaults (every flag on but edgeFingerprint, overviewCanvas, idlePark, quietBodies and sliceGrow)", () => {
+test("the panel has no speed-flags control, and bad JSON leaves the defaults (every flag on but edgeFingerprint, idlePark, quietBodies and sliceGrow)", () => {
   assert.equal(createSettingsPanel().settings.some((row) => row.id === "speed-flags"), false);
   assert.equal(Object.hasOwn(settingsDefaults(), "speed-flags"), false);
   assert.deepEqual(flagsDefault(), ALL_ON);

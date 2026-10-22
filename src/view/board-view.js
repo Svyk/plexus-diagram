@@ -4502,7 +4502,7 @@ function buildBoardView(onFail, {
     if (disposed || suspended || underlayDrawn || gesturing || wheelLayer || slicing || underlayKind !== "cover") return;
     paintOverviewCover({ quiet: true });
   };
-  // C2. Overview tier of a big board on the underlay canvas (speed flag overviewCanvas, off by default this round).
+  // C2. Overview tier of a big board on the underlay canvas (speed flag overviewCanvas, on by default since PXD-6).
   // Below zoom 0.2 a card is a coloured box of ~15x10 screen pixels with its header hidden (extension.css), and the
   // PhD main board built ~1,558 shells there that the overview CSS then hid (~1 s of pump CPU at open). On this tier
   // the card shells are not built or attached (cards.js canvasTier); one fillRect per card and hairline edges on the

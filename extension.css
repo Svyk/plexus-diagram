@@ -3573,7 +3573,8 @@ body.pxd-fs-cover .roam-article .pxd-mount--fullscreen {
    scoped .pxd-root .pxd-x or .pxd-root.pxd-bg-x (two classes at least). Tones only set --pxd-surface,
    which .pxd-root already paints; palette tones mix the palette line into the base surface at ~9%
    (light) / ~7% (dark). The dark variants are written out for all five signals plus the
-   prefers-color-scheme guard, so they out-rank the dark token block in extension.css. */
+   prefers-color-scheme guard, so they out-rank the dark token block in extension.css. Every tone's
+   surface is important: the Follow Roam theme writes --pxd-surface inline on the root, which beat every tone. */
 
 /* ------------------------------------------------------------------ grid pattern
    Minor lines come from the grid element itself (size and offset set inline by the view, exactly like
@@ -3605,314 +3606,314 @@ body.pxd-fs-cover .roam-article .pxd-mount--fullscreen {
 /* ------------------------------------------------------------------ tones (light) */
 
 .pxd-root.pxd-bg-paper {
-  --pxd-surface: #eeeded;
+  --pxd-surface: #eeeded !important;
 }
 
 .pxd-root.pxd-bg-gray {
-  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 9%, var(--bc-main, #ffffff));
+  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 9%, var(--bc-main, #ffffff)) !important;
 }
 
 .pxd-root.pxd-bg-red {
-  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 9%, var(--bc-main, #ffffff));
+  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 9%, var(--bc-main, #ffffff)) !important;
 }
 
 .pxd-root.pxd-bg-orange {
-  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 9%, var(--bc-main, #ffffff));
+  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 9%, var(--bc-main, #ffffff)) !important;
 }
 
 .pxd-root.pxd-bg-yellow {
-  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 9%, var(--bc-main, #ffffff));
+  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 9%, var(--bc-main, #ffffff)) !important;
 }
 
 .pxd-root.pxd-bg-green {
-  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 9%, var(--bc-main, #ffffff));
+  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 9%, var(--bc-main, #ffffff)) !important;
 }
 
 .pxd-root.pxd-bg-teal {
-  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 9%, var(--bc-main, #ffffff));
+  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 9%, var(--bc-main, #ffffff)) !important;
 }
 
 .pxd-root.pxd-bg-blue {
-  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 9%, var(--bc-main, #ffffff));
+  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 9%, var(--bc-main, #ffffff)) !important;
 }
 
 .pxd-root.pxd-bg-indigo {
-  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 9%, var(--bc-main, #ffffff));
+  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 9%, var(--bc-main, #ffffff)) !important;
 }
 
 .pxd-root.pxd-bg-purple {
-  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 9%, var(--bc-main, #ffffff));
+  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 9%, var(--bc-main, #ffffff)) !important;
 }
 
 .pxd-root.pxd-bg-pink {
-  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 9%, var(--bc-main, #ffffff));
+  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 9%, var(--bc-main, #ffffff)) !important;
 }
 
 /* ------------------------------------------------------------------ tones (dark, five signals) */
 
 .bp3-dark .pxd-root.pxd-bg-paper {
-  --pxd-surface: #191919;
+  --pxd-surface: #191919 !important;
 }
 
 .bp3-dark .pxd-root.pxd-bg-gray {
-  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .bp3-dark .pxd-root.pxd-bg-red {
-  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .bp3-dark .pxd-root.pxd-bg-orange {
-  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .bp3-dark .pxd-root.pxd-bg-yellow {
-  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .bp3-dark .pxd-root.pxd-bg-green {
-  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .bp3-dark .pxd-root.pxd-bg-teal {
-  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .bp3-dark .pxd-root.pxd-bg-blue {
-  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .bp3-dark .pxd-root.pxd-bg-indigo {
-  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .bp3-dark .pxd-root.pxd-bg-purple {
-  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .bp3-dark .pxd-root.pxd-bg-pink {
-  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.bt-theme-dark .pxd-root.pxd-bg-paper {
-  --pxd-surface: #191919;
+  --pxd-surface: #191919 !important;
 }
 
 body.bt-theme-dark .pxd-root.pxd-bg-gray {
-  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.bt-theme-dark .pxd-root.pxd-bg-red {
-  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.bt-theme-dark .pxd-root.pxd-bg-orange {
-  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.bt-theme-dark .pxd-root.pxd-bg-yellow {
-  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.bt-theme-dark .pxd-root.pxd-bg-green {
-  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.bt-theme-dark .pxd-root.pxd-bg-teal {
-  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.bt-theme-dark .pxd-root.pxd-bg-blue {
-  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.bt-theme-dark .pxd-root.pxd-bg-indigo {
-  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.bt-theme-dark .pxd-root.pxd-bg-purple {
-  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.bt-theme-dark .pxd-root.pxd-bg-pink {
-  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .rm-dark-theme .pxd-root.pxd-bg-paper {
-  --pxd-surface: #191919;
+  --pxd-surface: #191919 !important;
 }
 
 .rm-dark-theme .pxd-root.pxd-bg-gray {
-  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .rm-dark-theme .pxd-root.pxd-bg-red {
-  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .rm-dark-theme .pxd-root.pxd-bg-orange {
-  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .rm-dark-theme .pxd-root.pxd-bg-yellow {
-  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .rm-dark-theme .pxd-root.pxd-bg-green {
-  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .rm-dark-theme .pxd-root.pxd-bg-teal {
-  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .rm-dark-theme .pxd-root.pxd-bg-blue {
-  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .rm-dark-theme .pxd-root.pxd-bg-indigo {
-  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .rm-dark-theme .pxd-root.pxd-bg-purple {
-  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .rm-dark-theme .pxd-root.pxd-bg-pink {
-  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.roam-body.dark .pxd-root.pxd-bg-paper {
-  --pxd-surface: #191919;
+  --pxd-surface: #191919 !important;
 }
 
 body.roam-body.dark .pxd-root.pxd-bg-gray {
-  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.roam-body.dark .pxd-root.pxd-bg-red {
-  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.roam-body.dark .pxd-root.pxd-bg-orange {
-  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.roam-body.dark .pxd-root.pxd-bg-yellow {
-  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.roam-body.dark .pxd-root.pxd-bg-green {
-  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.roam-body.dark .pxd-root.pxd-bg-teal {
-  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.roam-body.dark .pxd-root.pxd-bg-blue {
-  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.roam-body.dark .pxd-root.pxd-bg-indigo {
-  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.roam-body.dark .pxd-root.pxd-bg-purple {
-  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 body.roam-body.dark .pxd-root.pxd-bg-pink {
-  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .pxd-root.pxd-root--dark.pxd-bg-paper {
-  --pxd-surface: #191919;
+  --pxd-surface: #191919 !important;
 }
 
 .pxd-root.pxd-root--dark.pxd-bg-gray {
-  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .pxd-root.pxd-root--dark.pxd-bg-red {
-  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .pxd-root.pxd-root--dark.pxd-bg-orange {
-  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .pxd-root.pxd-root--dark.pxd-bg-yellow {
-  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .pxd-root.pxd-root--dark.pxd-bg-green {
-  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .pxd-root.pxd-root--dark.pxd-bg-teal {
-  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .pxd-root.pxd-root--dark.pxd-bg-blue {
-  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .pxd-root.pxd-root--dark.pxd-bg-indigo {
-  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .pxd-root.pxd-root--dark.pxd-bg-purple {
-  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 .pxd-root.pxd-root--dark.pxd-bg-pink {
-  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35));
+  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35)) !important;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not(.bp3-light) .pxd-root.pxd-bg-paper:not(.pxd-root--light) {
-    --pxd-surface: #191919;
+    --pxd-surface: #191919 !important;
   }
 
   :root:not(.bp3-light) .pxd-root.pxd-bg-gray:not(.pxd-root--light) {
-    --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35));
+    --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35)) !important;
   }
 
   :root:not(.bp3-light) .pxd-root.pxd-bg-red:not(.pxd-root--light) {
-    --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35));
+    --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35)) !important;
   }
 
   :root:not(.bp3-light) .pxd-root.pxd-bg-orange:not(.pxd-root--light) {
-    --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35));
+    --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35)) !important;
   }
 
   :root:not(.bp3-light) .pxd-root.pxd-bg-yellow:not(.pxd-root--light) {
-    --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35));
+    --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35)) !important;
   }
 
   :root:not(.bp3-light) .pxd-root.pxd-bg-green:not(.pxd-root--light) {
-    --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35));
+    --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35)) !important;
   }
 
   :root:not(.bp3-light) .pxd-root.pxd-bg-teal:not(.pxd-root--light) {
-    --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35));
+    --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35)) !important;
   }
 
   :root:not(.bp3-light) .pxd-root.pxd-bg-blue:not(.pxd-root--light) {
-    --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35));
+    --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35)) !important;
   }
 
   :root:not(.bp3-light) .pxd-root.pxd-bg-indigo:not(.pxd-root--light) {
-    --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35));
+    --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35)) !important;
   }
 
   :root:not(.bp3-light) .pxd-root.pxd-bg-purple:not(.pxd-root--light) {
-    --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35));
+    --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35)) !important;
   }
 
   :root:not(.bp3-light) .pxd-root.pxd-bg-pink:not(.pxd-root--light) {
-    --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35));
+    --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35)) !important;
   }
 }
 
@@ -7109,7 +7110,9 @@ body.bt-theme-dark .pxd-root .pxd-highlight-chip__more,
 }
 
 /* G3. Three optional Heptabase looks, off unless the root carries the class.
-   Flat grey drops the grid. Pastel washes a section with its colour.
+   Flat grey is the grey canvas; the view drops the grid by picking the plain pattern, so a board's own
+   pattern still shows, and leaves this class off a board with its own colour.
+   Pastel washes a section with its colour.
    Tint moves a highlight's colour onto the card and hides the bar.
    Dark keeps a coloured border and a fill of at most 6%. Host markers decide dark, not the OS scheme. */
 
@@ -7121,15 +7124,6 @@ body.bt-theme-dark .pxd-root .pxd-highlight-chip__more,
 .pxd-root.pxd-look--flat {
   --pxd-bg: #f2f2f0;
   background-color: #f2f2f0;
-}
-
-.pxd-root.pxd-look--flat .pxd-grid {
-  background-image: none;
-}
-
-.pxd-root.pxd-look--flat .pxd-grid::before {
-  content: none;
-  background-image: none;
 }
 
 .pxd-root.pxd-look--pastel .pxd-section {
@@ -7984,10 +7978,6 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 
 :where(.pxd-root)[data-pxd-highlights] .pxd-has-highlight {
   opacity: 1;
-}
-
-.pxd-root .pxd-grid {
-  background-repeat: no-repeat;
 }
 
 @media print {

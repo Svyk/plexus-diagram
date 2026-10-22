@@ -477,10 +477,6 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   opacity: 1;
 }
 
-.pxd-root .pxd-grid {
-  background-repeat: no-repeat;
-}
-
 @media print {
   .pxd-print__page.pxd-print__page {
     break-after: page;

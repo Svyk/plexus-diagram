@@ -25,6 +25,9 @@ const CHROME_KEEP = /(^|\s)(pxd-toolbar|pxd-rail|pxd-palette|pxd-dock|pxd-mode|p
 export const SNAP_ROOT_CLASS = "pxd-snap-root";
 
 const finite = (n) => typeof n === "number" && Number.isFinite(n);
+// A board's own #rrggbb background, as the live root carries it inline (the browser reads it back as rgb()).
+const ROOT_BG = /^(#[0-9a-f]{6}|rgb\(\d{1,3}, \d{1,3}, \d{1,3}\))$/i;
+const rootBg = (value) => (typeof value === "string" && ROOT_BG.test(value.trim()) ? value.trim() : "");
 
 function rootVars(root) {
   const out = {};
@@ -135,6 +138,7 @@ export function createBoardSnapCapture({
     const edgesEl = world?.querySelector?.("svg.pxd-edges");
     const labelsEl = world?.querySelector?.(".pxd-labels");
     const gridEl = root?.querySelector?.(".pxd-grid");
+    const bg = rootBg(root?.style?.backgroundColor);
     const layer = (el) => (el ? captureFace(el, { thumbs, maxNodes: LAYER_MAX_NODES, maxChars: 64 * 1024 }) : null);
     // The toolbar, dock, rail, minimap and props bar, so the snapshot frame is the live frame.
     const chrome = [];
@@ -155,7 +159,7 @@ export function createBoardSnapCapture({
       vp: { x: vp.x, y: vp.y, zoom: vp.zoom },
       rootCls: typeof root?.getAttribute === "function" ? root.getAttribute("class") || "" : "",
       rootStyle: rootVars(root),
-      grid: gridEl ? { c: cleanClasses(gridEl.getAttribute?.("class") || "").join(" ") } : null,
+      grid: gridEl ? { c: cleanClasses(gridEl.getAttribute?.("class") || "").join(" "), ...(bg ? { bg } : {}) } : null,
       edges: layer(edgesEl),
       labels: layer(labelsEl),
       chrome,
@@ -248,6 +252,13 @@ function applyCamera(state) {
     if (g) {
       grid.style.backgroundSize = `${g.size}px ${g.size}px`;
       grid.style.backgroundPosition = `${g.x}px ${g.y}px`;
+      // The grid pattern's major lines take the live pitch too (the stylesheet's 120px fits zoom 1 at the origin only).
+      if (pattern === "grid") {
+        const mod = (v) => ((v % g.major) + g.major) % g.major;
+        setVar(grid, "--pxd-grid-major", `${g.major}px`);
+        setVar(grid, "--pxd-grid-major-x", `${mod(vp.x)}px`);
+        setVar(grid, "--pxd-grid-major-y", `${mod(vp.y)}px`);
+      }
     }
   }
 }
@@ -328,6 +339,8 @@ export function paintBoardSnap(doc, mountEl, snap, vp, { thumbs = null, faceOk =
     root.setAttribute("data-pxd-snap", "1");
     root.setAttribute("aria-busy", "true");
     for (const [name, value] of Object.entries(snap.rootStyle || {})) setVar(root, name, value);
+    const bg = rootBg(snap.grid?.bg);
+    if (bg) root.style.backgroundColor = bg;
     root.style.position = "absolute";
     root.style.left = "0";
     root.style.top = "0";

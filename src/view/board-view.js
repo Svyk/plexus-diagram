@@ -1331,6 +1331,7 @@ function buildBoardView(onFail, {
   let bgHex = null;
   let bgImage = null;
   let bgOverride = false;
+  let bgFlat = false;
   let timerHud = null;
   let timerState = null;
   let timerTick = null;
@@ -4755,6 +4756,8 @@ function buildBoardView(onFail, {
   };
 
   const paintGrid = () => {
+    // A background image is sized and placed once (cover, centred); the pattern pitch would tile it.
+    if (bgImage) return;
     const g = gridBackground(vp, bgPattern);
     if (!g) return;
     grid.style.backgroundSize = `${g.size}px ${g.size}px`;
@@ -5407,11 +5410,19 @@ function buildBoardView(onFail, {
     const ownTone = ownHex ? null : (BOARD_TONES.includes(own?.bgColor) ? own.bgColor : null);
     const defPattern = setting("grid", "dots");
     const defTone = setting("board-tone", "none");
-    const pattern = ownPattern ?? (BOARD_PATTERNS.includes(defPattern) ? defPattern : "dots");
-    const tone = ownHex ? null : (ownTone ?? (BOARD_TONES.includes(defTone) ? defTone : null));
+    // The Flat grey canvas stands in for the default pattern (plain) and the default tone (its grey). The board's
+    // own pattern and colour still win: the canvas used to hide them both with CSS.
+    const flatCanvas = setting("look-canvas", "dots") === "flat-grey";
+    const pattern = ownPattern ?? (flatCanvas ? "plain" : (BOARD_PATTERNS.includes(defPattern) ? defPattern : "dots"));
+    const tone = ownHex ? null : (ownTone ?? (!flatCanvas && BOARD_TONES.includes(defTone) ? defTone : null));
+    const flat = flatCanvas && ownTone === null && ownHex === null;
     const image = backgroundImage(own?.bgImage);
     const override = ownPattern !== null || ownTone !== null || ownHex !== null || Boolean(image);
-    if (pattern === bgPattern && tone === bgTone && ownHex === bgHex && image === bgImage && override === bgOverride) return;
+    if (pattern === bgPattern && tone === bgTone && ownHex === bgHex && image === bgImage && override === bgOverride && flat === bgFlat) return;
+    if (flat !== bgFlat) {
+      root.classList.toggle("pxd-look--flat", flat);
+      bgFlat = flat;
+    }
     if (pattern !== bgPattern) {
       grid.className = `pxd-grid pxd-grid--${pattern}`;
       if (bgPattern === "grid") for (const v of ["--pxd-grid-major", "--pxd-grid-major-x", "--pxd-grid-major-y"]) grid.style.removeProperty?.(v);
@@ -5438,14 +5449,16 @@ function buildBoardView(onFail, {
       grid.style.backgroundImage = image ? `url("${image}")` : "";
       grid.style.backgroundSize = image ? "cover" : "";
       grid.style.backgroundPosition = image ? "center" : "";
+      grid.style.backgroundRepeat = image ? "no-repeat" : "";
       bgImage = image;
+      if (!image) paintGrid();
     }
     bgOverride = override;
     chrome.toolbar.setBackground({ pattern, tone: ownHex || tone, override });
   };
-  // G3. Root classes for the three optional looks. Defaults leave today's canvas, sections, and bar.
+  // G3. Root classes for the three optional looks. Defaults leave today's canvas, sections, and bar. The Flat grey
+  // class depends on the board's own colour too, so applyBackground sets it.
   const applyLooks = () => {
-    root.classList.toggle("pxd-look--flat", setting("look-canvas", "dots") === "flat-grey");
     root.classList.toggle("pxd-look--pastel", setting("look-sections", "none") === "pastel");
     root.classList.toggle("pxd-look--tint", setting("look-highlights", "bar") === "tint");
     if (!themeReady) return;
@@ -6955,7 +6968,11 @@ function buildBoardView(onFail, {
       },
       useBackgroundAsDefault: () => {
         if (typeof onSetDefaults !== "function") return;
-        onSetDefaults({ grid: bgPattern, "board-tone": bgTone || "none" });
+        const patch = { grid: bgPattern, "board-tone": bgTone || "none" };
+        // The Flat grey canvas replaces the default pattern and tone: saving a pattern or a tone switches it back to
+        // Dots, so the new default shows on every board.
+        if (setting("look-canvas", "dots") === "flat-grey" && (bgPattern !== "plain" || bgTone)) patch["look-canvas"] = "dots";
+        onSetDefaults(patch);
         toast("Saved as the default background");
       },
     },

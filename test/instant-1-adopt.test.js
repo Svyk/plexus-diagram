@@ -7,6 +7,7 @@ import { acquireSession, resetSessions } from "../src/session.js";
 import { mountBoardView } from "../src/view/board-view.js";
 import { captureBoardSnap, paintBoardSnap, SNAP_CLASS } from "../src/view/boardsnap-paint.js";
 import { parseSnapshot, packSnapshot } from "../src/model/boardsnap.js";
+import { gridBackground } from "../src/model/geometry.js";
 import { noteSpeedFlags } from "../src/settings.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
@@ -188,5 +189,76 @@ test("a changed card drops its stale face; an unchanged card keeps it until its 
     session.release?.();
   } finally {
     e.restore();
+  }
+});
+
+test("PXD-7: the snapshot paints the board's own pattern, tone, hex colour and the Flat grey canvas", async () => {
+  const cases = [
+    { props: { v: 2, bg: "lines", bgColor: "#123456" }, settings: {}, grid: "pxd-grid--lines", bg: "#123456", cls: [] },
+    { props: { v: 2, bg: "dots", bgColor: "teal" }, settings: {}, grid: "pxd-grid--dots", bg: "", cls: ["pxd-bg-teal"] },
+    { props: { v: 2 }, settings: { "look-canvas": "flat-grey", grid: "lines" }, grid: "pxd-grid--plain", bg: "", cls: ["pxd-look--flat"] },
+  ];
+  for (const c of cases) {
+    const stub = createDomStub();
+    const restore = stub.install();
+    try {
+      const fake = createFakeRoam({ echoDelay: 0 });
+      const host = createHost({ api: fake.api, storage: stub.localStorage, graph: "g" });
+      fake.seedBoard({ uid: "b7", props: { plexus: c.props }, children: [{ uid: "c7", string: "Card", props: { plexus: { x: 0, y: 0, w: 200, h: 100 } } }] });
+      const session = acquireSession("b7", { host, raf: (fn) => fn() });
+      const mountEl = stub.document.createElement("div");
+      stub.document.body.append(mountEl);
+      const view = mountBoardView({ host, session, mountEl, settings: { get: (k) => c.settings[k] }, version: "test", initialViewport: { x: 0, y: 0, zoom: 1 } });
+      stub.flushFrames();
+      stub.flushFrames();
+      const snap = parseSnapshot(packSnapshot(captureBoardSnap({ ...view.snapshotSource(), uid: "b7" })));
+      view.dispose();
+      session.release?.();
+      resetSessions();
+      const target = stub.document.createElement("div");
+      stub.document.body.append(target);
+      const painted = paintBoardSnap(stub.document, target, snap, { x: 0, y: 0, zoom: 1 });
+      const grid = painted.root.querySelector(".pxd-grid");
+      assert.ok(grid.classList.contains(c.grid), `${c.grid} on ${JSON.stringify(c.props)}`);
+      if (c.grid !== "pxd-grid--plain") assert.match(grid.style.backgroundSize, /^[\d.]+px [\d.]+px$/);
+      assert.equal(painted.root.style.backgroundColor || "", c.bg);
+      for (const cls of c.cls) assert.ok(painted.root.classList.contains(cls), cls);
+    } finally {
+      restore();
+    }
+  }
+});
+
+test("PXD-7: the snapshot paints the grid pattern's major lines at the live pitch and offset", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const target = stub.document.createElement("div");
+    stub.document.body.append(target);
+    const snap = { v: 1, items: [], rootCls: "pxd-root", rootStyle: {}, grid: { c: "pxd-grid pxd-grid--grid" } };
+    const vp = { x: 130, y: -50, zoom: 0.3 };
+    const painted = paintBoardSnap(stub.document, target, snap, vp);
+    const grid = painted.root.querySelector(".pxd-grid");
+    const g = gridBackground(vp, "grid");
+    assert.equal(grid.style.backgroundSize, `${g.size}px ${g.size}px`);
+    assert.equal(grid.style["--pxd-grid-major"], `${g.major}px`);
+    assert.equal(grid.style["--pxd-grid-major-x"], `${((130 % g.major) + g.major) % g.major}px`);
+    assert.equal(grid.style["--pxd-grid-major-y"], `${((-50 % g.major) + g.major) % g.major}px`);
+  } finally {
+    restore();
+  }
+});
+
+test("PXD-7: a snapshot's root colour must be a plain colour", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const target = stub.document.createElement("div");
+    stub.document.body.append(target);
+    const snap = { v: 1, items: [], rootCls: "pxd-root", rootStyle: {}, grid: { c: "pxd-grid pxd-grid--dots", bg: "url(https://x.test/a.png)" } };
+    const painted = paintBoardSnap(stub.document, target, snap, { x: 0, y: 0, zoom: 1 });
+    assert.equal(painted.root.style.backgroundColor || "", "");
+  } finally {
+    restore();
   }
 });

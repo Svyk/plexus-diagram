@@ -131,7 +131,8 @@ test("look CSS covers the light canvas and the dark border-and-fill", () => {
   const css = readFileSync(new URL("../src/css/looks.css", import.meta.url), "utf8");
   assert.equal(css.includes("prefers-color-scheme"), false);
   assert.match(css, /\.pxd-look--flat[\s\S]*#f2f2f0/);
-  assert.match(css, /\.pxd-look--flat \.pxd-grid \{[^}]*background-image:\s*none/);
+  // PXD-7: the view drops the grid (plain pattern) so a board's own pattern still shows; CSS must not hide it.
+  assert.equal(/\.pxd-look--flat \.pxd-grid/.test(css), false);
   assert.match(css, /color-mix\(in srgb, var\(--pxd-fill\) 24%, var\(--pxd-bg\)\)/);
   assert.match(css, /\.pxd-look--tint \.pxd-highlight-bar \{[^}]*width:\s*0/);
   for (const name of ["flat", "pastel", "tint"]) {

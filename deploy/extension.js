@@ -20016,12 +20016,12 @@ var init_settings = __esm({
       [SETTING_IDS.controlsPosition]: () => selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical stack on the right. Bar is the horizontal zoom group.", ["rail", "bar"]),
       [SETTING_IDS.snapGuides]: () => switchRow(SETTING_IDS.snapGuides, "Snap guides", "Line a dragged card up with its neighbours and show the guides."),
       [SETTING_IDS.snapGrid]: () => switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24 pixel grid. Hold Alt while dragging to skip snapping."),
-      [SETTING_IDS.grid]: () => selectRow(SETTING_IDS.grid, "Default board background: pattern", "Pattern for boards that do not set their own. A board can override it from Background.", ["dots", "lines", "grid", "plain"]),
-      [SETTING_IDS.lookCanvas]: () => selectRow(SETTING_IDS.lookCanvas, "Canvas", "Dots keeps the dot grid. Flat grey is a plain canvas, the Heptabase grey, with no grid.", ["dots", "flat-grey"]),
+      [SETTING_IDS.grid]: () => selectRow(SETTING_IDS.grid, "Default board background: pattern", "Pattern for boards that do not set their own. A board can override it from Background. Canvas: Flat grey replaces it with a plain canvas.", ["dots", "lines", "grid", "plain"]),
+      [SETTING_IDS.lookCanvas]: () => selectRow(SETTING_IDS.lookCanvas, "Canvas", "Dots uses the default background pattern and tone. Flat grey is a plain canvas, the Heptabase grey, with no grid. A board's own Background still shows.", ["dots", "flat-grey"]),
       [SETTING_IDS.lookSections]: () => selectRow(SETTING_IDS.lookSections, "Section fill", "None leaves a section as it is today. Pastel washes it with its colour.", ["none", "pastel"]),
       [SETTING_IDS.lookHighlights]: () => selectRow(SETTING_IDS.lookHighlights, "Highlight cards", "Bar keeps the colour strip. Tint fills the card with the highlight colour and hides the strip.", ["bar", "tint"]),
       [SETTING_IDS.theme]: () => selectRow(SETTING_IDS.theme, "Theme", "Follow Roam uses the colours of the open graph. Plexus keeps the slate board.", ["follow-roam", "plexus"]),
-      [SETTING_IDS.boardTone]: () => selectRow(SETTING_IDS.boardTone, "Default board background: tone", "Color wash for boards that do not set their own.", BOARD_TONES2),
+      [SETTING_IDS.boardTone]: () => selectRow(SETTING_IDS.boardTone, "Default board background: tone", "Color wash for boards that do not set their own. Canvas: Flat grey replaces it with its grey.", BOARD_TONES2),
       [SETTING_IDS.mapZoom]: () => selectRow(SETTING_IDS.mapZoom, "Map view below (zoom)", "Below this zoom, cards show only their title.", MAP_ZOOMS),
       [SETTING_IDS.autoFitSections]: () => switchRow(SETTING_IDS.autoFitSections, "Auto-fit sections", "Grow a section when a card is moved or resized past its edge."),
       [SETTING_IDS.spaceOut]: () => switchRow(SETTING_IDS.spaceOut, "Space out cards", "After a move, push cards apart when they overlap."),
@@ -97676,6 +97676,7 @@ function buildBoardView(onFail, {
   let bgHex = null;
   let bgImage = null;
   let bgOverride = false;
+  let bgFlat = false;
   let timerHud = null;
   let timerState = null;
   let timerTick = null;
@@ -101723,6 +101724,7 @@ function buildBoardView(onFail, {
     edgesR.reveal?.(near2);
   };
   const paintGrid = () => {
+    if (bgImage) return;
     const g = gridBackground(vp, bgPattern);
     if (!g) return;
     grid.style.backgroundSize = `${g.size}px ${g.size}px`;
@@ -102435,11 +102437,17 @@ function buildBoardView(onFail, {
     const ownTone = ownHex ? null : BOARD_TONES.includes(own2?.bgColor) ? own2.bgColor : null;
     const defPattern = setting("grid", "dots");
     const defTone = setting("board-tone", "none");
-    const pattern = ownPattern ?? (BOARD_PATTERNS.includes(defPattern) ? defPattern : "dots");
-    const tone = ownHex ? null : ownTone ?? (BOARD_TONES.includes(defTone) ? defTone : null);
+    const flatCanvas = setting("look-canvas", "dots") === "flat-grey";
+    const pattern = ownPattern ?? (flatCanvas ? "plain" : BOARD_PATTERNS.includes(defPattern) ? defPattern : "dots");
+    const tone = ownHex ? null : ownTone ?? (!flatCanvas && BOARD_TONES.includes(defTone) ? defTone : null);
+    const flat3 = flatCanvas && ownTone === null && ownHex === null;
     const image = backgroundImage(own2?.bgImage);
     const override = ownPattern !== null || ownTone !== null || ownHex !== null || Boolean(image);
-    if (pattern === bgPattern && tone === bgTone && ownHex === bgHex && image === bgImage && override === bgOverride) return;
+    if (pattern === bgPattern && tone === bgTone && ownHex === bgHex && image === bgImage && override === bgOverride && flat3 === bgFlat) return;
+    if (flat3 !== bgFlat) {
+      root.classList.toggle("pxd-look--flat", flat3);
+      bgFlat = flat3;
+    }
     if (pattern !== bgPattern) {
       grid.className = `pxd-grid pxd-grid--${pattern}`;
       if (bgPattern === "grid") for (const v of ["--pxd-grid-major", "--pxd-grid-major-x", "--pxd-grid-major-y"]) grid.style.removeProperty?.(v);
@@ -102466,13 +102474,14 @@ function buildBoardView(onFail, {
       grid.style.backgroundImage = image ? `url("${image}")` : "";
       grid.style.backgroundSize = image ? "cover" : "";
       grid.style.backgroundPosition = image ? "center" : "";
+      grid.style.backgroundRepeat = image ? "no-repeat" : "";
       bgImage = image;
+      if (!image) paintGrid();
     }
     bgOverride = override;
     chrome.toolbar.setBackground({ pattern, tone: ownHex || tone, override });
   };
   const applyLooks = () => {
-    root.classList.toggle("pxd-look--flat", setting("look-canvas", "dots") === "flat-grey");
     root.classList.toggle("pxd-look--pastel", setting("look-sections", "none") === "pastel");
     root.classList.toggle("pxd-look--tint", setting("look-highlights", "bar") === "tint");
     if (!themeReady) return;
@@ -104532,7 +104541,9 @@ function buildBoardView(onFail, {
       },
       useBackgroundAsDefault: () => {
         if (typeof onSetDefaults !== "function") return;
-        onSetDefaults({ grid: bgPattern, "board-tone": bgTone || "none" });
+        const patch = { grid: bgPattern, "board-tone": bgTone || "none" };
+        if (setting("look-canvas", "dots") === "flat-grey" && (bgPattern !== "plain" || bgTone)) patch["look-canvas"] = "dots";
+        onSetDefaults(patch);
         toast("Saved as the default background");
       }
     }
@@ -110080,6 +110091,8 @@ var SNAP_CLASS = "pxd-item--snap";
 var CHROME_KEEP = /(^|\s)(pxd-toolbar|pxd-rail|pxd-palette|pxd-dock|pxd-mode|pxd-minimap|pxd-props|pxd-resize-grip|pxd-tabs|pxd-fstabs)(\s|$)/;
 var SNAP_ROOT_CLASS = "pxd-snap-root";
 var finite8 = (n3) => typeof n3 === "number" && Number.isFinite(n3);
+var ROOT_BG = /^(#[0-9a-f]{6}|rgb\(\d{1,3}, \d{1,3}, \d{1,3}\))$/i;
+var rootBg = (value) => typeof value === "string" && ROOT_BG.test(value.trim()) ? value.trim() : "";
 function rootVars(root) {
   const out = {};
   const style = root?.style;
@@ -110184,6 +110197,7 @@ function createBoardSnapCapture({
     const edgesEl = world?.querySelector?.("svg.pxd-edges");
     const labelsEl = world?.querySelector?.(".pxd-labels");
     const gridEl = root?.querySelector?.(".pxd-grid");
+    const bg = rootBg(root?.style?.backgroundColor);
     const layer = (el2) => el2 ? captureFace(el2, { thumbs, maxNodes: LAYER_MAX_NODES, maxChars: 64 * 1024 }) : null;
     const chrome = [];
     for (const child of [...root?.children || []]) {
@@ -110203,7 +110217,7 @@ function createBoardSnapCapture({
       vp: { x: vp.x, y: vp.y, zoom: vp.zoom },
       rootCls: typeof root?.getAttribute === "function" ? root.getAttribute("class") || "" : "",
       rootStyle: rootVars(root),
-      grid: gridEl ? { c: cleanClasses(gridEl.getAttribute?.("class") || "").join(" ") } : null,
+      grid: gridEl ? { c: cleanClasses(gridEl.getAttribute?.("class") || "").join(" "), ...bg ? { bg } : {} } : null,
       edges: layer(edgesEl),
       labels: layer(labelsEl),
       chrome,
@@ -110291,6 +110305,12 @@ function applyCamera(state) {
     if (g) {
       grid.style.backgroundSize = `${g.size}px ${g.size}px`;
       grid.style.backgroundPosition = `${g.x}px ${g.y}px`;
+      if (pattern === "grid") {
+        const mod = (v) => (v % g.major + g.major) % g.major;
+        setVar(grid, "--pxd-grid-major", `${g.major}px`);
+        setVar(grid, "--pxd-grid-major-x", `${mod(vp.x)}px`);
+        setVar(grid, "--pxd-grid-major-y", `${mod(vp.y)}px`);
+      }
     }
   }
 }
@@ -110398,6 +110418,8 @@ function paintBoardSnap(doc, mountEl, snap, vp, { thumbs = null, faceOk = null, 
     root.setAttribute("data-pxd-snap", "1");
     root.setAttribute("aria-busy", "true");
     for (const [name, value] of Object.entries(snap.rootStyle || {})) setVar(root, name, value);
+    const bg = rootBg(snap.grid?.bg);
+    if (bg) root.style.backgroundColor = bg;
     root.style.position = "absolute";
     root.style.left = "0";
     root.style.top = "0";

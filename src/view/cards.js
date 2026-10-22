@@ -3905,15 +3905,27 @@ export function createItemRenderer({
   };
   const PREVIEW_DEPTH = 6;
   const PREVIEW_CAP = 80;
+  // PXD-4: the first zoom-in of a session has no painted outline yet. The board's ref read already pulled the page
+  // (host session cache), so the preview paints that instead of an empty box. Never a Roam read.
+  const PREVIEW_SEED_ROWS = 4 * FIRST_SCREEN_MAX;
+  const seededRows = (item) => {
+    if (speedOf().seedRows === false) return null;
+    let got = null;
+    try { got = host?.cachedPageOutline?.(item.target?.title || item.title, PREVIEW_SEED_ROWS); } catch { got = null; }
+    return got?.exists && Array.isArray(got.blocks) ? got.blocks : null;
+  };
   const paintPagePreview = (rec, item) => {
     if (lod !== "detail" || item?.kind !== "page" || !rec?.body || speedOf().steadyRows === false) return false;
     if (mounted.has(rec.uid) || editing?.uid === rec.uid || item.collapsed || item.open === false) return false;
     if (rec.body.firstElementChild || rec.body.children?.length) return false;
-    const blocks = previewRows.get(item.title);
-    if (!blocks?.length || cardFocus.has(rec.uid)) return false;
+    if (cardFocus.has(rec.uid)) return false;
+    let blocks = previewRows.get(item.title);
+    if (!blocks?.length) blocks = seededRows(item);
+    if (!blocks) return false;
     const holder = el("div", "pxd-item__page pxd-item__page--preview", rec.body);
     holder.setAttribute("aria-hidden", "true");
-    let left = firstScreenRows(rec) || 12;
+    const rows = firstScreenRows(rec) || 12;
+    let left = rows;
     const walk = (parent, list, depth) => {
       for (const c of list || []) {
         if (left <= 0) return;
@@ -3924,13 +3936,15 @@ export function createItemRenderer({
         const line = el("div", "pxd-row", row);
         holdHeight(line, KID_ROW_H);
         const kids = childKids(c);
-        if (kids.length) el("span", "pxd-row__fold", line);
+        if (kids.length || c.kids > 0) el("span", "pxd-row__fold", line);
         el("span", "pxd-outline__bullet", line);
         el("div", "pxd-block__text pxd-block__plain", line).textContent = isHeavyRow(str) ? "\u2026" : plainText(str, Infinity);
         if (kids.length && c.open !== false && depth < PREVIEW_DEPTH) walk(el("div", "pxd-block__children", row), kids, depth + 1);
       }
     };
     walk(holder, blocks, 0);
+    // As the mount: a page with no row to show (a cached page with no children) reads "Empty page".
+    if (left === rows) el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
     return true;
   };
   // First paint builds the outline. A later refresh patches rows in place.

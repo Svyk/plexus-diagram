@@ -79,6 +79,7 @@ const ALL_ON = {
   quietTextarea: true,
   zoomVarScope: true,
   handlesWrap: true,
+  seedRows: true,
   canvasPrebuild: true,
 };
 

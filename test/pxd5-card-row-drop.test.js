@@ -375,3 +375,65 @@ function plexusXY(fake, uid) {
   const p = fake.props(uid)?.plexus || {};
   return { x: p.x, y: p.y };
 }
+
+// Real Roam does not call the board's pull watch for an edit inside a joined ref (host watchBlock note), so each card kind
+// must repaint by its own path: a note card through the optimistic board model, a page card through its page watch, a block
+// card through the row watch. The board watch is muted here.
+test("PXD-5: with the board watch muted, note, page and block cards each show the new ref after a drop", async () => {
+  const kinds = [
+    { name: "note", target: "noteCd001", row: "noteRow01", card: { uid: "noteCd001", string: "target note", props: { plexus: { x: 800, y: 0, w: 280, h: 260, kids: true } }, children: [{ uid: "noteRow01", string: "note row" }] } },
+    { name: "page", target: "pageCd001", row: "pgRow001", page: { title: "Target Page", uid: "pgTarget1", children: [{ uid: "pgRow001", string: "page row" }] }, card: { uid: "pageCd001", string: "[[Target Page]]", props: { plexus: { x: 800, y: 0, w: 320, h: 360 } } } },
+    { name: "block", target: "blockCd01", row: "srcRow001", page: { title: "Source Page", uid: "pgSrc001", children: [{ uid: "srcBlock1", string: "the source block", children: [{ uid: "srcRow001", string: "block row" }] }] }, card: { uid: "blockCd01", string: "((srcBlock1))", props: { plexus: { x: 800, y: 0, w: 280, h: 260, kids: true } } } },
+  ];
+  for (const k of kinds) {
+    resetSessions();
+    const stub = createDomStub({ width: 1600, height: 900 });
+    const restore = stub.install();
+    const fake = createFakeRoam({ echoDelay: 0 });
+    fake.roamWatch = true;
+    const addWatch = fake.api.data.addPullWatch.bind(fake.api.data);
+    fake.api.data.addPullWatch = (pattern, entity, cb) => addWatch(pattern, entity, String(entity).includes('"b1"') ? () => undefined : cb);
+    stub.localStorage.setItem("plexus-diagram:vp:g:b1", JSON.stringify({ x: 0, y: 0, zoom: 1 }));
+    if (k.page) fake.seedPage(k.page);
+    const host = createHost({ api: fake.api, storage: stub.localStorage, graph: "g" });
+    fake.seedBoard({ uid: "b1", props: { plexus: { v: 2 } }, children: [{ uid: "dragMe01", string: "dragged note", props: { plexus: { x: 0, y: 0, w: 280, h: 160 } } }, k.card] });
+    const session = acquireSession("b1", { host, settings: null, linkDelay: 0, raf: (fn) => fn() });
+    const mountEl = stub.document.createElement("div");
+    stub.document.body.append(mountEl);
+    const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "test" });
+    const settle = async (ms) => {
+      const end = Date.now() + ms;
+      do {
+        stub.flushFrames();
+        stub.flushIdle();
+        stub.flushMutations();
+        await tick(40);
+        await fake.flush();
+      } while (Date.now() < end);
+      stub.flushFrames();
+    };
+    const card = () => view.root.querySelector(`[data-uid=${k.target}]`);
+    const rowTexts = () => [...card().querySelectorAll("[data-pxd-row]")].map((n) => String(n.textContent || "").replace(/\s+/g, " ").trim());
+    try {
+      await settle(400);
+      assert.equal(rowTexts().length, 1, `${k.name}: one row before the drop`);
+      const held = view.root.querySelector("[data-uid=dragMe01]");
+      stub.document.elementsFromPoint = () => {
+        const row = card().querySelector(`[data-pxd-row=${k.row}]`);
+        return row ? [held, row, card()] : [held, card()];
+      };
+      const base = { pointerId: 1, isPrimary: true, pointerType: "mouse", button: 0 };
+      stub.dispatch(held, "pointerdown", { ...base, buttons: 1, clientX: 140, clientY: 80 });
+      stub.dispatch(stub.document, "pointermove", { ...base, buttons: 1, clientX: 500, clientY: 60 });
+      stub.dispatch(stub.document, "pointermove", { ...base, buttons: 1, clientX: 900, clientY: 60 });
+      stub.dispatch(stub.document, "pointerup", { ...base, buttons: 0, clientX: 900, clientY: 60 });
+      await settle(900);
+      assert.deepEqual(fake.children(k.row).map((u) => fake.block(u).string), ["((dragMe01))"], `${k.name}: Roam has the ref`);
+      assert.ok(rowTexts().some((t) => t.includes("((dragMe01))")) && rowTexts().length === 2, `${k.name}: the card shows the new row: ${JSON.stringify(rowTexts())}`);
+    } finally {
+      view.dispose();
+      resetSessions();
+      restore();
+    }
+  }
+});

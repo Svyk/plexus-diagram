@@ -33191,6 +33191,18 @@ function createItemRenderer({
     if (!(h > shown.h)) return shown;
     return { ...shown, h };
   };
+  const revealedRects = (rects) => {
+    const out = /* @__PURE__ */ new Map();
+    for (const uid of revealCards) {
+      const item = lastBoard?.items.get(uid);
+      const rect = rects?.get(uid);
+      const rec = shells.get(uid);
+      if (!item || !rect || !rec || rec.peekH > 0) continue;
+      const h = revealHeight(item, shownRect(uid, rect).h);
+      if (h > rect.h) out.set(uid, { ...rect, h });
+    }
+    return out;
+  };
   const stepFocus = () => {
     if (disposed || cardFocus.size === 0) return false;
     const preferred = hotRow?.card && cardFocus.has(hotRow.card) ? hotRow.card : null;
@@ -38208,6 +38220,7 @@ function createItemRenderer({
     unfoldForFocus,
     rowMounted,
     cardWorldRect,
+    revealedRects,
     stepFocus,
     cancelCardPeek,
     closeCardPeek,
@@ -59664,7 +59677,9 @@ function createInteractions({ actions, settings } = {}) {
           g.exclude = new Set(g.uids);
           for (const u of g.uids) for (const d of descendantsOf(b, u)) g.exclude.add(d);
         }
-        const hit = hitTest(b, ev.world, r, { exclude: g.exclude });
+        const open = call("revealedRects", r);
+        const hr = open?.size ? { get: (u) => open.get(u) || r.get(u) } : r;
+        const hit = hitTest(b, ev.world, hr, { exclude: g.exclude });
         const drop = hit?.part === "body" && (b.items.get(hit.uid)?.kind === "board" && b.items.get(hit.uid)?.enhanced) ? hit.uid : null;
         const day = !drop && !ev.shift ? dayTargetOf(b, hit) : null;
         const dayKey = day ? `${day.uid}:${day.iso}` : null;
@@ -106049,6 +106064,7 @@ ${url}`;
     clearBlockTarget: () => clearBlockTarget(),
     // PXD-5: a card held over a folded card with children unfolds it (the arrow's hover wait); null folds it back.
     dropReveal: (uid) => itemsR.dropRevealOn?.(notedSpeedFlags().cardRowDrop === false ? null : uid),
+    revealedRects: (rects2) => notedSpeedFlags().cardRowDrop === false ? null : itemsR.revealedRects?.(rects2) || null,
     rowDropGhost: (uids) => itemsR.ghostMoving?.(uids),
     // The hover unfold stays (session-only) so the new ref shows; the gesture end right after would fold it back.
     refIntoRow: async (uids, cardUid, rowUid) => {

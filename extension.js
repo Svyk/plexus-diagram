@@ -31400,6 +31400,11 @@ function createItemRenderer({
     }
     rec.blockUnwatch = null;
     try {
+      rec.refRowsOff?.();
+    } catch {
+    }
+    rec.refRowsOff = null;
+    try {
       rec.authorUnwatch?.();
     } catch {
     }
@@ -35588,6 +35593,46 @@ function createItemRenderer({
       pending = null;
     };
   };
+  const armRefRows = (rec) => {
+    if (disposed || rec.refRowsOff || !rec.refRows?.size || typeof host?.watchBlock !== "function") return;
+    let pending = null;
+    const offs = [];
+    for (const row4 of rec.refRows) {
+      try {
+        const off = host.watchBlock(row4, () => {
+          if (pending) return;
+          pending = later(() => {
+            pending = null;
+            if (!disposed && shells.get(rec.uid) === rec) remountCard(rec);
+          }, BLOCK_REFRESH_MS);
+        });
+        if (typeof off === "function") offs.push(off);
+      } catch {
+      }
+    }
+    rec.refRowsOff = () => {
+      rec.refRowsOff = null;
+      pending?.();
+      pending = null;
+      for (const off of offs) {
+        try {
+          off();
+        } catch {
+        }
+      }
+    };
+  };
+  const followRefRows = (rowUid) => {
+    if (disposed || !rowUid) return;
+    for (const [uid, rec] of shells) {
+      if (!rec.blockUnwatch || lastBoard?.items.get(uid)?.kind !== "block") continue;
+      if (rec.refRows?.has(rowUid) || !rec.el?.querySelector?.(`[data-pxd-row="${rowUid}"]`)) continue;
+      if (!rec.refRows) rec.refRows = /* @__PURE__ */ new Set();
+      rec.refRows.add(rowUid);
+      rec.refRowsOff?.();
+      armRefRows(rec);
+    }
+  };
   const mountContentBody = (rec, item) => {
     rec.pullGen = (rec.pullGen || 0) + 1;
     const gen = rec.pullGen;
@@ -35782,6 +35827,7 @@ function createItemRenderer({
           apply(tree, true);
         }
         armBlockWatch(rec, item);
+        armRefRows(rec);
       }
     } else if (isQueryString(item.string) && host?.renderBlock) {
       budget.roots.push(mountQuery(body, item.uid, item.string));
@@ -38151,6 +38197,7 @@ function createItemRenderer({
     dropRevealOn,
     keepDropReveal,
     ghostMoving,
+    followRefRows,
     enterEdit,
     exitEdit,
     editingUid: () => editing?.uid ?? null,
@@ -54106,6 +54153,7 @@ extendSession((session, api3) => {
         return tableUid ? `((${tableUid}))` : api3.refOf(id);
       }).filter((s) => s !== `((${rowUid}))`), api3.emit);
       if (!refs.length) return Promise.resolve(null);
+      api3.emit("rowref", rowUid);
       return api3.txn((t) => {
         const made = refs.map((string) => t.create({ parent: rowUid, string }));
         return { added: made.length, undo: () => api3.txn((u) => {
@@ -107835,6 +107883,10 @@ ${url}`;
   subs.push(session.on("toast", (t) => {
     if (disposed || suspended) return;
     chrome.toast.show(t);
+  }));
+  subs.push(session.on("rowref", (rowUid) => {
+    if (disposed || suspended) return;
+    itemsR.followRefRows?.(rowUid);
   }));
   tableCtl = mountTable({
     doc,

@@ -61,7 +61,7 @@ test("PXD-4 host: cachedPageOutline answers only from the board's ref read and n
 });
 
 // A big board (or a keep-alive catch-up) reads its refs in idle slices after the open: the cache is cold until they land.
-test("PXD-4 host: on a deferred ref read, cachedPageOutline is null until the idle read lands, and never reads Roam", () => {
+test("PXD-4 host: on a deferred ref read, cachedPageOutline is null until the idle read lands, and never reads Roam", async () => {
   const queued = [];
   const previous = globalThis.requestIdleCallback;
   globalThis.requestIdleCallback = (fn) => { queued.push(fn); return queued.length; };
@@ -71,8 +71,12 @@ test("PXD-4 host: on a deferred ref read, cachedPageOutline is null until the id
     fake.pullLog = [];
     assert.equal(host.cachedPageOutline("Alpha"), null, "the open returned before the ref read");
     assert.equal(fake.pullLog.length, 0, "and the miss did not read the page");
-    let turns = 0;
-    while (!host.cachedPageOutline("Beta") && queued.length && turns++ < 20) queued.shift()({ timeRemaining: () => 50, didTimeout: false });
+    // A slice that ran long owes the shared background budget a duty-cycle gap: the next one is armed by a timer.
+    const end = Date.now() + 5000;
+    while (!host.cachedPageOutline("Beta") && Date.now() < end) {
+      if (queued.length) queued.shift()({ timeRemaining: () => 50, didTimeout: false });
+      else await new Promise((resolve) => setTimeout(resolve, 10));
+    }
     assert.equal(host.cachedPageOutline("Alpha").blocks[0].string, "first row");
     assert.equal(host.cachedPageOutline("Alpha").blocks[1].kids, 300);
     assert.equal(host.cachedPageOutline("Beta").blocks[0].string, "beta row");

@@ -60,6 +60,27 @@ test("PXD-4 host: cachedPageOutline answers only from the board's ref read and n
   assert.equal(host.cachedPageOutline("Gamma"), null, "a page that is not a card on the board");
 });
 
+// A big board (or a keep-alive catch-up) reads its refs in idle slices after the open: the cache is cold until they land.
+test("PXD-4 host: on a deferred ref read, cachedPageOutline is null until the idle read lands, and never reads Roam", () => {
+  const queued = [];
+  const previous = globalThis.requestIdleCallback;
+  globalThis.requestIdleCallback = (fn) => { queued.push(fn); return queued.length; };
+  try {
+    const { fake, host } = seededHost();
+    host.pullBoard("board0001", { light: true, deferRefs: true });
+    fake.pullLog = [];
+    assert.equal(host.cachedPageOutline("Alpha"), null, "the open returned before the ref read");
+    assert.equal(fake.pullLog.length, 0, "and the miss did not read the page");
+    let turns = 0;
+    while (!host.cachedPageOutline("Beta") && queued.length && turns++ < 20) queued.shift()({ timeRemaining: () => 50, didTimeout: false });
+    assert.equal(host.cachedPageOutline("Alpha").blocks[0].string, "first row");
+    assert.equal(host.cachedPageOutline("Alpha").blocks[1].kids, 300);
+    assert.equal(host.cachedPageOutline("Beta").blocks[0].string, "beta row");
+  } finally {
+    globalThis.requestIdleCallback = previous;
+  }
+});
+
 test("PXD-4 host: cachedPageOutline stops at the row limit", () => {
   const { host } = seededHost();
   host.pullBoard("board0001");
@@ -174,6 +195,25 @@ test("PXD-4: a page the board read has not cached yet stays an empty box until t
     assert.equal(body.querySelector(".pxd-item__page--preview"), null);
     assert.equal(body.textContent.trim(), "");
     assert.equal(t.reads.outline, 0);
+  } finally {
+    t.done();
+  }
+});
+
+test("PXD-4: a flip before the deferred ref read lands stays empty; the next content pass paints the rows before the mount", () => {
+  let warm = false;
+  const { t, body } = firstZoomIn(null, { cached: (title) => (warm ? seed(title) : null) });
+  try {
+    assert.equal(body.textContent.trim(), "", "cold cache at the flip: no rows, and no Roam read");
+    assert.equal(t.reads.outline, 0);
+    warm = true;
+    t.r.scheduleContent({ visibleRect: wide, zoom: 1, tier: "detail" });
+    assert.ok(body.querySelector(".pxd-item__page--preview"), "the content pass paints the cached rows at once");
+    assert.match(body.textContent, /flagship pathogen/);
+    assert.equal(t.reads.outline, 0, "before any outline read");
+    t.flush();
+    assert.equal(body.querySelector(".pxd-item__page--preview"), null);
+    assert.match(body.textContent, /live mounted row/);
   } finally {
     t.done();
   }

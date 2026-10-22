@@ -296,7 +296,44 @@ function blockInner({ rect, side: side2, point, rowLeft, rowRight, cell = false 
     angle: right ? Math.PI : 0
   };
 }
-function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0, via, fromPoint, toPoint } = {}) {
+function polyGeo(pts, start, end, fromSide, toSide) {
+  const poly = pts.filter((p, i) => i === 0 || p.x !== pts[i - 1].x || p.y !== pts[i - 1].y);
+  const lens = [];
+  let total = 0;
+  for (let i = 1; i < poly.length; i++) {
+    const l = Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y);
+    lens.push(l);
+    total += l;
+  }
+  let mid = { ...start };
+  let acc = 0;
+  for (let i = 0; i < lens.length; i++) {
+    if (acc + lens[i] >= total / 2) {
+      const t = lens[i] === 0 ? 0 : (total / 2 - acc) / lens[i];
+      mid = {
+        x: poly[i].x + (poly[i + 1].x - poly[i].x) * t,
+        y: poly[i].y + (poly[i + 1].y - poly[i].y) * t
+      };
+      break;
+    }
+    acc += lens[i];
+  }
+  const last = poly[poly.length - 1];
+  const prev = poly[poly.length - 2] || start;
+  const second = poly[1] || end;
+  return {
+    d: poly.map((p, i) => `${i === 0 ? "M" : "L"}${num(p.x)} ${num(p.y)}`).join(""),
+    start,
+    end,
+    mid,
+    points: poly,
+    startAngle: Math.atan2(second.y - start.y, second.x - start.x),
+    endAngle: Math.atan2(last.y - prev.y, last.x - prev.x),
+    fromSide,
+    toSide
+  };
+}
+function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0, via, fromPoint, toPoint, wrap = false, reach = 1 } = {}) {
   if (fromSide === "auto" || toSide === "auto") {
     const auto = autoSides(a, b);
     if (fromSide === "auto") fromSide = auto.fromSide;
@@ -339,17 +376,17 @@ function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", o
     };
   }
   if (route === "elbow") {
-    const STUB = 24;
+    const STUB = 24 * reach;
     const s1 = { x: start.x + nf.x * STUB, y: start.y + nf.y * STUB };
     const e1 = { x: end.x + nt.x * STUB, y: end.y + nt.y * STUB };
     const fromH = nf.y === 0;
     const toH = nt.y === 0;
     const pts = [start, s1];
     if (fromH && toH) {
-      const mx = (s1.x + e1.x) / 2;
+      const mx = wrap && nf.x === nt.x ? nf.x > 0 ? Math.max(s1.x, e1.x) : Math.min(s1.x, e1.x) : (s1.x + e1.x) / 2;
       pts.push({ x: mx, y: s1.y }, { x: mx, y: e1.y });
     } else if (!fromH && !toH) {
-      const my = (s1.y + e1.y) / 2;
+      const my = wrap && nf.y === nt.y ? nf.y > 0 ? Math.max(s1.y, e1.y) : Math.min(s1.y, e1.y) : (s1.y + e1.y) / 2;
       pts.push({ x: s1.x, y: my }, { x: e1.x, y: my });
     } else if (fromH) {
       pts.push({ x: e1.x, y: s1.y });
@@ -357,43 +394,9 @@ function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", o
       pts.push({ x: s1.x, y: e1.y });
     }
     pts.push(e1, end);
-    const poly = pts.filter((p, i) => i === 0 || p.x !== pts[i - 1].x || p.y !== pts[i - 1].y);
-    const lens = [];
-    let total = 0;
-    for (let i = 1; i < poly.length; i++) {
-      const l = Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y);
-      lens.push(l);
-      total += l;
-    }
-    let mid2 = { ...start };
-    let acc = 0;
-    for (let i = 0; i < lens.length; i++) {
-      if (acc + lens[i] >= total / 2) {
-        const t = lens[i] === 0 ? 0 : (total / 2 - acc) / lens[i];
-        mid2 = {
-          x: poly[i].x + (poly[i + 1].x - poly[i].x) * t,
-          y: poly[i].y + (poly[i + 1].y - poly[i].y) * t
-        };
-        break;
-      }
-      acc += lens[i];
-    }
-    const last = poly[poly.length - 1];
-    const prev = poly[poly.length - 2] || start;
-    const second = poly[1] || end;
-    return {
-      d: poly.map((p, i) => `${i === 0 ? "M" : "L"}${num(p.x)} ${num(p.y)}`).join(""),
-      start,
-      end,
-      mid: mid2,
-      points: poly,
-      startAngle: Math.atan2(second.y - start.y, second.x - start.x),
-      endAngle: Math.atan2(last.y - prev.y, last.x - prev.x),
-      fromSide,
-      toSide
-    };
+    return polyGeo(pts, start, end, fromSide, toSide);
   }
-  const k = Math.max(40, 0.4 * dist);
+  const k = Math.max(40, 0.4 * dist) * reach;
   let px = 0;
   let py = 0;
   if (offset && dist > 0) {
@@ -417,6 +420,201 @@ function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", o
     fromSide,
     toSide
   };
+}
+function chordInside(p, q2, x0, y0, x1, y1) {
+  const dx = q2.x - p.x;
+  const dy = q2.y - p.y;
+  let t0 = 0;
+  let t1 = 1;
+  for (const [d, room] of [[-dx, p.x - x0], [dx, x1 - p.x], [-dy, p.y - y0], [dy, y1 - p.y]]) {
+    if (d === 0) {
+      if (room <= 0) return 0;
+      continue;
+    }
+    const r = room / d;
+    if (d < 0) {
+      if (r > t1) return 0;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return 0;
+      if (r < t1) t1 = r;
+    }
+  }
+  return t1 > t0 ? (t1 - t0) * Math.hypot(dx, dy) : 0;
+}
+function pathLine(geo) {
+  const pts = geo.points || [];
+  if (pts.length !== 4 || !geo.d.includes("C")) return pts;
+  const [p0, p1, p2, p3] = pts;
+  const line = [p0];
+  for (let i = 1; i <= CROSS_STEPS; i++) {
+    const t = i / CROSS_STEPS;
+    const u = 1 - t;
+    const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+    line.push({ x: a * p0.x + b * p1.x + c * p2.x + d * p3.x, y: a * p0.y + b * p1.y + c * p2.y + d * p3.y });
+  }
+  return line;
+}
+function lineInside(line, box2, inset) {
+  if (!box2) return 0;
+  const x0 = box2.x + inset;
+  const y0 = box2.y + inset;
+  const x1 = box2.x + box2.w - inset;
+  const y1 = box2.y + box2.h - inset;
+  if (x1 <= x0 || y1 <= y0) return 0;
+  let n3 = 0;
+  for (let i = 1; i < line.length; i++) n3 += chordInside(line[i - 1], line[i], x0, y0, x1, y1);
+  return n3;
+}
+function trimLine(line, head, tail) {
+  const cut = (pts, len) => {
+    if (!len) return pts;
+    for (let i = 1; i < pts.length; i++) {
+      const l = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      if (l >= len) {
+        const t = l ? len / l : 0;
+        return [{ x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * t, y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * t }, ...pts.slice(i)];
+      }
+      len -= l;
+    }
+    return [];
+  };
+  return cut([...cut(line, head)].reverse(), tail).reverse();
+}
+function lineHug(line, box2) {
+  if (!box2 || line.length < 2) return 0;
+  const on = (p) => p.x >= box2.x - CROSS_INSET && p.x <= box2.x + box2.w + CROSS_INSET && p.y >= box2.y - CROSS_INSET && p.y <= box2.y + box2.h + CROSS_INSET && Math.min(Math.abs(p.x - box2.x), Math.abs(p.x - box2.x - box2.w), Math.abs(p.y - box2.y), Math.abs(p.y - box2.y - box2.h)) <= CROSS_INSET;
+  const rest = trimLine(line, on(line[0]) ? HUG_SKIP : 0, on(line[line.length - 1]) ? HUG_SKIP : 0);
+  const run = lineInside(rest, box2, -HUG) - lineInside(rest, box2, CROSS_INSET);
+  return run >= HUG_MIN ? run : 0;
+}
+function rowLeg(box2, point, side2, corner, gap = CORNER_GAP) {
+  const x = side2 === "right" ? box2.x + box2.w + gap : box2.x - gap;
+  const leg = [{ x, y: point.y }];
+  if (corner === "top") leg.push({ x, y: box2.y - gap });
+  if (corner === "bottom") leg.push({ x, y: box2.y + box2.h + gap });
+  return leg;
+}
+function rowEndPath(args, rowEnd2) {
+  const geo = edgePath(args);
+  if (rowEnd2 !== "from" && rowEnd2 !== "to" && rowEnd2 !== "both") return geo;
+  const bends = Array.isArray(args.via) && args.via.length > 0;
+  if (bends && !Array.isArray(args.around)) return geo;
+  const { a, b } = args;
+  if (!a || !b) return geo;
+  const both = rowEnd2 === "both";
+  if (both ? !args.fromPoint || !args.toPoint : rowEnd2 === "to" ? !args.toPoint || args.fromPoint : !args.fromPoint || args.toPoint) return geo;
+  const span = unionRect(a, b);
+  const swing = Math.max(40, 0.4 * Math.hypot(span.w, span.h)) * Math.max(...REACH) + Math.abs(args.offset || 0) + CORNER_GAP;
+  const near2 = inflate(span, swing);
+  const obstacles = Array.isArray(args.around) ? args.around.filter((r) => r && rectsIntersect(r, near2)) : [];
+  const rowBoxes = both ? [a, b] : [rowEnd2 === "to" ? b : a];
+  const ownBox = both ? null : rowEnd2 === "to" ? a : b;
+  const rate = (g, tier, extra, rank, n4, len = 0) => {
+    const line = pathLine(g);
+    let across = 0;
+    let hug = 0;
+    for (const box2 of rowBoxes) {
+      across += lineInside(line, box2, CROSS_INSET);
+      hug += lineHug(line, box2);
+    }
+    let other = lineInside(line, ownBox, CROSS_INSET);
+    for (const box2 of obstacles) other += lineInside(line, box2, CROSS_INSET);
+    return { geo: g, across, hug, other, cost: extra + other + hug / 2, tier, rank, len, n: n4 };
+  };
+  let best = rate(geo, 0, 0, 0, -1);
+  if (!best.across && !best.hug) return geo;
+  const otherCap = best.across ? Infinity : best.other;
+  const route = bends ? "straight" : args.route;
+  const base2 = { ...args, via: void 0, route };
+  const reaches = route === "straight" ? [1] : route === "elbow" ? ELBOW_REACH : REACH;
+  let n3 = 0;
+  const consider2 = (g, tier, extra, rank, len) => {
+    const c = rate(g, tier, extra, rank, n3++, len);
+    if (c.other > otherCap) return;
+    const kc = [c.across, c.tier, c.cost, c.rank, c.len, c.n];
+    const kb = [best.across, best.tier, best.cost, best.rank, best.len, best.n];
+    for (let i = 0; i < kc.length; i++) {
+      if (kc[i] !== kb[i]) {
+        if (kc[i] < kb[i]) best = c;
+        return;
+      }
+    }
+  };
+  const curves = (tier, extra, over) => {
+    for (let r = 0; r < reaches.length; r++) consider2(edgePath({ ...base2, ...over, wrap: true, reach: reaches[r] }), tier, extra, r);
+  };
+  const ends = (key, box2) => {
+    const point = args[key === "from" ? "fromPoint" : "toPoint"];
+    const side2 = args[key === "from" ? "fromSide" : "toSide"];
+    return [{ point, side: side2, flip: 0 }, { ...flipSide(box2, point, side2), flip: 1 }];
+  };
+  const bent = (tier, from, to) => {
+    const start = from.point ?? sidePoint(from.box, from.side);
+    const end = to.point ?? sidePoint(to.box, to.side);
+    const out = from.point ? rowLeg(from.box, from.point, from.side, from.corner, from.gap) : [];
+    const back = to.point ? rowLeg(to.box, to.point, to.side, to.corner, to.gap).reverse() : [];
+    const pts = [start, ...out, ...back, end];
+    let len = 0;
+    for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    consider2(polyGeo(pts, start, end, from.side, to.side), tier, 0, 1 + CORNER_GAPS.indexOf(from.gap ?? to.gap), len);
+  };
+  const CORNERS = ["top", "bottom"];
+  const groups2 = [];
+  if (both) {
+    const fromEnds = ends("from", a);
+    const toEnds = ends("to", b);
+    const pairs = (flips) => fromEnds.flatMap((f) => toEnds.filter((t) => f.flip + t.flip === flips).map((t) => [f, t]));
+    for (const flips of [0, 1, 2]) {
+      groups2.push([0, flips * FLIP_COST, () => {
+        for (const [f, t] of pairs(flips)) curves(0, flips * FLIP_COST, { fromPoint: f.point, fromSide: f.side, toPoint: t.point, toSide: t.side });
+      }]);
+      if (flips || route !== "straight") continue;
+      groups2.push([0, 0, () => {
+        for (const [f, t] of [0, 1, 2].flatMap(pairs)) {
+          for (const gap of CORNER_GAPS) for (const fc of [null, ...CORNERS]) for (const tc of [null, ...CORNERS]) {
+            bent(0, { ...f, box: a, corner: fc, gap }, { ...t, box: b, corner: tc, gap });
+          }
+        }
+      }]);
+    }
+    if (route !== "straight") {
+      groups2.push([0, STYLE_COST, () => {
+        for (const flips of [0, 1, 2]) for (const [f, t] of pairs(flips)) {
+          consider2(edgePath({ ...base2, route: "straight", fromPoint: f.point, fromSide: f.side, toPoint: t.point, toSide: t.side }), 0, STYLE_COST + flips * FLIP_COST, 0);
+        }
+      }]);
+    }
+  } else {
+    const freeKey = rowEnd2 === "to" ? "fromSide" : "toSide";
+    const rowKey = rowEnd2 === "to" ? "to" : "from";
+    const rowBox = rowBoxes[0];
+    const rowEnds = ends(rowKey, rowBox);
+    const freeSides = [.../* @__PURE__ */ new Set([geo[freeKey], geo[rowKey === "to" ? "toSide" : "fromSide"], ...SIDES])];
+    const rowOver = (r) => rowKey === "to" ? { toPoint: r.point, toSide: r.side } : { fromPoint: r.point, fromSide: r.side };
+    for (const r of rowEnds) {
+      groups2.push([r.flip, 0, () => {
+        for (const side2 of freeSides) curves(r.flip, 0, { [freeKey]: side2, ...rowOver(r) });
+        if (route !== "straight") return;
+        for (const gap of CORNER_GAPS) for (const side2 of SIDES) for (const corner of [null, ...CORNERS]) {
+          const row4 = { ...r, box: rowBox, corner, gap };
+          const free = { side: side2, box: ownBox };
+          if (rowKey === "to") bent(r.flip, free, row4);
+          else bent(r.flip, row4, free);
+        }
+      }]);
+      if (route !== "straight") {
+        groups2.push([r.flip, STYLE_COST, () => {
+          for (const side2 of freeSides) consider2(edgePath({ ...base2, route: "straight", [freeKey]: side2, ...rowOver(r) }), r.flip, STYLE_COST, 0);
+        }]);
+      }
+    }
+  }
+  for (const [tier, floor, run] of groups2) {
+    if (!best.across && (best.tier < tier || best.tier === tier && best.cost <= floor)) break;
+    run();
+  }
+  return best.geo;
 }
 function arrowHeadPath(point, angle, size) {
   const dx = Math.cos(angle);
@@ -511,7 +709,7 @@ function gridBackground(vp, style, base2 = GRID_PITCH) {
   const mod = (v) => (v % size + size) % size;
   return { size, x: mod(vp.x), y: mod(vp.y), major: size * 5 };
 }
-var num, clampNum, screenPx, invZoom, CONE, SIDES, INNER_NOTCH, INNER_MIN, CELL_INSET, NORMALS, xs, ys, EPS, GRID_PITCH, MIN_GRID_PITCH;
+var num, clampNum, screenPx, invZoom, CONE, SIDES, INNER_NOTCH, INNER_MIN, CELL_INSET, NORMALS, CROSS_STEPS, CROSS_INSET, HUG, HUG_SKIP, HUG_MIN, REACH, ELBOW_REACH, CORNER_GAP, FLIP_COST, STYLE_COST, flipSide, CORNER_GAPS, xs, ys, EPS, GRID_PITCH, MIN_GRID_PITCH;
 var init_geometry = __esm({
   "src/model/geometry.js"() {
     init_shapes();
@@ -533,6 +731,21 @@ var init_geometry = __esm({
       bottom: { x: 0, y: 1 },
       left: { x: -1, y: 0 }
     };
+    CROSS_STEPS = 128;
+    CROSS_INSET = 0.5;
+    HUG = 2;
+    HUG_SKIP = 4;
+    HUG_MIN = 24;
+    REACH = [1, 1.5, 2, 3, 4, 0.5, 0.25];
+    ELBOW_REACH = [1, 0.5, 0.25];
+    CORNER_GAP = 16;
+    FLIP_COST = 40;
+    STYLE_COST = 20;
+    flipSide = (box2, point, side2) => ({
+      side: side2 === "right" ? "left" : "right",
+      point: { x: side2 === "right" ? box2.x : box2.x + box2.w, y: point.y }
+    });
+    CORNER_GAPS = [CORNER_GAP, 8, 4];
     xs = (r) => [r.x, r.x + r.w / 2, r.x + r.w];
     ys = (r) => [r.y, r.y + r.h / 2, r.y + r.h];
     EPS = 1e-6;
@@ -85150,6 +85363,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       inner: !an.clamped ? { rect, side: an.side, point: an.point, rowLeft: spec.rowLeft, rowRight: spec.rowRight, cell: spec.cell === true } : null
     };
   };
+  const rowEndOf = (fromRow, toRow) => fromRow && toRow ? "both" : fromRow ? "from" : toRow ? "to" : null;
+  const innerOn = (spec, side2, point) => spec && spec.side !== side2 ? { ...spec, side: side2, point } : spec;
   const geometryFor = (board2, edge, rects, depth = 0) => {
     if (!board2 || !edge || depth > 1) return null;
     const fromItem = board2.items.get(edge.from);
@@ -85178,6 +85393,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       let toInnerSpec2 = null;
       let fromReady2 = null;
       let toReady2 = null;
+      let fromRow2 = false;
+      let toRow2 = false;
       const m2 = edge.fromBlock || edge.toBlock ? measures.get(edge.uid) : null;
       if (m2?.from && edge.fromBlock && !fromEdge) {
         const hit = endOn(m2.from, a, b);
@@ -85186,7 +85403,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
           fromSide2 = hit.side;
           fromClamp2 = hit.clamp ?? null;
           if (hit.region) fromReady2 = hit.inner || null;
-          else fromInnerSpec2 = hit.inner || null;
+          else {
+            fromInnerSpec2 = hit.inner || null;
+            fromRow2 = true;
+          }
         }
       }
       if (m2?.to && edge.toBlock && !toEdge) {
@@ -85196,10 +85416,15 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
           toSide2 = hit.side;
           toClamp2 = hit.clamp ?? null;
           if (hit.region) toReady2 = hit.inner || null;
-          else toInnerSpec2 = hit.inner || null;
+          else {
+            toInnerSpec2 = hit.inner || null;
+            toRow2 = true;
+          }
         }
       }
-      const geo2 = edgePath({ a, b, fromSide: fromSide2, toSide: toSide2, route: edge.route, offset: pairOffset2(board2, edge), fromPoint: fromPoint2, toPoint: toPoint2 });
+      const geo2 = rowEndPath({ a, b, fromSide: fromSide2, toSide: toSide2, route: edge.route, offset: pairOffset2(board2, edge), fromPoint: fromPoint2, toPoint: toPoint2 }, rowEndOf(fromRow2, toRow2));
+      if (fromRow2) fromInnerSpec2 = innerOn(fromInnerSpec2, geo2.fromSide, geo2.start);
+      if (toRow2) toInnerSpec2 = innerOn(toInnerSpec2, geo2.toSide, geo2.end);
       geo2.fromClamp = fromClamp2;
       geo2.toClamp = toClamp2;
       geo2.fromW = a.w;
@@ -85213,6 +85438,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     const routed = routedEdge(board2, edge, rects);
     if (!routed) return null;
     let via = edge.via;
+    let around;
     if ((!via || !via.length) && edge.route === "around") {
       const obstacles = [];
       for (const [uid, rect] of rects) {
@@ -85221,6 +85447,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
         if (item?.type === "card" || item?.type === "text") obstacles.push(rect);
       }
       via = routeAround(center(routed.a), center(routed.b), obstacles);
+      around = obstacles;
     }
     let fromSide = edge.fromSide;
     let toSide = edge.toSide;
@@ -85232,6 +85459,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     let toInnerSpec = null;
     let fromReady = null;
     let toReady = null;
+    let fromRow = false;
+    let toRow = false;
     const m = edge.fromBlock || edge.toBlock ? measures.get(edge.uid) : null;
     if (m) {
       if (m.from && edge.fromBlock && routed.from === edge.from) {
@@ -85241,7 +85470,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
           fromSide = hit.side;
           fromClamp = hit.clamp ?? null;
           if (hit.region) fromReady = hit.inner || null;
-          else fromInnerSpec = hit.inner || null;
+          else {
+            fromInnerSpec = hit.inner || null;
+            fromRow = true;
+          }
         }
       }
       if (m.to && edge.toBlock && routed.to === edge.to) {
@@ -85251,13 +85483,18 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
           toSide = hit.side;
           toClamp = hit.clamp ?? null;
           if (hit.region) toReady = hit.inner || null;
-          else toInnerSpec = hit.inner || null;
+          else {
+            toInnerSpec = hit.inner || null;
+            toRow = true;
+          }
         }
       }
     }
     if (routed.fromHome && fromClamp == null) fromClamp = "top";
     if (routed.toHome && toClamp == null) toClamp = "top";
-    const geo = edgePath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset2(board2, edge), via, fromPoint, toPoint });
+    const geo = rowEndPath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset2(board2, edge), via, around, fromPoint, toPoint }, rowEndOf(fromRow, toRow));
+    if (fromRow) fromInnerSpec = innerOn(fromInnerSpec, geo.fromSide, geo.start);
+    if (toRow) toInnerSpec = innerOn(toInnerSpec, geo.toSide, geo.end);
     geo.fromClamp = fromClamp;
     geo.toClamp = toClamp;
     geo.fromW = routed.a.w;

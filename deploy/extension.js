@@ -19286,7 +19286,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, seedRows: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, seedRows: true };
 }
 function parseSpeedFlags(raw) {
   const base2 = defaultSpeedFlags();
@@ -19740,7 +19740,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "seedRows"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "seedRows"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -30045,6 +30045,35 @@ var init_editor_keys = __esm({
   }
 });
 
+// src/view/quiet-textarea.js
+function isRoamTextarea(node2) {
+  return node2?.nodeType === 1 && String(node2.tagName || "").toUpperCase() === "TEXTAREA" && Boolean(node2.classList?.contains?.("rm-block-input"));
+}
+function quietTextarea(node2) {
+  if (!isRoamTextarea(node2) || quieted.has(node2)) return false;
+  let value = String(node2.defaultValue ?? "");
+  try {
+    Object.defineProperty(node2, "defaultValue", {
+      configurable: true,
+      enumerable: true,
+      get: () => value,
+      set: (next) => {
+        value = String(next);
+      }
+    });
+  } catch {
+    return false;
+  }
+  quieted.add(node2);
+  return true;
+}
+var quieted;
+var init_quiet_textarea = __esm({
+  "src/view/quiet-textarea.js"() {
+    quieted = /* @__PURE__ */ new WeakSet();
+  }
+});
+
 // src/view/cards.js
 function bodyStyleOf(doc) {
   const view = doc?.defaultView || globalThis;
@@ -36194,7 +36223,7 @@ function createItemRenderer({
     }, UNMOUNT_AFTER_MS, "unmount-due");
   };
   let lastContent = null;
-  let quieted = false;
+  let quieted2 = false;
   let editHeld = false;
   let freezeGen = 0;
   let freezeFrame = null;
@@ -36306,7 +36335,7 @@ function createItemRenderer({
         const start = now2();
         let n3 = 0;
         while (queue.length && (n3 === 0 || now2() - start < CHUNK_MS)) {
-          if (gen !== freezeGen || !quieted || disposed) return;
+          if (gen !== freezeGen || !quieted2 || disposed) return;
           const [uid, rec] = queue.shift();
           if (shells.get(uid) === rec) holdQuiet(rec, uid);
           n3 += 1;
@@ -36419,13 +36448,13 @@ function createItemRenderer({
   };
   const scheduleContent = (args) => {
     lastContent = args;
-    if (quieted) return;
+    if (quieted2) return;
     fillContent(args);
   };
   const quiet = (on) => {
     const next = Boolean(on);
     if (!next && editHeld) return;
-    if (next === quieted) {
+    if (next === quieted2) {
       if (next) {
         contentSched?.hold(true);
         freezeGen += 1;
@@ -36433,9 +36462,9 @@ function createItemRenderer({
       }
       return;
     }
-    quieted = next;
+    quieted2 = next;
     freezeGen += 1;
-    if (quieted) {
+    if (quieted2) {
       contentSched?.hold(true);
       freezeMounted();
       return;
@@ -36535,7 +36564,7 @@ function createItemRenderer({
           moved = true;
         }
       }
-      if (moved && lastContent && !quieted) fillContent({ ...lastContent, tier: lod, zoom: zoomCache });
+      if (moved && lastContent && !quieted2) fillContent({ ...lastContent, tier: lod, zoom: zoomCache });
       if (lod === "detail" && speedOf().steadyRows !== false) {
         let left = PREVIEW_CAP;
         for (const [uid, rec] of shells) {
@@ -36989,10 +37018,19 @@ function createItemRenderer({
     floor.cancel = frameLater(() => floorTick(e2));
     return true;
   };
+  const quietInput = (node2) => {
+    try {
+      if (speedOf().quietTextarea === false) return;
+    } catch {
+    }
+    quietTextarea(node2);
+  };
   const attachFloor = (e2) => {
-    const onIn = () => {
+    const onIn = (event) => {
       e2.ready = true;
+      quietInput(event?.target);
     };
+    if (e2.editor.contains?.(doc.activeElement)) quietInput(doc.activeElement);
     const onOut = (event) => {
       if (editing !== e2 || !e2.ready) return;
       const to = event.relatedTarget;
@@ -37933,7 +37971,7 @@ function createItemRenderer({
         if (rec && mounted.has(item.uid) && editing?.uid !== item.uid) unmountContent(item.uid);
       }
     }
-    if (changed2 && lastContent && !quieted) fillContent(lastContent);
+    if (changed2 && lastContent && !quieted2) fillContent(lastContent);
   };
   const onRegionReady = () => {
     bindRegionWatch();
@@ -38344,6 +38382,7 @@ var init_cards = __esm({
     init_buckets();
     init_table_cells();
     init_editor_keys();
+    init_quiet_textarea();
     init_card_children();
     SIDES3 = ["top", "right", "bottom", "left"];
     CHUNK_MS = 8;

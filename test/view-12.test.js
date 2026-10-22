@@ -143,6 +143,9 @@ const shell = (f, uid) => f.root.querySelector(`[data-uid=${uid}]`);
 const toastText = (f) => f.root.querySelector(".pxd-toast__text")?.textContent ?? "";
 const settleWait = async (f) => { await tick(140); f.stub.flushFrames(); };
 
+// PXD-2 (zoomVarScope): the zoom variables live on the cards layer, not the root.
+const zoomHost = (root) => root.querySelector(".pxd-items");
+
 function countSetProperty(el) {
   const counter = { n: 0, inv: 0 };
   const original = el.style.setProperty;
@@ -165,7 +168,7 @@ test("LOD: the tier class flips mid-gesture at the threshold, with hysteresis, a
   try {
     await f.flush();
     const { root } = f;
-    const counter = countSetProperty(root);
+    const counter = countSetProperty(zoomHost(root));
     // a pan gesture is in progress while the zoom keys are pressed: settle() never runs
     pointerDown(f, root.querySelector(".pxd-viewport"), 400, 300, { button: 1, buttons: 4 });
     assert.ok(root.hasAttribute("data-pxd-gesturing"));
@@ -186,8 +189,8 @@ test("LOD: the tier class flips mid-gesture at the threshold, with hysteresis, a
     assert.ok(["map", "overview"].includes(root.getAttribute("data-pxd-lod")), "class flips during the gesture, before any settle");
     assert.equal((root.getAttribute("data-pxd-lod") === "overview"), false);
     assert.equal(counter.n, 3, "one flip writes the three font variables once");
-    assert.match(root.style["--pxd-map-font"], /px$/);
-    assert.match(root.style["--pxd-overview-font"], /px$/);
+    assert.match(zoomHost(root).style["--pxd-map-font"], /px$/);
+    assert.match(zoomHost(root).style["--pxd-overview-font"], /px$/);
     const afterFlip = counter.n;
     key(f, "-", { ctrlKey: true });
     f.stub.flushFrames();
@@ -217,7 +220,7 @@ test("LOD: below the overview threshold the overview class joins the map class",
     assert.equal(f.view.state().lod, "overview");
     assert.ok(["map", "overview"].includes(f.root.getAttribute("data-pxd-lod")));
     assert.ok((f.root.getAttribute("data-pxd-lod") === "overview"));
-    assert.match(f.root.style["--pxd-overview-font"], /px$/);
+    assert.match(zoomHost(f.root).style["--pxd-overview-font"], /px$/);
     pointerDown(f, f.root.querySelector(".pxd-viewport"), 400, 300, { button: 1, buttons: 4 });
     for (let i = 0; i < 4; i += 1) { key(f, "=", { ctrlKey: true }); f.stub.flushFrames(); }
     assert.equal(f.view.state().lod, "overview", "0.1 * 1.2^4 = 0.207 is inside the overview hysteresis band (needs 0.23)");
@@ -239,7 +242,7 @@ test("FEEL-1: root flags are data attributes, the inverse-zoom variable waits fo
     const { root } = f;
     const oldClasses = () => String(root.className).split(/\s+/).filter((c) => /^pxd-root--(gesturing|zooming|editing|panel-open)$|^pxd-lod-/.test(c));
     assert.equal(root.getAttribute("data-pxd-lod"), "detail");
-    const counter = countSetProperty(root);
+    const counter = countSetProperty(zoomHost(root));
     pointerDown(f, root.querySelector(".pxd-viewport"), 400, 300, { button: 1, buttons: 4 });
     assert.equal(root.hasAttribute("data-pxd-gesturing"), true);
     for (let i = 0; i < 3; i += 1) { key(f, "-", { ctrlKey: true }); f.stub.flushFrames(); }
@@ -2899,8 +2902,8 @@ test("PO-5: --pxd-inv-zoom is 1/zoom clamped to 0.25..4, written once per zoom c
   const f = mountFixture({ vp: { x: 0, y: 0, zoom: 0.5 } });
   try {
     await f.flush();
-    assert.equal(f.root.style["--pxd-inv-zoom"], "2", "published at mount");
-    const counter = countSetProperty(f.root);
+    assert.equal(zoomHost(f.root).style["--pxd-inv-zoom"], "2", "published at mount");
+    const counter = countSetProperty(zoomHost(f.root));
     for (let i = 0; i < 5; i += 1) {
       f.stub.dispatch(f.root.querySelector(".pxd-viewport"), "wheel", { deltaX: 12, deltaY: 7, clientX: 300, clientY: 300 });
       f.stub.flushFrames();
@@ -2909,7 +2912,7 @@ test("PO-5: --pxd-inv-zoom is 1/zoom clamped to 0.25..4, written once per zoom c
     key(f, "=", { ctrlKey: true });
     f.stub.flushFrames();
     assert.equal(counter.inv, 1, "one write for one zoom step");
-    near(Number(f.root.style["--pxd-inv-zoom"]), 1 / f.view.state().zoom, 1e-3);
+    near(Number(zoomHost(f.root).style["--pxd-inv-zoom"]), 1 / f.view.state().zoom, 1e-3);
     key(f, "=", { ctrlKey: true });
     f.stub.flushFrames();
     assert.equal(counter.inv, 2);

@@ -1473,8 +1473,8 @@ export function createItemRenderer({
   };
 
   // ---------------------------------------------------------------- shells
-  const buildPorts = (parent) => {
-    const wrap = el("div", "pxd-ports", parent);
+  const buildPorts = (parent, cls = "pxd-ports") => {
+    const wrap = el("div", cls, parent);
     for (const side of SIDES) {
       const p = el("div", `pxd-port pxd-port--${side}`, wrap);
       p.dataset.side = side;
@@ -1489,6 +1489,19 @@ export function createItemRenderer({
       g.dataset.part = part;
       g.setAttribute("data-part", part);
     }
+  };
+  // PXD-2 (speed flag handlesWrap): ports and grips share one wrapper (.pxd-handles), display:none unless the shell is
+  // hovered or selected, and Blink does not style a display:none subtree. The root's gesture flag invalidated every
+  // grip and ports wrapper on each gesture start and end (1,560-card bench: 6,282 elements); no rule keyed on it
+  // names the wrapper. Off: the grips are the shell's own children and the ports have their own wrapper.
+  const buildHandles = (parent, gripsFirst = false) => {
+    if (speedOf().handlesWrap === false) {
+      if (gripsFirst) buildGrips(parent);
+      buildPorts(parent);
+      if (!gripsFirst) buildGrips(parent);
+      return;
+    }
+    buildGrips(buildPorts(parent, "pxd-handles"));
   };
 
   // INSTANT-4. A bare {{[[table]]}} card shows its PNG thumbnail instead of a grey box.
@@ -1538,8 +1551,7 @@ export function createItemRenderer({
       rec.title = el("div", "pxd-section__title", adopted);
       rec.note = el("div", "pxd-section__note", adopted);
       for (const side of ["t", "r", "b", "l"]) el("div", `pxd-section__edge pxd-section__edge--${side}`, adopted);
-      buildGrips(adopted);
-      buildPorts(adopted);
+      buildHandles(adopted, true);
     } else if (adopted) {
       const kids = [...(adopted.children || [])];
       const header = kids.find((child) => child.classList?.contains("pxd-item__header")) || null;
@@ -1553,8 +1565,7 @@ export function createItemRenderer({
       rec.body = body || el("div", "pxd-item__body", adopted);
       rec.faced = Boolean(rec.body.firstChild);
       rec.thumbed = adopted.classList.contains("pxd-item--thumb");
-      buildPorts(adopted);
-      buildGrips(adopted);
+      buildHandles(adopted);
       if (item.kind === "page") armPageCaret(rec);
     } else if (item.type === "section") {
       const node = el("div", "pxd-section", null);
@@ -1562,15 +1573,13 @@ export function createItemRenderer({
       rec.title = el("div", "pxd-section__title", node);
       rec.note = el("div", "pxd-section__note", node);
       for (const side of ["t", "r", "b", "l"]) el("div", `pxd-section__edge pxd-section__edge--${side}`, node);
-      buildGrips(node);
-      buildPorts(node);
+      buildHandles(node, true);
     } else {
       const node = el("div", `pxd-item pxd-item--${item.type}`, null);
       rec.el = node;
       rec.header = el("div", "pxd-item__header", node);
       rec.body = el("div", "pxd-item__body", node);
-      buildPorts(node);
-      buildGrips(node);
+      buildHandles(node);
       if (item.kind === "page") armPageCaret(rec);
     }
     if (item.type !== "section") paintThumb(rec, item);

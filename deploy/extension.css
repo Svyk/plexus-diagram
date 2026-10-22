@@ -726,8 +726,33 @@ body.pxd-fs-cover .roam-article .pxd-mount--fullscreen {
   display: none;
 }
 
-/* --pxd-inv-zoom = clamp(0.25, 1/zoom, 4), set on the board root once per zoom change: ports and grips keep the
-   same on-screen size at every zoom (PO-5).
+/* handlesWrap (PXD-2): ports and grips in one wrapper. It shows on hover, selection and the Connect tool, as the ports
+   wrapper does; inside, each part hides where it used to. No rule keyed on the gesture flag names the wrapper, so a
+   gesture start or end restyles only the parts of the few wrappers on screen. */
+.pxd-handles {
+  display: none;
+}
+
+.pxd-item:hover > .pxd-handles,
+.pxd-item--selected > .pxd-handles,
+.pxd-section:hover > .pxd-handles,
+.pxd-section--selected > .pxd-handles,
+.pxd-root[data-tool="connect"] .pxd-handles {
+  display: block;
+}
+
+.pxd-section--collapsed > .pxd-handles {
+  display: none;
+}
+
+/* The ports wrapper's gesture rule loses to hover and the Connect tool (a connect drag needs the target's ports): it
+   hid the ports of a selected shell that is not under the pointer. */
+:where(.pxd-root[data-pxd-gesturing]:not([data-tool="connect"])) :is(.pxd-item--selected, .pxd-section--selected):not(:hover) > .pxd-handles > .pxd-port {
+  display: none;
+}
+
+/* --pxd-inv-zoom = clamp(0.25, 1/zoom, 4), set on the sections and cards layers once per zoom change (on the root with
+   zoomVarScope off): ports and grips keep the same on-screen size at every zoom (PO-5).
    Ports sit above the edge grips so the midpoint of an edge always connects. */
 .pxd-port {
   position: absolute;
@@ -768,6 +793,19 @@ body.pxd-fs-cover .roam-article .pxd-mount--fullscreen {
   display: none;
 }
 
+/* handlesWrap: a shown wrapper shows its grips, except on an item that is not selected during a gesture (the rule
+   above), and with the Connect tool (it shows every wrapper for the ports) on a shell neither hovered nor selected. */
+.pxd-handles > .pxd-grip {
+  display: block;
+}
+
+:where(.pxd-root)[data-pxd-gesturing] .pxd-item:not(.pxd-item--selected) > .pxd-handles > .pxd-grip,
+:where(.pxd-root[data-tool="connect"]) .pxd-item:not(:hover):not(.pxd-item--selected) > .pxd-handles > .pxd-grip,
+:where(.pxd-root[data-tool="connect"]) .pxd-section:not(:hover):not(.pxd-section--selected) > .pxd-handles > .pxd-grip,
+.pxd-section--collapsed:not(:hover) > .pxd-handles > .pxd-grip {
+  display: none;
+}
+
 .pxd-grip--right {
   right: calc(-4px * var(--pxd-inv-zoom, 1));
   top: calc(8px * var(--pxd-inv-zoom, 1));
@@ -805,32 +843,32 @@ body.pxd-fs-cover .roam-article .pxd-mount--fullscreen {
    --pxd-inv-zoom puts that back into world px, the same way the 8px fine grip works.
    A selected page card is named too: its later rule is 12px and would otherwise win. */
 @media (pointer: coarse) {
-  .pxd-root .pxd-item:hover > .pxd-grip.pxd-grip--right,
-  .pxd-root .pxd-item.pxd-item--selected > .pxd-grip.pxd-grip--right,
-  .pxd-root .pxd-item.pxd-item--page:hover > .pxd-grip.pxd-grip--right,
-  .pxd-root .pxd-item.pxd-item--page.pxd-item--selected > .pxd-grip.pxd-grip--right,
-  .pxd-root .pxd-section:hover > .pxd-grip.pxd-grip--right,
-  .pxd-root .pxd-section.pxd-section--selected > .pxd-grip.pxd-grip--right {
+  .pxd-root .pxd-item:hover .pxd-grip.pxd-grip--right,
+  .pxd-root .pxd-item.pxd-item--selected .pxd-grip.pxd-grip--right,
+  .pxd-root .pxd-item.pxd-item--page:hover .pxd-grip.pxd-grip--right,
+  .pxd-root .pxd-item.pxd-item--page.pxd-item--selected .pxd-grip.pxd-grip--right,
+  .pxd-root .pxd-section:hover .pxd-grip.pxd-grip--right,
+  .pxd-root .pxd-section.pxd-section--selected .pxd-grip.pxd-grip--right {
     width: calc(44px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
     right: calc(-22px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
   }
 
-  .pxd-root .pxd-item:hover > .pxd-grip.pxd-grip--bottom,
-  .pxd-root .pxd-item.pxd-item--selected > .pxd-grip.pxd-grip--bottom,
-  .pxd-root .pxd-item.pxd-item--page:hover > .pxd-grip.pxd-grip--bottom,
-  .pxd-root .pxd-item.pxd-item--page.pxd-item--selected > .pxd-grip.pxd-grip--bottom,
-  .pxd-root .pxd-section:hover > .pxd-grip.pxd-grip--bottom,
-  .pxd-root .pxd-section.pxd-section--selected > .pxd-grip.pxd-grip--bottom {
+  .pxd-root .pxd-item:hover .pxd-grip.pxd-grip--bottom,
+  .pxd-root .pxd-item.pxd-item--selected .pxd-grip.pxd-grip--bottom,
+  .pxd-root .pxd-item.pxd-item--page:hover .pxd-grip.pxd-grip--bottom,
+  .pxd-root .pxd-item.pxd-item--page.pxd-item--selected .pxd-grip.pxd-grip--bottom,
+  .pxd-root .pxd-section:hover .pxd-grip.pxd-grip--bottom,
+  .pxd-root .pxd-section.pxd-section--selected .pxd-grip.pxd-grip--bottom {
     height: calc(44px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
     bottom: calc(-22px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
   }
 
-  .pxd-root .pxd-item:hover > .pxd-grip.pxd-grip--corner,
-  .pxd-root .pxd-item.pxd-item--selected > .pxd-grip.pxd-grip--corner,
-  .pxd-root .pxd-item.pxd-item--page:hover > .pxd-grip.pxd-grip--corner,
-  .pxd-root .pxd-item.pxd-item--page.pxd-item--selected > .pxd-grip.pxd-grip--corner,
-  .pxd-root .pxd-section:hover > .pxd-grip.pxd-grip--corner,
-  .pxd-root .pxd-section.pxd-section--selected > .pxd-grip.pxd-grip--corner {
+  .pxd-root .pxd-item:hover .pxd-grip.pxd-grip--corner,
+  .pxd-root .pxd-item.pxd-item--selected .pxd-grip.pxd-grip--corner,
+  .pxd-root .pxd-item.pxd-item--page:hover .pxd-grip.pxd-grip--corner,
+  .pxd-root .pxd-item.pxd-item--page.pxd-item--selected .pxd-grip.pxd-grip--corner,
+  .pxd-root .pxd-section:hover .pxd-grip.pxd-grip--corner,
+  .pxd-root .pxd-section.pxd-section--selected .pxd-grip.pxd-grip--corner {
     width: calc(44px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
     height: calc(44px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
   }
@@ -2481,8 +2519,8 @@ body.pxd-fs-cover .roam-article .pxd-mount--fullscreen {
 }
 
 /* Pinned items cannot be moved or resized: no grips, a small pin mark instead. */
-.pxd-root .pxd-item.pxd-item--pinned > .pxd-grip,
-.pxd-root .pxd-section.pxd-section--pinned > .pxd-grip {
+.pxd-root .pxd-item.pxd-item--pinned .pxd-grip,
+.pxd-root .pxd-section.pxd-section--pinned .pxd-grip {
   display: none;
 }
 
@@ -8041,23 +8079,23 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 }
 
 /* RF-5 (2.4), PO-5 (2.5): page cards scroll inside, so their resize grips are a generous 12px band that sits above
-   the scrollbar; the corner is 16px and never lets the scrollbar take it. Every size is screen px: the board root
+   the scrollbar; the corner is 16px and never lets the scrollbar take it. Every size is screen px: the board view
    publishes --pxd-inv-zoom (1/zoom) and the world scale turns it back into the same on-screen size. */
-.pxd-root .pxd-item.pxd-item--page > .pxd-grip {
+.pxd-root .pxd-item.pxd-item--page .pxd-grip {
   z-index: 4;
 }
 
-.pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--right {
+.pxd-root .pxd-item.pxd-item--page .pxd-grip.pxd-grip--right {
   right: calc(-6px * var(--pxd-inv-zoom, 1));
   width: calc(12px * var(--pxd-inv-zoom, 1));
 }
 
-.pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--bottom {
+.pxd-root .pxd-item.pxd-item--page .pxd-grip.pxd-grip--bottom {
   bottom: calc(-6px * var(--pxd-inv-zoom, 1));
   height: calc(12px * var(--pxd-inv-zoom, 1));
 }
 
-.pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--corner {
+.pxd-root .pxd-item.pxd-item--page .pxd-grip.pxd-grip--corner {
   right: calc(-6px * var(--pxd-inv-zoom, 1));
   bottom: calc(-6px * var(--pxd-inv-zoom, 1));
   width: calc(16px * var(--pxd-inv-zoom, 1));
@@ -8065,19 +8103,19 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 }
 
 /* Hand tool: grips show on hover so it is clear a press resizes. */
-.pxd-root[data-tool="hand"] .pxd-item:hover > .pxd-grip.pxd-grip--corner,
-.pxd-root[data-tool="hand"] .pxd-section:hover > .pxd-grip.pxd-grip--corner {
+.pxd-root[data-tool="hand"] .pxd-item:hover .pxd-grip.pxd-grip--corner,
+.pxd-root[data-tool="hand"] .pxd-section:hover .pxd-grip.pxd-grip--corner {
   border-color: var(--pxd-accent);
 }
 
-.pxd-root[data-tool="hand"] .pxd-item:hover > .pxd-grip.pxd-grip--right,
-.pxd-root[data-tool="hand"] .pxd-section:hover > .pxd-grip.pxd-grip--right {
+.pxd-root[data-tool="hand"] .pxd-item:hover .pxd-grip.pxd-grip--right,
+.pxd-root[data-tool="hand"] .pxd-section:hover .pxd-grip.pxd-grip--right {
   border-right: 2px solid var(--pxd-accent);
   box-sizing: border-box;
 }
 
-.pxd-root[data-tool="hand"] .pxd-item:hover > .pxd-grip.pxd-grip--bottom,
-.pxd-root[data-tool="hand"] .pxd-section:hover > .pxd-grip.pxd-grip--bottom {
+.pxd-root[data-tool="hand"] .pxd-item:hover .pxd-grip.pxd-grip--bottom,
+.pxd-root[data-tool="hand"] .pxd-section:hover .pxd-grip.pxd-grip--bottom {
   border-bottom: 2px solid var(--pxd-accent);
   box-sizing: border-box;
 }
@@ -13631,7 +13669,7 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
 
 /* Minimized: the header only. The stored size is kept; the grips and ports go. */
 .pxd-root .pxd-item--sticky.pxd-item--min > .pxd-item__body,
-.pxd-root .pxd-item--sticky.pxd-item--min > .pxd-grip {
+.pxd-root .pxd-item--sticky.pxd-item--min .pxd-grip {
   display: none;
 }
 

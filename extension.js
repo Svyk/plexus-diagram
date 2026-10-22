@@ -19287,7 +19287,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, cardRowDrop: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, zoomVarScope: true, handlesWrap: true, cardRowDrop: true };
 }
 function parseSpeedFlags(raw) {
   const base2 = defaultSpeedFlags();
@@ -19741,7 +19741,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "cardRowDrop"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "zoomVarScope", "handlesWrap", "cardRowDrop"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -31530,8 +31530,8 @@ function createItemRenderer({
     const target = boardRowTarget(uid, string);
     return target ? mountBoardRow(parent, cls, target) : renderRoot(parent, string, cls, uid, { plain: true });
   };
-  const buildPorts = (parent) => {
-    const wrap = el2("div", "pxd-ports", parent);
+  const buildPorts = (parent, cls = "pxd-ports") => {
+    const wrap = el2("div", cls, parent);
     for (const side2 of SIDES3) {
       const p = el2("div", `pxd-port pxd-port--${side2}`, wrap);
       p.dataset.side = side2;
@@ -31546,6 +31546,15 @@ function createItemRenderer({
       g.dataset.part = part;
       g.setAttribute("data-part", part);
     }
+  };
+  const buildHandles = (parent, gripsFirst = false) => {
+    if (speedOf().handlesWrap === false) {
+      if (gripsFirst) buildGrips(parent);
+      buildPorts(parent);
+      if (!gripsFirst) buildGrips(parent);
+      return;
+    }
+    buildGrips(buildPorts(parent, "pxd-handles"));
   };
   const paintThumb3 = (rec, item) => {
     if (typeof tableThumb !== "function" || item?.type === "section" || !rec?.body) return;
@@ -31607,8 +31616,7 @@ function createItemRenderer({
       rec.title = el2("div", "pxd-section__title", adopted);
       rec.note = el2("div", "pxd-section__note", adopted);
       for (const side2 of ["t", "r", "b", "l"]) el2("div", `pxd-section__edge pxd-section__edge--${side2}`, adopted);
-      buildGrips(adopted);
-      buildPorts(adopted);
+      buildHandles(adopted, true);
     } else if (adopted) {
       const kids = [...adopted.children || []];
       const header = kids.find((child) => child.classList?.contains("pxd-item__header")) || null;
@@ -31622,8 +31630,7 @@ function createItemRenderer({
       rec.body = body || el2("div", "pxd-item__body", adopted);
       rec.faced = Boolean(rec.body.firstChild);
       rec.thumbed = adopted.classList.contains("pxd-item--thumb");
-      buildPorts(adopted);
-      buildGrips(adopted);
+      buildHandles(adopted);
       if (item.kind === "page") armPageCaret(rec);
     } else if (item.type === "section") {
       const node2 = el2("div", "pxd-section", null);
@@ -31631,15 +31638,13 @@ function createItemRenderer({
       rec.title = el2("div", "pxd-section__title", node2);
       rec.note = el2("div", "pxd-section__note", node2);
       for (const side2 of ["t", "r", "b", "l"]) el2("div", `pxd-section__edge pxd-section__edge--${side2}`, node2);
-      buildGrips(node2);
-      buildPorts(node2);
+      buildHandles(node2, true);
     } else {
       const node2 = el2("div", `pxd-item pxd-item--${item.type}`, null);
       rec.el = node2;
       rec.header = el2("div", "pxd-item__header", node2);
       rec.body = el2("div", "pxd-item__body", node2);
-      buildPorts(node2);
-      buildGrips(node2);
+      buildHandles(node2);
       if (item.kind === "page") armPageCaret(rec);
     }
     if (item.type !== "section") paintThumb3(rec, item);
@@ -66751,6 +66756,13 @@ function boardZoom(root, win2 = root?.ownerDocument?.defaultView || globalThis) 
   }
   if (!raw) {
     try {
+      raw = root?.querySelector?.(".pxd-items")?.style?.getPropertyValue?.("--pxd-screen-px") || "";
+    } catch {
+      raw = "";
+    }
+  }
+  if (!raw) {
+    try {
       raw = win2?.getComputedStyle?.(root)?.getPropertyValue?.("--pxd-screen-px") || "";
     } catch {
       raw = "";
@@ -85204,6 +85216,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       node2.setAttribute("data-end", end);
       node2.dataset.end = end;
       node2.setAttribute("data-tip", "edge.child");
+      styleZoomReader(node2);
       marks[end] = node2;
     }
     const r = CHILD_R * screenPx(zoom);
@@ -85377,9 +85390,25 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       c.setAttribute("r", "6");
       c.setAttribute("data-end", end);
       c.dataset.end = end;
+      styleZoomReader(c);
       rec.ends[end] = c;
     }
     placeEnds(rec, rec.geo);
+  };
+  let zoomVars = null;
+  const styleZoomReader = (node2) => {
+    if (!zoomVars) return;
+    for (const [name, value] of zoomVars) node2.style?.setProperty?.(name, value);
+  };
+  const setZoomVars = (vars) => {
+    zoomVars = vars ? Object.entries(vars).filter(([, value]) => value != null) : null;
+    for (const rec of edgeEls.values()) {
+      if (rec.ends) {
+        styleZoomReader(rec.ends.from);
+        styleZoomReader(rec.ends.to);
+      }
+      if (rec.childMarks) for (const node2 of Object.values(rec.childMarks)) styleZoomReader(node2);
+    }
   };
   const dimmed = (e2) => Boolean(focusSet) && !(focusSet.has(e2.from) && focusSet.has(e2.to));
   const housedEnd = (board2, edge, end) => {
@@ -86117,6 +86146,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     render,
     update,
     resizeHeads,
+    setZoomVars,
     placedZoom: () => zoomCache,
     reveal,
     cull,
@@ -97170,6 +97200,13 @@ function buildBoardView(onFail, {
   const labelsLayer = el2("div", "pxd-labels", world);
   const itemsLayer = el2("div", "pxd-items", world);
   const overlaySvg = svg("pxd-overlay", world);
+  const zoomVarScope = (() => {
+    try {
+      return notedSpeedFlags().zoomVarScope !== false;
+    } catch {
+      return true;
+    }
+  })();
   let inboxCtl = null;
   const emptyHint = el2("div", "pxd-empty pxd-chrome", root);
   const resizeGrip = el2("div", "pxd-resize-grip pxd-chrome", root);
@@ -100593,11 +100630,17 @@ function buildBoardView(onFail, {
   };
   const mapThreshold = () => zoomThreshold(board2()?.plexus?.lodZoom, setting("map-zoom", "0.45"));
   const rootPainted = /* @__PURE__ */ new Map();
+  const zoomVarHosts = zoomVarScope ? [sectionsLayer, itemsLayer] : [root];
+  const zoomVarValues = /* @__PURE__ */ new Map();
+  const paintZoomVar = (name, value) => {
+    zoomVarValues.set(name, value);
+    for (const host2 of zoomVarHosts) host2.style.setProperty(name, value);
+  };
   const paintRoot = (name, value) => {
     if (rootPainted.get(name) === value) return;
     rootPainted.set(name, value);
     if (name === "data-pxd-lod") root.setAttribute(name, value);
-    else root.style.setProperty(name, value);
+    else paintZoomVar(name, value);
   };
   const flipStats = { flips: 0, attachedAtFlip: [] };
   let paintedTier = null;
@@ -100621,8 +100664,9 @@ function buildBoardView(onFail, {
   const paintInvZoom = () => {
     if (vp.zoom === invZoomAt) return;
     invZoomAt = vp.zoom;
-    root.style.setProperty("--pxd-inv-zoom", String(invZoom(vp.zoom)));
-    root.style.setProperty("--pxd-screen-px", String(screenPx(vp.zoom)));
+    paintZoomVar("--pxd-inv-zoom", String(invZoom(vp.zoom)));
+    paintZoomVar("--pxd-screen-px", String(screenPx(vp.zoom)));
+    if (zoomVarScope) edgesR.setZoomVars?.({ "--pxd-inv-zoom": zoomVarValues.get("--pxd-inv-zoom"), "--pxd-screen-px": zoomVarValues.get("--pxd-screen-px") });
   };
   const applyLod = () => {
     const was = tier;
@@ -106270,6 +106314,7 @@ ${url}`;
       });
       node2.append(button3);
     }
+    if (!shell && zoomVarScope) for (const [name, value] of zoomVarValues) node2.style.setProperty(name, value);
     (shell || root).append(node2);
     const onDown = (ev) => {
       if (node2.contains?.(ev.target)) return;
@@ -109590,6 +109635,8 @@ function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER, loo
         layer.style.setProperty("--pxd-map-font", `${f.map}px`);
         layer.style.setProperty("--pxd-ui", String(f.ui));
         layer.style.setProperty("--pxd-overview-font", `${f.section}px`);
+        layer.style.setProperty("--pxd-inv-zoom", String(invZoom(vp.zoom)));
+        layer.style.setProperty("--pxd-screen-px", String(screenPx(vp.zoom)));
       } catch {
       }
     }
@@ -109691,7 +109738,7 @@ function rootVars(root) {
 }
 var skipChrome = (el2) => {
   const cls = typeof el2.getAttribute === "function" ? String(el2.getAttribute("class") || "") : "";
-  return /(^|\s)(pxd-ports|pxd-grip|pxd-port|pxd-item__editor|pxd-ctx|pxd-tip|pxd-table-thumb)(\s|$)/.test(cls);
+  return /(^|\s)(pxd-ports|pxd-handles|pxd-grip|pxd-port|pxd-item__editor|pxd-ctx|pxd-tip|pxd-table-thumb)(\s|$)/.test(cls);
 };
 function captureBoardSnap(args = {}) {
   const capture = createBoardSnapCapture(args);

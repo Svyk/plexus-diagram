@@ -283,7 +283,7 @@ test("LOD: map class toggles at zoom 0.45 and no render calls happen during a pa
     f.stub.flushFrames();
     await tick(140);
     assert.ok(["map", "overview"].includes(root.getAttribute("data-pxd-lod")), "zoom < 0.45 switches to map LOD");
-    assert.match(root.style["--pxd-map-font"], /px$/);
+    assert.match(root.querySelector(".pxd-items").style["--pxd-map-font"], /px$/);
     f.stub.dispatch(viewport, "wheel", { ctrlKey: true, deltaY: -100, clientX: 400, clientY: 300 });
     f.stub.flushFrames();
     await tick(140);
@@ -1365,7 +1365,7 @@ test("CSS contract (1.2): map tile clamp, overview tier, bare header, pin, focus
   assert.match(pill, /font-weight: 700/);
   assert.match(pill, /text-overflow: ellipsis/);
   assert.match(rule(".pxd-root .pxd-item.pxd-item--card.pxd-item--bare > .pxd-item__header"), /display: block/);
-  assert.match(rule(".pxd-root .pxd-item.pxd-item--pinned > .pxd-grip,\n.pxd-root .pxd-section.pxd-section--pinned > .pxd-grip"), /display: none/);
+  assert.match(rule(".pxd-root .pxd-item.pxd-item--pinned .pxd-grip,\n.pxd-root .pxd-section.pxd-section--pinned .pxd-grip"), /display: none/);
   assert.match(rule(".pxd-root .pxd-item.pxd-item--focus-dim,\n.pxd-root .pxd-section.pxd-section--focus-dim"), /opacity: 0\.18/);
   assert.match(rule(".pxd-root .pxd-item__badges"), /pointer-events: none/);
   assert.match(rule(".pxd-root .pxd-badge-chip.pxd-badge-chip--boards"), /pointer-events: auto/);

@@ -1216,6 +1216,9 @@ function buildBoardView(onFail, {
   const labelsLayer = el("div", "pxd-labels", world);
   const itemsLayer = el("div", "pxd-items", world);
   const overlaySvg = svg("pxd-overlay", world);
+  // PXD-2: where the zoom variables go (paintZoomVar). Fixed for the mount: a host that changed later would leave the
+  // old one's values shadowing or missing.
+  const zoomVarScope = (() => { try { return notedSpeedFlags().zoomVarScope !== false; } catch { return true; } })();
   let inboxCtl = null;
   const emptyHint = el("div", "pxd-empty pxd-chrome", root);
   const resizeGrip = el("div", "pxd-resize-grip pxd-chrome", root);
@@ -4030,11 +4033,21 @@ function buildBoardView(onFail, {
   // same tier and fonts, and every attribute or inherited-variable write on the root restyles the whole board
   // (PhD main board: 3,500 elements per settle).
   const rootPainted = new Map();
+  // PXD-2 (speed flag zoomVarScope, read once at mount): the zoom variables are written on the two layers whose
+  // shells read them (sections, cards), not on the root. An inherited custom property written on the root restyles
+  // every element of the board (1,560-card bench at overview: 36k elements, 169 ms), the edge layer alone 21k, and
+  // the edges read none of them. The edge layer's two readers (end handles, child marks) carry the values inline.
+  const zoomVarHosts = zoomVarScope ? [sectionsLayer, itemsLayer] : [root];
+  const zoomVarValues = new Map();
+  const paintZoomVar = (name, value) => {
+    zoomVarValues.set(name, value);
+    for (const host of zoomVarHosts) host.style.setProperty(name, value);
+  };
   const paintRoot = (name, value) => {
     if (rootPainted.get(name) === value) return;
     rootPainted.set(name, value);
     if (name === "data-pxd-lod") root.setAttribute(name, value);
-    else root.style.setProperty(name, value);
+    else paintZoomVar(name, value);
   };
   // E probe: attached shells at each tier flip (the restyle the flip costs).
   const flipStats = { flips: 0, attachedAtFlip: [] };
@@ -4060,8 +4073,9 @@ function buildBoardView(onFail, {
   const paintInvZoom = () => {
     if (vp.zoom === invZoomAt) return;
     invZoomAt = vp.zoom;
-    root.style.setProperty("--pxd-inv-zoom", String(invZoom(vp.zoom)));
-    root.style.setProperty("--pxd-screen-px", String(screenPx(vp.zoom)));
+    paintZoomVar("--pxd-inv-zoom", String(invZoom(vp.zoom)));
+    paintZoomVar("--pxd-screen-px", String(screenPx(vp.zoom)));
+    if (zoomVarScope) edgesR.setZoomVars?.({ "--pxd-inv-zoom": zoomVarValues.get("--pxd-inv-zoom"), "--pxd-screen-px": zoomVarValues.get("--pxd-screen-px") });
   };
   const applyLod = () => {
     const was = tier;
@@ -8691,6 +8705,8 @@ function buildBoardView(onFail, {
       });
       node.append(button);
     }
+    // On the root it is outside the layers that carry the zoom variables (zoomVarScope).
+    if (!shell && zoomVarScope) for (const [name, value] of zoomVarValues) node.style.setProperty(name, value);
     (shell || root).append(node);
     const onDown = (ev) => {
       if (node.contains?.(ev.target)) return;

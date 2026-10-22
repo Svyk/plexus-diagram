@@ -1,7 +1,7 @@
 // Session clip: duplicate, paste, send to board and outline expansion. Registers itself with extendSession,
 // so every session gets the methods. Each method is one transaction (one write per created or changed
 // block, auto-fit at the end); the model helpers stay pure and this file only wires them to the session api.
-import { boardPreview, boundsOf, buildBoard, containerAt, descendantsOf, findEdge, toRelative, topLevelOf } from "./model/board.js";
+import { boardPreview, boundsOf, buildBoard, containerAt, descendantsOf, findEdge, rowDroppable, toRelative, topLevelOf } from "./model/board.js";
 import { parsePastedText, planEdgeClones, planSubtreeClone, refCardStrings } from "./model/clipboard.js";
 import { mindMapLayout } from "./model/layout.js";
 import { isOldTableCard } from "./model/table-captions.js";
@@ -185,6 +185,29 @@ extendSession((session, api) => {
         api.applyFit(t, made);
         return made;
       }).then((made) => made ?? []);
+    },
+
+    // PXD-5: cards dropped on a child row of another card. Each card's ref (a page card refs its page, a table card
+    // its table) becomes a new last child of the row, in board order; the cards stay where they are. Sections and
+    // boards are skipped. Resolves { added, undo } or null.
+    refIntoRow(uids, rowUid) {
+      const board = api.board();
+      if (!board || !rowUid) return Promise.resolve(null);
+      const at = new Map(board.order.map((u, i) => [u, i]));
+      const top = topLevelOf(board, uids ?? [])
+        .filter((id) => id !== rowUid && rowDroppable(board.items.get(id)))
+        .sort((a, b) => at.get(a) - at.get(b));
+      const refs = capBulk(top.map((id) => {
+        const tableUid = board.items.get(id).tableUid;
+        return tableUid ? `((${tableUid}))` : api.refOf(id);
+      }).filter((s) => s !== `((${rowUid}))`), api.emit);
+      if (!refs.length) return Promise.resolve(null);
+      // Before the write: a view showing this row from outside the board (a block card) arms a watch on it.
+      api.emit("rowref", rowUid);
+      return api.txn((t) => {
+        const made = refs.map((string) => t.create({ parent: rowUid, string }));
+        return { added: made.length, undo: () => api.txn((u) => { for (const id of made) u.del(id); }) };
+      }).then((res) => res ?? null);
     },
 
     // A detached copy of the items (and their subtrees and the connections between them) as a synthetic board

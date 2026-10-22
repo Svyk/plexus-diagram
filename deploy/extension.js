@@ -4776,7 +4776,7 @@ function diffBoards(prev, next) {
   }
   return { structural, dirty };
 }
-var AUTO_GAP, AUTO_OFFSET, AUTO_ROWS, TITLE_BAND, BORDER_BAND, isNum2, OPEN_KEY_DEPTH, HIGHLIGHT_HINT, COLLAPSED_SECTION_H, COLLAPSED_CARD_H, STICKY_HEADER_H, clamp2, PREVIEW_MIN, PREVIEW_TITLE;
+var AUTO_GAP, AUTO_OFFSET, AUTO_ROWS, TITLE_BAND, BORDER_BAND, isNum2, OPEN_KEY_DEPTH, HIGHLIGHT_HINT, COLLAPSED_SECTION_H, COLLAPSED_CARD_H, STICKY_HEADER_H, rowDroppable, clamp2, PREVIEW_MIN, PREVIEW_TITLE;
 var init_board = __esm({
   "src/model/board.js"() {
     init_geometry();
@@ -4803,6 +4803,7 @@ var init_board = __esm({
     COLLAPSED_SECTION_H = 8;
     COLLAPSED_CARD_H = 32;
     STICKY_HEADER_H = 28;
+    rowDroppable = (item) => Boolean(item && item.type !== "section" && item.kind !== "board");
     clamp2 = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
     PREVIEW_MIN = { w: DEFAULT_SIZES.card.w * 2, h: DEFAULT_SIZES.card.h * 2 };
     PREVIEW_TITLE = 40;
@@ -19499,7 +19500,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: true, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, zoomVarScope: true, handlesWrap: true, seedRows: true, canvasPrebuild: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: true, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, zoomVarScope: true, handlesWrap: true, seedRows: true, canvasPrebuild: true, cardRowDrop: true };
 }
 function parseSpeedFlags(raw) {
   const base2 = defaultSpeedFlags();
@@ -19953,7 +19954,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "zoomVarScope", "handlesWrap", "seedRows", "canvasPrebuild"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "zoomVarScope", "handlesWrap", "seedRows", "canvasPrebuild", "cardRowDrop"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -31612,6 +31613,11 @@ function createItemRenderer({
     }
     rec.blockUnwatch = null;
     try {
+      rec.refRowsOff?.();
+    } catch {
+    }
+    rec.refRowsOff = null;
+    try {
       rec.authorUnwatch?.();
     } catch {
     }
@@ -33350,6 +33356,22 @@ function createItemRenderer({
     }, DROP_PEEK_MS);
     dropReveal = entry;
   };
+  const keepDropReveal = (uid) => {
+    if (!dropReveal || dropReveal.uid !== uid) return;
+    dropReveal.timer?.();
+    dropReveal = null;
+  };
+  let ghosted = [];
+  const ghostMoving = (uids) => {
+    for (const el3 of ghosted) el3.classList.remove("pxd-item--rowdrop");
+    ghosted = [];
+    for (const uid of uids || []) {
+      const rec = shells.get(uid);
+      if (!rec) continue;
+      rec.el.classList.add("pxd-item--rowdrop");
+      ghosted.push(rec.el);
+    }
+  };
   const unfoldForFocus = (cardUid, blockUid3) => {
     if (!cardUid) return false;
     if (blockUid3 && blockUid3 !== cardUid) return focusInside(cardUid, blockUid3);
@@ -33381,6 +33403,18 @@ function createItemRenderer({
     const h = revealHeight(item, shown.h);
     if (!(h > shown.h)) return shown;
     return { ...shown, h };
+  };
+  const revealedRects = (rects) => {
+    const out = /* @__PURE__ */ new Map();
+    for (const uid of revealCards) {
+      const item = lastBoard?.items.get(uid);
+      const rect = rects?.get(uid);
+      const rec = shells.get(uid);
+      if (!item || !rect || !rec || rec.peekH > 0) continue;
+      const h = revealHeight(item, shownRect(uid, rect).h);
+      if (h > rect.h) out.set(uid, { ...rect, h });
+    }
+    return out;
   };
   const stepFocus = () => {
     if (disposed || cardFocus.size === 0) return false;
@@ -35811,6 +35845,46 @@ function createItemRenderer({
       pending = null;
     };
   };
+  const armRefRows = (rec) => {
+    if (disposed || rec.refRowsOff || !rec.refRows?.size || typeof host?.watchBlock !== "function") return;
+    let pending = null;
+    const offs = [];
+    for (const row4 of rec.refRows) {
+      try {
+        const off = host.watchBlock(row4, () => {
+          if (pending) return;
+          pending = later(() => {
+            pending = null;
+            if (!disposed && shells.get(rec.uid) === rec) remountCard(rec);
+          }, BLOCK_REFRESH_MS);
+        });
+        if (typeof off === "function") offs.push(off);
+      } catch {
+      }
+    }
+    rec.refRowsOff = () => {
+      rec.refRowsOff = null;
+      pending?.();
+      pending = null;
+      for (const off of offs) {
+        try {
+          off();
+        } catch {
+        }
+      }
+    };
+  };
+  const followRefRows = (rowUid) => {
+    if (disposed || !rowUid) return;
+    for (const [uid, rec] of shells) {
+      if (!rec.blockUnwatch || lastBoard?.items.get(uid)?.kind !== "block") continue;
+      if (rec.refRows?.has(rowUid) || !rec.el?.querySelector?.(`[data-pxd-row="${rowUid}"]`)) continue;
+      if (!rec.refRows) rec.refRows = /* @__PURE__ */ new Set();
+      rec.refRows.add(rowUid);
+      rec.refRowsOff?.();
+      armRefRows(rec);
+    }
+  };
   const mountContentBody = (rec, item) => {
     rec.pullGen = (rec.pullGen || 0) + 1;
     const gen = rec.pullGen;
@@ -36005,6 +36079,7 @@ function createItemRenderer({
           apply(tree, true);
         }
         armBlockWatch(rec, item);
+        armRefRows(rec);
       }
     } else if (isQueryString(item.string) && host?.renderBlock) {
       budget.roots.push(mountQuery(body, item.uid, item.string));
@@ -38358,6 +38433,7 @@ function createItemRenderer({
     unfoldForFocus,
     rowMounted,
     cardWorldRect,
+    revealedRects,
     stepFocus,
     cancelCardPeek,
     closeCardPeek,
@@ -38373,6 +38449,9 @@ function createItemRenderer({
     setSelection,
     setHover,
     dropRevealOn,
+    keepDropReveal,
+    ghostMoving,
+    followRefRows,
     enterEdit,
     exitEdit,
     editingUid: () => editing?.uid ?? null,
@@ -54339,6 +54418,27 @@ extendSession((session, api3) => {
         return made;
       }).then((made) => made ?? []);
     },
+    // PXD-5: cards dropped on a child row of another card. Each card's ref (a page card refs its page, a table card
+    // its table) becomes a new last child of the row, in board order; the cards stay where they are. Sections and
+    // boards are skipped. Resolves { added, undo } or null.
+    refIntoRow(uids, rowUid) {
+      const board2 = api3.board();
+      if (!board2 || !rowUid) return Promise.resolve(null);
+      const at = new Map(board2.order.map((u, i) => [u, i]));
+      const top = topLevelOf(board2, uids ?? []).filter((id) => id !== rowUid && rowDroppable(board2.items.get(id))).sort((a, b) => at.get(a) - at.get(b));
+      const refs = capBulk(top.map((id) => {
+        const tableUid = board2.items.get(id).tableUid;
+        return tableUid ? `((${tableUid}))` : api3.refOf(id);
+      }).filter((s) => s !== `((${rowUid}))`), api3.emit);
+      if (!refs.length) return Promise.resolve(null);
+      api3.emit("rowref", rowUid);
+      return api3.txn((t) => {
+        const made = refs.map((string) => t.create({ parent: rowUid, string }));
+        return { added: made.length, undo: () => api3.txn((u) => {
+          for (const id of made) u.del(id);
+        }) };
+      }).then((res) => res ?? null);
+    },
     // A detached copy of the items (and their subtrees and the connections between them) as a synthetic board
     // tree. A cut puts it in the clipboard payload, so the paste no longer depends on the deleted blocks.
     snapshotItems(uids) {
@@ -59223,6 +59323,10 @@ function findShortcut(ev, mode = "normal", settings) {
 
 // src/view/interactions.js
 init_tasks();
+function showsRows(item) {
+  if (!item || item.type !== "card" || tableUidOf(item)) return false;
+  return item.kind === "page" || item.kind === "block" || item.kind === "note" && Array.isArray(item.content) && item.content.length > 0;
+}
 function dayTargetOf(b, hit) {
   const item = hit ? b?.items?.get(hit.uid) : null;
   if (!item) return null;
@@ -59239,6 +59343,7 @@ var ARROW_KEYS = /* @__PURE__ */ new Set(["ArrowLeft", "ArrowRight", "ArrowUp", 
 var REGION_HINT = "⌥ to mark a region · P switches pen";
 var REGION_BOX_HINT = "Drag a box on the image · P switches to pen · Esc cancels";
 var REGION_PEN_HINT = "Draw around the region · P switches to box · Esc cancels";
+var ROW_DROP_HINT = "Drop adds a ref under this row · ⇧ moves the card";
 function emptyLabelShouldDeleteEdge({ key, meta, ctrl, alt, shift, edgeSelected, inLabel, empty } = {}) {
   if (!edgeSelected || !inLabel || !empty) return false;
   if (meta || ctrl || alt || shift) return false;
@@ -59405,7 +59510,9 @@ function createInteractions({ actions, settings } = {}) {
   };
   const end = () => {
     const moved = Boolean(state.gesture?.moved);
+    const ghosted = Boolean(state.gesture?.rowDrop);
     state.gesture = null;
+    if (ghosted) call("rowDropGhost", null);
     call("showMarquee", null);
     call("showLasso", null);
     call("showRegionPen", null);
@@ -59783,7 +59890,9 @@ function createInteractions({ actions, settings } = {}) {
           g.exclude = new Set(g.uids);
           for (const u of g.uids) for (const d of descendantsOf(b, u)) g.exclude.add(d);
         }
-        const hit = hitTest(b, ev.world, r, { exclude: g.exclude });
+        const open = call("revealedRects", r);
+        const hr = open?.size ? { get: (u) => open.get(u) || r.get(u) } : r;
+        const hit = hitTest(b, ev.world, hr, { exclude: g.exclude });
         const drop = hit?.part === "body" && (b.items.get(hit.uid)?.kind === "board" && b.items.get(hit.uid)?.enhanced) ? hit.uid : null;
         const day = !drop && !ev.shift ? dayTargetOf(b, hit) : null;
         const dayKey = day ? `${day.uid}:${day.iso}` : null;
@@ -59796,6 +59905,25 @@ function createInteractions({ actions, settings } = {}) {
           g.drop = drop;
           call("onHover", drop);
         }
+        if (g.refs === void 0) {
+          g.refs = g.uids.some((u) => rowDroppable(b.items.get(u)));
+          g.tasks = g.uids.some((u) => {
+            const it = b.items.get(u);
+            return it?.kind === "note" && isTaskString(it.string);
+          });
+        }
+        const rowCard = g.refs && !drop && !ev.shift && !(day && g.tasks) && showsRows(b.items.get(hit?.uid)) ? hit.uid : null;
+        call("dropReveal", rowCard);
+        let row4 = null;
+        if (rowCard) {
+          const bt = call("blockTarget", ev.client || null, { rowsOnly: true, exclude: g.exclude });
+          row4 = bt && bt.uid === rowCard && bt.row ? bt.row : null;
+          if (!row4 && bt) call("clearBlockTarget");
+        } else call("clearBlockTarget");
+        if (Boolean(row4) !== Boolean(g.rowDrop)) call("rowDropGhost", row4 ? g.uids : null);
+        g.rowDrop = row4 ? { card: rowCard, row: row4 } : null;
+        if (row4 || g.hinted) call("connectHint", row4 ? ROW_DROP_HINT : null, ev.screen);
+        g.hinted = Boolean(row4);
       }
       return;
     }
@@ -59946,6 +60074,9 @@ function createInteractions({ actions, settings } = {}) {
           call("duplicateItems", g.uids, { dx: g.dx || 0, dy: g.dy || 0, asRef: Boolean(g.asRef) });
         } else if (g.moved && g.drop) {
           call("moveIntoBoard", g.uids, g.drop, g.dx || 0, g.dy || 0);
+        } else if (g.moved && g.rowDrop && !ev.shift) {
+          call("previewMove", g.uids, 0, 0);
+          call("refIntoRow", g.uids, g.rowDrop.card, g.rowDrop.row);
         } else if (g.moved && g.day && !ev.shift) {
           call("rescheduleTasks", g.uids, g.day);
           if (g.uids.length) call("commitMove", g.uids, g.dx || 0, g.dy || 0);
@@ -105981,7 +106112,7 @@ ${url}`;
     onHover: (uid) => {
       itemsR.setHover(uid);
       const kind = ctl.gestureKind?.();
-      itemsR.dropRevealOn?.(kind === "connect" || kind === "edge-end" ? uid : null);
+      if (kind !== "move") itemsR.dropRevealOn?.(kind === "connect" || kind === "edge-end" ? uid : null);
       pdfHoverUid = typeof uid === "string" ? uid : "";
       syncPdfFlip();
     },
@@ -106177,8 +106308,26 @@ ${url}`;
       }
       edgesR.setTempWire(fromPoint ? { ...spec, fromPoint } : spec, boxes, vp.zoom);
     },
-    blockTarget: (pt) => blockTargetAt(pt),
+    blockTarget: (pt, opts) => blockTargetAt(pt, opts),
     clearBlockTarget: () => clearBlockTarget(),
+    // PXD-5: a card held over a folded card with children unfolds it (the arrow's hover wait); null folds it back.
+    dropReveal: (uid) => itemsR.dropRevealOn?.(notedSpeedFlags().cardRowDrop === false ? null : uid),
+    revealedRects: (rects2) => notedSpeedFlags().cardRowDrop === false ? null : itemsR.revealedRects?.(rects2) || null,
+    rowDropGhost: (uids) => itemsR.ghostMoving?.(uids),
+    // The hover unfold stays (session-only) so the new ref shows; the gesture end right after would fold it back.
+    refIntoRow: async (uids, cardUid, rowUid) => {
+      itemsR.keepDropReveal?.(cardUid);
+      const res = await session.refIntoRow?.(uids, rowUid);
+      if (!res || disposed) return;
+      let text4 = "";
+      try {
+        text4 = String(host?.blockString?.(rowUid) ?? "").trim();
+      } catch {
+      }
+      if (text4.length > 40) text4 = `${text4.slice(0, 39)}…`;
+      const what = res.added === 1 ? "a ref" : `${res.added} refs`;
+      chrome.toast.show({ message: text4 ? `Added ${what} under “${text4}”` : `Added ${what} under the row`, action: { label: "Undo", run: () => res.undo() } });
+    },
     revealBlockEnd: (edgeUid, end) => revealBlockEnd(edgeUid, end),
     childEndOf: (edgeUid) => childEndOf(edgeUid),
     openOutside: (uid) => openOutside(uid),
@@ -106427,14 +106576,25 @@ ${url}`;
     targetEl.classList.remove(targetCls);
     targetEl = null;
   };
-  const blockTargetAt = (pt) => {
+  const blockTargetAt = (pt, { rowsOnly = false, exclude = null } = {}) => {
     clearBlockTarget();
     if (!pt || typeof doc.elementsFromPoint !== "function") return null;
+    if (rowsOnly && notedSpeedFlags().cardRowDrop === false) return null;
     for (const node2 of doc.elementsFromPoint(pt.x, pt.y) || []) {
       const card2 = node2.closest?.(".pxd-item");
       if (!card2) continue;
       if (card2.closest?.(".pxd-root") !== root) return null;
       const uid = card2.dataset?.uid || card2.getAttribute?.("data-uid");
+      if (exclude?.has(uid)) continue;
+      if (rowsOnly) {
+        if (isTableCard(card2) || cellElementOf(node2)) return null;
+        const row5 = node2.closest?.("[data-pxd-row]");
+        if (!row5 || !card2.contains(row5) || row5.closest?.(".pxd-item__editor")) return null;
+        targetEl = row5;
+        targetCls = "pxd-row--target";
+        targetEl.classList.add(targetCls);
+        return { uid, row: row5.getAttribute?.("data-pxd-row") || row5.dataset?.pxdRow || null, header: false };
+      }
       if (isTableCard(card2)) {
         const cell = cellUidOf(node2, { pullTree: host?.pullTree });
         targetEl = cell ? cellElementOf(node2) : null;
@@ -108039,6 +108199,10 @@ ${url}`;
   subs.push(session.on("toast", (t) => {
     if (disposed || suspended) return;
     chrome.toast.show(t);
+  }));
+  subs.push(session.on("rowref", (rowUid) => {
+    if (disposed || suspended) return;
+    itemsR.followRefRows?.(rowUid);
   }));
   tableCtl = mountTable({
     doc,

@@ -81,6 +81,7 @@ const ALL_ON = {
   handlesWrap: true,
   seedRows: true,
   canvasPrebuild: true,
+  cardRowDrop: true,
 };
 
 test("the panel has no speed-flags control, and bad JSON leaves the defaults (every flag on but edgeFingerprint, idlePark, quietBodies and sliceGrow)", () => {

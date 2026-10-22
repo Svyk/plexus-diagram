@@ -242,8 +242,10 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       inner: !an.clamped ? { rect, side: an.side, point: an.point, rowLeft: spec.rowLeft, rowRight: spec.rowRight, cell: spec.cell === true } : null,
     };
   };
-  // PXD-3: the end that sits on a row, when only one does; the path then keeps clear of that row's card.
-  const rowEndOf = (fromRow, toRow) => (fromRow === toRow ? null : fromRow ? "from" : "to");
+  // PXD-3: which ends sit on a row; the path then keeps clear of those rows' cards. A row end that rowEndPath moved
+  // to its card's far side takes its inner segment along.
+  const rowEndOf = (fromRow, toRow) => (fromRow && toRow ? "both" : fromRow ? "from" : toRow ? "to" : null);
+  const innerOn = (spec, side, point) => (spec && spec.side !== side ? { ...spec, side, point } : spec);
   const geometryFor = (board, edge, rects, depth = 0) => {
     if (!board || !edge || depth > 1) return null;
     const fromItem = board.items.get(edge.from);
@@ -296,6 +298,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         }
       }
       const geo = rowEndPath({ a, b, fromSide, toSide, route: edge.route, offset: pairOffset(board, edge), fromPoint, toPoint }, rowEndOf(fromRow, toRow));
+      if (fromRow) fromInnerSpec = innerOn(fromInnerSpec, geo.fromSide, geo.start);
+      if (toRow) toInnerSpec = innerOn(toInnerSpec, geo.toSide, geo.end);
       geo.fromClamp = fromClamp;
       geo.toClamp = toClamp;
       geo.fromW = a.w;
@@ -358,6 +362,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     if (routed.fromHome && fromClamp == null) fromClamp = "top";
     if (routed.toHome && toClamp == null) toClamp = "top";
     const geo = rowEndPath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset(board, edge), via, fromPoint, toPoint }, rowEndOf(fromRow, toRow));
+    if (fromRow) fromInnerSpec = innerOn(fromInnerSpec, geo.fromSide, geo.start);
+    if (toRow) toInnerSpec = innerOn(toInnerSpec, geo.toSide, geo.end);
     geo.fromClamp = fromClamp;
     geo.toClamp = toClamp;
     geo.fromW = routed.a.w;

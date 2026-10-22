@@ -1,4 +1,5 @@
-// PXD-3: an arrow that ends on a row (a page card's row or a note card's child row) keeps clear of that card's body.
+// PXD-3: an arrow with an end (or both) on a row (a page card's row or a note card's child row) keeps clear of the
+// row's card body, on every route.
 // The row end sits on the side edge at the row's y; a source card below or above leaving from the port that faces
 // the card used to run behind it and curl round into the row.
 import test from "node:test";
@@ -115,6 +116,92 @@ test("PXD-3: curve and elbow arrows from a card to a row never cross the row's c
   }
 });
 
+test("PXD-3: a straight line from a narrower card below bends just outside the row card's corner and enters the row level", () => {
+  const small = { x: 50, y: 325, w: 200, h: 80 };
+  const an = rowEnd(small);
+  assert.equal(an.side, "right");
+  const args = { a: small, b: target, fromSide: "top", toSide: an.side, route: "straight", toPoint: an.point };
+  for (const fromSide of ["top", "right", "bottom", "left"]) {
+    assert.ok(inside(edgePath({ ...args, fromSide }), target) > 0, `no straight line from the ${fromSide} port reaches the row's edge`);
+  }
+  const geo = rowEndPath(args, "to");
+  assert.equal(inside(geo, target, 256), 0, geo.d);
+  assert.equal(inside(geo, small, 256), 0, geo.d);
+  assert.deepEqual(geo.end, an.point, "the row end stays on the side edge at the row's y");
+  assert.ok(geo.d.indexOf("C") < 0, "still straight legs");
+  assert.ok(Math.abs(geo.endAngle - Math.PI) < 1e-9, "the last leg enters the row level, heading into the card");
+});
+
+test("PXD-3: a minimum-size text card just above the card swings its curve wide enough to clear the corner", () => {
+  const text = { x: 110, y: -40, w: 60, h: 24 };
+  const an = rowEnd(text);
+  const args = { a: text, b: target, fromSide: "auto", toSide: an.side, route: "curve", toPoint: an.point };
+  assert.ok(inside(edgePath(args), target, 256) > 0);
+  const geo = rowEndPath(args, "to");
+  assert.equal(inside(geo, target, 256), 0, geo.d);
+  assert.deepEqual(geo.end, an.point);
+});
+
+// Placements around the target: a grid, plus cards close to each side (touching included).
+function* around(w, h, step) {
+  for (let x = -w - 260; x <= 560; x += step) for (let y = -h - 260; y <= 540; y += step) yield { x, y, w, h };
+  for (const g of [0, 6, 20]) {
+    for (let t = -w - 40; t <= target.w + 40; t += 40) { yield { x: t, y: -h - g, w, h }; yield { x: t, y: target.h + g, w, h }; }
+    for (let t = -h - 40; t <= target.h + 40; t += 40) { yield { x: -w - g, y: t, w, h }; yield { x: target.w + g, y: t, w, h }; }
+  }
+}
+const apart = (r) => !(r.x < target.x + target.w && target.x < r.x + r.w && r.y < target.y + target.h && target.y < r.y + r.h);
+
+test("PXD-3: text cards and minimum cards, near or far, on every route: the arrow to the row never crosses the row's card", () => {
+  for (const route of ["curve", "elbow", "straight"]) for (const [w, h] of [[60, 24], [200, 80], [240, 48]]) for (const rowTop of [40, 250]) {
+    for (const src of around(w, h, 80)) {
+      if (!apart(src)) continue;
+      for (const fromSide of ["top", "right", "bottom", "left", "auto"]) {
+        const an = rowEnd(src, rowTop);
+        const geo = rowEndPath({ a: src, b: target, fromSide, toSide: an.side, route, toPoint: an.point, offset: route === "curve" ? 18 : 0 }, "to");
+        if (inside(geo, target, 256)) assert.fail(`${route} from ${JSON.stringify(src)} side ${fromSide} row ${rowTop}: ${geo.d}`);
+        assert.deepEqual(geo.end, an.point);
+      }
+    }
+  }
+});
+
+test("PXD-3: both ends on rows: the path keeps clear of both cards, a row end moving to its card's far side when it must", () => {
+  const lower = { x: 0, y: 330, w: 260, h: 180 };
+  const up = blockAnchor({ rect: target, rowTop: 80, rowHeight: 20, bodyTop: 30, bodyBottom: 280, other: center(lower) });
+  const low = blockAnchor({ rect: lower, rowTop: 30, rowHeight: 20, bodyTop: 30, bodyBottom: 180, other: center(target) });
+  assert.equal(low.side, "right");
+  assert.equal(up.side, "left");
+  const args = { a: lower, b: target, fromSide: low.side, toSide: up.side, route: "curve", fromPoint: low.point, toPoint: up.point };
+  assert.ok(inside(edgePath(args), target) > 10, "the nearer sides face opposite ways and the curve runs through the upper card");
+  const geo = rowEndPath(args, "both");
+  assert.equal(inside(geo, target, 256) + inside(geo, lower, 256), 0, geo.d);
+  assert.equal(geo.fromSide, geo.toSide, "both ends on the same side: the arrow runs up the outside");
+  for (const [box, end] of [[lower, geo.start], [target, geo.end]]) {
+    assert.ok(end.x === box.x || end.x === box.x + box.w, "each end on a side edge");
+  }
+  assert.equal(geo.start.y, low.point.y);
+  assert.equal(geo.end.y, up.point.y);
+  for (const route of ["elbow", "straight"]) {
+    const g = rowEndPath({ ...args, route }, "both");
+    assert.equal(inside(g, target, 256) + inside(g, lower, 256), 0, `${route}: ${g.d}`);
+    assert.ok(g.points.every((p) => p.x <= 0) || g.points.every((p) => p.x >= 260), `${route} runs up one outer side: ${g.d}`);
+  }
+});
+
+test("PXD-3: both ends on rows, wherever the second card is: no route crosses either card", () => {
+  for (const route of ["curve", "elbow", "straight"]) for (const [w, h] of [[260, 180], [200, 80]]) for (const rowTop of [40, 250]) {
+    for (const src of around(w, h, 80)) {
+      if (!apart(src)) continue;
+      const a1 = blockAnchor({ rect: src, rowTop: 10, rowHeight: 20, bodyTop: 0, bodyBottom: h, other: center(target) });
+      const a2 = rowEnd(src, rowTop);
+      const geo = rowEndPath({ a: src, b: target, fromSide: a1.side, toSide: a2.side, route, fromPoint: a1.point, toPoint: a2.point }, "both");
+      const n = inside(geo, target, 256) + inside(geo, src, 256);
+      if (n) assert.fail(`${route} from ${JSON.stringify(src)} row ${rowTop}: ${geo.d}`);
+    }
+  }
+});
+
 test("PXD-3: a path that already clears the card, bends, a fixed far end, overlapping cards and no row end are left alone", () => {
   const right = { x: 600, y: 0, w: 260, h: 200 };
   const an = rowEnd(right);
@@ -165,6 +252,39 @@ test("PXD-3: edge layer: an arrow from a note below a page card to one of its ro
     layer.setMeasures(new Map());
     layer.update({ board, edgeUids: new Set(["e12"]), rects, zoom: 1 });
     assert.deepEqual(layer.geometryOf("e12").start, { x: 150, y: 325 }, "no row end: the stored top port again");
+  } finally { restore(); }
+});
+
+test("PXD-3: edge layer: a row-to-row arrow between stacked cards runs up the outside, and the moved end's inner segment follows it", () => {
+  const stub = createDomStub();
+  const doc = stub.document;
+  const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const over = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const labels = doc.createElement("div");
+  doc.body.append(svg, over, labels);
+  const layer = createEdgeLayer({ doc, svg, labelsLayer: labels, overlaySvg: over, blockText: () => "row" });
+  const restore = stub.install();
+  try {
+    const board = buildBoard(raw("b1", "{{[[diagram]]:B}}", plx({ v: 2 }), [
+      raw("c2", "[[Upper]]", plx({ x: 0, y: 0, w: 300, h: 280 }), [], 0),
+      raw("c3", "[[Lower]]", plx({ x: 0, y: 330, w: 260, h: 180 }), [], 1),
+      raw("ec", "Connections", plx({ type: "edges" }), [
+        raw("e32", "((rowL)) → ((rowU))", plx({ type: "edge", from: "c3", to: "c2", fromBlock: "rowL", toBlock: "rowU" })),
+      ], 2),
+    ]));
+    const rects = worldRects(board);
+    layer.render({ board, rects, zoom: 1 });
+    layer.setMeasures(new Map([["e32", {
+      from: { rowTop: 30, rowHeight: 20, bodyTop: 30, bodyBottom: 180, rowLeft: 20, rowRight: 240 },
+      to: { rowTop: 80, rowHeight: 20, bodyTop: 30, bodyBottom: 280, rowLeft: 20, rowRight: 260 },
+    }]]));
+    layer.update({ board, edgeUids: new Set(["e32"]), rects, zoom: 1 });
+    const geo = layer.geometryOf("e32");
+    assert.equal(inside(geo, rects.get("c2"), 256) + inside(geo, rects.get("c3"), 256), 0, geo.d);
+    assert.deepEqual(geo.start, { x: 260, y: 370 }, "the lower row leaves from its nearer (right) side");
+    assert.deepEqual(geo.end, { x: 300, y: 90 }, "the upper row's end moved to the right edge, at the row's y");
+    assert.ok(geo.toInner && geo.toInner.tip.x < 300 && geo.toInner.from.x < 300, "the inner segment runs in from the right edge");
+    assert.ok(geo.fromInner && geo.fromInner.tip.x < 260, "the lower row's inner segment is unchanged");
   } finally { restore(); }
 });
 

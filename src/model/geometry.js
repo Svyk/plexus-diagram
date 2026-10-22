@@ -281,7 +281,49 @@ const NORMALS = {
   left: { x: -1, y: 0 },
 };
 
-export function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0, via, fromPoint, toPoint } = {}) {
+// A polyline from `start` to `end`: its path, its midpoint along its length and the angles of its first and last legs.
+function polyGeo(pts, start, end, fromSide, toSide) {
+  const poly = pts.filter((p, i) => i === 0 || p.x !== pts[i - 1].x || p.y !== pts[i - 1].y);
+  const lens = [];
+  let total = 0;
+  for (let i = 1; i < poly.length; i++) {
+    const l = Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y);
+    lens.push(l);
+    total += l;
+  }
+  let mid = { ...start };
+  let acc = 0;
+  for (let i = 0; i < lens.length; i++) {
+    if (acc + lens[i] >= total / 2) {
+      const t = lens[i] === 0 ? 0 : (total / 2 - acc) / lens[i];
+      mid = {
+        x: poly[i].x + (poly[i + 1].x - poly[i].x) * t,
+        y: poly[i].y + (poly[i + 1].y - poly[i].y) * t,
+      };
+      break;
+    }
+    acc += lens[i];
+  }
+  const last = poly[poly.length - 1];
+  const prev = poly[poly.length - 2] || start;
+  const second = poly[1] || end;
+  return {
+    d: poly.map((p, i) => `${i === 0 ? "M" : "L"}${num(p.x)} ${num(p.y)}`).join(""),
+    start,
+    end,
+    mid,
+    points: poly,
+    startAngle: Math.atan2(second.y - start.y, second.x - start.x),
+    endAngle: Math.atan2(last.y - prev.y, last.x - prev.x),
+    fromSide,
+    toSide,
+  };
+}
+
+// `wrap` (PXD-3, rowEndPath only): elbow stubs that face the same way meet on the outer lane, not halfway between them.
+// `reach` (PXD-3, rowEndPath only) scales a curve's control arms and an elbow's stubs: longer to swing wide round a
+// card, shorter to fit the gap between two cards.
+export function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0, via, fromPoint, toPoint, wrap = false, reach = 1 } = {}) {
   if (fromSide === "auto" || toSide === "auto") {
     const auto = autoSides(a, b);
     if (fromSide === "auto") fromSide = auto.fromSide;
@@ -326,17 +368,17 @@ export function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "cu
   }
 
   if (route === "elbow") {
-    const STUB = 24;
+    const STUB = 24 * reach;
     const s1 = { x: start.x + nf.x * STUB, y: start.y + nf.y * STUB };
     const e1 = { x: end.x + nt.x * STUB, y: end.y + nt.y * STUB };
     const fromH = nf.y === 0;
     const toH = nt.y === 0;
     const pts = [start, s1];
     if (fromH && toH) {
-      const mx = (s1.x + e1.x) / 2;
+      const mx = wrap && nf.x === nt.x ? (nf.x > 0 ? Math.max(s1.x, e1.x) : Math.min(s1.x, e1.x)) : (s1.x + e1.x) / 2;
       pts.push({ x: mx, y: s1.y }, { x: mx, y: e1.y });
     } else if (!fromH && !toH) {
-      const my = (s1.y + e1.y) / 2;
+      const my = wrap && nf.y === nt.y ? (nf.y > 0 ? Math.max(s1.y, e1.y) : Math.min(s1.y, e1.y)) : (s1.y + e1.y) / 2;
       pts.push({ x: s1.x, y: my }, { x: e1.x, y: my });
     } else if (fromH) {
       pts.push({ x: e1.x, y: s1.y });
@@ -344,44 +386,10 @@ export function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "cu
       pts.push({ x: s1.x, y: e1.y });
     }
     pts.push(e1, end);
-    const poly = pts.filter((p, i) => i === 0 || p.x !== pts[i - 1].x || p.y !== pts[i - 1].y);
-    const lens = [];
-    let total = 0;
-    for (let i = 1; i < poly.length; i++) {
-      const l = Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y);
-      lens.push(l);
-      total += l;
-    }
-    let mid = { ...start };
-    let acc = 0;
-    for (let i = 0; i < lens.length; i++) {
-      if (acc + lens[i] >= total / 2) {
-        const t = lens[i] === 0 ? 0 : (total / 2 - acc) / lens[i];
-        mid = {
-          x: poly[i].x + (poly[i + 1].x - poly[i].x) * t,
-          y: poly[i].y + (poly[i + 1].y - poly[i].y) * t,
-        };
-        break;
-      }
-      acc += lens[i];
-    }
-    const last = poly[poly.length - 1];
-    const prev = poly[poly.length - 2] || start;
-    const second = poly[1] || end;
-    return {
-      d: poly.map((p, i) => `${i === 0 ? "M" : "L"}${num(p.x)} ${num(p.y)}`).join(""),
-      start,
-      end,
-      mid,
-      points: poly,
-      startAngle: Math.atan2(second.y - start.y, second.x - start.x),
-      endAngle: Math.atan2(last.y - prev.y, last.x - prev.x),
-      fromSide,
-      toSide,
-    };
+    return polyGeo(pts, start, end, fromSide, toSide);
   }
 
-  const k = Math.max(40, 0.4 * dist);
+  const k = Math.max(40, 0.4 * dist) * reach;
   let px = 0;
   let py = 0;
   if (offset && dist > 0) {
@@ -405,6 +413,250 @@ export function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "cu
     fromSide,
     toSide,
   };
+}
+
+// PXD-3: how long a path runs inside `box`, inset half a px so a path along its border or ending on it does not count.
+// A curve is flattened into CROSS_STEPS chords and each chord is clipped against the box (Liang-Barsky), so a clip
+// of a corner between two samples still counts.
+const CROSS_STEPS = 128;
+const CROSS_INSET = 0.5;
+function chordInside(p, q, x0, y0, x1, y1) {
+  const dx = q.x - p.x;
+  const dy = q.y - p.y;
+  let t0 = 0;
+  let t1 = 1;
+  for (const [d, room] of [[-dx, p.x - x0], [dx, x1 - p.x], [-dy, p.y - y0], [dy, y1 - p.y]]) {
+    if (d === 0) { if (room <= 0) return 0; continue; }
+    const r = room / d;
+    if (d < 0) { if (r > t1) return 0; if (r > t0) t0 = r; }
+    else { if (r < t0) return 0; if (r < t1) t1 = r; }
+  }
+  return t1 > t0 ? (t1 - t0) * Math.hypot(dx, dy) : 0;
+}
+function pathLine(geo) {
+  const pts = geo.points || [];
+  if (pts.length !== 4 || !geo.d.includes("C")) return pts;
+  const [p0, p1, p2, p3] = pts;
+  const line = [p0];
+  for (let i = 1; i <= CROSS_STEPS; i++) {
+    const t = i / CROSS_STEPS;
+    const u = 1 - t;
+    const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+    line.push({ x: a * p0.x + b * p1.x + c * p2.x + d * p3.x, y: a * p0.y + b * p1.y + c * p2.y + d * p3.y });
+  }
+  return line;
+}
+function lineInside(line, box, inset) {
+  if (!box) return 0;
+  const x0 = box.x + inset;
+  const y0 = box.y + inset;
+  const x1 = box.x + box.w - inset;
+  const y1 = box.y + box.h - inset;
+  if (x1 <= x0 || y1 <= y0) return 0;
+  let n = 0;
+  for (let i = 1; i < line.length; i++) n += chordInside(line[i - 1], line[i], x0, y0, x1, y1);
+  return n;
+}
+// A polyline without its first `head` and last `tail` px.
+function trimLine(line, head, tail) {
+  const cut = (pts, len) => {
+    if (!len) return pts;
+    for (let i = 1; i < pts.length; i++) {
+      const l = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      if (l >= len) {
+        const t = l ? len / l : 0;
+        return [{ x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * t, y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * t }, ...pts.slice(i)];
+      }
+      len -= l;
+    }
+    return [];
+  };
+  return cut([...cut(line, head)].reverse(), tail).reverse();
+}
+// How long a path runs along `box`'s border (within HUG px outside or CROSS_INSET inside), half hidden by the card
+// and lost in its outline. The first and last HUG_SKIP px of an end on the border do not count (an end leaves it
+// straight out), nor does a run under HUG_MIN px (a path passing a corner, or arriving at a slant: a line meeting
+// the border 9 degrees off spends 13 px within 2 px of it).
+const HUG = 2;
+const HUG_SKIP = 4;
+const HUG_MIN = 24;
+function lineHug(line, box) {
+  if (!box || line.length < 2) return 0;
+  const on = (p) => p.x >= box.x - CROSS_INSET && p.x <= box.x + box.w + CROSS_INSET && p.y >= box.y - CROSS_INSET && p.y <= box.y + box.h + CROSS_INSET
+    && Math.min(Math.abs(p.x - box.x), Math.abs(p.x - box.x - box.w), Math.abs(p.y - box.y), Math.abs(p.y - box.y - box.h)) <= CROSS_INSET;
+  const rest = trimLine(line, on(line[0]) ? HUG_SKIP : 0, on(line[line.length - 1]) ? HUG_SKIP : 0);
+  const run = lineInside(rest, box, -HUG) - lineInside(rest, box, CROSS_INSET);
+  return run >= HUG_MIN ? run : 0;
+}
+
+// PXD-3: an arrow with an end on a row (or cell) of a card. A row end sits on its card's side edge at the row's y,
+// on the side facing the other card, and leaves outward; the rest of the path can still run back through that card
+// (a card below leaving from its top port ran behind the card and curled round into the row). The path as stored
+// stays unless it crosses a row's card or runs along its border. Otherwise the candidate that crosses the row cards
+// least wins; with one row end, then the one whose row end stays on its nearer side; then the one that costs least:
+// the px it hides elsewhere (inside its own card, inside the other cards of an Around route, half of a run along a
+// row card's border, which the card half covers), plus STYLE_COST for a curve or an elbow drawn as a straight line
+// and, with both ends on rows, FLIP_COST for each row end moved to its card's far side. A stored path that keeps
+// clear of the row cards (re-routed for running along a border) is never swapped for one that crosses its own card
+// or the other cards more. Ties go to stock curve arms and elbow stubs before longer ones and longer before shorter,
+// a plain straight line before a bent one, a bent one with a wider corner gap first and then a shorter one, then
+// the earlier candidate. The candidates:
+//   the other end's sides (its stored side, then the row's side, so the arrow wraps round the outside of the card)
+//   or, with both ends on rows, the rows' sides as stored and moved; with longer or shorter curve arms and elbow
+//   stubs; for a straight line also one bent just past the row card's corner (16, 8 or 4 px out, to fit a narrow
+//   gap), with a short stub beside the row (between two rows the shortest such line, on whichever sides); for a
+//   curve or an elbow, a plain straight line when the cards are too close for it to fit.
+// Elbow stubs that face the same way meet on the outer lane. An Around route's computed bends are re-routed like a
+// straight line (`around` lists the cards it goes round); bends the user placed (`via` without `around`) are kept.
+// Overlapping cards are routed too: the overlap may leave some crossing that no path avoids.
+// `rowEnd` is "from", "to" or "both"; args as edgePath's, with each row end's point and side in them.
+const REACH = [1, 1.5, 2, 3, 4, 0.5, 0.25];
+const ELBOW_REACH = [1, 0.5, 0.25];
+const CORNER_GAP = 16;
+const FLIP_COST = 40;
+const STYLE_COST = 20;
+const flipSide = (box, point, side) => ({
+  side: side === "right" ? "left" : "right",
+  point: { x: side === "right" ? box.x : box.x + box.w, y: point.y },
+});
+// A row end's way out for a bent straight line, from the row outward: a stub beside the row, then optionally the
+// corner of its card on that side, `gap` px out (less than CORNER_GAP to fit between the card and one close by).
+const CORNER_GAPS = [CORNER_GAP, 8, 4];
+function rowLeg(box, point, side, corner, gap = CORNER_GAP) {
+  const x = side === "right" ? box.x + box.w + gap : box.x - gap;
+  const leg = [{ x, y: point.y }];
+  if (corner === "top") leg.push({ x, y: box.y - gap });
+  if (corner === "bottom") leg.push({ x, y: box.y + box.h + gap });
+  return leg;
+}
+export function rowEndPath(args, rowEnd) {
+  const geo = edgePath(args);
+  if (rowEnd !== "from" && rowEnd !== "to" && rowEnd !== "both") return geo;
+  const bends = Array.isArray(args.via) && args.via.length > 0;
+  if (bends && !Array.isArray(args.around)) return geo;
+  const { a, b } = args;
+  if (!a || !b) return geo;
+  const both = rowEnd === "both";
+  if (both ? !args.fromPoint || !args.toPoint : rowEnd === "to" ? !args.toPoint || args.fromPoint : !args.fromPoint || args.toPoint) return geo;
+  // Only cards a candidate can reach: a curve stays inside its control points' hull.
+  const span = unionRect(a, b);
+  const swing = Math.max(40, 0.4 * Math.hypot(span.w, span.h)) * Math.max(...REACH) + Math.abs(args.offset || 0) + CORNER_GAP;
+  const near = inflate(span, swing);
+  const obstacles = Array.isArray(args.around) ? args.around.filter((r) => r && rectsIntersect(r, near)) : [];
+  const rowBoxes = both ? [a, b] : [rowEnd === "to" ? b : a];
+  const ownBox = both ? null : rowEnd === "to" ? a : b;
+  // tier: 1 for a lone row end moved to its card's far side. rank: a curve's or an elbow's place in its reach list,
+  // 0 for a plain straight line, a bent one's corner gap (widest first) after those; then `len`, a bent line's length.
+  const rate = (g, tier, extra, rank, n, len = 0) => {
+    const line = pathLine(g);
+    let across = 0;
+    let hug = 0;
+    for (const box of rowBoxes) {
+      across += lineInside(line, box, CROSS_INSET);
+      hug += lineHug(line, box);
+    }
+    let other = lineInside(line, ownBox, CROSS_INSET);
+    for (const box of obstacles) other += lineInside(line, box, CROSS_INSET);
+    return { geo: g, across, hug, other, cost: extra + other + hug / 2, tier, rank, len, n };
+  };
+  let best = rate(geo, 0, 0, 0, -1);
+  if (!best.across && !best.hug) return geo;
+  const otherCap = best.across ? Infinity : best.other;
+  // Candidates draw their own line: an Around route's bends become a straight line's.
+  const route = bends ? "straight" : args.route;
+  const base = { ...args, via: undefined, route };
+  const reaches = route === "straight" ? [1] : route === "elbow" ? ELBOW_REACH : REACH;
+  let n = 0;
+  const consider = (g, tier, extra, rank, len) => {
+    const c = rate(g, tier, extra, rank, n++, len);
+    if (c.other > otherCap) return;
+    const kc = [c.across, c.tier, c.cost, c.rank, c.len, c.n];
+    const kb = [best.across, best.tier, best.cost, best.rank, best.len, best.n];
+    for (let i = 0; i < kc.length; i++) {
+      if (kc[i] !== kb[i]) {
+        if (kc[i] < kb[i]) best = c;
+        return;
+      }
+    }
+  };
+  const curves = (tier, extra, over) => {
+    for (let r = 0; r < reaches.length; r++) consider(edgePath({ ...base, ...over, wrap: true, reach: reaches[r] }), tier, extra, r);
+  };
+  // Each row end as stored and on its card's far side.
+  const ends = (key, box) => {
+    const point = args[key === "from" ? "fromPoint" : "toPoint"];
+    const side = args[key === "from" ? "fromSide" : "toSide"];
+    return [{ point, side, flip: 0 }, { ...flipSide(box, point, side), flip: 1 }];
+  };
+  const bent = (tier, from, to) => {
+    // from / to: { point, side, box, corner, gap } for a row end, { side, box } for the other end.
+    const start = from.point ?? sidePoint(from.box, from.side);
+    const end = to.point ?? sidePoint(to.box, to.side);
+    const out = from.point ? rowLeg(from.box, from.point, from.side, from.corner, from.gap) : [];
+    const back = to.point ? rowLeg(to.box, to.point, to.side, to.corner, to.gap).reverse() : [];
+    const pts = [start, ...out, ...back, end];
+    let len = 0;
+    for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    consider(polyGeo(pts, start, end, from.side, to.side), tier, 0, 1 + CORNER_GAPS.indexOf(from.gap ?? to.gap), len);
+  };
+  const CORNERS = ["top", "bottom"];
+  // Groups of candidates by what they give up, least first: [tier, least extra cost, run]. A later group can't beat
+  // a clear path from an earlier tier, or from its own tier at no more than its least cost.
+  const groups = [];
+  if (both) {
+    const fromEnds = ends("from", a);
+    const toEnds = ends("to", b);
+    const pairs = (flips) => fromEnds.flatMap((f) => toEnds.filter((t) => f.flip + t.flip === flips).map((t) => [f, t]));
+    for (const flips of [0, 1, 2]) {
+      groups.push([0, flips * FLIP_COST, () => {
+        for (const [f, t] of pairs(flips)) curves(0, flips * FLIP_COST, { fromPoint: f.point, fromSide: f.side, toPoint: t.point, toSide: t.side });
+      }]);
+      if (flips || route !== "straight") continue;
+      groups.push([0, 0, () => {
+        for (const [f, t] of [0, 1, 2].flatMap(pairs)) {
+          for (const gap of CORNER_GAPS) for (const fc of [null, ...CORNERS]) for (const tc of [null, ...CORNERS]) {
+            bent(0, { ...f, box: a, corner: fc, gap }, { ...t, box: b, corner: tc, gap });
+          }
+        }
+      }]);
+    }
+    if (route !== "straight") {
+      groups.push([0, STYLE_COST, () => {
+        for (const flips of [0, 1, 2]) for (const [f, t] of pairs(flips)) {
+          consider(edgePath({ ...base, route: "straight", fromPoint: f.point, fromSide: f.side, toPoint: t.point, toSide: t.side }), 0, STYLE_COST + flips * FLIP_COST, 0);
+        }
+      }]);
+    }
+  } else {
+    const freeKey = rowEnd === "to" ? "fromSide" : "toSide";
+    const rowKey = rowEnd === "to" ? "to" : "from";
+    const rowBox = rowBoxes[0];
+    const rowEnds = ends(rowKey, rowBox);
+    const freeSides = [...new Set([geo[freeKey], geo[rowKey === "to" ? "toSide" : "fromSide"], ...SIDES])];
+    const rowOver = (r) => (rowKey === "to" ? { toPoint: r.point, toSide: r.side } : { fromPoint: r.point, fromSide: r.side });
+    for (const r of rowEnds) {
+      groups.push([r.flip, 0, () => {
+        for (const side of freeSides) curves(r.flip, 0, { [freeKey]: side, ...rowOver(r) });
+        if (route !== "straight") return;
+        for (const gap of CORNER_GAPS) for (const side of SIDES) for (const corner of [null, ...CORNERS]) {
+          const row = { ...r, box: rowBox, corner, gap };
+          const free = { side, box: ownBox };
+          if (rowKey === "to") bent(r.flip, free, row);
+          else bent(r.flip, row, free);
+        }
+      }]);
+      if (route !== "straight") {
+        groups.push([r.flip, STYLE_COST, () => {
+          for (const side of freeSides) consider(edgePath({ ...base, route: "straight", [freeKey]: side, ...rowOver(r) }), r.flip, STYLE_COST, 0);
+        }]);
+      }
+    }
+  }
+  for (const [tier, floor, run] of groups) {
+    if (!best.across && (best.tier < tier || (best.tier === tier && best.cost <= floor))) break;
+    run();
+  }
+  return best.geo;
 }
 
 export function arrowHeadPath(point, angle, size) {

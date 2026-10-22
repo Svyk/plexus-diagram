@@ -252,6 +252,13 @@ function applyCamera(state) {
     if (g) {
       grid.style.backgroundSize = `${g.size}px ${g.size}px`;
       grid.style.backgroundPosition = `${g.x}px ${g.y}px`;
+      // The grid pattern's major lines take the live pitch too (the stylesheet's 120px fits zoom 1 at the origin only).
+      if (pattern === "grid") {
+        const mod = (v) => ((v % g.major) + g.major) % g.major;
+        setVar(grid, "--pxd-grid-major", `${g.major}px`);
+        setVar(grid, "--pxd-grid-major-x", `${mod(vp.x)}px`);
+        setVar(grid, "--pxd-grid-major-y", `${mod(vp.y)}px`);
+      }
     }
   }
 }

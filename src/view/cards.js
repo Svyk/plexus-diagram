@@ -2070,9 +2070,13 @@ export function createItemRenderer({
   const virtual = () => !virtualOff && (lastBoard?.items?.size || 0) > VIRTUAL_MIN;
   // C2. The overview tier of a big board is drawn on the view's underlay canvas (speed flag overviewCanvas): card
   // shells are neither built nor attached there. Sections stay DOM (keepAttached), and so do the selected, edited,
-  // mounted and focused cards. The queue waits until the tier is left.
+  // mounted and focused cards. With canvasPrebuild off the queue waits until the tier is left.
   let canvasOn = false;
   const canvasCards = () => canvasOn && virtual();
+  // PXD-6 (speed flag canvasPrebuild): the queue builds on the canvas tier too, on the background budget and detached,
+  // so the first zoom into the map band attaches shells instead of building them in 12 ms frame chunks (PhD main board
+  // live: 62 of 137 in-view cards 6 s after the zoom; the next two map visits built the other ~1,450 in the background).
+  const canvasPrebuild = () => { try { return speedOf().canvasPrebuild !== false; } catch { return false; } };
   // E2-1 (perf2): board cards stay real shells on the overview canvas tier, like sections: a click on one enters the
   // nested board there as it does on the DOM tiers (QA3: the canvas arm could not start a nested enter at overview).
   const keepOnCanvas = (item) => item?.type === "section" || (item?.type === "card" && item.kind === "board");
@@ -2267,9 +2271,11 @@ export function createItemRenderer({
   // so the far cards stay on the background budget. Returns true when the queue is empty.
   // While a burst holds shells, the chunk does nothing and the queue stays for the settle.
   const pumpChunk = ({ limit = 40, priority = false } = {}) => {
-    if (shellsHeld || canvasCards()) return false;
+    const onCanvas = canvasCards();
+    if (shellsHeld || (onCanvas && !canvasPrebuild())) return false;
     // Cover the queue before this chunk's shells exist. The matching call after the writes only hides an empty queue.
-    if (shellQueue.length) noteOverviewQueue();
+    // On the canvas tier the canvas draws the queued cards already, and a detached build changes nothing on it.
+    if (shellQueue.length && !onCanvas) noteOverviewQueue();
     const t0 = now();
     const built = [];
     let taken = 0;
@@ -2300,7 +2306,7 @@ export function createItemRenderer({
       if (taken && lastContent) paintOffscreen(lastContent.visibleRect);
     }
     if (pendingView && !pendingView.size) viewBuilt();
-    if (!shellQueue.length) noteOverviewQueue();
+    if (!shellQueue.length) { if (onCanvas) coverHeld = false; else noteOverviewQueue(); }
     if (built.length) noteShells();
     return shellQueue.length === 0;
   };
@@ -2352,7 +2358,11 @@ export function createItemRenderer({
   };
   const armShellPump = () => {
     if (!shellsLive || shellsHeld) return;
-    if (canvasCards()) { stopShellBg(); return; }
+    if (canvasCards()) {
+      stopShellBg();
+      if (canvasPrebuild() && shellQueue.length && typeof timers?.bgRun === "function") shellBg = timers.bgRun(() => pumpChunk(), { label: "shells", partMs: 4 });
+      return;
+    }
     stopShellBg();
     if (!shellQueue.length) return;
     if (priorityLeft > 0 && timers?.frame) {
@@ -6208,6 +6218,7 @@ export function createItemRenderer({
       stopShellBg();
       // The board cards still queued are built now (a handful); the canvas draws every other card.
       if (virtual()) for (const uid of shellQueue.filter((u) => keepOnCanvas(lastBoard?.items.get(u)))) ensureShell(uid);
+      armShellPump();
     }
     setZoom(zoom);
     closePeek();

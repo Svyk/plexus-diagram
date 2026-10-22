@@ -209,7 +209,7 @@ test("HEP-3: coarse pointers get a 44px grip and the fine grip stays 8px", () =>
   const css = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
   const coarse = css.slice(css.indexOf("@media (pointer: coarse)"));
   assert.ok(coarse.startsWith("@media (pointer: coarse)"));
-  assert.match(coarse, /\.pxd-root \.pxd-item\.pxd-item--page\.pxd-item--selected > \.pxd-grip\.pxd-grip--right/);
+  assert.match(coarse, /\.pxd-root \.pxd-item\.pxd-item--page\.pxd-item--selected \.pxd-grip\.pxd-grip--right/);
   // The coarse grip uses the unclamped screen scale: --pxd-inv-zoom is clamped and left a 17.6 px grip at 10% zoom (live).
   assert.match(coarse, /width:\s*calc\(44px \* var\(--pxd-screen-px, var\(--pxd-inv-zoom, 1\)\)\)/);
   assert.match(css, /\.pxd-grip--right \{[^}]*width:\s*calc\(8px \* var\(--pxd-inv-zoom, 1\)\)/);

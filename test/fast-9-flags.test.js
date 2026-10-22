@@ -76,6 +76,10 @@ const ALL_ON = {
   fsCover: true,
   zoomHeads: true,
   childEndMark: true,
+  quietTextarea: true,
+  zoomVarScope: true,
+  handlesWrap: true,
+  seedRows: true,
 };
 
 test("the panel has no speed-flags control, and bad JSON leaves the defaults (every flag on but edgeFingerprint, overviewCanvas, idlePark, quietBodies and sliceGrow)", () => {

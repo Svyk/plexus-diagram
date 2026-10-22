@@ -137,7 +137,7 @@
 
 /* Minimized: the header only. The stored size is kept; the grips and ports go. */
 .pxd-root .pxd-item--sticky.pxd-item--min > .pxd-item__body,
-.pxd-root .pxd-item--sticky.pxd-item--min > .pxd-grip {
+.pxd-root .pxd-item--sticky.pxd-item--min .pxd-grip {
   display: none;
 }
 

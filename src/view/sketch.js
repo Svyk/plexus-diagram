@@ -5,7 +5,7 @@
 // so those rects share an origin. Fullscreen drops that border.
 
 import { boundsOf, displayRects, routedEdge } from "../model/board.js";
-import { center, edgePath, fitViewport, lodFonts, lodTier, worldToScreen } from "../model/geometry.js";
+import { center, edgePath, fitViewport, invZoom, lodFonts, lodTier, screenPx, worldToScreen } from "../model/geometry.js";
 import { PALETTE, cssColor, hexColor } from "../model/schema.js";
 import { routeAround } from "../model/section6.js";
 
@@ -312,6 +312,9 @@ export function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORD
         layer.style.setProperty("--pxd-map-font", `${f.map}px`);
         layer.style.setProperty("--pxd-ui", String(f.ui));
         layer.style.setProperty("--pxd-overview-font", `${f.section}px`);
+        // The live root no longer carries these (zoomVarScope keeps them on its card layers).
+        layer.style.setProperty("--pxd-inv-zoom", String(invZoom(vp.zoom)));
+        layer.style.setProperty("--pxd-screen-px", String(screenPx(vp.zoom)));
       } catch { /* stub style */ }
     }
 

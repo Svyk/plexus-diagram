@@ -19493,7 +19493,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: false, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, zoomVarScope: true, handlesWrap: true, seedRows: true };
 }
 function parseSpeedFlags(raw) {
   const base2 = defaultSpeedFlags();
@@ -19947,7 +19947,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "zoomVarScope", "handlesWrap", "seedRows"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -30252,6 +30252,35 @@ var init_editor_keys = __esm({
   }
 });
 
+// src/view/quiet-textarea.js
+function isRoamTextarea(node2) {
+  return node2?.nodeType === 1 && String(node2.tagName || "").toUpperCase() === "TEXTAREA" && Boolean(node2.classList?.contains?.("rm-block-input"));
+}
+function quietTextarea(node2) {
+  if (!isRoamTextarea(node2) || quieted.has(node2)) return false;
+  let value = String(node2.defaultValue ?? "");
+  try {
+    Object.defineProperty(node2, "defaultValue", {
+      configurable: true,
+      enumerable: true,
+      get: () => value,
+      set: (next) => {
+        value = String(next);
+      }
+    });
+  } catch {
+    return false;
+  }
+  quieted.add(node2);
+  return true;
+}
+var quieted;
+var init_quiet_textarea = __esm({
+  "src/view/quiet-textarea.js"() {
+    quieted = /* @__PURE__ */ new WeakSet();
+  }
+});
+
 // src/view/cards.js
 function bodyStyleOf(doc) {
   const view = doc?.defaultView || globalThis;
@@ -31707,8 +31736,8 @@ function createItemRenderer({
     const target = boardRowTarget(uid, string);
     return target ? mountBoardRow(parent, cls, target) : renderRoot(parent, string, cls, uid, { plain: true });
   };
-  const buildPorts = (parent) => {
-    const wrap = el2("div", "pxd-ports", parent);
+  const buildPorts = (parent, cls = "pxd-ports") => {
+    const wrap = el2("div", cls, parent);
     for (const side2 of SIDES3) {
       const p = el2("div", `pxd-port pxd-port--${side2}`, wrap);
       p.dataset.side = side2;
@@ -31723,6 +31752,15 @@ function createItemRenderer({
       g.dataset.part = part;
       g.setAttribute("data-part", part);
     }
+  };
+  const buildHandles = (parent, gripsFirst = false) => {
+    if (speedOf().handlesWrap === false) {
+      if (gripsFirst) buildGrips(parent);
+      buildPorts(parent);
+      if (!gripsFirst) buildGrips(parent);
+      return;
+    }
+    buildGrips(buildPorts(parent, "pxd-handles"));
   };
   const paintThumb3 = (rec, item) => {
     if (typeof tableThumb !== "function" || item?.type === "section" || !rec?.body) return;
@@ -31784,8 +31822,7 @@ function createItemRenderer({
       rec.title = el2("div", "pxd-section__title", adopted);
       rec.note = el2("div", "pxd-section__note", adopted);
       for (const side2 of ["t", "r", "b", "l"]) el2("div", `pxd-section__edge pxd-section__edge--${side2}`, adopted);
-      buildGrips(adopted);
-      buildPorts(adopted);
+      buildHandles(adopted, true);
     } else if (adopted) {
       const kids = [...adopted.children || []];
       const header = kids.find((child) => child.classList?.contains("pxd-item__header")) || null;
@@ -31799,8 +31836,7 @@ function createItemRenderer({
       rec.body = body || el2("div", "pxd-item__body", adopted);
       rec.faced = Boolean(rec.body.firstChild);
       rec.thumbed = adopted.classList.contains("pxd-item--thumb");
-      buildPorts(adopted);
-      buildGrips(adopted);
+      buildHandles(adopted);
       if (item.kind === "page") armPageCaret(rec);
     } else if (item.type === "section") {
       const node2 = el2("div", "pxd-section", null);
@@ -31808,15 +31844,13 @@ function createItemRenderer({
       rec.title = el2("div", "pxd-section__title", node2);
       rec.note = el2("div", "pxd-section__note", node2);
       for (const side2 of ["t", "r", "b", "l"]) el2("div", `pxd-section__edge pxd-section__edge--${side2}`, node2);
-      buildGrips(node2);
-      buildPorts(node2);
+      buildHandles(node2, true);
     } else {
       const node2 = el2("div", `pxd-item pxd-item--${item.type}`, null);
       rec.el = node2;
       rec.header = el2("div", "pxd-item__header", node2);
       rec.body = el2("div", "pxd-item__body", node2);
-      buildPorts(node2);
-      buildGrips(node2);
+      buildHandles(node2);
       if (item.kind === "page") armPageCaret(rec);
     }
     if (item.type !== "section") paintThumb3(rec, item);
@@ -34206,15 +34240,29 @@ function createItemRenderer({
   };
   const PREVIEW_DEPTH = 6;
   const PREVIEW_CAP = 80;
+  const PREVIEW_SEED_ROWS = 4 * FIRST_SCREEN_MAX;
+  const seededRows = (item) => {
+    if (speedOf().seedRows === false) return null;
+    let got = null;
+    try {
+      got = host?.cachedPageOutline?.(item.target?.title || item.title, PREVIEW_SEED_ROWS);
+    } catch {
+      got = null;
+    }
+    return got?.exists && Array.isArray(got.blocks) ? got.blocks : null;
+  };
   const paintPagePreview = (rec, item) => {
     if (lod !== "detail" || item?.kind !== "page" || !rec?.body || speedOf().steadyRows === false) return false;
     if (mounted.has(rec.uid) || editing?.uid === rec.uid || item.collapsed || item.open === false) return false;
     if (rec.body.firstElementChild || rec.body.children?.length) return false;
-    const blocks = previewRows.get(item.title);
-    if (!blocks?.length || cardFocus.has(rec.uid)) return false;
+    if (cardFocus.has(rec.uid)) return false;
+    let blocks = previewRows.get(item.title);
+    if (!blocks?.length) blocks = seededRows(item);
+    if (!blocks) return false;
     const holder = el2("div", "pxd-item__page pxd-item__page--preview", rec.body);
     holder.setAttribute("aria-hidden", "true");
-    let left = firstScreenRows(rec) || 12;
+    const rows = firstScreenRows(rec) || 12;
+    let left = rows;
     const walk3 = (parent, list, depth) => {
       for (const c of list || []) {
         if (left <= 0) return;
@@ -34225,13 +34273,14 @@ function createItemRenderer({
         const line = el2("div", "pxd-row", row4);
         holdHeight(line, KID_ROW_H);
         const kids = childKids(c);
-        if (kids.length) el2("span", "pxd-row__fold", line);
+        if (kids.length || c.kids > 0) el2("span", "pxd-row__fold", line);
         el2("span", "pxd-outline__bullet", line);
         el2("div", "pxd-block__text pxd-block__plain", line).textContent = isHeavyRow(str3) ? "…" : plainText(str3, Infinity);
         if (kids.length && c.open !== false && depth < PREVIEW_DEPTH) walk3(el2("div", "pxd-block__children", row4), kids, depth + 1);
       }
     };
     walk3(holder, blocks, 0);
+    if (left === rows) el2("div", "pxd-item__placeholder", holder).textContent = "Empty page";
     return true;
   };
   const paintPage = (rec, holder, p) => {
@@ -36386,7 +36435,7 @@ function createItemRenderer({
     }, UNMOUNT_AFTER_MS, "unmount-due");
   };
   let lastContent = null;
-  let quieted = false;
+  let quieted2 = false;
   let editHeld = false;
   let freezeGen = 0;
   let freezeFrame = null;
@@ -36498,7 +36547,7 @@ function createItemRenderer({
         const start = now2();
         let n3 = 0;
         while (queue.length && (n3 === 0 || now2() - start < CHUNK_MS)) {
-          if (gen !== freezeGen || !quieted || disposed) return;
+          if (gen !== freezeGen || !quieted2 || disposed) return;
           const [uid, rec] = queue.shift();
           if (shells.get(uid) === rec) holdQuiet(rec, uid);
           n3 += 1;
@@ -36611,13 +36660,13 @@ function createItemRenderer({
   };
   const scheduleContent = (args) => {
     lastContent = args;
-    if (quieted) return;
+    if (quieted2) return;
     fillContent(args);
   };
   const quiet = (on) => {
     const next = Boolean(on);
     if (!next && editHeld) return;
-    if (next === quieted) {
+    if (next === quieted2) {
       if (next) {
         contentSched?.hold(true);
         freezeGen += 1;
@@ -36625,9 +36674,9 @@ function createItemRenderer({
       }
       return;
     }
-    quieted = next;
+    quieted2 = next;
     freezeGen += 1;
-    if (quieted) {
+    if (quieted2) {
       contentSched?.hold(true);
       freezeMounted();
       return;
@@ -36727,7 +36776,7 @@ function createItemRenderer({
           moved = true;
         }
       }
-      if (moved && lastContent && !quieted) fillContent({ ...lastContent, tier: lod, zoom: zoomCache });
+      if (moved && lastContent && !quieted2) fillContent({ ...lastContent, tier: lod, zoom: zoomCache });
       if (lod === "detail" && speedOf().steadyRows !== false) {
         let left = PREVIEW_CAP;
         for (const [uid, rec] of shells) {
@@ -37181,10 +37230,19 @@ function createItemRenderer({
     floor.cancel = frameLater(() => floorTick(e2));
     return true;
   };
+  const quietInput = (node2) => {
+    try {
+      if (speedOf().quietTextarea === false) return;
+    } catch {
+    }
+    quietTextarea(node2);
+  };
   const attachFloor = (e2) => {
-    const onIn = () => {
+    const onIn = (event) => {
       e2.ready = true;
+      quietInput(event?.target);
     };
+    if (e2.editor.contains?.(doc.activeElement)) quietInput(doc.activeElement);
     const onOut = (event) => {
       if (editing !== e2 || !e2.ready) return;
       const to = event.relatedTarget;
@@ -38125,7 +38183,7 @@ function createItemRenderer({
         if (rec && mounted.has(item.uid) && editing?.uid !== item.uid) unmountContent(item.uid);
       }
     }
-    if (changed2 && lastContent && !quieted) fillContent(lastContent);
+    if (changed2 && lastContent && !quieted2) fillContent(lastContent);
   };
   const onRegionReady = () => {
     bindRegionWatch();
@@ -38536,6 +38594,7 @@ var init_cards = __esm({
     init_buckets();
     init_table_cells();
     init_editor_keys();
+    init_quiet_textarea();
     init_card_children();
     SIDES3 = ["top", "right", "bottom", "left"];
     CHUNK_MS = 8;
@@ -44927,6 +44986,23 @@ function trimTree(node2, depth, budget) {
   }
   return out;
 }
+function previewTree(node2, depth, budget) {
+  const out = [];
+  if (depth < 1) return out;
+  for (const c of sortedKids2(node2)) {
+    if (budget.left <= 0) break;
+    budget.left--;
+    const folded = c[":block/open"] === false;
+    const kids = Array.isArray(c[":block/children"]) ? c[":block/children"].length : 0;
+    out.push({
+      uid: c[":block/uid"],
+      string: c[":block/string"] ?? "",
+      ...folded ? { open: false, kids } : {},
+      children: folded ? [] : previewTree(c, depth - 1, budget)
+    });
+  }
+  return out;
+}
 function highlightTreeNodes(node2) {
   const out = [];
   for (const child of sortedKids2(node2)) {
@@ -47403,6 +47479,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const res = pull(BOARD_PATTERN, [":node/title", title]);
       if (!res || !res[":block/uid"]) return { uid: null, exists: false, blocks: [] };
       return { uid: res[":block/uid"], exists: true, blocks: trimTree(res, 64, { left: limit }) };
+    },
+    // PXD-4: the outline a page card's preview paints before any card of that page mounted this session: the page as
+    // the board's ref read left it in the session cache. Never reads Roam; null when the page is not cached.
+    cachedPageOutline(title, limit = 48) {
+      const node2 = cache.pageOf(String(title ?? ""));
+      if (!node2?.[":block/uid"]) return null;
+      return { uid: node2[":block/uid"], exists: true, blocks: previewTree(node2, 8, { left: limit }) };
     },
     // One pull watch on a page, for a page card on screen. The caller releases it.
     // A page already inside an open board shares that board's watch instead of adding another.
@@ -66851,6 +66934,13 @@ function boardZoom(root, win2 = root?.ownerDocument?.defaultView || globalThis) 
   }
   if (!raw) {
     try {
+      raw = root?.querySelector?.(".pxd-items")?.style?.getPropertyValue?.("--pxd-screen-px") || "";
+    } catch {
+      raw = "";
+    }
+  }
+  if (!raw) {
+    try {
       raw = win2?.getComputedStyle?.(root)?.getPropertyValue?.("--pxd-screen-px") || "";
     } catch {
       raw = "";
@@ -85326,6 +85416,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       node2.setAttribute("data-end", end);
       node2.dataset.end = end;
       node2.setAttribute("data-tip", "edge.child");
+      styleZoomReader(node2);
       marks[end] = node2;
     }
     const r = CHILD_R * screenPx(zoom);
@@ -85499,9 +85590,25 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       c.setAttribute("r", "6");
       c.setAttribute("data-end", end);
       c.dataset.end = end;
+      styleZoomReader(c);
       rec.ends[end] = c;
     }
     placeEnds(rec, rec.geo);
+  };
+  let zoomVars = null;
+  const styleZoomReader = (node2) => {
+    if (!zoomVars) return;
+    for (const [name, value] of zoomVars) node2.style?.setProperty?.(name, value);
+  };
+  const setZoomVars = (vars) => {
+    zoomVars = vars ? Object.entries(vars).filter(([, value]) => value != null) : null;
+    for (const rec of edgeEls.values()) {
+      if (rec.ends) {
+        styleZoomReader(rec.ends.from);
+        styleZoomReader(rec.ends.to);
+      }
+      if (rec.childMarks) for (const node2 of Object.values(rec.childMarks)) styleZoomReader(node2);
+    }
   };
   const dimmed = (e2) => Boolean(focusSet) && !(focusSet.has(e2.from) && focusSet.has(e2.to));
   const housedEnd = (board2, edge, end) => {
@@ -86239,6 +86346,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     render,
     update,
     resizeHeads,
+    setZoomVars,
     placedZoom: () => zoomCache,
     reveal,
     cull,
@@ -97292,6 +97400,13 @@ function buildBoardView(onFail, {
   const labelsLayer = el2("div", "pxd-labels", world);
   const itemsLayer = el2("div", "pxd-items", world);
   const overlaySvg = svg("pxd-overlay", world);
+  const zoomVarScope = (() => {
+    try {
+      return notedSpeedFlags().zoomVarScope !== false;
+    } catch {
+      return true;
+    }
+  })();
   let inboxCtl = null;
   const emptyHint = el2("div", "pxd-empty pxd-chrome", root);
   const resizeGrip = el2("div", "pxd-resize-grip pxd-chrome", root);
@@ -100715,11 +100830,17 @@ function buildBoardView(onFail, {
   };
   const mapThreshold = () => zoomThreshold(board2()?.plexus?.lodZoom, setting("map-zoom", "0.45"));
   const rootPainted = /* @__PURE__ */ new Map();
+  const zoomVarHosts = zoomVarScope ? [sectionsLayer, itemsLayer] : [root];
+  const zoomVarValues = /* @__PURE__ */ new Map();
+  const paintZoomVar = (name, value) => {
+    zoomVarValues.set(name, value);
+    for (const host2 of zoomVarHosts) host2.style.setProperty(name, value);
+  };
   const paintRoot = (name, value) => {
     if (rootPainted.get(name) === value) return;
     rootPainted.set(name, value);
     if (name === "data-pxd-lod") root.setAttribute(name, value);
-    else root.style.setProperty(name, value);
+    else paintZoomVar(name, value);
   };
   const flipStats = { flips: 0, attachedAtFlip: [] };
   let paintedTier = null;
@@ -100743,8 +100864,9 @@ function buildBoardView(onFail, {
   const paintInvZoom = () => {
     if (vp.zoom === invZoomAt) return;
     invZoomAt = vp.zoom;
-    root.style.setProperty("--pxd-inv-zoom", String(invZoom(vp.zoom)));
-    root.style.setProperty("--pxd-screen-px", String(screenPx(vp.zoom)));
+    paintZoomVar("--pxd-inv-zoom", String(invZoom(vp.zoom)));
+    paintZoomVar("--pxd-screen-px", String(screenPx(vp.zoom)));
+    if (zoomVarScope) edgesR.setZoomVars?.({ "--pxd-inv-zoom": zoomVarValues.get("--pxd-inv-zoom"), "--pxd-screen-px": zoomVarValues.get("--pxd-screen-px") });
   };
   const applyLod = () => {
     const was = tier;
@@ -106364,6 +106486,7 @@ ${url}`;
       });
       node2.append(button3);
     }
+    if (!shell && zoomVarScope) for (const [name, value] of zoomVarValues) node2.style.setProperty(name, value);
     (shell || root).append(node2);
     const onDown = (ev) => {
       if (node2.contains?.(ev.target)) return;
@@ -109684,6 +109807,8 @@ function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER, loo
         layer.style.setProperty("--pxd-map-font", `${f.map}px`);
         layer.style.setProperty("--pxd-ui", String(f.ui));
         layer.style.setProperty("--pxd-overview-font", `${f.section}px`);
+        layer.style.setProperty("--pxd-inv-zoom", String(invZoom(vp.zoom)));
+        layer.style.setProperty("--pxd-screen-px", String(screenPx(vp.zoom)));
       } catch {
       }
     }
@@ -109785,7 +109910,7 @@ function rootVars(root) {
 }
 var skipChrome = (el2) => {
   const cls = typeof el2.getAttribute === "function" ? String(el2.getAttribute("class") || "") : "";
-  return /(^|\s)(pxd-ports|pxd-grip|pxd-port|pxd-item__editor|pxd-ctx|pxd-tip|pxd-table-thumb)(\s|$)/.test(cls);
+  return /(^|\s)(pxd-ports|pxd-handles|pxd-grip|pxd-port|pxd-item__editor|pxd-ctx|pxd-tip|pxd-table-thumb)(\s|$)/.test(cls);
 };
 function captureBoardSnap(args = {}) {
   const capture = createBoardSnapCapture(args);

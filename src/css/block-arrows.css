@@ -271,3 +271,8 @@ body.roam-body.dark .pxd-root .pxd-row.pxd-row--linked:hover,
   vertical-align: middle;
   background: var(--pxd-kids-dot, var(--pxd-accent));
 }
+
+/* PXD-5: a card held over another card's child row lets the lit row show through it. */
+.pxd-root .pxd-item.pxd-item--rowdrop {
+  opacity: 0.45;
+}

@@ -8252,7 +8252,8 @@ function buildBoardView(onFail, {
     onHover: (uid) => {
       itemsR.setHover(uid);
       const kind = ctl.gestureKind?.();
-      itemsR.dropRevealOn?.(kind === "connect" || kind === "edge-end" ? uid : null);
+      // A card drag's hover is a board or day target; its unfold comes through dropReveal.
+      if (kind !== "move") itemsR.dropRevealOn?.(kind === "connect" || kind === "edge-end" ? uid : null);
       pdfHoverUid = typeof uid === "string" ? uid : "";
       syncPdfFlip();
     },
@@ -8402,8 +8403,23 @@ function buildBoardView(onFail, {
       }
       edgesR.setTempWire(fromPoint ? { ...spec, fromPoint } : spec, boxes, vp.zoom);
     },
-    blockTarget: (pt) => blockTargetAt(pt),
+    blockTarget: (pt, opts) => blockTargetAt(pt, opts),
     clearBlockTarget: () => clearBlockTarget(),
+    // PXD-5: a card held over a folded card with children unfolds it (the arrow's hover wait); null folds it back.
+    dropReveal: (uid) => itemsR.dropRevealOn?.(notedSpeedFlags().cardRowDrop === false ? null : uid),
+    revealedRects: (rects) => (notedSpeedFlags().cardRowDrop === false ? null : itemsR.revealedRects?.(rects) || null),
+    rowDropGhost: (uids) => itemsR.ghostMoving?.(uids),
+    // The hover unfold stays (session-only) so the new ref shows; the gesture end right after would fold it back.
+    refIntoRow: async (uids, cardUid, rowUid) => {
+      itemsR.keepDropReveal?.(cardUid);
+      const res = await session.refIntoRow?.(uids, rowUid);
+      if (!res || disposed) return;
+      let text = "";
+      try { text = String(host?.blockString?.(rowUid) ?? "").trim(); } catch { /* row gone */ }
+      if (text.length > 40) text = `${text.slice(0, 39)}…`;
+      const what = res.added === 1 ? "a ref" : `${res.added} refs`;
+      chrome.toast.show({ message: text ? `Added ${what} under “${text}”` : `Added ${what} under the row`, action: { label: "Undo", run: () => res.undo() } });
+    },
     revealBlockEnd: (edgeUid, end) => revealBlockEnd(edgeUid, end),
     childEndOf: (edgeUid) => childEndOf(edgeUid),
     openOutside: (uid) => openOutside(uid),
@@ -8595,14 +8611,27 @@ function buildBoardView(onFail, {
     targetEl.classList.remove(targetCls);
     targetEl = null;
   };
-  const blockTargetAt = (pt) => {
+  // PXD-5 rowsOnly: a held card takes a child row only (no page title, table cell, region or pin). `exclude` holds the
+  // dragged cards, which sit under the pointer above the target.
+  const blockTargetAt = (pt, { rowsOnly = false, exclude = null } = {}) => {
     clearBlockTarget();
     if (!pt || typeof doc.elementsFromPoint !== "function") return null;
+    if (rowsOnly && notedSpeedFlags().cardRowDrop === false) return null;
     for (const node of doc.elementsFromPoint(pt.x, pt.y) || []) {
       const card = node.closest?.(".pxd-item");
       if (!card) continue;
       if (card.closest?.(".pxd-root") !== root) return null;
       const uid = card.dataset?.uid || card.getAttribute?.("data-uid");
+      if (exclude?.has(uid)) continue;
+      if (rowsOnly) {
+        if (isTableCard(card) || cellElementOf(node)) return null;
+        const row = node.closest?.("[data-pxd-row]");
+        if (!row || !card.contains(row) || row.closest?.(".pxd-item__editor")) return null;
+        targetEl = row;
+        targetCls = "pxd-row--target";
+        targetEl.classList.add(targetCls);
+        return { uid, row: row.getAttribute?.("data-pxd-row") || row.dataset?.pxdRow || null, header: false };
+      }
       if (isTableCard(card)) {
         const cell = cellUidOf(node, { pullTree: host?.pullTree });
         targetEl = cell ? cellElementOf(node) : null;
@@ -10119,6 +10148,8 @@ function buildBoardView(onFail, {
   subs.push(session.on("links", () => { if (disposed || suspended) return; dirty.links = true; schedule(); }));
   subs.push(session.on("sync", (state) => { if (disposed || suspended) return; chrome.toolbar.setSync(state); }));
   subs.push(session.on("toast", (t) => { if (disposed || suspended) return; chrome.toast.show(t); }));
+  // PXD-5: a ref is about to land under this row. A block card reads its rows from outside the board, so it watches it.
+  subs.push(session.on("rowref", (rowUid) => { if (disposed || suspended) return; itemsR.followRefRows?.(rowUid); }));
   tableCtl = mountTable({
     doc,
     root,

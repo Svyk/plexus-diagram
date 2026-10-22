@@ -1364,6 +1364,8 @@ export function createItemRenderer({
     rec.pageUnwatch = null;
     try { rec.blockUnwatch?.(); } catch { /* already off */ }
     rec.blockUnwatch = null;
+    try { rec.refRowsOff?.(); } catch { /* already off */ }
+    rec.refRowsOff = null;
     try { rec.authorUnwatch?.(); } catch { /* already off */ }
     rec.authorUnwatch = null;
     try { rec.contentUnwatch?.(); } catch { /* already off */ }
@@ -3059,6 +3061,25 @@ export function createItemRenderer({
     }, DROP_PEEK_MS);
     dropReveal = entry;
   };
+  // PXD-5: a card dropped on a revealed row leaves the target unfolded (session-only, like the zoom chip), so the new
+  // ref shows. The gesture end no longer folds it back.
+  const keepDropReveal = (uid) => {
+    if (!dropReveal || dropReveal.uid !== uid) return;
+    dropReveal.timer?.();
+    dropReveal = null;
+  };
+  // PXD-5: the held cards turn see-through while a child row under them is the drop target. null clears.
+  let ghosted = [];
+  const ghostMoving = (uids) => {
+    for (const el of ghosted) el.classList.remove("pxd-item--rowdrop");
+    ghosted = [];
+    for (const uid of uids || []) {
+      const rec = shells.get(uid);
+      if (!rec) continue;
+      rec.el.classList.add("pxd-item--rowdrop");
+      ghosted.push(rec.el);
+    }
+  };
   // The card block itself has no child row. A child waits until its row is actually in the DOM.
   const unfoldForFocus = (cardUid, blockUid) => {
     if (!cardUid) return false;
@@ -3091,6 +3112,20 @@ export function createItemRenderer({
     const h = revealHeight(item, shown.h);
     if (!(h > shown.h)) return shown;
     return { ...shown, h };
+  };
+  // PXD-5: an unfolded card is drawn taller than its hit rect (all its rows sit below a collapsed card's header). A card
+  // drag hit-tests these boxes, or the rows below the stored height could not take the drop. Only taller cards are in it.
+  const revealedRects = (rects) => {
+    const out = new Map();
+    for (const uid of revealCards) {
+      const item = lastBoard?.items.get(uid);
+      const rect = rects?.get(uid);
+      const rec = shells.get(uid);
+      if (!item || !rect || !rec || rec.peekH > 0) continue;
+      const h = revealHeight(item, shownRect(uid, rect).h);
+      if (h > rect.h) out.set(uid, { ...rect, h });
+    }
+    return out;
   };
   const stepFocus = () => {
     if (disposed || cardFocus.size === 0) return false;
@@ -5327,6 +5362,45 @@ export function createItemRenderer({
     };
   };
 
+  // PXD-5: a block card reads its source's rows once at mount, and its watch follows the source's own string. A row
+  // that took a card drop is watched as well, so the new ref, its undo and later edits under that row repaint the card.
+  // rec.refRows outlives a remount; the watches are re-armed with the content.
+  const armRefRows = (rec) => {
+    if (disposed || rec.refRowsOff || !rec.refRows?.size || typeof host?.watchBlock !== "function") return;
+    let pending = null;
+    const offs = [];
+    for (const row of rec.refRows) {
+      try {
+        const off = host.watchBlock(row, () => {
+          if (pending) return;
+          pending = later(() => {
+            pending = null;
+            if (!disposed && shells.get(rec.uid) === rec) remountCard(rec);
+          }, BLOCK_REFRESH_MS);
+        });
+        if (typeof off === "function") offs.push(off);
+      } catch { /* no watch: the rows refresh on the next mount */ }
+    }
+    rec.refRowsOff = () => {
+      rec.refRowsOff = null;
+      pending?.();
+      pending = null;
+      for (const off of offs) { try { off(); } catch { /* already off */ } }
+    };
+  };
+  // The session announces the row before it writes a ref under it. Every mounted block card showing that row follows it.
+  const followRefRows = (rowUid) => {
+    if (disposed || !rowUid) return;
+    for (const [uid, rec] of shells) {
+      if (!rec.blockUnwatch || lastBoard?.items.get(uid)?.kind !== "block") continue;
+      if (rec.refRows?.has(rowUid) || !rec.el?.querySelector?.(`[data-pxd-row="${rowUid}"]`)) continue;
+      if (!rec.refRows) rec.refRows = new Set();
+      rec.refRows.add(rowUid);
+      rec.refRowsOff?.();
+      armRefRows(rec);
+    }
+  };
+
   const mountContentBody = (rec, item) => {
     rec.pullGen = (rec.pullGen || 0) + 1;
     const gen = rec.pullGen;
@@ -5519,6 +5593,7 @@ export function createItemRenderer({
           apply(tree, true);
         }
         armBlockWatch(rec, item);
+        armRefRows(rec);
       }
     } else if (isQueryString(item.string) && host?.renderBlock) {
       budget.roots.push(mountQuery(body, item.uid, item.string));
@@ -7692,6 +7767,7 @@ export function createItemRenderer({
     unfoldForFocus,
     rowMounted,
     cardWorldRect,
+    revealedRects,
     stepFocus,
     cancelCardPeek,
     closeCardPeek,
@@ -7707,6 +7783,9 @@ export function createItemRenderer({
     setSelection,
     setHover,
     dropRevealOn,
+    keepDropReveal,
+    ghostMoving,
+    followRefRows,
     enterEdit,
     exitEdit,
     editingUid: () => editing?.uid ?? null,

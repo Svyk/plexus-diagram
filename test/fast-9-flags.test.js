@@ -77,6 +77,8 @@ const ALL_ON = {
   zoomHeads: true,
   childEndMark: true,
   quietTextarea: true,
+  zoomVarScope: true,
+  handlesWrap: true,
   canvasPrebuild: true,
 };
 

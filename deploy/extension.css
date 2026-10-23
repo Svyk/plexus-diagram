@@ -6499,6 +6499,142 @@ body.roam-body.dark .pxd-root {
   outline-offset: 2px;
 }
 
+/* PXD-9 follow tray: the "Following (N)" pill, the side drawer of source items waiting to be placed, and the
+   "left the source" mark on a card. Colors come from the board tokens, so dark mode follows. */
+
+.pxd-follow {
+  position: absolute;
+  left: 12px;
+  bottom: 134px;
+  z-index: 30;
+  padding: 4px 12px;
+  color: var(--pxd-text, inherit);
+  background: var(--pxd-chrome-bg, #fff);
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pxd-follow.pxd-follow--new { border-color: var(--pxd-accent, #0d9488); }
+
+.pxd-follow__panel {
+  position: absolute;
+  top: 56px;
+  right: 64px;
+  bottom: 56px;
+  z-index: 31;
+  width: 320px;
+  max-width: calc(100% - 96px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  color: var(--pxd-text, inherit);
+  background: var(--pxd-chrome-bg, #fff);
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 8px;
+  box-shadow: var(--pxd-shadow, 0 4px 12px rgba(0, 0, 0, 0.2));
+  font-size: 12px;
+}
+
+.pxd-follow__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.pxd-follow__title { font-weight: 600; overflow-wrap: anywhere; }
+.pxd-follow__since { color: var(--pxd-accent, #0d9488); }
+.pxd-follow__note,
+.pxd-follow__count,
+.pxd-follow__crumb,
+.pxd-follow__empty { color: var(--pxd-muted, #5f6b7c); }
+.pxd-follow__crumb { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pxd-follow__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 2px 0 4px;
+}
+
+.pxd-follow__list { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+.pxd-follow__list--left { flex: 0 1 auto; max-height: 30%; }
+
+.pxd-follow__section {
+  padding-top: 6px;
+  font-weight: 600;
+  border-top: 1px solid var(--pxd-border, #d0d7de);
+}
+
+.pxd-follow__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border-top: 1px solid var(--pxd-border, #d0d7de);
+  cursor: grab;
+}
+
+.pxd-follow__row--left { cursor: default; }
+.pxd-follow__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pxd-follow__new {
+  margin-right: 6px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--pxd-accent-soft, rgba(13, 148, 136, 0.12));
+  color: var(--pxd-accent, #0d9488);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.pxd-follow__acts { display: flex; gap: 4px; }
+
+.pxd-follow__place,
+.pxd-follow__skip,
+.pxd-follow__all,
+.pxd-follow__show,
+.pxd-follow__dismiss,
+.pxd-follow__delete,
+.pxd-follow__close {
+  padding: 0 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pxd-follow__close { padding: 0 6px; border-color: transparent; }
+.pxd-follow__all:disabled { opacity: 0.45; cursor: default; }
+
+.pxd-root .pxd-item.pxd-item--left {
+  outline: 2px dashed var(--pxd-muted, #5f6b7c);
+  outline-offset: 2px;
+}
+
+.pxd-root .pxd-item.pxd-item--left::after {
+  content: "Left the source";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: var(--pxd-chrome-bg, #fff);
+  color: var(--pxd-muted, #5f6b7c);
+  border: 1px solid var(--pxd-border, #d0d7de);
+  font-size: 11px;
+  line-height: 16px;
+  pointer-events: none;
+}
+
 /* MEM-1. Halo popover. A border, and the same surface as other popovers. */
 
 .pxd-root.pxd-halo {

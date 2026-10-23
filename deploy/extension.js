@@ -111,8 +111,8 @@ function panToShow(vp, size, rect, { pad: pad2 = 24 } = {}) {
   const zoom0 = Number(vp?.zoom);
   const width = Number(size?.width);
   const height = Number(size?.height);
-  const same2 = { x: Number(vp?.x) || 0, y: Number(vp?.y) || 0, zoom: zoom0 > 0 ? zoom0 : 1, moved: false };
-  if (!vp || !(zoom0 > 0) || !(width > 0) || !(height > 0) || !rect || !(Number(rect.w) > 0) || !(Number(rect.h) > 0)) return same2;
+  const same3 = { x: Number(vp?.x) || 0, y: Number(vp?.y) || 0, zoom: zoom0 > 0 ? zoom0 : 1, moved: false };
+  if (!vp || !(zoom0 > 0) || !(width > 0) || !(height > 0) || !rect || !(Number(rect.w) > 0) || !(Number(rect.h) > 0)) return same3;
   const view = visibleWorldRect(vp, size, 0);
   const padW = pad2 / zoom0;
   const padH = pad2 / zoom0;
@@ -688,16 +688,16 @@ function distributeRects(list, axis2) {
   const h = axis2 === "h";
   const pos = h ? "x" : "y";
   const dim = h ? "w" : "h";
-  const sorted = [...list].sort((p, q2) => p[pos] - q2[pos]);
-  if (sorted.length < 3) return sorted.map((r) => ({ uid: r.uid, x: r.x, y: r.y }));
-  const first = sorted[0];
-  const last = sorted[sorted.length - 1];
+  const sorted2 = [...list].sort((p, q2) => p[pos] - q2[pos]);
+  if (sorted2.length < 3) return sorted2.map((r) => ({ uid: r.uid, x: r.x, y: r.y }));
+  const first = sorted2[0];
+  const last = sorted2[sorted2.length - 1];
   const span = last[pos] + last[dim] - first[pos];
-  const total = sorted.reduce((s, r) => s + r[dim], 0);
-  const gap = (span - total) / (sorted.length - 1);
+  const total = sorted2.reduce((s, r) => s + r[dim], 0);
+  const gap = (span - total) / (sorted2.length - 1);
   let cursor = first[pos];
-  return sorted.map((r, i) => {
-    const p = i === sorted.length - 1 ? last[pos] : cursor;
+  return sorted2.map((r, i) => {
+    const p = i === sorted2.length - 1 ? last[pos] : cursor;
     cursor += r[dim] + gap;
     return h ? { uid: r.uid, x: p, y: r.y } : { uid: r.uid, x: r.x, y: p };
   });
@@ -1253,16 +1253,16 @@ function cleanVia(points) {
 }
 function normalizeEdge(plexus) {
   const p = isObject(plexus) ? plexus : {};
-  const pick2 = (v, list, def) => list.includes(v) ? v : def;
+  const pick3 = (v, list, def) => list.includes(v) ? v : def;
   const via = cleanVia(p.via);
   return {
     from: typeof p.from === "string" ? p.from : "",
     to: typeof p.to === "string" ? p.to : "",
-    fromSide: pick2(p.fromSide, SIDES2, EDGE_DEFAULTS.fromSide),
-    toSide: pick2(p.toSide, SIDES2, EDGE_DEFAULTS.toSide),
-    dir: pick2(p.dir, DIRS, EDGE_DEFAULTS.dir),
-    route: pick2(p.route, ROUTES, EDGE_DEFAULTS.route),
-    dash: pick2(p.dash, DASHES, EDGE_DEFAULTS.dash),
+    fromSide: pick3(p.fromSide, SIDES2, EDGE_DEFAULTS.fromSide),
+    toSide: pick3(p.toSide, SIDES2, EDGE_DEFAULTS.toSide),
+    dir: pick3(p.dir, DIRS, EDGE_DEFAULTS.dir),
+    route: pick3(p.route, ROUTES, EDGE_DEFAULTS.route),
+    dash: pick3(p.dash, DASHES, EDGE_DEFAULTS.dash),
     weight: EDGE_WEIGHTS.includes(p.weight) ? p.weight : EDGE_DEFAULTS.weight,
     color: styleColor(p.color),
     ...blockUid(p.fromBlock) ? { fromBlock: p.fromBlock } : {},
@@ -4225,7 +4225,9 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         content: type === "section" ? [] : cardKids,
         // Regions and pins sit in content, which can change in place. This string is fixed at build, so the diff sees them.
         ...kind === "image" || kind === "pdf" ? { hitsKey: endpointHitsKey(cardKids) } : {},
-        ...openKey ? { openKey } : {}
+        ...openKey ? { openKey } : {},
+        // PXD-9: the source a placed card came from (its follow key). Only such cards can be marked "left the source".
+        ...typeof cplexus?.src === "string" && cplexus.src ? { src: cplexus.src } : {}
       };
       items.set(cuid, item);
       preorder.push(cuid);
@@ -4528,7 +4530,7 @@ function sectionFitPlan(board2, rects, touchedUids, {
   parentOf = (u) => board2.items.get(u)?.parentUid
 } = {}) {
   const work = /* @__PURE__ */ new Map();
-  const same2 = (a, b) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01 && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01;
+  const same3 = (a, b) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01 && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01;
   for (const touched of touchedUids) {
     let cur = touched;
     for (let guard = 0; guard < 256; guard++) {
@@ -4540,7 +4542,7 @@ function sectionFitPlan(board2, rects, touchedUids, {
       const childRect = work.get(cur) ?? rects.get(cur);
       if (!secRect || !childRect) break;
       const need2 = unionRect2(secRect, inflate(childRect, pad2));
-      if (same2(need2, secRect)) break;
+      if (same3(need2, secRect)) break;
       work.set(pid, need2);
       cur = pid;
     }
@@ -4578,10 +4580,10 @@ function readingOrder(board2, rects) {
   });
   const groups2 = [];
   const visit = (parent, uids) => {
-    const sorted = byPos(uids);
-    if (!sorted.length) return;
-    groups2.push({ parent, uids: sorted });
-    for (const uid of sorted) {
+    const sorted2 = byPos(uids);
+    if (!sorted2.length) return;
+    groups2.push({ parent, uids: sorted2 });
+    for (const uid of sorted2) {
       const item = board2.items.get(uid);
       if (item?.type === "section") visit(uid, item.members);
     }
@@ -4747,14 +4749,14 @@ function diffBoards(prev, next) {
     }
     return { structural: true, dirty: dirty2 };
   }
-  const same2 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const same3 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const body = (item) => {
     const { content, ...rest } = item;
     return rest;
   };
-  let structural = prev.containerUid !== next.containerUid || prev.items.size !== next.items.size || prev.edges.size !== next.edges.size || !same2(prev.roots, next.roots) || !same2(prev.order, next.order) || !same2(prev.views, next.views) || !same2(prev.trails || [], next.trails || []);
+  let structural = prev.containerUid !== next.containerUid || prev.items.size !== next.items.size || prev.edges.size !== next.edges.size || !same3(prev.roots, next.roots) || !same3(prev.order, next.order) || !same3(prev.views, next.views) || !same3(prev.trails || [], next.trails || []);
   const dirty = /* @__PURE__ */ new Set();
-  if (prev.string !== next.string || !same2(prev.plexus, next.plexus)) dirty.add(next.uid);
+  if (prev.string !== next.string || !same3(prev.plexus, next.plexus)) dirty.add(next.uid);
   for (const [uid, item] of next.items) {
     const old = prev.items.get(uid);
     if (!old) {
@@ -4762,8 +4764,8 @@ function diffBoards(prev, next) {
       dirty.add(uid);
       continue;
     }
-    if (old.parentUid !== item.parentUid || !same2(old.members, item.members)) structural = true;
-    if (old.string !== item.string || old.kind !== item.kind || old.parentUid !== item.parentUid || old.order !== item.order || !same2(body(old), body(item))) dirty.add(uid);
+    if (old.parentUid !== item.parentUid || !same3(old.members, item.members)) structural = true;
+    if (old.string !== item.string || old.kind !== item.kind || old.parentUid !== item.parentUid || old.order !== item.order || !same3(body(old), body(item))) dirty.add(uid);
   }
   for (const [uid, edge] of next.edges) {
     const old = prev.edges.get(uid);
@@ -4772,7 +4774,7 @@ function diffBoards(prev, next) {
       dirty.add(uid);
       continue;
     }
-    if (!same2(old, edge)) dirty.add(uid);
+    if (!same3(old, edge)) dirty.add(uid);
   }
   return { structural, dirty };
 }
@@ -5352,9 +5354,9 @@ function sharesLine(row4, w) {
   return !stacked;
 }
 function relineWords(words) {
-  const sorted = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  const sorted2 = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const rows = [];
-  for (const w of sorted) {
+  for (const w of sorted2) {
     const r = rows[rows.length - 1];
     if (r && sharesLine(r, w)) r.words.push(w);
     else rows.push({ base: w.base, size: w.size, words: [w] });
@@ -6837,9 +6839,9 @@ function detectLists(lines, { dots = [], joinText }) {
       last = line;
       j++;
     }
-    const kinds = items.map((it) => markerKind(it.marker));
-    const ordered = kinds.every((k) => k !== "bullet");
-    const enough = items.length >= 2 || items.length === 1 && kinds[0] === "bullet";
+    const kinds2 = items.map((it) => markerKind(it.marker));
+    const ordered = kinds2.every((k) => k !== "bullet");
+    const enough = items.length >= 2 || items.length === 1 && kinds2[0] === "bullet";
     if (enough) {
       const xs2 = items.map((it) => it.markerX);
       const levels = clusterLevels(xs2);
@@ -6969,21 +6971,21 @@ var init_headings = __esm({
 // src/model/parse/formulas.js
 function equationRowSignals(words, { column = null } = {}) {
   if (!words.length) return { number: null, lead: false, delimiters: false, math: false };
-  const sorted = [...words].sort((a, b) => a.x0 - b.x0);
-  const last = sorted[sorted.length - 1];
-  const base2 = sorted.filter((w) => !w.sup && !w.sub);
-  const first = base2[0] || sorted[0];
+  const sorted2 = [...words].sort((a, b) => a.x0 - b.x0);
+  const last = sorted2[sorted2.length - 1];
+  const base2 = sorted2.filter((w) => !w.sup && !w.sub);
+  const first = base2[0] || sorted2[0];
   const second = base2[1];
   const colW = column ? column.x1 - column.x0 : Infinity;
   const number = EQ_NUMBER_RE.test(last.text) && (!column || last.x1 >= column.x1 - 0.12 * colW) ? last.text : null;
   const NAME2 = /^[A-Za-z][⁰-⁹₀-₉0-9′*ʹ]*$/;
   const EQ = /^(=|¼|:=|≡|≈)$/;
   const lead = NAME2.test(first.text) && Boolean(second) && EQ.test(second.text) || /^[A-Za-z][⁰-⁹₀-₉0-9′*ʹ]*(=|¼)$/.test(first.text);
-  const rowSize = median2(sorted.map((w) => w.size)) || 10;
-  const delimiters = sorted.some((w) => w.size >= 1.6 * rowSize && /^[\[\]()|{}⎡⎤⎣⎦⎢⎥⎛⎞⎝⎠⎜⎟∣]+$/.test(w.text));
+  const rowSize = median2(sorted2.map((w) => w.size)) || 10;
+  const delimiters = sorted2.some((w) => w.size >= 1.6 * rowSize && /^[\[\]()|{}⎡⎤⎣⎦⎢⎥⎛⎞⎝⎠⎜⎟∣]+$/.test(w.text));
   let chars = 0;
   let math = 0;
-  for (const w of sorted) {
+  for (const w of sorted2) {
     chars += w.text.length;
     math += (w.mathChars || 0) + (w.mathFontChars || 0);
   }
@@ -7272,8 +7274,8 @@ function splitColumn(rowsIn, col2, size) {
       if (r) right.push(r);
     }
     if (left.length < 3 || right.length < 3) continue;
-    const same2 = (ws) => new Set(ws.map((w) => w.text.toLowerCase())).size === 1;
-    if (same2(right) || same2(left)) continue;
+    const same3 = (ws) => new Set(ws.map((w) => w.text.toLowerCase())).size === 1;
+    if (same3(right) || same3(left)) continue;
     const spread = (v) => Math.max(...v) - Math.min(...v);
     const tol = Math.max(1.5, 0.2 * size);
     const tightL = spread(left.map((w) => w.x1)) <= tol;
@@ -7377,11 +7379,11 @@ function joinSize(word, typical) {
 }
 function visualRows(words) {
   const typical = medianSize(words);
-  const sorted = [...words].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  const sorted2 = [...words].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
   const rows = [];
-  for (const w of sorted) {
+  for (const w of sorted2) {
     const r = rows[rows.length - 1];
-    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w, sorted, typical)) {
+    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w, sorted2, typical)) {
       r.words.push(w);
       r.y1 = Math.max(r.y1, w.y1);
       r.y0 = Math.min(r.y0, w.y0);
@@ -7443,9 +7445,9 @@ function bandRows(words) {
   return { rows: visualRows(keep), floating };
 }
 function baselineGroups(words) {
-  const sorted = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  const sorted2 = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const groups2 = [];
-  for (const w of sorted) {
+  for (const w of sorted2) {
     const g = groups2[groups2.length - 1];
     if (g && Math.abs(g.base - w.base) <= 0.3 * Math.max(g.size, w.size)) {
       g.words.push(w);
@@ -8318,9 +8320,9 @@ function mergeWrappedLabelRows(rowsIn, headerRows = 0) {
   }
 }
 function baselineRows(lines, { loose = false } = {}) {
-  const sorted = [...lines].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  const sorted2 = [...lines].sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const rows = [];
-  for (const l of sorted) {
+  for (const l of sorted2) {
     const r = rows[rows.length - 1];
     const rowText = r ? r.lines.map((x) => x.text || "").join(" ") : "";
     const digit = r && (/\d/.test(rowText) || /\d/.test(l.text || ""));
@@ -8814,10 +8816,10 @@ function repeatsHeader(tokens2, header) {
   const a = valueTokens(header);
   const b = valueTokens(tokens2);
   if (a.length < 2 || b.length < 2) return false;
-  let same2 = 0;
+  let same3 = 0;
   const n3 = Math.min(a.length, b.length);
-  for (let i = 0; i < n3; i++) if (a[i] === b[i]) same2++;
-  if (same2 >= 2 && same2 / n3 >= 0.6) return true;
+  for (let i = 0; i < n3; i++) if (a[i] === b[i]) same3++;
+  if (same3 >= 2 && same3 / n3 >= 0.6) return true;
   const tail = b.slice(-a.length);
   return tail.length === a.length && tail.every((s, i) => s === a[i]);
 }
@@ -8978,9 +8980,9 @@ function lacksTabularEvidence(table) {
   const cols = table.cols || 0;
   const rows = table.rows || 0;
   if (cols < 2 || rows < 2) return false;
-  const kinds = textsByColumn(table).map(columnKind);
-  const pageCols = kinds.filter((k) => k === "page").length;
-  const valueCols = kinds.filter((k) => k === "value").length;
+  const kinds2 = textsByColumn(table).map(columnKind);
+  const pageCols = kinds2.filter((k) => k === "page").length;
+  const valueCols = kinds2.filter((k) => k === "value").length;
   if (valueCols > 0) return false;
   if (namedOrPagedContents(table)) return false;
   if (pageCols === 1) {
@@ -9613,9 +9615,9 @@ function median3(values) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 function mergeGutters(list) {
-  const sorted = [...list].sort((a, b) => a.x0 - b.x0 || a.x1 - b.x1);
+  const sorted2 = [...list].sort((a, b) => a.x0 - b.x0 || a.x1 - b.x1);
   const out = [];
-  for (const g of sorted) {
+  for (const g of sorted2) {
     const last = out[out.length - 1];
     if (last && g.x0 <= last.x1 + 8) {
       last.x0 = Math.min(last.x0, g.x0);
@@ -9694,7 +9696,7 @@ function ruleCuts(rules, gutters, units) {
 function orderUnits(units, { gutters = [], cuts = [], lineHeight = 0 } = {}) {
   const active2 = gutters.filter((g) => units.some((u) => u.x1 <= g.x0 + 1) && units.some((u) => u.x0 >= g.x1 - 1));
   if (!active2.length) return { order: byPosition(units), columns: 1 };
-  const sorted = [...units].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  const sorted2 = [...units].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
   const wide = (u) => active2.some((g) => crossesGutter(u, g));
   const out = [];
   let slice = [];
@@ -9706,7 +9708,7 @@ function orderUnits(units, { gutters = [], cuts = [], lineHeight = 0 } = {}) {
   };
   const headingRow = () => lineHeight > 0 && splitColumns(slice, active2).every((c) => c.length === 1 && c[0].y1 - c[0].y0 <= 2 * lineHeight);
   const pending = [...cuts].sort((a, b) => a - b);
-  for (const u of sorted) {
+  for (const u of sorted2) {
     while (pending.length && pending[0] <= u.y0 + 1) {
       pending.shift();
       if (!headingRow()) flush();
@@ -9985,9 +9987,9 @@ function alignedLineCount(lines) {
   return best;
 }
 function wordLines(words) {
-  const sorted = [...words].filter((w) => w && w.text).sort((a, b) => (a.base ?? a.y1 ?? 0) - (b.base ?? b.y1 ?? 0) || a.x0 - b.x0);
+  const sorted2 = [...words].filter((w) => w && w.text).sort((a, b) => (a.base ?? a.y1 ?? 0) - (b.base ?? b.y1 ?? 0) || a.x0 - b.x0);
   const lines = [];
-  for (const w of sorted) {
+  for (const w of sorted2) {
     const y = w.base ?? w.y1 ?? 0;
     const size = w.size || 10;
     const last = lines[lines.length - 1];
@@ -10007,9 +10009,9 @@ function wordLines(words) {
   return lines;
 }
 function columnLines(words) {
-  const sorted = [...words].filter((w) => w && w.text).sort((a, b) => (a.base ?? a.y1 ?? 0) - (b.base ?? b.y1 ?? 0) || a.x0 - b.x0);
+  const sorted2 = [...words].filter((w) => w && w.text).sort((a, b) => (a.base ?? a.y1 ?? 0) - (b.base ?? b.y1 ?? 0) || a.x0 - b.x0);
   const lines = [];
-  for (const w of sorted) {
+  for (const w of sorted2) {
     const y = w.base ?? w.y1 ?? 0;
     const size = w.size || 10;
     const y0 = w.y0 ?? y - size;
@@ -10422,8 +10424,8 @@ function peelFigLabels(lines) {
     }
     if (cursor < words.length) pieces2.push(words.slice(cursor));
     const rewritten = words.some((w, i) => w !== line.words[i]);
-    const same2 = !rewritten && pieces2.length === 1 && pieces2[0].length === words.length && pieces2[0].every((w, i) => w === words[i]);
-    if (same2) {
+    const same3 = !rewritten && pieces2.length === 1 && pieces2[0].length === words.length && pieces2[0].every((w, i) => w === words[i]);
+    if (same3) {
       out.push(line);
       continue;
     }
@@ -10450,27 +10452,27 @@ function splitAnchors(anchors, box2) {
   const dx = Math.max(...anchors.map((a) => a.x)) - Math.min(...anchors.map((a) => a.x));
   const dy = Math.max(...anchors.map((a) => a.y)) - Math.min(...anchors.map((a) => a.y));
   const vertical = dx >= dy;
-  const sorted = [...anchors].sort((a, b) => vertical ? a.x - b.x : a.y - b.y);
+  const sorted2 = [...anchors].sort((a, b) => vertical ? a.x - b.x : a.y - b.y);
   let best = 1;
   let gap = -1;
-  for (let i = 1; i < sorted.length; i++) {
-    const g = vertical ? sorted[i].x - sorted[i - 1].x : sorted[i].y - sorted[i - 1].y;
+  for (let i = 1; i < sorted2.length; i++) {
+    const g = vertical ? sorted2[i].x - sorted2[i - 1].x : sorted2[i].y - sorted2[i - 1].y;
     if (g > gap) {
       gap = g;
       best = i;
     }
   }
   if (gap < ANCHOR_SEP) return [{ x0: box2.x0, y0: box2.y0, x1: box2.x1, y1: box2.y1 }];
-  const mid = vertical ? Math.min(sorted[best - 1].x + 36, sorted[best].x - 24) : Math.min(sorted[best - 1].y + 36, sorted[best].y - 24);
+  const mid = vertical ? Math.min(sorted2[best - 1].x + 36, sorted2[best].x - 24) : Math.min(sorted2[best - 1].y + 36, sorted2[best].y - 24);
   if (vertical) {
     return [
-      ...splitAnchors(sorted.slice(0, best), { ...box2, x1: mid }),
-      ...splitAnchors(sorted.slice(best), { ...box2, x0: mid })
+      ...splitAnchors(sorted2.slice(0, best), { ...box2, x1: mid }),
+      ...splitAnchors(sorted2.slice(best), { ...box2, x0: mid })
     ];
   }
   return [
-    ...splitAnchors(sorted.slice(0, best), { ...box2, y1: mid }),
-    ...splitAnchors(sorted.slice(best), { ...box2, y0: mid })
+    ...splitAnchors(sorted2.slice(0, best), { ...box2, y1: mid }),
+    ...splitAnchors(sorted2.slice(best), { ...box2, y0: mid })
   ];
 }
 function sheetRegions(lines, pageW, pageH) {
@@ -12345,9 +12347,9 @@ function blankRepeatedFill(table) {
       if (c1 - c < 3) continue;
       let r12 = r + 1;
       while (r12 < table.rows) {
-        let same2 = true;
-        for (let k = c; k < c1; k++) if (fillOf(r12, k) !== text4) same2 = false;
-        if (!same2) break;
+        let same3 = true;
+        for (let k = c; k < c1; k++) if (fillOf(r12, k) !== text4) same3 = false;
+        if (!same3) break;
         r12++;
       }
       if (r12 - r < 3 || !otherIn(c, c1, text4)) continue;
@@ -13173,8 +13175,8 @@ function sameSpelling(a, b) {
 }
 function median6(values) {
   if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[sorted.length >> 1];
+  const sorted2 = [...values].sort((a, b) => a - b);
+  return sorted2[sorted2.length >> 1];
 }
 function snapOnto(item, line) {
   const hosts = line.items.map((entry) => entry.item).filter((it) => it?.transform);
@@ -14351,10 +14353,10 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
   applyNumbering(headings);
   for (const entry of refs) {
     if (!entry.ref) continue;
-    const same2 = footnotes.filter((f) => f.mark === entry.ref.mark);
-    const after = same2.filter((f) => f.page >= entry.page).sort((a, b) => a.page - b.page);
-    const pick2 = after[0] || same2[same2.length - 1];
-    if (pick2) entry.ref.to = pick2.id;
+    const same3 = footnotes.filter((f) => f.mark === entry.ref.mark);
+    const after = same3.filter((f) => f.page >= entry.page).sort((a, b) => a.page - b.page);
+    const pick3 = after[0] || same3[same3.length - 1];
+    if (pick3) entry.ref.to = pick3.id;
   }
   for (const id of order) if (blocks[id]?.footnoteRefs) inlineUnlinkedRefs(blocks[id]);
   let title = info && typeof info.Title === "string" ? cleanPdfTitle(info.Title) || null : null;
@@ -14515,9 +14517,9 @@ function stitchTables(tables, textBlocks, bodySize) {
     const ox = Math.min(a.bbox[2], b.bbox[2]) - Math.max(a.bbox[0], b.bbox[0]);
     if (ox < 0.8 * Math.min(a.bbox[2] - a.bbox[0], b.bbox[2] - b.bbox[0])) continue;
     const colW = (a.bbox[2] - a.bbox[0]) / a.cols;
-    let same2 = true;
-    for (let c = 1; c < a.cols; c++) if (Math.abs(a.grid.xs[c] - b.grid.xs[c]) > 0.35 * colW) same2 = false;
-    if (!same2) continue;
+    let same3 = true;
+    for (let c = 1; c < a.cols; c++) if (Math.abs(a.grid.xs[c] - b.grid.xs[c]) > 0.35 * colW) same3 = false;
+    if (!same3) continue;
     const between = textBlocks.filter((tb) => tb.bbox.y0 >= a.bbox[3] - 1 && tb.bbox.y1 <= b.bbox[1] + 1 && Math.min(tb.bbox.x1, a.bbox[2]) - Math.max(tb.bbox.x0, a.bbox[0]) > 0);
     const banner = between.length === 1 ? sectionLineBetween(between[0], a, b, bodySize) : null;
     if (between.length && !banner) continue;
@@ -16450,11 +16452,11 @@ function sectionPair(uids, getItem) {
   return sections.length === 2 ? sections : null;
 }
 function zoomThreshold(boardValue, settingValue) {
-  const pick2 = (value) => {
+  const pick3 = (value) => {
     const n3 = Number(value);
     return Number.isFinite(n3) && n3 >= 0.05 && n3 <= 1.5 ? n3 : null;
   };
-  return pick2(boardValue) ?? pick2(settingValue) ?? 0.45;
+  return pick3(boardValue) ?? pick3(settingValue) ?? 0.45;
 }
 function thumbnailBudget(uids, { cap: cap4 = THUMBNAIL_CAP } = {}) {
   const out = [];
@@ -17439,9 +17441,9 @@ function readEnhancedUidCache(storage = globalThis.localStorage, key = graphCach
   }
 }
 function writeEnhancedUidCache(uids, storage = globalThis.localStorage, key = graphCacheKey()) {
-  const sorted = [...new Set([...uids].map(String).filter(Boolean))].sort();
-  storage?.setItem?.(key, JSON.stringify(sorted));
-  return sorted;
+  const sorted2 = [...new Set([...uids].map(String).filter(Boolean))].sort();
+  storage?.setItem?.(key, JSON.stringify(sorted2));
+  return sorted2;
 }
 function enhancedUidGuardCss(uids) {
   const selectors = [];
@@ -18335,9 +18337,9 @@ var init_search_sort = __esm({
     num4 = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
     titleOf = (row4) => String(row4?.title ?? row4?.text ?? row4?.string ?? "");
     lengthOf = (row4) => num4(row4?.meta?.length) ?? String(row4?.string ?? row4?.text ?? row4?.title ?? "").length;
-    byNumber = (pick2, dir) => (a, b) => {
-      const x = pick2(a);
-      const y = pick2(b);
+    byNumber = (pick3, dir) => (a, b) => {
+      const x = pick3(a);
+      const y = pick3(b);
       if (x == null && y == null) return 0;
       if (x == null) return 1;
       if (y == null) return -1;
@@ -18516,14 +18518,14 @@ function browseSpec(filter, { now: now5 = Date.now() } = {}) {
   const has = (t) => all || f.types.includes(t);
   const pages = !pdf && (has("page") || has("daily"));
   const plain2 = !pdf && has("block");
-  const kinds = pdf ? has("pdf") ? ["pdf"] : [] : BROWSE_KINDS.filter(has);
-  if (!pages && !plain2 && !kinds.length) return null;
-  const shape = pages && (plain2 || kinds.length) ? "any" : pages ? "pages" : plain2 ? "blocks" : "kinds";
+  const kinds2 = pdf ? has("pdf") ? ["pdf"] : [] : BROWSE_KINDS.filter(has);
+  if (!pages && !plain2 && !kinds2.length) return null;
+  const shape = pages && (plain2 || kinds2.length) ? "any" : pages ? "pages" : plain2 ? "blocks" : "kinds";
   const bounded = f.days > 0 || Boolean(m.under) || shape === "kinds";
   const days = f.days > 0 ? f.days : bounded ? 0 : BROWSE_DEFAULT_DAYS;
   return {
     shape,
-    kinds: shape === "kinds" ? kinds : [],
+    kinds: shape === "kinds" ? kinds2 : [],
     types: f.types,
     mode: f.days > 0 ? m.dayMode : "edited",
     days,
@@ -19113,8 +19115,8 @@ function perfNow() {
 function percentile(samples, p) {
   const n3 = samples.length;
   if (!n3) return null;
-  const sorted = samples.slice().sort((a, b) => a - b);
-  return sorted[Math.floor((n3 - 1) * p)];
+  const sorted2 = samples.slice().sort((a, b) => a - b);
+  return sorted2[Math.floor((n3 - 1) * p)];
 }
 function ring(cap4) {
   const samples = [];
@@ -20465,24 +20467,24 @@ var init_highlighter = __esm({
 });
 
 // src/model/highlight-pick.js
-function isObject3(value) {
+function isObject4(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function highlightRecord2(props) {
-  if (!isObject3(props)) return null;
+  if (!isObject4(props)) return null;
   const colon = Object.prototype.hasOwnProperty.call(props, ":pdf-highlight");
   const plain2 = Object.prototype.hasOwnProperty.call(props, "pdf-highlight");
   if (!colon && !plain2) return null;
   const raw = colon ? props[":pdf-highlight"] : props["pdf-highlight"];
-  if (!isObject3(raw)) return {};
+  if (!isObject4(raw)) return {};
   const flat3 = plainKeys(raw);
-  return isObject3(flat3) ? flat3 : {};
+  return isObject4(flat3) ? flat3 : {};
 }
 function pageOf2(record) {
   const position = record.position;
-  if (!isObject3(position)) return null;
+  if (!isObject4(position)) return null;
   const rect = position.boundingRect;
-  if (!isObject3(rect)) return null;
+  if (!isObject4(rect)) return null;
   const page = rect.pageNumber;
   return typeof page === "number" && Number.isFinite(page) ? page : null;
 }
@@ -20509,7 +20511,7 @@ function placedSet(placed) {
   const list = placed instanceof Set ? placed : Array.isArray(placed) ? placed : [];
   for (const value of list) {
     if (typeof value === "string" && value) out.add(value);
-    else if (isObject3(value) && isObject3(value.target) && typeof value.target.uid === "string" && value.target.uid) {
+    else if (isObject4(value) && isObject4(value.target) && typeof value.target.uid === "string" && value.target.uid) {
       out.add(value.target.uid);
     }
   }
@@ -20530,14 +20532,14 @@ function rowFrom(node2, ancestors, placed) {
 }
 function walk2(nodes, ancestors, placed, out) {
   for (const node2 of nodes) {
-    if (!isObject3(node2)) continue;
+    if (!isObject4(node2)) continue;
     if (highlightRecord2(node2.props)) out.push(rowFrom(node2, ancestors, placed));
     const children = Array.isArray(node2.children) ? node2.children : [];
     if (children.length) walk2(children, ancestors.concat(node2), placed, out);
   }
 }
 function highlightRows(blocks, { placed } = {}) {
-  const nodes = Array.isArray(blocks) ? blocks : isObject3(blocks) ? [blocks] : [];
+  const nodes = Array.isArray(blocks) ? blocks : isObject4(blocks) ? [blocks] : [];
   const out = [];
   walk2(nodes, [], placedSet(placed), out);
   return out;
@@ -20549,7 +20551,7 @@ function capOf(cap4) {
   return Math.min(n3, CAP);
 }
 function originOf(origin) {
-  const src = isObject3(origin) ? origin : {};
+  const src = isObject4(origin) ? origin : {};
   const x = typeof src.x === "number" && Number.isFinite(src.x) ? src.x : 0;
   const y = typeof src.y === "number" && Number.isFinite(src.y) ? src.y : 0;
   return { x, y };
@@ -20560,7 +20562,7 @@ function slot(index, mode) {
 }
 function placeHighlights(rows, { mode, origin, cap: cap4 } = {}) {
   const list = Array.isArray(rows) ? rows : [];
-  const eligible = list.filter((row4) => isObject3(row4) && typeof row4.uid === "string" && row4.uid !== "" && row4.selected === true && row4.placed !== true);
+  const eligible = list.filter((row4) => isObject4(row4) && typeof row4.uid === "string" && row4.uid !== "" && row4.selected === true && row4.placed !== true);
   const limit = capOf(cap4);
   const take = eligible.slice(0, limit);
   const at = originOf(origin);
@@ -20577,10 +20579,10 @@ function placeHighlights(rows, { mode, origin, cap: cap4 } = {}) {
   return { items, omitted: eligible.length - take.length };
 }
 function expandDateHighlights(block) {
-  if (!isObject3(block) || !Array.isArray(block.children)) return null;
+  if (!isObject4(block) || !Array.isArray(block.children)) return null;
   const uids = [];
   for (const child of block.children) {
-    if (!isObject3(child) || !highlightRecord2(child.props)) continue;
+    if (!isObject4(child) || !highlightRecord2(child.props)) continue;
     if (typeof child.uid === "string" && child.uid) uids.push(child.uid);
   }
   return uids.length ? uids : null;
@@ -22572,11 +22574,11 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
   };
   const fillDue = (box2, uid) => {
     for (const choice of dayChoices(today())) button3(box2, choice.label, () => apply(uid, { due: choice.value }));
-    const pick2 = el2("input", "pxd-task-pop__input", box2);
-    pick2.type = "date";
-    pick2.setAttribute("aria-label", "Pick a date");
-    pick2.addEventListener("change", () => {
-      if (pick2.value) void apply(uid, { due: pick2.value });
+    const pick3 = el2("input", "pxd-task-pop__input", box2);
+    pick3.type = "date";
+    pick3.setAttribute("aria-label", "Pick a date");
+    pick3.addEventListener("change", () => {
+      if (pick3.value) void apply(uid, { due: pick3.value });
     });
     button3(box2, "Clear", () => apply(uid, { due: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
   };
@@ -23733,14 +23735,14 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
   }
   return [];
 }
-function textCardMarkdown({ text: text4, page, quote = false } = {}) {
+function textCardMarkdown({ text: text4, page, quote: quote2 = false } = {}) {
   let line = flattenLine(text4);
   if (!line) return "";
   if (line.length > TEXT_CARD_MAX) line = `${line.slice(0, TEXT_CARD_MAX - 1).trimEnd()}…`;
   const n3 = Number(page);
   const suffix = Number.isInteger(n3) && n3 > 0 ? ` (p. ${n3})` : "";
-  const body = escapeMarkdownText(linkSafeText(line) + suffix, { leading: !quote });
-  return `- ${quote ? "> " : ""}${body}`;
+  const body = escapeMarkdownText(linkSafeText(line) + suffix, { leading: !quote2 });
+  return `- ${quote2 ? "> " : ""}${body}`;
 }
 function headingTitle(block) {
   return String(block?.text ?? "").replace(/\s+/g, " ").trim();
@@ -24931,7 +24933,7 @@ function identMatches(ident, terms) {
   return list.every((t) => hay.includes(t));
 }
 function pdfRowName({ ownTitle = "", pdfPageTitle = "", parsedTitle = "", coverTitle = "", metaTitle = "", ident = null, url = "", pending = false } = {}) {
-  const pick2 = [
+  const pick3 = [
     pageNameOk(ownTitle) ? pdfPageName(ownTitle) : "",
     pageNameOk(pdfPageTitle) ? pdfPageName(pdfPageTitle) : "",
     cleanPdfTitle(ident?.title || ""),
@@ -24939,7 +24941,7 @@ function pdfRowName({ ownTitle = "", pdfPageTitle = "", parsedTitle = "", coverT
     cleanPdfTitle(coverTitle),
     cleanPdfTitle(metaTitle)
   ].find(Boolean);
-  if (pick2) return { title: pick2, loading: false };
+  if (pick3) return { title: pick3, loading: false };
   return { title: pdfFileTitle(url) || "PDF", loading: Boolean(pending) };
 }
 function pdfRowSub({ ident = null, pageTitle = "", title = "" } = {}) {
@@ -25233,9 +25235,9 @@ function fillLists(ix, word, into) {
   } else return false;
   return true;
 }
-function kindOk(kinds, kind) {
-  if (!kinds || !kinds.length) return true;
-  for (let i = 0; i < kinds.length; i += 1) if (kinds[i] === kind) return true;
+function kindOk(kinds2, kind) {
+  if (!kinds2 || !kinds2.length) return true;
+  for (let i = 0; i < kinds2.length; i += 1) if (kinds2[i] === kind) return true;
   return false;
 }
 function bump(ix) {
@@ -25328,17 +25330,17 @@ function emitRanked(ranked, take) {
   for (let i = 0; i < n3; i += 1) out.push(publish(ranked[i].row, ranked[i].count));
   return out;
 }
-function takePlain(list, kinds, range, take) {
+function takePlain(list, kinds2, range, take) {
   const out = [];
   for (let i = 0; i < list.length && out.length < take; i += 1) {
     const row4 = list[i];
-    if (!kindOk(kinds, row4.kind)) continue;
+    if (!kindOk(kinds2, row4.kind)) continue;
     if (range && (row4.page < range.from || row4.page > range.to)) continue;
     out.push(publish(row4, 0));
   }
   return out;
 }
-function searchIndexed(list, ix, { phrase, terms, kinds, range, take }) {
+function searchIndexed(list, ix, { phrase, terms, kinds: kinds2, range, take }) {
   const specs = ix.specs;
   specs.length = 0;
   for (let t = 0; t < terms.length; t += 1) {
@@ -25368,7 +25370,7 @@ function searchIndexed(list, ix, { phrase, terms, kinds, range, take }) {
   for (let h = 0; h < hold.length; h += 1) {
     const i = hold[h];
     const row4 = list[i];
-    if (!kindOk(kinds, row4.kind)) continue;
+    if (!kindOk(kinds2, row4.kind)) continue;
     if (range && (row4.page < range.from || row4.page > range.to)) continue;
     const hay = lowers[i];
     let count = 0;
@@ -25386,14 +25388,14 @@ function searchIndexed(list, ix, { phrase, terms, kinds, range, take }) {
   }
   return emitRanked(ranked, take);
 }
-function searchCheap(list, { phrase, terms, kinds, range, take }) {
+function searchCheap(list, { phrase, terms, kinds: kinds2, range, take }) {
   const ranked = scratch.ranked;
   const pool = scratch.pool;
   const multi = terms.length > 1;
   ranked.length = 0;
   for (let i = 0; i < list.length; i += 1) {
     const row4 = list[i];
-    if (!kindOk(kinds, row4.kind)) continue;
+    if (!kindOk(kinds2, row4.kind)) continue;
     if (range && (row4.page < range.from || row4.page > range.to)) continue;
     const hay = typeof row4?.lower === "string" ? row4.lower : "";
     if (!hay) continue;
@@ -25412,17 +25414,17 @@ function searchCheap(list, { phrase, terms, kinds, range, take }) {
   }
   return emitRanked(ranked, take);
 }
-function searchParts(rows, { text: text4 = "", kinds = [], pages = "" } = {}, limit = 40) {
+function searchParts(rows, { text: text4 = "", kinds: kinds2 = [], pages = "" } = {}, limit = 40) {
   const list = Array.isArray(rows) ? rows : [];
   const phrase = String(text4 ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
   const terms = queryTerms(text4);
   const range = parsePageRange(pages);
   const take = Math.max(1, Math.floor(Number(limit) || 40));
   if (!list.length) return [];
-  if (!terms.length) return takePlain(list, kinds, range, take);
+  if (!terms.length) return takePlain(list, kinds2, range, take);
   const ix = partIndexes.get(list);
-  if (ix?.ready) return searchIndexed(list, ix, { phrase, terms, kinds, range, take });
-  return searchCheap(list, { phrase, terms, kinds, range, take });
+  if (ix?.ready) return searchIndexed(list, ix, { phrase, terms, kinds: kinds2, range, take });
+  return searchCheap(list, { phrase, terms, kinds: kinds2, range, take });
 }
 function partSnippet(text4, needle, width = SNIPPET_W) {
   const t = squash2(text4);
@@ -26810,9 +26812,9 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       setPopsOpen(moreOpen() ? null : "more");
       return;
     }
-    const pick2 = t?.closest?.("[data-sort]")?.dataset?.sort || t?.getAttribute?.("data-sort");
-    if (pick2 && sortItems.has(pick2)) {
-      sort = normalizeSort(pick2);
+    const pick3 = t?.closest?.("[data-sort]")?.dataset?.sort || t?.getAttribute?.("data-sort");
+    if (pick3 && sortItems.has(pick3)) {
+      sort = normalizeSort(pick3);
       try {
         on.saveSort?.(sort);
       } catch {
@@ -27036,11 +27038,11 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const explicitKinds = PARSE_PART_TYPES.filter((t) => checked.has(t) && !(wantFigures && t === "figure"));
     const allOn = checked.size === ALL_TYPES.length;
     const wantPdfBody = allOn || checked.has("pdf") || explicitKinds.length > 0;
-    const kinds = allOn && !wantFigures ? [] : explicitKinds.length ? explicitKinds : checked.has("pdf") && needle ? textPartKinds : [];
-    if (typeof on.searchParts === "function" && wantPdfBody && (needle || kinds.length) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter)) {
+    const kinds2 = allOn && !wantFigures ? [] : explicitKinds.length ? explicitKinds : checked.has("pdf") && needle ? textPartKinds : [];
+    if (typeof on.searchParts === "function" && wantPdfBody && (needle || kinds2.length) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter)) {
       const t0 = Date.now();
       try {
-        parts = await Promise.resolve(on.searchParts({ text: needle, kinds, pages: filter.pages }, LIMIT)) || [];
+        parts = await Promise.resolve(on.searchParts({ text: needle, kinds: kinds2, pages: filter.pages }, LIMIT)) || [];
       } catch {
         parts = [];
       }
@@ -29522,7 +29524,7 @@ function openPinPopover({
   doc = globalThis.document,
   anchor = null,
   region = null,
-  quote = "",
+  quote: quote2 = "",
   surrounding = "",
   crop = "",
   boards = [],
@@ -29549,7 +29551,7 @@ function openPinPopover({
   }
   const said = doc.createElement("p");
   said.className = "pxd-pin-pop__quote";
-  said.textContent = quote || region.caption || "";
+  said.textContent = quote2 || region.caption || "";
   pop.append(said);
   if (surrounding) {
     const more = doc.createElement("p");
@@ -30017,14 +30019,14 @@ function nativeCellUid(td, pullTree) {
   if (!tableUid || r == null || c == null) return null;
   const t = tableCells(tableUid, pullTree, td.closest("table") || td.closest(".rm-table"));
   const uid = t.grid[r - t.rowBase]?.[c - t.colBase]?.uid;
-  return typeof uid === "string" && UID_RE6.test(uid) ? uid : null;
+  return typeof uid === "string" && UID_RE7.test(uid) ? uid : null;
 }
 function cellUidOf(node2, { pullTree } = {}) {
   if (!node2 || typeof node2.closest !== "function") return null;
   const grid = node2.closest(".rg-cell");
   if (grid) {
     const uid = grid.dataset?.uid || grid.getAttribute?.("data-uid") || "";
-    return UID_RE6.test(uid) ? uid : null;
+    return UID_RE7.test(uid) ? uid : null;
   }
   const td = node2.closest("td");
   if (!td || !td.closest?.(".rm-table")) return null;
@@ -30037,7 +30039,7 @@ function cellElementOf(node2) {
   return node2.closest(".rg-cell") || node2.closest("td");
 }
 function findCell(host, uid, { pullTree } = {}) {
-  if (!host || !UID_RE6.test(String(uid || ""))) return null;
+  if (!host || !UID_RE7.test(String(uid || ""))) return null;
   const grids = host.querySelectorAll?.(".rg-cell") || [];
   for (const cell of grids) {
     if ((cell.dataset?.uid || cell.getAttribute?.("data-uid")) === uid) return cell;
@@ -30145,11 +30147,11 @@ function watchTable({ host, body, onChange, doc } = {}) {
     if (body && body !== host) body.removeEventListener?.("scroll", onChange, opts);
   };
 }
-var UID_AT_END, UID_RE6, hasClass, NATIVE_CELL_BASE, GRID_DEPTH, GRID_LIMIT, CACHE_MS, tableCache, forgetTableCells, plain, nowMs, tableUidOf2, attrInt, rectOf4, round16, isTableCard;
+var UID_AT_END, UID_RE7, hasClass, NATIVE_CELL_BASE, GRID_DEPTH, GRID_LIMIT, CACHE_MS, tableCache, forgetTableCells, plain, nowMs, tableUidOf2, attrInt, rectOf4, round16, isTableCard;
 var init_table_cells = __esm({
   "src/view/table-cells.js"() {
     UID_AT_END = /-([\w-]{9})$/;
-    UID_RE6 = /^[\w-]{1,36}$/;
+    UID_RE7 = /^[\w-]{1,36}$/;
     hasClass = (node2, name) => Boolean(node2?.classList?.contains?.(name));
     NATIVE_CELL_BASE = 0;
     GRID_DEPTH = 40;
@@ -32054,6 +32056,7 @@ function createItemRenderer({
     rec.el.classList.remove("pxd-sticky--picking");
   };
   const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash", "pxd-item--roam-table", "pxd-item--into", "pxd-item--pdf-bar"];
+  let followLeft = null;
   const imageRegionString2 = (text4) => {
     const region = parseRegion(text4);
     return Boolean(region && region.kind === "img" && region.supported === true && region.owner === "plexus-diagram" && region.error == null);
@@ -32098,6 +32101,7 @@ function createItemRenderer({
       cls.push(`pxd-landmark--${item.size === "S" || item.size === "L" ? item.size : "M"}`);
     }
     if (focusSet && !focusSet.has(item.uid)) cls.push(item.type === "section" ? "pxd-section--focus-dim" : "pxd-item--focus-dim");
+    if (item.type !== "section" && followLeft?.has(item.uid)) cls.push("pxd-item--left");
     if (item.type !== "section") {
       if (isKidsCard(item)) {
         cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
@@ -32970,14 +32974,14 @@ function createItemRenderer({
     if (disposed || peek || !root || !rec.kidsBtn || !item || !isKidsCard(item) || editing || paused) return;
     peekRowsOf(rec, item, (rows) => {
       if (disposed || peek || !rec.kidsBtn?.isConnected || !rows.length) return;
-      const pick2 = speedOf().peekPick !== false;
-      const node2 = el2("div", pick2 ? "pxd-kids-peek pxd-kids-peek--pick" : "pxd-kids-peek", root);
-      node2.setAttribute("role", pick2 ? "menu" : "tooltip");
+      const pick3 = speedOf().peekPick !== false;
+      const node2 = el2("div", pick3 ? "pxd-kids-peek pxd-kids-peek--pick" : "pxd-kids-peek", root);
+      node2.setAttribute("role", pick3 ? "menu" : "tooltip");
       const addRow = (block, sub) => {
         const row4 = el2("div", sub ? "pxd-kids-peek__row pxd-kids-peek__row--sub" : "pxd-kids-peek__row", node2);
         row4.textContent = plainText(childString5(block), PEEK_TEXT_MAX);
         const uid = childUid(block);
-        if (pick2 && uid) {
+        if (pick3 && uid) {
           row4.setAttribute("role", "menuitem");
           row4.setAttribute("data-pxd-peek-row", uid);
         }
@@ -32988,7 +32992,7 @@ function createItemRenderer({
       }
       placeNearAnchor(node2, rec.kidsBtn.getBoundingClientRect(), root, { gap: 6 });
       const close = (event) => {
-        if (pick2 && node2.contains?.(event?.target)) return;
+        if (pick3 && node2.contains?.(event?.target)) return;
         closePeek();
       };
       const offs = [];
@@ -32998,7 +33002,7 @@ function createItemRenderer({
       };
       on(doc, "pointerdown", close, true);
       on(doc, "wheel", close, true);
-      if (pick2) {
+      if (pick3) {
         for (const type of ["pointerdown", "mousedown", "dblclick", "wheel"]) on(node2, type, stopPress);
         on(node2, "mouseenter", () => {
           peekLeave?.();
@@ -37123,6 +37127,13 @@ function createItemRenderer({
     rec.badgeEl = row4;
     rec.badgeKey = key;
   };
+  const setFollowLeft = (set) => {
+    followLeft = set instanceof Set && set.size ? set : null;
+    for (const rec of shells.values()) {
+      if (rec.type === "section") continue;
+      rec.el.classList?.toggle?.("pxd-item--left", Boolean(followLeft?.has(rec.uid)));
+    }
+  };
   const setChanged = (set) => {
     changedUids = set instanceof Set && set.size ? set : null;
     for (const rec of shells.values()) renderBadges(rec);
@@ -38259,7 +38270,7 @@ function createItemRenderer({
       if (eventUid && drawing !== eventUid && ref !== eventUid) continue;
       const nextKind = model ? "region-ref" : "block";
       const nextTitle = model ? model.caption ?? "" : firstLine(item.string);
-      const same2 = item.kind === nextKind && (item.title || "") === nextTitle && (item.regionDrawing || "") === (model?.drawingUid || "");
+      const same3 = item.kind === nextKind && (item.title || "") === nextTitle && (item.regionDrawing || "") === (model?.drawingUid || "");
       if (!model && item.kind !== "region-ref") continue;
       if (model) {
         item.kind = "region-ref";
@@ -38272,7 +38283,7 @@ function createItemRenderer({
       }
       const rec = shells.get(item.uid);
       if (rec && editing?.uid !== item.uid) paintShell(rec, item);
-      if (!same2 || eventUid) {
+      if (!same3 || eventUid) {
         changed2 = true;
         if (rec && mounted.has(item.uid) && editing?.uid !== item.uid) unmountContent(item.uid);
       }
@@ -38441,6 +38452,7 @@ function createItemRenderer({
     hotRow: () => hotRow,
     setBadges,
     setChanged,
+    setFollowLeft,
     setShowBadges,
     setTrailBadges,
     setTaskChips,
@@ -39475,9 +39487,9 @@ function createReadDrawer({
   listen(root, "pointerdown", onEdgeDown);
   listen(root, "input", onInput);
   const refresh = () => {
-    const sorted = sortRows2(readRows());
+    const sorted2 = sortRows2(readRows());
     const have = readPlaced();
-    const marked = sorted.map((row5) => {
+    const marked = sorted2.map((row5) => {
       if (!row5 || typeof row5 !== "object" || row5.placed === true || !have.has(row5.uid)) return row5;
       return { ...row5, placed: true };
     });
@@ -39822,18 +39834,18 @@ function tidyRects(list, mode, { gap = 24, columns = null, order = null } = {}) 
   if (!rects.length) return [];
   const origin = unionOf(rects);
   if (mode === "row") {
-    const sorted = [...rects].sort((a, b) => a.x - b.x || a.y - b.y || a.i - b.i);
+    const sorted2 = [...rects].sort((a, b) => a.x - b.x || a.y - b.y || a.i - b.i);
     let x = origin.x;
-    return sorted.map((r) => {
+    return sorted2.map((r) => {
       const out = { uid: r.uid, x: norm(x), y: norm(origin.y) };
       x += r.w + gap;
       return out;
     });
   }
   if (mode === "column") {
-    const sorted = [...rects].sort((a, b) => a.y - b.y || a.x - b.x || a.i - b.i);
+    const sorted2 = [...rects].sort((a, b) => a.y - b.y || a.x - b.x || a.i - b.i);
     let y = origin.y;
-    return sorted.map((r) => {
+    return sorted2.map((r) => {
       const out = { uid: r.uid, x: norm(origin.x), y: norm(y) };
       y += r.h + gap;
       return out;
@@ -42435,7 +42447,7 @@ function patchTreeString(tree, id, string) {
 function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, onEditString = null, editQuiet = () => true, fingerprint = false, guard = (_name, fn) => fn, schedule = (fn) => queueMicrotask(fn) }) {
   const entityOf = (id) => `[:block/uid "${String(id).replace(/["\\]/g, "")}"]`;
   const nodes = /* @__PURE__ */ new Map();
-  const kinds = /* @__PURE__ */ new Map([[uid, "struct"]]);
+  const kinds2 = /* @__PURE__ */ new Map([[uid, "struct"]]);
   const live2 = /* @__PURE__ */ new Map();
   const fingerprints = /* @__PURE__ */ new Map();
   let content = /* @__PURE__ */ new Map();
@@ -42503,7 +42515,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, onEditSt
         const kind = containerKind(kid, atRoot);
         if (kind) {
           if (!changed2 && !sameKids([nodes.get(id)], [kid], depthOf(kind))) changed2 = true;
-          kinds.set(id, kind);
+          kinds2.set(id, kind);
           nodes.set(id, kid);
           if (kind === "struct") walk3(kid, false);
         } else nextContent.set(id, kidsOf2(kid));
@@ -42647,7 +42659,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, onEditSt
     kick();
   });
   const sync = () => {
-    for (const [id, kind] of kinds) {
+    for (const [id, kind] of kinds2) {
       const have = live2.get(id);
       if (have && have.kind === kind) continue;
       if (have) data.removePullWatch(have.pattern, have.entity, have.cb);
@@ -42658,7 +42670,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, onEditSt
       if (finger) fingerprints.set(id, null);
     }
     for (const [id, entry] of [...live2]) {
-      if (kinds.has(id)) continue;
+      if (kinds2.has(id)) continue;
       data.removePullWatch(entry.pattern, entry.entity, entry.cb);
       live2.delete(id);
       fingerprints.delete(id);
@@ -42679,7 +42691,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, onEditSt
         const kind = containerKind(kid, atRoot);
         if (kind) {
           seenKinds.set(id, kind);
-          let own2 = kinds.get(id) === kind ? nodes.get(id) : null;
+          let own2 = kinds2.get(id) === kind ? nodes.get(id) : null;
           if (!own2?.[UID]) {
             own2 = read2(patternOf(kind), id) || kid;
             nodes.set(id, own2);
@@ -42702,8 +42714,8 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, onEditSt
       return out;
     };
     const tree = build(root, true);
-    kinds.clear();
-    for (const [id, kind] of seenKinds) kinds.set(id, kind);
+    kinds2.clear();
+    for (const [id, kind] of seenKinds) kinds2.set(id, kind);
     for (const [id, kids] of content) if (!seenContent.has(id) && itemWatch.has(id)) seenContent.set(id, kids);
     content = seenContent;
     published = new Map(seenContent);
@@ -42741,7 +42753,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, onEditSt
     }
     pendingItems.clear();
     nodes.clear();
-    kinds.clear();
+    kinds2.clear();
     fingerprints.clear();
     content = /* @__PURE__ */ new Map();
     published = /* @__PURE__ */ new Map();
@@ -42828,7 +42840,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, onEditSt
     // Read every container again now (an undo, a refresh) and return the assembled tree; contents stay as stored.
     refresh() {
       if (disposed) return null;
-      for (const [id, kind] of kinds) {
+      for (const [id, kind] of kinds2) {
         const fresh = read2(patternOf(kind), id);
         if (fresh?.[UID]) {
           nodes.set(id, fresh);
@@ -49822,16 +49834,16 @@ function mapNodeStyle(data, kind, defaults) {
 }
 function mapEdgeStyle(data) {
   const bags = styleBags(data);
-  const pick2 = (key) => bags.inner[key] !== void 0 ? bags.inner[key] : bags.top[key];
+  const pick3 = (key) => bags.inner[key] !== void 0 ? bags.inner[key] : bags.top[key];
   const out = { dir: "one", dash: "solid", route: "straight" };
-  const dir = NATIVE_DIR[pick2("edge-direction-type")];
+  const dir = NATIVE_DIR[pick3("edge-direction-type")];
   if (dir) out.dir = dir;
-  const dash = NATIVE_DASH[pick2("edge-decoration")];
+  const dash = NATIVE_DASH[pick3("edge-decoration")];
   if (dash) out.dash = dash;
   else if (bags.top.animated === true || bags.inner.animated === true) out.dash = "animated";
   else if (bags.top.style?.strokeDasharray || bags.inner.style?.strokeDasharray) out.dash = "dashed";
-  out.route = NATIVE_ROUTE[pick2("edge-type")] ?? NATIVE_ROUTE[bags.top.type] ?? "straight";
-  const color = nativeColor(pick2("edge-stroke-color")) ?? nativeColor(bags.inner.style?.stroke) ?? nativeColor(bags.top.style?.stroke);
+  out.route = NATIVE_ROUTE[pick3("edge-type")] ?? NATIVE_ROUTE[bags.top.type] ?? "straight";
+  const color = nativeColor(pick3("edge-stroke-color")) ?? nativeColor(bags.inner.style?.stroke) ?? nativeColor(bags.top.style?.stroke);
   if (color) out.color = color;
   return out;
 }
@@ -50405,6 +50417,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     else fn();
   });
   const listeners3 = /* @__PURE__ */ new Map();
+  const deleteHooks = [];
   const emit2 = (name, payload) => {
     for (const fn of [...listeners3.get(name) ?? []]) {
       try {
@@ -53094,7 +53107,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       const at = cardAtCenter(boundsOf([...rects.values()]), DEFAULT_SIZES.card);
       return this.addRefCards([{ string: `((${blockUid3}))`, x: at.x, y: at.y }]).then((ids) => ids?.[0] ?? null);
     },
-    deleteItems(uids, { withContents = false, force = false } = {}) {
+    deleteItems(uids, opts = {}) {
+      const { withContents = false, force = false } = opts || {};
       return txn((t) => {
         const protectedItem = (id) => board2.items.get(id).pinned || withContents && [...descendantsOf(board2, id)].some((d) => board2.items.get(d).pinned);
         const set = new Set([...uids].filter((id) => board2.items.has(id) && (force || !protectedItem(id))));
@@ -53116,6 +53130,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
               const rel = toRelative(board2, survivor, { x: r.x, y: r.y }, rects);
               t.move(m, survivor, "last");
               t.props(m, itemPlexus(m, { x: rel.x, y: rel.y }));
+            }
+          }
+        }
+        if (deleteHooks.length) {
+          const gone2 = new Set(set);
+          if (withContents) for (const id of set) for (const d of descendantsOf(board2, id)) gone2.add(d);
+          for (const fn of deleteHooks) {
+            try {
+              fn(t, [...gone2], opts || {});
+            } catch (err) {
+              console.error("[plexus session] delete hook", err);
             }
           }
         }
@@ -54231,7 +54256,16 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     setting,
     clone,
     round1: round14,
-    emit: emit2
+    emit: emit2,
+    onDeleteItems(fn) {
+      if (typeof fn !== "function") return () => {
+      };
+      deleteHooks.push(fn);
+      return () => {
+        const at = deleteHooks.indexOf(fn);
+        if (at >= 0) deleteHooks.splice(at, 1);
+      };
+    }
   };
   for (const fn of [...extensions]) {
     try {
@@ -54698,6 +54732,353 @@ extendSession((session, api3) => {
         const skipped = flat3.length - picked.length;
         return skipped > 0 ? { added: created.length, edges, skipped, total: flat3.length } : { added: created.length, edges };
       }).then((res) => res ?? none);
+    }
+  });
+});
+
+// src/session-follow.js
+init_board();
+init_schema();
+
+// src/model/follow.js
+init_schema();
+var FOLLOW_KEY = "follow";
+var FOLLOW_SRC = "src";
+var FOLLOW_MIME = "application/x-plexus-follow";
+var FOLLOW_SKIP_CAP = 300;
+var FOLLOW_READ_CAP = 300;
+var FOLLOW_TREE_DEPTH = 4;
+var FOLLOW_QUIET_MS = 1500;
+var FOLLOW_POLL_MS = 6e4;
+var LEFT_CONFIRM = 2;
+var FOLLOW_COLUMN_GAP = 48;
+var FOLLOW_STACK_GAP = 24;
+var KIND_RE = /^[a-z][a-z0-9-]{0,31}$/;
+var UID_RE6 = /^[\w-]{1,64}$/;
+var isObject3 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+function cleanSkip(list, cap4 = FOLLOW_SKIP_CAP) {
+  if (!Array.isArray(list)) return [];
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const v of list) {
+    if (typeof v !== "string" || !UID_RE6.test(v) || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out.length > cap4 ? out.slice(out.length - cap4) : out;
+}
+function normalizePointer(raw) {
+  if (!isObject3(raw)) return null;
+  const kind = typeof raw.kind === "string" && KIND_RE.test(raw.kind) ? raw.kind : null;
+  const uid = typeof raw.uid === "string" && UID_RE6.test(raw.uid) ? raw.uid : null;
+  if (!kind || !uid) return null;
+  return { kind, uid, ...raw.tree === true ? { tree: true } : {}, skip: cleanSkip(raw.skip) };
+}
+function serializePointer(pointer) {
+  const p = normalizePointer(pointer);
+  if (!p) return null;
+  const out = { kind: p.kind, uid: p.uid };
+  if (p.tree) out.tree = true;
+  if (p.skip.length) out.skip = p.skip;
+  return out;
+}
+function readFollow(plexus) {
+  return isObject3(plexus) ? normalizePointer(plexus[FOLLOW_KEY]) : null;
+}
+var sourceKey = (pointer) => pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}` : "";
+function withFollow(plexus, pointer) {
+  const base2 = isObject3(plexus) ? { ...plexus } : {};
+  const next = pointer ? serializePointer(pointer) : null;
+  if (next) base2[FOLLOW_KEY] = next;
+  else delete base2[FOLLOW_KEY];
+  return base2;
+}
+function followPointerFor(current3, kind, uid, { tree } = {}) {
+  const same3 = current3?.kind === kind && current3?.uid === uid;
+  const deep = tree === void 0 ? same3 && current3.tree === true : tree === true;
+  return { kind, uid, ...deep ? { tree: true } : {}, skip: same3 ? current3.skip : [] };
+}
+function addSkip(skip, uids, cap4 = FOLLOW_SKIP_CAP) {
+  const add = (uids || []).filter((u) => typeof u === "string" && UID_RE6.test(u));
+  const drop = new Set(add);
+  return cleanSkip([...(skip || []).filter((u) => !drop.has(u)), ...add], cap4);
+}
+function textSourceUid(boardString2) {
+  const m = /^\(\(([\w-]{9})\)\)$/.exec(parseBoardTitle(boardString2));
+  return m ? m[1] : null;
+}
+function itemIds(item) {
+  const out = [];
+  if (item?.uid) out.push(`u:${item.uid}`);
+  if (item?.kind === "page" && item.title) out.push(`p:${item.title}`);
+  return out;
+}
+function cardIds(card2) {
+  const out = [];
+  if (!card2) return out;
+  const t = card2.target;
+  if (t?.kind === "page") {
+    if (t.uid) out.push(`u:${t.uid}`);
+    if (t.title) out.push(`p:${t.title}`);
+    return out;
+  }
+  if (t?.kind === "block" && t.uid) out.push(`u:${t.uid}`);
+  if (card2.uid) out.push(`u:${card2.uid}`);
+  return out;
+}
+function followIndex(board2, key = "") {
+  const on = /* @__PURE__ */ new Map();
+  const followed = [];
+  for (const item of board2?.items?.values?.() || []) {
+    for (const id of cardIds(item)) if (!on.has(id)) on.set(id, item.uid);
+    if (key && item.src === key) followed.push(item);
+  }
+  return { on, followed };
+}
+function membership(read2) {
+  const set = /* @__PURE__ */ new Set();
+  for (const item of read2?.items || []) for (const id of itemIds(item)) set.add(id);
+  return set;
+}
+function absentStep(prev, read2, board2, key) {
+  const before = prev instanceof Map ? prev : /* @__PURE__ */ new Map();
+  if (!read2?.ok) return new Map(before);
+  const members = membership(read2);
+  const next = /* @__PURE__ */ new Map();
+  for (const card2 of followIndex(board2, key).followed) {
+    if (cardIds(card2).some((id) => members.has(id))) continue;
+    const n3 = (before.get(card2.uid) || 0) + (read2.complete ? 1 : 0);
+    if (n3 > 0) next.set(card2.uid, n3);
+  }
+  return next;
+}
+var leftUnsettled = (absent) => [...absent instanceof Map ? absent.values() : []].some((n3) => n3 > 0 && n3 < LEFT_CONFIRM);
+function followDiff(read2, board2, { key = "", skip = [], absent = /* @__PURE__ */ new Map(), since = null } = {}) {
+  const { on, followed } = followIndex(board2, key);
+  const skipped = new Set(skip);
+  const pending = [];
+  let placed = 0;
+  let dismissed = 0;
+  const seen = /* @__PURE__ */ new Set();
+  for (const item of read2?.ok ? read2.items || [] : []) {
+    if (!item?.uid || seen.has(item.uid)) continue;
+    seen.add(item.uid);
+    if (itemIds(item).some((id) => on.has(id))) {
+      placed += 1;
+      continue;
+    }
+    if (skipped.has(item.uid)) {
+      dismissed += 1;
+      continue;
+    }
+    if (item.blank) continue;
+    pending.push({ ...item, fresh: Number.isFinite(since) && Number(item.time) > since });
+  }
+  const gone = absent instanceof Map ? absent : /* @__PURE__ */ new Map();
+  const left = followed.filter((card2) => (gone.get(card2.uid) || 0) >= LEFT_CONFIRM).map((card2) => card2.uid);
+  return { pending, left, placed, dismissed };
+}
+function sinceVisit(diff, { since = null, leftBefore = null } = {}) {
+  if (!Number.isFinite(since)) return { newCount: 0, leftCount: 0, baseline: false };
+  const before = leftBefore instanceof Set ? leftBefore : null;
+  return {
+    newCount: (diff?.pending || []).filter((row4) => row4.fresh).length,
+    leftCount: (diff?.left || []).filter((uid) => !before?.has(uid)).length,
+    baseline: true
+  };
+}
+function trayHeadline({ newCount = 0, leftCount = 0, baseline = false } = {}) {
+  if (!baseline) return "";
+  const parts = [];
+  if (newCount > 0) parts.push(`${newCount} new`);
+  if (leftCount > 0) parts.push(`${leftCount} left`);
+  return parts.length ? `${parts.join(", ")} since your last visit` : "Nothing new since your last visit";
+}
+var followPill = (n3) => `Following (${n3})`;
+function followCardString(item) {
+  if (item?.kind === "page" && item.title) return `[[${item.title}]]`;
+  return `((${item?.uid}))`;
+}
+function followBatches(list, cap4) {
+  const size = Math.max(1, Math.floor(Number(cap4) || 1));
+  const out = [];
+  for (let i = 0; i < (list || []).length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+function followColumn(bounds, count, { w, h, column = 0, at = null, gap = FOLLOW_COLUMN_GAP, stack = FOLLOW_STACK_GAP } = {}) {
+  const x0 = at ? at.x : bounds ? bounds.x + bounds.w + gap : 0;
+  const y0 = at ? at.y : bounds ? bounds.y : 0;
+  const x = x0 + column * (w + gap);
+  return Array.from({ length: Math.max(0, count) }, (_, i) => ({ x, y: y0 + i * (h + stack) }));
+}
+function createLeftMemory({ storage = globalThis.localStorage, graph = "" } = {}) {
+  const key = (uid) => `plexus-diagram:follow-left:${graph}:${uid}`;
+  return {
+    get(uid) {
+      try {
+        const raw = storage?.getItem?.(key(uid));
+        const list = raw ? JSON.parse(raw) : null;
+        return Array.isArray(list) ? new Set(list.filter((u) => typeof u === "string")) : null;
+      } catch {
+        return null;
+      }
+    },
+    set(uid, uids) {
+      try {
+        storage?.setItem?.(key(uid), JSON.stringify([...uids || []].slice(0, FOLLOW_SKIP_CAP)));
+      } catch {
+      }
+    }
+  };
+}
+
+// src/session-follow.js
+var same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+extendSession((session, api3) => {
+  const { host } = api3;
+  const boardUid = session.uid;
+  const skipIdOf = (item) => {
+    const t = item?.target;
+    if (t?.kind === "page") {
+      if (t.uid) return t.uid;
+      try {
+        return host.pageUid?.(t.title) || null;
+      } catch {
+        return null;
+      }
+    }
+    if (t?.kind === "block" && t.uid) return t.uid;
+    return null;
+  };
+  const writePointer = (next) => api3.txn((t) => {
+    const board2 = api3.board();
+    if (!board2?.enhanced) return false;
+    const base2 = api3.rawPlexus(boardUid);
+    const pointer = next(readFollow(base2));
+    const plexus = withFollow(base2, pointer);
+    if (same(plexus, base2)) return false;
+    t.props(boardUid, plexus);
+    return true;
+  }).then((ok) => ok === true);
+  api3.onDeleteItems?.((t, uids, opts) => {
+    const board2 = api3.board();
+    const base2 = api3.rawPlexus(boardUid);
+    const pointer = readFollow(base2);
+    if (!board2 || !pointer) return;
+    const key = sourceKey(pointer);
+    const add = [];
+    for (const id of uids) {
+      const item = board2.items.get(id);
+      if (!item || item.src !== key && opts?.followSkip !== true) continue;
+      const skip = skipIdOf(item);
+      if (skip) add.push(skip);
+    }
+    if (add.length) t.props(boardUid, withFollow(base2, { ...pointer, skip: addSkip(pointer.skip, add) }));
+  });
+  function placeOne(t, string, spot, size, key) {
+    const board2 = api3.board();
+    const rects = api3.rects();
+    const parent = containerAt(board2, { x: spot.x + size.w / 2, y: spot.y + size.h / 2 }, { rects });
+    const rel = toRelative(board2, parent, spot, rects);
+    const layout = { x: api3.round1(rel.x), y: api3.round1(rel.y) };
+    const look = lookForNewString(string, api3.setting("default-card-look", "block"));
+    if (look) layout.look = look;
+    return t.create({ parent, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key } });
+  }
+  Object.assign(session, {
+    followState() {
+      const pointer = readFollow(api3.board()?.plexus);
+      return pointer ? { pointer, key: sourceKey(pointer) } : null;
+    },
+    // Every block of the board's own tree: never a query or linked-reference result.
+    followExclude() {
+      const out = new Set(api3.ix().keys());
+      out.add(boardUid);
+      return out;
+    },
+    // { kind, uid, tree }. The same source keeps its skip list. Resolves true when the pointer changed.
+    followSource({ kind, uid, tree } = {}) {
+      if (typeof kind !== "string" || typeof uid !== "string" || !uid || uid === boardUid) return Promise.resolve(false);
+      return writePointer((cur) => followPointerFor(cur, kind, uid, { tree }));
+    },
+    setFollowTree(on) {
+      return writePointer((cur) => cur?.kind === "block" ? { ...cur, tree: on === true } : cur);
+    },
+    // The cards stay; only the pointer (and its skip list) goes.
+    stopFollowing() {
+      return writePointer(() => null);
+    },
+    // entries: source items ({ uid, kind, title? }). Ref cards in a column right of the board's cards, or a column at
+    // `at` (a drag). SPREAD_CAP cards per transaction, so each batch is one undo; more go in more batches, one column
+    // each. Resolves { placed, batches, total, uids }.
+    placeFollowed(entries, { at = null } = {}) {
+      const none = { placed: 0, batches: 0, total: 0, uids: [] };
+      const board2 = api3.board();
+      const pointer = readFollow(board2?.plexus);
+      if (!board2 || !pointer) return Promise.resolve(none);
+      const key = sourceKey(pointer);
+      const { on } = followIndex(board2, key);
+      const seen = /* @__PURE__ */ new Set();
+      const list = (entries || []).filter((e2) => {
+        if (typeof e2?.uid !== "string" || !e2.uid || seen.has(e2.uid)) return false;
+        seen.add(e2.uid);
+        return !itemIds(e2).some((id) => on.has(id));
+      });
+      if (!list.length) return Promise.resolve(none);
+      const size = {
+        w: Number(api3.setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w,
+        h: Number(api3.setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h
+      };
+      const rects = api3.rects();
+      const bounds = boundsOf(board2.roots.map((id) => rects.get(id)).filter(Boolean));
+      const batches = followBatches(list, SPREAD_CAP);
+      const made = [];
+      let chain = Promise.resolve();
+      batches.forEach((batch, column) => {
+        chain = chain.then(() => {
+          if (api3.isGone()) return null;
+          const spots = followColumn(bounds, batch.length, { ...size, column, at });
+          return api3.txn((t) => {
+            const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key));
+            api3.applyFit(t, ids);
+            return ids;
+          }).then((ids) => {
+            if (Array.isArray(ids)) made.push(...ids);
+          });
+        });
+      });
+      return chain.then(() => ({ placed: made.length, batches: batches.length, total: list.length, uids: made }));
+    },
+    // Source uids the tray should stop offering. Resolves the number added.
+    dontBringBack(uids) {
+      return api3.txn((t) => {
+        const base2 = api3.rawPlexus(boardUid);
+        const pointer = readFollow(base2);
+        if (!pointer) return 0;
+        const skip = addSkip(pointer.skip, uids);
+        if (same(skip, pointer.skip)) return 0;
+        t.props(boardUid, withFollow(base2, { ...pointer, skip }));
+        return skip.length - pointer.skip.length;
+      }).then((n3) => n3 ?? 0);
+    },
+    // Cards off the board, and their source uids on the skip list, in one transaction.
+    removeFollowed(cardUids) {
+      return session.deleteItems(cardUids, { followSkip: true });
+    },
+    // Drops the source mark from cards (a "left the source" card becomes a plain card). Everything else stays.
+    dismissLeft(cardUids) {
+      return api3.txn((t) => {
+        let n3 = 0;
+        for (const id of cardUids || []) {
+          const raw = api3.rawPlexus(id);
+          if (!api3.board()?.items.has(id) || !(FOLLOW_SRC in raw)) continue;
+          const next = { ...raw };
+          delete next[FOLLOW_SRC];
+          t.props(id, next);
+          n3 += 1;
+        }
+        return n3;
+      }).then((n3) => n3 ?? 0);
     }
   });
 });
@@ -58306,8 +58687,8 @@ function filterRows(rows, query) {
   return (rows || []).filter((row4) => `${row4.crumb || ""} ${row4.snippet || ""}`.toLowerCase().includes(q2));
 }
 function groupRefs(rows, cap4 = CONTEXT_CAP) {
-  const sorted = [...rows || []].filter((row4) => row4?.uid).sort((a, b) => (b.time || 0) - (a.time || 0) || String(a.uid).localeCompare(String(b.uid)));
-  const shown = sorted.slice(0, cap4);
+  const sorted2 = [...rows || []].filter((row4) => row4?.uid).sort((a, b) => (b.time || 0) - (a.time || 0) || String(a.uid).localeCompare(String(b.uid)));
+  const shown = sorted2.slice(0, cap4);
   const groups2 = [];
   for (const row4 of shown) {
     const year = Number.isFinite(row4.time) ? new Date(row4.time).getFullYear() : 0;
@@ -58318,7 +58699,7 @@ function groupRefs(rows, cap4 = CONTEXT_CAP) {
     }
     group.rows.push(row4);
   }
-  return { groups: groups2, total: sorted.length, hidden: Math.max(0, sorted.length - shown.length) };
+  return { groups: groups2, total: sorted2.length, hidden: Math.max(0, sorted2.length - shown.length) };
 }
 function rowChunks(rows, size = CONTEXT_CHUNK) {
   const list = rows || [];
@@ -60583,8 +60964,8 @@ function createInteractions({ actions, settings } = {}) {
           call("commitMove", uids, dx, dy);
           return true;
         }
-        const same2 = state.nudge && state.nudge.uids.length === uids.length && state.nudge.uids.every((u, i) => u === uids[i]);
-        if (!same2) flushNudge();
+        const same3 = state.nudge && state.nudge.uids.length === uids.length && state.nudge.uids.every((u, i) => u === uids[i]);
+        if (!same3) flushNudge();
         if (!state.nudge) state.nudge = { uids, dx: 0, dy: 0, timer: null };
         state.nudge.dx += dx;
         state.nudge.dy += dy;
@@ -60845,7 +61226,16 @@ ${b.pageTitle || b.page || ""}`.toLowerCase().includes(q2));
   }
   return api3;
 }
-function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs = 150 } = {}) {
+function openPagePicker({
+  doc = globalThis.document,
+  search,
+  onPick,
+  debounceMs = 150,
+  heading = "Add page",
+  placeholder = "Search pages…",
+  hint = "Type to search pages",
+  none = "No matching pages"
+} = {}) {
   current?.close();
   const offs = [];
   const on = (target, type, fn, capture) => {
@@ -60861,14 +61251,14 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
   };
   const back = el2("div", "pxd-addboard-back", doc.body);
   const box2 = el2("div", "pxd-addboard pxd-addpage", doc.body);
-  el2("div", "pxd-addboard__title", box2, "Add page");
+  el2("div", "pxd-addboard__title", box2, heading);
   const filter = el2("input", "pxd-addboard__filter", box2);
   filter.type = "text";
-  filter.setAttribute("aria-label", "Search pages");
-  filter.placeholder = "Search pages…";
-  filter.setAttribute("placeholder", "Search pages…");
+  filter.setAttribute("aria-label", placeholder.replace(/…$/, ""));
+  filter.placeholder = placeholder;
+  filter.setAttribute("placeholder", placeholder);
   const list = el2("div", "pxd-addboard__list", box2);
-  el2("div", "pxd-addboard__empty", list, "Type to search pages");
+  el2("div", "pxd-addboard__empty", list, hint);
   let closed = false;
   let busy = false;
   let timer = null;
@@ -60887,15 +61277,19 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
   const show = (rows, text4) => {
     list.replaceChildren();
     if (!rows.length) {
-      el2("div", "pxd-addboard__empty", list, text4 ? "No matching pages" : "Type to search pages");
+      el2("div", "pxd-addboard__empty", list, text4 ? none : hint);
       return;
     }
     for (const page of rows) {
       const row4 = el2("div", "pxd-addboard__row", list);
+      const value = typeof page.value === "string" && page.value ? page.value : page.title;
       row4.dataset.title = page.title;
       row4.setAttribute("data-title", page.title);
+      row4.dataset.value = value;
+      row4.setAttribute("data-value", value);
       const label = el2("span", "pxd-addboard__text", row4);
       el2("span", "pxd-addboard__name", label, page.title);
+      if (page.meta) el2("span", "pxd-addboard__meta", label, page.meta);
     }
   };
   const run = () => {
@@ -60941,7 +61335,7 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
   });
   on(list, "click", (event) => {
     const row4 = event.target?.closest?.(".pxd-addboard__row");
-    const title = row4?.dataset?.title || row4?.getAttribute?.("data-title");
+    const title = row4?.dataset?.value || row4?.getAttribute?.("data-value") || row4?.dataset?.title || row4?.getAttribute?.("data-title");
     if (!title || busy) return;
     event.preventDefault?.();
     event.stopPropagation?.();
@@ -62427,9 +62821,9 @@ function bodySizeOf2(items) {
   const pool = (plain2.length ? plain2 : source).map((item) => item.transform[0]).sort((a, b) => a - b);
   const median8 = pool[pool.length >> 1] || items[0].transform[0];
   let body = median8;
-  const sorted = items.map((item) => item.transform[5]).sort((a, b) => a - b);
+  const sorted2 = items.map((item) => item.transform[5]).sort((a, b) => a - b);
   const bases = [];
-  for (const base2 of sorted) {
+  for (const base2 of sorted2) {
     if (!bases.length || base2 - bases[bases.length - 1] > 0.35 * median8) bases.push(base2);
   }
   const gaps = [];
@@ -62444,10 +62838,10 @@ function bodySizeOf2(items) {
   }
   return { body, median: median8 };
 }
-function baselineRows2(sorted) {
+function baselineRows2(sorted2) {
   const rows = [];
   let row4 = null;
-  for (const item of sorted) {
+  for (const item of sorted2) {
     const base2 = item.transform[5];
     const size = item.transform[0] || 1;
     if (row4 && base2 - row4.last <= 0.3 * size && base2 - row4.first <= 0.45 * size) {
@@ -62612,8 +63006,8 @@ function absorbGapFragments(lines, items, squeezed = []) {
     return lines.find((host) => {
       if (host === exclude || host.idx.length < 3 || host.idx.length <= idx.length) return false;
       if (Math.abs(base2 - items[host.idx[0]].transform[5]) > 0.8 * host.size || Math.abs(size - host.size) > 0.3 * host.size) return false;
-      const sorted = [...host.idx].sort((a, b) => left(a) - left(b));
-      const inGap = sorted.some((i, k) => k > 0 && right(sorted[k - 1]) <= x0 + 0.5 && left(i) >= x1 - 0.5);
+      const sorted2 = [...host.idx].sort((a, b) => left(a) - left(b));
+      const inGap = sorted2.some((i, k) => k > 0 && right(sorted2[k - 1]) <= x0 + 0.5 && left(i) >= x1 - 0.5);
       if (!inGap) return false;
       const [hy0, hy1] = span(host.idx);
       return Math.min(hy1, fy1) - Math.max(hy0, fy0) > 0;
@@ -62958,9 +63352,9 @@ function rowKeys(words) {
   return all.filter((token) => /\d/.test(token));
 }
 function baselineRows3(words) {
-  const sorted = [...words || []].sort((a, b) => (a.base ?? 0) - (b.base ?? 0) || (a.x0 ?? 0) - (b.x0 ?? 0));
+  const sorted2 = [...words || []].sort((a, b) => (a.base ?? 0) - (b.base ?? 0) || (a.x0 ?? 0) - (b.x0 ?? 0));
   const rows = [];
-  for (const word of sorted) {
+  for (const word of sorted2) {
     const size = word.size || 8;
     let host = null;
     for (let i = rows.length - 1; i >= 0 && rows[i].base >= (word.base ?? 0) - 2 * size; i -= 1) {
@@ -63037,8 +63431,8 @@ function ruledTarget(textCount, lineCount) {
   if (lineCount < 3 || textCount < 2) return textCount;
   const closed = lineCount - 1;
   const open = lineCount;
-  const pick2 = Math.abs(closed - textCount) <= Math.abs(open - textCount) ? closed : open;
-  if (Math.abs(pick2 - textCount) / textCount <= 0.2) return pick2;
+  const pick3 = Math.abs(closed - textCount) <= Math.abs(open - textCount) ? closed : open;
+  if (Math.abs(pick3 - textCount) / textCount <= 0.2) return pick3;
   return textCount;
 }
 function fit(actual, target) {
@@ -63100,9 +63494,9 @@ function cellCovers(hit, rows, cell, headerRows = 0) {
   const head = cell && (cell.header || cell.r < Math.max(1, headerRows));
   if (head && indexes.length <= 6) return true;
   if (cell && String(cell.text || "").split(/\s+/).filter((w) => /[A-Za-z]/.test(w)).length >= 6 && indexes.length <= 8) return true;
-  const kinds = indexes.map((index) => rowKind(rows[index]));
-  if (kinds.includes("word") && kinds.includes("num")) return false;
-  if (kinds.filter((kind) => kind === "num").length >= 2) return false;
+  const kinds2 = indexes.map((index) => rowKind(rows[index]));
+  if (kinds2.includes("word") && kinds2.includes("num")) return false;
+  if (kinds2.filter((kind) => kind === "num").length >= 2) return false;
   return indexes.length <= 3;
 }
 function cleanCoverage(table, rows, owner) {
@@ -64086,7 +64480,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
       }
     }
     if (arbitrate && !host && !gridReading(built) && !verifiedPages.includes(structure.page)) continue;
-    const same2 = host && (setJaccard(host, built) >= minJaccard || tokenJaccard(host, built) >= minJaccard);
+    const same3 = host && (setJaccard(host, built) >= minJaccard || tokenJaccard(host, built) >= minJaccard);
     if (arbitrate && host) {
       const page = (evidence || []).find((item) => item.page === structure.page) || { words: [], rules: [] };
       const decision = chooseTableReading(host, built, page);
@@ -64134,7 +64528,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
       applied.push({ id: host.id, page: structure.page, rows: chosen.rows, cols: chosen.cols, choice: decision.choice });
       continue;
     }
-    if (host && !same2 && !trust) continue;
+    if (host && !same3 && !trust) continue;
     if (trust) {
       for (const id of [...order]) {
         const block = blocks[id];
@@ -64455,7 +64849,7 @@ function alignVlmText(doc, regions) {
   const applied = [];
   const reads = [];
   const dropped = [];
-  const kinds = /* @__PURE__ */ new Set(["para", "heading", "caption", "footnote"]);
+  const kinds2 = /* @__PURE__ */ new Set(["para", "heading", "caption", "footnote"]);
   const covered = /* @__PURE__ */ new Set(["table", "figure"]);
   for (const region of regions) {
     if (!region?.text || !region.bbox) continue;
@@ -64465,7 +64859,7 @@ function alignVlmText(doc, regions) {
     const inside8 = [];
     for (const id of order || []) {
       const block = blocks[id];
-      if (!block || block.page !== region.page || !kinds.has(block.type) || !block.bbox) continue;
+      if (!block || block.page !== region.page || !kinds2.has(block.type) || !block.bbox) continue;
       const c = centerOf4(block.bbox);
       if (!c) continue;
       if (whole2) {
@@ -64474,7 +64868,7 @@ function alignVlmText(doc, regions) {
       inside8.push(block);
     }
     if (!inside8.length) {
-      const have = (order || []).map((id2) => blocks[id2]).filter((block) => block && block.page === region.page && kinds.has(block.type));
+      const have = (order || []).map((id2) => blocks[id2]).filter((block) => block && block.page === region.page && kinds2.has(block.type));
       if (have.length || String(region.text).replace(/\s/g, "").length < 8) continue;
       if (order === doc.order) order = [...doc.order || []];
       const id = `vlmtext-p${region.page}-${applied.length + 1}`;
@@ -67716,14 +68110,14 @@ function nearbyText(doc, ids, index, focusIds, budget, paras) {
   for (let i = index - 1; i >= 0 && before.length < paras; i -= 1) if (usable(ids[i])) before.push(ids[i]);
   const after = [];
   for (let i = index + 1; i < ids.length && after.length < paras; i += 1) if (usable(ids[i])) after.push(ids[i]);
-  const pick2 = [];
+  const pick3 = [];
   for (let k = 0; k < paras; k += 1) {
-    if (before[k]) pick2.push({ id: before[k], side: "before" });
-    if (after[k]) pick2.push({ id: after[k], side: "after" });
+    if (before[k]) pick3.push({ id: before[k], side: "before" });
+    if (after[k]) pick3.push({ id: after[k], side: "after" });
   }
   const chosen = [];
   let used = 0;
-  for (const { id, side: side2 } of pick2) {
+  for (const { id, side: side2 } of pick3) {
     const b = blocks[id];
     const room = budget - used;
     if (room < 80) break;
@@ -68455,7 +68849,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
     } catch {
     }
   };
-  const pick2 = (uids) => {
+  const pick3 = (uids) => {
     const list = (Array.isArray(uids) ? uids : []).filter((id) => typeof id === "string" && id);
     if (!list.length) return;
     try {
@@ -68546,7 +68940,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       const pin2 = pinFor(doc, payload);
       const res = await session?.insertParsedBelow?.({ pdfUid: payload.pdfUid, markdown, blockEstimate, ...pin2 ? { pin: pin2 } : {} });
       if (res?.ok) {
-        pick2(res.uids);
+        pick3(res.uids);
         const where3 = res.path === "card" ? "beside the PDF" : "below the PDF";
         say(`Inserted ${plural2(blockEstimate, "block", "blocks")} ${where3}`);
       }
@@ -68562,7 +68956,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       const pin2 = pinFor(doc, payload);
       const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto", notes: pageNoteBlocks(doc, table), caption: parsedTableCaption(table, doc), ...pin2 ? { pin: pin2 } : {} });
       if (res?.ok) {
-        pick2(res.uid ? [res.uid] : []);
+        pick3(res.uid ? [res.uid] : []);
         const merged = mergedCells(table);
         const how = res.path === "grid" ? "Roam Grid" : res.path === "flat" ? "flat Roam table" : "native Roam table";
         say(merged ? `Table inserted · ${how} with ${plural2(merged, "merged cell", "merged cells")}` : `Table inserted · ${how}`);
@@ -68581,7 +68975,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
         const at = where2(payload, CARD_SIZE);
         const res = await session?.sendParsedToBoard?.({ ...at, sections: plan.sections, ...pin2 ? { pin: pin2 } : {} });
         if (res?.ok) {
-          pick2(res.uids);
+          pick3(res.uids);
           say(`Sent ${plural2(plan.sections.length, "card", "cards")} to the board`);
         }
         return res || { ok: false, reason: "no-session" };
@@ -68592,7 +68986,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
         const at = where2(payload, sized || CARD_SIZE);
         const res = await session?.insertParsedCard?.({ ...at, markdown: plan.markdown, ...sized ? { w: sized.w, h: sized.h } : {}, ...pin2 ? { pin: pin2 } : {} });
         if (res?.ok) {
-          pick2(res.uid ? [res.uid] : []);
+          pick3(res.uid ? [res.uid] : []);
           say("Sent 1 card to the board");
         }
         return res || { ok: false, reason: "no-session" };
@@ -68606,7 +69000,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       const at = where2(payload, CARD_SIZE);
       const res = await session?.insertParsedCard?.({ ...at, markdown });
       if (res?.ok) {
-        pick2(res.uid ? [res.uid] : []);
+        pick3(res.uid ? [res.uid] : []);
         say(payload.quote ? "Quote card inserted" : "Card inserted");
       }
       return res || { ok: false, reason: "no-session" };
@@ -68632,7 +69026,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       const at = where2(payload, CARD_SIZE);
       const res = await session?.insertParsedCard?.({ ...at, markdown, ...uids[0] ? { sourceUid: uids[0] } : {}, ...uids.length > 1 ? { sourceUids: uids.slice(1) } : {} });
       if (res?.ok) {
-        pick2(res.uid ? [res.uid] : []);
+        pick3(res.uid ? [res.uid] : []);
         say("Answer card inserted");
         await linkAnswer(res.uid, resolved);
       }
@@ -68645,7 +69039,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       const at = where2(payload, parsedTableSize(table));
       const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto", notes: [], ...payload.pin ? { pin: payload.pin } : {} });
       if (res?.ok) {
-        pick2(res.uid ? [res.uid] : []);
+        pick3(res.uid ? [res.uid] : []);
         say("Chart data inserted");
       }
       return res || { ok: false, reason: "no-session" };
@@ -68661,7 +69055,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       const pin2 = pinFor(withImages, payload);
       const res = await session?.insertParsedCard?.({ ...at, markdown, ...sized ? { w: sized.w, h: sized.h } : {}, ...pin2 ? { pin: pin2 } : {} });
       if (res?.ok) {
-        pick2(res.uid ? [res.uid] : []);
+        pick3(res.uid ? [res.uid] : []);
         say("Card inserted");
       }
       return res || { ok: false, reason: "no-session" };
@@ -70202,8 +70596,8 @@ function verticalGap(fig, cand) {
 function assignCaptions(images, items) {
   const pairs = /* @__PURE__ */ new Map();
   const used = /* @__PURE__ */ new Set();
-  const sorted = images.slice().sort((a, b) => (llamaBox(a.bbox)?.bbox[1] || 0) - (llamaBox(b.bbox)?.bbox[1] || 0));
-  for (const image of sorted) {
+  const sorted2 = images.slice().sort((a, b) => (llamaBox(a.bbox)?.bbox[1] || 0) - (llamaBox(b.bbox)?.bbox[1] || 0));
+  for (const image of sorted2) {
     const fig = llamaBox(image.bbox)?.bbox;
     if (!fig) continue;
     let best = null;
@@ -72185,7 +72579,7 @@ function createPopover(doc, host) {
       }
     }
   };
-  const pick2 = (i) => {
+  const pick3 = (i) => {
     const r = rows[i];
     if (!r || r.disabled) return;
     const item = r._item;
@@ -72240,7 +72634,7 @@ function createPopover(doc, host) {
         const k = rows.length;
         b.addEventListener("click", (event) => {
           event.preventDefault?.();
-          pick2(k);
+          pick3(k);
         });
         b.addEventListener("pointermove", () => {
           if (at !== k) highlight(k);
@@ -72273,13 +72667,13 @@ function createPopover(doc, host) {
     }
     if ((k === "Enter" || k === " " && event.target !== filterBox) && at >= 0 && !event.target?.classList?.contains?.("pxd-ask__mnum")) {
       event.preventDefault?.();
-      pick2(at);
+      pick3(at);
     }
   };
   function open(spec2, anchorEl) {
-    const same2 = el2 && anchor === anchorEl;
+    const same3 = el2 && anchor === anchorEl;
     close({ refocus: false });
-    if (same2) return false;
+    if (same3) return false;
     spec = spec2;
     anchor = anchorEl || null;
     at = 0;
@@ -72348,7 +72742,7 @@ function createPopover(doc, host) {
       return anchor;
     },
     items: () => rows.map((r) => r._item),
-    pick: pick2,
+    pick: pick3,
     contains: (node2) => Boolean(el2 && node2 && (el2 === node2 || el2.contains?.(node2)))
   };
 }
@@ -72368,7 +72762,7 @@ function createSuggest(doc, host) {
     } catch {
     }
   };
-  const pick2 = (i = at) => {
+  const pick3 = (i = at) => {
     const r = rows[i];
     if (!r) return false;
     const fn = onPick;
@@ -72407,7 +72801,7 @@ function createSuggest(doc, host) {
       if (entry.detail) make(doc, "span", "pxd-ask__sdetail", r, entry.detail);
       r._entry = entry;
       const k = rows.length;
-      r.addEventListener("click", () => pick2(k));
+      r.addEventListener("click", () => pick3(k));
       r.addEventListener("pointermove", () => {
         if (at !== k) highlight(k);
       });
@@ -72436,14 +72830,14 @@ function createSuggest(doc, host) {
       highlight((at + (k === "ArrowDown" ? 1 : -1) + rows.length) % rows.length);
       return true;
     }
-    if (k === "Enter" || k === "Tab") return pick2();
+    if (k === "Enter" || k === "Tab") return pick3();
     return false;
   }
   return {
     show,
     hide,
     key,
-    pick: pick2,
+    pick: pick3,
     get isOpen() {
       return Boolean(el2 && !el2.hidden);
     },
@@ -76622,13 +77016,13 @@ function createParseView({
     }
   }
   function engineChoice() {
-    let pick2 = "local";
+    let pick3 = "local";
     try {
-      pick2 = typeof defaultEngine === "function" ? defaultEngine() : defaultEngine;
+      pick3 = typeof defaultEngine === "function" ? defaultEngine() : defaultEngine;
     } catch {
-      pick2 = "local";
+      pick3 = "local";
     }
-    return pick2 === "builtin" || pick2 === "llamaparse" || pick2 === "mistral" ? pick2 : "local";
+    return pick3 === "builtin" || pick3 === "llamaparse" || pick3 === "mistral" ? pick3 : "local";
   }
   function paintParseLabel() {
     const docling = helperDocling && engineChoice() === "local";
@@ -77691,10 +78085,10 @@ function createParseView({
     return Boolean(result?.doc);
   }
   async function parseDefault() {
-    const pick2 = engineChoice();
-    if (pick2 === "llamaparse") return parseLlama();
-    if (pick2 === "mistral") return parseMistralNow();
-    if (pick2 === "local") {
+    const pick3 = engineChoice();
+    if (pick3 === "llamaparse") return parseLlama();
+    if (pick3 === "mistral") return parseMistralNow();
+    if (pick3 === "local") {
       await refreshHelper();
       if (helperDocling && await parseDocling() === false) return parseBuiltin();
       if (helperDocling) return void 0;
@@ -79246,8 +79640,8 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
     }
     el2.removeAttribute("hidden");
     el2.setAttribute("data-kind", model.kind);
-    const same2 = current3 && current3.kind === model.kind && current3.text === model.text && current3.progress === model.progress && current3.buttons.map((b) => b.id).join() === model.buttons.map((b) => b.id).join();
-    if (!same2) paint2(model);
+    const same3 = current3 && current3.kind === model.kind && current3.text === model.text && current3.progress === model.progress && current3.buttons.map((b) => b.id).join() === model.buttons.map((b) => b.id).join();
+    if (!same3) paint2(model);
     if (model.autoHideMs && (!current3 || current3.kind !== model.kind)) {
       clearTimer();
       if (typeof later === "function") {
@@ -89600,22 +89994,22 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     const text4 = items.filter((it) => it.type === "text");
     const sample = cards[0] || text4[0];
     const fallback = sample?.type === "text" ? 24 : CARD_FONT_DEFAULT;
-    const same2 = items.every((it) => (it.fontSize ?? fallback) === (sample.fontSize ?? fallback));
+    const same3 = items.every((it) => (it.fontSize ?? fallback) === (sample.fontSize ?? fallback));
     el2("span", "pxd-props__label", g, "Text size");
     stepper(g, {
-      value: same2 ? sample.fontSize : void 0,
+      value: same3 ? sample.fontSize : void 0,
       fallback,
       min: CARD_FONT_MIN,
       max: CARD_FONT_MAX,
       aria: "Text size",
       onCommit: (v) => on.setItemStyle?.({ fontSize: v })
     });
-    colorField(g, "Text color", same2 ? sample.textColor : void 0, (c) => on.setItemStyle?.({ textColor: c }));
+    colorField(g, "Text color", same3 ? sample.textColor : void 0, (c) => on.setItemStyle?.({ textColor: c }));
     el2("span", "pxd-props__label", g, "Align");
-    const align = same2 ? sample.align || "" : "";
+    const align = same3 ? sample.align || "" : "";
     choice(g, [["", "Default"], ...ALIGNS.map((a) => [a, a[0].toUpperCase() + a.slice(1)])], align, (v) => on.setItemStyle?.({ align: v || null }), "align");
-    colorField(g, "Fill", same2 ? sample.fill : void 0, (c) => on.setItemStyle?.({ fill: c }));
-    colorField(g, "Border", same2 ? sample.border : void 0, (c) => on.setItemStyle?.({ border: c }));
+    colorField(g, "Fill", same3 ? sample.fill : void 0, (c) => on.setItemStyle?.({ fill: c }));
+    colorField(g, "Border", same3 ? sample.border : void 0, (c) => on.setItemStyle?.({ border: c }));
     button3(g, "pxd-props__reset", "Reset selected", "Remove text size, color, align, fill, and border", () => on.resetItems?.(), "props.reset");
   };
   const edgeGroup = (edge) => {
@@ -89635,7 +90029,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     const g = group(title, key);
     const sample = items[0];
     const defs = key === "group" ? sample.sectionDefaults || {} : {};
-    const pick2 = (field, fallback) => {
+    const pick3 = (field, fallback) => {
       const values = items.map((it) => it[field] ?? defs[field] ?? fallback);
       return values.every((v) => v === values[0]) ? values[0] : void 0;
     };
@@ -89648,10 +90042,10 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
       aria: "Title size",
       onCommit: (v) => write({ titleSize: v })
     });
-    colorField(g, "Title color", pick2("titleColor"), (c) => write({ titleColor: c }));
-    colorField(g, "Title fill", pick2("titleFill"), (c) => write({ titleFill: c }));
-    colorField(g, "Area fill", pick2("areaFill"), (c) => write({ areaFill: c }));
-    colorField(g, "Border", pick2("border"), (c) => write({ border: c }));
+    colorField(g, "Title color", pick3("titleColor"), (c) => write({ titleColor: c }));
+    colorField(g, "Title fill", pick3("titleFill"), (c) => write({ titleFill: c }));
+    colorField(g, "Area fill", pick3("areaFill"), (c) => write({ areaFill: c }));
+    colorField(g, "Border", pick3("border"), (c) => write({ border: c }));
     button3(g, "pxd-props__reset", resetLabel, resetLabel, reset, "props.reset");
   };
   const defaultsGroup = (board2) => {
@@ -89960,6 +90354,562 @@ function createInbox({ doc = globalThis.document, root, host, timers, titles, on
         cancel?.();
       } catch {
       }
+      btn2?.remove();
+      panel?.remove();
+      btn2 = null;
+      panel = null;
+    }
+  };
+}
+
+// src/view/follow-tray.js
+init_drop();
+init_schema();
+
+// src/host/follow-sources.js
+init_schema();
+init_query_run();
+init_query_backend();
+var UID8 = ":block/uid";
+var STR4 = ":block/string";
+var ORD2 = ":block/order";
+var KIDS5 = ":block/children";
+var FIELDS2 = ":block/uid :block/string :block/order :create/time :edit/time";
+var META = /^BT_attr[\w-]*::/;
+var REFS_LIMIT = FOLLOW_READ_CAP + 1;
+var kinds = /* @__PURE__ */ new Map();
+function defineFollowKind(kind) {
+  if (!kind || typeof kind.id !== "string" || typeof kind.read !== "function") return () => {
+  };
+  kinds.set(kind.id, kind);
+  return () => {
+    if (kinds.get(kind.id) === kind) kinds.delete(kind.id);
+  };
+}
+var followKind = (id) => kinds.get(id) || null;
+var quote = (text4) => `“${plainText(text4, 48) || "Untitled"}”`;
+var timeOf = (node2) => Math.max(Number(node2?.[":create/time"]) || 0, Number(node2?.[":edit/time"]) || 0);
+var sorted = (node2) => Array.isArray(node2?.[KIDS5]) ? node2[KIDS5].slice().sort((a, b) => (a?.[ORD2] ?? 0) - (b?.[ORD2] ?? 0)) : [];
+function treePattern(depth) {
+  let inner = `[${FIELDS2}]`;
+  for (let d = 1; d < depth; d += 1) inner = `[${FIELDS2} {(limit :block/children nil) ${inner}}]`;
+  return `[:node/title ${FIELDS2} {(limit :block/children nil) ${inner}}]`;
+}
+function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__PURE__ */ new Set() } = {}) {
+  const items = [];
+  let complete = true;
+  const walk3 = (node2, level) => {
+    for (const kid of sorted(node2)) {
+      if (!complete) return;
+      const uid = kid?.[UID8];
+      if (typeof uid !== "string" || skip.has(uid)) continue;
+      const string = typeof kid[STR4] === "string" ? kid[STR4] : "";
+      if (META.test(string.trim())) continue;
+      if (items.length >= cap4) {
+        complete = false;
+        return;
+      }
+      items.push({ uid, kind: "block", text: firstLine(string), time: timeOf(kid), depth: level, ...string.trim() ? {} : { blank: true } });
+      if (level < depth) walk3(kid, level + 1);
+    }
+  };
+  walk3(root, 1);
+  return { items, complete };
+}
+function nameOf(host, uid) {
+  let node2 = null;
+  try {
+    node2 = host?.pullEntity?.("[:node/title :block/string]", uid) || null;
+  } catch {
+    node2 = null;
+  }
+  if (!node2) return "";
+  return typeof node2[":node/title"] === "string" ? node2[":node/title"] : firstLine(node2[STR4] || "");
+}
+var watchBlock = (pointer, host, cb) => typeof host?.watchBlock === "function" ? host.watchBlock(pointer.uid, cb) : () => {
+};
+defineFollowKind({
+  id: "block",
+  title: "A block's children",
+  tree: true,
+  describe: (p, host) => `${p.tree ? "Everything under" : "Children of"} ${quote(nameOf(host, p.uid))}`,
+  // The watch covers the direct children (add, remove, reorder, edit). Deeper edits come with the poll.
+  watch: watchBlock,
+  async read(p, { host, boardUid }) {
+    let node2 = null;
+    try {
+      node2 = host?.pullEntity?.(treePattern(p.tree ? FOLLOW_TREE_DEPTH : 1), p.uid) || null;
+    } catch {
+      node2 = null;
+    }
+    if (!node2) return { ok: false, reason: "missing" };
+    const { items, complete } = treeItems(node2, { depth: p.tree ? FOLLOW_TREE_DEPTH : 1, skip: /* @__PURE__ */ new Set([boardUid]) });
+    return { ok: true, complete, items };
+  }
+});
+function subtreeUids(node2, out = /* @__PURE__ */ new Set()) {
+  for (const kid of Array.isArray(node2?.[KIDS5]) ? node2[KIDS5] : []) {
+    if (typeof kid?.[UID8] === "string") out.add(kid[UID8]);
+    subtreeUids(kid, out);
+  }
+  return out;
+}
+var queryString = (host, uid) => {
+  try {
+    return host?.pullEntity?.("[:block/string]", uid)?.[STR4] ?? null;
+  } catch {
+    return null;
+  }
+};
+defineFollowKind({
+  id: "query",
+  title: "A query",
+  describe(p, host) {
+    const parsed = parseQuery(queryString(host, p.uid) || "");
+    if (parsed.ok && parsed.title) return `Query ${quote(parsed.title)}`;
+    const body = /^\{\{\s*(?:\[\[query\]\]|query)\s*:([\s\S]*)\}\}$/.exec(String(queryString(host, p.uid) || "").trim());
+    return `Query ${quote(body ? body[1].trim() : "")}`;
+  },
+  // An edit to the query text reads again at once. New results come with the poll.
+  watch: watchBlock,
+  async read(p, { host, inBoard, tick }) {
+    const string = queryString(host, p.uid);
+    if (typeof string !== "string") return { ok: false, reason: "missing" };
+    const parsed = parseQuery(string);
+    if (!parsed.ok || !parsed.ast) return { ok: false, reason: "unsupported" };
+    const exclude = new Set(typeof inBoard === "function" ? inBoard() : []);
+    exclude.add(p.uid);
+    try {
+      subtreeUids(host.pullEntity(treePattern(3), p.uid), exclude);
+    } catch {
+    }
+    const res = await loadQueryRows(parsed.ast, createQueryBackend(host), { exclude, tick });
+    if (res.status !== "ok") return { ok: false, reason: res.status };
+    const items = res.rows.map((row4) => row4.kind === "page" ? { uid: row4.uid, kind: "page", title: row4.string.slice(2, -2), text: row4.text, time: row4.time } : { uid: row4.uid, kind: "block", text: row4.text, crumb: row4.crumb, time: row4.time });
+    return { ok: true, complete: !res.partial, items };
+  }
+});
+var pick2 = (obj, key) => obj?.[`:${key}`] ?? obj?.[key];
+var refsQuery = () => `[:find (pull ?p [:node/title :block/string {(limit :block/_refs ${REFS_LIMIT}) [:block/uid :block/string :block/props :create/time :edit/time {:block/page [:node/title]}]}]) :in $ ?uid :where [?p :block/uid ?uid]]`;
+defineFollowKind({
+  id: "refs",
+  title: "Linked references",
+  describe: (p, host) => `Linked references of ${quote(nameOf(host, p.uid))}`,
+  async read(p, { host, inBoard }) {
+    let rows = null;
+    try {
+      rows = host?.q?.(refsQuery(), p.uid);
+    } catch {
+      rows = null;
+    }
+    if (!Array.isArray(rows)) return { ok: false, reason: "error" };
+    const row4 = rows[0];
+    const node2 = Array.isArray(row4) ? row4[0] : row4;
+    if (!node2) return { ok: false, reason: "missing" };
+    const title = pick2(node2, "node/title");
+    const refs = pick2(node2, "block/_refs") ?? node2._refs ?? [];
+    if (!Array.isArray(refs)) return { ok: false, reason: "error" };
+    const own2 = new Set(typeof inBoard === "function" ? inBoard() : []);
+    const items = [];
+    for (const ref of refs) {
+      const uid = pick2(ref, "block/uid");
+      if (typeof uid !== "string" || own2.has(uid) || uid === p.uid) continue;
+      const string = String(pick2(ref, "block/string") ?? "");
+      const type = readPlexus(pick2(ref, "block/props"))?.type;
+      if (type === "edge" || type === "edges") continue;
+      const cls = classifyString(string);
+      if (cls.kind === "page" && typeof title === "string" && cls.title === title || cls.kind === "block" && cls.refUid === p.uid) continue;
+      const page = pick2(ref, "block/page");
+      const pageNode2 = Array.isArray(page) ? page[0] : page;
+      const crumb = pick2(pageNode2, "node/title");
+      items.push({ uid, kind: "block", text: firstLine(string), time: timeOf(ref), ...typeof crumb === "string" ? { crumb } : {}, ...string.trim() ? {} : { blank: true } });
+    }
+    items.sort((a, b) => b.time - a.time || (a.uid < b.uid ? -1 : 1));
+    return { ok: true, complete: refs.length < REFS_LIMIT, items: items.slice(0, FOLLOW_READ_CAP) };
+  }
+});
+
+// src/view/follow-tray.js
+var REASONS = {
+  missing: "The source block is gone.",
+  unsupported: "Plexus cannot run this query. It reads page and block refs with and, or and not.",
+  slow: "The query took too long to read.",
+  unknown: "This board follows a kind of source this version cannot read."
+};
+function createFollowTray({
+  doc = globalThis.document,
+  root,
+  host,
+  session,
+  timers,
+  board: board2,
+  since = null,
+  storage = globalThis.localStorage,
+  graph = "",
+  onLeft,
+  onShowCard,
+  onPlaced,
+  toast
+} = {}) {
+  const boardUid = session?.uid;
+  const memory = createLeftMemory({ storage, graph });
+  const leftBefore = boardUid ? memory.get(boardUid) : null;
+  let pointer = null;
+  let key = "";
+  let read2 = null;
+  let status = "idle";
+  let reason = "";
+  let absent = /* @__PURE__ */ new Map();
+  let diff = { pending: [], left: [], placed: 0, dismissed: 0 };
+  let label = "";
+  let leftShown = "";
+  let reads = 0;
+  let open = false;
+  let disposed = false;
+  let btn2 = null;
+  let panel = null;
+  let unwatch = () => {
+  };
+  let quiet = null;
+  let job = null;
+  let poll = null;
+  let inFlight = false;
+  let again = false;
+  const el2 = (tag, cls, parent, text4) => {
+    const node2 = doc.createElement(tag);
+    if (cls) node2.className = cls;
+    if (text4 != null) node2.textContent = text4;
+    if (parent) parent.append(node2);
+    return node2;
+  };
+  const swallow = (event) => event.stopPropagation();
+  const shield = (node2, types = ["pointerdown", "mousedown", "dblclick"]) => {
+    for (const type of types) node2.addEventListener(type, swallow);
+  };
+  const button3 = (parent, cls, text4, run, aria) => {
+    const b = el2("button", cls, parent, text4);
+    b.type = "button";
+    if (aria) b.setAttribute("aria-label", aria);
+    shield(b);
+    b.addEventListener("click", (event) => {
+      event.stopPropagation();
+      run();
+    });
+    return b;
+  };
+  const ctx = () => ({
+    host,
+    boardUid,
+    inBoard: () => session.followExclude?.() || /* @__PURE__ */ new Set([boardUid]),
+    tick: () => new Promise((resolve) => timers.idle(resolve))
+  });
+  const describe = () => {
+    const kind = pointer ? followKind(pointer.kind) : null;
+    try {
+      return kind?.describe?.(pointer, host) || kind?.title || "a source";
+    } catch {
+      return kind?.title || "a source";
+    }
+  };
+  function recompute() {
+    diff = pointer ? followDiff(read2, board2(), { key, skip: pointer.skip, absent, since }) : { pending: [], left: [], placed: 0, dismissed: 0 };
+    const next = diff.left.slice().sort().join("\n");
+    if (next !== leftShown) {
+      leftShown = next;
+      onLeft?.(new Set(diff.left));
+    }
+  }
+  function sync() {
+    if (disposed) return;
+    recompute();
+    paintPill();
+    paintPanel();
+  }
+  function runRead() {
+    job = null;
+    if (disposed || !pointer) return;
+    if (inFlight) {
+      again = true;
+      return;
+    }
+    const kind = followKind(pointer.kind);
+    if (!kind) {
+      status = "error";
+      reason = "unknown";
+      sync();
+      return;
+    }
+    const mine = key;
+    inFlight = true;
+    status = read2 ? status : "reading";
+    if (!read2) paintPanel();
+    Promise.resolve().then(() => kind.read(pointer, ctx())).catch(() => ({ ok: false, reason: "error" })).then((res) => {
+      inFlight = false;
+      if (disposed || mine !== key) return;
+      reads += 1;
+      if (res?.ok) {
+        read2 = res;
+        absent = absentStep(absent, res, board2(), key);
+        status = "ok";
+        reason = "";
+      } else {
+        status = "error";
+        reason = res?.reason || "error";
+      }
+      label = describe();
+      sync();
+      if (again) {
+        again = false;
+        schedule();
+      } else if (res?.ok && leftUnsettled(absent)) schedule();
+    });
+  }
+  function schedule() {
+    if (disposed || !pointer || quiet) return;
+    quiet = timers.later(() => {
+      quiet = null;
+      if (disposed || job) return;
+      job = timers.bgIdle(runRead, "follow");
+    }, FOLLOW_QUIET_MS);
+  }
+  const readSoon = () => {
+    if (disposed || !pointer || job) return;
+    job = timers.bgIdle(runRead, "follow");
+  };
+  function armPoll() {
+    poll?.();
+    poll = null;
+    if (!pointer || disposed) return;
+    poll = timers.later(() => {
+      poll = null;
+      if (doc?.visibilityState !== "hidden") schedule();
+      armPoll();
+    }, FOLLOW_POLL_MS);
+  }
+  function adopt() {
+    const next = readFollow(board2()?.plexus);
+    const nextKey = sourceKey(next);
+    if (nextKey === key) {
+      pointer = next;
+      return false;
+    }
+    try {
+      unwatch();
+    } catch {
+    }
+    unwatch = () => {
+    };
+    pointer = next;
+    key = nextKey;
+    read2 = null;
+    absent = /* @__PURE__ */ new Map();
+    status = pointer ? "reading" : "idle";
+    reason = "";
+    label = pointer ? describe() : "";
+    if (pointer) {
+      const kind = followKind(pointer.kind);
+      try {
+        unwatch = kind?.watch?.(pointer, host, () => schedule()) || (() => {
+        });
+      } catch {
+        unwatch = () => {
+        };
+      }
+      schedule();
+    } else if (open) close();
+    armPoll();
+    return true;
+  }
+  const entryOf = (row4) => ({ uid: row4.uid, kind: row4.kind, ...row4.title ? { title: row4.title } : {} });
+  function place3(rows) {
+    if (!rows.length) return Promise.resolve(null);
+    return Promise.resolve(session.placeFollowed?.(rows.map(entryOf))).then((res) => {
+      if (disposed || !res) return res;
+      if (res.batches > 1) toast?.(`Placed ${res.placed} cards in ${res.batches} batches of up to ${SPREAD_CAP}. Each Cmd+Z takes back one batch.`);
+      if (res.uids?.length) onPlaced?.(res.uids);
+      return res;
+    }).catch(() => null);
+  }
+  function paintPill() {
+    if (!pointer) {
+      btn2?.remove();
+      btn2 = null;
+      return;
+    }
+    if (!btn2) {
+      btn2 = el2("button", "pxd-follow pxd-chrome", root);
+      btn2.type = "button";
+      shield(btn2);
+      btn2.addEventListener("click", (event) => {
+        event.stopPropagation();
+        toggle();
+      });
+    }
+    const counts = sinceVisit(diff, { since, leftBefore });
+    btn2.textContent = followPill(diff.pending.length);
+    btn2.classList.toggle("pxd-follow--new", counts.newCount > 0 || counts.leftCount > 0);
+    btn2.setAttribute("aria-expanded", open ? "true" : "false");
+    const head = trayHeadline(counts);
+    btn2.setAttribute("aria-label", `${diff.pending.length} waiting from ${label || "the source"}${head ? `. ${head}` : ""}`);
+  }
+  const cardTitle = (uid) => {
+    const item = board2()?.items.get(uid);
+    return plainText(item?.title || item?.string || "", 80) || "Card";
+  };
+  function rowEl(list, row4) {
+    const node2 = el2("div", "pxd-follow__row", list);
+    node2.draggable = true;
+    node2.setAttribute("draggable", "true");
+    node2.dataset.uid = row4.uid;
+    if (row4.depth > 1) node2.style.paddingLeft = `${6 + (row4.depth - 1) * 12}px`;
+    const text4 = el2("div", "pxd-follow__text", node2);
+    if (row4.fresh) el2("span", "pxd-follow__new", text4, "new");
+    el2("span", "", text4, row4.kind === "page" ? row4.title : row4.text || "(empty block)");
+    if (row4.crumb) el2("div", "pxd-follow__crumb", node2, row4.crumb);
+    const acts = el2("div", "pxd-follow__acts", node2);
+    button3(acts, "pxd-follow__place", "Place", () => {
+      void place3([row4]);
+    });
+    button3(acts, "pxd-follow__skip", "Don't bring back", () => {
+      void session.dontBringBack?.([row4.uid]);
+    });
+    shield(node2);
+    node2.addEventListener("dragstart", (event) => {
+      event.stopPropagation();
+      const string = followCardString(row4);
+      try {
+        event.dataTransfer?.setData?.(FOLLOW_MIME, JSON.stringify(entryOf(row4)));
+        event.dataTransfer?.setData?.(CARD_MIME, string);
+        event.dataTransfer?.setData?.("text/plain", string);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+      } catch {
+      }
+    });
+  }
+  function paintPanel() {
+    if (!panel) return;
+    panel.replaceChildren?.();
+    const head = el2("div", "pxd-follow__head", panel);
+    el2("div", "pxd-follow__title", head, label ? `Following ${label}` : "Following");
+    button3(head, "pxd-follow__close", "×", () => close(), "Close");
+    const counts = sinceVisit(diff, { since, leftBefore });
+    const line = trayHeadline(counts);
+    if (line) el2("div", "pxd-follow__since", panel, line);
+    let note = "";
+    if (status === "reading" && !read2) note = "Reading the source…";
+    else if (status === "error") note = REASONS[reason] || "Could not read the source. The last list stays.";
+    else if (read2 && !read2.complete) note = "Only part of the source was read, so nothing is marked as left.";
+    if (note) el2("div", "pxd-follow__note", panel, note);
+    const bar = el2("div", "pxd-follow__bar", panel);
+    el2("span", "pxd-follow__count", bar, `${diff.pending.length} waiting · ${diff.placed} on the board`);
+    const all = button3(bar, "pxd-follow__all", diff.pending.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => {
+      void place3(diff.pending.slice());
+    });
+    all.disabled = diff.pending.length === 0;
+    const list = el2("div", "pxd-follow__list", panel);
+    if (!diff.pending.length) el2("div", "pxd-follow__empty", list, read2 ? "Everything in the source is on the board." : "");
+    for (const row4 of diff.pending) rowEl(list, row4);
+    if (diff.left.length) {
+      el2("div", "pxd-follow__section", panel, `Left the source (${diff.left.length})`);
+      const gone = el2("div", "pxd-follow__list pxd-follow__list--left", panel);
+      for (const uid of diff.left) {
+        const node2 = el2("div", "pxd-follow__row pxd-follow__row--left", gone);
+        node2.dataset.uid = uid;
+        el2("div", "pxd-follow__text", node2, cardTitle(uid));
+        const acts = el2("div", "pxd-follow__acts", node2);
+        button3(acts, "pxd-follow__show", "Show", () => onShowCard?.(uid));
+        button3(acts, "pxd-follow__dismiss", "Dismiss", () => {
+          void session.dismissLeft?.([uid]);
+        });
+        button3(acts, "pxd-follow__delete", "Delete", () => {
+          void session.deleteItems?.([uid]);
+        });
+        shield(node2);
+      }
+    }
+  }
+  function openPanel() {
+    if (disposed || !pointer) return;
+    if (!open) {
+      open = true;
+      panel = el2("div", "pxd-follow__panel pxd-chrome", root);
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-label", "Followed source");
+      shield(panel, ["pointerdown", "mousedown", "dblclick", "wheel"]);
+    }
+    readSoon();
+    sync();
+  }
+  function close() {
+    if (!open) return;
+    open = false;
+    panel?.remove();
+    panel = null;
+    paintPill();
+  }
+  function toggle() {
+    if (open) close();
+    else openPanel();
+  }
+  const onFocus = () => schedule();
+  const onVisible = () => {
+    if (doc?.visibilityState !== "hidden") schedule();
+  };
+  const win2 = doc?.defaultView || null;
+  win2?.addEventListener?.("focus", onFocus);
+  doc?.addEventListener?.("visibilitychange", onVisible);
+  const offChange = session?.on?.("change", (change) => {
+    if (disposed) return;
+    const dirty = change?.dirty;
+    if (dirty?.has?.(boardUid) || change?.structural) adopt();
+    if (!pointer) {
+      paintPill();
+      return;
+    }
+    if (change?.structural || dirty?.has?.(boardUid) || diff.left.some((uid) => dirty?.has?.(uid))) sync();
+    else if (dirty && [...dirty].some((uid) => board2()?.items.get(uid)?.src === key)) sync();
+  }) || (() => {
+  });
+  adopt();
+  sync();
+  return {
+    sync,
+    refresh: () => schedule(),
+    open: openPanel,
+    close,
+    isOpen: () => open,
+    rows: () => diff.pending.slice(),
+    left: () => diff.left.slice(),
+    reads: () => reads,
+    // The board menu: what Follow shows and offers.
+    menuState() {
+      const textUid = pointer ? null : textSourceUid(board2()?.string || "");
+      return {
+        following: Boolean(pointer),
+        kind: pointer?.kind || "",
+        tree: pointer?.tree === true,
+        label,
+        waiting: diff.pending.length,
+        textUid
+      };
+    },
+    dispose() {
+      if (disposed) return;
+      if (pointer && boardUid && read2) memory.set(boardUid, diff.left);
+      disposed = true;
+      try {
+        unwatch();
+      } catch {
+      }
+      try {
+        offChange();
+      } catch {
+      }
+      quiet?.();
+      job?.();
+      poll?.();
+      win2?.removeEventListener?.("focus", onFocus);
+      doc?.removeEventListener?.("visibilitychange", onVisible);
       btn2?.remove();
       panel?.remove();
       btn2 = null;
@@ -91667,14 +92617,14 @@ ${String(rec.text)}` : item.hay;
   });
 }
 var SIMILAR_LIMIT = 40;
-function similarImages(items, records, sourceKey, limit = SIMILAR_LIMIT) {
-  const source = records?.get?.(sourceKey) || null;
+function similarImages(items, records, sourceKey2, limit = SIMILAR_LIMIT) {
+  const source = records?.get?.(sourceKey2) || null;
   if (!source || source.failed || !Array.isArray(source.palette) || !source.palette.length) return { ok: false, rows: [] };
   const hits = [];
   let seq = 0;
   for (const item of Array.isArray(items) ? items : []) {
     seq += 1;
-    if (item.key === sourceKey) continue;
+    if (item.key === sourceKey2) continue;
     const rec = records.get(item.key);
     if (!rec || rec.failed || !Array.isArray(rec.palette) || !rec.palette.length) continue;
     const distance = paletteDistance(source.palette, rec.palette);
@@ -92537,17 +93487,17 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
 function rowMerged(parts, w, h, tol = 2) {
   const out = [];
   for (const part of [...parts].sort((a, b) => a.x0 - b.x0)) {
-    const same2 = out.find((o) => Math.abs(o.y0 - part.y0) <= tol && Math.abs(o.y1 - part.y1) <= tol);
-    if (!same2) {
+    const same3 = out.find((o) => Math.abs(o.y0 - part.y0) <= tol && Math.abs(o.y1 - part.y1) <= tol);
+    if (!same3) {
       out.push(part);
       continue;
     }
-    for (let i = 0; i < w * h; i++) if (part.mask[i]) same2.mask[i] = 1;
-    same2.x0 = Math.min(same2.x0, part.x0);
-    same2.x1 = Math.max(same2.x1, part.x1);
-    same2.y0 = Math.min(same2.y0, part.y0);
-    same2.y1 = Math.max(same2.y1, part.y1);
-    same2.area += part.area;
+    for (let i = 0; i < w * h; i++) if (part.mask[i]) same3.mask[i] = 1;
+    same3.x0 = Math.min(same3.x0, part.x0);
+    same3.x1 = Math.max(same3.x1, part.x1);
+    same3.y0 = Math.min(same3.y0, part.y0);
+    same3.y1 = Math.max(same3.y1, part.y1);
+    same3.area += part.area;
   }
   return out;
 }
@@ -92974,9 +93924,9 @@ function dashFromShape(blob, em) {
 
 // src/model/ocr/fine-skew.js
 function rowsOf(items) {
-  const sorted = [...items].sort((a, b) => a.transform[4] - b.transform[4]);
+  const sorted2 = [...items].sort((a, b) => a.transform[4] - b.transform[4]);
   const rows = [];
-  for (const it of sorted) {
+  for (const it of sorted2) {
     const size = it.transform[0];
     const base2 = it.transform[5];
     let best = null;
@@ -94593,7 +95543,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     levels.length = 0;
     on.closed?.();
   };
-  const pick2 = (row4) => {
+  const pick3 = (row4) => {
     const entry = entries.get(row4);
     if (!entry || entry.item.disabled) return;
     if (entry.sub) {
@@ -94654,14 +95604,14 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       return void 0;
     }
     if (key === "ArrowRight") {
-      if (level.active && entries.get(level.active)?.sub) pick2(level.active);
+      if (level.active && entries.get(level.active)?.sub) pick3(level.active);
       return void 0;
     }
     if (key === "ArrowLeft") {
       if (levels.length > 1) closeFrom(levels.length - 1);
       return void 0;
     }
-    if (level.active) pick2(level.active);
+    if (level.active) pick3(level.active);
     return void 0;
   };
   const rowOf = (event) => event.target?.closest?.(".pxd-menu__item") || null;
@@ -94684,7 +95634,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
         const row4 = rowOf(event);
         if (!row4) return;
         event.preventDefault?.();
-        pick2(row4);
+        pick3(row4);
       });
       on_(menuEl, "pointerover", (event) => {
         const row4 = rowOf(event);
@@ -95095,6 +96045,39 @@ function landmarkItem(c) {
     ]
   });
 }
+function followMenu(f) {
+  if (!f) return [];
+  if (f.following) {
+    return [make3("follow", "Following", {
+      children: [
+        ...f.label ? [make3("follow:label", f.label, { disabled: true })] : [],
+        make3("follow:show", `Show tray (${Number(f.waiting) || 0} waiting)`),
+        ...f.kind === "block" ? [make3("follow:tree", "Include the whole tree", { checked: f.tree === true })] : [],
+        make3("follow:stop", "Stop following")
+      ]
+    })];
+  }
+  return [make3("follow", "Follow…", {
+    children: [
+      ...f.textUid ? [make3("follow:text", "The block in the board text")] : [],
+      make3("follow:pick-block", "A block's children…"),
+      make3("follow:pick-query", "A query…"),
+      make3("follow:pick-refs", "Linked references of…")
+    ]
+  })];
+}
+function followCardItems(f) {
+  if (!f) return [];
+  const out = [];
+  const pick3 = [];
+  if (f.block) pick3.push(make3("follow:this", "Its children"));
+  if (f.query) pick3.push(make3("follow:this-query", "This query"));
+  if (f.refs) pick3.push(make3("follow:this-refs", "Its linked references"));
+  if (pick3.length) out.push(make3("follow-card", "Follow", { children: pick3 }));
+  if (f.left) out.push(make3("follow:dismiss", "Dismiss “left the source”"));
+  if (f.followed) out.push(make3("follow:remove", "Remove, don't bring back", { danger: true }));
+  return out;
+}
 var make3 = (id, label, extra = {}) => {
   const out = { id, label };
   for (const [key, value] of Object.entries(extra)) {
@@ -95277,6 +96260,7 @@ function buildMenu(kind, ctx = {}) {
         out.push(make3("neighbors:in", "Add pages that link here"));
         out.push(make3("neighbors:attr", "Add attribute values"));
       }
+      out.push(...followCardItems(c.follow));
       if (c.canAnnotate) out.push(make3("annotate-drawing", "Annotate as drawing"));
       out.push(
         make3("send-to", "Send to board…"),
@@ -95452,6 +96436,7 @@ function buildMenu(kind, ctx = {}) {
         make3("export-png", "Export as PNG"),
         make3("copy-outline", "Copy as outline"),
         make3("sort-outline", "Sort outline by position"),
+        ...followMenu(c.follow),
         ...c.inlinePdfs > 0 ? [make3("pdf-pages", "Move PDFs to their own pages")] : [],
         ...c.oldTables > 0 ? [make3("table-captions", "Fold tables under captions")] : [],
         make3("open-outline", "Open outline in sidebar"),
@@ -97560,6 +98545,7 @@ function buildBoardView(onFail, {
     }
   })();
   let inboxCtl = null;
+  let followCtl = null;
   const emptyHint = el2("div", "pxd-empty pxd-chrome", root);
   const resizeGrip = el2("div", "pxd-resize-grip pxd-chrome", root);
   resizeGrip.title = "Drag to resize the board";
@@ -102056,6 +103042,27 @@ function buildBoardView(onFail, {
     skip: () => /* @__PURE__ */ new Set([boardUid]),
     place: (strings) => addStringsBeside(strings)
   });
+  followCtl = createFollowTray({
+    doc,
+    root,
+    host,
+    session,
+    timers,
+    board: board2,
+    since: prevVisit,
+    storage,
+    graph,
+    onLeft: (set) => itemsR.setFollowLeft?.(set),
+    onShowCard: (uid) => {
+      const r = rects().get(uid);
+      if (!r) return;
+      ctl.select([uid]);
+      centerOn({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+      pulseItem(uid);
+    },
+    onPlaced: (uids) => ctl.select(uids),
+    toast: (message) => toast(message)
+  });
   let crumbList = Array.isArray(crumbs) ? crumbs.slice() : [];
   const boardTargetOf = (uid) => {
     const item = board2()?.items.get(uid);
@@ -102300,12 +103307,12 @@ function buildBoardView(onFail, {
     } catch {
       times = [];
     }
-    const timeOf = new Map(times.map((row4) => [row4[0], row4[1]]));
+    const timeOf2 = new Map(times.map((row4) => [row4[0], row4[1]]));
     memoryLane = mountMemoryLane({
       doc,
       parent: root,
-      items: uids.map((uid) => ({ uid, time: timeOf.get(uid) })),
-      edges: [...b.edges.values()].map((edge) => ({ uid: edge.uid, from: edge.from, to: edge.to, time: timeOf.get(edge.uid) })),
+      items: uids.map((uid) => ({ uid, time: timeOf2.get(uid) })),
+      edges: [...b.edges.values()].map((edge) => ({ uid: edge.uid, from: edge.from, to: edge.to, time: timeOf2.get(edge.uid) })),
       snapshots: b.snapshots || [],
       motion: setting("motion", "full"),
       onFrame(frame2) {
@@ -102960,7 +103967,7 @@ function buildBoardView(onFail, {
       case "canvas":
         return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting2("task-tool") === true };
       case "board-menu":
-        return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn };
+        return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -102984,7 +103991,15 @@ function buildBoardView(onFail, {
           }
         }
         const officeFile = officeTargetFromText(officeText);
-        return { ...task ? { statusTags, status: task.status || "" } : {}, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        const followKey = session.followState?.()?.key || "";
+        const follow = item?.type === "card" ? {
+          block: !isQueryString(queryText) && (item.kind === "note" || item.kind === "block" || item.kind === "page"),
+          query: isQueryString(queryText),
+          refs: item.kind === "note" || item.kind === "block" || item.kind === "page",
+          followed: Boolean(followKey) && item.src === followKey,
+          left: Boolean(followCtl?.left?.().includes(item.uid))
+        } : null;
+        return { ...task ? { statusTags, status: task.status || "" } : {}, follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -103082,6 +104097,132 @@ function buildBoardView(onFail, {
       session,
       point
     }).then(showOffice).catch(() => toast("Could not convert this file"));
+  };
+  const pageUidOf = (title) => {
+    try {
+      return host?.pageUid?.(title) || null;
+    } catch {
+      return null;
+    }
+  };
+  const refUidIn = (text4) => {
+    const t = String(text4 || "").trim();
+    const m = /^\(\(([\w-]{9})\)\)$/.exec(t) || /^([\w-]{9})$/.exec(t);
+    return m ? m[1] : null;
+  };
+  const blockRow = (uid, meta) => {
+    let s = null;
+    try {
+      s = host?.blockString?.(uid);
+    } catch {
+      s = null;
+    }
+    return typeof s === "string" ? { title: plainText(s, 80) || "(empty block)", value: uid, meta } : null;
+  };
+  const followPick = (what) => {
+    const kind = what === "query" ? "query" : what === "refs" ? "refs" : "block";
+    const words = {
+      block: { heading: "Follow a block's children", placeholder: "Search blocks and pages…", hint: "Type to search, or paste a ((block ref))" },
+      query: { heading: "Follow a query", placeholder: "Search query blocks…", hint: "Type words from the query, or paste its ((block ref))" },
+      refs: { heading: "Follow linked references of", placeholder: "Search pages…", hint: "Type to search pages, or paste a ((block ref))" }
+    }[kind];
+    pagePicker?.close();
+    pagePicker = openPagePicker({
+      doc,
+      ...words,
+      none: "Nothing matches",
+      search: (text4) => {
+        const rows = [];
+        const pasted = refUidIn(text4);
+        if (pasted) {
+          const row4 = blockRow(pasted, "Block");
+          if (row4 && (kind !== "query" || isQueryString(host?.blockString?.(pasted) || ""))) rows.push(row4);
+          return rows;
+        }
+        if (kind !== "query") {
+          for (const p of host?.searchPages?.(text4, kind === "refs" ? 30 : 10) || []) rows.push({ title: p.title, value: p.uid || p.title, meta: "Page" });
+        }
+        if (kind !== "refs") {
+          for (const r of host?.searchBlocks?.(text4, 40) || []) {
+            if (r.uid === boardUid) continue;
+            const isQ = isQueryString(r.string);
+            if (kind === "query" ? !isQ : isQ) continue;
+            rows.push({ title: plainText(r.string, 80) || "(empty block)", value: r.uid, meta: r.pageTitle });
+            if (rows.length >= 40) break;
+          }
+        }
+        return rows;
+      },
+      onPick: async (value) => {
+        const uid = /^[\w-]{1,64}$/.test(value) && host?.blockString?.(value) != null ? value : pageUidOf(value) || value;
+        return startFollow(kind, uid);
+      }
+    });
+  };
+  const startFollow = async (kind, uid) => {
+    if (!uid) return false;
+    const ok = await session.followSource?.({ kind, uid });
+    if (disposed) return false;
+    if (ok) {
+      followCtl?.open?.();
+      toast("Following. New items wait in the tray until you place them.");
+    } else if (session.followState?.()?.pointer?.uid === uid) followCtl?.open?.();
+    else toast("Couldn't follow that source");
+    return true;
+  };
+  const followTargetOf = (item, what) => {
+    if (!item) return null;
+    if (what === "query") return isQueryString(item.string) ? item.uid : item.target?.kind === "block" ? item.target.uid : null;
+    if (item.target?.kind === "page") return item.target.uid || pageUidOf(item.target.title);
+    if (item.target?.kind === "block" && item.target.uid) return item.target.uid;
+    return item.uid;
+  };
+  const runFollow = (arg, item) => {
+    const state = followCtl?.menuState?.() || {};
+    switch (arg) {
+      case "pick-block":
+        followPick("block");
+        break;
+      case "pick-query":
+        followPick("query");
+        break;
+      case "pick-refs":
+        followPick("refs");
+        break;
+      case "text": {
+        const uid = textSourceUid(board2()?.string || "");
+        if (uid) void startFollow(isQueryString(host?.blockString?.(uid) || "") ? "query" : "block", uid);
+        break;
+      }
+      case "this":
+        void startFollow("block", followTargetOf(item, "block"));
+        break;
+      case "this-query":
+        void startFollow("query", followTargetOf(item, "query"));
+        break;
+      case "this-refs":
+        void startFollow("refs", followTargetOf(item, "refs"));
+        break;
+      case "show":
+        followCtl?.open?.();
+        break;
+      case "tree":
+        void session.setFollowTree?.(!state.tree);
+        break;
+      case "stop":
+        void Promise.resolve(session.stopFollowing?.()).then((ok) => {
+          if (ok && !disposed) toast("Stopped following. The cards stay on the board.");
+        });
+        break;
+      case "dismiss":
+        if (item) void session.dismissLeft?.([item.uid]);
+        break;
+      case "remove":
+        if (item) void session.removeFollowed?.([item.uid]);
+        break;
+      default:
+        break;
+    }
   };
   const onMenuPick = (id) => {
     const b = board2();
@@ -103780,8 +104921,8 @@ function buildBoardView(onFail, {
         break;
       }
       case "select-same-color": {
-        const same2 = item ? sameColorUids(b, item.uid) : [];
-        if (same2.length) ctl.select(same2);
+        const same3 = item ? sameColorUids(b, item.uid) : [];
+        if (same3.length) ctl.select(same3);
         break;
       }
       case "select-connected": {
@@ -103800,6 +104941,9 @@ function buildBoardView(onFail, {
         break;
       case "sort-outline":
         void session.sortOutline?.();
+        break;
+      case "follow":
+        runFollow(arg, item);
         break;
       case "pdf-pages":
         void movePdfsToPages();
@@ -104215,9 +105359,9 @@ function buildBoardView(onFail, {
   const highlightOpenMode = () => readSetting2("highlight-open") === "sidebar" ? "sidebar" : "reader";
   const openHighlightAs = (item, mode) => {
     if (!item || item.kind !== "highlight") return;
-    const pick2 = mode === "sidebar" || mode === "main" || mode === "reader" ? mode : highlightOpenMode();
+    const pick3 = mode === "sidebar" || mode === "main" || mode === "reader" ? mode : highlightOpenMode();
     const uid = item.target?.uid || "";
-    if (pick2 === "sidebar") {
+    if (pick3 === "sidebar") {
       if (uid) {
         try {
           host?.openInSidebar?.(uid, "block");
@@ -104226,7 +105370,7 @@ function buildBoardView(onFail, {
       }
       return;
     }
-    if (pick2 === "main") {
+    if (pick3 === "main") {
       if (uid) {
         try {
           host?.openBlock?.(uid);
@@ -104373,8 +105517,8 @@ function buildBoardView(onFail, {
       },
       selectSameColor: () => {
         const it = singleItem();
-        const same2 = it ? sameColorUids(board2(), it.uid) : [];
-        if (same2.length) ctl.select(same2);
+        const same3 = it ? sameColorUids(board2(), it.uid) : [];
+        if (same3.length) ctl.select(same3);
       },
       selectConnected: () => {
         const it = singleItem();
@@ -107669,6 +108813,19 @@ ${url}`;
       void pasteImages(files, p);
       return;
     }
+    let followed = null;
+    try {
+      followed = JSON.parse(event.dataTransfer?.getData?.(FOLLOW_MIME) || "null");
+    } catch {
+      followed = null;
+    }
+    if (followed?.uid) {
+      void Promise.resolve(session.placeFollowed?.([followed], { at: p })).then((res) => {
+        if (!disposed && res?.uids?.length) ctl.select(res.uids);
+      }).catch(() => {
+      });
+      return;
+    }
     const resolveUid = (u) => host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`;
     const list = parseDropPayload(event.dataTransfer, { resolveUid, graph: host?.graph || "" });
     if (!list.length) return;
@@ -107722,8 +108879,8 @@ ${url}`;
     if (droppedDrawingUids(planned.map((x) => x.string), (id) => host?.blockString?.(id)).length) toast(DRAWING_DROP_TOAST);
     const fromReader = Boolean(doc.activeElement?.closest?.(".pxd-read"));
     const made = session.addRefCards?.(planned);
-    const same2 = planned.length === list.length && planned.every((row4, i) => row4.string === list[i].string);
-    const offer = same2 ? dropNamespace(list.map((x) => x.string)) : null;
+    const same3 = planned.length === list.length && planned.every((row4, i) => row4.string === list[i].string);
+    const offer = same3 ? dropNamespace(list.map((x) => x.string)) : null;
     Promise.resolve(made).then((uids) => {
       if (Array.isArray(uids) && uids.length) {
         ctl.select(uids);
@@ -109539,6 +110696,10 @@ ${url}`;
         inboxCtl?.dispose();
         inboxCtl = null;
       });
+      step(() => {
+        followCtl?.dispose();
+        followCtl = null;
+      });
       step(() => closeHalo());
       step(() => {
         regionMark?.destroy?.();
@@ -111036,7 +112197,7 @@ function dedupe(list) {
   }
   return out;
 }
-function same(a, b) {
+function same2(a, b) {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
   return true;
@@ -111161,7 +112322,7 @@ function createPrefetch({
     if (enabled() === false) return;
     const list = dedupe(Array.isArray(uids) ? uids : [uids]);
     if (!list.length) return;
-    if (timer && same(pending, list)) {
+    if (timer && same2(pending, list)) {
       if (el2) pendingEl = el2;
       return;
     }
@@ -113830,13 +114991,13 @@ async function installPlexusDiagram({
     if (fresh && fresh.key === key && fresh.dark === dark) {
       const prev = snapStore.get(key);
       const vp = src.vp;
-      let same2 = false;
+      let same3 = false;
       try {
-        same2 = Boolean(prev && prev === fresh.snap && vp && prev.vp && prev.vp.x === vp.x && prev.vp.y === vp.y && prev.vp.zoom === vp.zoom && prev.stamp === boardStamp(src.board, src.rects));
+        same3 = Boolean(prev && prev === fresh.snap && vp && prev.vp && prev.vp.x === vp.x && prev.vp.y === vp.y && prev.vp.zoom === vp.zoom && prev.stamp === boardStamp(src.board, src.rects));
       } catch {
-        same2 = false;
+        same3 = false;
       }
-      if (same2) {
+      if (same3) {
         rec.snapDirty = false;
         if (host.stats && typeof host.stats === "object") host.stats.snapSkips = (host.stats.snapSkips || 0) + 1;
         return true;
@@ -113873,13 +115034,13 @@ async function installPlexusDiagram({
         if (!now5 || now5.gesturing || now5.board !== src.board || now5.vp?.x !== src.vp?.x || now5.vp?.y !== src.vp?.y || now5.vp?.zoom !== src.vp?.zoom || currentUid(rec) !== uid || isDarkTheme(rec) !== dark) return null;
         const out = capture.result();
         if (!out) return false;
-        let same2 = false;
+        let same3 = false;
         try {
-          same2 = out.stamp === boardStamp(now5.board, now5.rects);
+          same3 = out.stamp === boardStamp(now5.board, now5.rects);
         } catch {
-          same2 = false;
+          same3 = false;
         }
-        if (!same2) return null;
+        if (!same3) return null;
         rec.snapDirty = false;
         return snapStore.set(key, out, thumbs);
       };

@@ -111,7 +111,18 @@ export function openAddToBoard({ doc = globalThis.document, listBoards, onPick }
 
 // "Add page…" picker (PG-4). Same chrome as the board picker; rows come from a page search as you type.
 // `search(text)` returns [{ uid, title }] (sync or async). Nothing is searched until the filter has text.
-export function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs = 150 } = {}) {
+// PXD-9 reuses it for blocks and queries: a row may carry `value` (what onPick gets instead of the title) and `meta`
+// (a second, muted line); `heading`, `placeholder`, `hint` and `none` change the words.
+export function openPagePicker({
+  doc = globalThis.document,
+  search,
+  onPick,
+  debounceMs = 150,
+  heading = "Add page",
+  placeholder = "Search pages…",
+  hint = "Type to search pages",
+  none = "No matching pages",
+} = {}) {
   current?.close();
   const offs = [];
   const on = (target, type, fn, capture) => {
@@ -128,14 +139,14 @@ export function openPagePicker({ doc = globalThis.document, search, onPick, debo
 
   const back = el("div", "pxd-addboard-back", doc.body);
   const box = el("div", "pxd-addboard pxd-addpage", doc.body);
-  el("div", "pxd-addboard__title", box, "Add page");
+  el("div", "pxd-addboard__title", box, heading);
   const filter = el("input", "pxd-addboard__filter", box);
   filter.type = "text";
-  filter.setAttribute("aria-label", "Search pages");
-  filter.placeholder = "Search pages…";
-  filter.setAttribute("placeholder", "Search pages…");
+  filter.setAttribute("aria-label", placeholder.replace(/…$/, ""));
+  filter.placeholder = placeholder;
+  filter.setAttribute("placeholder", placeholder);
   const list = el("div", "pxd-addboard__list", box);
-  el("div", "pxd-addboard__empty", list, "Type to search pages");
+  el("div", "pxd-addboard__empty", list, hint);
 
   let closed = false;
   let busy = false;
@@ -156,15 +167,19 @@ export function openPagePicker({ doc = globalThis.document, search, onPick, debo
   const show = (rows, text) => {
     list.replaceChildren();
     if (!rows.length) {
-      el("div", "pxd-addboard__empty", list, text ? "No matching pages" : "Type to search pages");
+      el("div", "pxd-addboard__empty", list, text ? none : hint);
       return;
     }
     for (const page of rows) {
       const row = el("div", "pxd-addboard__row", list);
+      const value = typeof page.value === "string" && page.value ? page.value : page.title;
       row.dataset.title = page.title;
       row.setAttribute("data-title", page.title);
+      row.dataset.value = value;
+      row.setAttribute("data-value", value);
       const label = el("span", "pxd-addboard__text", row);
       el("span", "pxd-addboard__name", label, page.title);
+      if (page.meta) el("span", "pxd-addboard__page", label, page.meta);
     }
   };
   const run = () => {
@@ -201,7 +216,7 @@ export function openPagePicker({ doc = globalThis.document, search, onPick, debo
   });
   on(list, "click", (event) => {
     const row = event.target?.closest?.(".pxd-addboard__row");
-    const title = row?.dataset?.title || row?.getAttribute?.("data-title");
+    const title = row?.dataset?.value || row?.getAttribute?.("data-value") || row?.dataset?.title || row?.getAttribute?.("data-title");
     if (!title || busy) return;
     event.preventDefault?.();
     event.stopPropagation?.();

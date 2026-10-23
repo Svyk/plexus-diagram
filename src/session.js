@@ -415,6 +415,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   });
 
   const listeners = new Map();
+  // fn(t, uids, opts) inside deleteItems' own transaction: uids are every item that goes (contents included).
+  const deleteHooks = [];
   const emit = (name, payload) => {
     for (const fn of [...(listeners.get(name) ?? [])]) {
       try { fn(payload); } catch (err) { console.error("[plexus session]", err); }
@@ -3009,7 +3011,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       return this.addRefCards([{ string: `((${blockUid}))`, x: at.x, y: at.y }]).then((ids) => ids?.[0] ?? null);
     },
 
-    deleteItems(uids, { withContents = false, force = false } = {}) {
+    deleteItems(uids, opts = {}) {
+      const { withContents = false, force = false } = opts || {};
       return txn((t) => {
         const protectedItem = (id) => board.items.get(id).pinned
           || (withContents && [...descendantsOf(board, id)].some((d) => board.items.get(d).pinned));
@@ -3033,6 +3036,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
               t.move(m, survivor, "last");
               t.props(m, itemPlexus(m, { x: rel.x, y: rel.y }));
             }
+          }
+        }
+        if (deleteHooks.length) {
+          const gone = new Set(set);
+          if (withContents) for (const id of set) for (const d of descendantsOf(board, id)) gone.add(d);
+          for (const fn of deleteHooks) {
+            try { fn(t, [...gone], opts || {}); } catch (err) { console.error("[plexus session] delete hook", err); }
           }
         }
         for (const id of edgeSet) t.del(id);
@@ -4167,6 +4177,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     clone,
     round1,
     emit,
+    onDeleteItems(fn) {
+      if (typeof fn !== "function") return () => {};
+      deleteHooks.push(fn);
+      return () => {
+        const at = deleteHooks.indexOf(fn);
+        if (at >= 0) deleteHooks.splice(at, 1);
+      };
+    },
   };
   for (const fn of [...extensions]) {
     try { fn(session, api); } catch (err) { console.error("[plexus session] extension", err); }

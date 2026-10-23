@@ -90684,9 +90684,18 @@ function createFollowTray({
     if (disposed || !pointer || job) return;
     job = timers.bgIdle(runRead, "follow");
   };
+  let listening = false;
+  function listen(on) {
+    if (on === listening) return;
+    listening = on;
+    const method = on ? "addEventListener" : "removeEventListener";
+    win2?.[method]?.("focus", onFocus);
+    doc?.[method]?.("visibilitychange", onVisible);
+  }
   function armPoll() {
     poll?.();
     poll = null;
+    listen(Boolean(pointer) && !disposed);
     if (!pointer || disposed) return;
     poll = timers.later(() => {
       poll = null;
@@ -90871,8 +90880,6 @@ function createFollowTray({
     if (doc?.visibilityState !== "hidden") schedule();
   };
   const win2 = doc?.defaultView || null;
-  win2?.addEventListener?.("focus", onFocus);
-  doc?.addEventListener?.("visibilitychange", onVisible);
   const offChange = session?.on?.("change", (change) => {
     if (disposed) return;
     const dirty = change?.dirty;
@@ -90923,8 +90930,7 @@ function createFollowTray({
       quiet?.();
       job?.();
       poll?.();
-      win2?.removeEventListener?.("focus", onFocus);
-      doc?.removeEventListener?.("visibilitychange", onVisible);
+      listen(false);
       btn2?.remove();
       panel?.remove();
       btn2 = null;

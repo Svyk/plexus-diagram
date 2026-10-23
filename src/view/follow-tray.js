@@ -164,9 +164,21 @@ export function createFollowTray({
     job = timers.bgIdle(runRead, "follow");
   };
 
+  // The poll and the focus / visibility listeners exist only while the board follows something: a board that follows
+  // nothing adds no window listener (each one counts against the listeners-per-board budget).
+  let listening = false;
+  function listen(on) {
+    if (on === listening) return;
+    listening = on;
+    const method = on ? "addEventListener" : "removeEventListener";
+    win?.[method]?.("focus", onFocus);
+    doc?.[method]?.("visibilitychange", onVisible);
+  }
+
   function armPoll() {
     poll?.();
     poll = null;
+    listen(Boolean(pointer) && !disposed);
     if (!pointer || disposed) return;
     poll = timers.later(() => {
       poll = null;
@@ -336,8 +348,6 @@ export function createFollowTray({
   const onFocus = () => schedule();
   const onVisible = () => { if (doc?.visibilityState !== "hidden") schedule(); };
   const win = doc?.defaultView || null;
-  win?.addEventListener?.("focus", onFocus);
-  doc?.addEventListener?.("visibilitychange", onVisible);
   const offChange = session?.on?.("change", (change) => {
     if (disposed) return;
     const dirty = change?.dirty;
@@ -381,8 +391,7 @@ export function createFollowTray({
       quiet?.();
       job?.();
       poll?.();
-      win?.removeEventListener?.("focus", onFocus);
-      doc?.removeEventListener?.("visibilitychange", onVisible);
+      listen(false);
       btn?.remove();
       panel?.remove();
       btn = null;

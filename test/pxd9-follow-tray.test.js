@@ -54,6 +54,9 @@ function mount({ plexus = { v: 2, follow: { kind: "block", uid: "SRC" } }, child
   const root = dom.document.createElement("div");
   dom.document.body.append(root);
   const timers = manualTimers();
+  // Listeners on the document and the window: the ones that outlive the board's own elements.
+  const globalListeners = () => [...dom.listeners].filter((e) => e.target === dom.document || e.target === dom.document.defaultView).length;
+  const baseline = globalListeners();
   const lefts = [];
   const placed = [];
   const toasts = [];
@@ -71,7 +74,7 @@ function mount({ plexus = { v: 2, follow: { kind: "block", uid: "SRC" } }, child
     onPlaced: (uids) => placed.push(uids),
     toast: (m) => toasts.push(m),
   });
-  return { fake, host, session, root, timers, tray, lefts, placed, toasts };
+  return { fake, host, session, root, timers, tray, lefts, placed, toasts, listeners: () => globalListeners() - baseline };
 }
 
 test("PXD-9 tray: opening a followed board reads at idle after the quiet time and writes nothing", async () => {
@@ -225,6 +228,8 @@ test("PXD-9 tray: the headline counts what is new and what left since this devic
 test("PXD-9 tray: Follow from the menu shows the tray; Stop removes the pill and keeps the cards", async () => {
   const f = mount({ plexus: { v: 2 } });
   assert.equal(f.root.querySelector(".pxd-follow"), null, "no pill without a source");
+  assert.equal(f.listeners(), 0, "a board that follows nothing adds no listener and arms no poll");
+  assert.equal(f.timers.pending(), 0);
   const menu = buildMenu("board-menu", { follow: f.tray.menuState() });
   const ids = flattenMenu(menu).map((m) => m.id);
   assert.ok(ids.includes("follow:pick-block") && ids.includes("follow:pick-query") && ids.includes("follow:pick-refs"));
@@ -236,8 +241,10 @@ test("PXD-9 tray: Follow from the menu shows the tray; Stop removes the pill and
   const on = flattenMenu(buildMenu("board-menu", { follow: f.tray.menuState() }));
   assert.deepEqual(on.filter((m) => m.id.startsWith("follow:")).map((m) => m.id), ["follow:label", "follow:show", "follow:tree", "follow:pick-block", "follow:pick-query", "follow:pick-refs", "follow:stop"]);
   assert.equal(on.find((m) => m.id === "follow:label").label, "Children of “Source block”");
+  assert.ok(f.listeners() > 0, "following listens for the window coming back");
   await f.session.stopFollowing();
   assert.equal(f.root.querySelector(".pxd-follow"), null);
+  assert.equal(f.listeners(), 0, "Stop takes the listeners away again");
   assert.ok(f.fake.has("c1"));
   f.tray.dispose();
 });

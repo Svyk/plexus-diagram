@@ -128,11 +128,24 @@ test("PXD-9 tray: a child moved out of the source marks its card after two reads
   assert.deepEqual(f.fake.props("c1").plexus, before);
   f.root.querySelector(".pxd-follow").click();
   assert.equal(f.root.querySelector(".pxd-follow__section").textContent, "Left the source (1)");
+  assert.equal(f.root.querySelector(".pxd-follow__row--left .pxd-follow__text").textContent, "one", "a ref card is named by its block");
   f.root.querySelector(".pxd-follow__dismiss").click();
   await flush();
   assert.deepEqual(f.tray.left(), [], "dismissed: a plain card now");
   assert.deepEqual(f.lefts.at(-1), []);
   assert.equal(f.fake.props("c1").plexus.src, undefined);
+  f.tray.dispose();
+});
+
+test("PXD-9 tray: Include the whole tree renames the source and reads again; grandchildren join the tray", async () => {
+  const f = mount();
+  await f.timers.run();
+  await f.fake.api.data.block.create({ location: { "parent-uid": "k2", order: "last" }, block: { uid: "g1", string: "grandchild" } });
+  await f.session.setFollowTree(true);
+  assert.equal(f.tray.menuState().label, "Everything under “Source block”");
+  assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 1);
+  await f.timers.run();
+  assert.deepEqual(f.tray.rows().map((r) => `${r.uid}@${r.depth}`), ["k2@1", "g1@2", "k3@1"]);
   f.tray.dispose();
 });
 
@@ -221,7 +234,7 @@ test("PXD-9 tray: Follow from the menu shows the tray; Stop removes the pill and
   await f.timers.run();
   assert.equal(f.root.querySelector(".pxd-follow").textContent, "Following (2)");
   const on = flattenMenu(buildMenu("board-menu", { follow: f.tray.menuState() }));
-  assert.deepEqual(on.filter((m) => m.id.startsWith("follow:")).map((m) => m.id), ["follow:label", "follow:show", "follow:tree", "follow:stop"]);
+  assert.deepEqual(on.filter((m) => m.id.startsWith("follow:")).map((m) => m.id), ["follow:label", "follow:show", "follow:tree", "follow:pick-block", "follow:pick-query", "follow:pick-refs", "follow:stop"]);
   assert.equal(on.find((m) => m.id === "follow:label").label, "Children of “Source block”");
   await f.session.stopFollowing();
   assert.equal(f.root.querySelector(".pxd-follow"), null);

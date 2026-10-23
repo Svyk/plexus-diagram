@@ -179,7 +179,7 @@ export function openPagePicker({
       row.setAttribute("data-value", value);
       const label = el("span", "pxd-addboard__text", row);
       el("span", "pxd-addboard__name", label, page.title);
-      if (page.meta) el("span", "pxd-addboard__meta", label, page.meta);
+      if (page.meta) el("span", "pxd-addboard__page", label, page.meta);
     }
   };
   const run = () => {

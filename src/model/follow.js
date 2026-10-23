@@ -4,7 +4,7 @@
 // column. Source kinds and their reads live in src/host/follow-sources.js; the writes are session calls
 // (src/session-follow.js). Nothing here touches Roam.
 
-import { parseBoardTitle } from "./schema.js";
+import { firstLine, parseBoardTitle, plainText } from "./schema.js";
 
 // Board plexus key: { kind, uid, tree?, skip? }. Written only from the Follow menu and the tray's own buttons.
 export const FOLLOW_KEY = "follow";
@@ -90,9 +90,23 @@ export function addSkip(skip, uids, cap = FOLLOW_SKIP_CAP) {
 // `{{[[diagram]]: ((uid))}}`: the colon text is one block ref. Roam's native diagram still renders with it (checked
 // live 2026-10-23), but parseBoardTitle reads that text as the title, so it is offered in the Follow menu and never
 // followed by itself. Roam renders `{{diagram ((uid))}}` (no colon) as a plain button, not a diagram.
+// Roam's own uids are 9 characters; blocks made through the API may carry longer ones, and Roam renders those refs too.
 export function textSourceUid(boardString) {
-  const m = /^\(\(([\w-]{9})\)\)$/.exec(parseBoardTitle(boardString));
+  const m = /^\(\(([\w-]{6,64})\)\)$/.exec(parseBoardTitle(boardString));
   return m ? m[1] : null;
+}
+
+const QUERY_BODY = /^\{\{\s*(?:\[\[query\]\]|query)\s*:([\s\S]*)\}\}$/;
+// The words of a {{query}} block (its clauses without braces), or null for any other block.
+export function queryBody(string) {
+  const m = QUERY_BODY.exec(String(string || "").trim());
+  return m ? plainText(m[1].replace(/[{}]/g, " "), 120) : null;
+}
+
+// A row's text: the first line, or "Query …" for a {{query}} block (plainText alone leaves a stray brace).
+export function sourceText(string) {
+  const body = queryBody(string);
+  return body === null ? firstLine(string) : `Query ${body}`.trim();
 }
 
 // Ids a source item answers to: its uid, and a page's title (a page card may only know the title).

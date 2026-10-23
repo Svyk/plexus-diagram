@@ -72,6 +72,7 @@ test("PXD-9 skip list: re-adding moves to the end, the oldest drop past the cap"
 test("PXD-9 board text: a lone ((uid)) after the colon is offered as a source; a title is not", () => {
   assert.equal(textSourceUid("{{[[diagram]]: ((abcdefghi))}}"), "abcdefghi");
   assert.equal(textSourceUid("{{diagram: ((abcdefghi))}}"), "abcdefghi");
+  assert.equal(textSourceUid("{{[[diagram]]: ((pxd9fsSrc01))}}"), "pxd9fsSrc01", "an API-made uid is longer");
   assert.equal(textSourceUid("{{[[diagram]]: Plain title}}"), null);
   assert.equal(textSourceUid("{{[[diagram]]: ((abcdefghi)) and more}}"), null);
   assert.equal(textSourceUid("{{diagram ((abcdefghi))}}"), null, "Roam draws no diagram without the colon");
@@ -224,6 +225,7 @@ test("PXD-9 refs kind: newest first, board blocks, arrows and other boards' card
     ref("own", "board card [[Lab]]", 400),
     ref("edge", "[[Lab]] → [[Other]]", 500, { ":block/props": { ":plexus": { type: "edge" } } }),
     ref("pc", "[[Lab]]", 600),
+    ref("qb", "{{[[query]]: {and: [[Lab]] [[Done]]}}}", 50),
   ];
   const calls = [];
   const host = { q: (query, uid) => { calls.push([query, uid]); return [[{ ":node/title": "Lab", ":block/_refs": refs }]]; } };
@@ -231,7 +233,8 @@ test("PXD-9 refs kind: newest first, board blocks, arrows and other boards' card
   assert.equal(calls[0][0], refsQuery());
   assert.equal(calls[0][1], "PG");
   assert.ok(calls[0][0].includes(`(limit :block/_refs ${FOLLOW_READ_CAP + 1})`));
-  assert.deepEqual(got.items.map((i) => i.uid), ["r2", "r1"]);
+  assert.deepEqual(got.items.map((i) => i.uid), ["r2", "r1", "qb"]);
+  assert.equal(got.items[2].text, "Query and: Lab Done", "a query block reads as a query, not as a stray brace");
   assert.equal(got.items[0].crumb, "Daily");
   assert.equal(got.complete, true);
   refs = Array.from({ length: FOLLOW_READ_CAP + 1 }, (_, i) => ref(`x${i}`, `mention ${i} [[Lab]]`, i));

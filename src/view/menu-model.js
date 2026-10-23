@@ -78,8 +78,8 @@ function landmarkItem(c) {
   });
 }
 
-// PXD-9. `f` is the follow tray's menuState(). Following: the source, the tray, the tree switch and Stop. Not
-// following: pick a source; a lone ((uid)) in the board text is offered first, never followed by itself.
+// PXD-9. `f` is the follow tray's menuState(). Following: the source, the tray, the tree switch, another source and
+// Stop. Not following: pick a source; a lone ((uid)) in the board text is offered first, never followed by itself.
 function followMenu(f) {
   if (!f) return [];
   if (f.following) {
@@ -88,6 +88,9 @@ function followMenu(f) {
         ...(f.label ? [make("follow:label", f.label, { disabled: true })] : []),
         make("follow:show", `Show tray (${Number(f.waiting) || 0} waiting)`),
         ...(f.kind === "block" ? [make("follow:tree", "Include the whole tree", { checked: f.tree === true })] : []),
+        make("follow:pick-block", "Switch to a block's children…"),
+        make("follow:pick-query", "Switch to a query…"),
+        make("follow:pick-refs", "Switch to linked references of…"),
         make("follow:stop", "Stop following"),
       ],
     })];

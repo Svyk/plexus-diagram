@@ -118,7 +118,7 @@ import { closeTab, openTab, tabAt } from "../model/tabs.js";
 import { createPanel, parseDropPayload } from "./panel.js";
 import { createInbox } from "./inbox.js";
 import { createFollowTray } from "./follow-tray.js";
-import { FOLLOW_MIME, textSourceUid } from "../model/follow.js";
+import { FOLLOW_MIME, sourceText, textSourceUid } from "../model/follow.js";
 import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
@@ -6002,13 +6002,13 @@ function buildBoardView(onFail, {
   };
   const refUidIn = (text) => {
     const t = String(text || "").trim();
-    const m = /^\(\(([\w-]{9})\)\)$/.exec(t) || /^([\w-]{9})$/.exec(t);
+    const m = /^\(\(([\w-]{6,64})\)\)$/.exec(t) || /^([\w-]{9})$/.exec(t);
     return m ? m[1] : null;
   };
   const blockRow = (uid, meta) => {
     let s = null;
     try { s = host?.blockString?.(uid); } catch { s = null; }
-    return typeof s === "string" ? { title: plainText(s, 80) || "(empty block)", value: uid, meta } : null;
+    return typeof s === "string" ? { title: plainText(sourceText(s), 80) || "(empty block)", value: uid, meta } : null;
   };
   const followPick = (what) => {
     const kind = what === "query" ? "query" : what === "refs" ? "refs" : "block";
@@ -6038,7 +6038,7 @@ function buildBoardView(onFail, {
             if (r.uid === boardUid) continue;
             const isQ = isQueryString(r.string);
             if (kind === "query" ? !isQ : isQ) continue;
-            rows.push({ title: plainText(r.string, 80) || "(empty block)", value: r.uid, meta: r.pageTitle });
+            rows.push({ title: plainText(sourceText(r.string), 80) || "(empty block)", value: r.uid, meta: r.pageTitle });
             if (rows.length >= 40) break;
           }
         }

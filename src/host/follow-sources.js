@@ -6,8 +6,8 @@
 // An item is { uid, kind: "block" | "page", text, time, title? (page), crumb?, depth?, blank? }. `time` is the later of
 // create and edit time, so the tray can say what is new since the last visit.
 
-import { FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH } from "../model/follow.js";
-import { classifyString, firstLine, plainText, readPlexus } from "../model/schema.js";
+import { FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH, queryBody, sourceText as textOf } from "../model/follow.js";
+import { classifyString, plainText, readPlexus } from "../model/schema.js";
 import { loadQueryRows, parseQuery } from "../model/query-run.js";
 import { createQueryBackend } from "./query-backend.js";
 
@@ -58,7 +58,7 @@ export function treeItems(root, { depth = 1, cap = FOLLOW_READ_CAP, skip = new S
       const string = typeof kid[STR] === "string" ? kid[STR] : "";
       if (META.test(string.trim())) continue;
       if (items.length >= cap) { complete = false; return; }
-      items.push({ uid, kind: "block", text: firstLine(string), time: timeOf(kid), depth: level, ...(string.trim() ? {} : { blank: true }) });
+      items.push({ uid, kind: "block", text: textOf(string), time: timeOf(kid), depth: level, ...(string.trim() ? {} : { blank: true }) });
       if (level < depth) walk(kid, level + 1);
     }
   };
@@ -70,7 +70,7 @@ function nameOf(host, uid) {
   let node = null;
   try { node = host?.pullEntity?.("[:node/title :block/string]", uid) || null; } catch { node = null; }
   if (!node) return "";
-  return typeof node[":node/title"] === "string" ? node[":node/title"] : firstLine(node[STR] || "");
+  return typeof node[":node/title"] === "string" ? node[":node/title"] : textOf(node[STR] || "");
 }
 
 const watchBlock = (pointer, host, cb) => (typeof host?.watchBlock === "function" ? host.watchBlock(pointer.uid, cb) : () => {});
@@ -107,10 +107,9 @@ defineFollowKind({
   id: "query",
   title: "A query",
   describe(p, host) {
-    const parsed = parseQuery(queryString(host, p.uid) || "");
-    if (parsed.ok && parsed.title) return `Query ${quote(parsed.title)}`;
-    const body = /^\{\{\s*(?:\[\[query\]\]|query)\s*:([\s\S]*)\}\}$/.exec(String(queryString(host, p.uid) || "").trim());
-    return `Query ${quote(body ? body[1].trim() : "")}`;
+    const string = queryString(host, p.uid) || "";
+    const parsed = parseQuery(string);
+    return `Query ${quote(parsed.ok && parsed.title ? parsed.title : queryBody(string) || "")}`;
   },
   // An edit to the query text reads again at once. New results come with the poll.
   watch: watchBlock,
@@ -165,7 +164,7 @@ defineFollowKind({
       const page = pick(ref, "block/page");
       const pageNode = Array.isArray(page) ? page[0] : page;
       const crumb = pick(pageNode, "node/title");
-      items.push({ uid, kind: "block", text: firstLine(string), time: timeOf(ref), ...(typeof crumb === "string" ? { crumb } : {}), ...(string.trim() ? {} : { blank: true }) });
+      items.push({ uid, kind: "block", text: textOf(string), time: timeOf(ref), ...(typeof crumb === "string" ? { crumb } : {}), ...(string.trim() ? {} : { blank: true }) });
     }
     items.sort((a, b) => b.time - a.time || (a.uid < b.uid ? -1 : 1));
     return { ok: true, complete: refs.length < REFS_LIMIT, items: items.slice(0, FOLLOW_READ_CAP) };

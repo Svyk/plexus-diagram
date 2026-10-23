@@ -21,7 +21,7 @@ import {
   textSourceUid,
   trayHeadline,
 } from "../model/follow.js";
-import { plainText } from "../model/schema.js";
+import { itemLabel, plainText } from "../model/schema.js";
 import { followKind } from "../host/follow-sources.js";
 import { SPREAD_CAP } from "../session-clip.js";
 
@@ -180,8 +180,14 @@ export function createFollowTray({
     const next = readFollow(board()?.plexus);
     const nextKey = sourceKey(next);
     if (nextKey === key) {
+      // Same source, other options (the whole tree): a new name and a read, but the gone counts carry on.
+      const reshaped = (pointer?.tree === true) !== (next?.tree === true);
       pointer = next;
-      return false;
+      if (reshaped) {
+        label = describe();
+        schedule();
+      }
+      return reshaped;
     }
     try { unwatch(); } catch { /* watch already gone */ }
     unwatch = () => {};
@@ -230,9 +236,12 @@ export function createFollowTray({
     btn.setAttribute("aria-label", `${diff.pending.length} waiting from ${label || "the source"}${head ? `. ${head}` : ""}`);
   }
 
+  // A ref card's own title is empty: its label is the first line of the block it shows.
   const cardTitle = (uid) => {
     const item = board()?.items.get(uid);
-    return plainText(item?.title || item?.string || "", 80) || "Card";
+    if (!item) return "Card";
+    const label = itemLabel(item, (id) => host?.blockString?.(id));
+    return plainText(label || item.string || "", 80) || "Card";
   };
 
   function rowEl(list, row) {

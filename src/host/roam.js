@@ -15,6 +15,7 @@ import {
 } from "../model/library.js";
 import { assembleMeta, createMetaCache, META_REFS, USER_NAME_QUERIES, metaFilterHostActive, narrowByMeta, sortNeedsMeta, sortRows } from "../model/search-sort.js";
 import { splitNeighbors } from "../model/neighbors.js";
+import { linkedRefRows } from "../model/linked-cards.js";
 import { coverModel, pdfMacroUrl, pdfPagePlan } from "../model/pdf.js";
 import { pdfOfPageNode } from "../model/pdf-page.js";
 import { SEM_PULL, relatedQueryText, semanticCandidates } from "../model/semantic.js";
@@ -4579,6 +4580,30 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         const outgoing = host.q(outQuery, pageTitle || blockUid) || [];
         const split = splitNeighbors({ outgoing, selfTitle: pageTitle, selfUid: blockUid });
         return mode === "attr" ? split.attr : split.out;
+      } catch {
+        return [];
+      }
+    },
+
+    // Blocks that reference a card's page or block, each with the title of the page it sits on: [{ uid, pageTitle }].
+    // Blocks inside this board are skipped, as in neighborPages. A throw yields nothing.
+    linkedRefBlocks(item, { boardUid } = {}) {
+      if (!item || item.type === "section") return [];
+      const kind = item.target?.kind || item.kind || "self";
+      if (kind === "board" || item.kind === "board") return [];
+      const pageTitle = kind === "page" ? String(item.target?.title || item.title || "") : "";
+      const blockUid = pageTitle ? "" : String(item.target?.uid || item.uid || "");
+      if (!pageTitle && !blockUid) return [];
+      try {
+        const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
+        const rows = host.q(
+          pageTitle
+            ? `[:find ?u ?pt :in $ ?title ?board :where [?p :node/title ?title] [?b :block/refs ?p] (not [?b :block/parents ?board]) [(not= ?b ?board)] [?b :block/uid ?u] [?b :block/page ?pg] [?pg :node/title ?pt]]`
+            : `[:find ?u ?pt :in $ ?uid ?board :where [?s :block/uid ?uid] [?b :block/refs ?s] (not [?b :block/parents ?board]) [(not= ?b ?board)] [?b :block/uid ?u] [?b :block/page ?pg] [?pg :node/title ?pt]]`,
+          pageTitle || blockUid,
+          boardEid,
+        ) || [];
+        return linkedRefRows(rows, { selfTitle: pageTitle, selfUid: blockUid });
       } catch {
         return [];
       }

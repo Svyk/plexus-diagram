@@ -4,6 +4,7 @@
 import { boardPreview, boundsOf, buildBoard, containerAt, descendantsOf, findEdge, rowDroppable, toRelative, topLevelOf } from "./model/board.js";
 import { parsePastedText, planEdgeClones, planSubtreeClone, refCardStrings } from "./model/clipboard.js";
 import { mindMapLayout } from "./model/layout.js";
+import { linkedCardsLayout } from "./model/linked-cards.js";
 import { isOldTableCard } from "./model/table-captions.js";
 import { wrapTableNode } from "./model/roam-table.js";
 import { isContainerString, parseRegion } from "./model/regions.js";
@@ -360,6 +361,43 @@ extendSession((session, api) => {
         }
         api.applyFit(t, made);
         return { added: made.length, skipped, total: fresh.length };
+      }).then((res) => res ?? none);
+    },
+
+    // PXD-8: `refs` ({ uid, pageTitle } from host.linkedRefBlocks) as ref cards right of the card, flat or one section
+    // per page. Blocks that already have a ref card on this board are skipped. One write per card and per section,
+    // so they share the spread cap. `ids` are the new cards (flat) or the new sections (by page).
+    addLinkedRefCards(cardUid, refs, mode = "flat") {
+      const none = { ids: [], added: 0, sections: 0, total: 0, left: 0 };
+      const board = api.board();
+      const item = board?.items.get(cardUid);
+      const own = api.rects().get(cardUid);
+      if (!item || item.type !== "card" || !own) return Promise.resolve(none);
+      const skip = new Set();
+      for (const it of board.items.values()) if (it.target?.kind === "block" && it.target.uid) skip.add(it.target.uid);
+      const size = (name, fallback) => {
+        const n = Number(api.setting(name, fallback));
+        return Number.isFinite(n) && n >= 40 ? n : fallback;
+      };
+      const card = { w: size("default-card-width", DEFAULT_SIZES.card.w), h: size("default-card-height", DEFAULT_SIZES.card.h) };
+      const plan = linkedCardsLayout(own, refs, { mode, skip, cap: SPREAD_CAP, card });
+      if (!plan.added) return Promise.resolve({ ...none, total: plan.total, left: plan.left });
+      return api.txn((t) => {
+        const rects = api.rects();
+        const ids = plan.cards.map((c) => placeCard(t, c.string, c.x, c.y));
+        const touched = [...ids];
+        for (const s of plan.sections) {
+          const parent = containerAt(board, { x: s.x + s.w / 2, y: s.y + s.h / 2 }, { rects });
+          const rel = toRelative(board, parent, { x: s.x, y: s.y }, rects);
+          const sectionUid = t.create({ parent, string: s.title, plexus: serializeItemLayout({ type: "section", x: rel.x, y: rel.y, w: s.w, h: s.h }) });
+          ids.push(sectionUid);
+          touched.push(sectionUid);
+          for (const c of s.cards) {
+            touched.push(t.create({ parent: sectionUid, string: c.string, plexus: serializeItemLayout({ x: c.x - s.x, y: c.y - s.y }) }));
+          }
+        }
+        api.applyFit(t, touched);
+        return { ids, added: plan.added, sections: plan.sections.length, total: plan.total, left: plan.left };
       }).then((res) => res ?? none);
     },
 

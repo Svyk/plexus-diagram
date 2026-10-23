@@ -307,6 +307,16 @@ Companion to `docs/api-plexus-1.0.md`. The running package is 2.0.0.
 | incoming rows | `[uid, string, title]`. Counted, then sorted by count, then title |
 | `neighborLayout(rect, titles, {skip})` | `[{string, x, y}]` on a ring of radius `max(w,h)/2 + 240`, card size 280×160, starting at the top. `skip` drops titles. Nothing is written |
 
+## src/model/linked-cards.js
+
+| Export | Contract |
+|---|---|
+| `LINKED_CARD_MODES` | `["flat", "page"]` |
+| `linkedRefRows(rows, {selfUid, selfTitle})` | host rows `[uid, pageTitle]` to `[{uid, pageTitle}]`, once per uid. Drops the block itself and blocks on the page itself |
+| `groupLinkedRefs(refs, {skip})` | `[{title, uids}]`, one per page, sorted by count, then title. `skip` drops uids. Host order inside a group |
+| `linkedCardsLayout(rect, refs, {mode, skip, cap, card})` | `{cards, sections, added, total, left}`. Flat: `((uid))` cards in a grid of `ceil(sqrt n)` columns, 80 right of `rect`, 24 apart. Page: one section per page (title = page name, 32 padding) around its card grid, sections in rows 64 apart. A section and a card each count 1 toward `cap`; a section starts only with room for one card. `left = total - added`. Nothing is written |
+| `linkedCardsMessage({added, sections, left})` | `Added N linked references[ in M sections][, K left out (Roam undo holds 50 changes)]` |
+
 ## src/model/query.js
 
 | Export | Contract |

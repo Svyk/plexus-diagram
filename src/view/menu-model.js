@@ -270,6 +270,12 @@ export function buildMenu(kind, ctx = {}) {
         out.push(make("neighbors:out", "Add pages it links to"));
         out.push(make("neighbors:in", "Add pages that link here"));
         out.push(make("neighbors:attr", "Add attribute values"));
+        out.push(make("linked-cards", "Add linked references as cards", {
+          children: [
+            make("linked-cards:flat", "Flat"),
+            make("linked-cards:page", "Grouped by page"),
+          ],
+        }));
       }
       if (c.canAnnotate) out.push(make("annotate-drawing", "Annotate as drawing"));
       out.push(

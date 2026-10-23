@@ -20568,8 +20568,8 @@ function placeHighlights(rows, { mode, origin, cap: cap4 } = {}) {
     const { col: col2, row: line } = slot(index, mode);
     return {
       string: `((${row4.uid}))`,
-      x: at.x + col2 * (CARD_W3 + GAP2),
-      y: at.y + line * (CARD_H3 + GAP2),
+      x: at.x + col2 * (CARD_W3 + GAP3),
+      y: at.y + line * (CARD_H3 + GAP3),
       w: CARD_W3,
       h: CARD_H3
     };
@@ -20585,7 +20585,7 @@ function expandDateHighlights(block) {
   }
   return uids.length ? uids : null;
 }
-var NAMES, GROUP_RE, COLOR_TOKEN2, TOKEN, CARD_W3, CARD_H3, GAP2, COLS, CAP;
+var NAMES, GROUP_RE, COLOR_TOKEN2, TOKEN, CARD_W3, CARD_H3, GAP3, COLS, CAP;
 var init_highlight_pick = __esm({
   "src/model/highlight-pick.js"() {
     init_highlight();
@@ -20596,7 +20596,7 @@ var init_highlight_pick = __esm({
     TOKEN = /#h\/[A-Za-z]+/g;
     CARD_W3 = 300;
     CARD_H3 = 140;
-    GAP2 = 24;
+    GAP3 = 24;
     COLS = 3;
     CAP = 45;
   }
@@ -21088,10 +21088,10 @@ function preferredSide(target, root) {
 }
 function placeTip({ target, tip, bounds, side: side2 }) {
   const at = (s) => {
-    if (s === "below") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top + target.height + GAP3 };
-    if (s === "above") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top - tip.height - GAP3 };
-    if (s === "left") return { left: target.left - tip.width - GAP3, top: target.top + target.height / 2 - tip.height / 2 };
-    return { left: target.left + target.width + GAP3, top: target.top + target.height / 2 - tip.height / 2 };
+    if (s === "below") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top + target.height + GAP4 };
+    if (s === "above") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top - tip.height - GAP4 };
+    if (s === "left") return { left: target.left - tip.width - GAP4, top: target.top + target.height / 2 - tip.height / 2 };
+    return { left: target.left + target.width + GAP4, top: target.top + target.height / 2 - tip.height / 2 };
   };
   let use = side2;
   let p = at(use);
@@ -21298,11 +21298,11 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
     }
   };
 }
-var GAP3, MARGIN, DELAYS, ID, OPPOSITE;
+var GAP4, MARGIN, DELAYS, ID, OPPOSITE;
 var init_tooltip = __esm({
   "src/view/tooltip.js"() {
     init_tooltip_text();
-    GAP3 = 8;
+    GAP4 = 8;
     MARGIN = 4;
     DELAYS = { instant: 0, "350 ms": 350, "800 ms": 800 };
     ID = "pxd-tooltip";
@@ -22643,7 +22643,7 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     const a = anchor?.getBoundingClientRect?.();
     if (a) {
       placeAgain = () => {
-        if (node2 && anchor.isConnected !== false) placeNearAnchor(node2, anchor.getBoundingClientRect(), root, { gap: GAP4 });
+        if (node2 && anchor.isConnected !== false) placeNearAnchor(node2, anchor.getBoundingClientRect(), root, { gap: GAP5 });
       };
       placeAgain();
     }
@@ -22830,14 +22830,14 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
   }
   return { close, el: pop };
 }
-var PRIORITIES, GAP4;
+var PRIORITIES, GAP5;
 var init_task_popover = __esm({
   "src/view/task-popover.js"() {
     init_status_tags();
     init_tasks();
     init_avoid();
     PRIORITIES = ["low", "medium", "high"];
-    GAP4 = 6;
+    GAP5 = 6;
   }
 });
 
@@ -29967,7 +29967,7 @@ var init_buckets = __esm({
 });
 
 // src/view/table-cells.js
-function gridOf(tree) {
+function gridOf2(tree) {
   const grid = [];
   for (const row4 of Array.isArray(tree) ? tree : []) {
     const cells = [];
@@ -30003,7 +30003,7 @@ function tableCells(tableUid, pullTree, scope) {
   } catch {
     tree = null;
   }
-  const grid = gridOf(tree);
+  const grid = gridOf2(tree);
   const tds = scope?.querySelectorAll?.("td") || [];
   const entry = { at: nowMs(), pull: pullTree, grid, ...detectBases(grid, tds) };
   tableCache.set(tableUid, entry);
@@ -39993,6 +39993,97 @@ function findNode(node2, uid) {
   return null;
 }
 
+// src/model/linked-cards.js
+var LINKED_CARD_MODES = ["flat", "page"];
+var CARD = { w: 280, h: 160 };
+var GAP = 24;
+var BESIDE = 80;
+var PAD = 32;
+var SECTION_GAP = 64;
+var REF_UID = /^[\w-]+$/;
+function linkedRefRows(rows, { selfUid = "", selfTitle = "" } = {}) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const row4 of rows || []) {
+    const uid = row4?.[0];
+    const pageTitle = typeof row4?.[1] === "string" ? row4[1] : "";
+    if (typeof uid !== "string" || !uid || seen.has(uid)) continue;
+    if (selfUid && uid === selfUid) continue;
+    if (selfTitle && pageTitle === selfTitle) continue;
+    seen.add(uid);
+    out.push({ uid, pageTitle });
+  }
+  return out;
+}
+function groupLinkedRefs(refs, { skip } = {}) {
+  const skipSet = skip instanceof Set ? skip : new Set(skip || []);
+  const groups2 = /* @__PURE__ */ new Map();
+  const seen = /* @__PURE__ */ new Set();
+  for (const ref of refs || []) {
+    const uid = ref?.uid;
+    if (typeof uid !== "string" || !REF_UID.test(uid) || seen.has(uid) || skipSet.has(uid)) continue;
+    seen.add(uid);
+    const title = String(ref.pageTitle ?? "").trim();
+    if (!groups2.has(title)) groups2.set(title, []);
+    groups2.get(title).push(uid);
+  }
+  return [...groups2.entries()].map(([title, uids]) => ({ title, uids })).sort((a, b) => b.uids.length - a.uids.length || a.title.localeCompare(b.title));
+}
+var gridOf = (n3) => {
+  const cols = Math.max(1, Math.ceil(Math.sqrt(n3)));
+  return { cols, rows: Math.max(1, Math.ceil(n3 / cols)) };
+};
+function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap: cap4 = 22, card: card2 = CARD } = {}) {
+  const groups2 = groupLinkedRefs(refs, { skip });
+  const total = groups2.reduce((n3, g) => n3 + g.uids.length, 0);
+  if (!rect || !total) return { cards: [], sections: [], added: 0, total, left: total };
+  const limit = Math.max(0, Math.floor(Number(cap4) || 0));
+  const w = card2?.w > 0 ? card2.w : CARD.w;
+  const h = card2?.h > 0 ? card2.h : CARD.h;
+  const x0 = rect.x + rect.w + BESIDE;
+  const y0 = rect.y;
+  const at = (x, y2, i, cols) => ({ x: x + i % cols * (w + GAP), y: y2 + Math.floor(i / cols) * (h + GAP) });
+  if (mode !== "page") {
+    const uids = groups2.flatMap((g) => g.uids).slice(0, limit);
+    const { cols } = gridOf(uids.length);
+    const cards = uids.map((uid, i) => ({ string: `((${uid}))`, ...at(x0, y0, i, cols) }));
+    return { cards, sections: [], added: cards.length, total, left: total - cards.length };
+  }
+  const picked = [];
+  let budget = limit;
+  for (const g of groups2) {
+    if (budget < 2) break;
+    const uids = g.uids.slice(0, budget - 1);
+    picked.push({ title: g.title || "Untitled", uids });
+    budget -= 1 + uids.length;
+  }
+  const { cols: perRow } = gridOf(picked.length);
+  const sections = [];
+  let y = y0;
+  for (let start = 0; start < picked.length; start += perRow) {
+    let x = x0;
+    let rowH = 0;
+    for (const g of picked.slice(start, start + perRow)) {
+      const { cols, rows } = gridOf(g.uids.length);
+      const sw = PAD * 2 + cols * w + (cols - 1) * GAP;
+      const sh = PAD * 2 + rows * h + (rows - 1) * GAP;
+      const cards = g.uids.map((uid, i) => ({ string: `((${uid}))`, ...at(x + PAD, y + PAD, i, cols) }));
+      sections.push({ title: g.title, x, y, w: sw, h: sh, cards });
+      x += sw + SECTION_GAP;
+      rowH = Math.max(rowH, sh);
+    }
+    y += rowH + SECTION_GAP;
+  }
+  const added = sections.reduce((n3, s) => n3 + s.cards.length, 0);
+  return { cards: [], sections, added, total, left: total - added };
+}
+function linkedCardsMessage({ added = 0, sections = 0, left = 0 } = {}) {
+  const refs = `${added} linked ${added === 1 ? "reference" : "references"}`;
+  const inside8 = sections ? ` in ${sections} ${sections === 1 ? "section" : "sections"}` : "";
+  const rest = left ? `, ${left} left out (Roam undo holds 50 changes)` : "";
+  return `Added ${refs}${inside8}${rest}`;
+}
+
 // src/model/table-captions.js
 init_schema();
 init_roam_table();
@@ -49426,6 +49517,27 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         return [];
       }
     },
+    // Blocks that reference a card's page or block, each with the title of the page it sits on: [{ uid, pageTitle }].
+    // Blocks inside this board are skipped, as in neighborPages. A throw yields nothing.
+    linkedRefBlocks(item, { boardUid } = {}) {
+      if (!item || item.type === "section") return [];
+      const kind = item.target?.kind || item.kind || "self";
+      if (kind === "board" || item.kind === "board") return [];
+      const pageTitle = kind === "page" ? String(item.target?.title || item.title || "") : "";
+      const blockUid3 = pageTitle ? "" : String(item.target?.uid || item.uid || "");
+      if (!pageTitle && !blockUid3) return [];
+      try {
+        const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
+        const rows = host.q(
+          pageTitle ? `[:find ?u ?pt :in $ ?title ?board :where [?p :node/title ?title] [?b :block/refs ?p] (not [?b :block/parents ?board]) [(not= ?b ?board)] [?b :block/uid ?u] [?b :block/page ?pg] [?pg :node/title ?pt]]` : `[:find ?u ?pt :in $ ?uid ?board :where [?s :block/uid ?uid] [?b :block/refs ?s] (not [?b :block/parents ?board]) [(not= ?b ?board)] [?b :block/uid ?u] [?b :block/page ?pg] [?pg :node/title ?pt]]`,
+          pageTitle || blockUid3,
+          boardEid
+        ) || [];
+        return linkedRefRows(rows, { selfTitle: pageTitle, selfUid: blockUid3 });
+      } catch {
+        return [];
+      }
+    },
     // Mentions of a page or block. The info panel's cardInfo also asks which boards
     // contain the card; this query does not, so a page card can list references on mount.
     linkedRefs(item, { limit = LINKED_REF_CAP } = {}) {
@@ -50164,7 +50276,7 @@ var PARSE_BLOCK_CHUNK = 400;
 var PARSE_CHUNK_CAP = 10;
 var PARSE_SECTION_CAP = Math.floor(BULK_CARD_CAP / 2);
 var PARSE_TOO_LARGE = "This range is too large. Narrow it and insert again.";
-var SECTION_GAP = 24;
+var SECTION_GAP2 = 24;
 function nestMarkdownUnderFirst(markdown) {
   const lines = String(markdown ?? "").split("\n");
   let seen = 0;
@@ -52460,7 +52572,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         for (let i = 0; i < capped.length; i += 1) {
           const nested = nestMarkdownUnderFirst(fn ? fn.apply(capped[i].markdown) : capped[i].markdown);
           if (bulletCount(nested) === 0) continue;
-          const py = y + i * (cardH + SECTION_GAP);
+          const py = y + i * (cardH + SECTION_GAP2);
           const size = clampSize("card", cardW, cardH);
           const { parent, rel } = placeParsed(x, py, size.w, size.h);
           const layout = withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, nested);
@@ -54588,6 +54700,42 @@ extendSession((session, api3) => {
         return { added: made.length, skipped, total: fresh.length };
       }).then((res) => res ?? none);
     },
+    // PXD-8: `refs` ({ uid, pageTitle } from host.linkedRefBlocks) as ref cards right of the card, flat or one section
+    // per page. Blocks that already have a ref card on this board are skipped. One write per card and per section,
+    // so they share the spread cap. `ids` are the new cards (flat) or the new sections (by page).
+    addLinkedRefCards(cardUid, refs, mode = "flat") {
+      const none = { ids: [], added: 0, sections: 0, total: 0, left: 0 };
+      const board2 = api3.board();
+      const item = board2?.items.get(cardUid);
+      const own2 = api3.rects().get(cardUid);
+      if (!item || item.type !== "card" || !own2) return Promise.resolve(none);
+      const skip = /* @__PURE__ */ new Set();
+      for (const it of board2.items.values()) if (it.target?.kind === "block" && it.target.uid) skip.add(it.target.uid);
+      const size = (name, fallback) => {
+        const n3 = Number(api3.setting(name, fallback));
+        return Number.isFinite(n3) && n3 >= 40 ? n3 : fallback;
+      };
+      const card2 = { w: size("default-card-width", DEFAULT_SIZES.card.w), h: size("default-card-height", DEFAULT_SIZES.card.h) };
+      const plan = linkedCardsLayout(own2, refs, { mode, skip, cap: SPREAD_CAP, card: card2 });
+      if (!plan.added) return Promise.resolve({ ...none, total: plan.total, left: plan.left });
+      return api3.txn((t) => {
+        const rects = api3.rects();
+        const ids = plan.cards.map((c) => placeCard(t, c.string, c.x, c.y));
+        const touched = [...ids];
+        for (const s of plan.sections) {
+          const parent = containerAt(board2, { x: s.x + s.w / 2, y: s.y + s.h / 2 }, { rects });
+          const rel = toRelative(board2, parent, { x: s.x, y: s.y }, rects);
+          const sectionUid = t.create({ parent, string: s.title, plexus: serializeItemLayout({ type: "section", x: rel.x, y: rel.y, w: s.w, h: s.h }) });
+          ids.push(sectionUid);
+          touched.push(sectionUid);
+          for (const c of s.cards) {
+            touched.push(t.create({ parent: sectionUid, string: c.string, plexus: serializeItemLayout({ x: c.x - s.x, y: c.y - s.y }) }));
+          }
+        }
+        api3.applyFit(t, touched);
+        return { ids, added: plan.added, sections: plan.sections.length, total: plan.total, left: plan.left };
+      }).then((res) => res ?? none);
+    },
     // The source card's child blocks become a mind map of ref cards (blocks stay canonical in Roam) plus one
     // connection per parent -> child. Children that already have a card on this board are reused, not moved.
     // Options default to the pre-preset behavior: right, normal gaps, depth 3, refs included, no branch color.
@@ -55964,14 +56112,14 @@ init_drawing_card();
 
 // src/model/annotate.js
 init_schema();
-var GAP = 40;
+var GAP2 = 40;
 var LABEL = "annotates";
 function annotatePlan(image, boardUid) {
   const to = image.uid;
   return {
     create: { parentUid: boardUid, order: "last" },
     card: {
-      x: image.x + image.w + GAP,
+      x: image.x + image.w + GAP2,
       y: image.y,
       w: image.w,
       h: image.h
@@ -95276,6 +95424,12 @@ function buildMenu(kind, ctx = {}) {
         out.push(make3("neighbors:out", "Add pages it links to"));
         out.push(make3("neighbors:in", "Add pages that link here"));
         out.push(make3("neighbors:attr", "Add attribute values"));
+        out.push(make3("linked-cards", "Add linked references as cards", {
+          children: [
+            make3("linked-cards:flat", "Flat"),
+            make3("linked-cards:page", "Grouped by page")
+          ]
+        }));
       }
       if (c.canAnnotate) out.push(make3("annotate-drawing", "Annotate as drawing"));
       out.push(
@@ -103714,6 +103868,30 @@ function buildBoardView(onFail, {
         });
         break;
       }
+      case "linked-cards": {
+        if (!item || !LINKED_CARD_MODES.includes(arg)) break;
+        let refs = [];
+        try {
+          refs = host?.linkedRefBlocks?.(item, { boardUid }) || [];
+        } catch {
+          refs = [];
+        }
+        if (!refs.length) {
+          toast("No linked references to add");
+          break;
+        }
+        Promise.resolve(session.addLinkedRefCards?.(item.uid, refs, arg)).then((res) => {
+          if (disposed || !res) return;
+          if (!res.added) {
+            toast("Every linked reference is already on the board");
+            return;
+          }
+          if (Array.isArray(res.ids) && res.ids.length) ctl.select(res.ids);
+          toast(linkedCardsMessage(res), true);
+        }).catch(() => {
+        });
+        break;
+      }
       case "query-results": {
         if (!item) break;
         const sourceUid = isQueryString(item.string) ? item.uid : item.target?.kind === "block" ? item.target.uid : item.uid;
@@ -110595,7 +110773,7 @@ function snapEvent(event) {
 var THUMB_W = 320;
 var THUMB_MAX = 480;
 var ROW_H = 24;
-var PAD = 7;
+var PAD2 = 7;
 function tableThumbKey(item, sig) {
   return item?.uid && sig ? `t:${item.uid}:${sig}` : "";
 }
@@ -110665,7 +110843,7 @@ function renderTableThumb(doc, grid, { dark = false, width = THUMB_W, height: bo
     g.fillStyle = ink;
     let x2 = 0;
     widths.forEach((w, c) => {
-      g.fillText(fit2(g, row4[c], w - PAD * 2), x2 + PAD, y + ROW_H / 2);
+      g.fillText(fit2(g, row4[c], w - PAD2 * 2), x2 + PAD2, y + ROW_H / 2);
       x2 += w;
     });
   });

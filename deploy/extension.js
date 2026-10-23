@@ -1779,28 +1779,28 @@ function portalForBoard(node2, boardRoot) {
   const match = boardRoot.querySelector(`[data-roam-grid-uid="${uid}"], [data-pxd-table="${uid}"]`);
   return match ? portal : null;
 }
-function ownershipOf({ target, active: active2, pointerTarget, boardRoot, sourceText } = {}) {
+function ownershipOf({ target, active: active2, pointerTarget, boardRoot, sourceText: sourceText2 } = {}) {
   const focusHost = hostOf(active2);
   if (focusHost && inside(boardRoot, focusHost)) {
-    return { verified: true, reason: "focus", host: focusHost, sourceText };
+    return { verified: true, reason: "focus", host: focusHost, sourceText: sourceText2 };
   }
   const portal = portalForBoard(active2, boardRoot) || portalForBoard(target, boardRoot);
-  if (portal) return { verified: true, reason: "portal", host: portal, sourceText };
+  if (portal) return { verified: true, reason: "portal", host: portal, sourceText: sourceText2 };
   const pointerHost = hostOf(pointerTarget || target);
   const pointerInside = Boolean(pointerHost && inside(boardRoot, pointerHost));
   const outsideField = isFieldNode(active2) && !(pointerHost && pointerHost.contains?.(active2));
   if (pointerInside && !outsideField) {
-    return { verified: true, reason: "pointer", host: pointerHost, sourceText };
+    return { verified: true, reason: "pointer", host: pointerHost, sourceText: sourceText2 };
   }
-  return { verified: false, sourceText };
+  return { verified: false, sourceText: sourceText2 };
 }
 function keyGate(event, ownership) {
-  const sourceText = ownership?.sourceText;
-  if (!ownership?.verified) return { yield: false, sourceText };
+  const sourceText2 = ownership?.sourceText;
+  if (!ownership?.verified) return { yield: false, sourceText: sourceText2 };
   return {
     yield: true,
     reason: event?.key === "Escape" ? "escape" : "owned",
-    sourceText
+    sourceText: sourceText2
   };
 }
 var TABLE_ROOT, TABLE_ROWS, TABLE_COLS, TABLE_SIZE, TABLE_WRITES, COL_MIN, COL_MAX, PX_PER_PT, WIDTH_CAP, ROW_HEADER, GRID_PAD, NATIVE_PAD, COL_HEADER, ROW_PX, HEIGHT_CAP, HEIGHT_CHROME, CHAR_PX, CELL_PAD, WORD_PX, WORD_PAD, TABLE_RE, squashCaption, TABLE_HOST_SELECTOR, PORTAL_SELECTOR;
@@ -54804,8 +54804,17 @@ function addSkip(skip, uids, cap4 = FOLLOW_SKIP_CAP) {
   return cleanSkip([...(skip || []).filter((u) => !drop.has(u)), ...add], cap4);
 }
 function textSourceUid(boardString2) {
-  const m = /^\(\(([\w-]{9})\)\)$/.exec(parseBoardTitle(boardString2));
+  const m = /^\(\(([\w-]{6,64})\)\)$/.exec(parseBoardTitle(boardString2));
   return m ? m[1] : null;
+}
+var QUERY_BODY = /^\{\{\s*(?:\[\[query\]\]|query)\s*:([\s\S]*)\}\}$/;
+function queryBody(string) {
+  const m = QUERY_BODY.exec(String(string || "").trim());
+  return m ? plainText(m[1].replace(/[{}]/g, " "), 120) : null;
+}
+function sourceText(string) {
+  const body = queryBody(string);
+  return body === null ? firstLine(string) : `Query ${body}`.trim();
 }
 function itemIds(item) {
   const out = [];
@@ -61289,7 +61298,7 @@ function openPagePicker({
       row4.setAttribute("data-value", value);
       const label = el2("span", "pxd-addboard__text", row4);
       el2("span", "pxd-addboard__name", label, page.title);
-      if (page.meta) el2("span", "pxd-addboard__meta", label, page.meta);
+      if (page.meta) el2("span", "pxd-addboard__page", label, page.meta);
     }
   };
   const run = () => {
@@ -90409,7 +90418,7 @@ function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__
         complete = false;
         return;
       }
-      items.push({ uid, kind: "block", text: firstLine(string), time: timeOf(kid), depth: level, ...string.trim() ? {} : { blank: true } });
+      items.push({ uid, kind: "block", text: sourceText(string), time: timeOf(kid), depth: level, ...string.trim() ? {} : { blank: true } });
       if (level < depth) walk3(kid, level + 1);
     }
   };
@@ -90424,7 +90433,7 @@ function nameOf(host, uid) {
     node2 = null;
   }
   if (!node2) return "";
-  return typeof node2[":node/title"] === "string" ? node2[":node/title"] : firstLine(node2[STR4] || "");
+  return typeof node2[":node/title"] === "string" ? node2[":node/title"] : sourceText(node2[STR4] || "");
 }
 var watchBlock = (pointer, host, cb) => typeof host?.watchBlock === "function" ? host.watchBlock(pointer.uid, cb) : () => {
 };
@@ -90465,10 +90474,9 @@ defineFollowKind({
   id: "query",
   title: "A query",
   describe(p, host) {
-    const parsed = parseQuery(queryString(host, p.uid) || "");
-    if (parsed.ok && parsed.title) return `Query ${quote(parsed.title)}`;
-    const body = /^\{\{\s*(?:\[\[query\]\]|query)\s*:([\s\S]*)\}\}$/.exec(String(queryString(host, p.uid) || "").trim());
-    return `Query ${quote(body ? body[1].trim() : "")}`;
+    const string = queryString(host, p.uid) || "";
+    const parsed = parseQuery(string);
+    return `Query ${quote(parsed.ok && parsed.title ? parsed.title : queryBody(string) || "")}`;
   },
   // An edit to the query text reads again at once. New results come with the poll.
   watch: watchBlock,
@@ -90522,7 +90530,7 @@ defineFollowKind({
       const page = pick2(ref, "block/page");
       const pageNode2 = Array.isArray(page) ? page[0] : page;
       const crumb = pick2(pageNode2, "node/title");
-      items.push({ uid, kind: "block", text: firstLine(string), time: timeOf(ref), ...typeof crumb === "string" ? { crumb } : {}, ...string.trim() ? {} : { blank: true } });
+      items.push({ uid, kind: "block", text: sourceText(string), time: timeOf(ref), ...typeof crumb === "string" ? { crumb } : {}, ...string.trim() ? {} : { blank: true } });
     }
     items.sort((a, b) => b.time - a.time || (a.uid < b.uid ? -1 : 1));
     return { ok: true, complete: refs.length < REFS_LIMIT, items: items.slice(0, FOLLOW_READ_CAP) };
@@ -90690,8 +90698,13 @@ function createFollowTray({
     const next = readFollow(board2()?.plexus);
     const nextKey = sourceKey(next);
     if (nextKey === key) {
+      const reshaped = pointer?.tree === true !== (next?.tree === true);
       pointer = next;
-      return false;
+      if (reshaped) {
+        label = describe();
+        schedule();
+      }
+      return reshaped;
     }
     try {
       unwatch();
@@ -90754,7 +90767,9 @@ function createFollowTray({
   }
   const cardTitle = (uid) => {
     const item = board2()?.items.get(uid);
-    return plainText(item?.title || item?.string || "", 80) || "Card";
+    if (!item) return "Card";
+    const label2 = itemLabel(item, (id) => host?.blockString?.(id));
+    return plainText(label2 || item.string || "", 80) || "Card";
   };
   function rowEl(list, row4) {
     const node2 = el2("div", "pxd-follow__row", list);
@@ -96053,6 +96068,9 @@ function followMenu(f) {
         ...f.label ? [make3("follow:label", f.label, { disabled: true })] : [],
         make3("follow:show", `Show tray (${Number(f.waiting) || 0} waiting)`),
         ...f.kind === "block" ? [make3("follow:tree", "Include the whole tree", { checked: f.tree === true })] : [],
+        make3("follow:pick-block", "Switch to a block's children…"),
+        make3("follow:pick-query", "Switch to a query…"),
+        make3("follow:pick-refs", "Switch to linked references of…"),
         make3("follow:stop", "Stop following")
       ]
     })];
@@ -104107,7 +104125,7 @@ function buildBoardView(onFail, {
   };
   const refUidIn = (text4) => {
     const t = String(text4 || "").trim();
-    const m = /^\(\(([\w-]{9})\)\)$/.exec(t) || /^([\w-]{9})$/.exec(t);
+    const m = /^\(\(([\w-]{6,64})\)\)$/.exec(t) || /^([\w-]{9})$/.exec(t);
     return m ? m[1] : null;
   };
   const blockRow = (uid, meta) => {
@@ -104117,7 +104135,7 @@ function buildBoardView(onFail, {
     } catch {
       s = null;
     }
-    return typeof s === "string" ? { title: plainText(s, 80) || "(empty block)", value: uid, meta } : null;
+    return typeof s === "string" ? { title: plainText(sourceText(s), 80) || "(empty block)", value: uid, meta } : null;
   };
   const followPick = (what) => {
     const kind = what === "query" ? "query" : what === "refs" ? "refs" : "block";
@@ -104147,7 +104165,7 @@ function buildBoardView(onFail, {
             if (r.uid === boardUid) continue;
             const isQ = isQueryString(r.string);
             if (kind === "query" ? !isQ : isQ) continue;
-            rows.push({ title: plainText(r.string, 80) || "(empty block)", value: r.uid, meta: r.pageTitle });
+            rows.push({ title: plainText(sourceText(r.string), 80) || "(empty block)", value: r.uid, meta: r.pageTitle });
             if (rows.length >= 40) break;
           }
         }

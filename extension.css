@@ -6502,11 +6502,13 @@ body.roam-body.dark .pxd-root {
 /* PXD-9 follow tray: the "Following (N)" pill, the side drawer of source items waiting to be placed, and the
    "left the source" mark on a card. Colors come from the board tokens, so dark mode follows. */
 
+/* Top right, left of the rail and under the toolbar: the bottom corners hold the dock and the inbox pill. Pill and
+   drawer sit in the side panel's band (under the context menu at 20, over Properties at 12). */
 .pxd-follow {
   position: absolute;
-  left: 12px;
-  bottom: 134px;
-  z-index: 30;
+  right: var(--pxd-panel-right, 76px);
+  top: 64px;
+  z-index: 14;
   padding: 4px 12px;
   color: var(--pxd-text, inherit);
   background: var(--pxd-chrome-bg, #fff);
@@ -6521,10 +6523,10 @@ body.roam-body.dark .pxd-root {
 
 .pxd-follow__panel {
   position: absolute;
-  top: 56px;
-  right: 64px;
+  top: 100px;
+  right: var(--pxd-panel-right, 76px);
   bottom: 56px;
-  z-index: 31;
+  z-index: 15;
   width: 320px;
   max-width: calc(100% - 96px);
   display: flex;
@@ -6532,12 +6534,16 @@ body.roam-body.dark .pxd-root {
   gap: 4px;
   padding: 8px;
   color: var(--pxd-text, inherit);
-  background: var(--pxd-chrome-bg, #fff);
+  /* The chrome tone is see-through; over the board's own surface the list stays readable above cards. */
+  background-color: var(--pxd-surface, #fff);
+  background-image: linear-gradient(var(--pxd-chrome-bg, #fff), var(--pxd-chrome-bg, #fff));
   border: 1px solid var(--pxd-border, #d1d5db);
   border-radius: 8px;
   box-shadow: var(--pxd-shadow, 0 4px 12px rgba(0, 0, 0, 0.2));
   font-size: 12px;
 }
+
+.pxd-root button.pxd-follow { color: var(--pxd-text, inherit); }
 
 .pxd-follow__head {
   display: flex;
@@ -6595,13 +6601,14 @@ body.roam-body.dark .pxd-root {
 
 .pxd-follow__acts { display: flex; gap: 4px; }
 
-.pxd-follow__place,
-.pxd-follow__skip,
-.pxd-follow__all,
-.pxd-follow__show,
-.pxd-follow__dismiss,
-.pxd-follow__delete,
-.pxd-follow__close {
+/* Two classes and the element: Blueprint's `.bp3-dark button` would win over one class. */
+.pxd-root button.pxd-follow__place,
+.pxd-root button.pxd-follow__skip,
+.pxd-root button.pxd-follow__all,
+.pxd-root button.pxd-follow__show,
+.pxd-root button.pxd-follow__dismiss,
+.pxd-root button.pxd-follow__delete,
+.pxd-root button.pxd-follow__close {
   padding: 0 8px;
   border: 1px solid var(--pxd-border, #d0d7de);
   border-radius: 4px;
@@ -6611,8 +6618,12 @@ body.roam-body.dark .pxd-root {
   cursor: pointer;
 }
 
-.pxd-follow__close { padding: 0 6px; border-color: transparent; }
-.pxd-follow__all:disabled { opacity: 0.45; cursor: default; }
+.pxd-root button.pxd-follow__place:hover,
+.pxd-root button.pxd-follow__all:hover:not(:disabled),
+.pxd-root button.pxd-follow__show:hover,
+.pxd-root button.pxd-follow__dismiss:hover { border-color: var(--pxd-accent, #0d9488); }
+.pxd-root button.pxd-follow__close { padding: 0 6px; border-color: transparent; font-size: 14px; line-height: 16px; }
+.pxd-root button.pxd-follow__all:disabled { opacity: 0.45; cursor: default; }
 
 .pxd-root .pxd-item.pxd-item--left {
   outline: 2px dashed var(--pxd-muted, #5f6b7c);

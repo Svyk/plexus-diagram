@@ -78,6 +78,44 @@ function landmarkItem(c) {
   });
 }
 
+// PXD-9. `f` is the follow tray's menuState(). Following: the source, the tray, the tree switch and Stop. Not
+// following: pick a source; a lone ((uid)) in the board text is offered first, never followed by itself.
+function followMenu(f) {
+  if (!f) return [];
+  if (f.following) {
+    return [make("follow", "Following", {
+      children: [
+        ...(f.label ? [make("follow:label", f.label, { disabled: true })] : []),
+        make("follow:show", `Show tray (${Number(f.waiting) || 0} waiting)`),
+        ...(f.kind === "block" ? [make("follow:tree", "Include the whole tree", { checked: f.tree === true })] : []),
+        make("follow:stop", "Stop following"),
+      ],
+    })];
+  }
+  return [make("follow", "Follow…", {
+    children: [
+      ...(f.textUid ? [make("follow:text", "The block in the board text")] : []),
+      make("follow:pick-block", "A block's children…"),
+      make("follow:pick-query", "A query…"),
+      make("follow:pick-refs", "Linked references of…"),
+    ],
+  })];
+}
+
+// A card's own Follow items: follow what the card shows, and the tray's actions on a card that came from the source.
+function followCardItems(f) {
+  if (!f) return [];
+  const out = [];
+  const pick = [];
+  if (f.block) pick.push(make("follow:this", "Its children"));
+  if (f.query) pick.push(make("follow:this-query", "This query"));
+  if (f.refs) pick.push(make("follow:this-refs", "Its linked references"));
+  if (pick.length) out.push(make("follow-card", "Follow", { children: pick }));
+  if (f.left) out.push(make("follow:dismiss", "Dismiss “left the source”"));
+  if (f.followed) out.push(make("follow:remove", "Remove, don't bring back", { danger: true }));
+  return out;
+}
+
 // Optional keys are only written when set, so items compare cleanly and carry no undefined noise.
 const make = (id, label, extra = {}) => {
   const out = { id, label };
@@ -271,6 +309,7 @@ export function buildMenu(kind, ctx = {}) {
         out.push(make("neighbors:in", "Add pages that link here"));
         out.push(make("neighbors:attr", "Add attribute values"));
       }
+      out.push(...followCardItems(c.follow));
       if (c.canAnnotate) out.push(make("annotate-drawing", "Annotate as drawing"));
       out.push(
         make("send-to", "Send to board…"),
@@ -451,6 +490,7 @@ export function buildMenu(kind, ctx = {}) {
         make("export-png", "Export as PNG"),
         make("copy-outline", "Copy as outline"),
         make("sort-outline", "Sort outline by position"),
+        ...followMenu(c.follow),
         ...(c.inlinePdfs > 0 ? [make("pdf-pages", "Move PDFs to their own pages")] : []),
         ...(c.oldTables > 0 ? [make("table-captions", "Fold tables under captions")] : []),
         make("open-outline", "Open outline in sidebar"),

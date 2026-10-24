@@ -54735,6 +54735,7 @@ extendSession((session, api3) => {
         return Number.isFinite(n3) && n3 >= 40 ? n3 : fallback;
       };
       const card2 = { w: size("default-card-width", DEFAULT_SIZES.card.w), h: size("default-card-height", DEFAULT_SIZES.card.h) };
+      const sized = card2.w !== DEFAULT_SIZES.card.w || card2.h !== DEFAULT_SIZES.card.h ? card2 : {};
       const mine = /* @__PURE__ */ new Set([cardUid]);
       for (let p = item.parentUid; p && p !== board2.uid; p = board2.items.get(p)?.parentUid) mine.add(p);
       const all = api3.rects();
@@ -54746,7 +54747,7 @@ extendSession((session, api3) => {
       if (!plan.added) return Promise.resolve({ ...none, total: plan.total, left: plan.left });
       return api3.txn((t) => {
         const rects = api3.rects();
-        const ids = plan.cards.map((c) => placeCard(t, c.string, c.x, c.y));
+        const ids = plan.cards.map((c) => placeCard(t, c.string, c.x, c.y, sized));
         const touched = [...ids];
         for (const s of plan.sections) {
           const parent = containerAt(board2, { x: s.x + s.w / 2, y: s.y + s.h / 2 }, { rects });
@@ -54755,7 +54756,7 @@ extendSession((session, api3) => {
           ids.push(sectionUid);
           touched.push(sectionUid);
           for (const c of s.cards) {
-            touched.push(t.create({ parent: sectionUid, string: c.string, plexus: serializeItemLayout({ x: c.x - s.x, y: c.y - s.y }) }));
+            touched.push(t.create({ parent: sectionUid, string: c.string, plexus: serializeItemLayout({ x: c.x - s.x, y: c.y - s.y, ...sized }) }));
           }
         }
         api3.applyFit(t, touched);

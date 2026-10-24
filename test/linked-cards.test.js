@@ -110,6 +110,20 @@ test("linkedCardsLayout caps cards, and in page mode sections too, and counts wh
   assert.equal(linkedCardsLayout(rect, many, { mode: "page", cap: 1 }).added, 0, "a section needs room for one card");
 });
 
+test("linkedCardsLayout moves the group right, past every card or section it would cover", () => {
+  const refs = refsOn(["Notes"], 2);
+  // two cards, x 460..1044, y 200..360
+  const free = linkedCardsLayout(rect, refs, { avoid: [{ x: 460, y: 600, w: 280, h: 160 }, rect] });
+  assert.deepEqual(free.cards.map((c) => [c.x, c.y]), [[460, 200], [764, 200]], "a rect below, or the source card, is not in the way");
+  const one = linkedCardsLayout(rect, refs, { avoid: [{ x: 800, y: 300, w: 200, h: 100 }] });
+  assert.deepEqual(one.cards.map((c) => [c.x, c.y]), [[1080, 200], [1384, 200]], "80 past the right edge of what it hit");
+  const chain = linkedCardsLayout(rect, refs, { avoid: [{ x: 460, y: 200, w: 280, h: 160 }, { x: 1300, y: 250, w: 100, h: 50 }] });
+  assert.deepEqual(chain.cards.map((c) => c.x), [1480, 1784], "a move that lands on another rect moves again");
+  const paged = linkedCardsLayout(rect, refsOn(["A", "B"], 1), { mode: "page", avoid: [{ x: 500, y: 150, w: 100, h: 100 }] });
+  assert.deepEqual(paged.sections.map((s) => [s.title, s.x, s.y]), [["A", 680, 200], ["B", 1088, 200]]);
+  assert.deepEqual(paged.sections.map((s) => s.cards[0].x), [712, 1120], "cards move with their section");
+});
+
 test("linkedCardsMessage counts references, sections and the ones left out", () => {
   assert.equal(linkedCardsMessage({ added: 1 }), "Added 1 linked reference");
   assert.equal(linkedCardsMessage({ added: 5, sections: 1 }), "Added 5 linked references in 1 section");
@@ -211,6 +225,17 @@ test("addLinkedRefCards: a new section that lands in the source card's section i
   assert.equal(fake.block(notes).parent, "S");
   assert.deepEqual(at(fake, notes), [380, 40]);
   assert.equal(fake.props("S").plexus.w, 380 + 344 + 24, "the frame grows to hold the new section");
+});
+
+test("addLinkedRefCards: a second run on the card below lands clear of the first batch", async () => {
+  const { fake, session } = setup([card("X", "[[Alpha]]", 100, 100, 280, 160), card("Y", "((blockYY01))", 100, 300, 280, 160)]);
+  const first = await session.addLinkedRefCards("X", three, "flat");
+  // 2 columns: (460,100) (764,100) (460,284); a section beside Y at (460,300) would cover the third card
+  assert.deepEqual(first.ids.map((u) => at(fake, u)), [[460, 100], [764, 100], [460, 284]]);
+  const second = await session.addLinkedRefCards("Y", [{ uid: "refDDDD04", pageTitle: "Notes" }], "page");
+  assert.deepEqual(at(fake, second.ids[0]), [820, 300]);
+  assert.deepEqual(first.ids.map((u) => at(fake, u)), [[460, 100], [764, 100], [460, 284]], "the first batch is not moved");
+  assert.equal(updates(fake).length, 0);
 });
 
 test("addLinkedRefCards counts sections toward the spread cap and stays under the undo budget", async () => {

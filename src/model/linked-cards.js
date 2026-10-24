@@ -50,10 +50,29 @@ const gridOf = (n) => {
   return { cols, rows: Math.max(1, Math.ceil(n / cols)) };
 };
 
+const boxOf = (rects) => {
+  const x = Math.min(...rects.map((r) => r.x));
+  const y = Math.min(...rects.map((r) => r.y));
+  return { x, y, w: Math.max(...rects.map((r) => r.x + r.w)) - x, h: Math.max(...rects.map((r) => r.y + r.h)) - y };
+};
+
+// How far right `box` must move to keep GAP clear of every rect in `avoid`. Each step passes at least one rect.
+function clearRight(box, avoid) {
+  let dx = 0;
+  for (let i = 0; i <= avoid.length; i += 1) {
+    const x = box.x + dx;
+    const hits = avoid.filter((o) => o && x - GAP < o.x + o.w && o.x < x + box.w + GAP && box.y - GAP < o.y + o.h && o.y < box.y + box.h + GAP);
+    if (!hits.length) break;
+    dx = Math.max(...hits.map((o) => o.x + o.w)) + BESIDE - box.x;
+  }
+  return dx;
+}
+
 // The cards go right of `rect` in a grid. In "page" mode each group is a section sized to its card grid, and the
 // sections are rows of a grid themselves. A section is one change and holds at least one card, so a group starts
-// only while two changes are left in `cap`. `left` counts the references that were not added.
-export function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap = 22, card = CARD } = {}) {
+// only while two changes are left in `cap`. `left` counts the references that were not added. The whole group
+// moves right past any rect in `avoid` it would cover, so a second run does not land on the first.
+export function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap = 22, card = CARD, avoid = [] } = {}) {
   const groups = groupLinkedRefs(refs, { skip });
   const total = groups.reduce((n, g) => n + g.uids.length, 0);
   if (!rect || !total) return { cards: [], sections: [], added: 0, total, left: total };
@@ -67,7 +86,9 @@ export function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap = 22, c
   if (mode !== "page") {
     const uids = groups.flatMap((g) => g.uids).slice(0, limit);
     const { cols } = gridOf(uids.length);
-    const cards = uids.map((uid, i) => ({ string: `((${uid}))`, ...at(x0, y0, i, cols) }));
+    const placed = uids.map((uid, i) => ({ string: `((${uid}))`, ...at(x0, y0, i, cols) }));
+    const dx = placed.length ? clearRight(boxOf(placed.map((c) => ({ ...c, w, h }))), avoid || []) : 0;
+    const cards = placed.map((c) => ({ ...c, x: c.x + dx }));
     return { cards, sections: [], added: cards.length, total, left: total - cards.length };
   }
 
@@ -80,7 +101,7 @@ export function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap = 22, c
     budget -= 1 + uids.length;
   }
   const { cols: perRow } = gridOf(picked.length);
-  const sections = [];
+  const placed = [];
   let y = y0;
   for (let start = 0; start < picked.length; start += perRow) {
     let x = x0;
@@ -90,12 +111,14 @@ export function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap = 22, c
       const sw = PAD * 2 + cols * w + (cols - 1) * GAP;
       const sh = PAD * 2 + rows * h + (rows - 1) * GAP;
       const cards = g.uids.map((uid, i) => ({ string: `((${uid}))`, ...at(x + PAD, y + PAD, i, cols) }));
-      sections.push({ title: g.title, x, y, w: sw, h: sh, cards });
+      placed.push({ title: g.title, x, y, w: sw, h: sh, cards });
       x += sw + SECTION_GAP;
       rowH = Math.max(rowH, sh);
     }
     y += rowH + SECTION_GAP;
   }
+  const dx = placed.length ? clearRight(boxOf(placed), avoid || []) : 0;
+  const sections = placed.map((s) => ({ ...s, x: s.x + dx, cards: s.cards.map((c) => ({ ...c, x: c.x + dx })) }));
   const added = sections.reduce((n, s) => n + s.cards.length, 0);
   return { cards: [], sections, added, total, left: total - added };
 }

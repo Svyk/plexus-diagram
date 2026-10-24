@@ -380,7 +380,15 @@ extendSession((session, api) => {
         return Number.isFinite(n) && n >= 40 ? n : fallback;
       };
       const card = { w: size("default-card-width", DEFAULT_SIZES.card.w), h: size("default-card-height", DEFAULT_SIZES.card.h) };
-      const plan = linkedCardsLayout(own, refs, { mode, skip, cap: SPREAD_CAP, card });
+      // Everything else on the board is in the way, except the sections the card sits in (results may nest there).
+      const mine = new Set([cardUid]);
+      for (let p = item.parentUid; p && p !== board.uid; p = board.items.get(p)?.parentUid) mine.add(p);
+      const all = api.rects();
+      const avoid = [];
+      for (const it of board.items.values()) {
+        if (!mine.has(it.uid) && (it.type === "card" || it.type === "section") && all.get(it.uid)) avoid.push(all.get(it.uid));
+      }
+      const plan = linkedCardsLayout(own, refs, { mode, skip, cap: SPREAD_CAP, card, avoid });
       if (!plan.added) return Promise.resolve({ ...none, total: plan.total, left: plan.left });
       return api.txn((t) => {
         const rects = api.rects();

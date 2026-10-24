@@ -15888,15 +15888,15 @@ var init_parse_hash = __esm({
 });
 
 // src/model/parse-schema.js
-function boxOf6(value) {
+function boxOf7(value) {
   if (!Array.isArray(value) || value.length < 4) return null;
   const [x0, y0, x1, y1] = value;
   if (![x0, y0, x1, y1].every((n3) => typeof n3 === "number" && Number.isFinite(n3))) return null;
   return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
 }
 function iou2(a, b) {
-  const A2 = boxOf6(a);
-  const B = boxOf6(b);
+  const A2 = boxOf7(a);
+  const B = boxOf7(b);
   if (!A2 || !B) return 0;
   const ix0 = Math.max(A2[0], B[0]);
   const iy0 = Math.max(A2[1], B[1]);
@@ -15910,10 +15910,10 @@ function iou2(a, b) {
   return inter / union;
 }
 function targetOf(bbox) {
-  if (Array.isArray(bbox)) return { page: null, bbox: boxOf6(bbox) };
+  if (Array.isArray(bbox)) return { page: null, bbox: boxOf7(bbox) };
   if (bbox && typeof bbox === "object") {
     const page = Number.isInteger(bbox.page) ? bbox.page : null;
-    const box2 = Array.isArray(bbox.bbox) ? boxOf6(bbox.bbox) : boxOf6(bbox);
+    const box2 = Array.isArray(bbox.bbox) ? boxOf7(bbox.bbox) : boxOf7(bbox);
     return { page, bbox: box2 };
   }
   return { page: null, bbox: null };
@@ -40033,7 +40033,22 @@ var gridOf = (n3) => {
   const cols = Math.max(1, Math.ceil(Math.sqrt(n3)));
   return { cols, rows: Math.max(1, Math.ceil(n3 / cols)) };
 };
-function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap: cap4 = 22, card: card2 = CARD } = {}) {
+var boxOf6 = (rects) => {
+  const x = Math.min(...rects.map((r) => r.x));
+  const y = Math.min(...rects.map((r) => r.y));
+  return { x, y, w: Math.max(...rects.map((r) => r.x + r.w)) - x, h: Math.max(...rects.map((r) => r.y + r.h)) - y };
+};
+function clearRight(box2, avoid) {
+  let dx = 0;
+  for (let i = 0; i <= avoid.length; i += 1) {
+    const x = box2.x + dx;
+    const hits = avoid.filter((o) => o && x - GAP < o.x + o.w && o.x < x + box2.w + GAP && box2.y - GAP < o.y + o.h && o.y < box2.y + box2.h + GAP);
+    if (!hits.length) break;
+    dx = Math.max(...hits.map((o) => o.x + o.w)) + BESIDE - box2.x;
+  }
+  return dx;
+}
+function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap: cap4 = 22, card: card2 = CARD, avoid = [] } = {}) {
   const groups2 = groupLinkedRefs(refs, { skip });
   const total = groups2.reduce((n3, g) => n3 + g.uids.length, 0);
   if (!rect || !total) return { cards: [], sections: [], added: 0, total, left: total };
@@ -40046,7 +40061,9 @@ function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap: cap4 = 22, ca
   if (mode !== "page") {
     const uids = groups2.flatMap((g) => g.uids).slice(0, limit);
     const { cols } = gridOf(uids.length);
-    const cards = uids.map((uid, i) => ({ string: `((${uid}))`, ...at(x0, y0, i, cols) }));
+    const placed2 = uids.map((uid, i) => ({ string: `((${uid}))`, ...at(x0, y0, i, cols) }));
+    const dx2 = placed2.length ? clearRight(boxOf6(placed2.map((c) => ({ ...c, w, h }))), avoid || []) : 0;
+    const cards = placed2.map((c) => ({ ...c, x: c.x + dx2 }));
     return { cards, sections: [], added: cards.length, total, left: total - cards.length };
   }
   const picked = [];
@@ -40058,7 +40075,7 @@ function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap: cap4 = 22, ca
     budget -= 1 + uids.length;
   }
   const { cols: perRow } = gridOf(picked.length);
-  const sections = [];
+  const placed = [];
   let y = y0;
   for (let start = 0; start < picked.length; start += perRow) {
     let x = x0;
@@ -40068,12 +40085,14 @@ function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap: cap4 = 22, ca
       const sw = PAD * 2 + cols * w + (cols - 1) * GAP;
       const sh = PAD * 2 + rows * h + (rows - 1) * GAP;
       const cards = g.uids.map((uid, i) => ({ string: `((${uid}))`, ...at(x + PAD, y + PAD, i, cols) }));
-      sections.push({ title: g.title, x, y, w: sw, h: sh, cards });
+      placed.push({ title: g.title, x, y, w: sw, h: sh, cards });
       x += sw + SECTION_GAP;
       rowH = Math.max(rowH, sh);
     }
     y += rowH + SECTION_GAP;
   }
+  const dx = placed.length ? clearRight(boxOf6(placed), avoid || []) : 0;
+  const sections = placed.map((s) => ({ ...s, x: s.x + dx, cards: s.cards.map((c) => ({ ...c, x: c.x + dx })) }));
   const added = sections.reduce((n3, s) => n3 + s.cards.length, 0);
   return { cards: [], sections, added, total, left: total - added };
 }
@@ -54716,7 +54735,14 @@ extendSession((session, api3) => {
         return Number.isFinite(n3) && n3 >= 40 ? n3 : fallback;
       };
       const card2 = { w: size("default-card-width", DEFAULT_SIZES.card.w), h: size("default-card-height", DEFAULT_SIZES.card.h) };
-      const plan = linkedCardsLayout(own2, refs, { mode, skip, cap: SPREAD_CAP, card: card2 });
+      const mine = /* @__PURE__ */ new Set([cardUid]);
+      for (let p = item.parentUid; p && p !== board2.uid; p = board2.items.get(p)?.parentUid) mine.add(p);
+      const all = api3.rects();
+      const avoid = [];
+      for (const it of board2.items.values()) {
+        if (!mine.has(it.uid) && (it.type === "card" || it.type === "section") && all.get(it.uid)) avoid.push(all.get(it.uid));
+      }
+      const plan = linkedCardsLayout(own2, refs, { mode, skip, cap: SPREAD_CAP, card: card2, avoid });
       if (!plan.added) return Promise.resolve({ ...none, total: plan.total, left: plan.left });
       return api3.txn((t) => {
         const rects = api3.rects();
@@ -83751,7 +83777,7 @@ function hasFirst(record) {
   if (typeof value === "string") return value.length > 0;
   return Boolean(value) && typeof value === "object" && typeof value.size === "number" && value.size > 0;
 }
-function boxOf7(node2) {
+function boxOf8(node2) {
   try {
     return typeof node2.getBoundingClientRect === "function" ? node2.getBoundingClientRect() : null;
   } catch {
@@ -83769,7 +83795,7 @@ function viewportOf(doc) {
   return null;
 }
 function readerInView(node2, doc) {
-  const rect = boxOf7(node2);
+  const rect = boxOf8(node2);
   const view = viewportOf(doc);
   if (!rect || !view) return true;
   const width = Number(rect.width);

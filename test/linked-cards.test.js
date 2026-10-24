@@ -179,11 +179,11 @@ test("linkedRefBlocks asks for the blocks that ref a page or a block, outside th
 const card = (uid, string, x, y, w = 200, h = 100, extra = {}, children = []) => ({
   uid, string, props: { plexus: { x, y, w, h, ...extra } }, children,
 });
-function setup(children) {
+function setup(children, settings = null) {
   const fake = createFakeRoam();
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
   fake.seedBoard({ uid: "b1", props: { plexus: { v: 2 } }, children });
-  const session = acquireSession("b1", { host, settings: null, linkDelay: 0 });
+  const session = acquireSession("b1", { host, settings, linkDelay: 0 });
   fake.clearLog();
   return { fake, host, session };
 }
@@ -236,6 +236,38 @@ test("addLinkedRefCards: a second run on the card below lands clear of the first
   assert.deepEqual(at(fake, second.ids[0]), [820, 300]);
   assert.deepEqual(first.ids.map((u) => at(fake, u)), [[460, 100], [764, 100], [460, 284]], "the first batch is not moved");
   assert.equal(updates(fake).length, 0);
+});
+
+test("addLinkedRefCards stores a non-default card size on each card, so the cards it spaced by that size do not overlap", async () => {
+  const small = { "default-card-width": 200, "default-card-height": 100 };
+  const overlapping = (rs) => rs.some((a, i) => rs.slice(i + 1).some((b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h));
+  {
+    const { fake, session } = setup([card("X", "[[Alpha]]", 100, 100, 280, 160)], small);
+    const res = await session.addLinkedRefCards("X", three, "flat");
+    assert.deepEqual(res.ids.map((u) => fake.props(u).plexus), [{ x: 460, y: 100, w: 200, h: 100 }, { x: 684, y: 100, w: 200, h: 100 }, { x: 460, y: 224, w: 200, h: 100 }]);
+    const drawn = res.ids.map((u) => session.rects.get(u));
+    assert.deepEqual(drawn.map((r) => [r.w, r.h]), [[200, 100], [200, 100], [200, 100]]);
+    assert.equal(overlapping(drawn), false);
+  }
+  resetSessions();
+  {
+    const { fake, session } = setup([card("X", "[[Alpha]]", 100, 100, 280, 160)], small);
+    const res = await session.addLinkedRefCards("X", three, "page");
+    const [notes, zed] = res.ids;
+    // 32 + 200 + 24 + 200 + 32 = 488 wide; Zed starts 64 after it
+    assert.deepEqual(fake.props(notes).plexus, { type: "section", x: 460, y: 100, w: 488, h: 164 });
+    assert.deepEqual(fake.props(zed).plexus, { type: "section", x: 1012, y: 100, w: 264, h: 164 });
+    assert.deepEqual(fake.children(notes).map((u) => fake.props(u).plexus), [{ x: 32, y: 32, w: 200, h: 100 }, { x: 256, y: 32, w: 200, h: 100 }]);
+    assert.equal(overlapping(fake.children(notes).map((u) => session.rects.get(u))), false);
+    assert.equal(overlapping(res.ids.map((u) => session.rects.get(u))), false, "the sections do not overlap");
+    assert.equal(updates(fake).length, 0, "auto-fit grows nothing");
+  }
+  resetSessions();
+  {
+    const { fake, session } = setup([card("X", "[[Alpha]]", 100, 100, 280, 160)], { "default-card-width": 280, "default-card-height": 160 });
+    const res = await session.addLinkedRefCards("X", three.slice(0, 1), "flat");
+    assert.deepEqual(fake.props(res.ids[0]).plexus, { x: 460, y: 100 }, "the default size is not written");
+  }
 });
 
 test("addLinkedRefCards counts sections toward the spread cap and stays under the undo budget", async () => {

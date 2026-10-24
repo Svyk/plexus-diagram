@@ -380,6 +380,8 @@ extendSession((session, api) => {
         return Number.isFinite(n) && n >= 40 ? n : fallback;
       };
       const card = { w: size("default-card-width", DEFAULT_SIZES.card.w), h: size("default-card-height", DEFAULT_SIZES.card.h) };
+      // A card with no stored size is drawn at DEFAULT_SIZES.card, so any other default size is written on each card.
+      const sized = card.w !== DEFAULT_SIZES.card.w || card.h !== DEFAULT_SIZES.card.h ? card : {};
       // Everything else on the board is in the way, except the sections the card sits in (results may nest there).
       const mine = new Set([cardUid]);
       for (let p = item.parentUid; p && p !== board.uid; p = board.items.get(p)?.parentUid) mine.add(p);
@@ -392,7 +394,7 @@ extendSession((session, api) => {
       if (!plan.added) return Promise.resolve({ ...none, total: plan.total, left: plan.left });
       return api.txn((t) => {
         const rects = api.rects();
-        const ids = plan.cards.map((c) => placeCard(t, c.string, c.x, c.y));
+        const ids = plan.cards.map((c) => placeCard(t, c.string, c.x, c.y, sized));
         const touched = [...ids];
         for (const s of plan.sections) {
           const parent = containerAt(board, { x: s.x + s.w / 2, y: s.y + s.h / 2 }, { rects });
@@ -401,7 +403,7 @@ extendSession((session, api) => {
           ids.push(sectionUid);
           touched.push(sectionUid);
           for (const c of s.cards) {
-            touched.push(t.create({ parent: sectionUid, string: c.string, plexus: serializeItemLayout({ x: c.x - s.x, y: c.y - s.y }) }));
+            touched.push(t.create({ parent: sectionUid, string: c.string, plexus: serializeItemLayout({ x: c.x - s.x, y: c.y - s.y, ...sized }) }));
           }
         }
         api.applyFit(t, touched);

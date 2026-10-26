@@ -1,14 +1,15 @@
 // PXD-9 place tray: what the followed source holds that the board does not show yet. The board never writes a card by
 // itself; rows wait here until the user places them (drag one onto the board, Place, or Place all into a column right
-// of the cards). Reads run at idle FOLLOW_QUIET_MS after a trigger: the source's watch (block kinds), the tray opening,
-// the window coming back, a slow poll. A board change only sorts the last read again. Cards that left the source get a
-// mark (onLeft) after two complete reads without them; a partial or failed read never adds one.
+// of the cards). Reads run at idle a quiet period after a trigger: the source's watch (a block source's block; for a
+// query or linked references, any save in this window), the tray opening, the window coming back, a slow poll. At most
+// one read per quiet period and never two at once, only while the board is on screen and the tab is visible; a slow
+// read stretches the quiet period (followQuietMs). A board change only sorts the last read again. Cards that left the
+// source get a mark (onLeft) after two complete reads without them; a partial or failed read never adds one.
 
 import { CARD_MIME } from "../model/drop.js";
 import {
   FOLLOW_MIME,
   FOLLOW_POLL_MS,
-  FOLLOW_QUIET_MS,
   FOLLOW_TREE_DEPTH,
   absentStep,
   createLeftMemory,
@@ -16,6 +17,7 @@ import {
   followDiff,
   followIndex,
   followPill,
+  followQuietMs,
   leftUnsettled,
   readFollow,
   sinceVisit,
@@ -48,6 +50,7 @@ export function createFollowTray({
   onShowCard,
   onPlaced,
   toast,
+  now = () => globalThis.performance?.now?.() ?? Date.now(),
 } = {}) {
   const boardUid = session?.uid;
   const memory = createLeftMemory({ storage, graph });
@@ -73,6 +76,16 @@ export function createFollowTray({
   let inFlight = false;
   let again = false;
   let placing = false;
+  // How long the last read took: the next quiet period is ten times that (at least FOLLOW_QUIET_MS).
+  let lastMs = 0;
+  // How long the last read waited for the shared background budget after its quiet period.
+  let waitMs = 0;
+  let queuedAt = 0;
+  // A trigger came while the board was off screen or the tab hidden: read when it shows again.
+  let stale = false;
+  // The root's IntersectionObserver: null until it reports.
+  let seen = null;
+  let io = null;
 
   const el = (tag, cls, parent, text) => {
     const node = doc.createElement(tag);
@@ -124,19 +137,31 @@ export function createFollowTray({
   }
 
   // ---- reads ----
+  const showing = () => doc?.visibilityState !== "hidden" && seen !== false;
+
   function runRead() {
     job = null;
     if (disposed || !pointer) return;
+    if (!showing()) { stale = true; return; }
     if (inFlight) { again = true; return; }
     const kind = followKind(pointer.kind);
     if (!kind) { status = "error"; reason = "unknown"; sync(); return; }
     const mine = key;
     inFlight = true;
+    stale = false;
+    waitMs = Math.max(0, now() - queuedAt);
     status = read ? status : "reading";
     if (!read) paintPanel();
+    const started = now();
     Promise.resolve().then(() => kind.read(pointer, ctx())).catch(() => ({ ok: false, reason: "error" })).then((res) => {
       inFlight = false;
-      if (disposed || mine !== key) return;
+      if (disposed) return;
+      // The source changed during the read: its result is dropped, and a read the new source asked for runs now.
+      if (mine !== key) {
+        if (again) { again = false; schedule(); }
+        return;
+      }
+      lastMs = Math.max(0, now() - started);
       reads += 1;
       if (res?.ok) {
         read = res;
@@ -156,22 +181,28 @@ export function createFollowTray({
     });
   }
 
+  // Every trigger comes here. While a quiet period runs, more triggers join it: one read at its end.
   function schedule() {
-    if (disposed || !pointer || quiet) return;
+    if (disposed || !pointer) return;
+    if (!showing()) { stale = true; return; }
+    if (quiet) return;
     quiet = timers.later(() => {
       quiet = null;
       if (disposed || job) return;
+      queuedAt = now();
       job = timers.bgIdle(runRead, "follow");
-    }, FOLLOW_QUIET_MS);
+    }, followQuietMs(lastMs));
   }
 
   const readSoon = () => {
     if (disposed || !pointer || job) return;
+    queuedAt = now();
     job = timers.bgIdle(runRead, "follow");
   };
 
-  // The poll and the focus / visibility listeners exist only while the board follows something: a board that follows
-  // nothing adds no window listener (each one counts against the listeners-per-board budget).
+  // The poll, the focus / visibility listeners and the on-screen observer exist only while the board follows
+  // something: a board that follows nothing adds no window listener (each one counts against the listeners-per-board
+  // budget).
   let listening = false;
   function listen(on) {
     if (on === listening) return;
@@ -179,6 +210,20 @@ export function createFollowTray({
     const method = on ? "addEventListener" : "removeEventListener";
     win?.[method]?.("focus", onFocus);
     doc?.[method]?.("visibilitychange", onVisible);
+    try { io?.disconnect?.(); } catch { /* gone */ }
+    io = null;
+    seen = null;
+    const IO = win?.IntersectionObserver || globalThis.IntersectionObserver;
+    if (!on || typeof IO !== "function" || !root) return;
+    try {
+      io = new IO((entries) => {
+        const entry = entries[entries.length - 1];
+        if (!entry || disposed) return;
+        seen = Boolean(entry.isIntersecting);
+        if (seen && stale) schedule();
+      });
+      io.observe(root);
+    } catch { io = null; }
   }
 
   function armPoll() {
@@ -188,7 +233,7 @@ export function createFollowTray({
     if (!pointer || disposed) return;
     poll = timers.later(() => {
       poll = null;
-      if (doc?.visibilityState !== "hidden") schedule();
+      schedule();
       armPoll();
     }, FOLLOW_POLL_MS);
   }
@@ -209,6 +254,10 @@ export function createFollowTray({
     }
     try { unwatch(); } catch { /* watch already gone */ }
     unwatch = () => {};
+    // A new source starts at the plain quiet period: the old one's cost and its armed period are not its own.
+    quiet?.();
+    quiet = null;
+    lastMs = 0;
     pointer = next;
     key = nextKey;
     read = null;
@@ -218,7 +267,7 @@ export function createFollowTray({
     label = pointer ? describe() : "";
     if (pointer) {
       const kind = followKind(pointer.kind);
-      try { unwatch = kind?.watch?.(pointer, host, () => schedule()) || (() => {}); } catch { unwatch = () => {}; }
+      try { unwatch = kind?.watch?.(pointer, host, () => schedule(), { doc }) || (() => {}); } catch { unwatch = () => {}; }
       schedule();
     } else if (open) close();
     armPoll();
@@ -383,6 +432,8 @@ export function createFollowTray({
     rows: () => diff.pending.slice(),
     left: () => diff.left.slice(),
     reads: () => reads,
+    // The F10 probe: the source, reads so far, how long the last one took and waited, and the quiet period that sets.
+    stats: () => ({ key, reads, lastMs, waitMs, quietMs: followQuietMs(lastMs), stale }),
     // The board menu: what Follow shows and offers.
     menuState() {
       const textUid = pointer ? null : textSourceUid(board()?.string || "");

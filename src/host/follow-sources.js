@@ -6,6 +6,10 @@
 // whether it has more) and stops once it has FOLLOW_READ_CAP items, so even the whole tree pulls about
 // FOLLOW_READ_CAP + FOLLOW_TREE_DEPTH × CHILD_LIMIT blocks at most. A query stops at its result cap, linked references
 // at FOLLOW_READ_CAP + 1.
+// Triggers: a block source watches its block. A query and linked references read again after a save in this window
+// (typing, a checkbox, a drop, Roam's sync dot: watchLocalSaves). A reverse-ref watch would be pulled again on every
+// transaction in the graph, about 8 ms for a page with 2,500 backlinks. Edits on other devices come with the tray's
+// poll and focus refresh.
 //
 // An item is { uid, kind: "block" | "page", text, time, title? (page), crumb?, depth?, blank? }. `time` is the later of
 // create and edit time, so the tray can say what is new since the last visit.
@@ -14,6 +18,7 @@ import { FOLLOW_PARENT_CAP, FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH, queryBody, sourc
 import { classifyString, plainText, readPlexus } from "../model/schema.js";
 import { loadQueryRows, parseQuery } from "../model/query-run.js";
 import { createQueryBackend } from "./query-backend.js";
+import { watchLocalSaves } from "./local-saves.js";
 
 const UID = ":block/uid";
 const STR = ":block/string";
@@ -28,7 +33,8 @@ const CHILD_LIMIT = FOLLOW_READ_CAP + 1;
 
 const kinds = new Map();
 
-// kind: { id, title, describe(pointer, host), read(pointer, ctx), watch?(pointer, host, cb) -> off, tree? }.
+// kind: { id, title, describe(pointer, host), read(pointer, ctx), watch?(pointer, host, cb, env) -> off, tree? }.
+// env: { doc } of the board.
 // ctx: { host, boardUid, inBoard() -> Set of the board's own block uids, tick() -> Promise }.
 export function defineFollowKind(kind) {
   if (!kind || typeof kind.id !== "string" || typeof kind.read !== "function") return () => {};
@@ -105,6 +111,7 @@ function nameOf(host, uid) {
 }
 
 const watchBlock = (pointer, host, cb) => (typeof host?.watchBlock === "function" ? host.watchBlock(pointer.uid, cb) : () => {});
+const watchSaves = (env, cb) => watchLocalSaves(env?.doc, cb);
 
 defineFollowKind({
   id: "block",
@@ -153,8 +160,11 @@ defineFollowKind({
     const parsed = parseQuery(string);
     return `Query ${quote(parsed.ok && parsed.title ? parsed.title : queryBody(string) || "")}`;
   },
-  // An edit to the query text reads again at once. New results come with the poll.
-  watch: watchBlock,
+  // An edit to the query text, and any save in this window (a new or removed result), read again after the quiet time.
+  watch(p, host, cb, env) {
+    const offs = [watchBlock(p, host, cb), watchSaves(env, cb)];
+    return () => { for (const off of offs) off(); };
+  },
   async read(p, { host, inBoard, tick }) {
     const string = queryString(host, p.uid);
     if (typeof string !== "string") return { ok: false, reason: "missing" };
@@ -183,6 +193,7 @@ defineFollowKind({
   id: "refs",
   title: "Linked references",
   describe: (p, host) => `Linked references of ${quote(nameOf(host, p.uid))}`,
+  watch: (p, host, cb, env) => watchSaves(env, cb),
   async read(p, { host, inBoard }) {
     let rows = null;
     try { rows = host?.q?.(refsQuery(), p.uid); } catch { rows = null; }

@@ -11190,6 +11190,11 @@ function buildBoardView(onFail, {
       if (!inputProfile) inputProfile = createInputProfile({ win: globalThis, spans: () => sharedTaskProbe().spans() });
       return inputProfile.read(opts);
     },
+    // PXD-9 F10 probe: the follow tray's source key, reads, the last read's length and wait, and the quiet period it sets
+    // (null: no source).
+    followStats() {
+      return followCtl?.stats?.() || null;
+    },
     // Card bodies that took 50 ms or more to mount ({ uid, kind, ms, at }), to name a long "content" task.
     slowMounts() {
       return itemsR.slowMounts?.() || [];

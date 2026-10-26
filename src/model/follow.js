@@ -26,8 +26,12 @@ export const FOLLOW_TREE_DEPTH = 8;
 export const FOLLOW_PARENT_CAP = 60;
 // The read runs this long after a change, at idle (graph links wait the same 1.5 s).
 export const FOLLOW_QUIET_MS = 1500;
-// Kinds without a watch (a query, linked references) and deep tree edits are read again this often while on screen.
+// Edits on other devices and deep tree edits are read again this often while on screen.
 export const FOLLOW_POLL_MS = 60000;
+// A slow read stretches the quiet period to this many times its own length (a TODO query on a big graph reads at most
+// a tenth of the time), never past the poll.
+export const FOLLOW_BACKOFF = 10;
+export const followQuietMs = (lastMs) => Math.min(FOLLOW_POLL_MS, Math.max(FOLLOW_QUIET_MS, FOLLOW_BACKOFF * (Number(lastMs) || 0)));
 // A card is marked "left the source" after this many complete reads in a row without it.
 export const LEFT_CONFIRM = 2;
 export const FOLLOW_COLUMN_GAP = 48;

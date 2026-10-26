@@ -7,8 +7,9 @@ import { createHost } from "../src/host/roam.js";
 import { acquireSession, resetSessions } from "../src/session.js";
 import "../src/session-follow.js";
 import { createFollowTray } from "../src/view/follow-tray.js";
-import { defineFollowKind } from "../src/host/follow-sources.js";
-import { FOLLOW_MIME, FOLLOW_POLL_MS, FOLLOW_QUIET_MS, FOLLOW_TREE_DEPTH } from "../src/model/follow.js";
+import { defineFollowKind, followKind } from "../src/host/follow-sources.js";
+import { SAVE_LAG_MS, watchLocalSaves } from "../src/host/local-saves.js";
+import { FOLLOW_MIME, FOLLOW_POLL_MS, FOLLOW_QUIET_MS, FOLLOW_TREE_DEPTH, followQuietMs } from "../src/model/follow.js";
 import { SPREAD_CAP } from "../src/session-clip.js";
 import { buildMenu, flattenMenu } from "../src/view/menu-model.js";
 
@@ -38,8 +39,45 @@ function manualTimers() {
   return timers;
 }
 
+// F10: Roam's sync dot, and the observers the browser would give the tray (the stub has neither).
+function liveDom(dom) {
+  const win = dom.document.defaultView;
+  const mos = [];
+  const ios = [];
+  win.MutationObserver = class {
+    constructor(cb) { this.cb = cb; this.on = false; mos.push(this); }
+    observe(target, opts) { this.on = true; this.target = target; this.opts = opts; }
+    disconnect() { this.on = false; }
+  };
+  win.IntersectionObserver = class {
+    constructor(cb) { this.cb = cb; this.on = false; ios.push(this); }
+    observe(target) { this.on = true; this.target = target; }
+    disconnect() { this.on = false; }
+  };
+  const box = dom.document.createElement("div");
+  box.className = "rm-sync";
+  const icon = dom.document.createElement("div");
+  icon.className = "rm-sync__icon rm-sync--synced";
+  box.append(icon);
+  dom.document.body.append(box);
+  const flip = (next) => {
+    const old = icon.className;
+    icon.className = next;
+    for (const mo of mos) if (mo.on) mo.cb([{ type: "attributes", target: icon, attributeName: "class", oldValue: old }]);
+  };
+  return {
+    mos,
+    ios,
+    observing: () => mos.filter((mo) => mo.on).length,
+    // One write in this window: the dot says saving, then synced.
+    save() { flip("rm-sync__icon rm-sync--saving-remote"); flip("rm-sync__icon rm-sync--synced"); },
+    show(on) { for (const io of ios) if (io.on) io.cb([{ isIntersecting: on, target: io.target }]); },
+  };
+}
+
 // roamWatch: the fake fires a pull watch only when its pull result changes, as Roam does.
-function mount({ plexus = { v: 2, follow: { kind: "block", uid: "SRC" } }, children, since = null, storage, roamWatch = false, srcKids } = {}) {
+// clock: the tray's own clock (a read's length sets the next quiet period); it only moves when a test moves it.
+function mount({ plexus = { v: 2, follow: { kind: "block", uid: "SRC" } }, children, since = null, storage, roamWatch = false, srcKids, live = false, clock = { t: 0 } } = {}) {
   const fake = createFakeRoam();
   fake.roamWatch = roamWatch;
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
@@ -56,6 +94,7 @@ function mount({ plexus = { v: 2, follow: { kind: "block", uid: "SRC" } }, child
   const dom = createDomStub();
   const root = dom.document.createElement("div");
   dom.document.body.append(root);
+  const liveBits = live ? liveDom(dom) : null;
   const timers = manualTimers();
   // Listeners on the document and the window: the ones that outlive the board's own elements.
   const globalListeners = () => [...dom.listeners].filter((e) => e.target === dom.document || e.target === dom.document.defaultView).length;
@@ -76,8 +115,9 @@ function mount({ plexus = { v: 2, follow: { kind: "block", uid: "SRC" } }, child
     onLeft: (set) => lefts.push([...set]),
     onPlaced: (uids) => placed.push(uids),
     toast: (m) => toasts.push(m),
+    now: () => clock.t,
   });
-  return { fake, host, session, root, timers, tray, lefts, placed, toasts, listeners: () => globalListeners() - baseline };
+  return { fake, host, session, dom, root, timers, tray, lefts, placed, toasts, live: liveBits, clock, listeners: () => globalListeners() - baseline };
 }
 
 test("PXD-9 tray: opening a followed board reads at idle after the quiet time and writes nothing", async () => {
@@ -342,4 +382,269 @@ test("PXD-9 menu: a lone ((uid)) in the board text is offered, and card items fo
   assert.deepEqual(cardIds({ query: true, refs: true }), ["follow-card", "follow:this-query", "follow:this-refs"]);
   assert.deepEqual(cardIds({ followed: true, left: true }), ["follow:dismiss", "follow:remove"]);
   assert.deepEqual(cardIds(null), []);
+});
+
+// ---- F10: query and linked-reference sources read again about 1.5 s after a save in this window ----
+
+const liveItem = (uid) => ({ uid, kind: "block", text: uid, time: 1 });
+// A kind that reads what the test says and listens the way linked references do.
+function liveProbe(id, read) {
+  return defineFollowKind({ id, title: "Probe", describe: () => "the probe", watch: followKind("refs").watch, read });
+}
+
+// A Roam block editor and a checkbox in a block, as the page has them.
+function roamBlock(dom) {
+  const block = dom.document.createElement("div");
+  block.className = "roam-block";
+  const editor = dom.document.createElement("textarea");
+  editor.className = "rm-block-input rm-block__input";
+  const box = dom.document.createElement("input");
+  block.append(editor, box);
+  dom.document.body.append(block);
+  return { editor, box };
+}
+
+test("PXD-9 F10 save signal: typing (at once, and once more after Roam's write lag), leaving an editor, a checkbox, a drop and the sync dot; one set for every listener", () => {
+  const dom = createDomStub();
+  const live = liveDom(dom);
+  const doc = dom.document;
+  const { editor, box } = roamBlock(dom);
+  const other = doc.createElement("textarea");
+  doc.body.append(other);
+  const base = dom.listenerCount();
+  let a = 0;
+  let b = 0;
+  const offA = watchLocalSaves(doc, () => { a += 1; });
+  const offB = watchLocalSaves(doc, () => { b += 1; });
+  assert.equal(live.observing(), 1, "one observer on the dot for both listeners");
+  assert.equal(live.mos[0].target.className, "rm-sync", "the dot's box: a dot drawn again inside it is still heard");
+  assert.deepEqual(live.mos[0].opts, { attributes: true, attributeFilter: ["class"], attributeOldValue: true, subtree: true });
+  assert.equal(dom.listenerCount() - base, 4, "input, focusout, change and drop, once for both");
+  editor.dispatchEvent({ type: "input" });
+  assert.deepEqual([a, b], [1, 1], "a key is heard at once");
+  editor.dispatchEvent({ type: "input" });
+  assert.deepEqual([a, b], [2, 2]);
+  assert.equal(dom.timers.size, 1, "one lag timer, moved by each key");
+  assert.equal([...dom.timers][0].ms, SAVE_LAG_MS);
+  dom.flushTimers();
+  assert.deepEqual([a, b], [3, 3], "and once more after Roam's write lag");
+  other.dispatchEvent({ type: "input" });
+  other.dispatchEvent({ type: "focusout" });
+  assert.deepEqual([a, b], [3, 3], "a textarea that is not a block editor says nothing");
+  editor.dispatchEvent({ type: "focusout" });
+  box.dispatchEvent({ type: "change" });
+  doc.body.dispatchEvent({ type: "drop" });
+  assert.deepEqual([a, b], [6, 6], "leaving the editor, a checkbox, a drop");
+  live.save();
+  assert.deepEqual([a, b], [8, 8], "the dot turning to saving, and back: the old value still says saving");
+  live.mos[0].cb([{ type: "attributes", target: { className: "bp3-popover-open saving", classList: { contains: () => false } }, oldValue: "" }]);
+  assert.deepEqual([a, b], [8, 8], "another element in the box says nothing");
+  editor.dispatchEvent({ type: "input" });
+  offA();
+  assert.equal(live.observing(), 1, "one listener left: everything stays");
+  offB();
+  assert.equal(live.observing(), 0, "the last listener lets the dot go");
+  assert.equal(dom.listenerCount() - base, 0, "and the document listeners");
+  assert.equal(dom.timers.size, 0, "and the lag timer");
+  const bare = createDomStub();
+  let c = 0;
+  const offC = watchLocalSaves(bare.document, () => { c += 1; });
+  roamBlock(bare).editor.dispatchEvent({ type: "input" });
+  assert.equal(c, 1, "no dot drawn yet: typing is still heard");
+  offC();
+});
+
+test("PXD-9 F10 tray: a new linked reference saved in this window reaches the pill one quiet period later; one read per quiet period", async () => {
+  const results = [{ ok: true, complete: true, items: [liveItem("k2")] }];
+  let calls = 0;
+  const off = liveProbe("live-refs", async () => { calls += 1; return results.shift() ?? { ok: true, complete: true, items: [liveItem("k2"), liveItem("k5")] }; });
+  try {
+    const f = mount({ plexus: { v: 2, follow: { kind: "live-refs", uid: "P" } }, children: [card("n1", "Note one", 0, 0)], live: true });
+    await f.timers.run();
+    assert.equal(calls, 1);
+    assert.equal(f.root.querySelector(".pxd-follow").textContent, "Following (1)");
+    assert.equal(f.live.observing(), 1, "one observer on the sync dot");
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 0, "nothing asks for a read");
+    f.live.save();
+    f.live.save();
+    f.live.save();
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 1, "three saves join one quiet period");
+    await f.timers.run();
+    assert.equal(calls, 2, "one read at its end");
+    assert.equal(f.root.querySelector(".pxd-follow").textContent, "Following (2)", "the new reference is in the pill");
+    for (let i = 0; i < 5; i += 1) await f.timers.run();
+    assert.equal(calls, 2, "a read saves nothing, so it wakes nothing");
+    await f.fake.flush();
+    assert.deepEqual(f.fake.writesLog(), [], "no writes");
+    f.tray.dispose();
+    assert.equal(f.live.observing(), 0, "dispose lets the dot go");
+    assert.equal(f.listeners(), 0, "and the document listeners");
+  } finally { off(); }
+});
+
+test("PXD-9 F10 tray: the query and linked-reference kinds read again after a save; a block source keeps its own watch", async () => {
+  for (const [follow, observing] of [[{ kind: "query", uid: "SRC" }, 1], [{ kind: "refs", uid: "SRCPAGE" }, 1], [{ kind: "block", uid: "SRC" }, 0]]) {
+    const f = mount({ plexus: { v: 2, follow }, children: [card("n1", "Note one", 0, 0)], live: true });
+    await f.timers.run();
+    const reads = f.tray.reads();
+    assert.equal(f.live.observing(), observing, `${follow.kind}: listens to saves`);
+    f.live.save();
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), observing, `${follow.kind}: a save asks for a read`);
+    await f.timers.run();
+    assert.equal(f.tray.reads(), reads + observing);
+    f.tray.dispose();
+  }
+});
+
+test("PXD-9 F10 tray: no read while the board is off screen or the tab is hidden; one read when it shows again", async () => {
+  let calls = 0;
+  const off = liveProbe("live-shown", async () => { calls += 1; return { ok: true, complete: true, items: [liveItem("k2")] }; });
+  try {
+    const f = mount({ plexus: { v: 2, follow: { kind: "live-shown", uid: "P" } }, children: [card("n1", "Note one", 0, 0)], live: true });
+    await f.timers.run();
+    assert.equal(calls, 1);
+    assert.equal(f.live.ios.filter((io) => io.on && io.target === f.root).length, 1, "the board root is watched for being on screen");
+    f.live.show(false);
+    f.live.save();
+    f.live.save();
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 0, "off screen: the saves wait");
+    await f.timers.run(FOLLOW_POLL_MS);
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 0, "and so does the poll");
+    assert.equal(calls, 1);
+    f.live.show(true);
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 1, "back on screen: one read for all of them");
+    await f.timers.run();
+    assert.equal(calls, 2);
+    f.live.show(true);
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 0, "showing again with nothing new reads nothing");
+    f.live.save();
+    f.live.show(false);
+    await f.timers.run();
+    assert.equal(calls, 2, "a quiet period that ends off screen reads nothing");
+    f.live.show(true);
+    await f.timers.run();
+    assert.equal(calls, 3);
+    f.dom.document.visibilityState = "hidden";
+    f.live.save();
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 0, "a hidden tab: the save waits");
+    f.dom.document.visibilityState = "visible";
+    f.dom.document.dispatchEvent({ type: "visibilitychange" });
+    await f.timers.run();
+    assert.equal(calls, 4);
+    f.tray.dispose();
+    assert.equal(f.live.ios.filter((io) => io.on).length, 0);
+  } finally { off(); }
+});
+
+test("PXD-9 F10 tray: a slow read stretches the quiet period to ten times its length; a fast one brings it back", async () => {
+  assert.equal(followQuietMs(0), FOLLOW_QUIET_MS);
+  assert.equal(followQuietMs(100), FOLLOW_QUIET_MS);
+  assert.equal(followQuietMs(400), 4000);
+  assert.equal(followQuietMs(20000), FOLLOW_POLL_MS, "never past the poll");
+  const clock = { t: 0 };
+  let cost = 400;
+  let calls = 0;
+  const off = liveProbe("live-slow", async () => { calls += 1; clock.t += cost; return { ok: true, complete: true, items: [liveItem("k2")] }; });
+  try {
+    const f = mount({ plexus: { v: 2, follow: { kind: "live-slow", uid: "P" } }, children: [card("n1", "Note one", 0, 0)], live: true, clock });
+    await f.timers.run();
+    assert.equal(calls, 1);
+    f.live.save();
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 0);
+    assert.equal(f.timers.pending(4000), 1, "the last read took 400 ms: the next waits 4 s");
+    await f.timers.run(4000);
+    assert.equal(calls, 2);
+    cost = 5;
+    f.live.save();
+    assert.equal(f.timers.pending(4000), 1, "still 400 ms last time");
+    await f.timers.run(4000);
+    assert.equal(calls, 3);
+    f.live.save();
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 1, "a 5 ms read: back to 1.5 s");
+    f.tray.dispose();
+  } finally { off(); }
+});
+
+test("PXD-9 F10 tray: reads never overlap; saves during a read make one more read after it", async () => {
+  const pending = [];
+  let calls = 0;
+  const off = liveProbe("live-overlap", () => { calls += 1; return new Promise((resolve) => pending.push(resolve)); });
+  try {
+    const f = mount({ plexus: { v: 2, follow: { kind: "live-overlap", uid: "P" } }, children: [card("n1", "Note one", 0, 0)], live: true });
+    await f.timers.run();
+    assert.equal(calls, 1, "the first read is running");
+    for (let i = 0; i < 3; i += 1) {
+      f.live.save();
+      await f.timers.run();
+    }
+    assert.equal(calls, 1, "no second read while the first runs");
+    pending.shift()({ ok: true, complete: true, items: [liveItem("k2")] });
+    await flush();
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 1, "the saves it missed: one more quiet period");
+    await f.timers.run();
+    assert.equal(calls, 2);
+    pending.shift()({ ok: true, complete: true, items: [liveItem("k2")] });
+    await flush();
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 0, "and then it rests");
+    f.tray.dispose();
+  } finally { off(); }
+});
+
+test("PXD-9 F10 tray: typing a reference reads a quiet period after the first key, and once more after Roam's write lag", async () => {
+  let calls = 0;
+  const off = liveProbe("live-typing", async () => { calls += 1; return { ok: true, complete: true, items: [liveItem("k2")] }; });
+  try {
+    const f = mount({ plexus: { v: 2, follow: { kind: "live-typing", uid: "P" } }, children: [card("n1", "Note one", 0, 0)], live: true });
+    await f.timers.run();
+    assert.equal(calls, 1);
+    const { editor } = roamBlock(f.dom);
+    for (let i = 0; i < 3; i += 1) editor.dispatchEvent({ type: "input" });
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 1, "the first key starts the quiet period; the others join it");
+    await f.timers.run();
+    assert.equal(calls, 2);
+    f.dom.flushTimers();
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 1, "the last keys, written by Roam after that read: one more");
+    await f.timers.run();
+    assert.equal(calls, 3);
+    for (let i = 0; i < 5; i += 1) await f.timers.run();
+    assert.equal(calls, 3, "then it rests");
+    f.tray.dispose();
+  } finally { off(); }
+});
+
+test("PXD-9 F10 tray: a new source starts at the plain quiet period, whatever the old one cost or had armed", async () => {
+  const clock = { t: 0 };
+  const off = liveProbe("live-dear", async () => { clock.t += 2000; return { ok: true, complete: true, items: [liveItem("k2")] }; });
+  try {
+    const f = mount({ plexus: { v: 2, follow: { kind: "live-dear", uid: "P" } }, children: [card("n1", "Note one", 0, 0)], live: true, clock });
+    await f.timers.run();
+    f.live.save();
+    assert.equal(f.timers.pending(20000), 1, "a 2 s read: the next waits 20 s");
+    await f.session.followSource({ kind: "block", uid: "SRC" });
+    assert.equal(f.timers.pending(20000), 0, "the old source's period is dropped");
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 1);
+    await f.timers.run();
+    assert.deepEqual(f.tray.rows().map((r) => r.uid), ["k1", "k2", "k3"], "the new source is read 1.5 s later");
+    f.tray.dispose();
+  } finally { off(); }
+});
+
+test("PXD-9 F10 tray: a source switched while a read runs is read as soon as that read ends", async () => {
+  const pending = [];
+  const off = liveProbe("live-switch", () => new Promise((resolve) => pending.push(resolve)));
+  try {
+    const f = mount({ plexus: { v: 2, follow: { kind: "live-switch", uid: "P" } }, children: [card("n1", "Note one", 0, 0)], live: true });
+    await f.timers.run();
+    assert.equal(pending.length, 1, "the probe's read is running");
+    await f.session.followSource({ kind: "block", uid: "SRC" });
+    await f.timers.run();
+    assert.deepEqual(f.tray.rows(), [], "the block read waits for the running one");
+    pending.shift()({ ok: true, complete: true, items: [liveItem("x9")] });
+    await flush();
+    assert.deepEqual(f.tray.rows(), [], "the old source's result is dropped");
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 1, "and the new source's read is asked for");
+    await f.timers.run();
+    assert.deepEqual(f.tray.rows().map((r) => r.uid), ["k1", "k2", "k3"]);
+    f.tray.dispose();
+  } finally { off(); }
 });

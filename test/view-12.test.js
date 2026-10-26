@@ -2789,6 +2789,58 @@ test("RG-3: expand neighbours places a ring of page cards and writes no edges", 
   }
 });
 
+test("PXD-8: Add linked references as cards hands the host's blocks to the session, selects what it made and toasts", async () => {
+  const refs = [{ uid: "refAAAA01", pageTitle: "Notes" }, { uid: "refBBBB02", pageTitle: "Zed" }];
+  let answer = refs;
+  const f = mountFixture({
+    hostOverrides: {
+      linkedRefBlocks(item, opts) {
+        assert.equal(item.uid, "cardBBBB2");
+        assert.equal(opts.boardUid, "board0001");
+        return answer;
+      },
+    },
+  });
+  const calls = [];
+  let result = { ids: ["sectCCCC3"], added: 2, sections: 2, total: 2, left: 0 };
+  f.session.addLinkedRefCards = (...args) => { calls.push(args); return Promise.resolve(result); };
+  try {
+    await f.flush();
+    rightClick(f, shell(f, "cardBBBB2"));
+    assert.ok(menuIds(f).includes("linked-cards:flat"));
+    pickRow(f, "linked-cards:page");
+    await tick();
+    assert.deepEqual(calls, [["cardBBBB2", refs, "page"]]);
+    assert.deepEqual(f.view.state().selection, ["sectCCCC3"]);
+    assert.match(toastText(f), /Added 2 linked references in 2 sections/);
+
+    result = { ids: ["cardAAAA1"], added: 22, sections: 0, total: 30, left: 8 };
+    rightClick(f, shell(f, "cardBBBB2"));
+    pickRow(f, "linked-cards:flat");
+    await tick();
+    assert.equal(calls.at(-1)[2], "flat");
+    assert.deepEqual(f.view.state().selection, ["cardAAAA1"]);
+    assert.match(toastText(f), /Added 22 linked references, 8 left out/);
+
+    result = { ids: [], added: 0, sections: 0, total: 0, left: 0 };
+    rightClick(f, shell(f, "cardBBBB2"));
+    pickRow(f, "linked-cards:flat");
+    await tick();
+    assert.match(toastText(f), /already on the board/);
+
+    answer = [];
+    const before = calls.length;
+    rightClick(f, shell(f, "cardBBBB2"));
+    pickRow(f, "linked-cards:page");
+    await tick();
+    assert.equal(calls.length, before, "no references, no session call");
+    assert.match(toastText(f), /No linked references to add/);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 function blockish(uid, string, order) {
   return {
     ":block/uid": uid,

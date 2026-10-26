@@ -56,6 +56,7 @@ import { createTaskPopover } from "./task-popover.js";
 import { createTaskCompleter } from "./task-complete.js";
 import { placeNearAnchor } from "./avoid.js";
 import { neighborLayout } from "../model/neighbors.js";
+import { LINKED_CARD_MODES, linkedCardsMessage } from "../model/linked-cards.js";
 import { isQueryString, queryResultLayout, queryResultUids } from "../model/query.js";
 import {
   alignRects,
@@ -6528,6 +6529,19 @@ function buildBoardView(onFail, {
           if (disposed) return;
           if (Array.isArray(ids) && ids.length) ctl.select(ids);
           toast(`Added ${list.length} ${list.length === 1 ? "page" : "pages"}`, true);
+        }).catch(() => {});
+        break;
+      }
+      case "linked-cards": {
+        if (!item || !LINKED_CARD_MODES.includes(arg)) break;
+        let refs = [];
+        try { refs = host?.linkedRefBlocks?.(item, { boardUid }) || []; } catch { refs = []; }
+        if (!refs.length) { toast("No linked references to add"); break; }
+        Promise.resolve(session.addLinkedRefCards?.(item.uid, refs, arg)).then((res) => {
+          if (disposed || !res) return;
+          if (!res.added) { toast("Every linked reference is already on the board"); return; }
+          if (Array.isArray(res.ids) && res.ids.length) ctl.select(res.ids);
+          toast(linkedCardsMessage(res), true);
         }).catch(() => {});
         break;
       }

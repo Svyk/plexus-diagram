@@ -307,6 +307,19 @@ Companion to `docs/api-plexus-1.0.md`. The running package is 2.0.0.
 | incoming rows | `[uid, string, title]`. Counted, then sorted by count, then title |
 | `neighborLayout(rect, titles, {skip})` | `[{string, x, y}]` on a ring of radius `max(w,h)/2 + 240`, card size 280×160, starting at the top. `skip` drops titles. Nothing is written |
 
+## src/model/linked-cards.js
+
+| Export | Contract |
+|---|---|
+| `LINKED_CARD_MODES` | `["flat", "page"]` |
+| `linkedRefRows(rows, {selfUid, selfTitle})` | host rows `[uid, pageTitle]` to `[{uid, pageTitle}]`, once per uid. Drops the block itself and blocks on the page itself |
+| `groupLinkedRefs(refs, {skip})` | `[{title, uids}]`, one per page, sorted by count, then title. `skip` drops uids. Host order inside a group |
+| `linkedCardsLayout(rect, refs, {mode, skip, cap, card, avoid})` | `{cards, sections, added, total, left}`. Flat: `((uid))` cards in a grid of `ceil(sqrt n)` columns, 80 right of `rect`, 24 apart. Page: one section per page (title = page name, 32 padding) around its card grid, sections in rows 64 apart. The whole group then moves right until it is 24 clear of every rect in `avoid` (each move lands 80 past the right edge of what it hit); in page mode the 32 px above the sections, where their titles sit, counts as part of the group. A section and a card each count 1 toward `cap`; a section starts only with room for one card. `left = total - added`. Nothing is written |
+| `linkedCardsMessage({added, sections, left})` | `Added N linked references[ in M sections][, K left out (Roam undo holds 50 changes)]` |
+| `SECTION_TITLE`, `withTitle(rect)` | 32, the title pill above a section's frame. `withTitle` grows a section rect upward so that 24 clear of it is 32 clear of its frame |
+
+`session.addLinkedRefCards(cardUid, refs, mode)` (src/session-clip.js) puts the whole batch in one parent. It tries the sections around the card that auto-fit grows (not `fit: false`, not pinned, `auto-fit-sections` on), nearest first, then the board. A section is taken only if no section that auto-fit would grow for the batch comes over an item it does not hold (and was not over before), and none grows out of a section around it that does not grow. The board is always taken. The parent grows to hold the batch. Every other item (cards, sections through `withTitle`, text) is passed as `avoid`, except the source card, the parent and the sections around it, so a section between the card and the parent is kept clear like any other. The group starts at least 24 below the parent's top (32 in page mode), so the parent grows only right and down. Before writing, it counts the auto-fit writes the add will cause (each section grown, plus every member of a section whose top-left moves), and lowers the cap until creates and those writes fit one undo group (`MAX_GROUP_WRITES`, 45). When even one card (or one section with one card) would not fit, auto-fit leaves the sections around the parent whose top-left would move as they are. Those sections already hold a section inside their pad. So one Cmd+Z always undoes the whole add.
+
 ## src/model/query.js
 
 | Export | Contract |

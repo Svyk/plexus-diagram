@@ -54847,12 +54847,12 @@ extendSession((session, api3) => {
           return !up || up === board2.uid || ids.has(up) || all.has(up) && holds(all.get(up), g.rect);
         });
       };
-      let pick2 = null;
+      let pick3 = null;
       for (const p of [...fitOn ? around(cardUid).filter(grows) : [], board2.uid]) {
-        pick2 = attempt(p);
-        if (p === board2.uid || fits(pick2)) break;
+        pick3 = attempt(p);
+        if (p === board2.uid || fits(pick3)) break;
       }
-      const { parent, plan, skipFit } = pick2;
+      const { parent, plan, skipFit } = pick3;
       if (!plan.added) return Promise.resolve({ ...none, total: plan.total, left: plan.left });
       return api3.txn((t) => {
         const rects = api3.rects();

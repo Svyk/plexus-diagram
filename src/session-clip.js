@@ -1,16 +1,17 @@
 // Session clip: duplicate, paste, send to board and outline expansion. Registers itself with extendSession,
 // so every session gets the methods. Each method is one transaction (one write per created or changed
 // block, auto-fit at the end); the model helpers stay pure and this file only wires them to the session api.
-import { boardPreview, boundsOf, buildBoard, containerAt, descendantsOf, findEdge, rowDroppable, toRelative, topLevelOf } from "./model/board.js";
+import { boardPreview, boundsOf, buildBoard, containerAt, descendantsOf, findEdge, rowDroppable, sectionFitPlan, toRelative, topLevelOf } from "./model/board.js";
 import { parsePastedText, planEdgeClones, planSubtreeClone, refCardStrings } from "./model/clipboard.js";
 import { mindMapLayout } from "./model/layout.js";
-import { linkedCardsLayout } from "./model/linked-cards.js";
+import { SECTION_TITLE, linkedCardsLayout, withTitle } from "./model/linked-cards.js";
 import { isOldTableCard } from "./model/table-captions.js";
 import { wrapTableNode } from "./model/roam-table.js";
 import { isContainerString, parseRegion } from "./model/regions.js";
 import { MIND_GAPS, branchColor, normalizeMindPreset } from "./model/mindmap.js";
 import {
   DEFAULT_SIZES,
+  FIT_PAD,
   PLEXUS_KEY,
   UNTITLED_BOARD,
   classifyString,
@@ -23,6 +24,7 @@ import {
   serializeItemLayout,
 } from "./model/schema.js";
 import { capBulk, extendSession } from "./session.js";
+import { MAX_GROUP_WRITES } from "./host/roam.js";
 
 const UID = ":block/uid";
 const STR = ":block/string";
@@ -388,9 +390,47 @@ extendSession((session, api) => {
       const all = api.rects();
       const avoid = [];
       for (const it of board.items.values()) {
-        if (!mine.has(it.uid) && (it.type === "card" || it.type === "section") && all.get(it.uid)) avoid.push(all.get(it.uid));
+        const r = !mine.has(it.uid) && (it.type === "card" || it.type === "section") ? all.get(it.uid) : null;
+        if (r) avoid.push(it.type === "section" ? withTitle(r) : r);
       }
-      const plan = linkedCardsLayout(own, refs, { mode, skip, cap: SPREAD_CAP, card, avoid });
+      // A group that starts in the top FIT_PAD of the card's auto-fit section would grow that section upward, and
+      // auto-fit then rewrites every member. Below the pad it only grows right and down. A new section's title
+      // stays inside the frame too.
+      const home = board.items.get(item.parentUid);
+      const homeRect = home?.type === "section" && home.autofit !== false && !home.pinned ? all.get(home.uid) : null;
+      const top = homeRect ? Math.max(own.y, homeRect.y + (mode === "page" ? Math.max(FIT_PAD, SECTION_TITLE) : FIT_PAD)) : own.y;
+      const from = { ...own, y: top };
+      // Auto-fit writes in the same txn: each section it grows, and each member of one whose origin moves. With the
+      // creates they must fit one undo group, or one Cmd+Z undoes only part of the add, so the cap comes down.
+      const fitOn = ![false, "false"].includes(api.setting("auto-fit-sections", true));
+      const fitWrites = (plan) => {
+        if (!fitOn) return 0;
+        const tops = plan.sections.length ? plan.sections : plan.cards.map((c) => ({ ...c, ...card }));
+        const rects = new Map(all);
+        const parents = new Map();
+        tops.forEach((r, i) => {
+          rects.set(`new:${i}`, { x: r.x, y: r.y, w: r.w, h: r.h });
+          parents.set(`new:${i}`, containerAt(board, { x: r.x + r.w / 2, y: r.y + r.h / 2 }, { rects: all }));
+        });
+        const grown = sectionFitPlan(board, rects, [...parents.keys()], { parentOf: (u) => parents.get(u) ?? board.items.get(u)?.parentUid });
+        const ids = new Set(grown.map((g) => g.uid));
+        let n = grown.length;
+        for (const g of grown) {
+          const old = all.get(g.uid);
+          if (old && Math.abs(g.rect.x - old.x) < 0.01 && Math.abs(g.rect.y - old.y) < 0.01) continue;
+          n += board.items.get(g.uid).members.filter((m) => !ids.has(m)).length;
+        }
+        return n;
+      };
+      // A section with one card is the least that can go in: the cap stops there.
+      const least = mode === "page" ? 2 : 1;
+      let cap = SPREAD_CAP;
+      let plan = linkedCardsLayout(from, refs, { mode, skip, cap, card, avoid });
+      for (let over = plan.added + plan.sections.length + fitWrites(plan) - MAX_GROUP_WRITES; over > 0 && cap > least;) {
+        cap = Math.max(least, cap - over);
+        plan = linkedCardsLayout(from, refs, { mode, skip, cap, card, avoid });
+        over = plan.added + plan.sections.length + fitWrites(plan) - MAX_GROUP_WRITES;
+      }
       if (!plan.added) return Promise.resolve({ ...none, total: plan.total, left: plan.left });
       return api.txn((t) => {
         const rects = api.rects();

@@ -122,6 +122,10 @@ test("linkedCardsLayout moves the group right, past every card or section it wou
   const paged = linkedCardsLayout(rect, refsOn(["A", "B"], 1), { mode: "page", avoid: [{ x: 500, y: 150, w: 100, h: 100 }] });
   assert.deepEqual(paged.sections.map((s) => [s.title, s.x, s.y]), [["A", 680, 200], ["B", 1088, 200]]);
   assert.deepEqual(paged.sections.map((s) => s.cards[0].x), [712, 1120], "cards move with their section");
+  // A new section's title sits 32 above its frame (y 168..200 here), so a card ending 28 above the frame is on it.
+  const titled = (bottom) => linkedCardsLayout(rect, refsOn(["A"], 1), { mode: "page", avoid: [{ x: 460, y: bottom - 160, w: 280, h: 160 }] }).sections[0].x;
+  assert.equal(titled(172), 820, "a card on the title moves the section");
+  assert.equal(titled(168), 460, "32 clear of the frame is clear of the title");
 });
 
 test("linkedCardsMessage counts references, sections and the ones left out", () => {
@@ -236,6 +240,48 @@ test("addLinkedRefCards: a second run on the card below lands clear of the first
   assert.deepEqual(at(fake, second.ids[0]), [820, 300]);
   assert.deepEqual(first.ids.map((u) => at(fake, u)), [[460, 100], [764, 100], [460, 284]], "the first batch is not moved");
   assert.equal(updates(fake).length, 0);
+});
+
+test("addLinkedRefCards keeps clear of an existing section's title, not only its frame", async () => {
+  // One card at (460,100)..(740,260). A section 28 below it would have its title on the card's bottom 4 px.
+  const near = (gap) => {
+    resetSessions();
+    const { fake, session } = setup([card("X", "[[Alpha]]", 100, 100, 280, 160), card("S", "Below", 400, 260 + gap, 400, 200, { type: "section" })]);
+    return session.addLinkedRefCards("X", three.slice(0, 1), "flat").then((res) => at(fake, res.ids[0]));
+  };
+  assert.deepEqual(await near(28), [880, 100], "moved 80 past the section");
+  assert.deepEqual(await near(32), [460, 100], "32 clear of the frame is clear of the title");
+});
+
+test("addLinkedRefCards from a card at the top of a crowded section is one undo step and moves no member", async () => {
+  const members = Array.from({ length: 23 }, (_, i) => card(`mem${String(i).padStart(4, "0")}`, `note ${i}`, 40, 2200 + i * 30, 120, 20));
+  for (const mode of ["flat", "page"]) {
+    resetSessions();
+    const { fake, session } = setup([card("S", "Frame", 0, 0, 5000, 4000, { type: "section" }, [card("X", "[[Alpha]]", 40, 0, 280, 160), ...members])]);
+    fake.trackUndo = true;
+    const res = await session.addLinkedRefCards("X", refsOn(["Notes"], 30), mode);
+    // Starting inside S's 24 px pad would grow S upward and rewrite all 23 members: 47 writes, two undo steps.
+    assert.equal(at(fake, res.ids[0])[1], mode === "flat" ? 24 : 32, `${mode}: starts below the pad (a section's title too)`);
+    assert.deepEqual([creates(fake).length, updates(fake).length], [22, 0], mode);
+    assert.deepEqual([fake.props("S").plexus.y, fake.props("mem0000").plexus.y], [0, 2200]);
+    await session.undo();
+    assert.ok(res.ids.every((u) => !fake.block(u)), `${mode}: one undo takes it all back`);
+  }
+});
+
+test("addLinkedRefCards lowers the cap when auto-fit must also move a crowded section, so one undo still takes it all", async () => {
+  // A sits in B's top-left corner, inside B's pad: growing A grows B up and left, and B's 30 members are rewritten.
+  const members = Array.from({ length: 30 }, (_, i) => card(`mem${String(i).padStart(4, "0")}`, `note ${i}`, 1000 + (i % 6) * 130, 2200 + Math.floor(i / 6) * 40, 120, 20));
+  const inner = card("A", "Inner", 0, 0, 600, 400, { type: "section" }, [card("X", "[[Alpha]]", 40, 40, 280, 160)]);
+  const { fake, session } = setup([card("B", "Outer", 0, 0, 3000, 3000, { type: "section" }, [inner, ...members])]);
+  fake.trackUndo = true;
+  const res = await session.addLinkedRefCards("X", refsOn(["Notes"], 30), "flat");
+  // A and B grown, 30 members rebased: 32 auto-fit writes leave room for 13 cards in 45
+  assert.deepEqual([res.added, res.left], [13, 17]);
+  assert.deepEqual([creates(fake).length, updates(fake).length], [13, 32]);
+  await session.undo();
+  assert.ok(res.ids.every((u) => !fake.block(u)), "one undo takes it all back");
+  assert.deepEqual(fake.props("mem0000").plexus, { x: 1000, y: 2200, w: 120, h: 20 }, "and puts the members back");
 });
 
 test("addLinkedRefCards stores a non-default card size on each card, so the cards it spaced by that size do not overlap", async () => {

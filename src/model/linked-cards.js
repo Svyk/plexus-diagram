@@ -8,6 +8,10 @@ const BESIDE = 80;
 // Above FIT_PAD, so auto-fit has nothing to grow. Section titles render above the frame.
 const PAD = 32;
 const SECTION_GAP = 64;
+// The title pill above a section's frame (board-view SECTION_TITLE_ALLOWANCE). Keeping clear of a section from
+// above takes that much, not GAP, so nothing lands on its title.
+export const SECTION_TITLE = 32;
+export const withTitle = (r) => ({ ...r, y: r.y - (SECTION_TITLE - GAP), h: r.h + (SECTION_TITLE - GAP) });
 const REF_UID = /^[\w-]+$/;
 
 // Host rows [uid, pageTitle] → { uid, pageTitle }, once per block. The block itself and blocks on the
@@ -71,7 +75,8 @@ function clearRight(box, avoid) {
 // The cards go right of `rect` in a grid. In "page" mode each group is a section sized to its card grid, and the
 // sections are rows of a grid themselves. A section is one change and holds at least one card, so a group starts
 // only while two changes are left in `cap`. `left` counts the references that were not added. The whole group
-// moves right past any rect in `avoid` it would cover, so a second run does not land on the first.
+// moves right past any rect in `avoid` it would cover (new sections' titles included), so a second run does not
+// land on the first.
 export function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap = 22, card = CARD, avoid = [] } = {}) {
   const groups = groupLinkedRefs(refs, { skip });
   const total = groups.reduce((n, g) => n + g.uids.length, 0);
@@ -117,7 +122,7 @@ export function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap = 22, c
     }
     y += rowH + SECTION_GAP;
   }
-  const dx = placed.length ? clearRight(boxOf(placed), avoid || []) : 0;
+  const dx = placed.length ? clearRight(withTitle(boxOf(placed)), avoid || []) : 0;
   const sections = placed.map((s) => ({ ...s, x: s.x + dx, cards: s.cards.map((c) => ({ ...c, x: c.x + dx })) }));
   const added = sections.reduce((n, s) => n + s.cards.length, 0);
   return { cards: [], sections, added, total, left: total - added };

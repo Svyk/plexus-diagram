@@ -54739,53 +54739,86 @@ extendSession((session, api3) => {
       const card2 = { w: size("default-card-width", DEFAULT_SIZES.card.w), h: size("default-card-height", DEFAULT_SIZES.card.h) };
       const sized = card2.w !== DEFAULT_SIZES.card.w || card2.h !== DEFAULT_SIZES.card.h ? card2 : {};
       const fitOn = ![false, "false"].includes(api3.setting("auto-fit-sections", true));
-      let home = null;
-      for (let p = item.parentUid; fitOn && !home && p && p !== board2.uid; p = board2.items.get(p)?.parentUid) {
-        const s = board2.items.get(p);
-        if (s?.type === "section" && s.autofit !== false && !s.pinned) home = s;
-      }
-      const parent = home ? home.uid : board2.uid;
-      const mine = /* @__PURE__ */ new Set([cardUid]);
-      for (let p = parent; p && p !== board2.uid; p = board2.items.get(p)?.parentUid) mine.add(p);
-      const all = api3.rects();
-      const avoid = [];
-      for (const it of board2.items.values()) {
-        const r = mine.has(it.uid) ? null : all.get(it.uid);
-        if (r) avoid.push(it.type === "section" ? withTitle(r) : r);
-      }
-      const homeRect = home ? all.get(home.uid) : null;
-      const top = homeRect ? Math.max(own2.y, homeRect.y + (mode === "page" ? Math.max(FIT_PAD, SECTION_TITLE) : FIT_PAD)) : own2.y;
-      const from = { ...own2, y: top };
-      const fitPlan = (plan2, skipFit2) => {
-        if (!fitOn) return { n: 0, moved: /* @__PURE__ */ new Set() };
-        const tops = plan2.sections.length ? plan2.sections : plan2.cards.map((c) => ({ ...c, ...card2 }));
-        const rects = new Map(all);
-        const parents = /* @__PURE__ */ new Map();
-        tops.forEach((r, i) => {
-          rects.set(`new:${i}`, { x: r.x, y: r.y, w: r.w, h: r.h });
-          parents.set(`new:${i}`, parent);
-        });
-        const grown = sectionFitPlan(board2, rects, [...parents.keys()], { skip: skipFit2, parentOf: (u) => parents.get(u) ?? board2.items.get(u)?.parentUid });
-        const ids = new Set(grown.map((g) => g.uid));
-        const moved = /* @__PURE__ */ new Set();
-        let n3 = grown.length;
-        for (const g of grown) {
-          const old = all.get(g.uid);
-          if (old && Math.abs(g.rect.x - old.x) < 0.01 && Math.abs(g.rect.y - old.y) < 0.01) continue;
-          if (g.uid !== parent) moved.add(g.uid);
-          n3 += board2.items.get(g.uid).members.filter((m) => !ids.has(m)).length;
-        }
-        return { n: n3, moved };
+      const upOf = (u) => board2.items.get(u)?.parentUid;
+      const around = (u) => {
+        const out = [];
+        for (let p = upOf(u); p && p !== board2.uid; p = upOf(p)) out.push(p);
+        return out;
       };
-      const over = (plan2, skipFit2) => plan2.added + plan2.sections.length + fitPlan(plan2, skipFit2).n - MAX_GROUP_WRITES;
+      const grows = (u) => {
+        const s = board2.items.get(u);
+        return s?.type === "section" && s.autofit !== false && !s.pinned;
+      };
+      const all = api3.rects();
+      const frameOf = (it) => {
+        const r = all.get(it.uid);
+        return r && it.type === "section" ? withTitle(r) : r;
+      };
+      const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+      const holds = (s, r) => r.x >= s.x && r.y >= s.y && r.x + r.w <= s.x + s.w && r.y + r.h <= s.y + s.h;
       const least = mode === "page" ? 2 : 1;
-      let cap4 = SPREAD_CAP;
-      let plan = linkedCardsLayout(from, refs, { mode, skip, cap: cap4, card: card2, avoid });
-      const skipFit = over(linkedCardsLayout(from, refs, { mode, skip, cap: least, card: card2, avoid })) > 0 ? fitPlan(plan).moved : /* @__PURE__ */ new Set();
-      for (let n3 = over(plan, skipFit); n3 > 0 && cap4 > least; n3 = over(plan, skipFit)) {
-        cap4 = Math.max(least, cap4 - n3);
-        plan = linkedCardsLayout(from, refs, { mode, skip, cap: cap4, card: card2, avoid });
+      const attempt = (parent2) => {
+        const mine = /* @__PURE__ */ new Set([cardUid, ...parent2 === board2.uid ? [] : [parent2, ...around(parent2)]]);
+        const avoid = [];
+        for (const it of board2.items.values()) {
+          const r = mine.has(it.uid) ? null : frameOf(it);
+          if (r) avoid.push(r);
+        }
+        const homeRect = parent2 === board2.uid ? null : all.get(parent2);
+        const top = homeRect ? Math.max(own2.y, homeRect.y + (mode === "page" ? Math.max(FIT_PAD, SECTION_TITLE) : FIT_PAD)) : own2.y;
+        const from = { ...own2, y: top };
+        const fitPlan = (plan3, skipFit3) => {
+          if (!fitOn) return { n: 0, moved: /* @__PURE__ */ new Set(), grown: [] };
+          const tops = plan3.sections.length ? plan3.sections : plan3.cards.map((c) => ({ ...c, ...card2 }));
+          const rects = new Map(all);
+          const ups = /* @__PURE__ */ new Map();
+          tops.forEach((r, i) => {
+            rects.set(`new:${i}`, { x: r.x, y: r.y, w: r.w, h: r.h });
+            ups.set(`new:${i}`, parent2);
+          });
+          const grown = sectionFitPlan(board2, rects, [...ups.keys()], { skip: skipFit3, parentOf: (u) => ups.get(u) ?? upOf(u) });
+          const ids = new Set(grown.map((g) => g.uid));
+          const moved = /* @__PURE__ */ new Set();
+          let n3 = grown.length;
+          for (const g of grown) {
+            const old = all.get(g.uid);
+            if (old && Math.abs(g.rect.x - old.x) < 0.01 && Math.abs(g.rect.y - old.y) < 0.01) continue;
+            if (g.uid !== parent2) moved.add(g.uid);
+            n3 += board2.items.get(g.uid).members.filter((m) => !ids.has(m)).length;
+          }
+          return { n: n3, moved, grown };
+        };
+        const over = (plan3, skipFit3) => plan3.added + plan3.sections.length + fitPlan(plan3, skipFit3).n - MAX_GROUP_WRITES;
+        let cap4 = SPREAD_CAP;
+        let plan2 = linkedCardsLayout(from, refs, { mode, skip, cap: cap4, card: card2, avoid });
+        const skipFit2 = over(linkedCardsLayout(from, refs, { mode, skip, cap: least, card: card2, avoid })) > 0 ? fitPlan(plan2).moved : /* @__PURE__ */ new Set();
+        for (let n3 = over(plan2, skipFit2); n3 > 0 && cap4 > least; n3 = over(plan2, skipFit2)) {
+          cap4 = Math.max(least, cap4 - n3);
+          plan2 = linkedCardsLayout(from, refs, { mode, skip, cap: cap4, card: card2, avoid });
+        }
+        return { parent: parent2, plan: plan2, skipFit: skipFit2, grown: fitPlan(plan2, skipFit2).grown };
+      };
+      const fits = ({ grown }) => {
+        const ids = new Set(grown.map((g) => g.uid));
+        return grown.every((g) => {
+          const inner = descendantsOf(board2, g.uid);
+          const outer = new Set(around(g.uid));
+          const old = all.get(g.uid);
+          for (const it of board2.items.values()) {
+            if (it.uid === g.uid || inner.has(it.uid) || outer.has(it.uid)) continue;
+            const r = frameOf(it);
+            if (r && hit(g.rect, r) && !(old && hit(old, r))) return false;
+          }
+          const up = upOf(g.uid);
+          return !up || up === board2.uid || ids.has(up) || all.has(up) && holds(all.get(up), g.rect);
+        });
+      };
+      let pick2 = null;
+      for (const p of [...fitOn ? around(cardUid).filter(grows) : [], board2.uid]) {
+        pick2 = attempt(p);
+        if (p === board2.uid || fits(pick2)) break;
       }
+      const { parent, plan, skipFit } = pick2;
       if (!plan.added) return Promise.resolve({ ...none, total: plan.total, left: plan.left });
       return api3.txn((t) => {
         const rects = api3.rects();

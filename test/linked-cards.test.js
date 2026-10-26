@@ -300,6 +300,44 @@ test("addLinkedRefCards puts the whole batch in the card's auto-fit section, whi
   }
 });
 
+test("addLinkedRefCards leaves the card's section when growing it would cover what stands beside it", async () => {
+  const ancestry = (fake, u) => {
+    const out = new Set();
+    for (let p = fake.block(u)?.parent; p && p !== "b1"; p = fake.block(p)?.parent) out.add(p);
+    return out;
+  };
+  // Every pair of items where neither holds the other.
+  const crossings = (fake, session) => {
+    const ids = [...session.rects.keys()].filter((u) => fake.block(u));
+    const bad = [];
+    for (const a of ids) {
+      for (const b of ids) {
+        if (a < b && !ancestry(fake, a).has(b) && !ancestry(fake, b).has(a) && overlaps(session.rects.get(a), session.rects.get(b))) bad.push(`${a}/${b}`);
+      }
+    }
+    return bad;
+  };
+  const home = (extra = []) => [card("S", "Home", 0, 0, 600, 400, { type: "section" }, [card("X", "[[Alpha]]", 20, 40, 280, 160)]), ...extra];
+  const beside = (x) => card("T", "Beside", x, 0, 600, 400, { type: "section" }, [card("Y", "other", 40, 40, 280, 160)]);
+  const cases = [
+    ["a section 40 to the right", home([beside(640)]), "flat", refsOn(["Notes"], 4), "b1"],
+    ["a section 40 to the right, by page", home([beside(640)]), "page", refsOn(["P1", "P2"], 2), "b1"],
+    ["a section far to the right", home([beside(1600)]), "flat", refsOn(["Notes"], 4), "S"],
+    ["a card 40 below", home([card("U", "below", 0, 440, 280, 160)]), "flat", refsOn(["Notes"], 9), "b1"],
+    ["a sibling inside an outer section", [card("B", "Outer", 0, 0, 3000, 2000, { type: "section" }, [
+      card("A", "Home", 40, 40, 600, 400, { type: "section" }, [card("X", "[[Alpha]]", 20, 40, 280, 160)]),
+      card("C", "Sibling", 680, 40, 400, 400, { type: "section" }, [card("Z", "other", 40, 40, 280, 160)]),
+    ])], "flat", refsOn(["Notes"], 4), "B"],
+  ];
+  for (const [label, children, mode, refs, parent] of cases) {
+    resetSessions();
+    const { fake, session } = setup(children);
+    const res = await session.addLinkedRefCards("X", refs, mode);
+    assert.ok(res.ids.length && res.ids.every((u) => fake.block(u).parent === parent), `${label}: all in ${parent}`);
+    assert.deepEqual(crossings(fake, session), [], `${label}: nothing over anything it is not inside`);
+  }
+});
+
 test("addLinkedRefCards keeps a batch clear of a section around the card that does not grow", async () => {
   const cases = [
     ["fit off on the section", [card("S", "Frame", 0, 0, 600, 400, { type: "section", fit: false }, [card("X", "[[Alpha]]", 20, 40, 280, 160)])], null, "b1"],

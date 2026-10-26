@@ -384,65 +384,101 @@ extendSession((session, api) => {
       const card = { w: size("default-card-width", DEFAULT_SIZES.card.w), h: size("default-card-height", DEFAULT_SIZES.card.h) };
       // A card with no stored size is drawn at DEFAULT_SIZES.card, so any other default size is written on each card.
       const sized = card.w !== DEFAULT_SIZES.card.w || card.h !== DEFAULT_SIZES.card.h ? card : {};
-      // The whole batch goes into the nearest section around the card that auto-fit grows (`home`), or onto the board
-      // when there is none, and home grows to hold it. Every other item is in the way, sections between the card and
-      // home included, so nothing lands across a frame it is not inside.
+      // The whole batch goes into one parent: the nearest section around the card that auto-fit grows and that can
+      // grow to hold it without covering anything beside it, else the next one out, else the board. Every other item
+      // is in the way, sections between the card and the parent included, so nothing lands across a frame it is not
+      // inside.
       const fitOn = ![false, "false"].includes(api.setting("auto-fit-sections", true));
-      let home = null;
-      for (let p = item.parentUid; fitOn && !home && p && p !== board.uid; p = board.items.get(p)?.parentUid) {
-        const s = board.items.get(p);
-        if (s?.type === "section" && s.autofit !== false && !s.pinned) home = s;
-      }
-      const parent = home ? home.uid : board.uid;
-      const mine = new Set([cardUid]);
-      for (let p = parent; p && p !== board.uid; p = board.items.get(p)?.parentUid) mine.add(p);
-      const all = api.rects();
-      const avoid = [];
-      for (const it of board.items.values()) {
-        const r = mine.has(it.uid) ? null : all.get(it.uid);
-        if (r) avoid.push(it.type === "section" ? withTitle(r) : r);
-      }
-      // A group that starts in home's top FIT_PAD would grow it upward, and auto-fit then rewrites every member.
-      // Below the pad it only grows right and down. A new section's title stays inside the frame too.
-      const homeRect = home ? all.get(home.uid) : null;
-      const top = homeRect ? Math.max(own.y, homeRect.y + (mode === "page" ? Math.max(FIT_PAD, SECTION_TITLE) : FIT_PAD)) : own.y;
-      const from = { ...own, y: top };
-      // Auto-fit writes in the same txn: each section it grows, and each member of one whose origin moves. With the
-      // creates they must fit one undo group, or one Cmd+Z undoes only part of the add, so the cap comes down.
-      // `moved` are the grown sections around home whose top-left moves.
-      const fitPlan = (plan, skipFit) => {
-        if (!fitOn) return { n: 0, moved: new Set() };
-        const tops = plan.sections.length ? plan.sections : plan.cards.map((c) => ({ ...c, ...card }));
-        const rects = new Map(all);
-        const parents = new Map();
-        tops.forEach((r, i) => {
-          rects.set(`new:${i}`, { x: r.x, y: r.y, w: r.w, h: r.h });
-          parents.set(`new:${i}`, parent);
-        });
-        const grown = sectionFitPlan(board, rects, [...parents.keys()], { skip: skipFit, parentOf: (u) => parents.get(u) ?? board.items.get(u)?.parentUid });
-        const ids = new Set(grown.map((g) => g.uid));
-        const moved = new Set();
-        let n = grown.length;
-        for (const g of grown) {
-          const old = all.get(g.uid);
-          if (old && Math.abs(g.rect.x - old.x) < 0.01 && Math.abs(g.rect.y - old.y) < 0.01) continue;
-          if (g.uid !== parent) moved.add(g.uid);
-          n +=board.items.get(g.uid).members.filter((m) => !ids.has(m)).length;
-        }
-        return { n, moved };
+      const upOf = (u) => board.items.get(u)?.parentUid;
+      const around = (u) => {
+        const out = [];
+        for (let p = upOf(u); p && p !== board.uid; p = upOf(p)) out.push(p);
+        return out;
       };
-      const over = (plan, skipFit) => plan.added + plan.sections.length + fitPlan(plan, skipFit).n - MAX_GROUP_WRITES;
+      const grows = (u) => {
+        const s = board.items.get(u);
+        return s?.type === "section" && s.autofit !== false && !s.pinned;
+      };
+      const all = api.rects();
+      const frameOf = (it) => {
+        const r = all.get(it.uid);
+        return r && it.type === "section" ? withTitle(r) : r;
+      };
+      const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+      const holds = (s, r) => r.x >= s.x && r.y >= s.y && r.x + r.w <= s.x + s.w && r.y + r.h <= s.y + s.h;
       // A section with one card is the least that can go in.
       const least = mode === "page" ? 2 : 1;
-      let cap = SPREAD_CAP;
-      let plan = linkedCardsLayout(from, refs, { mode, skip, cap, card, avoid });
-      // When even the least add would be over, auto-fit leaves the sections around home whose top-left would move as
-      // they are (they already hold a section inside their pad), so it rewrites none of their members.
-      const skipFit = over(linkedCardsLayout(from, refs, { mode, skip, cap: least, card, avoid })) > 0 ? fitPlan(plan).moved : new Set();
-      for (let n = over(plan, skipFit); n > 0 && cap > least; n = over(plan, skipFit)) {
-        cap = Math.max(least, cap - n);
-        plan = linkedCardsLayout(from, refs, { mode, skip, cap, card, avoid });
+      const attempt = (parent) => {
+        const mine = new Set([cardUid, ...(parent === board.uid ? [] : [parent, ...around(parent)])]);
+        const avoid = [];
+        for (const it of board.items.values()) {
+          const r = mine.has(it.uid) ? null : frameOf(it);
+          if (r) avoid.push(r);
+        }
+        // A group that starts in the parent's top FIT_PAD would grow it upward, and auto-fit then rewrites every
+        // member. Below the pad it only grows right and down. A new section's title stays inside the frame too.
+        const homeRect = parent === board.uid ? null : all.get(parent);
+        const top = homeRect ? Math.max(own.y, homeRect.y + (mode === "page" ? Math.max(FIT_PAD, SECTION_TITLE) : FIT_PAD)) : own.y;
+        const from = { ...own, y: top };
+        // Auto-fit writes in the same txn: each section it grows, and each member of one whose origin moves. With the
+        // creates they must fit one undo group, or one Cmd+Z undoes only part of the add, so the cap comes down.
+        // `moved` are the grown sections around the parent whose top-left moves.
+        const fitPlan = (plan, skipFit) => {
+          if (!fitOn) return { n: 0, moved: new Set(), grown: [] };
+          const tops = plan.sections.length ? plan.sections : plan.cards.map((c) => ({ ...c, ...card }));
+          const rects = new Map(all);
+          const ups = new Map();
+          tops.forEach((r, i) => {
+            rects.set(`new:${i}`, { x: r.x, y: r.y, w: r.w, h: r.h });
+            ups.set(`new:${i}`, parent);
+          });
+          const grown = sectionFitPlan(board, rects, [...ups.keys()], { skip: skipFit, parentOf: (u) => ups.get(u) ?? upOf(u) });
+          const ids = new Set(grown.map((g) => g.uid));
+          const moved = new Set();
+          let n = grown.length;
+          for (const g of grown) {
+            const old = all.get(g.uid);
+            if (old && Math.abs(g.rect.x - old.x) < 0.01 && Math.abs(g.rect.y - old.y) < 0.01) continue;
+            if (g.uid !== parent) moved.add(g.uid);
+            n += board.items.get(g.uid).members.filter((m) => !ids.has(m)).length;
+          }
+          return { n, moved, grown };
+        };
+        const over = (plan, skipFit) => plan.added + plan.sections.length + fitPlan(plan, skipFit).n - MAX_GROUP_WRITES;
+        let cap = SPREAD_CAP;
+        let plan = linkedCardsLayout(from, refs, { mode, skip, cap, card, avoid });
+        // When even the least add would be over, auto-fit leaves the sections around the parent whose top-left would
+        // move as they are (they already hold a section inside their pad), so it rewrites none of their members.
+        const skipFit = over(linkedCardsLayout(from, refs, { mode, skip, cap: least, card, avoid })) > 0 ? fitPlan(plan).moved : new Set();
+        for (let n = over(plan, skipFit); n > 0 && cap > least; n = over(plan, skipFit)) {
+          cap = Math.max(least, cap - n);
+          plan = linkedCardsLayout(from, refs, { mode, skip, cap, card, avoid });
+        }
+        return { parent, plan, skipFit, grown: fitPlan(plan, skipFit).grown };
+      };
+      // A section that grows must not come over anything it was not over before, other than what it holds, and must
+      // stay inside a section around it that does not grow.
+      const fits = ({ grown }) => {
+        const ids = new Set(grown.map((g) => g.uid));
+        return grown.every((g) => {
+          const inner = descendantsOf(board, g.uid);
+          const outer = new Set(around(g.uid));
+          const old = all.get(g.uid);
+          for (const it of board.items.values()) {
+            if (it.uid === g.uid || inner.has(it.uid) || outer.has(it.uid)) continue;
+            const r = frameOf(it);
+            if (r && hit(g.rect, r) && !(old && hit(old, r))) return false;
+          }
+          const up = upOf(g.uid);
+          return !up || up === board.uid || ids.has(up) || (all.has(up) && holds(all.get(up), g.rect));
+        });
+      };
+      let pick = null;
+      for (const p of [...(fitOn ? around(cardUid).filter(grows) : []), board.uid]) {
+        pick = attempt(p);
+        if (p === board.uid || fits(pick)) break;
       }
+      const { parent, plan, skipFit } = pick;
       if (!plan.added) return Promise.resolve({ ...none, total: plan.total, left: plan.left });
       return api.txn((t) => {
         const rects = api.rects();

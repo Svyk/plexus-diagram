@@ -15,7 +15,11 @@ export const FOLLOW_MIME = "application/x-plexus-follow";
 export const FOLLOW_SKIP_CAP = 300;
 // Items read per source. Past it the read is partial, and a partial read never marks a card as gone.
 export const FOLLOW_READ_CAP = 300;
-export const FOLLOW_TREE_DEPTH = 4;
+// "The whole tree" lists this many levels. A placed card further down is still found by its parents, so it is never
+// marked as left, and the tray says that deeper blocks are not listed.
+export const FOLLOW_TREE_DEPTH = 8;
+// Placed cards a tree read looks up by their parents when the listed levels missed them. Past it the read is partial.
+export const FOLLOW_PARENT_CAP = 60;
 // The read runs this long after a change, at idle (graph links wait the same 1.5 s).
 export const FOLLOW_QUIET_MS = 1500;
 // Kinds without a watch (a query, linked references) and deep tree edits are read again this often while on screen.
@@ -145,6 +149,8 @@ export function followIndex(board, key = "") {
 export function membership(read) {
   const set = new Set();
   for (const item of read?.items || []) for (const id of itemIds(item)) set.add(id);
+  // Uids still in the source that the tray does not list (a block below the listed tree levels).
+  for (const uid of read?.members || []) if (typeof uid === "string" && uid) set.add(`u:${uid}`);
   return set;
 }
 

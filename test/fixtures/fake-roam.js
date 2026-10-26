@@ -380,6 +380,10 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
     if (out && String(pattern) === HOME_PULL) {
       out[":block/parents"] = topUid(out[":block/uid"]).slice(1).map(parentNode).filter(Boolean);
     }
+    // A PXD-9 tree read asks a placed card's ancestors by this exact pattern.
+    if (out && String(pattern) === "[:block/uid {:block/parents [:block/uid]}]") {
+      out[":block/parents"] = topUid(out[":block/uid"]).slice(1).map((u) => ({ ":block/uid": u }));
+    }
     // Arrows that mention a card, for the quiet badge on a nested board. Same exact-pattern rule.
     if (out && String(pattern) === REFS_PULL) {
       const uid = out[":block/uid"];

@@ -8,7 +8,8 @@ import { acquireSession, resetSessions } from "../src/session.js";
 import "../src/session-follow.js";
 import { createFollowTray } from "../src/view/follow-tray.js";
 import { defineFollowKind } from "../src/host/follow-sources.js";
-import { FOLLOW_MIME, FOLLOW_POLL_MS, FOLLOW_QUIET_MS } from "../src/model/follow.js";
+import { FOLLOW_MIME, FOLLOW_POLL_MS, FOLLOW_QUIET_MS, FOLLOW_TREE_DEPTH } from "../src/model/follow.js";
+import { SPREAD_CAP } from "../src/session-clip.js";
 import { buildMenu, flattenMenu } from "../src/view/menu-model.js";
 
 afterEach(() => resetSessions());
@@ -37,11 +38,13 @@ function manualTimers() {
   return timers;
 }
 
-function mount({ plexus = { v: 2, follow: { kind: "block", uid: "SRC" } }, children, since = null, storage } = {}) {
+// roamWatch: the fake fires a pull watch only when its pull result changes, as Roam does.
+function mount({ plexus = { v: 2, follow: { kind: "block", uid: "SRC" } }, children, since = null, storage, roamWatch = false, srcKids } = {}) {
   const fake = createFakeRoam();
+  fake.roamWatch = roamWatch;
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
   fake.seedPage({ title: "Src page", uid: "SRCPAGE", children: [
-    { uid: "SRC", string: "Source block", children: [{ uid: "k1", string: "one" }, { uid: "k2", string: "two" }, { uid: "k3", string: "three" }] },
+    { uid: "SRC", string: "Source block", children: srcKids ?? [{ uid: "k1", string: "one" }, { uid: "k2", string: "two" }, { uid: "k3", string: "three" }] },
     { uid: "ELSE", string: "Somewhere else" },
   ] });
   fake.seedBoard({ uid: "b1", props: { plexus }, children: children ?? [
@@ -149,6 +152,64 @@ test("PXD-9 tray: Include the whole tree renames the source and reads again; gra
   assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 1);
   await f.timers.run();
   assert.deepEqual(f.tray.rows().map((r) => `${r.uid}@${r.depth}`), ["k2@1", "g1@2", "k3@1"]);
+  f.tray.dispose();
+});
+
+test("PXD-9 tray: with Roam's watch filtering a new child shows after the quiet time; an edit elsewhere reads nothing", async () => {
+  const f = mount({ roamWatch: true });
+  await f.timers.run();
+  const reads = f.tray.reads();
+  await f.fake.api.data.block.update({ block: { uid: "ELSE", string: "Somewhere else, edited" } });
+  await f.fake.flush();
+  assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 0, "a block outside the source wakes nothing");
+  await f.fake.api.data.block.create({ location: { "parent-uid": "SRC", order: "last" }, block: { uid: "k4", string: "four" } });
+  await f.fake.flush();
+  assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 1);
+  await f.timers.run();
+  assert.equal(f.tray.reads(), reads + 1);
+  assert.deepEqual(f.tray.rows().map((r) => r.uid), ["k2", "k3", "k4"]);
+  await f.fake.flush();
+  assert.deepEqual(f.fake.writesLog().map((w) => w[0]), ["update", "create"], "only the test's own writes");
+  f.tray.dispose();
+});
+
+test("PXD-9 tray: whole tree past the listed levels: a card placed from deep down is never marked left; one moved away is", async () => {
+  let deep = null;
+  for (let i = 10; i >= 1; i -= 1) deep = { uid: `L${String(i).padStart(2, "0")}`, string: `level ${i}`, children: deep ? [deep] : [] };
+  const f = mount({
+    plexus: { v: 2, follow: { kind: "block", uid: "SRC", tree: true } },
+    srcKids: [deep, { uid: "k1", string: "one" }],
+    children: [card("c10", "((L10))", 0, 0, { src: "block:SRC" }), card("c1", "((k1))", 0, 200, { src: "block:SRC" })],
+  });
+  await f.timers.run();
+  f.tray.refresh();
+  await f.timers.run();
+  assert.ok(f.tray.reads() >= 2);
+  assert.deepEqual(f.tray.left(), [], "L10 is below the listed levels but still under the source");
+  assert.equal(f.tray.rows().length, FOLLOW_TREE_DEPTH, "levels 1 to 8 wait in the tray");
+  f.root.querySelector(".pxd-follow").click();
+  assert.equal(f.root.querySelector(".pxd-follow__note").textContent, `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`);
+  await f.fake.api.data.block.move({ location: { "parent-uid": "ELSE", order: "last" }, block: { uid: "L10" } });
+  await f.fake.flush();
+  await f.timers.run();
+  await f.timers.run();
+  assert.deepEqual(f.tray.left(), ["c10"]);
+  f.tray.dispose();
+});
+
+test("PXD-9 tray: Place all clicked twice places each item once; more than one batch says so in a toast", async () => {
+  const srcKids = Array.from({ length: SPREAD_CAP + 3 }, (_, i) => ({ uid: `r${String(i).padStart(8, "0")}`, string: `row ${i}` }));
+  const f = mount({ srcKids, children: [card("n1", "Note one", 0, 0)] });
+  await f.timers.run();
+  f.root.querySelector(".pxd-follow").click();
+  f.root.querySelector(".pxd-follow__all").click();
+  assert.equal(f.root.querySelector(".pxd-follow__all").disabled, true, "disabled while it writes");
+  f.root.querySelector(".pxd-follow__all").click();
+  await flush(20);
+  await f.fake.flush();
+  assert.equal(f.fake.writesLog().filter((w) => w[0] === "create").length, SPREAD_CAP + 3);
+  assert.deepEqual(f.toasts, [`Placed ${SPREAD_CAP + 3} cards in 2 batches of up to ${SPREAD_CAP}. Each Cmd+Z takes back one batch.`]);
+  assert.equal(f.root.querySelector(".pxd-follow").textContent, "Following (0)");
   f.tray.dispose();
 });
 

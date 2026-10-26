@@ -9,10 +9,12 @@ import {
   FOLLOW_MIME,
   FOLLOW_POLL_MS,
   FOLLOW_QUIET_MS,
+  FOLLOW_TREE_DEPTH,
   absentStep,
   createLeftMemory,
   followCardString,
   followDiff,
+  followIndex,
   followPill,
   leftUnsettled,
   readFollow,
@@ -70,6 +72,7 @@ export function createFollowTray({
   let poll = null;
   let inFlight = false;
   let again = false;
+  let placing = false;
 
   const el = (tag, cls, parent, text) => {
     const node = doc.createElement(tag);
@@ -96,6 +99,7 @@ export function createFollowTray({
     boardUid,
     inBoard: () => session.followExclude?.() || new Set([boardUid]),
     tick: () => new Promise((resolve) => timers.idle(resolve)),
+    followed: () => followIndex(board(), key).followed.map((card) => card.target?.uid).filter(Boolean),
   });
 
   const describe = () => {
@@ -221,14 +225,20 @@ export function createFollowTray({
 
   // ---- placing ----
   const entryOf = (row) => ({ uid: row.uid, kind: row.kind, ...(row.title ? { title: row.title } : {}) });
+  // One place at a time: a second click while the first is still writing does nothing.
   function place(rows) {
-    if (!rows.length) return Promise.resolve(null);
+    if (!rows.length || placing) return Promise.resolve(null);
+    placing = true;
+    paintPanel();
     return Promise.resolve(session.placeFollowed?.(rows.map(entryOf))).then((res) => {
       if (disposed || !res) return res;
       if (res.batches > 1) toast?.(`Placed ${res.placed} cards in ${res.batches} batches of up to ${SPREAD_CAP}. Each Cmd+Z takes back one batch.`);
       if (res.uids?.length) onPlaced?.(res.uids);
       return res;
-    }).catch(() => null);
+    }).catch(() => null).finally(() => {
+      placing = false;
+      if (!disposed) paintPanel();
+    });
   }
 
   // ---- paint ----
@@ -295,11 +305,12 @@ export function createFollowTray({
     if (status === "reading" && !read) note = "Reading the source…";
     else if (status === "error") note = REASONS[reason] || "Could not read the source. The last list stays.";
     else if (read && !read.complete) note = "Only part of the source was read, so nothing is marked as left.";
+    else if (read?.deeper) note = `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
     if (note) el("div", "pxd-follow__note", panel, note);
     const bar = el("div", "pxd-follow__bar", panel);
     el("span", "pxd-follow__count", bar, `${diff.pending.length} waiting · ${diff.placed} on the board`);
     const all = button(bar, "pxd-follow__all", diff.pending.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => { void place(diff.pending.slice()); });
-    all.disabled = diff.pending.length === 0;
+    all.disabled = diff.pending.length === 0 || placing;
     const list = el("div", "pxd-follow__list", panel);
     if (!diff.pending.length) el("div", "pxd-follow__empty", list, read ? "Everything in the source is on the board." : "");
     for (const row of diff.pending) rowEl(list, row);

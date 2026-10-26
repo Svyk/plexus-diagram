@@ -6,7 +6,7 @@
 // An item is { uid, kind: "block" | "page", text, time, title? (page), crumb?, depth?, blank? }. `time` is the later of
 // create and edit time, so the tray can say what is new since the last visit.
 
-import { FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH, queryBody, sourceText as textOf } from "../model/follow.js";
+import { FOLLOW_PARENT_CAP, FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH, queryBody, sourceText as textOf } from "../model/follow.js";
 import { classifyString, plainText, readPlexus } from "../model/schema.js";
 import { loadQueryRows, parseQuery } from "../model/query-run.js";
 import { createQueryBackend } from "./query-backend.js";
@@ -38,18 +38,20 @@ const timeOf = (node) => Math.max(Number(node?.[":create/time"]) || 0, Number(no
 const sorted = (node) => (Array.isArray(node?.[KIDS]) ? node[KIDS].slice().sort((a, b) => (a?.[ORD] ?? 0) - (b?.[ORD] ?? 0)) : []);
 
 // Nested children joins, `depth` levels below the root. Every join says (limit :block/children nil): without it Roam
-// stops at 1,000 children and a long list would read as items leaving.
-export function treePattern(depth) {
-  let inner = `[${FIELDS}]`;
+// stops at 1,000 children and a long list would read as items leaving. `below` adds one child uid under the last
+// level, so the read knows when the tree goes deeper than it lists.
+export function treePattern(depth, { below = false } = {}) {
+  let inner = below ? `[${FIELDS} {(limit :block/children 1) [:block/uid]}]` : `[${FIELDS}]`;
   for (let d = 1; d < depth; d += 1) inner = `[${FIELDS} {(limit :block/children nil) ${inner}}]`;
   return `[:node/title ${FIELDS} {(limit :block/children nil) ${inner}}]`;
 }
 
 // Outline order, depth first, at most `cap` items. `skip` drops a block and everything under it: the board itself
-// when it sits on the page it follows.
+// when it sits on the page it follows. `deeper`: a block on the last level has children that are not listed.
 export function treeItems(root, { depth = 1, cap = FOLLOW_READ_CAP, skip = new Set() } = {}) {
   const items = [];
   let complete = true;
+  let deeper = false;
   const walk = (node, level) => {
     for (const kid of sorted(node)) {
       if (!complete) return;
@@ -60,10 +62,22 @@ export function treeItems(root, { depth = 1, cap = FOLLOW_READ_CAP, skip = new S
       if (items.length >= cap) { complete = false; return; }
       items.push({ uid, kind: "block", text: textOf(string), time: timeOf(kid), depth: level, ...(string.trim() ? {} : { blank: true }) });
       if (level < depth) walk(kid, level + 1);
+      else if (Array.isArray(kid[KIDS]) && kid[KIDS].length) deeper = true;
     }
   };
   walk(root, 1);
-  return { items, complete };
+  return { items, complete, deeper };
+}
+
+export const PARENTS_PULL = "[:block/uid {:block/parents [:block/uid]}]";
+
+// True when `uid` still sits somewhere under `sourceUid` (and not inside the board). A failed pull says yes, so a
+// card is never marked as left on a read that could not see it.
+function underSource(host, uid, sourceUid, boardUid) {
+  let node;
+  try { node = host?.pullEntity?.(PARENTS_PULL, uid); } catch { return true; }
+  const parents = Array.isArray(node?.[":block/parents"]) ? node[":block/parents"].map((p) => p?.[UID]) : [];
+  return parents.includes(sourceUid) && !parents.includes(boardUid);
 }
 
 function nameOf(host, uid) {
@@ -82,12 +96,21 @@ defineFollowKind({
   describe: (p, host) => `${p.tree ? "Everything under" : "Children of"} ${quote(nameOf(host, p.uid))}`,
   // The watch covers the direct children (add, remove, reorder, edit). Deeper edits come with the poll.
   watch: watchBlock,
-  async read(p, { host, boardUid }) {
+  // ctx.followed(): the uids this board's cards from the source show.
+  async read(p, { host, boardUid, followed }) {
+    const tree = p.tree === true;
+    const depth = tree ? FOLLOW_TREE_DEPTH : 1;
     let node = null;
-    try { node = host?.pullEntity?.(treePattern(p.tree ? FOLLOW_TREE_DEPTH : 1), p.uid) || null; } catch { node = null; }
+    try { node = host?.pullEntity?.(treePattern(depth, { below: tree }), p.uid) || null; } catch { node = null; }
     if (!node) return { ok: false, reason: "missing" };
-    const { items, complete } = treeItems(node, { depth: p.tree ? FOLLOW_TREE_DEPTH : 1, skip: new Set([boardUid]) });
-    return { ok: true, complete, items };
+    const { items, complete, deeper } = treeItems(node, { depth, skip: new Set([boardUid]) });
+    if (!tree || !deeper || !complete) return { ok: true, complete, items };
+    // The tree goes on below the listed levels: a placed card the read did not list may sit down there.
+    const listed = new Set(items.map((item) => item.uid));
+    const unseen = [...new Set(typeof followed === "function" ? followed() : [])].filter((uid) => !listed.has(uid));
+    if (unseen.length > FOLLOW_PARENT_CAP) return { ok: true, complete: false, deeper, items };
+    const members = unseen.filter((uid) => underSource(host, uid, p.uid, boardUid));
+    return { ok: true, complete, deeper, items, members };
   },
 });
 

@@ -26,8 +26,8 @@ import {
   trayHeadline,
   withFollow,
 } from "../src/model/follow.js";
-import { FOLLOW_READ_CAP } from "../src/model/follow.js";
-import { followKind, refsQuery, treeItems, treePattern } from "../src/host/follow-sources.js";
+import { FOLLOW_PARENT_CAP, FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH } from "../src/model/follow.js";
+import { PARENTS_PULL, followKind, refsQuery, treeItems, treePattern } from "../src/host/follow-sources.js";
 
 afterEach(() => resetSessions());
 
@@ -175,6 +175,58 @@ test("PXD-9 block kind: children or the tree in outline order; task attributes a
   assert.equal(capped.items.length, 2);
   assert.ok(treePattern(1).includes("(limit :block/children nil)"));
   assert.equal(treePattern(3).split("(limit :block/children nil)").length - 1, 3);
+  assert.equal(deep.deeper, true, "gg1 is below the two listed levels");
+  assert.equal(deep.complete, true, "a deeper block is not a partial read; its card is checked by its parents");
+  assert.equal(treeItems(root, { depth: 3, skip: new Set(["BRD"]) }).deeper, false);
+  assert.ok(treePattern(2, { below: true }).endsWith("{(limit :block/children 1) [:block/uid]}]}]}]"), "one child uid under the last level");
+  assert.ok(!treePattern(2).includes("(limit :block/children 1)"));
+});
+
+// SRC > L1 > … > L10, ten levels; X sits on another page; GONE was deleted.
+function deepHost(depth = 10) {
+  let chain = null;
+  for (let i = depth; i >= 1; i -= 1) chain = node(`L${i}`, `level ${i}`, chain ? [chain] : []);
+  const root = node("SRC", "Source", [chain]);
+  const parents = { X: ["OTHER"] };
+  for (let i = 1; i <= depth; i += 1) parents[`L${i}`] = ["SRCPAGE", "SRC", ...Array.from({ length: i - 1 }, (_, j) => `L${j + 1}`)];
+  const pulls = [];
+  return {
+    pulls,
+    pullEntity(pattern, uid) {
+      pulls.push([pattern === PARENTS_PULL ? "parents" : "tree", uid]);
+      if (pattern === PARENTS_PULL) return parents[uid] ? { ":block/uid": uid, ":block/parents": parents[uid].map((u) => ({ ":block/uid": u })) } : null;
+      return uid === "SRC" ? root : null;
+    },
+  };
+}
+
+test("PXD-9 whole tree: a placed card below the listed levels is still in the source; one moved away is not", async () => {
+  const kind = followKind("block");
+  const host = deepHost();
+  const got = await kind.read({ kind: "block", uid: "SRC", tree: true }, { host, boardUid: "BRD", followed: () => ["L10", "X", "GONE", "L3"] });
+  assert.equal(got.ok, true);
+  assert.equal(got.complete, true);
+  assert.equal(got.deeper, true);
+  assert.deepEqual(got.items.map((i) => i.uid), Array.from({ length: FOLLOW_TREE_DEPTH }, (_, i) => `L${i + 1}`));
+  assert.deepEqual(got.members, ["L10"], "L10 is under SRC by its parents; X moved to another page; GONE is deleted");
+  assert.deepEqual(host.pulls.filter((p) => p[0] === "parents").map((p) => p[1]), ["L10", "X", "GONE"], "listed cards need no lookup");
+  // Two reads like this one: the deep card never counts as gone, the moved one is left.
+  const board = { items: new Map([
+    ["c10", { uid: "c10", type: "card", src: "block:SRC", target: { kind: "block", uid: "L10" } }],
+    ["cx", { uid: "cx", type: "card", src: "block:SRC", target: { kind: "block", uid: "X" } }],
+  ]) };
+  let absent = absentStep(new Map(), got, board, "block:SRC");
+  absent = absentStep(absent, got, board, "block:SRC");
+  assert.deepEqual(followDiff(got, board, { key: "block:SRC", absent }).left, ["cx"]);
+  // Too many cards to look up: the read says it is partial, so nothing is counted.
+  const many = Array.from({ length: FOLLOW_PARENT_CAP + 1 }, (_, i) => `M${i}`);
+  const over = await kind.read({ kind: "block", uid: "SRC", tree: true }, { host: deepHost(), boardUid: "BRD", followed: () => many });
+  assert.equal(over.complete, false);
+  // Children only: deeper blocks are not in the source, and no lookup runs.
+  const flatHost = deepHost();
+  const flat = await kind.read({ kind: "block", uid: "SRC" }, { host: flatHost, boardUid: "BRD", followed: () => ["L10"] });
+  assert.deepEqual([flat.complete, flat.deeper, flat.members], [true, undefined, undefined]);
+  assert.equal(flatHost.pulls.length, 1);
 });
 
 test("PXD-9 block kind reads through the host: a gone block is a failed read, not an empty source", async () => {
@@ -316,6 +368,28 @@ test("PXD-9 session: more than SPREAD_CAP places in batches, one transaction and
   assert.equal(xs.size, 2, "two columns");
 });
 
+test("PXD-9 session: two Place all calls at once place each card once; a skipped uid is never placed", async () => {
+  const { fake, session } = setup({ plexus: { v: 2, follow: { kind: "block", uid: "SRC", skip: ["k3"] } } });
+  const entries = [{ uid: "k2", kind: "block" }, { uid: "k3", kind: "block" }];
+  const [first, second] = await Promise.all([session.placeFollowed(entries), session.placeFollowed(entries)]);
+  await fake.flush();
+  assert.equal(first.placed, 1);
+  assert.equal(second.placed, 0, "the second call sees the first call's card");
+  assert.equal(writes(fake).filter((w) => w[0] === "create").length, 1);
+  const shown = [...session.board.items.values()].map((i) => i.target?.uid).filter(Boolean);
+  assert.equal(shown.filter((u) => u === "k2").length, 1);
+  assert.equal(shown.includes("k3"), false);
+});
+
+test("PXD-9 session: a placed card keeps its source key when it is moved or colored", async () => {
+  const { fake, session } = setup({ plexus: { v: 2, follow: { kind: "block", uid: "SRC" } } });
+  await session.commitMove(["c1"], 30, 10);
+  await session.setColor(["c1"], "red");
+  await fake.flush();
+  const p = plexusOf(fake, "c1");
+  assert.deepEqual([p.x, p.y, p.color, p.src], [30, 210, "red", "block:SRC"]);
+});
+
 test("PXD-9 session: a drop places one card at the drop point, inside the section under it", async () => {
   const { fake, session } = setup({ plexus: { v: 2, follow: { kind: "block", uid: "SRC" } } });
   const res = await session.placeFollowed([{ uid: "k3", kind: "block" }], { at: { x: 450, y: 100 } });
@@ -337,6 +411,13 @@ test("PXD-9 session: deleting a followed card skips its source uid in the same t
   await fake.flush();
   assert.deepEqual(plexusOf(fake, "b1").follow.skip, ["k1"]);
   assert.equal(writes(fake).filter((w) => w[0] === "update").length, 0);
+  await session.undo();
+  await fake.flush();
+  assert.equal(fake.has("n1"), true);
+  await session.undo();
+  await fake.flush();
+  assert.equal(fake.has("c1"), true, "one undo brings the followed card back");
+  assert.equal(plexusOf(fake, "b1").follow.skip, undefined, "and drops its skip with it");
 });
 
 test("PXD-9 session: Don't bring back adds to the skip list; Remove takes a card off and skips it; dismiss keeps the layout", async () => {

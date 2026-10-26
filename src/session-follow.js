@@ -49,6 +49,48 @@ extendSession((session, api) => {
     return true;
   }).then((ok) => ok === true);
 
+  // entries: source items ({ uid, kind, title? }). Ref cards in a column right of the board's cards, or a column at
+  // `at` (a drag). SPREAD_CAP cards per transaction, so each batch is one undo; more go in more batches, one column
+  // each. Resolves { placed, batches, total, uids }.
+  const placeNow = (entries, { at = null } = {}) => {
+    const none = { placed: 0, batches: 0, total: 0, uids: [] };
+    const board = api.board();
+    const pointer = readFollow(board?.plexus);
+    if (!board || !pointer) return Promise.resolve(none);
+    const key = sourceKey(pointer);
+    const skipped = new Set(pointer.skip);
+    const { on } = followIndex(board, key);
+    const seen = new Set();
+    const list = (entries || []).filter((e) => {
+      if (typeof e?.uid !== "string" || !e.uid || seen.has(e.uid)) return false;
+      seen.add(e.uid);
+      return !skipped.has(e.uid) && !itemIds(e).some((id) => on.has(id));
+    });
+    if (!list.length) return Promise.resolve(none);
+    const size = {
+      w: Number(api.setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w,
+      h: Number(api.setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h,
+    };
+    const rects = api.rects();
+    const bounds = boundsOf(board.roots.map((id) => rects.get(id)).filter(Boolean));
+    const batches = followBatches(list, SPREAD_CAP);
+    const made = [];
+    let chain = Promise.resolve();
+    batches.forEach((batch, column) => {
+      chain = chain.then(() => {
+        if (api.isGone()) return null;
+        const spots = followColumn(bounds, batch.length, { ...size, column, at });
+        return api.txn((t) => {
+          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key));
+          api.applyFit(t, ids);
+          return ids;
+        }).then((ids) => { if (Array.isArray(ids)) made.push(...ids); });
+      });
+    });
+    return chain.then(() => ({ placed: made.length, batches: batches.length, total: list.length, uids: made }));
+  };
+  let placing = Promise.resolve(null);
+
   // Deleting a followed card of the current source (or any card with followSkip) keeps it out of the tray.
   api.onDeleteItems?.((t, uids, opts) => {
     const board = api.board();
@@ -106,44 +148,12 @@ extendSession((session, api) => {
       return writePointer(() => null);
     },
 
-    // entries: source items ({ uid, kind, title? }). Ref cards in a column right of the board's cards, or a column at
-    // `at` (a drag). SPREAD_CAP cards per transaction, so each batch is one undo; more go in more batches, one column
-    // each. Resolves { placed, batches, total, uids }.
-    placeFollowed(entries, { at = null } = {}) {
-      const none = { placed: 0, batches: 0, total: 0, uids: [] };
-      const board = api.board();
-      const pointer = readFollow(board?.plexus);
-      if (!board || !pointer) return Promise.resolve(none);
-      const key = sourceKey(pointer);
-      const { on } = followIndex(board, key);
-      const seen = new Set();
-      const list = (entries || []).filter((e) => {
-        if (typeof e?.uid !== "string" || !e.uid || seen.has(e.uid)) return false;
-        seen.add(e.uid);
-        return !itemIds(e).some((id) => on.has(id));
-      });
-      if (!list.length) return Promise.resolve(none);
-      const size = {
-        w: Number(api.setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w,
-        h: Number(api.setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h,
-      };
-      const rects = api.rects();
-      const bounds = boundsOf(board.roots.map((id) => rects.get(id)).filter(Boolean));
-      const batches = followBatches(list, SPREAD_CAP);
-      const made = [];
-      let chain = Promise.resolve();
-      batches.forEach((batch, column) => {
-        chain = chain.then(() => {
-          if (api.isGone()) return null;
-          const spots = followColumn(bounds, batch.length, { ...size, column, at });
-          return api.txn((t) => {
-            const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key));
-            api.applyFit(t, ids);
-            return ids;
-          }).then((ids) => { if (Array.isArray(ids)) made.push(...ids); });
-        });
-      });
-      return chain.then(() => ({ placed: made.length, batches: batches.length, total: list.length, uids: made }));
+    // Calls run one after another, and each filters against the board the previous one left, so a second Place all
+    // (or a drag) while the first is still writing never places a card twice. A skipped uid is never placed.
+    placeFollowed(entries, opts = {}) {
+      const run = () => placeNow(entries, opts);
+      placing = placing.then(run, run);
+      return placing;
     },
 
     // Source uids the tray should stop offering. Resolves the number added.

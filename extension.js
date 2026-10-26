@@ -54744,6 +54744,7 @@ init_schema();
 init_schema();
 var FOLLOW_KEY = "follow";
 var FOLLOW_KEPT_KEY = "followSkip";
+var FOLLOW_KEPT_SOURCES = 5;
 var FOLLOW_SRC = "src";
 var FOLLOW_MIME = "application/x-plexus-follow";
 var FOLLOW_SKIP_CAP = 300;
@@ -54788,16 +54789,24 @@ function readFollow(plexus) {
   return isObject3(plexus) ? normalizePointer(plexus[FOLLOW_KEY]) : null;
 }
 var sourceKey = (pointer) => pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}` : "";
-function keptFollow(plexus) {
-  return isObject3(plexus) ? normalizePointer(plexus[FOLLOW_KEPT_KEY]) : null;
+function keptList(plexus) {
+  const raw = isObject3(plexus) ? plexus[FOLLOW_KEPT_KEY] : null;
+  return (Array.isArray(raw) ? raw : raw ? [raw] : []).map(normalizePointer).filter((p) => p && p.skip.length);
+}
+function keptFollow(plexus, key) {
+  return keptList(plexus).find((p) => sourceKey(p) === key) || null;
 }
 function withFollow(plexus, pointer) {
   const base2 = isObject3(plexus) ? { ...plexus } : {};
   const next = pointer ? serializePointer(pointer) : null;
   const prev = readFollow(base2);
-  if (prev && sourceKey(prev) !== sourceKey(next) && prev.skip.length) {
-    base2[FOLLOW_KEPT_KEY] = { kind: prev.kind, uid: prev.uid, skip: prev.skip };
-  } else if (next && sourceKey(keptFollow(base2)) === sourceKey(next)) delete base2[FOLLOW_KEPT_KEY];
+  const nextKey = sourceKey(next);
+  const kept = keptList(base2).filter((p) => sourceKey(p) !== nextKey);
+  if (prev && sourceKey(prev) !== nextKey && prev.skip.length) kept.push(prev);
+  let list = kept.slice(-FOLLOW_KEPT_SOURCES).map((p) => ({ kind: p.kind, uid: p.uid, skip: p.skip }));
+  while (list.length > 1 && list.reduce((n3, p) => n3 + p.skip.length, 0) > FOLLOW_SKIP_CAP) list = list.slice(1);
+  if (list.length) base2[FOLLOW_KEPT_KEY] = list;
+  else delete base2[FOLLOW_KEPT_KEY];
   if (next) base2[FOLLOW_KEY] = next;
   else delete base2[FOLLOW_KEY];
   return base2;
@@ -54990,6 +54999,7 @@ extendSession((session, api3) => {
     const seen = /* @__PURE__ */ new Set();
     const list = (entries || []).filter((e2) => {
       if (typeof e2?.uid !== "string" || !e2.uid || seen.has(e2.uid)) return false;
+      if (e2.src !== void 0 && e2.src !== key) return false;
       seen.add(e2.uid);
       return !skipped.has(e2.uid) && !itemIds(e2).some((id) => on.has(id));
     });
@@ -55058,10 +55068,7 @@ extendSession((session, api3) => {
     // { kind, uid, tree }. The same source keeps its skip list. Resolves true when the pointer changed.
     followSource({ kind, uid, tree } = {}) {
       if (typeof kind !== "string" || typeof uid !== "string" || !uid || uid === boardUid) return Promise.resolve(false);
-      return writePointer((cur, base2) => {
-        const kept = keptFollow(base2);
-        return followPointerFor(sourceKey(kept) === `${kind}:${uid}` ? kept : cur, kind, uid, { tree });
-      });
+      return writePointer((cur, base2) => followPointerFor(keptFollow(base2, `${kind}:${uid}`) || cur, kind, uid, { tree }));
     },
     setFollowTree(on) {
       return writePointer((cur) => cur?.kind === "block" ? { ...cur, tree: on === true } : cur);
@@ -90419,12 +90426,13 @@ var followKind = (id) => kinds.get(id) || null;
 var quote = (text4) => `“${plainText(text4, 48) || "Untitled"}”`;
 var timeOf = (node2) => Math.max(Number(node2?.[":create/time"]) || 0, Number(node2?.[":edit/time"]) || 0);
 var sorted = (node2) => Array.isArray(node2?.[KIDS5]) ? node2[KIDS5].slice().sort((a, b) => (a?.[ORD2] ?? 0) - (b?.[ORD2] ?? 0)) : [];
-function treePattern(depth, { below = false } = {}) {
-  let inner = below ? `[${FIELDS2} {(limit :block/children 1) [:block/uid]}]` : `[${FIELDS2}]`;
+function treePattern(depth) {
+  let inner = `[${FIELDS2}]`;
   for (let d = 1; d < depth; d += 1) inner = `[${FIELDS2} {(limit :block/children ${CHILD_LIMIT}) ${inner}}]`;
   return `[:node/title ${FIELDS2} {(limit :block/children ${CHILD_LIMIT}) ${inner}}]`;
 }
-function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__PURE__ */ new Set() } = {}) {
+var CHILDREN_PULL = `[:node/title ${FIELDS2} {(limit :block/children ${CHILD_LIMIT}) [${FIELDS2} {(limit :block/children 1) [:block/uid]}]}]`;
+function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__PURE__ */ new Set(), load = null } = {}) {
   const items = [];
   let complete = true;
   let deeper = false;
@@ -90443,8 +90451,15 @@ function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__
         return;
       }
       items.push({ uid, kind: "block", text: sourceText(string), time: timeOf(kid), depth: level, ...string.trim() ? {} : { blank: true } });
-      if (level < depth) walk3(kid, level + 1);
-      else if (Array.isArray(kid[KIDS5]) && kid[KIDS5].length) deeper = true;
+      const more = Array.isArray(kid[KIDS5]) && kid[KIDS5].length > 0;
+      if (!more) continue;
+      if (level >= depth) {
+        deeper = true;
+        continue;
+      }
+      const inner = load ? load(uid) : kid;
+      if (inner) walk3(inner, level + 1);
+      else cut = true;
     }
   };
   walk3(root, 1);
@@ -90484,14 +90499,16 @@ defineFollowKind({
   async read(p, { host, boardUid, followed }) {
     const tree = p.tree === true;
     const depth = tree ? FOLLOW_TREE_DEPTH : 1;
-    let node2 = null;
-    try {
-      node2 = host?.pullEntity?.(treePattern(depth, { below: tree }), p.uid) || null;
-    } catch {
-      node2 = null;
-    }
+    const pullKids = (uid) => {
+      try {
+        return host?.pullEntity?.(CHILDREN_PULL, uid) || null;
+      } catch {
+        return null;
+      }
+    };
+    const node2 = pullKids(p.uid);
     if (!node2) return { ok: false, reason: "missing" };
-    const { items, complete, deeper } = treeItems(node2, { depth, skip: /* @__PURE__ */ new Set([boardUid]) });
+    const { items, complete, deeper } = treeItems(node2, { depth, skip: /* @__PURE__ */ new Set([boardUid]), load: pullKids });
     if (!tree || !deeper || !complete) return { ok: true, complete, items };
     const listed2 = new Set(items.map((item) => item.uid));
     const unseen = [...new Set(typeof followed === "function" ? followed() : [])].filter((uid) => !listed2.has(uid));
@@ -90853,7 +90870,7 @@ function createFollowTray({
       event.stopPropagation();
       const string = followCardString(row4);
       try {
-        event.dataTransfer?.setData?.(FOLLOW_MIME, JSON.stringify(entryOf(row4)));
+        event.dataTransfer?.setData?.(FOLLOW_MIME, JSON.stringify({ ...entryOf(row4), board: boardUid, src: key }));
         event.dataTransfer?.setData?.(CARD_MIME, string);
         event.dataTransfer?.setData?.("text/plain", string);
         if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
@@ -108895,7 +108912,8 @@ ${url}`;
     } catch {
       followed = null;
     }
-    if (followed?.uid) {
+    const followKey = session.followState?.()?.key || "";
+    if (followed?.uid && followed.board === boardUid && followKey && followed.src === followKey) {
       void Promise.resolve(session.placeFollowed?.([followed], { at: p })).then((res) => {
         if (!disposed && res?.uids?.length) ctl.select(res.uids);
       }).catch(() => {

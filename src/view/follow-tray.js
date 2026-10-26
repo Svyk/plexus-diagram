@@ -286,7 +286,8 @@ export function createFollowTray({
       event.stopPropagation();
       const string = followCardString(row);
       try {
-        event.dataTransfer?.setData?.(FOLLOW_MIME, JSON.stringify(entryOf(row)));
+        // The row names its board and source: dropped on any other board it is a plain ref card.
+        event.dataTransfer?.setData?.(FOLLOW_MIME, JSON.stringify({ ...entryOf(row), board: boardUid, src: key }));
         event.dataTransfer?.setData?.(CARD_MIME, string);
         event.dataTransfer?.setData?.("text/plain", string);
         if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";

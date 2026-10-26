@@ -8,8 +8,10 @@ import { firstLine, parseBoardTitle, plainText } from "./schema.js";
 
 // Board plexus key: { kind, uid, tree?, skip? }. Written only from the Follow menu and the tray's own buttons.
 export const FOLLOW_KEY = "follow";
-// Board plexus key: { kind, uid, skip } of the source the board last stopped following, while it follows nothing.
+// Board plexus key: [{ kind, uid, skip }] of sources the board stopped following, newest last: at most
+// FOLLOW_KEPT_SOURCES of them and FOLLOW_SKIP_CAP uids in all (the oldest sources go first; the newest always stays).
 export const FOLLOW_KEPT_KEY = "followSkip";
+export const FOLLOW_KEPT_SOURCES = 5;
 // A placed card's plexus key: the source key it came from, so "left the source" only marks this source's cards.
 export const FOLLOW_SRC = "src";
 export const FOLLOW_MIME = "application/x-plexus-follow";
@@ -72,20 +74,30 @@ export function readFollow(plexus) {
 export const sourceKey = (pointer) => (pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}` : "");
 
 // The skip list of a source the board stopped following, as a pointer ({ kind, uid, skip }) that is not followed.
-export function keptFollow(plexus) {
-  return isObject(plexus) ? normalizePointer(plexus[FOLLOW_KEPT_KEY]) : null;
+function keptList(plexus) {
+  const raw = isObject(plexus) ? plexus[FOLLOW_KEPT_KEY] : null;
+  return (Array.isArray(raw) ? raw : raw ? [raw] : []).map(normalizePointer).filter((p) => p && p.skip.length);
+}
+
+// The kept skip list of source `key` ("<kind>:<uid>"), as a pointer that is not followed, or null.
+export function keptFollow(plexus, key) {
+  return keptList(plexus).find((p) => sourceKey(p) === key) || null;
 }
 
 // The board's plexus with `pointer` set; null removes it. When the board stops following a source (Stop, or a switch
 // to another source) that source's skip list is kept under FOLLOW_KEPT_KEY, so following it again does not bring back
-// what the user removed; following the kept source again moves the list back into the pointer. Every other key stays.
+// what the user removed; following a kept source again moves its list back into the pointer. Every other key stays.
 export function withFollow(plexus, pointer) {
   const base = isObject(plexus) ? { ...plexus } : {};
   const next = pointer ? serializePointer(pointer) : null;
   const prev = readFollow(base);
-  if (prev && sourceKey(prev) !== sourceKey(next) && prev.skip.length) {
-    base[FOLLOW_KEPT_KEY] = { kind: prev.kind, uid: prev.uid, skip: prev.skip };
-  } else if (next && sourceKey(keptFollow(base)) === sourceKey(next)) delete base[FOLLOW_KEPT_KEY];
+  const nextKey = sourceKey(next);
+  const kept = keptList(base).filter((p) => sourceKey(p) !== nextKey);
+  if (prev && sourceKey(prev) !== nextKey && prev.skip.length) kept.push(prev);
+  let list = kept.slice(-FOLLOW_KEPT_SOURCES).map((p) => ({ kind: p.kind, uid: p.uid, skip: p.skip }));
+  while (list.length > 1 && list.reduce((n, p) => n + p.skip.length, 0) > FOLLOW_SKIP_CAP) list = list.slice(1);
+  if (list.length) base[FOLLOW_KEPT_KEY] = list;
+  else delete base[FOLLOW_KEPT_KEY];
   if (next) base[FOLLOW_KEY] = next;
   else delete base[FOLLOW_KEY];
   return base;

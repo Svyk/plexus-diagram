@@ -102,7 +102,7 @@ test("PXD-9 tray: Place all writes ref cards and empties the tray; a board chang
   assert.deepEqual(rows.map((r) => r.dataset.uid), ["k2", "k3"]);
   const drag = {};
   rows[0].dispatchEvent({ type: "dragstart", stopPropagation() {}, dataTransfer: { setData: (k, v) => { drag[k] = v; } } });
-  assert.deepEqual(JSON.parse(drag[FOLLOW_MIME]), { uid: "k2", kind: "block" });
+  assert.deepEqual(JSON.parse(drag[FOLLOW_MIME]), { uid: "k2", kind: "block", board: "b1", src: "block:SRC" }, "the row names its board and source");
   assert.equal(drag["application/x-plexus-card"], "((k2))");
   const reads = f.tray.reads();
   f.root.querySelector(".pxd-follow__all").click();

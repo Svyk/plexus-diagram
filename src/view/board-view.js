@@ -9784,10 +9784,12 @@ function buildBoardView(onFail, {
     if (pdfFiles.length) { void addPdfFiles(pdfFiles, p); return; }
     const files = filesFromDataTransfer(event.dataTransfer);
     if (files.length) { void pasteImages(files, p); return; }
-    // PXD-9: a row dragged out of the follow tray becomes a ref card that remembers its source.
+    // PXD-9: a row dragged out of this board's follow tray becomes a ref card that remembers its source. A row from
+    // another board's tray (or from a source this board no longer follows) falls through to the plain ref card below.
     let followed = null;
     try { followed = JSON.parse(event.dataTransfer?.getData?.(FOLLOW_MIME) || "null"); } catch { followed = null; }
-    if (followed?.uid) {
+    const followKey = session.followState?.()?.key || "";
+    if (followed?.uid && followed.board === boardUid && followKey && followed.src === followKey) {
       void Promise.resolve(session.placeFollowed?.([followed], { at: p })).then((res) => {
         if (!disposed && res?.uids?.length) ctl.select(res.uids);
       }).catch(() => {});

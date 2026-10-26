@@ -27,7 +27,7 @@ import {
   withFollow,
 } from "../src/model/follow.js";
 import { FOLLOW_PARENT_CAP, FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH } from "../src/model/follow.js";
-import { PARENTS_PULL, followKind, refsQuery, treeItems, treePattern } from "../src/host/follow-sources.js";
+import { CHILDREN_PULL, PARENTS_PULL, followKind, refsQuery, treeItems, treePattern } from "../src/host/follow-sources.js";
 
 afterEach(() => resetSessions());
 
@@ -48,10 +48,17 @@ test("PXD-9 pointer: normalized, serialized without defaults, merged into the bo
   const on = withFollow(board, p);
   assert.deepEqual(on, { v: 2, bg: "dots", follow: { kind: "block", uid: "src000001", tree: true, skip: ["a", "b"] } });
   assert.deepEqual(readFollow(on), p);
-  assert.deepEqual(withFollow(on, null), { ...board, followSkip: { kind: "block", uid: "src000001", skip: ["a", "b"] } }, "the skip list is kept");
+  assert.deepEqual(withFollow(on, null), { ...board, followSkip: [{ kind: "block", uid: "src000001", skip: ["a", "b"] }] }, "the skip list is kept");
   assert.deepEqual(withFollow(withFollow(on, null), p), on, "and moves back into the pointer");
   assert.deepEqual(withFollow(withFollow(board, { kind: "query", uid: "q" }), null), board, "nothing to keep");
   assert.equal(sourceKey(p), "block:src000001");
+  // Several stopped sources keep their lists: up to five, and the oldest go first past the skip cap.
+  let plexus = { v: 2 };
+  for (const uid of ["A", "B", "C", "D", "E", "F"]) plexus = withFollow(withFollow(plexus, { kind: "block", uid, skip: [`${uid}1`] }), { kind: "query", uid: "Q" });
+  assert.deepEqual(plexus.followSkip.map((k) => k.uid), ["B", "C", "D", "E", "F"]);
+  plexus = withFollow(plexus, { kind: "block", uid: "G", skip: Array.from({ length: FOLLOW_SKIP_CAP - 1 }, (_, i) => `g${i}`) });
+  plexus = withFollow(plexus, null);
+  assert.deepEqual(plexus.followSkip.map((k) => k.uid), ["F", "G"], "C to E dropped to stay at the skip cap");
 });
 
 test("PXD-9 pointer: the same source keeps its skip list and tree; a new source starts clean", () => {
@@ -180,8 +187,28 @@ test("PXD-9 block kind: children or the tree in outline order; task attributes a
   assert.equal(deep.deeper, true, "gg1 is below the two listed levels");
   assert.equal(deep.complete, true, "a deeper block is not a partial read; its card is checked by its parents");
   assert.equal(treeItems(root, { depth: 3, skip: new Set(["BRD"]) }).deeper, false);
-  assert.ok(treePattern(2, { below: true }).endsWith("{(limit :block/children 1) [:block/uid]}]}]}]"), "one child uid under the last level");
-  assert.ok(!treePattern(2).includes("(limit :block/children 1)"));
+  assert.equal(CHILDREN_PULL.split("(limit :block/children").length - 1, 2, "one level of children, each with one child uid");
+  assert.ok(CHILDREN_PULL.includes(`(limit :block/children ${FOLLOW_READ_CAP + 1})`) && CHILDREN_PULL.endsWith("{(limit :block/children 1) [:block/uid]}]}]"));
+});
+
+test("PXD-9 whole tree: a big tree is pulled one block at a time and the read stops at the cap", async () => {
+  const fake = createFakeRoam();
+  fake.roamWatch = true; // pulls return only the levels their pattern names, as in Roam
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  const kids = Array.from({ length: 50 }, (_, i) => ({ uid: `a${String(i).padStart(8, "0")}`, string: `a${i}`, children: Array.from({ length: 50 }, (_, j) => ({
+    uid: `b${String(i * 50 + j).padStart(8, "0")}`, string: `b${j}`, children: Array.from({ length: 5 }, (_, k) => ({ uid: `c${String((i * 50 + j) * 5 + k).padStart(8, "0")}`, string: `c${k}` })),
+  })) }));
+  fake.seedPage({ title: "Big tree", uid: "BIGPAGE", children: [{ uid: "BIG", string: "Big", children: kids }] });
+  const size = (node) => 1 + (node?.[":block/children"] || []).reduce((n, k) => n + size(k), 0);
+  let pulled = 0;
+  let pulls = 0;
+  const counting = { ...host, pullEntity: (pattern, uid) => { const out = host.pullEntity(pattern, uid); pulls += 1; pulled += out ? size(out) : 0; return out; } };
+  const got = await followKind("block").read({ kind: "block", uid: "BIG", tree: true }, { host: counting, boardUid: "b1", followed: () => [] });
+  assert.equal(got.items.length, FOLLOW_READ_CAP);
+  assert.equal(got.complete, false, "the tree is bigger than the cap");
+  assert.ok(pulled < 1000, `pulled ${pulled} of the 15,051 blocks under the source`);
+  assert.ok(pulls <= FOLLOW_READ_CAP + 1, `${pulls} pulls`);
+  assert.ok(size(host.pullEntity(treePattern(FOLLOW_TREE_DEPTH), "BIG")) > 15000, "one nested pull would take them all");
 });
 
 test("PXD-9 block kind: a level with more children than the read cap is a partial read, pulled no further than the limit", async () => {
@@ -207,13 +234,16 @@ function deepHost(depth = 10) {
   const root = node("SRC", "Source", [chain]);
   const parents = { X: ["OTHER"] };
   for (let i = 1; i <= depth; i += 1) parents[`L${i}`] = ["SRCPAGE", "SRC", ...Array.from({ length: i - 1 }, (_, j) => `L${j + 1}`)];
+  const byUid = new Map();
+  const index = (n) => { byUid.set(n[":block/uid"], n); for (const k of n[":block/children"]) index(k); };
+  index(root);
   const pulls = [];
   return {
     pulls,
     pullEntity(pattern, uid) {
       pulls.push([pattern === PARENTS_PULL ? "parents" : "tree", uid]);
       if (pattern === PARENTS_PULL) return parents[uid] ? { ":block/uid": uid, ":block/parents": parents[uid].map((u) => ({ ":block/uid": u })) } : null;
-      return uid === "SRC" ? root : null;
+      return byUid.get(uid) || null;
     },
   };
 }
@@ -228,6 +258,7 @@ test("PXD-9 whole tree: a placed card below the listed levels is still in the so
   assert.deepEqual(got.items.map((i) => i.uid), Array.from({ length: FOLLOW_TREE_DEPTH }, (_, i) => `L${i + 1}`));
   assert.deepEqual(got.members, ["L10"], "L10 is under SRC by its parents; X moved to another page; GONE is deleted");
   assert.deepEqual(host.pulls.filter((p) => p[0] === "parents").map((p) => p[1]), ["L10", "X", "GONE"], "listed cards need no lookup");
+  assert.deepEqual(host.pulls.filter((p) => p[0] === "tree").map((p) => p[1]), ["SRC", "L1", "L2", "L3", "L4", "L5", "L6", "L7"], "one pull per opened block");
   // Two reads like this one: the deep card never counts as gone, the moved one is left.
   const board = { items: new Map([
     ["c10", { uid: "c10", type: "card", src: "block:SRC", target: { kind: "block", uid: "L10" } }],
@@ -357,15 +388,21 @@ test("PXD-9 session: Stop or a switch keeps the source's skip list; following it
   const { fake, session } = setup({ plexus: { v: 2, follow: { kind: "block", uid: "SRC", skip: ["k1", "k2"] } } });
   assert.equal(await session.stopFollowing(), true);
   assert.equal(plexusOf(fake, "b1").follow, undefined);
-  assert.deepEqual(plexusOf(fake, "b1").followSkip, { kind: "block", uid: "SRC", skip: ["k1", "k2"] });
+  assert.deepEqual(plexusOf(fake, "b1").followSkip, [{ kind: "block", uid: "SRC", skip: ["k1", "k2"] }]);
   assert.equal(await session.followSource({ kind: "block", uid: "SRC" }), true);
   assert.deepEqual(plexusOf(fake, "b1").follow, { kind: "block", uid: "SRC", skip: ["k1", "k2"] }, "deleted cards stay out of the tray");
   assert.equal(plexusOf(fake, "b1").followSkip, undefined);
   assert.equal(await session.followSource({ kind: "query", uid: "Q" }), true);
   assert.deepEqual(plexusOf(fake, "b1").follow, { kind: "query", uid: "Q" }, "another source starts clean");
-  assert.deepEqual(plexusOf(fake, "b1").followSkip, { kind: "block", uid: "SRC", skip: ["k1", "k2"] }, "the switch keeps the old list");
+  assert.deepEqual(plexusOf(fake, "b1").followSkip, [{ kind: "block", uid: "SRC", skip: ["k1", "k2"] }], "the switch keeps the old list");
+  // A, then B, then C: both A's and B's lists are kept.
+  assert.equal(await session.dontBringBack(["q1"]), 1);
+  assert.equal(await session.followSource({ kind: "refs", uid: "PG" }), true);
+  assert.deepEqual(plexusOf(fake, "b1").followSkip.map((k) => `${k.kind}:${k.uid}`), ["block:SRC", "query:Q"]);
   assert.equal(await session.followSource({ kind: "block", uid: "SRC" }), true);
   assert.deepEqual(plexusOf(fake, "b1").follow.skip, ["k1", "k2"]);
+  assert.equal(await session.followSource({ kind: "query", uid: "Q" }), true);
+  assert.deepEqual(plexusOf(fake, "b1").follow.skip, ["q1"]);
   assert.equal(plexusOf(fake, "b1").v, 2);
 });
 
@@ -414,6 +451,15 @@ test("PXD-9 session: two Place all calls at once place each card once; a skipped
   const shown = [...session.board.items.values()].map((i) => i.target?.uid).filter(Boolean);
   assert.equal(shown.filter((u) => u === "k2").length, 1);
   assert.equal(shown.includes("k3"), false);
+});
+
+test("PXD-9 session: an entry from another source is never placed with this board's source key", async () => {
+  const { fake, session } = setup({ plexus: { v: 2, follow: { kind: "block", uid: "SRC" } } });
+  const res = await session.placeFollowed([{ uid: "k2", kind: "block", board: "other", src: "block:ELSE" }]);
+  await fake.flush();
+  assert.equal(res.placed, 0);
+  assert.equal(writes(fake).length, 0);
+  assert.equal((await session.placeFollowed([{ uid: "k2", kind: "block", board: "b1", src: "block:SRC" }])).placed, 1);
 });
 
 test("PXD-9 session: a placed card keeps its source key when it is moved or colored", async () => {

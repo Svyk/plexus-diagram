@@ -64,6 +64,8 @@ extendSession((session, api) => {
     const seen = new Set();
     const list = (entries || []).filter((e) => {
       if (typeof e?.uid !== "string" || !e.uid || seen.has(e.uid)) return false;
+      // An entry from another source never gets this source's key.
+      if (e.src !== undefined && e.src !== key) return false;
       seen.add(e.uid);
       return !skipped.has(e.uid) && !itemIds(e).some((id) => on.has(id));
     });
@@ -138,10 +140,7 @@ extendSession((session, api) => {
     followSource({ kind, uid, tree } = {}) {
       if (typeof kind !== "string" || typeof uid !== "string" || !uid || uid === boardUid) return Promise.resolve(false);
       // The kept skip list of this source, when the board stopped following it before.
-      return writePointer((cur, base) => {
-        const kept = keptFollow(base);
-        return followPointerFor(sourceKey(kept) === `${kind}:${uid}` ? kept : cur, kind, uid, { tree });
-      });
+      return writePointer((cur, base) => followPointerFor(keptFollow(base, `${kind}:${uid}`) || cur, kind, uid, { tree }));
     },
 
     setFollowTree(on) {

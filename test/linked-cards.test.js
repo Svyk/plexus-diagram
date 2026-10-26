@@ -284,6 +284,65 @@ test("addLinkedRefCards lowers the cap when auto-fit must also move a crowded se
   assert.deepEqual(fake.props("mem0000").plexus, { x: 1000, y: 2200, w: 120, h: 20 }, "and puts the members back");
 });
 
+const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+const inside = (r, s) => r.x >= s.x && r.y >= s.y && r.x + r.w <= s.x + s.w && r.y + r.h <= s.y + s.h;
+
+test("addLinkedRefCards puts the whole batch in the card's auto-fit section, which grows to hold it", async () => {
+  for (const [mode, refs] of [["flat", refsOn(["Notes"], 9)], ["page", refsOn(["P1", "P2", "P3", "P4"], 2)]]) {
+    resetSessions();
+    const { fake, session } = setup([card("S", "Frame", 0, 0, 600, 400, { type: "section" }, [card("X", "[[Alpha]]", 20, 40, 280, 160)])]);
+    const res = await session.addLinkedRefCards("X", refs, mode);
+    // By centre, most of these would land at the board root, half over S's frame.
+    assert.deepEqual(res.ids.map((u) => fake.block(u).parent), res.ids.map(() => "S"), mode);
+    const s = session.rects.get("S");
+    const drawn = res.ids.map((u) => session.rects.get(u));
+    assert.ok(drawn.every((r) => inside(mode === "page" ? { ...r, y: r.y - 32, h: r.h + 32 } : r, s)), `${mode}: S holds them, titles too`);
+  }
+});
+
+test("addLinkedRefCards keeps a batch clear of a section around the card that does not grow", async () => {
+  const cases = [
+    ["fit off on the section", [card("S", "Frame", 0, 0, 600, 400, { type: "section", fit: false }, [card("X", "[[Alpha]]", 20, 40, 280, 160)])], null, "b1"],
+    ["auto-fit off for the board", [card("S", "Frame", 0, 0, 600, 400, { type: "section" }, [card("X", "[[Alpha]]", 20, 40, 280, 160)])], { "auto-fit-sections": false }, "b1"],
+    ["fit off inside a section that grows", [card("B", "Outer", 0, 0, 3000, 2000, { type: "section" }, [card("S", "Frame", 40, 40, 600, 400, { type: "section", fit: false }, [card("X", "[[Alpha]]", 20, 40, 280, 160)])])], null, "B"],
+  ];
+  for (const [label, children, settings, parent] of cases) {
+    for (const mode of ["flat", "page"]) {
+      resetSessions();
+      const { fake, session } = setup(children, settings);
+      const res = await session.addLinkedRefCards("X", refsOn(["P1", "P2"], 3), mode);
+      assert.ok(res.ids.length && res.ids.every((u) => fake.block(u).parent === parent), `${label}, ${mode}: all in ${parent}`);
+      const s = session.rects.get("S");
+      const frame = { x: s.x, y: s.y - 32, w: s.w, h: s.h + 32 };
+      assert.ok(res.ids.every((u) => !overlaps(session.rects.get(u), frame)), `${label}, ${mode}: nothing on S`);
+      assert.deepEqual([s.w, s.h], [600, 400], `${label}, ${mode}: S does not grow`);
+    }
+  }
+});
+
+test("addLinkedRefCards keeps clear of text items beside the card", async () => {
+  const { fake, session } = setup([card("X", "[[Alpha]]", 100, 100, 280, 160), card("T", "a sticky", 470, 120, 200, 120, { type: "text", look: "sticky" })]);
+  const res = await session.addLinkedRefCards("X", refsOn(["Notes"], 4), "flat");
+  assert.deepEqual(at(fake, res.ids[0]), [750, 100], "80 past the sticky");
+  assert.ok(res.ids.every((u) => !overlaps(session.rects.get(u), session.rects.get("T"))));
+});
+
+test("addLinkedRefCards leaves a section where it is when auto-fit would move it and rewrite more members than one undo holds", async () => {
+  // A sits in B's top-left pad and B has 50 members: growing A would move B and rewrite all 50, past one undo step.
+  const members = Array.from({ length: 50 }, (_, i) => card(`mem${String(i).padStart(4, "0")}`, `note ${i}`, 1000 + (i % 7) * 130, 2200 + Math.floor(i / 7) * 40, 120, 20));
+  const inner = card("A", "Inner", 0, 0, 600, 400, { type: "section" }, [card("X", "[[Alpha]]", 40, 40, 280, 160)]);
+  const { fake, session } = setup([card("B", "Outer", 0, 0, 3000, 3000, { type: "section" }, [inner, ...members])]);
+  fake.trackUndo = true;
+  const res = await session.addLinkedRefCards("X", refsOn(["Notes"], 5), "flat");
+  assert.deepEqual([res.added, res.left], [5, 0]);
+  assert.deepEqual([creates(fake).length, updates(fake).length], [5, 1], "five cards and A grown");
+  assert.deepEqual(fake.props("B").plexus, { x: 0, y: 0, w: 3000, h: 3000, type: "section" });
+  assert.ok(inside(session.rects.get(res.ids[4]), session.rects.get("A")), "A still holds its cards");
+  await session.undo();
+  assert.ok(res.ids.every((u) => !fake.block(u)), "one undo takes it all back");
+  assert.deepEqual(fake.props("A").plexus, { x: 0, y: 0, w: 600, h: 400, type: "section" });
+});
+
 test("addLinkedRefCards stores a non-default card size on each card, so the cards it spaced by that size do not overlap", async () => {
   const small = { "default-card-width": 200, "default-card-height": 100 };
   const overlapping = (rs) => rs.some((a, i) => rs.slice(i + 1).some((b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h));

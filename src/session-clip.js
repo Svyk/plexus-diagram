@@ -384,69 +384,80 @@ extendSession((session, api) => {
       const card = { w: size("default-card-width", DEFAULT_SIZES.card.w), h: size("default-card-height", DEFAULT_SIZES.card.h) };
       // A card with no stored size is drawn at DEFAULT_SIZES.card, so any other default size is written on each card.
       const sized = card.w !== DEFAULT_SIZES.card.w || card.h !== DEFAULT_SIZES.card.h ? card : {};
-      // Everything else on the board is in the way, except the sections the card sits in (results may nest there).
+      // The whole batch goes into the nearest section around the card that auto-fit grows (`home`), or onto the board
+      // when there is none, and home grows to hold it. Every other item is in the way, sections between the card and
+      // home included, so nothing lands across a frame it is not inside.
+      const fitOn = ![false, "false"].includes(api.setting("auto-fit-sections", true));
+      let home = null;
+      for (let p = item.parentUid; fitOn && !home && p && p !== board.uid; p = board.items.get(p)?.parentUid) {
+        const s = board.items.get(p);
+        if (s?.type === "section" && s.autofit !== false && !s.pinned) home = s;
+      }
+      const parent = home ? home.uid : board.uid;
       const mine = new Set([cardUid]);
-      for (let p = item.parentUid; p && p !== board.uid; p = board.items.get(p)?.parentUid) mine.add(p);
+      for (let p = parent; p && p !== board.uid; p = board.items.get(p)?.parentUid) mine.add(p);
       const all = api.rects();
       const avoid = [];
       for (const it of board.items.values()) {
-        const r = !mine.has(it.uid) && (it.type === "card" || it.type === "section") ? all.get(it.uid) : null;
+        const r = mine.has(it.uid) ? null : all.get(it.uid);
         if (r) avoid.push(it.type === "section" ? withTitle(r) : r);
       }
-      // A group that starts in the top FIT_PAD of the card's auto-fit section would grow that section upward, and
-      // auto-fit then rewrites every member. Below the pad it only grows right and down. A new section's title
-      // stays inside the frame too.
-      const home = board.items.get(item.parentUid);
-      const homeRect = home?.type === "section" && home.autofit !== false && !home.pinned ? all.get(home.uid) : null;
+      // A group that starts in home's top FIT_PAD would grow it upward, and auto-fit then rewrites every member.
+      // Below the pad it only grows right and down. A new section's title stays inside the frame too.
+      const homeRect = home ? all.get(home.uid) : null;
       const top = homeRect ? Math.max(own.y, homeRect.y + (mode === "page" ? Math.max(FIT_PAD, SECTION_TITLE) : FIT_PAD)) : own.y;
       const from = { ...own, y: top };
       // Auto-fit writes in the same txn: each section it grows, and each member of one whose origin moves. With the
       // creates they must fit one undo group, or one Cmd+Z undoes only part of the add, so the cap comes down.
-      const fitOn = ![false, "false"].includes(api.setting("auto-fit-sections", true));
-      const fitWrites = (plan) => {
-        if (!fitOn) return 0;
+      // `moved` are the grown sections around home whose top-left moves.
+      const fitPlan = (plan, skipFit) => {
+        if (!fitOn) return { n: 0, moved: new Set() };
         const tops = plan.sections.length ? plan.sections : plan.cards.map((c) => ({ ...c, ...card }));
         const rects = new Map(all);
         const parents = new Map();
         tops.forEach((r, i) => {
           rects.set(`new:${i}`, { x: r.x, y: r.y, w: r.w, h: r.h });
-          parents.set(`new:${i}`, containerAt(board, { x: r.x + r.w / 2, y: r.y + r.h / 2 }, { rects: all }));
+          parents.set(`new:${i}`, parent);
         });
-        const grown = sectionFitPlan(board, rects, [...parents.keys()], { parentOf: (u) => parents.get(u) ?? board.items.get(u)?.parentUid });
+        const grown = sectionFitPlan(board, rects, [...parents.keys()], { skip: skipFit, parentOf: (u) => parents.get(u) ?? board.items.get(u)?.parentUid });
         const ids = new Set(grown.map((g) => g.uid));
+        const moved = new Set();
         let n = grown.length;
         for (const g of grown) {
           const old = all.get(g.uid);
           if (old && Math.abs(g.rect.x - old.x) < 0.01 && Math.abs(g.rect.y - old.y) < 0.01) continue;
-          n += board.items.get(g.uid).members.filter((m) => !ids.has(m)).length;
+          if (g.uid !== parent) moved.add(g.uid);
+          n +=board.items.get(g.uid).members.filter((m) => !ids.has(m)).length;
         }
-        return n;
+        return { n, moved };
       };
-      // A section with one card is the least that can go in: the cap stops there.
+      const over = (plan, skipFit) => plan.added + plan.sections.length + fitPlan(plan, skipFit).n - MAX_GROUP_WRITES;
+      // A section with one card is the least that can go in.
       const least = mode === "page" ? 2 : 1;
       let cap = SPREAD_CAP;
       let plan = linkedCardsLayout(from, refs, { mode, skip, cap, card, avoid });
-      for (let over = plan.added + plan.sections.length + fitWrites(plan) - MAX_GROUP_WRITES; over > 0 && cap > least;) {
-        cap = Math.max(least, cap - over);
+      // When even the least add would be over, auto-fit leaves the sections around home whose top-left would move as
+      // they are (they already hold a section inside their pad), so it rewrites none of their members.
+      const skipFit = over(linkedCardsLayout(from, refs, { mode, skip, cap: least, card, avoid })) > 0 ? fitPlan(plan).moved : new Set();
+      for (let n = over(plan, skipFit); n > 0 && cap > least; n = over(plan, skipFit)) {
+        cap = Math.max(least, cap - n);
         plan = linkedCardsLayout(from, refs, { mode, skip, cap, card, avoid });
-        over = plan.added + plan.sections.length + fitWrites(plan) - MAX_GROUP_WRITES;
       }
       if (!plan.added) return Promise.resolve({ ...none, total: plan.total, left: plan.left });
       return api.txn((t) => {
         const rects = api.rects();
-        const ids = plan.cards.map((c) => placeCard(t, c.string, c.x, c.y, sized));
+        const rel = (x, y) => toRelative(board, parent, { x, y }, rects);
+        const ids = plan.cards.map((c) => t.create({ parent, string: c.string, plexus: serializeItemLayout({ ...rel(c.x, c.y), ...sized }) }));
         const touched = [...ids];
         for (const s of plan.sections) {
-          const parent = containerAt(board, { x: s.x + s.w / 2, y: s.y + s.h / 2 }, { rects });
-          const rel = toRelative(board, parent, { x: s.x, y: s.y }, rects);
-          const sectionUid = t.create({ parent, string: s.title, plexus: serializeItemLayout({ type: "section", x: rel.x, y: rel.y, w: s.w, h: s.h }) });
+          const sectionUid = t.create({ parent, string: s.title, plexus: serializeItemLayout({ type: "section", ...rel(s.x, s.y), w: s.w, h: s.h }) });
           ids.push(sectionUid);
           touched.push(sectionUid);
           for (const c of s.cards) {
             touched.push(t.create({ parent: sectionUid, string: c.string, plexus: serializeItemLayout({ x: c.x - s.x, y: c.y - s.y, ...sized }) }));
           }
         }
-        api.applyFit(t, touched);
+        api.applyFit(t, touched, { skip: skipFit });
         return { ids, added: plan.added, sections: plan.sections.length, total: plan.total, left: plan.left };
       }).then((res) => res ?? none);
     },

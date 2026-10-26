@@ -6000,11 +6000,8 @@ function buildBoardView(onFail, {
   const pageUidOf = (title) => {
     try { return host?.pageUid?.(title) || null; } catch { return null; }
   };
-  const refUidIn = (text) => {
-    const t = String(text || "").trim();
-    const m = /^\(\(([\w-]{6,64})\)\)$/.exec(t) || /^([\w-]{9})$/.exec(t);
-    return m ? m[1] : null;
-  };
+  // A pasted ((ref)) names a block, and that block is the whole answer.
+  const refUidIn = (text) => /^\(\(([\w-]{6,64})\)\)$/.exec(String(text || "").trim())?.[1] || null;
   const blockRow = (uid, meta) => {
     let s = null;
     try { s = host?.blockString?.(uid); } catch { s = null; }
@@ -6024,18 +6021,24 @@ function buildBoardView(onFail, {
       none: "Nothing matches",
       search: (text) => {
         const rows = [];
+        const fits = (uid) => kind !== "query" || isQueryString(host?.blockString?.(uid) || "");
         const pasted = refUidIn(text);
         if (pasted) {
           const row = blockRow(pasted, "Block");
-          if (row && (kind !== "query" || isQueryString(host?.blockString?.(pasted) || ""))) rows.push(row);
+          if (row && fits(pasted)) rows.push(row);
           return rows;
         }
+        // A bare 9-character word may be a block uid or just a word ("Inventory"): the block it names comes first, and
+        // the search runs either way.
+        const word = String(text || "").trim();
+        const bare = /^[\w-]{9}$/.test(word) && fits(word) ? blockRow(word, "Block") : null;
+        if (bare) rows.push(bare);
         if (kind !== "query") {
           for (const p of host?.searchPages?.(text, kind === "refs" ? 30 : 10) || []) rows.push({ title: p.title, value: p.uid || p.title, meta: "Page" });
         }
         if (kind !== "refs") {
           for (const r of host?.searchBlocks?.(text, 40) || []) {
-            if (r.uid === boardUid) continue;
+            if (r.uid === boardUid || (bare && r.uid === word)) continue;
             const isQ = isQueryString(r.string);
             if (kind === "query" ? !isQ : isQ) continue;
             rows.push({ title: plainText(sourceText(r.string), 80) || "(empty block)", value: r.uid, meta: r.pageTitle });

@@ -252,6 +252,30 @@ test("PXD-9 tray: partial and failed reads never mark a card; the last good list
   } finally { off(); }
 });
 
+test("PXD-9 tray: one miss, then partial reads: one confirming read, then no more reads until something asks", async () => {
+  const results = [];
+  const item = (uid) => ({ uid, kind: "block", text: uid, time: 1 });
+  const off = defineFollowKind({ id: "probe-loop", title: "Probe", describe: () => "the probe", read: async () => results.shift() ?? { ok: true, complete: false, items: [item("k2")] } });
+  try {
+    const f = mount({ plexus: { v: 2, follow: { kind: "probe-loop", uid: "P" } }, children: [card("c1", "((k1))", 0, 0, { src: "probe-loop:P" })] });
+    results.push({ ok: true, complete: true, items: [item("k2")] });
+    await f.timers.run();
+    assert.equal(f.tray.reads(), 1);
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 1, "k1 missed once in a complete read: one confirming read");
+    await f.timers.run();
+    assert.equal(f.tray.reads(), 2);
+    for (let i = 0; i < 10; i += 1) await f.timers.run();
+    assert.equal(f.tray.reads(), 2, "the partial confirming read asks for no more");
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 0);
+    assert.deepEqual(f.tray.left(), []);
+    results.push({ ok: true, complete: true, items: [item("k2")] });
+    f.tray.refresh();
+    await f.timers.run();
+    assert.deepEqual(f.tray.left(), ["c1"], "the next complete read settles it");
+    f.tray.dispose();
+  } finally { off(); }
+});
+
 test("PXD-9 tray: the headline counts what is new and what left since this device's last visit", async () => {
   const store = new Map();
   const storage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) };

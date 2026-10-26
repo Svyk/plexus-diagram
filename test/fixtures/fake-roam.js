@@ -318,19 +318,20 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   }
 
   // Roam's DataScript pull returns at most 1000 values of a ref-many attribute unless the pattern says
-  // `(limit :block/children nil)`.
+  // `(limit :block/children nil)`, or the number a `(limit :block/children N)` gives (the first one, for every level).
   const CHILDREN_CAP = 1000;
-  function capChildren(node) {
+  function capChildren(node, cap = CHILDREN_CAP) {
     const kids = node?.[":block/children"];
     if (!kids) return;
-    if (kids.length > CHILDREN_CAP) node[":block/children"] = kids.slice(0, CHILDREN_CAP);
-    for (const k of node[":block/children"]) capChildren(k);
+    if (kids.length > cap) node[":block/children"] = kids.slice(0, cap);
+    for (const k of node[":block/children"]) capChildren(k, cap);
   }
 
   function pull(pattern, entity) {
     if (fake.pullLog) fake.pullLog.push({ pattern: String(pattern), entity });
     let out = pullUncapped(pattern, entity);
-    if (out && !String(pattern).includes("(limit :block/children nil)")) capChildren(out);
+    const childLimit = /\(limit :block\/children (\d+)\)/.exec(String(pattern));
+    if (out && !String(pattern).includes("(limit :block/children nil)")) capChildren(out, childLimit ? Number(childLimit[1]) : CHILDREN_CAP);
     if (out && stamps && /:edit\/time|:page\/edit-/.test(String(pattern))) {
       let vec = null;
       try { vec = parseEdn(String(pattern)); } catch { vec = null; }

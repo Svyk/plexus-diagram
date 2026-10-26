@@ -8,6 +8,8 @@ import { firstLine, parseBoardTitle, plainText } from "./schema.js";
 
 // Board plexus key: { kind, uid, tree?, skip? }. Written only from the Follow menu and the tray's own buttons.
 export const FOLLOW_KEY = "follow";
+// Board plexus key: { kind, uid, skip } of the source the board last stopped following, while it follows nothing.
+export const FOLLOW_KEPT_KEY = "followSkip";
 // A placed card's plexus key: the source key it came from, so "left the source" only marks this source's cards.
 export const FOLLOW_SRC = "src";
 export const FOLLOW_MIME = "application/x-plexus-follow";
@@ -69,10 +71,21 @@ export function readFollow(plexus) {
 
 export const sourceKey = (pointer) => (pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}` : "");
 
-// The board's plexus with `pointer` set; null removes it. Every other key stays.
+// The skip list of a source the board stopped following, as a pointer ({ kind, uid, skip }) that is not followed.
+export function keptFollow(plexus) {
+  return isObject(plexus) ? normalizePointer(plexus[FOLLOW_KEPT_KEY]) : null;
+}
+
+// The board's plexus with `pointer` set; null removes it. When the board stops following a source (Stop, or a switch
+// to another source) that source's skip list is kept under FOLLOW_KEPT_KEY, so following it again does not bring back
+// what the user removed; following the kept source again moves the list back into the pointer. Every other key stays.
 export function withFollow(plexus, pointer) {
   const base = isObject(plexus) ? { ...plexus } : {};
   const next = pointer ? serializePointer(pointer) : null;
+  const prev = readFollow(base);
+  if (prev && sourceKey(prev) !== sourceKey(next) && prev.skip.length) {
+    base[FOLLOW_KEPT_KEY] = { kind: prev.kind, uid: prev.uid, skip: prev.skip };
+  } else if (next && sourceKey(keptFollow(base)) === sourceKey(next)) delete base[FOLLOW_KEPT_KEY];
   if (next) base[FOLLOW_KEY] = next;
   else delete base[FOLLOW_KEY];
   return base;

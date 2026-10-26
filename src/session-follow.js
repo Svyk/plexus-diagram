@@ -14,6 +14,7 @@ import {
   followIndex,
   followPointerFor,
   itemIds,
+  keptFollow,
   readFollow,
   sourceKey,
   withFollow,
@@ -42,7 +43,7 @@ extendSession((session, api) => {
     const board = api.board();
     if (!board?.enhanced) return false;
     const base = api.rawPlexus(boardUid);
-    const pointer = next(readFollow(base));
+    const pointer = next(readFollow(base), base);
     const plexus = withFollow(base, pointer);
     if (same(plexus, base)) return false;
     t.props(boardUid, plexus);
@@ -136,7 +137,11 @@ extendSession((session, api) => {
     // { kind, uid, tree }. The same source keeps its skip list. Resolves true when the pointer changed.
     followSource({ kind, uid, tree } = {}) {
       if (typeof kind !== "string" || typeof uid !== "string" || !uid || uid === boardUid) return Promise.resolve(false);
-      return writePointer((cur) => followPointerFor(cur, kind, uid, { tree }));
+      // The kept skip list of this source, when the board stopped following it before.
+      return writePointer((cur, base) => {
+        const kept = keptFollow(base);
+        return followPointerFor(sourceKey(kept) === `${kind}:${uid}` ? kept : cur, kind, uid, { tree });
+      });
     },
 
     setFollowTree(on) {

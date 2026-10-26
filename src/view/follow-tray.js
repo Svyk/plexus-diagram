@@ -150,7 +150,9 @@ export function createFollowTray({
       }
       label = describe();
       sync();
-      if (again) { again = false; schedule(); } else if (res?.ok && leftUnsettled(absent)) schedule();
+      // A card with one miss gets its confirming read, but only after a complete read: a partial read adds no miss,
+      // so asking again would read the source every quiet period for as long as it stays partial.
+      if (again) { again = false; schedule(); } else if (res?.ok && res.complete && leftUnsettled(absent)) schedule();
     });
   }
 

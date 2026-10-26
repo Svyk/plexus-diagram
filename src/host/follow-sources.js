@@ -2,6 +2,8 @@
 // names it for the tray. Built in: a block's children or whole tree, a {{query}} block, and the linked references of a
 // page or block. Later kinds (a journal window, the board Inbox, another board's section) register with
 // defineFollowKind. Reads never write; a failed or partial read is reported as such so nothing is marked as gone.
+// Bounds: a block source pulls at most CHILD_LIMIT children per level (8 levels for the whole tree), a query stops at
+// its result cap, linked references at FOLLOW_READ_CAP + 1.
 //
 // An item is { uid, kind: "block" | "page", text, time, title? (page), crumb?, depth?, blank? }. `time` is the later of
 // create and edit time, so the tray can say what is new since the last visit.
@@ -20,6 +22,7 @@ const FIELDS = ":block/uid :block/string :block/order :create/time :edit/time";
 const META = /^BT_attr[\w-]*::/;
 // One more than the cap, so a full list says the read was partial.
 const REFS_LIMIT = FOLLOW_READ_CAP + 1;
+const CHILD_LIMIT = FOLLOW_READ_CAP + 1;
 
 const kinds = new Map();
 
@@ -37,23 +40,28 @@ const quote = (text) => `“${plainText(text, 48) || "Untitled"}”`;
 const timeOf = (node) => Math.max(Number(node?.[":create/time"]) || 0, Number(node?.[":edit/time"]) || 0);
 const sorted = (node) => (Array.isArray(node?.[KIDS]) ? node[KIDS].slice().sort((a, b) => (a?.[ORD] ?? 0) - (b?.[ORD] ?? 0)) : []);
 
-// Nested children joins, `depth` levels below the root. Every join says (limit :block/children nil): without it Roam
-// stops at 1,000 children and a long list would read as items leaving. `below` adds one child uid under the last
-// level, so the read knows when the tree goes deeper than it lists.
+// Nested children joins, `depth` levels below the root. Every join takes at most CHILD_LIMIT children: a level that
+// fills it is more than the read cap, so treeItems calls the read partial and no card is marked as gone (Roam's
+// default would stop at 1,000 without saying so). `below` adds one child uid under the last level, so the read knows
+// when the tree goes deeper than it lists.
 export function treePattern(depth, { below = false } = {}) {
   let inner = below ? `[${FIELDS} {(limit :block/children 1) [:block/uid]}]` : `[${FIELDS}]`;
-  for (let d = 1; d < depth; d += 1) inner = `[${FIELDS} {(limit :block/children nil) ${inner}}]`;
-  return `[:node/title ${FIELDS} {(limit :block/children nil) ${inner}}]`;
+  for (let d = 1; d < depth; d += 1) inner = `[${FIELDS} {(limit :block/children ${CHILD_LIMIT}) ${inner}}]`;
+  return `[:node/title ${FIELDS} {(limit :block/children ${CHILD_LIMIT}) ${inner}}]`;
 }
 
 // Outline order, depth first, at most `cap` items. `skip` drops a block and everything under it: the board itself
-// when it sits on the page it follows. `deeper`: a block on the last level has children that are not listed.
+// when it sits on the page it follows. `deeper`: a block on the last level has children that are not listed. A level
+// with more children than the cap came back cut at CHILD_LIMIT, so the read is partial.
 export function treeItems(root, { depth = 1, cap = FOLLOW_READ_CAP, skip = new Set() } = {}) {
   const items = [];
   let complete = true;
   let deeper = false;
+  let cut = false;
   const walk = (node, level) => {
-    for (const kid of sorted(node)) {
+    const kids = sorted(node);
+    if (kids.length > cap) cut = true;
+    for (const kid of kids) {
       if (!complete) return;
       const uid = kid?.[UID];
       if (typeof uid !== "string" || skip.has(uid)) continue;
@@ -66,7 +74,7 @@ export function treeItems(root, { depth = 1, cap = FOLLOW_READ_CAP, skip = new S
     }
   };
   walk(root, 1);
-  return { items, complete, deeper };
+  return { items, complete: complete && !cut, deeper };
 }
 
 export const PARENTS_PULL = "[:block/uid {:block/parents [:block/uid]}]";

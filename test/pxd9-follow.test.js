@@ -48,7 +48,9 @@ test("PXD-9 pointer: normalized, serialized without defaults, merged into the bo
   const on = withFollow(board, p);
   assert.deepEqual(on, { v: 2, bg: "dots", follow: { kind: "block", uid: "src000001", tree: true, skip: ["a", "b"] } });
   assert.deepEqual(readFollow(on), p);
-  assert.deepEqual(withFollow(on, null), board);
+  assert.deepEqual(withFollow(on, null), { ...board, followSkip: { kind: "block", uid: "src000001", skip: ["a", "b"] } }, "the skip list is kept");
+  assert.deepEqual(withFollow(withFollow(on, null), p), on, "and moves back into the pointer");
+  assert.deepEqual(withFollow(withFollow(board, { kind: "query", uid: "q" }), null), board, "nothing to keep");
   assert.equal(sourceKey(p), "block:src000001");
 });
 
@@ -173,13 +175,29 @@ test("PXD-9 block kind: children or the tree in outline order; task attributes a
   const capped = treeItems(root, { depth: 3, cap: 2 });
   assert.equal(capped.complete, false, "past the cap the read is partial");
   assert.equal(capped.items.length, 2);
-  assert.ok(treePattern(1).includes("(limit :block/children nil)"));
-  assert.equal(treePattern(3).split("(limit :block/children nil)").length - 1, 3);
+  assert.ok(!treePattern(1).includes("(limit :block/children nil)"), "no level is unbounded");
+  assert.equal(treePattern(3).split(`(limit :block/children ${FOLLOW_READ_CAP + 1})`).length - 1, 3);
   assert.equal(deep.deeper, true, "gg1 is below the two listed levels");
   assert.equal(deep.complete, true, "a deeper block is not a partial read; its card is checked by its parents");
   assert.equal(treeItems(root, { depth: 3, skip: new Set(["BRD"]) }).deeper, false);
   assert.ok(treePattern(2, { below: true }).endsWith("{(limit :block/children 1) [:block/uid]}]}]}]"), "one child uid under the last level");
   assert.ok(!treePattern(2).includes("(limit :block/children 1)"));
+});
+
+test("PXD-9 block kind: a level with more children than the read cap is a partial read, pulled no further than the limit", async () => {
+  // A cut level is partial even when its skipped task attributes keep the item count under the cap.
+  const many = [node("attr", "BT_attrDue:: [[October 1st, 2026]]"), ...Array.from({ length: FOLLOW_READ_CAP }, (_, i) => node(`m${i}`, `item ${i}`))];
+  const cut = treeItems(node("SRC", "Source", many), { depth: 1 });
+  assert.deepEqual([cut.items.length, cut.complete], [FOLLOW_READ_CAP, false]);
+  assert.equal(treeItems(node("SRC", "Source", many.slice(1)), { depth: 1 }).complete, true, "exactly the cap is complete");
+  const fake = createFakeRoam();
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  fake.seedPage({ title: "Big", uid: "BIGPAGE", children: [{ uid: "BIG", string: "Big source", children: Array.from({ length: 1200 }, (_, i) => ({ uid: `x${String(i).padStart(8, "0")}`, string: `row ${i}` })) }] });
+  fake.pullLog = [];
+  const got = await followKind("block").read({ kind: "block", uid: "BIG" }, { host, boardUid: "b1" });
+  assert.equal(got.ok, true);
+  assert.equal(got.complete, false, "1,200 children: partial, so nothing is marked as gone");
+  assert.equal(got.items.length, FOLLOW_READ_CAP);
 });
 
 // SRC > L1 > … > L10, ten levels; X sits on another page; GONE was deleted.
@@ -330,8 +348,25 @@ test("PXD-9 session: Follow writes only the board's pointer; Stop following clea
   await fake.flush();
   assert.equal(plexusOf(fake, "b1").follow, undefined);
   assert.equal(plexusOf(fake, "b1").v, 2);
+  assert.equal(plexusOf(fake, "b1").followSkip, undefined, "no skip list, nothing kept");
   assert.deepEqual(writes(fake).map((w) => w[0]), ["update"]);
   assert.ok(fake.has("c1") && fake.has("n1"));
+});
+
+test("PXD-9 session: Stop or a switch keeps the source's skip list; following it again brings it back, a new source starts clean", async () => {
+  const { fake, session } = setup({ plexus: { v: 2, follow: { kind: "block", uid: "SRC", skip: ["k1", "k2"] } } });
+  assert.equal(await session.stopFollowing(), true);
+  assert.equal(plexusOf(fake, "b1").follow, undefined);
+  assert.deepEqual(plexusOf(fake, "b1").followSkip, { kind: "block", uid: "SRC", skip: ["k1", "k2"] });
+  assert.equal(await session.followSource({ kind: "block", uid: "SRC" }), true);
+  assert.deepEqual(plexusOf(fake, "b1").follow, { kind: "block", uid: "SRC", skip: ["k1", "k2"] }, "deleted cards stay out of the tray");
+  assert.equal(plexusOf(fake, "b1").followSkip, undefined);
+  assert.equal(await session.followSource({ kind: "query", uid: "Q" }), true);
+  assert.deepEqual(plexusOf(fake, "b1").follow, { kind: "query", uid: "Q" }, "another source starts clean");
+  assert.deepEqual(plexusOf(fake, "b1").followSkip, { kind: "block", uid: "SRC", skip: ["k1", "k2"] }, "the switch keeps the old list");
+  assert.equal(await session.followSource({ kind: "block", uid: "SRC" }), true);
+  assert.deepEqual(plexusOf(fake, "b1").follow.skip, ["k1", "k2"]);
+  assert.equal(plexusOf(fake, "b1").v, 2);
 });
 
 test("PXD-9 session: Place writes ref cards right of the cards with the source key, and moves nothing", async () => {

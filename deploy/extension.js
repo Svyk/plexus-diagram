@@ -296,7 +296,7 @@ function blockInner({ rect, side: side2, point, rowLeft, rowRight, cell = false 
     angle: right ? Math.PI : 0
   };
 }
-function polyGeo(pts, start, end, fromSide, toSide) {
+function polyGeo(pts, start2, end, fromSide, toSide) {
   const poly = pts.filter((p, i) => i === 0 || p.x !== pts[i - 1].x || p.y !== pts[i - 1].y);
   const lens = [];
   let total = 0;
@@ -305,7 +305,7 @@ function polyGeo(pts, start, end, fromSide, toSide) {
     lens.push(l);
     total += l;
   }
-  let mid = { ...start };
+  let mid = { ...start2 };
   let acc = 0;
   for (let i = 0; i < lens.length; i++) {
     if (acc + lens[i] >= total / 2) {
@@ -319,15 +319,15 @@ function polyGeo(pts, start, end, fromSide, toSide) {
     acc += lens[i];
   }
   const last = poly[poly.length - 1];
-  const prev = poly[poly.length - 2] || start;
+  const prev = poly[poly.length - 2] || start2;
   const second = poly[1] || end;
   return {
     d: poly.map((p, i) => `${i === 0 ? "M" : "L"}${num(p.x)} ${num(p.y)}`).join(""),
-    start,
+    start: start2,
     end,
     mid,
     points: poly,
-    startAngle: Math.atan2(second.y - start.y, second.x - start.x),
+    startAngle: Math.atan2(second.y - start2.y, second.x - start2.x),
     endAngle: Math.atan2(last.y - prev.y, last.x - prev.x),
     fromSide,
     toSide
@@ -339,16 +339,16 @@ function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", o
     if (fromSide === "auto") fromSide = auto.fromSide;
     if (toSide === "auto") toSide = auto.toSide;
   }
-  const start = fromPoint ?? sidePoint(a, fromSide);
+  const start2 = fromPoint ?? sidePoint(a, fromSide);
   const end = toPoint ?? sidePoint(b, toSide);
   const bends = Array.isArray(via) ? via.filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)).slice(0, 8) : [];
   if (bends.length) {
-    const pts = [start, ...bends, end];
+    const pts = [start2, ...bends, end];
     const mid2 = pts[Math.floor((pts.length - 1) / 2)];
-    const angle = Math.atan2(end.y - start.y, end.x - start.x);
+    const angle = Math.atan2(end.y - start2.y, end.x - start2.x);
     return {
       d: pts.map((p, i) => `${i ? "L" : "M"}${num(p.x)} ${num(p.y)}`).join(""),
-      start,
+      start: start2,
       end,
       mid: mid2,
       points: pts,
@@ -360,15 +360,15 @@ function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", o
   }
   const nf = NORMALS[fromSide];
   const nt = NORMALS[toSide];
-  const dist = Math.hypot(end.x - start.x, end.y - start.y);
+  const dist = Math.hypot(end.x - start2.x, end.y - start2.y);
   if (route === "straight") {
-    const angle = Math.atan2(end.y - start.y, end.x - start.x);
+    const angle = Math.atan2(end.y - start2.y, end.x - start2.x);
     return {
-      d: `M${num(start.x)} ${num(start.y)}L${num(end.x)} ${num(end.y)}`,
-      start,
+      d: `M${num(start2.x)} ${num(start2.y)}L${num(end.x)} ${num(end.y)}`,
+      start: start2,
       end,
-      mid: { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 },
-      points: [start, end],
+      mid: { x: (start2.x + end.x) / 2, y: (start2.y + end.y) / 2 },
+      points: [start2, end],
       startAngle: angle,
       endAngle: angle,
       fromSide,
@@ -377,11 +377,11 @@ function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", o
   }
   if (route === "elbow") {
     const STUB = 24 * reach;
-    const s1 = { x: start.x + nf.x * STUB, y: start.y + nf.y * STUB };
+    const s1 = { x: start2.x + nf.x * STUB, y: start2.y + nf.y * STUB };
     const e1 = { x: end.x + nt.x * STUB, y: end.y + nt.y * STUB };
     const fromH = nf.y === 0;
     const toH = nt.y === 0;
-    const pts = [start, s1];
+    const pts = [start2, s1];
     if (fromH && toH) {
       const mx = wrap && nf.x === nt.x ? nf.x > 0 ? Math.max(s1.x, e1.x) : Math.min(s1.x, e1.x) : (s1.x + e1.x) / 2;
       pts.push({ x: mx, y: s1.y }, { x: mx, y: e1.y });
@@ -394,28 +394,28 @@ function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", o
       pts.push({ x: s1.x, y: e1.y });
     }
     pts.push(e1, end);
-    return polyGeo(pts, start, end, fromSide, toSide);
+    return polyGeo(pts, start2, end, fromSide, toSide);
   }
   const k = Math.max(40, 0.4 * dist) * reach;
   let px = 0;
   let py = 0;
   if (offset && dist > 0) {
-    px = -(end.y - start.y) / dist * offset;
-    py = (end.x - start.x) / dist * offset;
+    px = -(end.y - start2.y) / dist * offset;
+    py = (end.x - start2.x) / dist * offset;
   }
-  const c1 = { x: start.x + nf.x * k + px, y: start.y + nf.y * k + py };
+  const c1 = { x: start2.x + nf.x * k + px, y: start2.y + nf.y * k + py };
   const c2 = { x: end.x + nt.x * k + px, y: end.y + nt.y * k + py };
   const mid = {
-    x: (start.x + 3 * c1.x + 3 * c2.x + end.x) / 8,
-    y: (start.y + 3 * c1.y + 3 * c2.y + end.y) / 8
+    x: (start2.x + 3 * c1.x + 3 * c2.x + end.x) / 8,
+    y: (start2.y + 3 * c1.y + 3 * c2.y + end.y) / 8
   };
   return {
-    d: `M${num(start.x)} ${num(start.y)}C${num(c1.x)} ${num(c1.y)} ${num(c2.x)} ${num(c2.y)} ${num(end.x)} ${num(end.y)}`,
-    start,
+    d: `M${num(start2.x)} ${num(start2.y)}C${num(c1.x)} ${num(c1.y)} ${num(c2.x)} ${num(c2.y)} ${num(end.x)} ${num(end.y)}`,
+    start: start2,
     end,
     mid,
-    points: [start, c1, c2, end],
-    startAngle: Math.atan2(c1.y - start.y, c1.x - start.x),
+    points: [start2, c1, c2, end],
+    startAngle: Math.atan2(c1.y - start2.y, c1.x - start2.x),
     endAngle: Math.atan2(end.y - c2.y, end.x - c2.x),
     fromSide,
     toSide
@@ -550,14 +550,14 @@ function rowEndPath(args, rowEnd2) {
     return [{ point, side: side2, flip: 0 }, { ...flipSide(box2, point, side2), flip: 1 }];
   };
   const bent = (tier, from, to) => {
-    const start = from.point ?? sidePoint(from.box, from.side);
+    const start2 = from.point ?? sidePoint(from.box, from.side);
     const end = to.point ?? sidePoint(to.box, to.side);
     const out = from.point ? rowLeg(from.box, from.point, from.side, from.corner, from.gap) : [];
     const back = to.point ? rowLeg(to.box, to.point, to.side, to.corner, to.gap).reverse() : [];
-    const pts = [start, ...out, ...back, end];
+    const pts = [start2, ...out, ...back, end];
     let len = 0;
     for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-    consider2(polyGeo(pts, start, end, from.side, to.side), tier, 0, 1 + CORNER_GAPS.indexOf(from.gap ?? to.gap), len);
+    consider2(polyGeo(pts, start2, end, from.side, to.side), tier, 0, 1 + CORNER_GAPS.indexOf(from.gap ?? to.gap), len);
   };
   const CORNERS = ["top", "bottom"];
   const groups2 = [];
@@ -4312,11 +4312,11 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
   };
 }
 function anchorUid(board2, uid) {
-  const start = board2?.items.get(uid);
-  if (!start) return uid;
+  const start2 = board2?.items.get(uid);
+  if (!start2) return uid;
   let cur = uid;
-  if (start.type === "text" && start.look === "section-note") {
-    const parent = board2.items.get(start.parentUid);
+  if (start2.type === "text" && start2.look === "section-note") {
+    const parent = board2.items.get(start2.parentUid);
     if (parent?.type === "section") cur = parent.uid;
   }
   let collapsed = null;
@@ -4979,16 +4979,16 @@ function piecesOf(item, transform, fonts) {
   const re = /(\s+)|(\S+)/g;
   let match;
   while (match = re.exec(str3)) {
-    const start = match.index;
-    const end = start + match[0].length;
+    const start2 = match.index;
+    const end = start2 + match[0].length;
     if (match[1]) {
-      out.push({ space: true, x0: x + start * perChar, x1: x + end * perChar, base: base2, size, rotated });
+      out.push({ space: true, x0: x + start2 * perChar, x1: x + end * perChar, base: base2, size, rotated });
     } else {
       let math = 0;
       for (const ch of match[2]) if (isMathChar(ch)) math++;
       out.push({
         text: match[2],
-        x0: x + start * perChar,
+        x0: x + start2 * perChar,
         x1: x + end * perChar,
         base: base2,
         size,
@@ -5001,7 +5001,7 @@ function piecesOf(item, transform, fonts) {
         mathChars: math,
         rotated,
         angle,
-        leadingSpace: ocrWord || start > 0 && str3[start - 1] === " ",
+        leadingSpace: ocrWord || start2 > 0 && str3[start2 - 1] === " ",
         trailingSpace: ocrWord || end < str3.length && str3[end] === " ",
         conf: item.conf,
         boxY: ocrWord && item.y0 != null && item.y1 != null ? [item.y0, item.y1] : null
@@ -6016,8 +6016,8 @@ function unionLength(segs) {
   let len = 0;
   let end = -Infinity;
   for (const [a, b] of iv) {
-    const start = Math.max(a, end);
-    if (b > start) len += b - start;
+    const start2 = Math.max(a, end);
+    if (b > start2) len += b - start2;
     end = Math.max(end, b);
   }
   return len;
@@ -7803,11 +7803,11 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
     return raw.map((p, i) => {
       const next = raw[i + 1];
       if (!next || p.span < 2 || next.c <= p.c || next.c >= p.c + p.span) return p;
-      const start = cols[p.c];
+      const start2 = cols[p.c];
       const end = cols[Math.min(cols.length - 1, p.c + p.span - 1)];
       const mid = (p.t.x0 + p.t.x1) / 2;
-      const inStart = Math.abs(mid - (start.x0 + start.x1) / 2);
-      const inSpan = Math.abs(mid - (start.x0 + end.x1) / 2);
+      const inStart = Math.abs(mid - (start2.x0 + start2.x1) / 2);
+      const inSpan = Math.abs(mid - (start2.x0 + end.x1) / 2);
       if (inStart + 1 < inSpan) return { ...p, span: next.c - p.c };
       return p;
     });
@@ -8965,9 +8965,9 @@ function proseGrid(table) {
   return byRow.size >= 3 && sentence / byRow.size >= 0.6;
 }
 function damagedIndexColumn(table) {
-  const start = table?.headerRows || 0;
+  const start2 = table?.headerRows || 0;
   for (let c = 0; c < (table?.cols || 0); c++) {
-    const texts = (table.cells || []).filter((k) => k.c === c && (k.colSpan || 1) === 1 && k.r >= start && String(k.text || "").trim()).map((k) => String(k.text).trim());
+    const texts = (table.cells || []).filter((k) => k.c === c && (k.colSpan || 1) === 1 && k.r >= start2 && String(k.text || "").trim()).map((k) => String(k.text).trim());
     if (texts.length < 6) continue;
     const marked = texts.filter((t) => /^\d{1,3}[.\-–−]$/.test(t)).length;
     const bare = texts.filter((t) => /^\d{1,3}$/.test(t)).length;
@@ -9083,9 +9083,9 @@ function selectRows(rows, seedIndexes, size) {
   const lo = Math.min(...seedIndexes);
   const hi = Math.max(...seedIndexes);
   const gapBetween = (a, b) => a < b ? rows[b].row.y0 - rows[a].row.y1 : rows[a].row.y0 - rows[b].row.y1;
-  const walk3 = (start, step) => {
-    let last = start;
-    let i = start + step;
+  const walk3 = (start2, step) => {
+    let last = start2;
+    let i = start2 + step;
     let headSeen = false;
     while (i >= 0 && i < rows.length) {
       const r = rows[i];
@@ -11372,9 +11372,9 @@ function splitPlateBands(figures, ink, caps, lines, bodySize, pageW, pageH) {
   figures.push(...made);
   return true;
 }
-function captionSlice(words, start, end) {
+function captionSlice(words, start2, end) {
   const slice = [];
-  for (let i = start; i < end; i++) {
+  for (let i = start2; i < end; i++) {
     if (slice.length) {
       const prev = String(words[i - 1].text || "").trim();
       const gap = words[i].x0 - words[i - 1].x1;
@@ -11964,15 +11964,15 @@ function spanNoteRows(table, { numericCols = null } = {}) {
     const prose = words.length >= 3 && /[A-Za-z]{3,}/.test(text4);
     if (!prose && !(isPlaceholder(text4) && !/^[-–—]+$/.test(text4))) continue;
     if (numericSet && !rest.every((k) => numericSet.has(k.c) || k.colSpan > 1)) continue;
-    const start = prefixEnd + 1;
+    const start2 = prefixEnd + 1;
     const end = cols - 1;
-    if (end - start + 1 < 2) continue;
+    if (end - start2 + 1 < 2) continue;
     const first = rest[0];
-    const keep = { ...first, c: start, colSpan: end - start + 1, text: text4, align: "center", numeric: false, header: false };
-    const removed = new Set(values.filter((k) => k.c >= start).map((k) => `${k.r}:${k.c}`));
+    const keep = { ...first, c: start2, colSpan: end - start2 + 1, text: text4, align: "center", numeric: false, header: false };
+    const removed = new Set(values.filter((k) => k.c >= start2).map((k) => `${k.r}:${k.c}`));
     table.cells = table.cells.filter((k) => !(k.r === r && removed.has(`${k.r}:${k.c}`)));
     table.cells.push(keep);
-    spans.push({ r, c: start, colSpan: keep.colSpan, text: text4 });
+    spans.push({ r, c: start2, colSpan: keep.colSpan, text: text4 });
   }
   if (spans.length) table.cells.sort((a, b) => a.r - b.r || a.c - b.c);
   return spans;
@@ -12068,15 +12068,15 @@ function spanGroupHeaders(table) {
   for (const cell of [...table.cells]) {
     if (cell.r !== 0 || (cell.rowSpan || 1) !== 1) continue;
     if (!String(cell.text || "").trim() || isNumericText(cell.text)) continue;
-    let start = cell.c;
+    let start2 = cell.c;
     let end = cell.c + (cell.colSpan || 1) - 1;
-    while (start > 0 && !occupied(start - 1, cell) && textAt(1, start - 1)) start--;
+    while (start2 > 0 && !occupied(start2 - 1, cell) && textAt(1, start2 - 1)) start2--;
     while (end + 1 < table.cols && !occupied(end + 1, cell) && textAt(1, end + 1)) end++;
-    if (start === cell.c && end === cell.c + (cell.colSpan || 1) - 1) continue;
-    table.cells = table.cells.filter((k) => !(k.r === 0 && k !== cell && !String(k.text || "").trim() && k.c >= start && k.c <= end));
-    cell.c = start;
-    cell.colSpan = end - start + 1;
-    spans.push({ c: start, colSpan: cell.colSpan, text: cell.text });
+    if (start2 === cell.c && end === cell.c + (cell.colSpan || 1) - 1) continue;
+    table.cells = table.cells.filter((k) => !(k.r === 0 && k !== cell && !String(k.text || "").trim() && k.c >= start2 && k.c <= end));
+    cell.c = start2;
+    cell.colSpan = end - start2 + 1;
+    spans.push({ c: start2, colSpan: cell.colSpan, text: cell.text });
   }
   if (spans.length) table.cells.sort((a, b) => a.r - b.r || a.c - b.c);
   return spans;
@@ -12267,8 +12267,8 @@ function splitFusedLabelRow(table) {
   }
 }
 function unshiftRepeatedUnit(table) {
-  const start = table.headerRows || 0;
-  for (let r = start; r < table.rows - 2; r++) {
+  const start2 = table.headerRows || 0;
+  for (let r = start2; r < table.rows - 2; r++) {
     const row4 = table.cells.filter((c) => c.r === r && (c.rowSpan || 1) === 1 && (c.colSpan || 1) === 1);
     const stub = row4.find((c) => c.c === 0);
     const vals = row4.filter((c) => c.c > 0 && String(c.text || "").trim());
@@ -12322,7 +12322,7 @@ function shiftSectionValues(table) {
   }
 }
 function blankRepeatedFill(table) {
-  const start = table.headerRows || 0;
+  const start2 = table.headerRows || 0;
   const plain2 = (r, c) => table.cells.find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
   const fillOf = (r, c) => {
     const cell = plain2(r, c);
@@ -12331,14 +12331,14 @@ function blankRepeatedFill(table) {
   };
   const otherIn = (c0, c1, text4) => {
     for (let c = c0; c < c1; c++) {
-      for (let r = start; r < table.rows; r++) {
+      for (let r = start2; r < table.rows; r++) {
         const t = String(plain2(r, c)?.text || "").trim();
         if (t && t !== text4) return true;
       }
     }
     return false;
   };
-  for (let r = start; r < table.rows; r++) {
+  for (let r = start2; r < table.rows; r++) {
     for (let c = 0; c < table.cols - 2; c++) {
       const text4 = fillOf(r, c);
       if (!text4) continue;
@@ -12359,7 +12359,7 @@ function blankRepeatedFill(table) {
       };
       for (let rr = r; rr < r12; rr++) for (let k = c; k < c1; k++) blank(rr, k);
       for (const rr of [r - 1, r12]) {
-        if (rr < start || rr >= table.rows) continue;
+        if (rr < start2 || rr >= table.rows) continue;
         for (let k = c; k < c1; k++) if (fillOf(rr, k) === text4) blank(rr, k);
       }
     }
@@ -12380,9 +12380,9 @@ function tidyMeasuredCells(table) {
     if (/[A-Za-z]/.test(text4) && /\d{4}-+\s*$/.test(text4)) text4 = text4.replace(/-+\s*$/, "").trim();
     if (text4 !== cell.text) cell.text = text4;
   }
-  const start = table.headerRows || 0;
+  const start2 = table.headerRows || 0;
   for (let c = 0; c < table.cols; c++) {
-    const cells = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && k.r >= start);
+    const cells = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && k.r >= start2);
     const dotted = cells.some((k) => /\d\s*[.,]\s*\d/.test(String(k.text || "")) || /^\s*[.,]\d/.test(String(k.text || "")));
     if (!dotted) continue;
     for (const cell of cells) {
@@ -12392,10 +12392,10 @@ function tidyMeasuredCells(table) {
   }
 }
 function restoreBareDecimals(table) {
-  const start = table.headerRows || 0;
+  const start2 = table.headerRows || 0;
   const textOf2 = (k) => String(k.text || "").trim();
   for (let c = 0; c < table.cols; c++) {
-    const cells = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1 && k.r >= start);
+    const cells = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1 && k.r >= start2);
     const dotted = cells.filter((k) => /^(?:0)?\.\d{3,6}$/.test(textOf2(k)));
     const bare = cells.filter((k) => /^\d{3,6}$/.test(textOf2(k)));
     if (!dotted.length || !bare.length) continue;
@@ -12415,17 +12415,17 @@ function restoreBareDecimals(table) {
   }
 }
 function blankDecimalRun(table) {
-  const start = table.headerRows || 0;
+  const start2 = table.headerRows || 0;
   const plain2 = (r, c) => table.cells.find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
   const textOf2 = (r, c) => String(plain2(r, c)?.text || "").trim();
   for (let c = 1; c < table.cols; c++) {
     const seen = /* @__PURE__ */ new Set();
-    for (let r3 = start; r3 < table.rows; r3++) {
+    for (let r3 = start2; r3 < table.rows; r3++) {
       const t = textOf2(r3, c);
       if (t && /\d/.test(t)) seen.add(t);
     }
     if (seen.size < 2) continue;
-    let r = start;
+    let r = start2;
     while (r < table.rows) {
       const token = textOf2(r, c);
       if (!/^\.\d{2,4}$/.test(token)) {
@@ -12452,11 +12452,11 @@ function blankDecimalRun(table) {
   }
 }
 function joinSplitDates(table) {
-  const start = table.headerRows || 0;
+  const start2 = table.headerRows || 0;
   for (let c = 0; c < table.cols - 1; c++) {
     const pairs = [];
     let rows = 0;
-    for (let r = start; r < table.rows; r++) {
+    for (let r = start2; r < table.rows; r++) {
       const left = table.cells.find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
       const right = table.cells.find((k) => k.r === r && k.c === c + 1 && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
       const lt = String(left?.text || "").trim();
@@ -12543,9 +12543,9 @@ function deleteColumn(table, c) {
   table.cells = kept;
 }
 function foldScientificSplit(table) {
-  const start = table.headerRows || 0;
+  const start2 = table.headerRows || 0;
   for (let c = table.cols - 1; c >= 2; c--) {
-    const cells = table.cells.filter((k) => k.r >= start && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+    const cells = table.cells.filter((k) => k.r >= start2 && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
     const filled = cells.filter((k) => String(k.text || "").trim());
     if (filled.length < 3) continue;
     if (!filled.every((k) => factorKind(k.text))) continue;
@@ -12618,8 +12618,8 @@ function dropLeaderColumn(table) {
 function foldLoneTailColumn(table) {
   if ((table.cols || 0) < 3 || (table.rows || 0) < 8) return;
   const c = table.cols - 1;
-  const start = table.headerRows || 0;
-  if (table.cells.some((k) => k.r < start && k.c === c && String(k.text || "").trim())) return;
+  const start2 = table.headerRows || 0;
+  if (table.cells.some((k) => k.r < start2 && k.c === c && String(k.text || "").trim())) return;
   const filled = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && String(k.text || "").trim());
   if (!filled.length || filled.length > Math.max(1, 0.25 * table.rows)) return;
   if (!filled.every((k) => !/\d/.test(k.text) && String(k.text).trim().split(/\s+/).length <= 2)) return;
@@ -12700,9 +12700,9 @@ function repairTableReading(table, options = {}) {
   return table;
 }
 function repairGlyphDigits(table) {
-  const start = table.headerRows || 0;
+  const start2 = table.headerRows || 0;
   const textOf2 = (cell) => String(cell?.text || "").trim();
-  const body = (c) => table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1 && k.r >= start);
+  const body = (c) => table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1 && k.r >= start2);
   const integerValue = (text4) => /^\d{1,6}$/.test(text4) ? Number(text4) : null;
   for (let c = 0; c < (table.cols || 0); c += 1) {
     const cells = body(c);
@@ -12716,7 +12716,7 @@ function repairGlyphDigits(table) {
       const run = ordered.every((k, i) => k === holes[0] || integerValue(textOf2(k)) === first + i);
       if (run && first >= 0) {
         holes[0].text = String(first + at);
-        if (holes[0].r < start) table.headerRows = holes[0].r;
+        if (holes[0].r < start2) table.headerRows = holes[0].r;
       }
     }
     if (filled.length < 4) continue;
@@ -15264,18 +15264,18 @@ function oneBulletTree(text4) {
   const allBullets = kept.every((line) => /^\s*[-*]\s+/.test(line));
   if (allBullets) {
     let seen = 0;
-    let start = -1;
+    let start2 = -1;
     for (let i = 0; i < kept.length; i += 1) {
       if (/^- /.test(kept[i])) {
         seen += 1;
         if (seen === 2) {
-          start = i;
+          start2 = i;
           break;
         }
       }
     }
-    if (start < 0) return kept.join("\n");
-    return kept.map((line, i) => i >= start ? `  ${line}` : line).join("\n");
+    if (start2 < 0) return kept.join("\n");
+    return kept.map((line, i) => i >= start2 ? `  ${line}` : line).join("\n");
   }
   const first = kept[0].replace(/^\s*[-*]\s+/, "").trim();
   const rest = kept.slice(1).map((line) => {
@@ -16437,11 +16437,11 @@ function segmentHits(a, b, rect) {
   if (maxX < left || minX > right || maxY < top || minY > bottom) return false;
   return true;
 }
-function routeAround(start, end, obstacles = []) {
-  const hit = (obstacles || []).filter((rect) => rect && segmentHits(start, end, rect));
+function routeAround(start2, end, obstacles = []) {
+  const hit = (obstacles || []).filter((rect) => rect && segmentHits(start2, end, rect));
   if (!hit.length) return [];
   const top = Math.min(...hit.map((rect) => rect.y)) - 28;
-  return cleanVia2([{ x: start.x, y: top }, { x: end.x, y: top }]);
+  return cleanVia2([{ x: start2.x, y: top }, { x: end.x, y: top }]);
 }
 function sectionPair(uids, getItem) {
   const sections = [];
@@ -16589,8 +16589,8 @@ function timeIndex(items) {
   events.sort((a, b) => a.time - b.time || String(a.uid).localeCompare(String(b.uid)));
   return events;
 }
-function monthSteps(start, end) {
-  const a = new Date(start);
+function monthSteps(start2, end) {
+  const a = new Date(start2);
   const b = new Date(end);
   if (!Number.isFinite(a.getTime()) || !Number.isFinite(b.getTime()) || b.getTime() <= a.getTime()) {
     return [Number.isFinite(a.getTime()) ? a.getTime() : Date.now()];
@@ -16896,16 +16896,16 @@ function markSpans(text4) {
   if (lead) spans.push({ start: lead[1].length, end: lead[0].length, raw: lead[3], bracket: true });
   const trail = TRAIL_RE2.exec(text4);
   if (trail) {
-    const start = trail.index + trail[1].length;
-    if (!spans.some((s) => start < s.end)) spans.push({ start, end: trail.index + trail[0].replace(/\s+$/, "").length, raw: trail[3], bracket: true, eat: trail[1].length });
+    const start2 = trail.index + trail[1].length;
+    if (!spans.some((s) => start2 < s.end)) spans.push({ start: start2, end: trail.index + trail[0].replace(/\s+$/, "").length, raw: trail[3], bracket: true, eat: trail[1].length });
   }
   RUN_RE.lastIndex = 0;
   let m;
   while (m = RUN_RE.exec(text4)) {
-    const start = m.index;
-    const end = start + m[0].length;
-    if (spans.some((s) => start < s.end && end > s.start)) continue;
-    spans.push({ start, end, raw: m[0], bracket: false });
+    const start2 = m.index;
+    const end = start2 + m[0].length;
+    if (spans.some((s) => start2 < s.end && end > s.start)) continue;
+    spans.push({ start: start2, end, raw: m[0], bracket: false });
   }
   return spans.sort((a, b) => a.start - b.start);
 }
@@ -17861,8 +17861,8 @@ var init_arrow_home = __esm({
 function nextPanelWidth(current3, delta, { min = PANEL_WIDTH_MIN, max = PANEL_WIDTH_MAX } = {}) {
   const base2 = Number(current3);
   const d = Number(delta);
-  const start = Number.isFinite(base2) ? base2 : PANEL_WIDTH_DEFAULT;
-  const next = start + (Number.isFinite(d) ? d : 0);
+  const start2 = Number.isFinite(base2) ? base2 : PANEL_WIDTH_DEFAULT;
+  const next = start2 + (Number.isFinite(d) ? d : 0);
   return Math.min(max, Math.max(min, Math.round(next)));
 }
 function infoTabList(tabs, uid, { add = false } = {}) {
@@ -19361,7 +19361,7 @@ function createPerfLog({ cap: cap4 = PERF_CAP } = {}) {
     if (stats) stats.perf = null;
     publishLatest(null);
   }
-  const start = ({ stats: next, lifecycle, events = true, tasks = true } = {}) => {
+  const start2 = ({ stats: next, lifecycle, events = true, tasks = true } = {}) => {
     if (next) bind(next);
     track2(lifecycle);
     on = true;
@@ -19446,7 +19446,7 @@ function createPerfLog({ cap: cap4 = PERF_CAP } = {}) {
   };
   return {
     bind,
-    start,
+    start: start2,
     stop: stop3,
     armEvent,
     armLongTask,
@@ -20399,8 +20399,8 @@ function bgSpans(string) {
   }
   return out;
 }
-function dropSpan(string, start, end) {
-  let a = start;
+function dropSpan(string, start2, end) {
+  let a = start2;
   let b = end;
   const before = a > 0 && string[a - 1] === " ";
   const after = b < string.length && string[b] === " ";
@@ -22113,7 +22113,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
       }
     }
   };
-  const start = () => {
+  const start2 = () => {
     cache.load();
     if (!cache.size()) return;
     scan(doc.body);
@@ -22135,7 +22135,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     models.clear();
     cache.clear();
   };
-  return { start, scan, noteBoard, dispose, openPop, closePop, cache, chipCount: () => chips.size, crumbCount: () => crumbGlyphs.size, isOpen: () => Boolean(pop) };
+  return { start: start2, scan, noteBoard, dispose, openPop, closePop, cache, chipCount: () => chips.size, crumbCount: () => crumbGlyphs.size, isOpen: () => Boolean(pop) };
 }
 var CHIP_CLASS, POP_CLASS, CRUMB_CLASS, CRUMB_TIP, SCAN_CAP, NAME_MAX, BLOCK_MAX, MODEL_TTL_MS, BLOCK_SELECTOR, isInput, clip3, endName, ROW_PAD, clamp013, POP_GAP, rectsHit, rowEnd;
 var init_relchips = __esm({
@@ -23110,11 +23110,11 @@ function createRowScheduler({ idle, now: now5 = () => Date.now(), budgetMs = 8, 
     handle = null;
     queued = false;
     if (disposed || held) return;
-    const start = now5();
+    const start2 = now5();
     const open = allNow();
     const has = deadline && typeof deadline.timeRemaining === "function" ? () => deadline.timeRemaining() > 1 : () => true;
     for (const row4 of pending()) {
-      if (!open && (held || now5() - start >= budgetMs || !has())) break;
+      if (!open && (held || now5() - start2 >= budgetMs || !has())) break;
       finish(row4);
     }
     if (!held && pending().length) schedule();
@@ -23516,9 +23516,9 @@ function cardMarkdown(title, body) {
   return toRoamMarkdown({ schema: SCHEMA2, engine: "anydoc", order, blocks }, order).markdown;
 }
 function batchRows(rows, offset) {
-  const start = Math.max(0, Number.isFinite(offset) ? Math.floor(offset) : 0);
-  const slice = rows.slice(start, start + OFFICE_BATCH);
-  const next = start + slice.length;
+  const start2 = Math.max(0, Number.isFinite(offset) ? Math.floor(offset) : 0);
+  const slice = rows.slice(start2, start2 + OFFICE_BATCH);
+  const next = start2 + slice.length;
   const more = next < rows.length;
   return {
     sections: slice,
@@ -25113,9 +25113,9 @@ function indexUntil(ix, rows, over) {
       ix.mode = "emit";
     }
     if (ix.mode === "emit") {
-      const start = ix.start;
+      const start2 = ix.start;
       const c = ix.end;
-      const len = c - start;
+      const len = c - start2;
       let steps = 0;
       while (ix.g < c) {
         if (steps >= 24 && over()) return false;
@@ -25199,11 +25199,11 @@ function schedulePartsIndex(rows, { budget = null, now: now5 = defaultNow2, onRe
 }
 function wordsInto(term, into) {
   into.length = 0;
-  let start = 0;
+  let start2 = 0;
   for (let i = 0; i <= term.length; i += 1) {
     if (i === term.length || term.charCodeAt(i) <= 32) {
-      if (i > start) into.push(term.slice(start, i));
-      start = i + 1;
+      if (i > start2) into.push(term.slice(start2, i));
+      start2 = i + 1;
     }
   }
   return into;
@@ -25447,10 +25447,10 @@ function partSnippet(text4, needle, width = SNIPPET_W) {
   }
   if (at === -1) return { before: "", hit: "", after: t.length > width ? `${t.slice(0, width)}…` : t };
   const room = Math.max(0, width - n3.length);
-  const start = Math.max(0, at - Math.floor(room / 3));
-  const end = Math.min(t.length, at + n3.length + room - (at - start));
+  const start2 = Math.max(0, at - Math.floor(room / 3));
+  const end = Math.min(t.length, at + n3.length + room - (at - start2));
   return {
-    before: `${start > 0 ? "…" : ""}${t.slice(start, at)}`,
+    before: `${start2 > 0 ? "…" : ""}${t.slice(start2, at)}`,
     hit: t.slice(at, at + n3.length),
     after: `${t.slice(at + n3.length, end)}${end < t.length ? "…" : ""}`
   };
@@ -30239,9 +30239,9 @@ function editorKeyAction({
   if (key === "Enter" && isRoot && !shift && !mod && !alt && enterMode !== "child") return { type: "newline" };
   if (key === "Backspace" && isRoot && fresh && !mod && !alt) {
     const text4 = String(value ?? "");
-    const start = Math.min(selectionStart, selectionEnd);
+    const start2 = Math.min(selectionStart, selectionEnd);
     const end = Math.max(selectionStart, selectionEnd);
-    if (!text4.trim() && start === end) return { type: "delete-card" };
+    if (!text4.trim() && start2 === end) return { type: "delete-card" };
   }
   return { type: "roam" };
 }
@@ -30564,13 +30564,13 @@ async function waitHydrateQuiet(el2, capMs = HYDRATE_CAP_MS) {
     observer.observe(el2, { childList: true, subtree: true, attributes: true, characterData: true });
   } catch {
   }
-  const start = Date.now();
+  const start2 = Date.now();
   const grace = 250;
   let quiet = 0;
   let saw = false;
   try {
-    while (Date.now() - start < capMs) {
-      if (!saw && Date.now() - start >= grace) break;
+    while (Date.now() - start2 < capMs) {
+      if (!saw && Date.now() - start2 >= grace) break;
       await nextFrame2();
       if (mutations > 0) {
         saw = true;
@@ -36147,7 +36147,7 @@ function createItemRenderer({
   });
   const snapshots = /* @__PURE__ */ new Set();
   const waitDrawingImg = (holder, snap) => new Promise((resolve) => {
-    const start = Date.now();
+    const start2 = Date.now();
     snap.done = () => resolve(null);
     const tick = () => {
       if (disposed) {
@@ -36159,7 +36159,7 @@ function createItemRenderer({
         resolve(img);
         return;
       }
-      if (Date.now() - start > 2500) {
+      if (Date.now() - start2 > 2500) {
         resolve(img || null);
         return;
       }
@@ -36641,9 +36641,9 @@ function createItemRenderer({
     const pump = () => {
       freezeFrame = null;
       while (queue.length) {
-        const start = now2();
+        const start2 = now2();
         let n3 = 0;
-        while (queue.length && (n3 === 0 || now2() - start < CHUNK_MS)) {
+        while (queue.length && (n3 === 0 || now2() - start2 < CHUNK_MS)) {
           if (gen !== freezeGen || !quieted2 || disposed) return;
           const [uid, rec] = queue.shift();
           if (shells.get(uid) === rec) holdQuiet(rec, uid);
@@ -37461,9 +37461,9 @@ function createItemRenderer({
     return editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea") || null;
   };
   const waitPageInput = async (editor, row4, uid) => {
-    const start = now2();
+    const start2 = now2();
     let input = pageInput(editor, row4);
-    while (!input && now2() - start < PAGE_FOCUS_MS) {
+    while (!input && now2() - start2 < PAGE_FOCUS_MS) {
       await new Promise((resolve) => {
         frameLater(resolve);
       });
@@ -37483,10 +37483,10 @@ function createItemRenderer({
     return null;
   };
   const waitNoteInput = async (editor, uid, row4 = "") => {
-    const start = now2();
+    const start2 = now2();
     let input = noteInput(editor);
     let clicked = false;
-    while (!input && now2() - start < NOTE_INPUT_MS) {
+    while (!input && now2() - start2 < NOTE_INPUT_MS) {
       const view = clicked ? null : noteView(editor, row4);
       if (view) {
         clicked = true;
@@ -39704,11 +39704,11 @@ function editorPastePlan({
   let b = Number(selectionEnd);
   if (!Number.isFinite(a)) a = v.length;
   if (!Number.isFinite(b)) b = a;
-  const start = Math.max(0, Math.min(Math.min(a, b), v.length));
-  const end = Math.max(start, Math.min(Math.max(a, b), v.length));
+  const start2 = Math.max(0, Math.min(Math.min(a, b), v.length));
+  const end = Math.max(start2, Math.min(Math.max(a, b), v.length));
   return {
     type: "blocks",
-    string: v.slice(0, start) + lines[0] + v.slice(end),
+    string: v.slice(0, start2) + lines[0] + v.slice(end),
     children: lines.slice(1)
   };
 }
@@ -39719,9 +39719,9 @@ function inlineAtCaret(value, selectionStart, selectionEnd, insert) {
   let b = Number(selectionEnd);
   if (!Number.isFinite(a)) a = v.length;
   if (!Number.isFinite(b)) b = a;
-  const start = Math.max(0, Math.min(Math.min(a, b), v.length));
-  const end = Math.max(start, Math.min(Math.max(a, b), v.length));
-  return { string: v.slice(0, start) + chunk + v.slice(end), caret: start + chunk.length };
+  const start2 = Math.max(0, Math.min(Math.min(a, b), v.length));
+  const end = Math.max(start2, Math.min(Math.max(a, b), v.length));
+  return { string: v.slice(0, start2) + chunk + v.slice(end), caret: start2 + chunk.length };
 }
 function imageMarkdown(urls2) {
   return [...urls2 ?? []].filter((u) => typeof u === "string" && u).map((u) => `![](${u})`).join("");
@@ -40091,10 +40091,10 @@ function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap: cap4 = 22, ca
   const { cols: perRow } = gridOf(picked.length);
   const placed = [];
   let y = y0;
-  for (let start = 0; start < picked.length; start += perRow) {
+  for (let start2 = 0; start2 < picked.length; start2 += perRow) {
     let x = x0;
     let rowH = 0;
-    for (const g of picked.slice(start, start + perRow)) {
+    for (const g of picked.slice(start2, start2 + perRow)) {
       const { cols, rows } = gridOf(g.uids.length);
       const sw = PAD * 2 + cols * w + (cols - 1) * GAP;
       const sh = PAD * 2 + rows * h + (rows - 1) * GAP;
@@ -41628,12 +41628,12 @@ function createSyncHold({
     const cap4 = Math.min(capMs, Number.isFinite(budget) ? budget : capMs);
     onHold?.();
     installGuard();
-    const start = now5();
+    const start2 = now5();
     let capped = false;
     try {
       while (state === true) {
         if (abort?.()) break;
-        if (now5() - start >= cap4) {
+        if (now5() - start2 >= cap4) {
           capped = true;
           break;
         }
@@ -41644,7 +41644,7 @@ function createSyncHold({
     } finally {
       if (!keepGuard) release();
     }
-    return { waited: now5() - start, capped, held: true };
+    return { waited: now5() - start2, capped, held: true };
   };
   return { saving, wait: wait2, release };
 }
@@ -41671,16 +41671,16 @@ var isDiagramString = (s) => DIAGRAM_RE2.test(String(s ?? ""));
 function unwrapQuery(s) {
   const m = QUERY_RE.exec(s);
   if (!m) return s;
-  const start = m.index;
-  let i = start + m[0].length;
+  const start2 = m.index;
+  let i = start2 + m[0].length;
   let depth = 2;
   for (; i < s.length && depth > 0; i += 1) {
     if (s[i] === "{") depth += 1;
     else if (s[i] === "}") depth -= 1;
   }
   const end = depth === 0 ? i : s.length;
-  const body = s.slice(start + m[0].length, depth === 0 ? end - 2 : end);
-  return `${s.slice(0, start)} ${body} ${s.slice(end)}`;
+  const body = s.slice(start2 + m[0].length, depth === 0 ? end - 2 : end);
+  return `${s.slice(0, start2)} ${body} ${s.slice(end)}`;
 }
 function plainQueryText(string) {
   let s = unwrapQuery(String(string ?? ""));
@@ -44557,11 +44557,11 @@ function createModelStore({ indexedDB = globalThis.indexedDB, graph = "", now: n
 }
 
 // src/part-sizer.js
-function createPartSizer({ max = 30, start = 4 } = {}) {
+function createPartSizer({ max = 30, start: start2 = 4 } = {}) {
   let per = 0;
   return {
     size(leftMs) {
-      if (!(per > 0)) return Math.max(1, Math.min(max, start));
+      if (!(per > 0)) return Math.max(1, Math.min(max, start2));
       return Math.max(1, Math.min(max, Math.floor(Math.max(0, leftMs) / per)));
     },
     note(n3, ms) {
@@ -50313,18 +50313,18 @@ var SECTION_GAP2 = 24;
 function nestMarkdownUnderFirst(markdown) {
   const lines = String(markdown ?? "").split("\n");
   let seen = 0;
-  let start = -1;
+  let start2 = -1;
   for (let i = 0; i < lines.length; i += 1) {
     if (/^- /.test(lines[i])) {
       seen += 1;
       if (seen === 2) {
-        start = i;
+        start2 = i;
         break;
       }
     }
   }
-  if (start < 0) return lines.join("\n");
-  return lines.map((line, i) => i >= start && line !== "" ? `  ${line}` : line).join("\n");
+  if (start2 < 0) return lines.join("\n");
+  return lines.map((line, i) => i >= start2 && line !== "" ? `  ${line}` : line).join("\n");
 }
 function bulletCount(markdown) {
   return (String(markdown ?? "").match(/^\s*- /gm) || []).length;
@@ -55002,6 +55002,8 @@ var FOLLOW_TREE_DEPTH = 8;
 var FOLLOW_PARENT_CAP = 60;
 var FOLLOW_QUIET_MS = 1500;
 var FOLLOW_POLL_MS = 6e4;
+var FOLLOW_BACKOFF = 10;
+var followQuietMs = (lastMs) => Math.min(FOLLOW_POLL_MS, Math.max(FOLLOW_QUIET_MS, FOLLOW_BACKOFF * (Number(lastMs) || 0)));
 var LEFT_CONFIRM = 2;
 var FOLLOW_COLUMN_GAP = 48;
 var FOLLOW_STACK_GAP = 24;
@@ -55858,7 +55860,7 @@ function createLifecycle() {
       };
       idlePending += 1;
       let disposer = null;
-      const fire2 = (deadline) => {
+      const fire3 = (deadline) => {
         if (!open) return;
         close();
         forget(disposer);
@@ -55866,7 +55868,7 @@ function createLifecycle() {
         guarded(deadline);
       };
       if (typeof globalThis.requestIdleCallback === "function") {
-        const id2 = globalThis.requestIdleCallback(fire2, { timeout });
+        const id2 = globalThis.requestIdleCallback(fire3, { timeout });
         disposer = () => {
           globalThis.cancelIdleCallback?.(id2);
           close();
@@ -55875,7 +55877,7 @@ function createLifecycle() {
         return id2;
       }
       const id = globalThis.setTimeout(() => {
-        fire2({ didTimeout: true, timeRemaining: () => 0 });
+        fire3({ didTimeout: true, timeRemaining: () => 0 });
       }, timeout);
       disposer = () => {
         globalThis.clearTimeout(id);
@@ -56567,11 +56569,11 @@ function createInputProfile({ win: win2 = globalThis, spans = () => [] } = {}) {
   };
   const summary = () => {
     const keys = events.filter((e2) => KEY_EVENTS.has(e2.name)).map((e2) => {
-      const start = Number(e2.startTime) || 0;
-      const ps = Number(e2.processingStart) || start;
+      const start2 = Number(e2.startTime) || 0;
+      const ps = Number(e2.processingStart) || start2;
       const pe = Number(e2.processingEnd) || ps;
-      const end = start + (Number(e2.duration) || 0);
-      return { at: Math.round(start - armedAt), type: e2.name, ms: r1(e2.duration), delay: r1(ps - start), handlers: r1(pe - ps), present: r1(end - pe) };
+      const end = start2 + (Number(e2.duration) || 0);
+      return { at: Math.round(start2 - armedAt), type: e2.name, ms: r1(e2.duration), delay: r1(ps - start2), handlers: r1(pe - ps), present: r1(end - pe) };
     });
     const bySrc = /* @__PURE__ */ new Map();
     let renderSum = 0;
@@ -56581,8 +56583,8 @@ function createInputProfile({ win: win2 = globalThis, spans = () => [] } = {}) {
     const plexusSpans = spans() || [];
     let plexusMs = 0;
     const frameRows2 = frames.map((f) => {
-      const start = Number(f.startTime) || 0;
-      const end = start + (Number(f.duration) || 0);
+      const start2 = Number(f.startTime) || 0;
+      const end = start2 + (Number(f.duration) || 0);
       const render = f.renderStart > 0 ? end - f.renderStart : 0;
       const style = f.styleAndLayoutStart > 0 ? end - f.styleAndLayoutStart : 0;
       renderSum += render;
@@ -56598,9 +56600,9 @@ function createInputProfile({ win: win2 = globalThis, spans = () => [] } = {}) {
         forcedSum += Number(s.forcedStyleAndLayoutDuration) || 0;
       }
       let px = 0;
-      for (const s of plexusSpans) if (s.start < end && s.start + s.ms > start) px += Math.min(end, s.start + s.ms) - Math.max(start, s.start);
+      for (const s of plexusSpans) if (s.start < end && s.start + s.ms > start2) px += Math.min(end, s.start + s.ms) - Math.max(start2, s.start);
       plexusMs += px;
-      return { at: Math.round(start - armedAt), ms: r1(f.duration), blocking: r1(f.blockingDuration), render: r1(render), styleLayout: r1(style), scripts: (f.scripts || []).length, plexus: r1(px) };
+      return { at: Math.round(start2 - armedAt), ms: r1(f.duration), blocking: r1(f.blockingDuration), render: r1(render), styleLayout: r1(style), scripts: (f.scripts || []).length, plexus: r1(px) };
     });
     const scripts = [...bySrc.values()].map((s) => ({ ...s, ms: r1(s.ms), forcedMs: r1(s.forcedMs) })).sort((a, b) => b.ms - a.ms).slice(0, 15);
     const keydowns = keys.filter((k) => k.type === "keydown");
@@ -58889,13 +58891,13 @@ function openWhyPopover({
       return;
     }
     if (event.key === "ArrowUp" && event.target === whyField && labelField.isConnected === true) {
-      let start = 0;
+      let start2 = 0;
       try {
-        start = whyField.selectionStart;
+        start2 = whyField.selectionStart;
       } catch {
-        start = 0;
+        start2 = 0;
       }
-      if (start == null || start === 0) {
+      if (start2 == null || start2 === 0) {
         event.preventDefault();
         focusEl2(labelField);
       }
@@ -59092,9 +59094,9 @@ function mountMemoryLane({
   clearTimer = (id) => clearTimeout(id)
 } = {}) {
   const index = timeIndex(items);
-  const start = index.length ? index[0].time : now5;
+  const start2 = index.length ? index[0].time : now5;
   const end = now5;
-  const steps = monthSteps(start, end);
+  const steps = monthSteps(start2, end);
   const bar = doc.createElement("div");
   bar.className = "pxd-memory";
   bar.setAttribute("role", "group");
@@ -59210,8 +59212,8 @@ function linkRanges(text4) {
   while (match = re.exec(text4)) ranges.push([match.index, match.index + match[0].length]);
   return ranges;
 }
-function inside3(ranges, start, end) {
-  return ranges.some(([a, b]) => start >= a && end <= b);
+function inside3(ranges, start2, end) {
+  return ranges.some(([a, b]) => start2 >= a && end <= b);
 }
 function bareMention(text4, title) {
   if (!title || String(title).trim().length < 4 || isDailyTitle2(title)) return false;
@@ -59223,9 +59225,9 @@ function bareMention(text4, title) {
     re.lastIndex = from;
     const hit = re.exec(src);
     if (!hit) return false;
-    const start = hit.index + hit[1].length;
-    const end = start + hit[2].length;
-    if (!inside3(ranges, start, end)) return true;
+    const start2 = hit.index + hit[1].length;
+    const end = start2 + hit[2].length;
+    if (!inside3(ranges, start2, end)) return true;
     from = end > from ? end : from + 1;
   }
   return false;
@@ -59240,9 +59242,9 @@ function linkMention(text4, title) {
     re.lastIndex = from;
     const hit = re.exec(src);
     if (!hit) return null;
-    const start = hit.index + hit[1].length;
-    const end = start + hit[2].length;
-    if (!inside3(ranges, start, end)) return `${src.slice(0, start)}[[${title}]]${src.slice(end)}`;
+    const start2 = hit.index + hit[1].length;
+    const end = start2 + hit[2].length;
+    if (!inside3(ranges, start2, end)) return `${src.slice(0, start2)}[[${title}]]${src.slice(end)}`;
     from = end > from ? end : from + 1;
   }
   return null;
@@ -59431,7 +59433,7 @@ function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win
       await wait2(POLL_MS2);
     }
   };
-  const fire2 = (target, type) => {
+  const fire3 = (target, type) => {
     const Ctor = win2.PointerEvent || win2.MouseEvent || win2.Event;
     target.dispatchEvent(new Ctor(type, { bubbles: true, cancelable: true, composed: true, pointerType: "mouse", button: 0 }));
   };
@@ -59463,7 +59465,7 @@ function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win
       }
       const input = await until(() => mount.querySelector?.(CHECKBOX), FIND_MS);
       if (!input) return { ok: false, reason: "no checkbox rendered" };
-      fire2(input, "pointerdown");
+      fire3(input, "pointerdown");
       input.click();
       const done3 = await until(() => taskState(host.blockString?.(uid)) === "DONE", DONE_MS);
       if (!done3) return { ok: false, reason: "the block did not turn DONE" };
@@ -59570,7 +59572,7 @@ async function revealZoomedBlock(target, io = {}) {
   if (io.stopped?.()) return false;
   const child = blockUid3 !== cardUid;
   if (child) {
-    const start = now5();
+    const start2 = now5();
     let seen = false;
     while (true) {
       if (io.stopped?.()) return false;
@@ -59588,7 +59590,7 @@ async function revealZoomedBlock(target, io = {}) {
         seen = true;
         break;
       }
-      if (now5() - start >= budget || typeof io.wait !== "function") break;
+      if (now5() - start2 >= budget || typeof io.wait !== "function") break;
       await io.wait(tick);
     }
     if (!seen) return false;
@@ -63417,14 +63419,14 @@ function fixTokens(tokens2, { lexicon = null, keep = null, confs = null, wordCon
   const dominant = lineCase(tokens2);
   let at = 0;
   return tokens2.map((tok, k) => {
-    const start = at;
+    const start2 = at;
     at += tok.length + 1;
     const cased = normalizeCase(tok.replace(/^([^A-Za-z]*)([A-Za-z]+)([^A-Za-z]*)$/, "$2"), dominant);
     let t = tok.replace(/^([^A-Za-z]*)([A-Za-z]+)([^A-Za-z]*)$/, (_, a, _b, c) => a + cased + c);
     const m = /^([^A-Za-z0-9]*)([A-Za-z]+)([^A-Za-z0-9]*)$/.exec(t);
     let letterConfs = null;
     if (m && confs) {
-      const from = start + m[1].length;
+      const from = start2 + m[1].length;
       letterConfs = confs.slice(from, from + m[2].length);
     }
     t = correctWord(t, { lexicon, keep, confs: letterConfs, conf: wordConfs ? wordConfs[k] : 1 });
@@ -64116,13 +64118,13 @@ function totalColumn(table) {
       if (/^total\b/i.test(text4)) return c;
     }
   }
-  const start = table.headerRows || 0;
+  const start2 = table.headerRows || 0;
   let best = null;
   let bestShare = 0;
   for (let c = 1; c < cols; c += 1) {
     let n3 = 0;
     let hundreds = 0;
-    for (let r = start; r < rows; r += 1) {
+    for (let r = start2; r < rows; r += 1) {
       const text4 = cellTextAt(table, r, c);
       if (!text4) continue;
       n3 += 1;
@@ -64172,8 +64174,8 @@ function restoreLabeledTotals(chosen, rule) {
   }
   const cells = chosen.cells.map((cell) => ({ ...cell }));
   let changed2 = 0;
-  const start = chosen.headerRows || 0;
-  for (let r = start; r < (chosen.rows || 0); r += 1) {
+  const start2 = chosen.headerRows || 0;
+  for (let r = start2; r < (chosen.rows || 0); r += 1) {
     const key = stubKey(cellTextAt(chosen, r, 0));
     if (key.length < 4 || ambiguous.has(key)) continue;
     const rr = ruleRows.get(key);
@@ -66311,7 +66313,7 @@ function createThemeFollow({ doc, root, getMode, timers } = {}) {
     }
     paint2();
   };
-  const start = () => {
+  const start2 = () => {
     const head = doc?.head;
     const Observer = doc?.defaultView?.MutationObserver || globalThis.MutationObserver;
     if (!head || typeof Observer !== "function" || observer) return;
@@ -66335,7 +66337,7 @@ function createThemeFollow({ doc, root, getMode, timers } = {}) {
     observer = null;
     cancelPending();
   };
-  return { apply: paint2, paint: paint2, start, stop: stop3, sample: () => sampleRoam(doc) };
+  return { apply: paint2, paint: paint2, start: start2, stop: stop3, sample: () => sampleRoam(doc) };
 }
 
 // src/view/page-chips.js
@@ -66679,7 +66681,7 @@ function createPageChips({
     if (tip) node2.setAttribute("data-tip", tip);
     return node2;
   };
-  const fire2 = (item, block, event, el2) => {
+  const fire3 = (item, block, event, el2) => {
     let from = null;
     try {
       const page = el2?.getBoundingClientRect?.();
@@ -67237,7 +67239,7 @@ function createPageChips({
     on(node2, "mousedown", swallow);
     on(main, "click", (event) => {
       event.stopPropagation?.();
-      fire2(plan.primary, block, event, el2);
+      fire3(plan.primary, block, event, el2);
     });
     if (plan.menu.length) {
       const caret = button3("pxd-page-chip__more", "▾", "page-chip.more");
@@ -67261,7 +67263,7 @@ function createPageChips({
             entry.setAttribute("aria-checked", next ? "true" : "false");
             return;
           }
-          fire2(item, block, event, el2);
+          fire3(item, block, event, el2);
         });
         menu.append(entry);
       }
@@ -67685,10 +67687,10 @@ function selectionInReader(sel, readerEl) {
   const text4 = String(sel.toString?.() ?? "").replace(/\s+/g, " ").trim();
   if (!text4) return null;
   const elOf = (node2) => node2?.nodeType === 1 ? node2 : node2?.parentElement || null;
-  const start = elOf(sel.anchorNode);
+  const start2 = elOf(sel.anchorNode);
   const end = elOf(sel.focusNode);
-  if (!start || !end || !readerEl.contains?.(start) || !readerEl.contains?.(end)) return null;
-  const pageEl = start.closest?.(".page") || end.closest?.(".page");
+  if (!start2 || !end || !readerEl.contains?.(start2) || !readerEl.contains?.(end)) return null;
+  const pageEl = start2.closest?.(".page") || end.closest?.(".page");
   if (!pageEl || !readerEl.contains?.(pageEl)) return null;
   const page = Number(pageEl.getAttribute?.("data-page-number")) || null;
   let range = null;
@@ -67873,14 +67875,14 @@ function createDragGhost({
   };
   if (rects.rootRect && !(rects.rootRect.right > rects.rootRect.left)) rects.rootRect = null;
   const zoomNow = zoom != null ? num6(zoom, 1) : boardZoom(root, win2);
-  const start = { x: num6(pointer?.x), y: num6(pointer?.y) };
-  const src = from && num6(from.width) > 0 && num6(from.height) > 0 ? from : { left: start.x - 8, top: start.y - 8, width: 16, height: 16 };
+  const start2 = { x: num6(pointer?.x), y: num6(pointer?.y) };
+  const src = from && num6(from.width) > 0 && num6(from.height) > 0 ? from : { left: start2.x - 8, top: start2.y - 8, width: 16, height: 16 };
   const grab = grabAt ? { fx: clamp3(num6(grabAt.fx, 0.5), 0, 1), fy: clamp3(num6(grabAt.fy, 0.5), 0, 1) } : {
-    fx: clamp3((start.x - num6(src.left)) / num6(src.width, 1), 0, 1),
-    fy: clamp3((start.y - num6(src.top)) / num6(src.height, 1), 0, 1)
+    fx: clamp3((start2.x - num6(src.left)) / num6(src.width, 1), 0, 1),
+    fy: clamp3((start2.y - num6(src.top)) / num6(src.height, 1), 0, 1)
   };
-  let current3 = { x: start.x, y: start.y };
-  let zone = rects.rootRect ? zoneAt(start.x, start.y, rects) : "pane";
+  let current3 = { x: start2.x, y: start2.y };
+  let zone = rects.rootRect ? zoneAt(start2.x, start2.y, rects) : "pane";
   let sx = clamp3(num6(src.width) / size.w, MIN_SCALE, MAX_SCALE);
   let sy = clamp3(num6(src.height) / size.h, MIN_SCALE, MAX_SCALE);
   const footSize = { w: clamp3(num6(footprint?.w, ghostW) || ghostW, 1, 4e3), h: clamp3(num6(footprint?.h, size.h) || size.h, 1, 4e3) };
@@ -73582,33 +73584,33 @@ function wireDrag(s, head) {
     if (event.target?.closest?.("button, select, textarea, input")) return;
     event.preventDefault?.();
     markFullscreen(s);
-    const start = fitGeom(s);
+    const start2 = fitGeom(s);
     const sx = Number(event.clientX) || 0;
     const sy = Number(event.clientY) || 0;
     const { vw, vh } = viewport(s);
-    const shownH = s.collapsed ? Number(s.root.getBoundingClientRect?.().height) || 44 : start.h;
-    let nx = start.x;
-    let ny = start.y;
+    const shownH = s.collapsed ? Number(s.root.getBoundingClientRect?.().height) || 44 : start2.h;
+    let nx = start2.x;
+    let ny = start2.y;
     let queued = false;
     let ended = false;
     s.root.classList.add("pxd-ask--dragging");
     track(s, (e2) => {
-      nx = Math.round(clamp4(start.x + (Number(e2.clientX) || 0) - sx, 0, vw - start.w));
-      ny = Math.round(clamp4(start.y + (Number(e2.clientY) || 0) - sy, 0, vh - shownH));
+      nx = Math.round(clamp4(start2.x + (Number(e2.clientX) || 0) - sx, 0, vw - start2.w));
+      ny = Math.round(clamp4(start2.y + (Number(e2.clientY) || 0) - sy, 0, vh - shownH));
       if (queued) return;
       queued = true;
       frame(s, () => {
         queued = false;
-        if (!ended) s.root.style.transform = `translate3d(${nx - start.x}px, ${ny - start.y}px, 0)`;
+        if (!ended) s.root.style.transform = `translate3d(${nx - start2.x}px, ${ny - start2.y}px, 0)`;
       });
     }, () => {
       ended = true;
       s.root.classList.remove("pxd-ask--dragging");
-      if (nx === start.x && ny === start.y) {
+      if (nx === start2.x && ny === start2.y) {
         s.root.style.transform = "";
         return;
       }
-      s.geom = { ...s.geom, w: start.w, h: start.h, x: nx, y: ny };
+      s.geom = { ...s.geom, w: start2.w, h: start2.h, x: nx, y: ny };
       saveGeom(s);
       place2(s);
       queued = false;
@@ -73625,18 +73627,18 @@ function wireResize(s) {
   s.resize.addEventListener("pointerdown", (event) => {
     if (event.button != null && event.button !== 0) return;
     event.preventDefault?.();
-    const start = fitGeom(s);
+    const start2 = fitGeom(s);
     const sx = Number(event.clientX) || 0;
     const sy = Number(event.clientY) || 0;
     const { vw, vh } = viewport(s);
-    let nw = start.w;
-    let nh = start.h;
+    let nw = start2.w;
+    let nh = start2.h;
     let queued = false;
     let ended = false;
-    s.geom = { ...s.geom, x: start.x, y: start.y };
+    s.geom = { ...s.geom, x: start2.x, y: start2.y };
     track(s, (e2) => {
-      nw = Math.round(clamp4(start.w + (Number(e2.clientX) || 0) - sx, MIN_WIDTH, vw - start.x));
-      nh = Math.round(clamp4(start.h + (Number(e2.clientY) || 0) - sy, MIN_HEIGHT, vh - start.y));
+      nw = Math.round(clamp4(start2.w + (Number(e2.clientX) || 0) - sx, MIN_WIDTH, vw - start2.x));
+      nh = Math.round(clamp4(start2.h + (Number(e2.clientY) || 0) - sy, MIN_HEIGHT, vh - start2.y));
       if (queued) return;
       queued = true;
       frame(s, () => {
@@ -75139,11 +75141,11 @@ function stripFence(text4) {
   return m ? m[1] : text4;
 }
 function firstObject(text4) {
-  const start = text4.indexOf("{");
-  if (start < 0) return "";
+  const start2 = text4.indexOf("{");
+  if (start2 < 0) return "";
   let depth = 0;
   let inString = false;
-  for (let i = start; i < text4.length; i += 1) {
+  for (let i = start2; i < text4.length; i += 1) {
     const ch = text4[i];
     if (inString) {
       if (ch === "\\") i += 1;
@@ -75154,7 +75156,7 @@ function firstObject(text4) {
     else if (ch === "{") depth += 1;
     else if (ch === "}") {
       depth -= 1;
-      if (depth === 0) return text4.slice(start, i + 1);
+      if (depth === 0) return text4.slice(start2, i + 1);
     }
   }
   return "";
@@ -75843,7 +75845,7 @@ function createThrottle({ minMs = MOTION_TIMING.countMs, now: now5 = () => Date.
   let timer = null;
   let pending;
   let has = false;
-  const fire2 = () => {
+  const fire3 = () => {
     timer = null;
     if (!has) return;
     has = false;
@@ -75865,17 +75867,17 @@ function createThrottle({ minMs = MOTION_TIMING.countMs, now: now5 = () => Date.
           clearTimer?.(timer);
           timer = null;
         }
-        fire2();
+        fire3();
         return;
       }
-      if (timer == null) timer = setTimer?.(fire2, wait2);
+      if (timer == null) timer = setTimer?.(fire3, wait2);
     },
     flush() {
       if (timer != null) {
         clearTimer?.(timer);
         timer = null;
       }
-      fire2();
+      fire3();
     },
     cancel() {
       if (timer != null) {
@@ -77205,7 +77207,7 @@ function createParseView({
           else onToast?.("Run Docling on this page to read the formula as LaTeX");
         }
       });
-      const start = () => {
+      const start2 = () => {
         if (!PLACE_ACTS.includes(act) || item?.extra?.beside || !ghostRoot || !parsed) {
           go();
           return;
@@ -77214,11 +77216,11 @@ function createParseView({
       };
       const figs = (item?.ids || []).map((id) => parsed?.blocks?.[id]).filter((block) => block && (block.type === "figure" || block.type === "formula"));
       if (!figs.length) {
-        start();
+        start2();
         return;
       }
       void warmFigures(figs).then(() => {
-        if (!dead) start();
+        if (!dead) start2();
       });
     }
   }));
@@ -83850,7 +83852,7 @@ function sidebarPageEl(box2, n3) {
   return box2.querySelector(`.page[data-page-number="${want}"]`) || null;
 }
 async function waitForSidebarPdf({ doc, want, readString, timeout = SIDEBAR_WAIT_MS, step = 50, now: now5 = () => Date.now(), sleep, alive } = {}) {
-  const start = typeof now5 === "function" ? now5() : Date.now();
+  const start2 = typeof now5 === "function" ? now5() : Date.now();
   const clock = typeof now5 === "function" ? now5 : () => Date.now();
   const found = () => sidebarPdfContainer(doc, want, readString);
   if (!want || !String(want.uid || "").trim() && !String(want.url || "").trim()) return null;
@@ -83860,7 +83862,7 @@ async function waitForSidebarPdf({ doc, want, readString, timeout = SIDEBAR_WAIT
   const pace = Math.max(1, Number(step) || 50);
   const cap4 = Math.max(1, Math.ceil((Number(timeout) || 0) / pace) + 1);
   for (let i = 0; i < cap4; i += 1) {
-    const elapsed = clock() - start;
+    const elapsed = clock() - start2;
     if (elapsed >= timeout) break;
     if (typeof alive === "function" && !alive()) return null;
     await sleep(Math.min(pace, timeout - elapsed));
@@ -87234,17 +87236,17 @@ function changelogEntry(markdown, version) {
   const ver = String(version || "").trim().replace(/^v/, "");
   if (!ver) return "";
   const lines = text4.split(/\r?\n/);
-  const start = lines.findIndex((line) => line.startsWith(`## ${ver} `) || line.startsWith(`## ${ver}
+  const start2 = lines.findIndex((line) => line.startsWith(`## ${ver} `) || line.startsWith(`## ${ver}
 `) || line === `## ${ver}`);
-  if (start < 0) return "";
+  if (start2 < 0) return "";
   let end = lines.length;
-  for (let i = start + 1; i < lines.length; i += 1) {
+  for (let i = start2 + 1; i < lines.length; i += 1) {
     if (/^## [^#]/.test(lines[i])) {
       end = i;
       break;
     }
   }
-  return lines.slice(start, end).join("\n").trim();
+  return lines.slice(start2, end).join("\n").trim();
 }
 
 // src/changelog-text.js
@@ -90654,6 +90656,102 @@ init_schema();
 init_schema();
 init_query_run();
 init_query_backend();
+
+// src/host/local-saves.js
+var SAVE_LAG_MS = 1e3;
+var ICON2 = ".rm-sync__icon";
+var SAVING = /saving/;
+var hubs = /* @__PURE__ */ new WeakMap();
+var isEditor = (node2) => node2?.tagName === "TEXTAREA" && Boolean(node2.classList?.contains?.("rm-block-input"));
+var inBlock = (node2) => Boolean(node2?.closest?.(".roam-block, .rm-block"));
+function fire(hub) {
+  for (const cb of [...hub.subs]) {
+    try {
+      cb();
+    } catch {
+    }
+  }
+}
+function watchDot(doc, hub) {
+  if (hub.mo && hub.box?.isConnected !== false) return;
+  try {
+    hub.mo?.disconnect?.();
+  } catch {
+  }
+  hub.mo = null;
+  hub.box = null;
+  let icon = null;
+  try {
+    icon = doc.querySelector?.(ICON2) || null;
+  } catch {
+    icon = null;
+  }
+  const MO = doc.defaultView?.MutationObserver || globalThis.MutationObserver;
+  if (!icon || typeof MO !== "function") return;
+  const box2 = icon.parentElement || icon;
+  try {
+    const mo = new MO((records) => {
+      const hit = records.some((r) => r?.target?.classList?.contains?.("rm-sync__icon") && (SAVING.test(String(r.oldValue || "")) || SAVING.test(String(r.target.className || ""))));
+      if (hit) fire(hub);
+    });
+    mo.observe(box2, { attributes: true, attributeFilter: ["class"], attributeOldValue: true, subtree: true });
+    hub.mo = mo;
+    hub.box = box2;
+  } catch {
+    hub.mo = null;
+  }
+}
+function start(doc, hub) {
+  const win2 = doc.defaultView || globalThis;
+  hub.onInput = (event) => {
+    if (!isEditor(event?.target)) return;
+    fire(hub);
+    if (hub.lag) win2.clearTimeout(hub.lag);
+    hub.lag = win2.setTimeout(() => {
+      hub.lag = null;
+      fire(hub);
+    }, SAVE_LAG_MS);
+  };
+  hub.onDone = (event) => {
+    if (event?.type === "focusout" && !isEditor(event.target)) return;
+    if (event?.type === "change" && !inBlock(event.target)) return;
+    fire(hub);
+  };
+  hub.stop = () => {
+    doc.removeEventListener?.("input", hub.onInput, true);
+    for (const type of ["focusout", "change", "drop"]) doc.removeEventListener?.(type, hub.onDone, true);
+    if (hub.lag) win2.clearTimeout(hub.lag);
+    hub.lag = null;
+    try {
+      hub.mo?.disconnect?.();
+    } catch {
+    }
+    hub.mo = null;
+    hub.box = null;
+    hub.stop = null;
+  };
+  doc.addEventListener?.("input", hub.onInput, true);
+  for (const type of ["focusout", "change", "drop"]) doc.addEventListener?.(type, hub.onDone, true);
+}
+function watchLocalSaves(doc, cb) {
+  if (!doc || typeof cb !== "function") return () => {
+  };
+  let hub = hubs.get(doc);
+  if (!hub) {
+    hub = { subs: /* @__PURE__ */ new Set(), mo: null, box: null, lag: null, stop: null };
+    hubs.set(doc, hub);
+  }
+  const token = () => cb();
+  hub.subs.add(token);
+  if (!hub.stop) start(doc, hub);
+  watchDot(doc, hub);
+  return () => {
+    if (!hub.subs.delete(token) || hub.subs.size) return;
+    hub.stop?.();
+  };
+}
+
+// src/host/follow-sources.js
 var UID8 = ":block/uid";
 var STR4 = ":block/string";
 var ORD2 = ":block/order";
@@ -90737,6 +90835,7 @@ function nameOf(host, uid) {
 }
 var watchBlock = (pointer, host, cb) => typeof host?.watchBlock === "function" ? host.watchBlock(pointer.uid, cb) : () => {
 };
+var watchSaves = (env, cb) => watchLocalSaves(env?.doc, cb);
 defineFollowKind({
   id: "block",
   title: "A block's children",
@@ -90788,8 +90887,13 @@ defineFollowKind({
     const parsed = parseQuery(string);
     return `Query ${quote(parsed.ok && parsed.title ? parsed.title : queryBody(string) || "")}`;
   },
-  // An edit to the query text reads again at once. New results come with the poll.
-  watch: watchBlock,
+  // An edit to the query text, and any save in this window (a new or removed result), read again after the quiet time.
+  watch(p, host, cb, env) {
+    const offs = [watchBlock(p, host, cb), watchSaves(env, cb)];
+    return () => {
+      for (const off of offs) off();
+    };
+  },
   async read(p, { host, inBoard, tick }) {
     const string = queryString(host, p.uid);
     if (typeof string !== "string") return { ok: false, reason: "missing" };
@@ -90813,6 +90917,7 @@ defineFollowKind({
   id: "refs",
   title: "Linked references",
   describe: (p, host) => `Linked references of ${quote(nameOf(host, p.uid))}`,
+  watch: (p, host, cb, env) => watchSaves(env, cb),
   async read(p, { host, inBoard }) {
     let rows = null;
     try {
@@ -90867,7 +90972,8 @@ function createFollowTray({
   onLeft,
   onShowCard,
   onPlaced,
-  toast
+  toast,
+  now: now5 = () => globalThis.performance?.now?.() ?? Date.now()
 } = {}) {
   const boardUid = session?.uid;
   const memory = createLeftMemory({ storage, graph });
@@ -90894,6 +91000,12 @@ function createFollowTray({
   let inFlight = false;
   let again = false;
   let placing = false;
+  let lastMs = 0;
+  let waitMs = 0;
+  let queuedAt = 0;
+  let stale = false;
+  let seen = null;
+  let io = null;
   const el2 = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     if (cls) node2.className = cls;
@@ -90945,9 +91057,14 @@ function createFollowTray({
     paintPill();
     paintPanel();
   }
+  const showing = () => doc?.visibilityState !== "hidden" && seen !== false;
   function runRead() {
     job = null;
     if (disposed || !pointer) return;
+    if (!showing()) {
+      stale = true;
+      return;
+    }
     if (inFlight) {
       again = true;
       return;
@@ -90961,11 +91078,22 @@ function createFollowTray({
     }
     const mine = key;
     inFlight = true;
+    stale = false;
+    waitMs = Math.max(0, now5() - queuedAt);
     status = read2 ? status : "reading";
     if (!read2) paintPanel();
+    const started = now5();
     Promise.resolve().then(() => kind.read(pointer, ctx())).catch(() => ({ ok: false, reason: "error" })).then((res) => {
       inFlight = false;
-      if (disposed || mine !== key) return;
+      if (disposed) return;
+      if (mine !== key) {
+        if (again) {
+          again = false;
+          schedule();
+        }
+        return;
+      }
+      lastMs = Math.max(0, now5() - started);
       reads += 1;
       if (res?.ok) {
         read2 = res;
@@ -90985,15 +91113,22 @@ function createFollowTray({
     });
   }
   function schedule() {
-    if (disposed || !pointer || quiet) return;
+    if (disposed || !pointer) return;
+    if (!showing()) {
+      stale = true;
+      return;
+    }
+    if (quiet) return;
     quiet = timers.later(() => {
       quiet = null;
       if (disposed || job) return;
+      queuedAt = now5();
       job = timers.bgIdle(runRead, "follow");
-    }, FOLLOW_QUIET_MS);
+    }, followQuietMs(lastMs));
   }
   const readSoon = () => {
     if (disposed || !pointer || job) return;
+    queuedAt = now5();
     job = timers.bgIdle(runRead, "follow");
   };
   let listening = false;
@@ -91003,6 +91138,25 @@ function createFollowTray({
     const method = on ? "addEventListener" : "removeEventListener";
     win2?.[method]?.("focus", onFocus);
     doc?.[method]?.("visibilitychange", onVisible);
+    try {
+      io?.disconnect?.();
+    } catch {
+    }
+    io = null;
+    seen = null;
+    const IO = win2?.IntersectionObserver || globalThis.IntersectionObserver;
+    if (!on || typeof IO !== "function" || !root) return;
+    try {
+      io = new IO((entries) => {
+        const entry = entries[entries.length - 1];
+        if (!entry || disposed) return;
+        seen = Boolean(entry.isIntersecting);
+        if (seen && stale) schedule();
+      });
+      io.observe(root);
+    } catch {
+      io = null;
+    }
   }
   function armPoll() {
     poll?.();
@@ -91011,7 +91165,7 @@ function createFollowTray({
     if (!pointer || disposed) return;
     poll = timers.later(() => {
       poll = null;
-      if (doc?.visibilityState !== "hidden") schedule();
+      schedule();
       armPoll();
     }, FOLLOW_POLL_MS);
   }
@@ -91033,6 +91187,9 @@ function createFollowTray({
     }
     unwatch = () => {
     };
+    quiet?.();
+    quiet = null;
+    lastMs = 0;
     pointer = next;
     key = nextKey;
     read2 = null;
@@ -91043,7 +91200,7 @@ function createFollowTray({
     if (pointer) {
       const kind = followKind(pointer.kind);
       try {
-        unwatch = kind?.watch?.(pointer, host, () => schedule()) || (() => {
+        unwatch = kind?.watch?.(pointer, host, () => schedule(), { doc }) || (() => {
         });
       } catch {
         unwatch = () => {
@@ -91221,6 +91378,8 @@ function createFollowTray({
     rows: () => diff.pending.slice(),
     left: () => diff.left.slice(),
     reads: () => reads,
+    // The F10 probe: the source, reads so far, how long the last one took and waited, and the quiet period that sets.
+    stats: () => ({ key, reads, lastMs, waitMs, quietMs: followQuietMs(lastMs), stale }),
     // The board menu: what Follow shows and offers.
     menuState() {
       const textUid = pointer ? null : textSourceUid(board2()?.string || "");
@@ -92171,17 +92330,17 @@ function createPdfTextIndex({
       docs.push(stored);
     }
     const have = new Set(stored.pages.map((page) => page.n));
-    const start = stored.pages.length;
+    const start2 = stored.pages.length;
     for (const page of pages) {
       if (have.has(page.n)) continue;
       have.add(page.n);
       stored.pages.push(page);
     }
     if (stored.pages.length) stored.empty = false;
-    if (stored.pages.length === start) return false;
+    if (stored.pages.length === start2) return false;
     if (postingLive.has(stored.hash)) return true;
     postingLive.add(stored.hash);
-    postingQueue.push({ hash: stored.hash, pageI: start, wordI: 0, words: null, pageSeq: 0 });
+    postingQueue.push({ hash: stored.hash, pageI: start2, wordI: 0, words: null, pageSeq: 0 });
     return true;
   }
   function postWord(stored, page, word, pageSeq) {
@@ -93930,33 +94089,33 @@ function inkProjection(mask, pageW, pageH, box2) {
 }
 function inkRuns(cols, minGap, minInk = 2) {
   const runs = [];
-  let start = -1;
+  let start2 = -1;
   let last = -1;
   let ink = 0;
   for (let x = 0; x < cols.length; x++) {
     if (!cols[x]) continue;
-    if (start >= 0 && x - last - 1 >= minGap) {
-      if (ink >= minInk) runs.push({ x0: start, x1: last + 1, ink });
-      start = -1;
+    if (start2 >= 0 && x - last - 1 >= minGap) {
+      if (ink >= minInk) runs.push({ x0: start2, x1: last + 1, ink });
+      start2 = -1;
       ink = 0;
     }
-    if (start < 0) start = x;
+    if (start2 < 0) start2 = x;
     last = x;
     ink += cols[x];
   }
-  if (start >= 0 && ink >= minInk) runs.push({ x0: start, x1: last + 1, ink });
+  if (start2 >= 0 && ink >= minInk) runs.push({ x0: start2, x1: last + 1, ink });
   return runs;
 }
 function innerGaps(cols, from, to) {
   const gaps = [];
-  let start = -1;
+  let start2 = -1;
   for (let x = from; x < to; x++) {
     if (!cols[x]) {
-      if (start < 0) start = x;
+      if (start2 < 0) start2 = x;
       continue;
     }
-    if (start > from) gaps.push({ x0: start, x1: x, w: x - start });
-    start = -1;
+    if (start2 > from) gaps.push({ x0: start2, x1: x, w: x - start2 });
+    start2 = -1;
   }
   return gaps;
 }
@@ -94118,19 +94277,19 @@ function dashRuns(mask, pageW, proj, c0, c1, base2, capH) {
     kind[x - c0] = yTop >= lo && yBot <= hi && yBot - yTop <= 0.25 * capH ? 2 : 1;
   }
   const runs = [];
-  let start = -1;
+  let start2 = -1;
   for (let i = 0; i <= kind.length; i++) {
     if (i < kind.length && kind[i] === 2) {
-      if (start < 0) start = i;
+      if (start2 < 0) start2 = i;
       continue;
     }
-    if (start < 0) continue;
+    if (start2 < 0) continue;
     const end = i;
-    const apart = start > 0 && kind[start - 1] === 0 && end < kind.length && kind[end] === 0;
-    const left = kind.slice(Math.max(0, start - Math.ceil(0.4 * capH)), start).some((k) => k === 1);
+    const apart = start2 > 0 && kind[start2 - 1] === 0 && end < kind.length && kind[end] === 0;
+    const left = kind.slice(Math.max(0, start2 - Math.ceil(0.4 * capH)), start2).some((k) => k === 1);
     const right = kind.slice(end, end + Math.ceil(0.4 * capH)).some((k) => k === 1);
-    if (apart && end - start >= 0.3 * capH && left && right) runs.push({ c0: c0 + start, c1: c0 + end });
-    start = -1;
+    if (apart && end - start2 >= 0.3 * capH && left && right) runs.push({ c0: c0 + start2, c1: c0 + end });
+    start2 = -1;
   }
   return runs;
 }
@@ -94441,8 +94600,8 @@ async function readCrops(crops, scaleX, scaleY, runRec, dict, signal) {
     const logits = out.logits;
     chunk.forEach((c, b) => {
       const contentT = Math.max(1, Math.min(time, Math.round(time * (c.resized.contentW || c.resized.w) / maxW)));
-      const start = b * time * classes;
-      const slice = logits.subarray(start, start + contentT * classes);
+      const start2 = b * time * classes;
+      const slice = logits.subarray(start2, start2 + contentT * classes);
       const pageBox = {
         x0: c.box.x0 / scaleX,
         y0: c.box.y0 / scaleY,
@@ -94482,8 +94641,8 @@ async function recBatches(crops, runRec, signal, batchSize = SEG_BATCH) {
     idx.forEach((k, b) => {
       const c = crops[k].resized;
       const contentT = Math.max(1, Math.min(res.time, Math.round(res.time * (c.contentW || c.w) / maxW)));
-      const start = b * res.time * res.classes;
-      out[k] = { logits: res.logits.slice(start, start + contentT * res.classes), time: contentT, classes: res.classes };
+      const start2 = b * res.time * res.classes;
+      out[k] = { logits: res.logits.slice(start2, start2 + contentT * res.classes), time: contentT, classes: res.classes };
     });
   }
   return out;
@@ -96215,10 +96374,10 @@ function createTypeAhead({ doc, isTarget, later, armMs = ARM_MS } = {}) {
     if (done3) return true;
     if (typeof target.setRangeText !== "function") return false;
     const value = String(target.value ?? "");
-    const start = Number.isFinite(target.selectionStart) ? target.selectionStart : value.length;
-    const end = Number.isFinite(target.selectionEnd) ? target.selectionEnd : start;
+    const start2 = Number.isFinite(target.selectionStart) ? target.selectionStart : value.length;
+    const end = Number.isFinite(target.selectionEnd) ? target.selectionEnd : start2;
     try {
-      target.setRangeText(text4, start, end, "end");
+      target.setRangeText(text4, start2, end, "end");
     } catch {
       return false;
     }
@@ -97296,7 +97455,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     on.exit?.();
     return true;
   };
-  const start = (board2, rects, opts) => {
+  const start2 = (board2, rects, opts) => {
     if (!board2) return false;
     if (active2) {
       teardown();
@@ -97404,7 +97563,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     return true;
   };
   return {
-    start,
+    start: start2,
     next: () => goto(index + 1),
     prev: () => goto(index - 1),
     goto,
@@ -101564,7 +101723,7 @@ function buildBoardView(onFail, {
     const hash = coverHashOf(pickedItem);
     if (hash) card2.hash = hash;
     warmWhy = `warm ${card2.uid}${card2.needsTitle ? " (title)" : ""}`;
-    const start = () => {
+    const start2 = () => {
       if (disposed || suspended) return;
       if (gesturing || readPane?.isOpen?.() === true || pdfFlip?.live?.()) {
         armCoverWarmLater(600);
@@ -101614,12 +101773,12 @@ function buildBoardView(onFail, {
     };
     if (typeof win2?.requestIdleCallback === "function") {
       try {
-        win2.requestIdleCallback(() => start(), { timeout: 2e3 });
+        win2.requestIdleCallback(() => start2(), { timeout: 2e3 });
         return;
       } catch {
       }
     }
-    start();
+    start2();
   };
   const armCoverWarmLater = (ms, { replace = false } = {}) => {
     if (disposed || suspended || !coverWarmOn() || !coverPaintAt) return;
@@ -102638,9 +102797,9 @@ function buildBoardView(onFail, {
       near2.push(uid);
     }
     if (near2.length <= DRAG_EDGE_BUDGET) return near2;
-    const start = dragRide.turn % near2.length;
+    const start2 = dragRide.turn % near2.length;
     dragRide.turn += DRAG_EDGE_BUDGET;
-    const out = near2.slice(start, start + DRAG_EDGE_BUDGET);
+    const out = near2.slice(start2, start2 + DRAG_EDGE_BUDGET);
     if (out.length < DRAG_EDGE_BUDGET) out.push(...near2.slice(0, DRAG_EDGE_BUDGET - out.length));
     return out;
   };
@@ -102987,8 +103146,8 @@ function buildBoardView(onFail, {
     endSlice();
     underlayDrawn = false;
   };
-  const beginSlice = (start = 0) => {
-    if (!slicing) sliceShells = start || SETTLE_SHELLS;
+  const beginSlice = (start2 = 0) => {
+    if (!slicing) sliceShells = start2 || SETTLE_SHELLS;
     if (!adaptiveOn()) sliceShells = SETTLE_SHELLS;
     sliceAt = 0;
     sliceJs = 0;
@@ -109882,7 +110041,7 @@ ${url}`;
         firstPainted = true;
         snapShells?.clear();
         if (typeof onFirstPaint === "function") {
-          const fire2 = () => {
+          const fire3 = () => {
             if (!disposed) {
               try {
                 onFirstPaint();
@@ -109892,8 +110051,8 @@ ${url}`;
           };
           const done3 = () => {
             if (disposed) return;
-            if (queuedOverview()) timers.frame(fire2);
-            else fire2();
+            if (queuedOverview()) timers.frame(fire3);
+            else fire3();
           };
           if (typeof itemsR.whenViewBuilt === "function") itemsR.whenViewBuilt(done3);
           else done3();
@@ -110725,6 +110884,11 @@ ${url}`;
     typingProfile(opts) {
       if (!inputProfile) inputProfile = createInputProfile({ win: globalThis, spans: () => sharedTaskProbe().spans() });
       return inputProfile.read(opts);
+    },
+    // PXD-9 F10 probe: the follow tray's source key, reads, the last read's length and wait, and the quiet period it sets
+    // (null: no source).
+    followStats() {
+      return followCtl?.stats?.() || null;
     },
     // Card bodies that took 50 ms or more to mount ({ uid, kind, ms, at }), to name a long "content" task.
     slowMounts() {
@@ -112417,8 +112581,8 @@ var parentUidOf = (loc) => {
 };
 var connectionsHeader = (text4) => String(text4 || "").split("\n")[0].trim() === "Connections";
 function zoomBoardTarget(blockUid3, readers = {}) {
-  const start = String(blockUid3 || "");
-  if (!start) return null;
+  const start2 = String(blockUid3 || "");
+  if (!start2) return null;
   const parentOf = readers.parentOf;
   const isDiagram = readers.isDiagram;
   if (typeof parentOf !== "function" || typeof isDiagram !== "function") return null;
@@ -112426,7 +112590,7 @@ function zoomBoardTarget(blockUid3, readers = {}) {
   const blockString4 = readers.blockString;
   const down2 = [];
   const seen = /* @__PURE__ */ new Set();
-  let uid = start;
+  let uid = start2;
   let boardUid = "";
   for (let i = 0; i < MAX_STEPS; i += 1) {
     if (!uid || seen.has(uid)) return null;
@@ -112438,7 +112602,7 @@ function zoomBoardTarget(blockUid3, readers = {}) {
       return null;
     }
     if (diagram) {
-      if (uid === start) return null;
+      if (uid === start2) return null;
       boardUid = uid;
       break;
     }
@@ -112473,7 +112637,7 @@ function zoomBoardTarget(blockUid3, readers = {}) {
     break;
   }
   if (!cardUid) return null;
-  return { boardUid, cardUid, blockUid: start };
+  return { boardUid, cardUid, blockUid: start2 };
 }
 
 // src/feature.js
@@ -112650,7 +112814,7 @@ function createPrefetch({
     inflight = 0;
     const next = queued;
     queued = null;
-    if (next) fire2(next);
+    if (next) fire3(next);
   };
   const warmOne = (uid) => {
     let hot = false;
@@ -112676,7 +112840,7 @@ function createPrefetch({
       return null;
     }
   };
-  function fire2(uids) {
+  function fire3(uids) {
     if (enabled() === false) return;
     if (inflight >= 1) {
       queued = uids;
@@ -112707,7 +112871,7 @@ function createPrefetch({
       const batch = pending;
       pending = [];
       pendingEl = null;
-      fire2(batch);
+      fire3(batch);
     }, delayMs);
   }
   function cancel(el2) {
@@ -113165,10 +113329,10 @@ ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).jo
     if (list.length <= SCAN_CAP || sweepTimer != null) return;
     const gen = sweepGen;
     const pending = list;
-    const run = (start) => {
+    const run = (start2) => {
       if (gen !== sweepGen) return;
-      const next = Math.min(start + SCAN_CAP, pending.length);
-      for (let i = start; i < next; i += 1) attach3(pending[i], memo);
+      const next = Math.min(start2 + SCAN_CAP, pending.length);
+      for (let i = start2; i < next; i += 1) attach3(pending[i], memo);
       if (next >= pending.length) return;
       const set2 = view().setTimeout?.bind(view());
       if (!set2) return;
@@ -113908,7 +114072,7 @@ function boardBounds(rects) {
   if (!n3) return empty;
   return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
 }
-function fire(win2, type, detail, Ctor) {
+function fire2(win2, type, detail, Ctor) {
   try {
     const C = Ctor ?? win2.CustomEvent ?? globalThis.CustomEvent;
     if (typeof win2.dispatchEvent !== "function" || typeof C !== "function") return;
@@ -114062,7 +114226,7 @@ function installPublicApi(api3, { win: win2 = globalThis.window ?? globalThis, C
   const target = win2 ?? globalThis;
   if (target.PlexusDiagram != null && target.PlexusDiagram !== api3) return false;
   target.PlexusDiagram = api3;
-  fire(target, "plexus-diagram:ready", { apiVersion: API_VERSION }, CustomEventCtor);
+  fire2(target, "plexus-diagram:ready", { apiVersion: API_VERSION }, CustomEventCtor);
   return true;
 }
 function uninstallPublicApi(api3, { win: win2 = globalThis.window ?? globalThis, CustomEventCtor } = {}) {
@@ -114074,7 +114238,7 @@ function uninstallPublicApi(api3, { win: win2 = globalThis.window ?? globalThis,
   } catch {
     ours = false;
   }
-  fire(target, "plexus-diagram:unload", { apiVersion: API_VERSION }, CustomEventCtor);
+  fire2(target, "plexus-diagram:unload", { apiVersion: API_VERSION }, CustomEventCtor);
   return ours;
 }
 
@@ -114329,7 +114493,7 @@ function createShiftWatch() {
     tracked = true;
     lifecycle.add(() => stop3());
   };
-  const start = ({ stats: next, lifecycle, enabled } = {}) => {
+  const start2 = ({ stats: next, lifecycle, enabled } = {}) => {
     if (next && typeof next === "object") stats = next;
     track2(lifecycle);
     const want = enabled === true || shiftDebugOn();
@@ -114375,7 +114539,7 @@ function createShiftWatch() {
     raf2 = rafFn(step);
   };
   return {
-    start,
+    start: start2,
     stop: stop3,
     watchMount,
     markUsable,
@@ -115839,7 +116003,7 @@ async function installPlexusDiagram({
     const opts = { autofocus, viewport: viewport2, acquire, onLive, logging, t0: logging ? perfNow() : 0 };
     if (logging) shiftWatch.watchMount(rec.mountEl);
     const live2 = () => !handoff.cancelled && !stopped && mounts.get(rec.native) === rec;
-    const start = () => {
+    const start2 = () => {
       handoff.timeoutId = null;
       runSnapMount(handoff, standIn, opts);
     };
@@ -115847,7 +116011,7 @@ async function installPlexusDiagram({
       handoff.timeoutId = null;
       const reader = prereadFor(readUid, painted.snap);
       if (!reader) {
-        start();
+        start2();
         return;
       }
       handoff.reader = reader;
@@ -115868,7 +116032,7 @@ async function installPlexusDiagram({
           return;
         }
         nextTask(done3 ? () => {
-          if (live2()) start();
+          if (live2()) start2();
           else reader.cancel();
         } : slice);
       };
@@ -116285,7 +116449,7 @@ async function installPlexusDiagram({
     const standIn = sketchStandIn(handoff);
     rec.view = standIn;
     attachSketchInput(handoff);
-    const start = () => {
+    const start2 = () => {
       handoff.timeoutId = null;
       runSketchMount(handoff, standIn, opts);
     };
@@ -116294,12 +116458,12 @@ async function installPlexusDiagram({
       handoff.rafId = raf2(() => {
         handoff.rafId = null;
         if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
-        const timer = setTimeout(start, 0);
+        const timer = setTimeout(start2, 0);
         timer.unref?.();
         handoff.timeoutId = timer;
       });
     } else {
-      const timer = setTimeout(start, 0);
+      const timer = setTimeout(start2, 0);
       timer.unref?.();
       handoff.timeoutId = timer;
     }

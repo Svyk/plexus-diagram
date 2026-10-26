@@ -54747,7 +54747,8 @@ var FOLLOW_SRC = "src";
 var FOLLOW_MIME = "application/x-plexus-follow";
 var FOLLOW_SKIP_CAP = 300;
 var FOLLOW_READ_CAP = 300;
-var FOLLOW_TREE_DEPTH = 4;
+var FOLLOW_TREE_DEPTH = 8;
+var FOLLOW_PARENT_CAP = 60;
 var FOLLOW_QUIET_MS = 1500;
 var FOLLOW_POLL_MS = 6e4;
 var LEFT_CONFIRM = 2;
@@ -54847,6 +54848,7 @@ function followIndex(board2, key = "") {
 function membership(read2) {
   const set = /* @__PURE__ */ new Set();
   for (const item of read2?.items || []) for (const id of itemIds(item)) set.add(id);
+  for (const uid of read2?.members || []) if (typeof uid === "string" && uid) set.add(`u:${uid}`);
   return set;
 }
 function absentStep(prev, read2, board2, key) {
@@ -54969,6 +54971,46 @@ extendSession((session, api3) => {
     t.props(boardUid, plexus);
     return true;
   }).then((ok) => ok === true);
+  const placeNow = (entries, { at = null } = {}) => {
+    const none = { placed: 0, batches: 0, total: 0, uids: [] };
+    const board2 = api3.board();
+    const pointer = readFollow(board2?.plexus);
+    if (!board2 || !pointer) return Promise.resolve(none);
+    const key = sourceKey(pointer);
+    const skipped = new Set(pointer.skip);
+    const { on } = followIndex(board2, key);
+    const seen = /* @__PURE__ */ new Set();
+    const list = (entries || []).filter((e2) => {
+      if (typeof e2?.uid !== "string" || !e2.uid || seen.has(e2.uid)) return false;
+      seen.add(e2.uid);
+      return !skipped.has(e2.uid) && !itemIds(e2).some((id) => on.has(id));
+    });
+    if (!list.length) return Promise.resolve(none);
+    const size = {
+      w: Number(api3.setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w,
+      h: Number(api3.setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h
+    };
+    const rects = api3.rects();
+    const bounds = boundsOf(board2.roots.map((id) => rects.get(id)).filter(Boolean));
+    const batches = followBatches(list, SPREAD_CAP);
+    const made = [];
+    let chain = Promise.resolve();
+    batches.forEach((batch, column) => {
+      chain = chain.then(() => {
+        if (api3.isGone()) return null;
+        const spots = followColumn(bounds, batch.length, { ...size, column, at });
+        return api3.txn((t) => {
+          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key));
+          api3.applyFit(t, ids);
+          return ids;
+        }).then((ids) => {
+          if (Array.isArray(ids)) made.push(...ids);
+        });
+      });
+    });
+    return chain.then(() => ({ placed: made.length, batches: batches.length, total: list.length, uids: made }));
+  };
+  let placing = Promise.resolve(null);
   api3.onDeleteItems?.((t, uids, opts) => {
     const board2 = api3.board();
     const base2 = api3.rawPlexus(boardUid);
@@ -55017,46 +55059,12 @@ extendSession((session, api3) => {
     stopFollowing() {
       return writePointer(() => null);
     },
-    // entries: source items ({ uid, kind, title? }). Ref cards in a column right of the board's cards, or a column at
-    // `at` (a drag). SPREAD_CAP cards per transaction, so each batch is one undo; more go in more batches, one column
-    // each. Resolves { placed, batches, total, uids }.
-    placeFollowed(entries, { at = null } = {}) {
-      const none = { placed: 0, batches: 0, total: 0, uids: [] };
-      const board2 = api3.board();
-      const pointer = readFollow(board2?.plexus);
-      if (!board2 || !pointer) return Promise.resolve(none);
-      const key = sourceKey(pointer);
-      const { on } = followIndex(board2, key);
-      const seen = /* @__PURE__ */ new Set();
-      const list = (entries || []).filter((e2) => {
-        if (typeof e2?.uid !== "string" || !e2.uid || seen.has(e2.uid)) return false;
-        seen.add(e2.uid);
-        return !itemIds(e2).some((id) => on.has(id));
-      });
-      if (!list.length) return Promise.resolve(none);
-      const size = {
-        w: Number(api3.setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w,
-        h: Number(api3.setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h
-      };
-      const rects = api3.rects();
-      const bounds = boundsOf(board2.roots.map((id) => rects.get(id)).filter(Boolean));
-      const batches = followBatches(list, SPREAD_CAP);
-      const made = [];
-      let chain = Promise.resolve();
-      batches.forEach((batch, column) => {
-        chain = chain.then(() => {
-          if (api3.isGone()) return null;
-          const spots = followColumn(bounds, batch.length, { ...size, column, at });
-          return api3.txn((t) => {
-            const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key));
-            api3.applyFit(t, ids);
-            return ids;
-          }).then((ids) => {
-            if (Array.isArray(ids)) made.push(...ids);
-          });
-        });
-      });
-      return chain.then(() => ({ placed: made.length, batches: batches.length, total: list.length, uids: made }));
+    // Calls run one after another, and each filters against the board the previous one left, so a second Place all
+    // (or a drag) while the first is still writing never places a card twice. A skipped uid is never placed.
+    placeFollowed(entries, opts = {}) {
+      const run = () => placeNow(entries, opts);
+      placing = placing.then(run, run);
+      return placing;
     },
     // Source uids the tray should stop offering. Resolves the number added.
     dontBringBack(uids) {
@@ -90399,14 +90407,15 @@ var followKind = (id) => kinds.get(id) || null;
 var quote = (text4) => `“${plainText(text4, 48) || "Untitled"}”`;
 var timeOf = (node2) => Math.max(Number(node2?.[":create/time"]) || 0, Number(node2?.[":edit/time"]) || 0);
 var sorted = (node2) => Array.isArray(node2?.[KIDS5]) ? node2[KIDS5].slice().sort((a, b) => (a?.[ORD2] ?? 0) - (b?.[ORD2] ?? 0)) : [];
-function treePattern(depth) {
-  let inner = `[${FIELDS2}]`;
+function treePattern(depth, { below = false } = {}) {
+  let inner = below ? `[${FIELDS2} {(limit :block/children 1) [:block/uid]}]` : `[${FIELDS2}]`;
   for (let d = 1; d < depth; d += 1) inner = `[${FIELDS2} {(limit :block/children nil) ${inner}}]`;
   return `[:node/title ${FIELDS2} {(limit :block/children nil) ${inner}}]`;
 }
 function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__PURE__ */ new Set() } = {}) {
   const items = [];
   let complete = true;
+  let deeper = false;
   const walk3 = (node2, level) => {
     for (const kid of sorted(node2)) {
       if (!complete) return;
@@ -90420,10 +90429,22 @@ function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__
       }
       items.push({ uid, kind: "block", text: sourceText(string), time: timeOf(kid), depth: level, ...string.trim() ? {} : { blank: true } });
       if (level < depth) walk3(kid, level + 1);
+      else if (Array.isArray(kid[KIDS5]) && kid[KIDS5].length) deeper = true;
     }
   };
   walk3(root, 1);
-  return { items, complete };
+  return { items, complete, deeper };
+}
+var PARENTS_PULL = "[:block/uid {:block/parents [:block/uid]}]";
+function underSource(host, uid, sourceUid, boardUid) {
+  let node2;
+  try {
+    node2 = host?.pullEntity?.(PARENTS_PULL, uid);
+  } catch {
+    return true;
+  }
+  const parents = Array.isArray(node2?.[":block/parents"]) ? node2[":block/parents"].map((p) => p?.[UID8]) : [];
+  return parents.includes(sourceUid) && !parents.includes(boardUid);
 }
 function nameOf(host, uid) {
   let node2 = null;
@@ -90444,16 +90465,24 @@ defineFollowKind({
   describe: (p, host) => `${p.tree ? "Everything under" : "Children of"} ${quote(nameOf(host, p.uid))}`,
   // The watch covers the direct children (add, remove, reorder, edit). Deeper edits come with the poll.
   watch: watchBlock,
-  async read(p, { host, boardUid }) {
+  // ctx.followed(): the uids this board's cards from the source show.
+  async read(p, { host, boardUid, followed }) {
+    const tree = p.tree === true;
+    const depth = tree ? FOLLOW_TREE_DEPTH : 1;
     let node2 = null;
     try {
-      node2 = host?.pullEntity?.(treePattern(p.tree ? FOLLOW_TREE_DEPTH : 1), p.uid) || null;
+      node2 = host?.pullEntity?.(treePattern(depth, { below: tree }), p.uid) || null;
     } catch {
       node2 = null;
     }
     if (!node2) return { ok: false, reason: "missing" };
-    const { items, complete } = treeItems(node2, { depth: p.tree ? FOLLOW_TREE_DEPTH : 1, skip: /* @__PURE__ */ new Set([boardUid]) });
-    return { ok: true, complete, items };
+    const { items, complete, deeper } = treeItems(node2, { depth, skip: /* @__PURE__ */ new Set([boardUid]) });
+    if (!tree || !deeper || !complete) return { ok: true, complete, items };
+    const listed2 = new Set(items.map((item) => item.uid));
+    const unseen = [...new Set(typeof followed === "function" ? followed() : [])].filter((uid) => !listed2.has(uid));
+    if (unseen.length > FOLLOW_PARENT_CAP) return { ok: true, complete: false, deeper, items };
+    const members = unseen.filter((uid) => underSource(host, uid, p.uid, boardUid));
+    return { ok: true, complete, deeper, items, members };
   }
 });
 function subtreeUids(node2, out = /* @__PURE__ */ new Set()) {
@@ -90583,6 +90612,7 @@ function createFollowTray({
   let poll = null;
   let inFlight = false;
   let again = false;
+  let placing = false;
   const el2 = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     if (cls) node2.className = cls;
@@ -90609,7 +90639,8 @@ function createFollowTray({
     host,
     boardUid,
     inBoard: () => session.followExclude?.() || /* @__PURE__ */ new Set([boardUid]),
-    tick: () => new Promise((resolve) => timers.idle(resolve))
+    tick: () => new Promise((resolve) => timers.idle(resolve)),
+    followed: () => followIndex(board2(), key).followed.map((card2) => card2.target?.uid).filter(Boolean)
   });
   const describe = () => {
     const kind = pointer ? followKind(pointer.kind) : null;
@@ -90744,13 +90775,18 @@ function createFollowTray({
   }
   const entryOf = (row4) => ({ uid: row4.uid, kind: row4.kind, ...row4.title ? { title: row4.title } : {} });
   function place3(rows) {
-    if (!rows.length) return Promise.resolve(null);
+    if (!rows.length || placing) return Promise.resolve(null);
+    placing = true;
+    paintPanel();
     return Promise.resolve(session.placeFollowed?.(rows.map(entryOf))).then((res) => {
       if (disposed || !res) return res;
       if (res.batches > 1) toast?.(`Placed ${res.placed} cards in ${res.batches} batches of up to ${SPREAD_CAP}. Each Cmd+Z takes back one batch.`);
       if (res.uids?.length) onPlaced?.(res.uids);
       return res;
-    }).catch(() => null);
+    }).catch(() => null).finally(() => {
+      placing = false;
+      if (!disposed) paintPanel();
+    });
   }
   function paintPill() {
     if (!pointer) {
@@ -90823,13 +90859,14 @@ function createFollowTray({
     if (status === "reading" && !read2) note = "Reading the source…";
     else if (status === "error") note = REASONS[reason] || "Could not read the source. The last list stays.";
     else if (read2 && !read2.complete) note = "Only part of the source was read, so nothing is marked as left.";
+    else if (read2?.deeper) note = `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
     if (note) el2("div", "pxd-follow__note", panel, note);
     const bar = el2("div", "pxd-follow__bar", panel);
     el2("span", "pxd-follow__count", bar, `${diff.pending.length} waiting · ${diff.placed} on the board`);
     const all = button3(bar, "pxd-follow__all", diff.pending.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => {
       void place3(diff.pending.slice());
     });
-    all.disabled = diff.pending.length === 0;
+    all.disabled = diff.pending.length === 0 || placing;
     const list = el2("div", "pxd-follow__list", panel);
     if (!diff.pending.length) el2("div", "pxd-follow__empty", list, read2 ? "Everything in the source is on the board." : "");
     for (const row4 of diff.pending) rowEl(list, row4);

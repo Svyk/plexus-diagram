@@ -54743,6 +54743,7 @@ init_schema();
 // src/model/follow.js
 init_schema();
 var FOLLOW_KEY = "follow";
+var FOLLOW_KEPT_KEY = "followSkip";
 var FOLLOW_SRC = "src";
 var FOLLOW_MIME = "application/x-plexus-follow";
 var FOLLOW_SKIP_CAP = 300;
@@ -54787,9 +54788,16 @@ function readFollow(plexus) {
   return isObject3(plexus) ? normalizePointer(plexus[FOLLOW_KEY]) : null;
 }
 var sourceKey = (pointer) => pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}` : "";
+function keptFollow(plexus) {
+  return isObject3(plexus) ? normalizePointer(plexus[FOLLOW_KEPT_KEY]) : null;
+}
 function withFollow(plexus, pointer) {
   const base2 = isObject3(plexus) ? { ...plexus } : {};
   const next = pointer ? serializePointer(pointer) : null;
+  const prev = readFollow(base2);
+  if (prev && sourceKey(prev) !== sourceKey(next) && prev.skip.length) {
+    base2[FOLLOW_KEPT_KEY] = { kind: prev.kind, uid: prev.uid, skip: prev.skip };
+  } else if (next && sourceKey(keptFollow(base2)) === sourceKey(next)) delete base2[FOLLOW_KEPT_KEY];
   if (next) base2[FOLLOW_KEY] = next;
   else delete base2[FOLLOW_KEY];
   return base2;
@@ -54965,7 +54973,7 @@ extendSession((session, api3) => {
     const board2 = api3.board();
     if (!board2?.enhanced) return false;
     const base2 = api3.rawPlexus(boardUid);
-    const pointer = next(readFollow(base2));
+    const pointer = next(readFollow(base2), base2);
     const plexus = withFollow(base2, pointer);
     if (same(plexus, base2)) return false;
     t.props(boardUid, plexus);
@@ -55050,7 +55058,10 @@ extendSession((session, api3) => {
     // { kind, uid, tree }. The same source keeps its skip list. Resolves true when the pointer changed.
     followSource({ kind, uid, tree } = {}) {
       if (typeof kind !== "string" || typeof uid !== "string" || !uid || uid === boardUid) return Promise.resolve(false);
-      return writePointer((cur) => followPointerFor(cur, kind, uid, { tree }));
+      return writePointer((cur, base2) => {
+        const kept = keptFollow(base2);
+        return followPointerFor(sourceKey(kept) === `${kind}:${uid}` ? kept : cur, kind, uid, { tree });
+      });
     },
     setFollowTree(on) {
       return writePointer((cur) => cur?.kind === "block" ? { ...cur, tree: on === true } : cur);
@@ -90394,6 +90405,7 @@ var KIDS5 = ":block/children";
 var FIELDS2 = ":block/uid :block/string :block/order :create/time :edit/time";
 var META = /^BT_attr[\w-]*::/;
 var REFS_LIMIT = FOLLOW_READ_CAP + 1;
+var CHILD_LIMIT = FOLLOW_READ_CAP + 1;
 var kinds = /* @__PURE__ */ new Map();
 function defineFollowKind(kind) {
   if (!kind || typeof kind.id !== "string" || typeof kind.read !== "function") return () => {
@@ -90409,15 +90421,18 @@ var timeOf = (node2) => Math.max(Number(node2?.[":create/time"]) || 0, Number(no
 var sorted = (node2) => Array.isArray(node2?.[KIDS5]) ? node2[KIDS5].slice().sort((a, b) => (a?.[ORD2] ?? 0) - (b?.[ORD2] ?? 0)) : [];
 function treePattern(depth, { below = false } = {}) {
   let inner = below ? `[${FIELDS2} {(limit :block/children 1) [:block/uid]}]` : `[${FIELDS2}]`;
-  for (let d = 1; d < depth; d += 1) inner = `[${FIELDS2} {(limit :block/children nil) ${inner}}]`;
-  return `[:node/title ${FIELDS2} {(limit :block/children nil) ${inner}}]`;
+  for (let d = 1; d < depth; d += 1) inner = `[${FIELDS2} {(limit :block/children ${CHILD_LIMIT}) ${inner}}]`;
+  return `[:node/title ${FIELDS2} {(limit :block/children ${CHILD_LIMIT}) ${inner}}]`;
 }
 function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__PURE__ */ new Set() } = {}) {
   const items = [];
   let complete = true;
   let deeper = false;
+  let cut = false;
   const walk3 = (node2, level) => {
-    for (const kid of sorted(node2)) {
+    const kids = sorted(node2);
+    if (kids.length > cap4) cut = true;
+    for (const kid of kids) {
       if (!complete) return;
       const uid = kid?.[UID8];
       if (typeof uid !== "string" || skip.has(uid)) continue;
@@ -90433,7 +90448,7 @@ function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__
     }
   };
   walk3(root, 1);
-  return { items, complete, deeper };
+  return { items, complete: complete && !cut, deeper };
 }
 var PARENTS_PULL = "[:block/uid {:block/parents [:block/uid]}]";
 function underSource(host, uid, sourceUid, boardUid) {
@@ -90700,7 +90715,7 @@ function createFollowTray({
       if (again) {
         again = false;
         schedule();
-      } else if (res?.ok && leftUnsettled(absent)) schedule();
+      } else if (res?.ok && res.complete && leftUnsettled(absent)) schedule();
     });
   }
   function schedule() {
@@ -104166,11 +104181,7 @@ function buildBoardView(onFail, {
       return null;
     }
   };
-  const refUidIn = (text4) => {
-    const t = String(text4 || "").trim();
-    const m = /^\(\(([\w-]{6,64})\)\)$/.exec(t) || /^([\w-]{9})$/.exec(t);
-    return m ? m[1] : null;
-  };
+  const refUidIn = (text4) => /^\(\(([\w-]{6,64})\)\)$/.exec(String(text4 || "").trim())?.[1] || null;
   const blockRow = (uid, meta) => {
     let s = null;
     try {
@@ -104194,18 +104205,22 @@ function buildBoardView(onFail, {
       none: "Nothing matches",
       search: (text4) => {
         const rows = [];
+        const fits = (uid) => kind !== "query" || isQueryString(host?.blockString?.(uid) || "");
         const pasted = refUidIn(text4);
         if (pasted) {
           const row4 = blockRow(pasted, "Block");
-          if (row4 && (kind !== "query" || isQueryString(host?.blockString?.(pasted) || ""))) rows.push(row4);
+          if (row4 && fits(pasted)) rows.push(row4);
           return rows;
         }
+        const word = String(text4 || "").trim();
+        const bare = /^[\w-]{9}$/.test(word) && fits(word) ? blockRow(word, "Block") : null;
+        if (bare) rows.push(bare);
         if (kind !== "query") {
           for (const p of host?.searchPages?.(text4, kind === "refs" ? 30 : 10) || []) rows.push({ title: p.title, value: p.uid || p.title, meta: "Page" });
         }
         if (kind !== "refs") {
           for (const r of host?.searchBlocks?.(text4, 40) || []) {
-            if (r.uid === boardUid) continue;
+            if (r.uid === boardUid || bare && r.uid === word) continue;
             const isQ = isQueryString(r.string);
             if (kind === "query" ? !isQ : isQ) continue;
             rows.push({ title: plainText(sourceText(r.string), 80) || "(empty block)", value: r.uid, meta: r.pageTitle });

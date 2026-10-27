@@ -320,6 +320,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         ...(type === "text" && layout.shape ? { shape: layout.shape } : {}),
         open: type === "card" ? child[":block/open"] !== false : undefined,
         autofit: !(type === "section" && layout.fit === false),
+        keepOrder: type === "section" && layout.keepOrder === true,
         title,
         target,
         ...(tableKid ? { tableUid: tableKid[":block/uid"] } : {}),
@@ -741,18 +742,22 @@ export function sidebarOutlineUids(board) {
 
 // Desired sibling order so the outline reads like the board: top to bottom, then left to right.
 // A section stays a parent. Its cards are ordered inside it, not lifted up next to it.
-export function readingOrder(board, rects) {
-  if (!board) return [];
+export function byReadingPosition(uids, board, rects) {
   const key = (uid) => {
     const r = rects?.get?.(uid);
-    const item = board.items.get(uid);
+    const item = board?.items?.get(uid);
     return { y: r?.y ?? item?.y ?? 0, x: r?.x ?? item?.x ?? 0 };
   };
-  const byPos = (uids) => [...(uids || [])].sort((a, b) => {
+  return [...(uids || [])].sort((a, b) => {
     const pa = key(a);
     const pb = key(b);
     return pa.y - pb.y || pa.x - pb.x || (a < b ? -1 : a > b ? 1 : 0);
   });
+}
+
+export function readingOrder(board, rects) {
+  if (!board) return [];
+  const byPos = (uids) => byReadingPosition(uids, board, rects);
   const groups = [];
   const visit = (parent, uids) => {
     const sorted = byPos(uids);

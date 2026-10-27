@@ -135,6 +135,7 @@ export function normalizeItemLayout(plexus) {
     min: type === "text" && p.look === "sticky" && p.min === true ? true : undefined,
     kids: type === "card" && p.kids === true ? true : undefined,
     fit: p.fit === false ? false : undefined,
+    keepOrder: section && p.keepOrder === true ? true : undefined,
     look: type === "text"
       ? (TEXT_LOOKS.includes(p.look) ? p.look : undefined)
       : type === "section"
@@ -226,6 +227,7 @@ export function serializeItemLayout(layout) {
   if (type === "text" && l.look === "sticky" && l.min === true) out.min = true;
   if (type === "card" && l.kids === true) out.kids = true;
   if (l.type === "section" && l.fit === false) out.fit = false;
+  if (l.type === "section" && l.keepOrder === true) out.keepOrder = true;
   if (type === "text") {
     if (TEXT_LOOKS.includes(l.look)) out.look = l.look;
     if (SHAPES.includes(l.shape)) out.shape = l.shape;

@@ -380,6 +380,8 @@ export function buildMenu(kind, ctx = {}) {
         make("fit-section", "Fit to contents", { disabled: empty }),
         make("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),
         tidyMenu(empty),
+        make("apply-source-order", "Apply order to source", { disabled: !(c.refCards >= 2) }),
+        make("keep-order", "Keep outline order", { checked: Boolean(c.keepOrder) }),
         make("fold-all-in", "Fold all inside", { disabled: empty }),
         make("unfold-all-in", "Unfold all inside", { disabled: empty }),
         sep(),
@@ -473,6 +475,7 @@ export function buildMenu(kind, ctx = {}) {
           children: [make("distribute:h", "Horizontally"), make("distribute:v", "Vertically")],
         }),
         tidyMenu(false),
+        make("apply-source-order", "Apply order to source", { disabled: !(c.refCards >= 2) }),
         make("same-size", "Same size", {
           disabled: few,
           children: [make("same-size:width", "Width"), make("same-size:height", "Height"), make("same-size:both", "Width and height")],

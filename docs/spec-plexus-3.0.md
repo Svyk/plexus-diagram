@@ -60,6 +60,7 @@ Palette names are `gray` `red` `orange` `yellow` `green` `teal` `blue` `indigo` 
 | `border` | card, text, section | Palette name or `#rrggbb` | None |
 | `pinned` | item | `true` | Absent means free |
 | `fit` | section | `false` opts out of auto-fit | Absent means fit on |
+| `keepOrder` | section | `true` re-tidies the members in outline order when the source parent's children are reordered from outside | Absent means off |
 | `look` | card, text, section | Card `block` `card`. Text `section-note` `sticky`. Section `lane` `calendar` `timer` | Omitted. A note with no look draws as a block. Page, ref, image, and board cards draw as cards |
 | `axis` | lane section | `horizontal` `vertical` | Horizontal when the look is `lane` |
 | `attr` | lane section | attribute name | Absent: the lane has no sub-lanes. Present: one band per value of that `Name::` attribute, plus none |

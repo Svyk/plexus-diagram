@@ -92285,6 +92285,7 @@ function createFollowTray({
       autoOpen();
     }
     if (!pointer) {
+      recompute();
       paintPill();
       return;
     }

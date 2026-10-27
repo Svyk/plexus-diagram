@@ -28,7 +28,7 @@ import {
   worldRects,
 } from "./model/board.js";
 import { isTableRow } from "./model/table.js";
-import { bandIndexAt, bandRect, laneBands, laneRow, laneRows, laneView, planLaneDrop, serializeBands, snapIntoBand } from "./model/attr-lanes.js";
+import { bandIndexAt, bandRect, laneRow, laneRows, laneValueOf, laneView, planLaneDrop, shownBands, snapIntoBand } from "./model/attr-lanes.js";
 import { whyPlan } from "./model/why.js";
 import { isInlinePdfCard, pageCardString } from "./model/pdf-page.js";
 import { isOldTableCard } from "./model/table-captions.js";
@@ -554,7 +554,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     for (const item of b.items.values()) {
       if (item.type !== "section" || item.look !== "lane" || !item.laneAttr) continue;
       const rows = laneRows(b, item.uid, laneKids, laneResolve);
-      const view = laneView(laneBands(rows, item.laneAttr, item.laneBands), rows, item.laneAttr);
+      const view = laneView(shownBands(item.laneBands), rows, item.laneAttr);
       item.laneView = view.bands;
       for (const [id, mark] of view.marks) {
         const card = b.items.get(id);
@@ -563,11 +563,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     }
   }
 
-  // Lane drops for a drag: for each moved card that ends up in a bound lane, the band under its center (bands as the
-  // user saw them, from the lane's members before this move) and the one write that puts its value there.
+  // Lane drops for a drag: for each moved card that ends up in a bound lane, the band under its center and the one write
+  // that puts its value there. Bands are the lane's shown bands (stored values, then none), read before any write. A
+  // card that stays in the band it was picked up from writes nothing, so a small drag never turns where a card happens
+  // to sit into its value.
   function planLaneDrops(top, plan, moved) {
-    const out = { writes: [], bands: new Map(), snap: new Map() };
-    const perLane = new Map();
+    const out = { writes: [], snap: new Map() };
     for (const id of top) {
       const item = board.items.get(id);
       if (!item || !isTableRow(item)) continue;
@@ -576,17 +577,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       const laneRect = rects.get(lane.uid);
       const r = moved.get(id);
       if (!laneRect || !r) continue;
-      let ctx = perLane.get(lane.uid);
-      if (!ctx) {
-        ctx = { bands: laneBands(laneRows(board, lane.uid, laneKids, laneResolve), lane.laneAttr, lane.laneBands) };
-        perLane.set(lane.uid, ctx);
-        const ser = serializeBands(ctx.bands);
-        if (JSON.stringify(ser) !== JSON.stringify(lane.laneBands)) out.bands.set(lane.uid, ser);
-      }
-      const at = bandIndexAt(laneRect, lane.axis, ctx.bands.length, { x: r.x + r.w / 2, y: r.y + r.h / 2 });
-      const shift = snapIntoBand(bandRect(laneRect, lane.axis, ctx.bands.length, at), lane.axis, r, laneRect, FIT_PAD);
+      const bands = shownBands(lane.laneBands);
+      const center = (q) => ({ x: q.x + q.w / 2, y: q.y + q.h / 2 });
+      const at = bandIndexAt(laneRect, lane.axis, bands.length, center(r));
+      const shift = snapIntoBand(bandRect(laneRect, lane.axis, bands.length, at), lane.axis, r, laneRect, FIT_PAD);
       if (shift.dx || shift.dy) out.snap.set(id, shift);
-      const step = planLaneDrop({ name: lane.laneAttr, row: laneRow(board, item, laneKids, laneResolve), band: ctx.bands[at] });
+      const was = rects.get(id);
+      if (item.parentUid === lane.uid && was && bandIndexAt(laneRect, lane.axis, bands.length, center(was)) === at) continue;
+      const row = laneRow(board, item, laneKids, laneResolve);
+      // None clears a value the lane shows; a value with no band (typed in Roam, past the cap) is never cleared by it.
+      const key = laneValueOf(row, lane.laneAttr).key;
+      if (bands[at].none && key && !bands.some((b) => b.key === key)) continue;
+      const step = planLaneDrop({ name: lane.laneAttr, row, band: bands[at] });
       if (step) out.writes.push({ ...step, ref: item.kind === "block" ? item.target?.uid ?? null : null });
     }
     return out;
@@ -2279,7 +2281,6 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
             if (w.ref) laneWrites.set(w.ref, { uid: made, string: w.string, at: Date.now() });
           }
         }
-        for (const [laneUid, bands] of drops.bands) t.props(laneUid, itemPlexus(laneUid, { bands }));
         applyFit(t, top);
         if (flag("space-out", false)) spaceOutAfter(t, top);
       }, custom);

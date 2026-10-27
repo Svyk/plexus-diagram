@@ -132,6 +132,8 @@ function laneItems(lane) {
   if (lane.bound) {
     out.push(make("lane-stop", `Stop sub-lanes (${lane.bound})`));
     out.push(make("lane-pull", `Pull blocks with ${lane.bound}::`));
+    const fresh = Array.isArray(lane.fresh) ? lane.fresh : [];
+    if (fresh.length) out.push(make("lane-add", `Add sub-lanes for ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? ` +${fresh.length - 3}` : ""}`));
   }
   return out;
 }

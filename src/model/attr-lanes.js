@@ -84,6 +84,28 @@ export function laneBands(rows, name, stored = []) {
   return bands;
 }
 
+// The bands a bound lane shows and drops into: its stored values, then none. Only bind, Pull and "Add sub-lanes" change
+// the stored list, so a value typed in Roam never moves a band edge under a card that stays where it is.
+export const shownBands = (stored) => laneBands([], "", stored);
+
+// Values on the lane's cards that have no band yet (up to the cap): offered by "Add sub-lanes for new values".
+export function newLaneValues(rows, name, stored) {
+  const room = LANE_BAND_CAP - (stored || []).length;
+  if (room <= 0) return [];
+  const all = laneBands(rows, name, stored);
+  return all.filter((b) => !b.none).slice((stored || []).filter((v) => valueKey(v)).length).slice(0, room).map((b) => b.raw);
+}
+
+// Adding bands keeps every old band edge: the lane grows along its band axis by one old band size per new value, and
+// the none band (last) moves by that much, so a card in none is shifted with it and stays in none.
+export function growLane({ w, h, axis, count, added }) {
+  const n0 = Math.max(1, count);
+  const vertical = axisOf(axis) === "vertical";
+  const band = (vertical ? h : w) / n0;
+  const shift = band * added;
+  return { band, shift, noneIndex: n0 - 1, count: n0 + added, ...(vertical ? { w, h: h + shift } : { w: w + shift, h }) };
+}
+
 export const serializeBands = (bands) => (bands || []).filter((b) => !b.none && b.key).map((b) => b.raw);
 
 // The band a card sits in by value: its key's band, none when the key has no band (or past the cap).
@@ -221,7 +243,10 @@ export function laneView(bands, rows, name) {
     const i = bandOfRow(bands, row, name);
     counts[i] += 1;
     const v = laneValueOf(row, name);
-    marks.set(row.uid, { label: v.key || LANE_NONE_LABEL, ...(v.key ? {} : { none: true }), ...(v.two ? { two: true } : {}), name });
+    // A value with no band (typed in Roam, or past the cap) is shown on the mark and counted nowhere.
+    const loose = Boolean(v.key) && !bands.some((b) => b.key === v.key);
+    if (loose) counts[i] -= 1;
+    marks.set(row.uid, { label: v.key || LANE_NONE_LABEL, ...(v.key ? {} : { none: true }), ...(v.two ? { two: true } : {}), ...(loose ? { loose: true } : {}), name });
   }
   return { bands: bands.map((b, i) => ({ key: b.key, label: b.label, n: counts[i], ...(b.none ? { none: true } : {}) })), marks };
 }

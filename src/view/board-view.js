@@ -5930,7 +5930,7 @@ function buildBoardView(onFail, {
           landmark: item?.landmark === true,
           landmarkSize: item?.size || "M",
           dateSource: dateMode,
-          ...(item?.look === "lane" ? { lane: { bound: item.laneAttr || null, fields: session.laneFieldsFor?.(item.uid) ?? laneFields(tableRows(b)) } } : {}),
+          ...(item?.look === "lane" ? { lane: { bound: item.laneAttr || null, fields: session.laneFieldsFor?.(item.uid) ?? laneFields(tableRows(b)), fresh: item.laneAttr ? (session.laneNewValues?.(item.uid) ?? []) : [] } } : {}),
         };
       }
       case "text": return { item, pinned: Boolean(item?.pinned), trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
@@ -6207,6 +6207,9 @@ function buildBoardView(onFail, {
         break;
       case "lane-stop":
         if (item?.look === "lane") void session.unbindLane?.(item.uid);
+        break;
+      case "lane-add":
+        if (item?.look === "lane" && item.laneAttr) void session.addLaneValues?.(item.uid);
         break;
       case "lane-pull": {
         if (item?.look !== "lane" || !item.laneAttr) break;

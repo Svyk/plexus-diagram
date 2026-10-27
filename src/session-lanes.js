@@ -1,7 +1,7 @@
 // PXD-11 session calls for attribute lanes: bind a lane section to a Name:: attribute, stop, and pull blocks that have
 // that attribute into it. Nothing runs on open or on a timer. Writes happen on these calls and on a card drop
 // (commitMove in session.js); card positions are never derived from values after the bind.
-import { DEFAULT_SIZES, lookForNewString, serializeItemLayout } from "./model/schema.js";
+import { DEFAULT_SIZES, FIT_PAD, lookForNewString, serializeItemLayout } from "./model/schema.js";
 import { tableRows } from "./model/table.js";
 import { followCardString } from "./model/follow.js";
 import {
@@ -10,11 +10,17 @@ import {
   arrangeLane,
   bandIndexAt,
   bandOfRow,
+  bandRect,
+  growLane,
   laneAttrOk,
   laneBands,
   laneFields,
   laneRows,
+  newLaneValues,
   serializeBands,
+  shownBands,
+  snapIntoBand,
+  valueKey,
 } from "./model/attr-lanes.js";
 import { extendSession } from "./session.js";
 import { SPREAD_CAP } from "./session-clip.js";
@@ -33,7 +39,62 @@ extendSession((session, api) => {
   };
   const rowsOf = (id) => laneRows(api.board(), id, api.laneKids, api.laneResolve);
 
+  // New bands for `bands` (stored values first) without moving an old band edge: the lane grows by one old band per
+  // added value, the cards in the none band move with it, and `ends` is where each band's stack ends (lane-local).
+  function growWith(lane, rect, bands) {
+    const n0 = shownBands(lane.laneBands).length;
+    const added = Math.max(0, bands.length - n0);
+    const grown = growLane({ w: rect.w, h: rect.h, axis: lane.axis, count: n0, added });
+    const vertical = lane.axis === "vertical";
+    const old = { x: 0, y: 0, w: rect.w, h: rect.h };
+    const local = { x: 0, y: 0, w: grown.w, h: grown.h };
+    const moves = [];
+    const ends = bands.map(() => LANE_PAD);
+    for (const row of rowsOf(lane.uid)) {
+      const r = api.rects().get(row.uid);
+      if (!r) continue;
+      let q = { x: r.x - rect.x, y: r.y - rect.y, w: r.w, h: r.h };
+      const was = bandIndexAt(old, lane.axis, n0, { x: q.x + q.w / 2, y: q.y + q.h / 2 });
+      if (added && was === grown.noneIndex) {
+        q = vertical ? { ...q, y: q.y + grown.shift } : { ...q, x: q.x + grown.shift };
+        moves.push({ uid: row.uid, x: q.x, y: q.y });
+      }
+      const at = bandIndexAt(local, lane.axis, bands.length, { x: q.x + q.w / 2, y: q.y + q.h / 2 });
+      ends[at] = Math.max(ends[at], vertical ? q.x + q.w + LANE_GAP : q.y + q.h + LANE_GAP);
+    }
+    return { ...grown, bands, moves, ends };
+  }
+
+  function writeGrow(t, id, lane, g, extra = {}) {
+    for (const m of g.moves) t.props(m.uid, api.itemPlexus(m.uid, { x: api.round1(m.x), y: api.round1(m.y) }));
+    const patch = { w: api.round1(Math.max(g.w, extra.w ?? 0)), h: api.round1(Math.max(g.h, extra.h ?? 0)) };
+    const next = serializeBands(g.bands);
+    if (!same(next, lane.laneBands)) patch.bands = next;
+    t.props(id, api.itemPlexus(id, patch));
+  }
+
   Object.assign(session, {
+    // Values on the lane's cards that have no band yet (a value typed in Roam), up to the band cap.
+    laneNewValues(id) {
+      const lane = laneOf(id);
+      if (!lane?.laneAttr) return [];
+      return newLaneValues(rowsOf(id), lane.laneAttr, lane.laneBands).map(valueKey);
+    },
+
+    // One band per new value, appended before none. Old band edges stay; cards in none move with it; no value is written.
+    addLaneValues(id) {
+      const lane = laneOf(id);
+      if (!lane?.laneAttr) return Promise.resolve(0);
+      const rect = api.rects().get(id);
+      const add = newLaneValues(rowsOf(id), lane.laneAttr, lane.laneBands);
+      if (!rect || !add.length) return Promise.resolve(0);
+      const g = growWith(lane, rect, laneBands([], lane.laneAttr, [...(lane.laneBands || []), ...add]));
+      return api.txn((t) => {
+        writeGrow(t, id, lane, g);
+        return add.length;
+      }).then((n) => n ?? 0);
+    },
+
     // Names the lane menu offers: attributes on the board's cards plus those on the lane's ref cards' blocks.
     laneFieldsFor(id) {
       const board = api.board();
@@ -51,7 +112,8 @@ extendSession((session, api) => {
       const rect = api.rects().get(id);
       if (!rect) return Promise.resolve(false);
       const rows = rowsOf(id);
-      const bands = laneBands(rows, attr, []);
+      // Binding the same attribute again keeps its band order; values typed since then get bands at the end.
+      const bands = laneBands(rows, attr, lane.laneAttr === attr ? lane.laneBands : []);
       const cards = rows.map((row) => {
         const r = api.rects().get(row.uid);
         return { uid: row.uid, w: r?.w ?? DEFAULT_SIZES.card.w, h: r?.h ?? DEFAULT_SIZES.card.h, band: bandOfRow(bands, row, attr) };
@@ -112,43 +174,32 @@ extendSession((session, api) => {
         uid,
         attrs: list.sort((a, b) => a.order - b.order).map((v) => ({ name, value: v.value, uid: null })),
       }));
-      const existing = rowsOf(id);
-      const bands = laneBands([...existing, ...fake], name, lane.laneBands);
       const rect = api.rects().get(id);
       if (!rect) return Promise.resolve(none);
       const size = {
         w: Number(api.setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w,
         h: Number(api.setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h,
       };
+      const g = growWith(lane, rect, laneBands(fake, name, lane.laneBands));
       const vertical = lane.axis === "vertical";
-      const local = { x: 0, y: 0, w: rect.w, h: rect.h };
-      const arranged = arrangeLane({
-        w: rect.w,
-        h: rect.h,
-        axis: lane.axis,
-        bands,
-        cards: fake.map((row) => ({ uid: row.uid, w: size.w, h: size.h, band: bandOfRow(bands, row, name) })),
-      });
-      // Below (horizontal lanes) or beside (vertical lanes) what each band already holds.
-      const ends = bands.map(() => LANE_PAD);
-      for (const row of existing) {
-        const r = api.rects().get(row.uid);
-        if (!r) continue;
-        const at = bandIndexAt(local, lane.axis, bands.length, { x: r.x - rect.x + r.w / 2, y: r.y - rect.y + r.h / 2 });
-        ends[at] = Math.max(ends[at], vertical ? r.x - rect.x + r.w + LANE_GAP : r.y - rect.y + r.h + LANE_GAP);
-      }
-      let needW = Math.max(rect.w, arranged.w);
-      let needH = Math.max(rect.h, arranged.h);
-      const spots = arranged.cards.map((c) => {
-        const at = bandIndexAt({ x: 0, y: 0, w: arranged.w, h: arranged.h }, lane.axis, bands.length, { x: c.x + size.w / 2, y: c.y + size.h / 2 });
-        const shift = Math.max(0, ends[at] - LANE_PAD);
-        const spot = vertical ? { uid: c.uid, x: c.x + shift, y: c.y } : { uid: c.uid, x: c.x, y: c.y + shift };
+      const local = { x: 0, y: 0, w: g.w, h: g.h };
+      let needW = g.w;
+      let needH = g.h;
+      // Each pulled card centered in its value's band (the band size never changes), stacked after what that band holds.
+      const spots = fake.map((row) => {
+        const at = bandOfRow(g.bands, row, name);
+        const band = bandRect(local, lane.axis, g.bands.length, at);
+        const box = { x: band.x + (band.w - size.w) / 2, y: band.y + (band.h - size.h) / 2, w: size.w, h: size.h };
+        const snap = snapIntoBand(band, lane.axis, box, local, FIT_PAD);
+        const cross = g.ends[at];
+        g.ends[at] = cross + (vertical ? size.w : size.h) + LANE_GAP;
+        const spot = vertical ? { uid: row.uid, x: cross, y: box.y + snap.dy } : { uid: row.uid, x: box.x + snap.dx, y: cross };
         needW = Math.max(needW, spot.x + size.w + LANE_PAD);
         needH = Math.max(needH, spot.y + size.h + LANE_PAD);
         return spot;
       });
-      const nextBands = serializeBands(bands);
       return api.txn((t) => {
+        writeGrow(t, id, lane, g, vertical ? { w: needW } : { h: needH });
         const ids = spots.map((spot) => {
           const string = followCardString({ kind: "block", uid: spot.uid });
           const layout = { x: api.round1(spot.x), y: api.round1(spot.y) };
@@ -156,9 +207,6 @@ extendSession((session, api) => {
           if (look) layout.look = look;
           return t.create({ parent: id, string, plexus: serializeItemLayout(layout) });
         });
-        const patch = { w: api.round1(needW), h: api.round1(needH) };
-        if (!same(nextBands, lane.laneBands)) patch.bands = nextBands;
-        t.props(id, api.itemPlexus(id, patch));
         api.applyFit(t, ids);
         return ids.length;
       }).then((placed) => ({ placed: placed ?? 0, total: all.length }));

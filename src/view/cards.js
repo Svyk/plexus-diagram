@@ -1947,10 +1947,12 @@ export function createItemRenderer({
     }
     if (!rec.laneMarkEl) rec.laneMarkEl = el("span", "pxd-lane-mark", rec.el);
     const chip = rec.laneMarkEl;
-    chip.className = `pxd-lane-mark${mark.none ? " pxd-lane-mark--none" : ""}${mark.two ? " pxd-lane-mark--two" : ""}`;
+    chip.className = `pxd-lane-mark${mark.none ? " pxd-lane-mark--none" : ""}${mark.two ? " pxd-lane-mark--two" : ""}${mark.loose ? " pxd-lane-mark--loose" : ""}`;
     const text = mark.two ? `${mark.label} +1` : mark.label;
     if (chip.textContent !== text) chip.textContent = text;
-    const tip = mark.two ? `${mark.name}: ${mark.label} (2 values; the first one sets the sub-lane)` : `${mark.name}: ${mark.label}`;
+    const tip = mark.loose
+      ? `${mark.name}: ${mark.label} (no sub-lane for this value yet; Add sub-lanes in the lane menu)`
+      : mark.two ? `${mark.name}: ${mark.label} (2 values; the first one sets the sub-lane)` : `${mark.name}: ${mark.label}`;
     if (chip.title !== tip) chip.title = tip;
   };
 

@@ -3,6 +3,10 @@ import test from "node:test";
 
 import {
   arrangeLane,
+  growLane,
+  laneView,
+  newLaneValues,
+  shownBands,
   bandIndexAt,
   bandOfRow,
   bandRect,
@@ -141,4 +145,21 @@ test("snapIntoBand keeps a card inside its band along the band axis only, clear 
   assert.deepEqual(snapIntoBand(band, "horizontal", { x: 100, y: 0, w: 300, h: 60 }, lane, 24), { dx: 50, dy: 0 }, "wider than the band: centered");
   const v = { x: 0, y: 0, w: 240, h: 600 };
   assert.deepEqual(snapIntoBand(bandRect(v, "vertical", 2, 0), "vertical", { x: 500, y: -30, w: 200, h: 90 }, v, 24), { dx: 0, dy: 54 });
+});
+
+test("shown bands are the stored values and none; new values are offered, not shown; growing keeps old edges", () => {
+  assert.deepEqual(shownBands(["High", "[[Low]]"]).map((b) => b.label), ["High", "Low", "none"]);
+  const rows = [row("a", ["Priority", "Urgent"]), row("b", ["Priority", "Low"]), row("c", ["Priority", "[[Mid]]"])];
+  assert.deepEqual(newLaneValues(rows, "Priority", ["High", "Low"]), ["Urgent", "[[Mid]]"]);
+  assert.deepEqual(newLaneValues(rows, "Priority", Array.from({ length: 16 }, (_, i) => `V${i}`)), [], "no room past the cap");
+  const view = laneView(shownBands(["High", "Low"]), rows, "Priority");
+  assert.deepEqual(view.bands.map((b) => b.n), [0, 1, 0], "loose cards are counted nowhere");
+  assert.equal(view.marks.get("a").loose, true);
+  assert.equal(view.marks.get("b").loose, undefined);
+  assert.deepEqual(growLane({ w: 600, h: 300, axis: "horizontal", count: 3, added: 2 }), { band: 200, shift: 400, noneIndex: 2, count: 5, w: 1000, h: 300 });
+  assert.deepEqual(growLane({ w: 240, h: 600, axis: "vertical", count: 2, added: 1 }), { band: 300, shift: 300, noneIndex: 1, count: 3, w: 240, h: 900 });
+  // Old band i keeps its edges: [i*200, (i+1)*200] in both the 3-band 600 and the 5-band 1000 lane.
+  for (let i = 0; i < 2; i += 1) {
+    assert.deepEqual(bandRect({ x: 0, y: 0, w: 600, h: 300 }, "horizontal", 3, i), bandRect({ x: 0, y: 0, w: 1000, h: 300 }, "horizontal", 5, i));
+  }
 });

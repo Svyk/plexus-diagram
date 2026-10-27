@@ -144,16 +144,100 @@ test("PXD-11 drop: a card with two values rewrites only the first child", async 
   assert.deepEqual(stringWrites(fake), [], "two values cannot become none without losing one");
 });
 
-test("PXD-11 drop: a value that has no stored band yet is added to bands in the same transaction", async () => {
-  const children = kids();
-  children[2] = card("c", "Task C", 420, 40, [attr("c1", "Priority:: Urgent")]);
-  const { fake, session } = setup(children);
-  assert.deepEqual(session.board.items.get("L").laneView.map((b) => b.label), ["High", "Low", "Urgent", "none"]);
-  // Four bands now: 150 wide each. A moves from band 0 into band 2 (Urgent).
-  await session.commitMove(["a"], 300, 0);
+test("PXD-11 bands: a value typed in Roam moves no band edge; the card is marked loose and a small drag writes nothing", async () => {
+  const { fake, session } = setup(kids());
+  const at = { ...plexusOf(fake, "b") };
+  await fake.api.data.block.update({ block: { uid: "a1", string: "Priority:: Urgent" } });
   await fake.flush();
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  const lane = session.board.items.get("L");
+  assert.deepEqual(lane.laneView.map((b) => b.label), ["High", "Low", "none"], "stored bands only: edges stay at 200 / 400");
+  assert.deepEqual(lane.laneView.map((b) => b.n), [1, 1, 1], "the loose card is counted nowhere");
+  assert.equal(session.board.items.get("a").laneMark.loose, true);
+  assert.equal(session.board.items.get("a").laneMark.label, "Urgent");
+  assert.deepEqual(session.laneNewValues("L"), ["Urgent"]);
+  fake.clearLog();
+  await session.commitMove(["b"], 6, 0);
+  await session.commitMove(["a"], 6, 0);
+  await fake.flush();
+  assert.deepEqual(stringWrites(fake), [], "no card left its band, so no value is written");
+  assert.equal(fake.block("b1").string, "Priority:: [[Low]]");
   assert.equal(fake.block("a1").string, "Priority:: Urgent");
-  assert.deepEqual(plexusOf(fake, "L").bands, ["High", "Low", "Urgent"]);
+  assert.equal(plexusOf(fake, "b").x, at.x + 6);
+  // A deliberate drag across a band still writes.
+  await session.commitMove(["b"], -200, 0);
+  await fake.flush();
+  assert.equal(fake.block("b1").string, "Priority:: High");
+});
+
+test("PXD-11 bands: Add sub-lanes grows the lane by whole bands, keeps every old edge and moves none with its cards", async () => {
+  const { fake, session } = setup(kids());
+  await fake.api.data.block.update({ block: { uid: "a1", string: "Priority:: Urgent" } });
+  await fake.flush();
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  fake.clearLog();
+  assert.equal(await session.addLaneValues("L"), 1);
+  await fake.flush();
+  const p = plexusOf(fake, "L");
+  assert.deepEqual(p.bands, ["High", "Low", "Urgent"]);
+  assert.equal(p.w, 800, "one more 200 band");
+  assert.equal(plexusOf(fake, "b").x, 220, "b stays in Low (200..400)");
+  assert.equal(plexusOf(fake, "c").x, 620, "c moved with none (now 600..800)");
+  assert.equal(plexusOf(fake, "a").x, 20, "a stays where it is; its mark now has a band");
+  assert.deepEqual(stringWrites(fake), [], "no value written");
+  assert.equal(session.board.items.get("a").laneMark.loose, undefined);
+  assert.deepEqual(session.laneNewValues("L"), []);
+  fake.clearLog();
+  await session.commitMove(["b"], 6, 0);
+  await session.commitMove(["c"], 8, 0);
+  await fake.flush();
+  assert.deepEqual(stringWrites(fake), []);
+  assert.equal(fake.children("c").length, 0, "nothing created for c");
+});
+
+test("PXD-11 bands: Pull adds bands without moving a card into another band; small drags afterwards write nothing", async () => {
+  const children = kids().map((c) => ({ ...c, props: { plexus: { ...c.props.plexus, w: 180 } } }));
+  const { fake, session } = setup(children, BOUND, { pages: [{ title: "Src", uid: "SRC", children: [
+    { uid: "P2", string: "Pulled", children: [{ uid: "P2a", string: "Priority:: Mid" }] },
+  ] }] });
+  fake.onQuery(/node\/title/, () => [["P2", "Priority:: Mid", 0]]);
+  const band = (uid, n, w) => Math.floor((plexusOf(fake, uid).x + plexusOf(fake, uid).w / 2) / (w / n));
+  assert.deepEqual(["a", "b", "c"].map((u) => band(u, 3, 600)), [0, 1, 2]);
+  assert.deepEqual(await session.pullLaneSource("L"), { placed: 1, total: 1 });
+  await fake.flush();
+  const p = plexusOf(fake, "L");
+  assert.deepEqual(p.bands, ["High", "Low", "Mid"]);
+  assert.equal(p.w, 800);
+  assert.deepEqual(["a", "b", "c"].map((u) => band(u, 4, 800)), [0, 1, 3], "High, Low, and c still in none");
+  fake.clearLog();
+  for (const u of ["a", "b", "c", "d"]) await session.commitMove([u], 6, 0);
+  await fake.flush();
+  assert.deepEqual(stringWrites(fake), []);
+  assert.equal(fake.writesLog().filter((w) => w[0] === "create").length, 0);
+});
+
+test("PXD-11 bands: past 16 values a card has no band; it is marked loose and a drag inside none never clears it", async () => {
+  const many = Array.from({ length: 17 }, (_, i) => card(`c${i}`, `V${i}`, 10, 10, [attr(`c${i}a`, `Priority:: V${i}`)]));
+  const { fake, session } = setup(many, {});
+  assert.equal(await session.bindLane("L", "Priority"), true);
+  await fake.flush();
+  assert.equal(plexusOf(fake, "L").bands.length, 16);
+  assert.equal(session.board.items.get("L").laneView.length, 17, "V0..V15 and none");
+  assert.equal(session.board.items.get("c16").laneMark.loose, true);
+  assert.deepEqual(session.laneNewValues("L"), [], "no room left");
+  fake.clearLog();
+  await session.commitMove(["c16"], 4, 0);
+  await fake.flush();
+  assert.equal(fake.block("c16a").string, "Priority:: V16");
+  assert.deepEqual(stringWrites(fake), []);
+  // Out of the lane and back into none: still not cleared. Into a real band it takes that value.
+  await session.commitMove(["c16"], 0, 2000);
+  await fake.flush();
+  assert.notEqual(session.board.items.get("c16").parentUid, "L");
+  await session.commitMove(["c16"], 0, -2000);
+  await fake.flush();
+  assert.equal(session.board.items.get("c16").parentUid, "L");
+  assert.equal(fake.block("c16a").string, "Priority:: V16");
 });
 
 test("PXD-11 marks: a value cleared in Roam changes the mark, writes nothing and moves nothing", async () => {
@@ -225,6 +309,9 @@ test("PXD-11 menu: lane entries appear on lane sections only", () => {
   assert.deepEqual(items.map((i) => [i.id, Boolean(i.checked)]), [["lane-attr:Priority", true], ["lane-attr:Status", false]]);
   assert.equal(bound.find((i) => i.id === "lane-stop").label, "Stop sub-lanes (Priority)");
   assert.equal(bound.find((i) => i.id === "lane-pull").label, "Pull blocks with Priority::");
+  assert.equal(bound.find((i) => i.id === "lane-add"), undefined, "no new values, no Add sub-lanes");
+  const fresh = buildMenu("section", { lane: { bound: "Priority", fields: ["Priority"], fresh: ["Urgent", "A", "B", "C"] } });
+  assert.equal(fresh.find((i) => i.id === "lane-add").label, "Add sub-lanes for Urgent, A, B +1");
   const empty = buildMenu("section", { lane: { bound: null, fields: [] } }).find((i) => i.id === "lane-attr");
   assert.deepEqual(empty.children.map((c) => [c.label, c.disabled]), [["No Name:: attributes on this board", true]]);
   assert.ok(!ids(buildMenu("section", {})).some((id) => id.startsWith("lane-")), "a plain section has none");

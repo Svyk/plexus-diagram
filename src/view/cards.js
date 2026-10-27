@@ -1780,6 +1780,8 @@ export function createItemRenderer({
   const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash", "pxd-item--roam-table", "pxd-item--into", "pxd-item--pdf-bar"];
   // PXD-9: cards whose block left the board's followed source. A mark only; the card stays until the user acts.
   let followLeft = null;
+  // PXD-14: cards whose block now sits under another heading of the followed page: uid -> that heading's text.
+  let followMoved = null;
   const imageRegionString = (text) => {
     const region = parseRegion(text);
     return Boolean(region && region.kind === "img" && region.supported === true && region.owner === "plexus-diagram" && region.error == null);
@@ -1864,6 +1866,7 @@ export function createItemRenderer({
     // Classes other code toggles on the shell (offscreen shell, memory lane, pulse) survive the re-sync.
     for (const keep of TRANSIENT_CLASSES) if (node.classList?.contains(keep)) cls.push(keep);
     node.className = cls.join(" ");
+    if (item.type !== "section") paintMoved(node, item.uid);
     {
       const dueShort = item.type === "card" && cls.includes("pxd-item--task") ? taskMeta(item.string, item.content)?.due?.short : "";
       // The map tier prints it after the header text, and a pseudo element reads its own element's attribute.
@@ -6622,11 +6625,25 @@ export function createItemRenderer({
     rec.badgeKey = key;
   };
 
+  // The moved mark and its badge text on a card shell; a card that left the source shows that mark instead.
+  const paintMoved = (el, uid) => {
+    const on = Boolean(followMoved?.has(uid)) && !followLeft?.has(uid);
+    el.classList?.toggle?.("pxd-item--moved", on);
+    if (on) el.setAttribute?.("data-pxd-moved", `Moved to ${followMoved.get(uid) || "another heading"}`);
+    else el.removeAttribute?.("data-pxd-moved");
+  };
   const setFollowLeft = (set) => {
     followLeft = set instanceof Set && set.size ? set : null;
     for (const rec of shells.values()) {
       if (rec.type === "section") continue;
       rec.el.classList?.toggle?.("pxd-item--left", Boolean(followLeft?.has(rec.uid)));
+      if (followMoved) paintMoved(rec.el, rec.uid);
+    }
+  };
+  const setFollowMoved = (map) => {
+    followMoved = map instanceof Map && map.size ? map : null;
+    for (const rec of shells.values()) {
+      if (rec.type !== "section") paintMoved(rec.el, rec.uid);
     }
   };
   const setChanged = (set) => {
@@ -7824,6 +7841,7 @@ export function createItemRenderer({
     setBadges,
     setChanged,
     setFollowLeft,
+    setFollowMoved,
     setShowBadges,
     setTrailBadges,
     setTaskChips,

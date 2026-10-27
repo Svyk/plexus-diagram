@@ -91,6 +91,7 @@ function followMenu(f) {
         make("follow:pick-block", "Switch to a block's children…"),
         make("follow:pick-query", "Switch to a query…"),
         make("follow:pick-refs", "Switch to linked references of…"),
+        make("follow:pick-headings", "Switch to a page by headings…"),
         make("follow:stop", "Stop following"),
       ],
     })];
@@ -101,6 +102,7 @@ function followMenu(f) {
       make("follow:pick-block", "A block's children…"),
       make("follow:pick-query", "A query…"),
       make("follow:pick-refs", "Linked references of…"),
+      make("follow:pick-headings", "A page by headings…"),
     ],
   })];
 }
@@ -113,6 +115,7 @@ function followCardItems(f) {
   if (f.block) pick.push(make("follow:this", "Its children"));
   if (f.query) pick.push(make("follow:this-query", "This query"));
   if (f.refs) pick.push(make("follow:this-refs", "Its linked references"));
+  if (f.headings) pick.push(make("follow:this-headings", "Its page by headings"));
   if (pick.length) out.push(make("follow-card", "Follow", { children: pick }));
   if (f.left) out.push(make("follow:dismiss", "Dismiss “left the source”"));
   if (f.followed) out.push(make("follow:remove", "Remove, don't bring back", { danger: true }));

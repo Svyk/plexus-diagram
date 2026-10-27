@@ -56,6 +56,7 @@ export function createFollowTray({
   storage = globalThis.localStorage,
   graph = "",
   onLeft,
+  onParents,
   onMoved,
   onShowCard,
   onPlaced,
@@ -237,6 +238,11 @@ export function createFollowTray({
       reads += 1;
       if (res?.ok) {
         read = res;
+        if (pointer.tree && typeof onParents === "function") {
+          const parents = new Map();
+          for (const item of res.items || []) if (item?.parent && item.uid) parents.set(item.uid, item.parent);
+          try { onParents(parents); } catch { /* view */ }
+        }
         absent = absentStep(absent, res, board(), key);
         status = "ok";
         reason = "";

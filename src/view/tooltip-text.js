@@ -139,6 +139,7 @@ export const TIP_TEXT = {
   "ctx.notes": e("Notes", "Open the arrow's own block in the sidebar to add notes."),
   "ctx.write": e("Write to graph", "Write this link as a Name:: attribute on the source block."),
   "ctx.source": e(null, "Open the block that makes this link in the sidebar."),
+  "ctx.pin-refs": e("Pin ref arrows", "Turn the faint arrows from this card's refs into connections you can style. Up to 20 at a time."),
   "ctx.pin": e("Pin as connection", "Turn this graph link into an arrow you can style."),
   "ctx.align.left": e("Align left", "Line the selected cards up on their left edges."),
   "ctx.align.center": e("Align centers", "Line the selected cards up on their horizontal centers."),

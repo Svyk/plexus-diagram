@@ -122,6 +122,13 @@ function followCardItems(f) {
   return out;
 }
 
+// c.refs: { on, big } from session.cardRefs. Past the size cap the item stays and says why it is off.
+const refArrowsItem = (refs) => make("ref-arrows", "Ref arrows", {
+  checked: Boolean(refs?.on),
+  disabled: Boolean(refs?.big),
+  hint: refs?.big ? "Board is too big (over 400 items)" : undefined,
+});
+
 // PXD-11. `lane` is { bound, fields } for a lane section only. Sub-lanes by attribute, then (when bound) stop and pull.
 function laneItems(lane) {
   if (!lane) return [];
@@ -270,6 +277,7 @@ export function buildMenu(kind, ctx = {}) {
         sep(),
         make("background", "Background…"),
         make("bg-image", "Lock copied image as background"),
+        refArrowsItem(c.refs),
         viewsMenu(),
         make("print", "Print…"),
         make("highlights", "Highlight marks"),
@@ -541,6 +549,7 @@ export function buildMenu(kind, ctx = {}) {
         make("add-week", "Add this week's journals"),
         sep(),
         make("background", "Background…"),
+        refArrowsItem(c.refs),
         ...(c.readOpen ? [
           make("bar-table", "Table view"),
           make("bar-kanban", "Kanban view"),

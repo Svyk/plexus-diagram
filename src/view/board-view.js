@@ -4977,7 +4977,9 @@ function buildBoardView(onFail, {
     badgeCache.set(key, { at: Date.now(), stats });
     return Number(stats.refs) || 0;
   };
-  const cardModel = (item) => (item?.type === "card" ? { ...item, refs: refCountOf(item) } : item);
+  // The faint ref arrows touching a card: the links the board draws and no connection covers.
+  const faintLinksOf = (uid) => (session.links || []).filter((l) => l.from === uid || l.to === uid);
+  const cardModel = (item) => (item?.type === "card" ? { ...item, refs: refCountOf(item), refLinks: faintLinksOf(item.uid).length } : item);
   const sectionModel = (item) => {
     const b = board();
     const uids = b ? [item.uid, ...descendantsOf(b, item.uid)] : [item.uid];
@@ -5125,6 +5127,7 @@ function buildBoardView(onFail, {
     storage,
     graph,
     onLeft: (set) => itemsR.setFollowLeft?.(set),
+    onParents: (map) => session.setFollowParents?.(map),
     onMoved: (map) => itemsR.setFollowMoved?.(map),
     onShowCard: (uid) => {
       const r = rects().get(uid);
@@ -5173,6 +5176,13 @@ function buildBoardView(onFail, {
 
   // ------------------------------------------------------------ 1.2 helpers
   const toast = (message, undo = false) => chrome.toast.show({ message, action: undo ? { label: "Undo", run: () => { ctl.flush?.(); session.undo?.(); } } : undefined });
+  const toggleRefArrows = () => {
+    const refs = session.cardRefs;
+    if (!refs) return false;
+    if (refs.big) { toast("Board is too big for ref arrows (over 400 items)"); return false; }
+    Promise.resolve(session.setCardRefs?.(!refs.on)).then((ok) => { if (ok === false && !disposed) toast("This board can't store that setting"); }).catch(() => {});
+    return true;
+  };
   const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
   const closeLinksMenu = () => {
     const menu = linksMenu;
@@ -5917,8 +5927,8 @@ function buildBoardView(onFail, {
     const b = board();
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
-      case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true };
-      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null };
+      case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true, refs: session.cardRefs };
+      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null, refs: session.cardRefs };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -6320,6 +6330,7 @@ function buildBoardView(onFail, {
       case "bar-lens": toggleLens(); break;
       case "bar-focus": toggleFocus(); break;
       case "bar-present": startPresent(); break;
+      case "ref-arrows": toggleRefArrows(); break;
       case "dock": void session.setBoardBackground?.({ dock: arg === "default" ? null : arg }); break;
       case "bg-image": {
         void (async () => {
@@ -7124,6 +7135,14 @@ function buildBoardView(onFail, {
       label: () => { if (selection.edge) openWhy(selection.edge, "label"); },
       notes: () => { if (selection.edge) host?.openInSidebar?.(selection.edge, "block"); },
       writeToGraph: () => writeEdgeToGraph(),
+      pinRefs: () => {
+        const links = faintLinksOf(selection.items[0]);
+        if (!links.length) return;
+        Promise.resolve(session.pinLinks?.(links)).then((made) => {
+          if (disposed || !Array.isArray(made)) return;
+          toast(made.length ? `Pinned ${made.length} ref arrow${made.length === 1 ? "" : "s"}${links.length > made.length ? `. ${links.length - made.length} left: pin again` : ""}` : "Those arrows are already connections", made.length > 0);
+        }).catch(() => {});
+      },
       pinLink: () => {
         const link = (session.links || []).find((l) => l.key === selection.link);
         if (link) Promise.resolve(session.pinLink?.(link)).then((uid) => { if (uid) ctl.selectEdge(uid); }).catch(() => {});
@@ -11433,6 +11452,7 @@ function buildBoardView(onFail, {
     foldPageQueries() { return foldPageQueries(); },
     queryNudge(entry) { return queryNudge(entry); },
     foldSections(fold = true) { return foldSections(fold); },
+    toggleRefArrows() { return toggleRefArrows(); },
     newDrawing(at = null) {
       const d = DEFAULT_SIZES.card;
       const world = at || { x: 80, y: 80 };

@@ -1162,7 +1162,8 @@ body.pxd-fs-cover .roam-article .pxd-mount--fullscreen {
 
 .pxd-link--solid .pxd-link__line { stroke-dasharray: none; }
 .pxd-link--dashed .pxd-link__line { stroke-dasharray: 4 5; }
-.pxd-link--dotted .pxd-link__line { stroke-dasharray: 1 4; }
+.pxd-link--dotted .pxd-link__line,
+.pxd-link--tree .pxd-link__line { stroke-dasharray: 1 4; }
 
 .pxd-link__head {
   fill: var(--pxd-line, var(--pxd-edge));

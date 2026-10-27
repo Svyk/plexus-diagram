@@ -115,6 +115,26 @@ export function bandIndexAt(rect, axis, count, point) {
   return Math.min(n - 1, Math.max(0, Math.floor((off / span) * n)));
 }
 
+// The along-axis shift that keeps a dropped card inside its band (centered when wider than the band), so a lane's
+// auto-fit never grows along the band axis and moves the band edges under other cards. Cross-axis is left alone.
+// `lane` and `pad` keep the outer bands clear of the lane edge by the fit padding.
+export function snapIntoBand(band, axis, r, lane = null, pad = 0) {
+  const vertical = axisOf(axis) === "vertical";
+  let start = vertical ? band.y : band.x;
+  let end = start + (vertical ? band.h : band.w);
+  if (lane) {
+    const ls = vertical ? lane.y : lane.x;
+    start = Math.max(start, ls + pad);
+    end = Math.min(end, ls + (vertical ? lane.h : lane.w) - pad);
+  }
+  const span = Math.max(0, end - start);
+  const pos = vertical ? r.y : r.x;
+  const size = vertical ? r.h : r.w;
+  const want = size >= span ? start + (span - size) / 2 : Math.min(Math.max(pos, start), start + span - size);
+  const d = want - pos;
+  return vertical ? { dx: 0, dy: d } : { dx: d, dy: 0 };
+}
+
 function rewriteTokens(value, tokens, band) {
   const text = String(value ?? "");
   const first = tokens[0];

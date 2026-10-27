@@ -28,7 +28,7 @@ import {
   worldRects,
 } from "./model/board.js";
 import { isTableRow } from "./model/table.js";
-import { bandIndexAt, laneBands, laneRow, laneRows, laneView, planLaneDrop, serializeBands } from "./model/attr-lanes.js";
+import { bandIndexAt, bandRect, laneBands, laneRow, laneRows, laneView, planLaneDrop, serializeBands, snapIntoBand } from "./model/attr-lanes.js";
 import { whyPlan } from "./model/why.js";
 import { isInlinePdfCard, pageCardString } from "./model/pdf-page.js";
 import { isOldTableCard } from "./model/table-captions.js";
@@ -566,7 +566,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   // Lane drops for a drag: for each moved card that ends up in a bound lane, the band under its center (bands as the
   // user saw them, from the lane's members before this move) and the one write that puts its value there.
   function planLaneDrops(top, plan, moved) {
-    const out = { writes: [], bands: new Map() };
+    const out = { writes: [], bands: new Map(), snap: new Map() };
     const perLane = new Map();
     for (const id of top) {
       const item = board.items.get(id);
@@ -584,6 +584,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         if (JSON.stringify(ser) !== JSON.stringify(lane.laneBands)) out.bands.set(lane.uid, ser);
       }
       const at = bandIndexAt(laneRect, lane.axis, ctx.bands.length, { x: r.x + r.w / 2, y: r.y + r.h / 2 });
+      const shift = snapIntoBand(bandRect(laneRect, lane.axis, ctx.bands.length, at), lane.axis, r, laneRect, FIT_PAD);
+      if (shift.dx || shift.dy) out.snap.set(id, shift);
       const step = planLaneDrop({ name: lane.laneAttr, row: laneRow(board, item, laneKids, laneResolve), band: ctx.bands[at] });
       if (step) out.writes.push({ ...step, ref: item.kind === "block" ? item.target?.uid ?? null : null });
     }
@@ -2248,17 +2250,20 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           moved.set(id, { ...r, x: r.x + dx, y: r.y + dy });
         }
         const plan = new Map(membershipPlan(board, top, moved).map((p) => [p.uid, p]));
+        // PXD-11: bands as the user saw them, before any write; a card in a bound lane is kept inside its band.
+        const drops = planLaneDrops(top, plan, moved);
         for (const id of top) {
           const item = board.items.get(id);
           const p = plan.get(id);
+          const s = drops.snap.get(id);
+          const at = (v, d) => (d ? round1(v + d) : v);
           if (p) {
             t.move(id, p.toParent, "last");
-            t.props(id, itemPlexus(id, { x: p.x, y: p.y }));
+            t.props(id, itemPlexus(id, { x: at(p.x, s?.dx), y: at(p.y, s?.dy) }));
           } else {
-            t.props(id, itemPlexus(id, { x: item.x + dx, y: item.y + dy }));
+            t.props(id, itemPlexus(id, { x: at(item.x + dx, s?.dx), y: at(item.y + dy, s?.dy) }));
           }
         }
-        const drops = planLaneDrops(top, plan, moved);
         for (const w of drops.writes) {
           if (w.op === "string") {
             if (!stringBefore.has(w.uid)) {

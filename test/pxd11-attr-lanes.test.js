@@ -12,6 +12,7 @@ import {
   planLaneDrop,
   readLaneBind,
   serializeBands,
+  snapIntoBand,
   valueKey,
   valueTokens,
 } from "../src/model/attr-lanes.js";
@@ -129,4 +130,15 @@ test("arrange centers each card in its band and grows the lane to fit", () => {
   const v = arrangeLane({ w: 240, h: 600, axis: "vertical", bands: [{}, {}], cards: [{ uid: "a", w: 200, h: 60, band: 1 }] });
   assert.deepEqual(v.cards[0], { uid: "a", x: 16, y: 300 + 120 });
   assert.equal(v.h, 600);
+});
+
+test("snapIntoBand keeps a card inside its band along the band axis only, clear of the lane's fit padding", () => {
+  const lane = { x: 0, y: 0, w: 600, h: 300 };
+  const band = bandRect(lane, "horizontal", 3, 1);
+  assert.deepEqual(snapIntoBand(band, "horizontal", { x: 150, y: -40, w: 120, h: 60 }, lane, 24), { dx: 50, dy: 0 });
+  assert.deepEqual(snapIntoBand(band, "horizontal", { x: 250, y: 0, w: 120, h: 60 }, lane, 24), { dx: 0, dy: 0 });
+  assert.deepEqual(snapIntoBand(bandRect(lane, "horizontal", 3, 2), "horizontal", { x: 540, y: 0, w: 120, h: 60 }, lane, 24), { dx: -84, dy: 0 });
+  assert.deepEqual(snapIntoBand(band, "horizontal", { x: 100, y: 0, w: 300, h: 60 }, lane, 24), { dx: 50, dy: 0 }, "wider than the band: centered");
+  const v = { x: 0, y: 0, w: 240, h: 600 };
+  assert.deepEqual(snapIntoBand(bandRect(v, "vertical", 2, 0), "vertical", { x: 500, y: -30, w: 200, h: 90 }, v, 24), { dx: 0, dy: 54 });
 });

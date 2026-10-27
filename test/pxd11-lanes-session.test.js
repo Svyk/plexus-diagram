@@ -249,3 +249,46 @@ test("PXD-11 pull: blocks with Name:: not on the board become ref cards in their
   assert.equal(Math.floor((plexusOf(fake, p1).x + 60) / w), 1, "P1 sits in the Low band");
   assert.equal((await session.pullLaneSource("L")).placed, 0, "nothing more to pull");
 });
+
+test("PXD-11 fit: a drop that overhangs the lane's band axis is kept inside its band, so the bands do not move", async () => {
+  // 600 wide, bands High | Low | none = 200 each. Card a (x 20) dragged 150 left: its center (20 + 60 - 150 = -70)
+  // is outside, so it leaves the lane. Card b (x 220) dragged to x 330: center 390 is Low, right edge 450 stays.
+  // Card b dragged to x 150 (center 210, Low): the left edge would overhang into High, so it is pushed to x 200.
+  const { fake, session } = setup(kids());
+  await session.commitMove(["b"], -70, 0);
+  await fake.flush();
+  assert.equal(plexusOf(fake, "b").x, 200, "pushed inside the Low band");
+  assert.equal(plexusOf(fake, "L").w, 600, "the lane did not grow along its bands");
+  // A drop past the far edge (center still inside the none band) is pulled back in instead of growing the lane.
+  await session.commitMove(["c"], 120, 0);
+  await fake.flush();
+  assert.equal(plexusOf(fake, "c").x, 456, "pulled in by the fit padding (24)");
+  assert.equal(plexusOf(fake, "L").w, 600);
+  assert.equal(plexusOf(fake, "L").x, 0);
+});
+
+test("PXD-11 menu fields: a lane of ref cards offers the attributes of the referenced blocks", () => {
+  const { session } = setup(
+    [card("r", "((T))", 20, 40)],
+    {},
+    { pages: [{ title: "Src", uid: "SRC", children: [
+      { uid: "T", string: "Target", children: [{ uid: "T1", string: "Stage:: Doing" }, { uid: "T2", string: "BT_attrDue:: x" }] },
+    ] }] },
+  );
+  assert.deepEqual(session.laneFieldsFor("L"), ["Stage"]);
+});
+
+test("PXD-11 pull: a block with two Name:: children lands in the band of its first child", async () => {
+  const { fake, session } = setup(kids(), BOUND, { pages: [{ title: "Src", uid: "SRC", children: [
+    { uid: "P1", string: "Two values", children: [{ uid: "P1a", string: "Priority:: Low" }, { uid: "P1b", string: "Priority:: High" }] },
+  ] }] });
+  // The query returns the second child first; child order decides.
+  fake.onQuery(/node\/title/, () => [["P1", "Priority:: High", 1], ["P1", "Priority:: Low", 0]]);
+  const res = await session.pullLaneSource("L");
+  await fake.flush();
+  assert.deepEqual(res, { placed: 1, total: 1 });
+  const made = fake.children("L").find((u) => fake.block(u).string === "((P1))");
+  const w = plexusOf(fake, "L").w / 3;
+  assert.equal(Math.floor((plexusOf(fake, made).x + 60) / w), 1, "P1 sits in Low, its first value");
+  assert.equal(fake.block("P1b").string, "Priority:: High", "the second value is untouched");
+});

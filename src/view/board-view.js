@@ -5930,7 +5930,7 @@ function buildBoardView(onFail, {
           landmark: item?.landmark === true,
           landmarkSize: item?.size || "M",
           dateSource: dateMode,
-          ...(item?.look === "lane" ? { lane: { bound: item.laneAttr || null, fields: laneFields(tableRows(b)) } } : {}),
+          ...(item?.look === "lane" ? { lane: { bound: item.laneAttr || null, fields: session.laneFieldsFor?.(item.uid) ?? laneFields(tableRows(b)) } } : {}),
         };
       }
       case "text": return { item, pinned: Boolean(item?.pinned), trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };

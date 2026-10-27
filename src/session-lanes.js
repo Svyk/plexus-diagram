@@ -2,6 +2,7 @@
 // that attribute into it. Nothing runs on open or on a timer. Writes happen on these calls and on a card drop
 // (commitMove in session.js); card positions are never derived from values after the bind.
 import { DEFAULT_SIZES, lookForNewString, serializeItemLayout } from "./model/schema.js";
+import { tableRows } from "./model/table.js";
 import { followCardString } from "./model/follow.js";
 import {
   LANE_GAP,
@@ -11,6 +12,7 @@ import {
   bandOfRow,
   laneAttrOk,
   laneBands,
+  laneFields,
   laneRows,
   serializeBands,
 } from "./model/attr-lanes.js";
@@ -18,7 +20,7 @@ import { extendSession } from "./session.js";
 import { SPREAD_CAP } from "./session-clip.js";
 
 // Attribute blocks of a name: they ref the attribute page. Page-level attribute blocks (parent is a page) are skipped.
-const ATTR_BLOCKS = "[:find ?pu ?s :in $ ?title :where [?p :node/title ?title] [?a :block/refs ?p] [?a :block/string ?s] [?a :block/parent ?par] [?par :block/uid ?pu] (not [?par :node/title _])]";
+const ATTR_BLOCKS = "[:find ?pu ?s ?o :in $ ?title :where [?p :node/title ?title] [?a :block/refs ?p] [?a :block/string ?s] [?a :block/order ?o] [?par :block/children ?a] [?par :block/uid ?pu] (not [?par :node/title _])]";
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -32,6 +34,13 @@ extendSession((session, api) => {
   const rowsOf = (id) => laneRows(api.board(), id, api.laneKids, api.laneResolve);
 
   Object.assign(session, {
+    // Names the lane menu offers: attributes on the board's cards plus those on the lane's ref cards' blocks.
+    laneFieldsFor(id) {
+      const board = api.board();
+      if (!board) return [];
+      return laneFields([...tableRows(board), ...(laneOf(id) ? rowsOf(id) : [])]);
+    },
+
     // One transaction: the lane keeps `attr` and the band order, its cards are arranged into their bands, and the lane
     // grows to hold them. Text and sections inside it stay where they are.
     bindLane(id, name) {
@@ -85,19 +94,24 @@ extendSession((session, api) => {
       let rows = [];
       try { rows = host.q?.(ATTR_BLOCKS, name) || []; } catch { rows = []; }
       const prefix = `${name}::`;
+      // Every Name:: child per block in child order, so a block with two values lands in the band of its first.
       const found = new Map();
       for (const row of rows) {
-        const [parent, string] = Array.isArray(row) ? row : [];
-        if (typeof parent !== "string" || typeof string !== "string" || found.has(parent)) continue;
+        const [parent, string, order] = Array.isArray(row) ? row : [];
+        if (typeof parent !== "string" || typeof string !== "string") continue;
         const text = string.trim();
         if (!text.startsWith(prefix)) continue;
         if (onBoard.has(parent) || inTree.has(parent)) continue;
-        found.set(parent, text.slice(prefix.length).trim());
+        if (!found.has(parent)) found.set(parent, []);
+        found.get(parent).push({ order: Number(order) || 0, value: text.slice(prefix.length).trim() });
       }
       const all = [...found.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
       if (!all.length) return Promise.resolve(none);
       const batch = all.slice(0, SPREAD_CAP);
-      const fake = batch.map(([uid, value]) => ({ uid, attrs: [{ name, value, uid: null }] }));
+      const fake = batch.map(([uid, list]) => ({
+        uid,
+        attrs: list.sort((a, b) => a.order - b.order).map((v) => ({ name, value: v.value, uid: null })),
+      }));
       const existing = rowsOf(id);
       const bands = laneBands([...existing, ...fake], name, lane.laneBands);
       const rect = api.rects().get(id);

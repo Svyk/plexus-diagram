@@ -5,6 +5,7 @@ import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { createHost } from "../src/host/roam.js";
 import { acquireSession, resetSessions } from "../src/session.js";
 import "../src/session-lanes.js";
+import "../src/session-bucket.js";
 import { buildMenu } from "../src/view/menu-model.js";
 import { normalizeItemLayout, serializeItemLayout } from "../src/model/schema.js";
 
@@ -378,4 +379,17 @@ test("PXD-11 pull: a block with two Name:: children lands in the band of its fir
   const w = plexusOf(fake, "L").w / 3;
   assert.equal(Math.floor((plexusOf(fake, made).x + 60) / w), 1, "P1 sits in Low, its first value");
   assert.equal(fake.block("P1b").string, "Priority:: High", "the second value is untouched");
+});
+
+test("PXD-11 with PXD-10: a lane is either sub-laned or bound to a tag/value, never both", async () => {
+  const { fake, session } = setup(kids(), { bucket: { kind: "tag", tag: "x" } });
+  assert.equal(await session.bindLane("L", "Priority"), false, "a bucket-bound lane does not take sub-lanes");
+  resetSessions();
+  const second = setup(kids());
+  assert.equal(await second.session.bindSection("L", { kind: "tag", tag: "x" }), false, "a sub-laned lane takes no binding");
+  assert.equal(plexusOf(second.fake, "L").bucket, undefined);
+  const ids = (items) => items.flatMap((i) => [i.id, ...(i.children || []).map((c) => c.id)]);
+  assert.ok(!ids(buildMenu("section", { lane: { bound: "Priority", fields: ["Priority"] } })).includes("bucket-bind"));
+  assert.ok(!ids(buildMenu("section", { bucket: "#x", lane: { bound: null, fields: ["Priority"] } })).some((id) => id.startsWith("lane-")));
+  assert.ok(fake);
 });

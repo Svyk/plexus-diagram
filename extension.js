@@ -2949,15 +2949,15 @@ function planRestore(entries, board2) {
     if (unit.length) units.push(unit);
   }
   const chunks = [];
-  let chunk = [];
+  let chunk2 = [];
   for (const unit of units) {
-    if (chunk.length && chunk.length + unit.length > SNAPSHOT_CHUNK) {
-      chunks.push(chunk);
-      chunk = [];
+    if (chunk2.length && chunk2.length + unit.length > SNAPSHOT_CHUNK) {
+      chunks.push(chunk2);
+      chunk2 = [];
     }
-    chunk.push(...unit);
+    chunk2.push(...unit);
   }
-  if (chunk.length) chunks.push(chunk);
+  if (chunk2.length) chunks.push(chunk2);
   return chunks;
 }
 var SNAPSHOTS_TITLE, SNAPSHOT_KEEP, SNAPSHOT_CHUNK, pad;
@@ -15055,8 +15055,8 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
         }
         let j = i + 1;
         while (j < lines.length && !levelAt(j)) j++;
-        const chunk = lines.slice(i, j);
-        for (const group of groupParagraphs(chunk, { bodySize })) {
+        const chunk2 = lines.slice(i, j);
+        for (const group of groupParagraphs(chunk2, { bodySize })) {
           const peeled = pg.ocr ? peelCaptionColumn(group) : { keep: group, rest: [] };
           const pieces2 = pg.ocr ? splitOcrCaptionGroup(peeled.keep) : [peeled.keep];
           for (const part of pieces2) emitTextGroup(part);
@@ -19080,10 +19080,10 @@ function assembleMeta(uids, { pullMany, q: q2 }) {
   const out = /* @__PURE__ */ new Map();
   const list = (uids || []).filter(Boolean);
   for (let i = 0; i < list.length; i += META_CHUNK) {
-    const chunk = list.slice(i, i + META_CHUNK);
+    const chunk2 = list.slice(i, i + META_CHUNK);
     let nodes = [];
     try {
-      nodes = pullMany(META_PULL, chunk.map((u) => [":block/uid", u])) || [];
+      nodes = pullMany(META_PULL, chunk2.map((u) => [":block/uid", u])) || [];
     } catch {
       nodes = [];
     }
@@ -21706,6 +21706,9 @@ var init_tooltip_text = __esm({
       "ctx.collapse-section": e("Collapse", "Fold the section down to its title."),
       "ctx.collapse-section:on": e("Expand", "Show the section's cards again."),
       "ctx.section-note": e("Description", "Add a one-line description under the section's title."),
+      "ctx.bucket-bind": e("Bind to tag or attribute", "Cards dropped in this section get the tag or Name:: value; dragged out, it comes off."),
+      "ctx.bucket-write": e("Write section to graph", "Tag every card in this section now."),
+      "ctx.bucket-unbind": e("Unbind", "Stop writing a tag or attribute to cards. Cards keep what they have."),
       "ctx.section-note:on": e("Remove note", "Delete the section's description line."),
       "ctx.lock": e("Lock", "Pin the section and everything inside it."),
       "ctx.lock:on": e("Unlock", "Unpin the section and everything inside it."),
@@ -24891,16 +24894,16 @@ function createQueryBackend(host) {
     details(uids) {
       const by2 = /* @__PURE__ */ new Map();
       for (let i = 0; i < uids.length; i += DETAIL_CHUNK) {
-        const chunk = uids.slice(i, i + DETAIL_CHUNK);
+        const chunk2 = uids.slice(i, i + DETAIL_CHUNK);
         for (const [u, s, title, t] of q2(
           '[:find ?u ?s ?title ?t :in $ [?u ...] :where [?b :block/uid ?u] [(get-else $ ?b :block/string "") ?s] [(get-else $ ?b :node/title "") ?title] [(get-else $ ?b :edit/time 0) ?t]]',
-          chunk
+          chunk2
         )) by2.set(u, { uid: u, string: s, title, time: Number(t) || 0 });
-        for (const [u, page] of q2("[:find ?u ?pt :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt]]", chunk)) {
+        for (const [u, page] of q2("[:find ?u ?pt :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt]]", chunk2)) {
           const d = by2.get(u);
           if (d) d.page = page;
         }
-        for (const [u, parent] of q2("[:find ?u ?ps :in $ [?u ...] :where [?b :block/uid ?u] [?pa :block/children ?b] [?pa :block/string ?ps]]", chunk)) {
+        for (const [u, parent] of q2("[:find ?u ?ps :in $ [?u ...] :where [?b :block/uid ?u] [?pa :block/children ?b] [?pa :block/string ?ps]]", chunk2)) {
           const d = by2.get(u);
           if (d) d.parent = parent;
         }
@@ -30710,14 +30713,14 @@ function uidFromBlockInput(id) {
   const prefix = "block-input-";
   if (!id.startsWith(prefix)) return null;
   const rest = id.slice(prefix.length);
-  if (UID7.test(rest) || SHORT_UID.test(rest)) return rest;
+  if (UID8.test(rest) || SHORT_UID.test(rest)) return rest;
   const last = rest.slice(rest.lastIndexOf("-") + 1);
   const short = last.length < 9 && SHORT_UID.test(last) ? last : null;
   for (let i = rest.length - 1; i >= 0; i -= 1) {
     if (rest[i] !== "-") continue;
     const tail = rest.slice(i + 1);
     if (tail.length > 15) return short;
-    if (UID7.test(tail)) return tail;
+    if (UID8.test(tail)) return tail;
   }
   return short;
 }
@@ -30727,9 +30730,9 @@ function blockUidFromNode(node2) {
     const id = String(el2.id || el2.getAttribute?.("id") || "");
     const fromInput = uidFromBlockInput(id);
     if (fromInput) return fromInput;
-    if (UID7.test(id)) return id;
+    if (UID8.test(id)) return id;
     const data = el2.dataset?.uid || el2.getAttribute?.("data-uid") || "";
-    if (UID7.test(data) || SHORT_UID.test(data)) return data;
+    if (UID8.test(data) || SHORT_UID.test(data)) return data;
     el2 = el2.parentElement;
   }
   return null;
@@ -30770,10 +30773,10 @@ function editorKeyAction({
   }
   return { type: "roam" };
 }
-var UID7, SHORT_UID, inside4;
+var UID8, SHORT_UID, inside4;
 var init_editor_keys = __esm({
   "src/view/editor-keys.js"() {
-    UID7 = /^[A-Za-z0-9_-]{9,15}$/;
+    UID8 = /^[A-Za-z0-9_-]{9,15}$/;
     SHORT_UID = /^[A-Za-z0-9_]{5,15}$/;
     inside4 = (node2, ancestor) => {
       let el2 = node2;
@@ -39458,7 +39461,7 @@ __export(read_drawer_exports, {
   createReadDrawer: () => createReadDrawer
 });
 function clampFraction(n3) {
-  if (typeof n3 !== "number" || !Number.isFinite(n3)) return OPEN2;
+  if (typeof n3 !== "number" || !Number.isFinite(n3)) return OPEN3;
   return Math.min(MAX_F, Math.max(MIN_F, n3));
 }
 function countLabel2(n3) {
@@ -39556,7 +39559,7 @@ function createReadDrawer({
   let pinnedCount = null;
   let pillRow = null;
   let pillTimer = null;
-  let fraction = OPEN2;
+  let fraction = OPEN3;
   const colors = /* @__PURE__ */ new Set();
   let page = null;
   let needle = "";
@@ -40123,13 +40126,13 @@ function createReadDrawer({
     }
   };
 }
-var OPEN2, MIN_F, MAX_F, PULSE_MS, PILL_MS, SVG, LINES;
+var OPEN3, MIN_F, MAX_F, PULSE_MS, PILL_MS, SVG, LINES;
 var init_read_drawer = __esm({
   "src/view/read-drawer.js"() {
     init_ask_icon();
     init_cards();
     init_read_drawer_model();
-    OPEN2 = 0.4;
+    OPEN3 = 0.4;
     MIN_F = 0.2;
     MAX_F = 0.72;
     PULSE_MS = 600;
@@ -40279,14 +40282,14 @@ function editorPastePlan({
 }
 function inlineAtCaret(value, selectionStart, selectionEnd, insert) {
   const v = String(value ?? "");
-  const chunk = String(insert ?? "");
+  const chunk2 = String(insert ?? "");
   let a = Number(selectionStart);
   let b = Number(selectionEnd);
   if (!Number.isFinite(a)) a = v.length;
   if (!Number.isFinite(b)) b = a;
   const start2 = Math.max(0, Math.min(Math.min(a, b), v.length));
   const end = Math.max(start2, Math.min(Math.max(a, b), v.length));
-  return { string: v.slice(0, start2) + chunk + v.slice(end), caret: start2 + chunk.length };
+  return { string: v.slice(0, start2) + chunk2 + v.slice(end), caret: start2 + chunk2.length };
 }
 function imageMarkdown(urls2) {
   return [...urls2 ?? []].filter((u) => typeof u === "string" && u).map((u) => `![](${u})`).join("");
@@ -46510,12 +46513,12 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   let lastWriteAt = -Infinity;
   let dropBurst = () => {
   };
-  const closeChunk = (chunk) => {
-    if (!(chunk.n || chunk.created?.length)) return;
-    undoLog.push(chunk);
+  const closeChunk = (chunk2) => {
+    if (!(chunk2.n || chunk2.created?.length)) return;
+    undoLog.push(chunk2);
     if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
-    const named2 = typeof chunk.label === "string" && chunk.label ? chunk.label : (chunk.kinds || []).join("+");
-    stats.lastAction = { label: named2, writes: chunk.n || 0 };
+    const named2 = typeof chunk2.label === "string" && chunk2.label ? chunk2.label : (chunk2.kinds || []).join("+");
+    stats.lastAction = { label: named2, writes: chunk2.n || 0 };
   };
   let structureEpoch = 0;
   const noteWrite = (kind) => {
@@ -47872,15 +47875,15 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         }
         dropStats(uid);
         if (!found.stats.length) return;
-        const chunk = statsInParts(node2, found.stats) ? STATS_CHUNK : found.stats.length;
+        const chunk2 = statsInParts(node2, found.stats) ? STATS_CHUNK : found.stats.length;
         try {
-          host.cardStats(found.stats.slice(0, chunk), { boardUid: uid });
+          host.cardStats(found.stats.slice(0, chunk2), { boardUid: uid });
         } catch {
         }
         const idle = globalThis.requestIdleCallback;
         const later = (fn) => idleLater(idle, fn);
         const pulledAt = pullSeq;
-        let si = chunk;
+        let si = chunk2;
         const clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
         const step = (deadline) => {
           if (si >= found.stats.length || unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt) return;
@@ -48792,11 +48795,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     generateUid() {
       return api3.util.generateUID();
     },
-    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType } = {}) {
+    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType, heading, textAlign } = {}) {
       const id = uid ?? api3.util.generateUID();
       const block = { uid: id, string };
       if (props !== void 0) block.props = plainKeys(props);
       if (open !== void 0) block.open = open;
+      if (heading) block.heading = heading;
+      if (textAlign) block["text-align"] = textAlign;
       if (viewType) block["children-view-type"] = viewType;
       stats.writes++;
       await mutate(() => data.block.create({ location: { "parent-uid": parentUid, order }, block }));
@@ -50109,13 +50114,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         const pullMany2 = (eids) => typeof data.pull_many === "function" ? data.pull_many(BROWSE_PULL, eids) : eids.map((e2) => rawPull(BROWSE_PULL, e2));
         const keepMax = Math.max(BROWSE_ROWS, lim);
         for (let i = 0; i < order.length && i < BROWSE_SCAN && kept.length < keepMax; i += BROWSE_CHUNK) {
-          const chunk = order.slice(i, Math.min(i + BROWSE_CHUNK, BROWSE_SCAN));
-          const nodes = timed("browse-pull", () => pullMany2(chunk.map((o) => o.eid)) || []);
+          const chunk2 = order.slice(i, Math.min(i + BROWSE_CHUNK, BROWSE_SCAN));
+          const nodes = timed("browse-pull", () => pullMany2(chunk2.map((o) => o.eid)) || []);
           const rows2 = [];
           nodes.forEach((node2, j) => {
             const uid = node2?.[":block/uid"];
             if (typeof uid !== "string" || !uid) return;
-            const o = chunk[j];
+            const o = chunk2[j];
             const title = node2[":node/title"];
             const base2 = { uid, edited: edited ? o.time : null, tags: [], onBoard: false };
             if (typeof title === "string") {
@@ -51347,6 +51352,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   });
   const listeners3 = /* @__PURE__ */ new Map();
   const deleteHooks = [];
+  const moveHooks = [];
+  const runMoveHooks = (t, moves, track2) => {
+    if (!moves.length) return;
+    for (const fn of moveHooks) {
+      try {
+        fn(t, moves, track2);
+      } catch (err) {
+        console.error("[plexus session] move hook", err);
+      }
+    }
+  };
   const emit2 = (name, payload) => {
     for (const fn of [...listeners3.get(name) ?? []]) {
       try {
@@ -52230,7 +52246,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   async function runOp(op) {
     switch (op.op) {
       case "create":
-        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open });
+        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open, heading: op.heading, textAlign: op.textAlign });
         break;
       case "move":
         await host.moveBlock(op.uid, op.parent, op.order);
@@ -52438,6 +52454,53 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       handleFailure(err);
       return result;
     });
+  }
+  function dragUndo() {
+    const before = /* @__PURE__ */ new Map();
+    const remember2 = (id) => {
+      if (before.has(id)) return;
+      const node2 = rawNode(id);
+      if (!node2) return;
+      const hit = ix().get(id);
+      before.set(id, { parent: hit?.parent?.[UID3] || uid, order: node2[ORD], plexus: clone(rawPlexus(id)) });
+    };
+    const track2 = { undo: [] };
+    const custom = {
+      when: "over-native-limit",
+      async undo() {
+        const moves = [];
+        const propsOps = [];
+        const wroteMove = /* @__PURE__ */ new Set();
+        const wroteProps = /* @__PURE__ */ new Set();
+        for (const op of custom.forward || []) {
+          if (op.op === "move") wroteMove.add(op.uid);
+          else if (op.op === "props") wroteProps.add(op.uid);
+        }
+        for (const [id, prev] of before) {
+          const parentNow = ix().get(id)?.parent?.[UID3] || uid;
+          if (wroteMove.has(id) || prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
+          if (wroteProps.has(id) || stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
+        }
+        moves.sort((a, b) => a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0));
+        await execute([...moves, ...propsOps, ...[...track2.undo].reverse()]);
+      },
+      async redo() {
+        await execute(custom.forward);
+      }
+    };
+    const wrap = (t) => {
+      const move = t.move.bind(t);
+      const props = t.props.bind(t);
+      t.move = (id, parent, order) => {
+        remember2(id);
+        move(id, parent, order);
+      };
+      t.props = (id, plexus) => {
+        remember2(id);
+        props(id, plexus);
+      };
+    };
+    return { remember: remember2, track: track2, custom, wrap };
   }
   function txn(fn, custom = null) {
     if (!board2 || destroyed || gone) return Promise.resolve(void 0);
@@ -53192,53 +53255,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     refreshLinks,
     commitMove(uids, dx, dy) {
       if (!board2 || !dx && !dy) return Promise.resolve();
-      const before = /* @__PURE__ */ new Map();
-      const remember2 = (id) => {
-        if (before.has(id)) return;
-        const node2 = rawNode(id);
-        if (!node2) return;
-        const hit = ix().get(id);
-        before.set(id, { parent: hit?.parent?.[UID3] || uid, order: node2[ORD], plexus: clone(rawPlexus(id)) });
-      };
-      const stringBefore = /* @__PURE__ */ new Map();
-      const laneCreated = [];
-      const custom = {
-        when: "over-native-limit",
-        async undo() {
-          const moves = [];
-          const propsOps = [];
-          const wroteMove = /* @__PURE__ */ new Set();
-          const wroteProps = /* @__PURE__ */ new Set();
-          for (const op of custom.forward || []) {
-            if (op.op === "move") wroteMove.add(op.uid);
-            else if (op.op === "props") wroteProps.add(op.uid);
-          }
-          for (const [id, prev] of before) {
-            const parentNow = ix().get(id)?.parent?.[UID3] || uid;
-            if (wroteMove.has(id) || prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
-            if (wroteProps.has(id) || stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
-          }
-          moves.sort((a, b) => a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0));
-          const valueOps = [];
-          for (const [id, prev] of stringBefore) valueOps.push({ op: "string", uid: id, string: prev });
-          for (const id of laneCreated) valueOps.push({ op: "delete", uid: id });
-          await execute([...moves, ...propsOps, ...valueOps]);
-        },
-        async redo() {
-          await execute(custom.forward);
-        }
-      };
+      const { remember: remember2, track: track2, custom, wrap } = dragUndo();
       return txn((t) => {
-        const move = t.move.bind(t);
-        const props = t.props.bind(t);
-        t.move = (id, parent, order) => {
-          remember2(id);
-          move(id, parent, order);
-        };
-        t.props = (id, plexus) => {
-          remember2(id);
-          props(id, plexus);
-        };
+        wrap(t);
         const top = topLevelOf(board2, uids).filter((id) => !board2.items.get(id).pinned);
         if (!top.length) return;
         for (const id of top) remember2(id);
@@ -53249,12 +53268,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         }
         const plan = new Map(membershipPlan(board2, top, moved).map((p) => [p.uid, p]));
         const drops = planLaneDrops(top, plan, moved);
+        const parents = [];
         for (const id of top) {
           const item = board2.items.get(id);
           const p = plan.get(id);
           const s = drops.snap.get(id);
           const at = (v, d) => d ? round14(v + d) : v;
           if (p) {
+            if (p.toParent !== item.parentUid) parents.push({ uid: id, from: item.parentUid, to: p.toParent });
             t.move(id, p.toParent, "last");
             t.props(id, itemPlexus(id, { x: at(p.x, s?.dx), y: at(p.y, s?.dy) }));
           } else {
@@ -53263,26 +53284,27 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         }
         for (const w of drops.writes) {
           if (w.op === "string") {
-            if (!stringBefore.has(w.uid)) {
-              let prev = rawNode(w.uid)?.[STR];
-              if (typeof prev !== "string") prev = laneResolve(w.uid);
-              if (typeof prev === "string") stringBefore.set(w.uid, prev);
-            }
+            let prev = rawNode(w.uid)?.[STR];
+            if (typeof prev !== "string") prev = laneResolve(w.uid);
             t.string(w.uid, w.string);
+            if (typeof prev === "string") track2.undo.push({ op: "string", uid: w.uid, string: prev });
             if (w.ref) laneWrites.set(w.ref, { uid: w.uid, string: w.string, at: Date.now() });
           } else if (w.op === "create") {
             const made = t.create({ parent: w.parent, string: w.string, order: "last" });
-            laneCreated.push(made);
+            track2.undo.push({ op: "delete", uid: made });
             if (w.ref) laneWrites.set(w.ref, { uid: made, string: w.string, at: Date.now() });
           }
         }
+        runMoveHooks(t, parents, track2);
         applyFit(t, top);
         if (flag("space-out", false)) spaceOutAfter(t, top);
       }, custom);
     },
     commitRects(list) {
       if (!board2 || !list?.length) return Promise.resolve();
+      const { track: track2, custom, wrap } = dragUndo();
       return txn((t) => {
+        wrap(t);
         const changedSections = [];
         const fitTouched = [];
         for (const r of list) {
@@ -53303,15 +53325,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           t.sync();
           for (const sid of changedSections) {
             const plan = sectionAdoptPlan(board2, sid, rects);
+            const parents = plan.filter((p) => p.toParent !== board2.items.get(p.uid)?.parentUid).map((p) => ({ uid: p.uid, from: board2.items.get(p.uid).parentUid, to: p.toParent }));
             for (const p of plan) {
               t.move(p.uid, p.toParent, "last");
               t.props(p.uid, itemPlexus(p.uid, { x: p.x, y: p.y }));
             }
+            runMoveHooks(t, parents, track2);
             if (plan.length) t.sync();
           }
         }
         applyFit(t, fitTouched, { skip: changedSections });
-      });
+      }, custom);
     },
     addPublicCard({ string, x, y } = {}) {
       return txn((t) => addPublicCard({
@@ -53409,8 +53433,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           const again = chunkParsedMarkdown(fn.apply(markdown));
           if (again.ok) chunks = again.chunks;
         }
-        for (const chunk of chunks) {
-          const roots = await host.fromMarkdown({ parentUid: loc.parentUid, order, markdown: chunk });
+        for (const chunk2 of chunks) {
+          const roots = await host.fromMarkdown({ parentUid: loc.parentUid, order, markdown: chunk2 });
           uids.push(...roots);
           order = advanceOrder(order, roots.length);
         }
@@ -55310,6 +55334,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     clone,
     round1: round14,
     emit: emit2,
+    onMoveItems(fn) {
+      if (typeof fn !== "function") return () => {
+      };
+      moveHooks.push(fn);
+      return () => {
+        const at = moveHooks.indexOf(fn);
+        if (at >= 0) moveHooks.splice(at, 1);
+      };
+    },
     onDeleteItems(fn) {
       if (typeof fn !== "function") return () => {
       };
@@ -56068,6 +56101,141 @@ extendSession((session, api3) => {
 // src/session-lanes.js
 init_schema();
 init_table();
+
+// src/model/bucket.js
+init_schema();
+init_query();
+init_table();
+init_kanban();
+var WRITE_CHUNK = 45;
+var PLAIN_TAG = /^[\w\-/.]+$/u;
+var escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&");
+function parseTag(text4) {
+  let m = /^#\[\[([^\]\n]+)\]\]$/.exec(text4) || /^\[\[([^\]\n]+)\]\]$/.exec(text4);
+  let tag = m ? m[1].trim() : null;
+  if (tag == null) {
+    const bare = text4.startsWith("#") ? text4.slice(1) : text4;
+    if (!PLAIN_TAG.test(bare)) return null;
+    tag = bare;
+  }
+  return tag ? { kind: "tag", tag } : null;
+}
+function parseAttr(text4) {
+  const name = attrNameOf(text4);
+  if (!name || !columnNameOk(name)) return null;
+  const value = text4.slice(text4.indexOf("::") + 2).trim();
+  return value ? { kind: "attr", name, value } : null;
+}
+function parseBinding(text4) {
+  if (typeof text4 !== "string") return null;
+  const s = text4.trim();
+  if (!s) return null;
+  if (s.includes("::")) return parseAttr(s);
+  return parseTag(s);
+}
+function readBinding(plexus) {
+  const b = plexus?.bucket;
+  if (!b || typeof b !== "object") return null;
+  if (b.kind === "tag" && typeof b.tag === "string" && b.tag.trim()) return { kind: "tag", tag: b.tag.trim() };
+  if (b.kind === "attr" && typeof b.name === "string" && typeof b.value === "string") return parseAttr(`${b.name}:: ${b.value}`);
+  return null;
+}
+function tagToken(tag) {
+  return PLAIN_TAG.test(tag) ? `#${tag}` : `#[[${tag}]]`;
+}
+function bindingLabel(b) {
+  if (!b) return "";
+  return b.kind === "tag" ? tagToken(b.tag) : `${b.name}:: ${b.value}`;
+}
+function bindingKey(b) {
+  return b.kind === "tag" ? `tag:${b.tag}` : `attr:${b.name}:${b.value}`;
+}
+var tagTail = "(?![\\w/.-])";
+var plainRe = (tag, flags) => new RegExp(`(?<![\\w/.-])#${escapeRe(tag)}${tagTail}`, flags);
+function hasTag(string, tag) {
+  const s = String(string ?? "");
+  return plainRe(tag, "u").test(s) || s.includes(`#[[${tag}]]`) || s.includes(`[[${tag}]]`);
+}
+function addTag(string, tag) {
+  const s = String(string ?? "");
+  if (hasTag(s, tag)) return s;
+  return s ? `${s} ${tagToken(tag)}` : tagToken(tag);
+}
+function removeTag(string, tag) {
+  const s = String(string ?? "");
+  const gone = new RegExp(`(?<![\\w/.-])#(?:\\[\\[${escapeRe(tag)}\\]\\]|${escapeRe(tag)}${tagTail}) ?`, "gu");
+  return s.replace(gone, "").trimEnd();
+}
+function attrsOfKids(kids) {
+  const out = [];
+  for (const child of kids || []) {
+    const string = String(child?.[":block/string"] ?? child?.string ?? "");
+    const name = attrNameOf(string);
+    if (!name || !columnNameOk(name)) continue;
+    out.push({ name, value: string.slice(string.indexOf("::") + 2).trim(), uid: child?.[":block/uid"] ?? child?.uid ?? null });
+  }
+  return out;
+}
+function tagBlocked(binding, string) {
+  if (binding?.kind !== "tag" || hasTag(string, binding.tag)) return false;
+  const before = String(string ?? "");
+  const after = addTag(before, binding.tag);
+  return classifyString(before).kind !== classifyString(after).kind || isQueryString(before) !== isQueryString(after);
+}
+function planBucketAdd(binding, row4) {
+  if (!binding || !row4?.uid) return null;
+  if (binding.kind === "tag") {
+    if (tagBlocked(binding, row4.string)) return null;
+    const string = addTag(row4.string, binding.tag);
+    return string === String(row4.string ?? "") ? null : { op: "string", uid: row4.uid, string };
+  }
+  return planKanbanMove({ field: binding.name, column: binding.value, row: row4 });
+}
+function planBucketRemove(binding, row4) {
+  if (!binding || !row4?.uid) return null;
+  if (binding.kind === "tag") {
+    const string = removeTag(row4.string, binding.tag);
+    return string === String(row4.string ?? "") ? null : { op: "string", uid: row4.uid, string };
+  }
+  const attr = (row4.attrs || []).find((a) => a.name === binding.name);
+  if (!attr?.uid || attr.value !== binding.value) return null;
+  return { op: "delete", uid: attr.uid };
+}
+function applyPlan(row4, plan) {
+  if (plan.op === "string" && plan.uid === row4.uid) return { ...row4, string: plan.string };
+  if (plan.op === "string") return { ...row4, attrs: row4.attrs.map((a) => a.uid === plan.uid ? { ...a, value: plan.string.slice(plan.string.indexOf("::") + 2).trim() } : a) };
+  if (plan.op === "delete") return { ...row4, attrs: row4.attrs.filter((a) => a.uid !== plan.uid) };
+  if (plan.op === "create") {
+    const name = attrNameOf(plan.string);
+    return { ...row4, attrs: [...row4.attrs, { name, value: plan.string.slice(plan.string.indexOf("::") + 2).trim(), uid: null, pending: true }] };
+  }
+  return row4;
+}
+function planChainChange(before, after, row4) {
+  const had = new Map((before || []).map((b) => [bindingKey(b), b]));
+  const has = new Map((after || []).map((b) => [bindingKey(b), b]));
+  const adds = [...has].filter(([k]) => !had.has(k)).map(([, b]) => b);
+  const removes = [...had].filter(([k]) => !has.has(k)).map(([, b]) => b).filter((b) => b.kind !== "attr" || !adds.some((a) => a.kind === "attr" && a.name === b.name));
+  const plans = [];
+  let work = { uid: row4.uid, string: row4.string ?? "", attrs: (row4.attrs || []).map((a) => ({ ...a })) };
+  const push = (plan) => {
+    if (!plan) return;
+    const last = plans.at(-1);
+    if (plan.op === "string" && plan.uid === work.uid && last?.op === "string" && last.uid === plan.uid) last.string = plan.string;
+    else plans.push(plan);
+    work = applyPlan(work, plan);
+  };
+  for (const b of removes) push(planBucketRemove(b, work));
+  for (const b of adds) push(planBucketAdd(b, work));
+  return plans.filter((p) => !(p.op === "string" && p.uid === row4.uid && p.string === String(row4.string ?? "")));
+}
+function chunk(list, n3 = WRITE_CHUNK) {
+  const out = [];
+  for (let i = 0; i < list.length; i += n3) out.push(list.slice(i, i + n3));
+  return out;
+}
+
+// src/session-lanes.js
 init_attr_lanes();
 var ATTR_BLOCKS = "[:find ?pu ?s ?o :in $ ?title :where [?p :node/title ?title] [?a :block/refs ?p] [?a :block/string ?s] [?a :block/order ?o] [?par :block/children ?a] [?par :block/uid ?pu] (not [?par :node/title _])]";
 var same2 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -56141,6 +56309,7 @@ extendSession((session, api3) => {
       const lane2 = laneOf(id);
       const attr = typeof name === "string" ? name.trim() : "";
       if (!lane2 || !attr || !laneAttrOk(attr)) return Promise.resolve(false);
+      if (readBinding(api3.rawPlexus(id))) return Promise.resolve(false);
       const board2 = api3.board();
       const rect = api3.rects().get(id);
       if (!rect) return Promise.resolve(false);
@@ -56244,6 +56413,206 @@ extendSession((session, api3) => {
       }).then((placed) => ({ placed: placed ?? 0, total: all.length }));
     }
   });
+});
+
+// src/session-bucket.js
+init_board();
+var STR3 = ":block/string";
+var KIDS5 = ":block/children";
+var UID5 = ":block/uid";
+var OPEN2 = ":block/open";
+var ORDER2 = ":block/order";
+var HEADING = ":block/heading";
+var ALIGN = ":block/text-align";
+var PROPS3 = ":block/props";
+var SUBTREE = "[:block/uid :block/string :block/order :block/open :block/heading :block/text-align :block/props {(limit :block/children nil) ...}]";
+extendSession((session, api3) => {
+  const { host } = api3;
+  const boardUid = session.uid;
+  const chainOf = (parentUid) => {
+    const board2 = api3.board();
+    const out = [];
+    let at = parentUid;
+    for (let n3 = 0; at && at !== boardUid && n3 < 64; n3++) {
+      const item = board2?.items.get(at);
+      if (!item) break;
+      if (item.type === "section") {
+        const b = readBinding(api3.rawPlexus(at));
+        if (b) out.push(b);
+      }
+      at = item.parentUid;
+    }
+    return out;
+  };
+  const targetOf2 = (id) => {
+    const item = api3.board()?.items.get(id);
+    if (!item || item.type !== "card") return null;
+    const target = item.target;
+    if (target?.kind === "self") {
+      const node2 = api3.rawNode(item.uid);
+      if (!node2) return null;
+      const kids = api3.kidsOf(node2);
+      return { uid: item.uid, string: String(node2[STR3] ?? node2.string ?? ""), kids, self: true };
+    }
+    if (target?.kind === "block" && target.uid && !target.page) {
+      let string = null;
+      try {
+        string = host.blockString?.(target.uid);
+      } catch {
+        string = null;
+      }
+      if (typeof string !== "string") return null;
+      let kids = [];
+      try {
+        const node2 = host.pullTree?.(target.uid, 1, 500);
+        kids = Array.isArray(node2) ? node2 : Array.isArray(node2?.[KIDS5]) ? node2[KIDS5] : [];
+      } catch {
+        kids = [];
+      }
+      return { uid: target.uid, string, kids };
+    }
+    return null;
+  };
+  const rowOf = (target) => ({ uid: target.uid, string: target.string, attrs: attrsOfKids(target.kids) });
+  const kidString = (target, uid) => {
+    const kid = target.kids.find((k) => (k[UID5] ?? k.uid) === uid);
+    return String(kid?.[STR3] ?? kid?.string ?? "");
+  };
+  const subtreeCreates = (target, attrUid, order) => {
+    const out = [];
+    const kidsIn = (node2) => {
+      const list = Array.isArray(node2?.[KIDS5]) ? node2[KIDS5] : Array.isArray(node2?.children) ? node2.children : [];
+      return [...list].sort((a, b) => (a?.[ORDER2] ?? 0) - (b?.[ORDER2] ?? 0));
+    };
+    const walk3 = (node2, parent, ord) => {
+      const op = { op: "create", uid: node2[UID5] ?? node2.uid, parent, order: ord, string: String(node2[STR3] ?? node2.string ?? "") };
+      const open = node2[OPEN2] ?? node2.open;
+      if (open !== void 0) op.open = open;
+      const heading = node2[HEADING] ?? node2.heading;
+      if (Number.isInteger(heading) && heading > 0) op.heading = heading;
+      const align = node2[ALIGN] ?? node2.textAlign;
+      if (typeof align === "string" && align) op.textAlign = align;
+      const props = node2[PROPS3];
+      if (props && typeof props === "object" && Object.keys(props).length) op.props = props;
+      out.push(op);
+      kidsIn(node2).forEach((k, i) => walk3(k, op.uid, i));
+    };
+    const attr = target.kids.find((k) => (k[UID5] ?? k.uid) === attrUid) ?? { [UID5]: attrUid };
+    let full = null;
+    try {
+      full = host.pullEntity?.(SUBTREE, attrUid) ?? null;
+    } catch {
+      full = null;
+    }
+    if (!full && target.self) full = api3.rawNode(attrUid);
+    if (!full) {
+      let kids = [];
+      try {
+        const got = host.pullTree?.(attrUid, 20, 2e3);
+        kids = Array.isArray(got) ? got : Array.isArray(got?.[KIDS5]) ? got[KIDS5] : [];
+      } catch {
+        kids = [];
+      }
+      full = { ...attr, [KIDS5]: kids };
+    }
+    walk3(full, target.uid, order);
+    return out;
+  };
+  const emitPlan = (t, plan, target, undo) => {
+    if (plan.op === "string") {
+      const prev = plan.uid === target.uid ? target.string : kidString(target, plan.uid);
+      t.string(plan.uid, plan.string);
+      undo.push({ op: "string", uid: plan.uid, string: prev });
+    } else if (plan.op === "create") {
+      const id = t.create({ parent: plan.parent, string: plan.string, order: "last" });
+      undo.push({ op: "delete", uid: id });
+    } else if (plan.op === "delete") {
+      const at = target.kids.findIndex((k) => (k[UID5] ?? k.uid) === plan.uid);
+      const creates = subtreeCreates(target, plan.uid, at >= 0 ? at : "last");
+      t.del(plan.uid);
+      for (const op of creates.reverse()) undo.push(op);
+    }
+  };
+  const cardsUnder = (id) => {
+    const board2 = api3.board();
+    const item = board2?.items.get(id);
+    if (!item) return [];
+    if (item.type === "section") return [...descendantsOf(board2, id)].filter((d) => board2.items.get(d)?.type === "card");
+    return item.type === "card" ? [id] : [];
+  };
+  const countBlocked = (before, after, target) => {
+    const had = new Set(before.map(bindingKey));
+    return after.some((b) => !had.has(bindingKey(b)) && tagBlocked(b, target.string)) ? 1 : 0;
+  };
+  const skipToast = (n3) => {
+    if (n3) api3.emit("toast", { message: `Left ${n3} card${n3 === 1 ? "" : "s"} untagged: a tag would change what ${n3 === 1 ? "it shows" : "they show"}` });
+  };
+  api3.onMoveItems((t, moves, track2) => {
+    const seen = /* @__PURE__ */ new Set();
+    let skipped = 0;
+    for (const m of moves) {
+      const before = chainOf(m.from);
+      const after = chainOf(m.to);
+      if (!before.length && !after.length) continue;
+      for (const id of cardsUnder(m.uid)) {
+        const target = targetOf2(id);
+        if (!target || seen.has(target.uid)) continue;
+        seen.add(target.uid);
+        skipped += countBlocked(before, after, target);
+        for (const plan of planChainChange(before, after, rowOf(target))) emitPlan(t, plan, target, track2.undo);
+      }
+    }
+    skipToast(skipped);
+  });
+  session.sectionBinding = (id) => {
+    if (api3.board()?.items.get(id)?.type !== "section") return null;
+    return readBinding(api3.rawPlexus(id));
+  };
+  session.bindSection = (id, binding) => {
+    const item = api3.board()?.items.get(id);
+    if (item?.type !== "section") return Promise.resolve(false);
+    if (binding && item.laneAttr) return Promise.resolve(false);
+    const base2 = api3.itemPlexus(id, {});
+    const current3 = readBinding(base2);
+    if (binding ? current3 && bindingKey(current3) === bindingKey(binding) : !base2.bucket) return Promise.resolve(false);
+    const { bucket: _gone, ...rest } = base2;
+    const next = binding ? { ...rest, bucket: binding.kind === "tag" ? { kind: "tag", tag: binding.tag } : { kind: "attr", name: binding.name, value: binding.value } } : rest;
+    return api3.txn((t) => {
+      t.props(id, next);
+      return true;
+    }).then((ok) => ok === true);
+  };
+  session.writeSectionToGraph = async (id) => {
+    const binding = session.sectionBinding(id);
+    if (!binding) return 0;
+    const jobs = [];
+    const seen = /* @__PURE__ */ new Set();
+    let skipped = 0;
+    for (const cid of cardsUnder(id)) {
+      const target = targetOf2(cid);
+      if (!target || seen.has(target.uid)) continue;
+      seen.add(target.uid);
+      const plan = planBucketAdd(binding, rowOf(target));
+      if (plan) jobs.push({ plan, target });
+      else if (tagBlocked(binding, target.string)) skipped++;
+    }
+    const label = bindingLabel(binding);
+    if (!jobs.length) {
+      skipToast(skipped);
+      if (!skipped) api3.emit("toast", { message: seen.size ? `Every card already has ${label}` : "No cards to tag" });
+      return 0;
+    }
+    let written = 0;
+    for (const part of chunk(jobs)) {
+      await api3.txn((t) => {
+        for (const { plan, target } of part) emitPlan(t, plan, target, []);
+      });
+      written += part.length;
+    }
+    api3.emit("toast", { message: `Tagged ${written} card${written === 1 ? "" : "s"} with ${label}` });
+    skipToast(skipped);
+    return written;
+  };
 });
 
 // src/templates.js
@@ -56375,8 +56744,8 @@ extendSession((session, api3) => {
     });
     if (!plan?.creates.length) return Promise.resolve(null);
     const rootUid = plan.rootUid;
-    return writeChunks(plan.chunks, (chunk) => api3.txn((t) => {
-      for (const op of chunk) {
+    return writeChunks(plan.chunks, (chunk2) => api3.txn((t) => {
+      for (const op of chunk2) {
         t.create({
           uid: op.uid,
           parent: op.parent,
@@ -56406,9 +56775,9 @@ extendSession((session, api3) => {
     if (!plan.creates.length) return null;
     if (api3.bulkAllowed && !api3.bulkAllowed(plan.creates.length)) return null;
     const rootUid = plan.rootUid;
-    await writeChunks(plan.chunks, async (chunk) => {
+    await writeChunks(plan.chunks, async (chunk2) => {
       await host.group(async () => {
-        for (const op of chunk) {
+        for (const op of chunk2) {
           await host.createBlock({
             parentUid: op.parent,
             order: op.order,
@@ -56459,9 +56828,9 @@ extendSession((session, api3) => {
     const snap = board2?.snapshots?.find((item) => item.uid === snapUid);
     if (!snap) return false;
     const chunks = planRestore(snap.items, board2);
-    for (const chunk of chunks) {
+    for (const chunk2 of chunks) {
       await api3.txn((t) => {
-        for (const op of chunk) {
+        for (const op of chunk2) {
           if (op.op === "move") t.move(op.uid, op.parent);
           else {
             t.props(op.uid, api3.itemPlexus(op.uid, {
@@ -56537,22 +56906,22 @@ function captionForView(sections, point, fallbackTitle) {
 }
 
 // src/views.js
-var UID5 = ":block/uid";
-var STR3 = ":block/string";
+var UID6 = ":block/uid";
+var STR4 = ":block/string";
 var CONTAINER = "{{[[plexus-regions]]}}";
 function regionsParent(api3, board2) {
   if (board2.regionsUid) return board2.regionsUid;
   const root = api3.rawNode(api3.uid);
   for (const child of api3.kidsOf(root)) {
-    const text4 = child[STR3] ?? child.string ?? "";
-    if (isContainerString(text4)) return child[UID5] || child.uid;
+    const text4 = child[STR4] ?? child.string ?? "";
+    if (isContainerString(text4)) return child[UID6] || child.uid;
   }
   return null;
 }
 function viewRegion(api3, uid) {
   const node2 = api3.rawNode(uid);
   if (!node2) return null;
-  const region = parseRegion(node2[STR3] ?? node2.string ?? "");
+  const region = parseRegion(node2[STR4] ?? node2.string ?? "");
   if (!region || region.kind !== "view" || region.supported !== true) return null;
   return region;
 }
@@ -56560,9 +56929,9 @@ function imageCardContainer(api3, cardUid) {
   const card2 = api3.rawNode(cardUid);
   if (!card2) return null;
   for (const child of api3.kidsOf(card2)) {
-    const id = child[UID5] || child.uid;
+    const id = child[UID6] || child.uid;
     if (!id) continue;
-    const text4 = child[STR3] ?? child.string ?? "";
+    const text4 = child[STR4] ?? child.string ?? "";
     if (isContainerString(text4) || api3.rawPlexus(id)?.type === "regions") return id;
   }
   return null;
@@ -58469,7 +58838,7 @@ function isBlankCanvas(canvas, { threshold = 235 } = {}) {
 
 // src/model/pdf-drag.js
 var PDF_MARK = ".TextHighlight__part, .AreaHighlight__part, .AreaHighlight";
-var UID6 = /^[A-Za-z0-9_-]{9}$/;
+var UID7 = /^[A-Za-z0-9_-]{9}$/;
 var FIBER_LIMIT = 10;
 var CHIP_LEN = 60;
 function fiberOf(node2) {
@@ -58497,7 +58866,7 @@ function highlightFromFiber(fiber) {
   return null;
 }
 function acceptId(id, exists) {
-  if (typeof id !== "string" || !UID6.test(id)) return null;
+  if (typeof id !== "string" || !UID7.test(id)) return null;
   if (typeof exists !== "function") return id;
   try {
     if (exists(id) !== true) return null;
@@ -59909,8 +60278,8 @@ function mountContextsDrawer({
     el2.append(note);
   }
   let year;
-  const paint2 = (chunk) => {
-    for (const row4 of chunk) {
+  const paint2 = (chunk2) => {
+    for (const row4 of chunk2) {
       if (row4.year !== year) {
         year = row4.year;
         const head = doc.createElement("div");
@@ -73250,9 +73619,9 @@ async function ask({ context = "", roamContext = null, prompt = "", messages = n
   if (effort) options.effort = String(effort);
   if (signal) options.signal = signal;
   if (json) options.responseFormat = "json_object";
-  if (typeof onChunk === "function") options.onChunk = (chunk) => {
+  if (typeof onChunk === "function") options.onChunk = (chunk2) => {
     try {
-      onChunk(chunk);
+      onChunk(chunk2);
     } catch {
     }
   };
@@ -75346,11 +75715,11 @@ ${lines.join("\n")}` : "";
     lastPaint = now3();
     if (stick) toBottom();
   };
-  const appendChunk = (turn, chunk) => {
+  const appendChunk = (turn, chunk2) => {
     let n3 = turn.bubble.lastChild;
     while (n3 && n3.nodeType === 1 && /^(UL|OL)$/.test(n3.tagName) && n3.lastChild) n3 = n3.lastChild;
     const into = n3 && n3.nodeType === 1 && /^(P|LI)$/.test(n3.tagName) ? n3 : turn.bubble;
-    into.append(dom.createTextNode(chunk));
+    into.append(dom.createTextNode(chunk2));
   };
   const userBubble = (text4) => {
     const msg = make2(dom, "div", "pxd-ask__msg pxd-ask__msg--user", null);
@@ -75510,15 +75879,15 @@ ${lines.join("\n")}` : "";
       ...effortOptions(effort, curModel()),
       signal: ctl.signal,
       window: win2,
-      onChunk: (chunk) => {
+      onChunk: (chunk2) => {
         if (dead || mine !== token) return;
-        turn.answer += chunk;
+        turn.answer += chunk2;
         s.status.textContent = "";
         if (now3() - lastPaint >= PAINT_MS) {
           paintTurn(turn);
           return;
         }
-        appendChunk(turn, chunk);
+        appendChunk(turn, chunk2);
         if (!paintTimer) paintTimer = setTimeout(() => {
           paintTimer = null;
           if (!dead && mine === token) paintTurn(turn);
@@ -86501,12 +86870,13 @@ function openViewDialog(doc, { caption = "", showCopy = true, dialogLabel = "", 
   const glyph = dialogLabel === "Landmark glyph";
   const label = doc.createElement("label");
   const comment = dialogLabel === "Comment";
-  label.textContent = glyph ? "Glyph" : comment ? "Comment" : "Name";
+  const bind = dialogLabel === "Bind section";
+  label.textContent = glyph ? "Glyph" : comment ? "Comment" : bind ? "Tag or attribute" : "Name";
   const input = doc.createElement("input");
   input.className = "pxd-input";
   input.type = "text";
   input.value = caption;
-  input.setAttribute("aria-label", glyph ? "Landmark glyph" : comment ? "Comment" : "View name");
+  input.setAttribute("aria-label", glyph ? "Landmark glyph" : comment ? "Comment" : bind ? "Tag or attribute" : "View name");
   label.append(input);
   card2.append(label);
   let copyBox = null;
@@ -91466,10 +91836,10 @@ function editState(doc) {
 }
 
 // src/host/follow-sources.js
-var UID8 = ":block/uid";
-var STR4 = ":block/string";
+var UID9 = ":block/uid";
+var STR5 = ":block/string";
 var ORD2 = ":block/order";
-var KIDS5 = ":block/children";
+var KIDS6 = ":block/children";
 var FIELDS2 = ":block/uid :block/string :block/order :create/time :edit/time";
 var META = /^BT_attr[\w-]*::/;
 var REFS_LIMIT = FOLLOW_READ_CAP + 1;
@@ -91486,7 +91856,7 @@ function defineFollowKind(kind) {
 var followKind = (id) => kinds.get(id) || null;
 var quote = (text4) => `“${plainText(text4, 48) || "Untitled"}”`;
 var timeOf = (node2) => Math.max(Number(node2?.[":create/time"]) || 0, Number(node2?.[":edit/time"]) || 0);
-var sorted = (node2) => Array.isArray(node2?.[KIDS5]) ? node2[KIDS5].slice().sort((a, b) => (a?.[ORD2] ?? 0) - (b?.[ORD2] ?? 0)) : [];
+var sorted = (node2) => Array.isArray(node2?.[KIDS6]) ? node2[KIDS6].slice().sort((a, b) => (a?.[ORD2] ?? 0) - (b?.[ORD2] ?? 0)) : [];
 function treePattern(depth) {
   let inner = `[${FIELDS2}]`;
   for (let d = 1; d < depth; d += 1) inner = `[${FIELDS2} {(limit :block/children ${CHILD_LIMIT}) ${inner}}]`;
@@ -91503,16 +91873,16 @@ function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__
     if (kids.length > cap4) cut = true;
     for (const kid of kids) {
       if (!complete) return;
-      const uid = kid?.[UID8];
+      const uid = kid?.[UID9];
       if (typeof uid !== "string" || skip.has(uid)) continue;
-      const string = typeof kid[STR4] === "string" ? kid[STR4] : "";
+      const string = typeof kid[STR5] === "string" ? kid[STR5] : "";
       if (META.test(string.trim())) continue;
       if (items.length >= cap4) {
         complete = false;
         return;
       }
       items.push({ uid, kind: "block", text: sourceText(string), time: timeOf(kid), depth: level, ...string.trim() ? {} : { blank: true } });
-      const more = Array.isArray(kid[KIDS5]) && kid[KIDS5].length > 0;
+      const more = Array.isArray(kid[KIDS6]) && kid[KIDS6].length > 0;
       if (!more) continue;
       if (level >= depth) {
         deeper = true;
@@ -91534,7 +91904,7 @@ function underSource(host, uid, sourceUid, boardUid) {
   } catch {
     return true;
   }
-  const parents = Array.isArray(node2?.[":block/parents"]) ? node2[":block/parents"].map((p) => p?.[UID8]) : [];
+  const parents = Array.isArray(node2?.[":block/parents"]) ? node2[":block/parents"].map((p) => p?.[UID9]) : [];
   return parents.includes(sourceUid) && !parents.includes(boardUid);
 }
 function nameOf(host, uid) {
@@ -91545,7 +91915,7 @@ function nameOf(host, uid) {
     node2 = null;
   }
   if (!node2) return "";
-  return typeof node2[":node/title"] === "string" ? node2[":node/title"] : sourceText(node2[STR4] || "");
+  return typeof node2[":node/title"] === "string" ? node2[":node/title"] : sourceText(node2[STR5] || "");
 }
 var watchBlock = (pointer, host, cb) => typeof host?.watchBlock === "function" ? host.watchBlock(pointer.uid, cb) : () => {
 };
@@ -91580,15 +91950,15 @@ defineFollowKind({
   }
 });
 function subtreeUids(node2, out = /* @__PURE__ */ new Set()) {
-  for (const kid of Array.isArray(node2?.[KIDS5]) ? node2[KIDS5] : []) {
-    if (typeof kid?.[UID8] === "string") out.add(kid[UID8]);
+  for (const kid of Array.isArray(node2?.[KIDS6]) ? node2[KIDS6] : []) {
+    if (typeof kid?.[UID9] === "string") out.add(kid[UID9]);
     subtreeUids(kid, out);
   }
   return out;
 }
 var queryString = (host, uid) => {
   try {
-    return host?.pullEntity?.("[:block/string]", uid)?.[STR4] ?? null;
+    return host?.pullEntity?.("[:block/string]", uid)?.[STR5] ?? null;
   } catch {
     return null;
   }
@@ -95368,17 +95738,17 @@ async function readCrops(crops, scaleX, scaleY, runRec, dict, signal) {
   const items = [];
   for (let i = 0; i < crops.length; i += BATCH) {
     throwIfAborted(signal);
-    const chunk = crops.slice(i, i + BATCH);
-    const maxW = Math.max(...chunk.map((c) => c.resized.w));
+    const chunk2 = crops.slice(i, i + BATCH);
+    const maxW = Math.max(...chunk2.map((c) => c.resized.w));
     const height = REC_H;
-    const data = new Float32Array(chunk.length * 3 * height * maxW);
-    const normals = chunk.map((c) => nchwNormalize(c.resized.rgb, c.resized.w, c.resized.h));
-    chunk.forEach((c, b) => blitLeft(data, b, maxW, normals[b], c.resized.w, height));
-    const out = await runRec(data, [chunk.length, 3, height, maxW]);
+    const data = new Float32Array(chunk2.length * 3 * height * maxW);
+    const normals = chunk2.map((c) => nchwNormalize(c.resized.rgb, c.resized.w, c.resized.h));
+    chunk2.forEach((c, b) => blitLeft(data, b, maxW, normals[b], c.resized.w, height));
+    const out = await runRec(data, [chunk2.length, 3, height, maxW]);
     const time = out.time;
     const classes = out.classes;
     const logits = out.logits;
-    chunk.forEach((c, b) => {
+    chunk2.forEach((c, b) => {
       const contentT = Math.max(1, Math.min(time, Math.round(time * (c.resized.contentW || c.resized.w) / maxW)));
       const start2 = b * time * classes;
       const slice = logits.subarray(start2, start2 + contentT * classes);
@@ -97585,6 +97955,9 @@ function buildMenu(kind, ctx = {}) {
         make3("select-connected", "Select connected"),
         make3("collapse-section", c.collapsed ? "Expand" : "Collapse"),
         make3("section-note", c.hasNote ? "Remove description" : "Add description"),
+        // A lane with sub-lanes (PXD-11) writes values itself, so it offers no section binding, and the other way round.
+        ...c.lane?.bound ? [] : [make3("bucket-bind", c.bucket ? `Bound to ${c.bucket}…` : "Bind to tag or attribute…")],
+        ...c.bucket ? [make3("bucket-write", "Write section to graph", { disabled: empty }), make3("bucket-unbind", "Unbind")] : [],
         c.locked ? make3("unlock-contents", "Unlock") : make3("lock-contents", "Lock"),
         make3("present-section", "Present this section"),
         make3("layout-dates", "Lay out by date"),
@@ -97596,7 +97969,7 @@ function buildMenu(kind, ctx = {}) {
           ]
         }),
         make3("focus-timer", "Focus timer"),
-        ...laneItems(c.lane),
+        ...c.bucket ? [] : laneItems(c.lane),
         sep(),
         make3("fit-section", "Fit to contents", { disabled: empty }),
         make3("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),
@@ -103423,16 +103796,16 @@ function buildBoardView(onFail, {
     }
     const runChunk = (list) => {
       if (disposed) return;
-      const chunk = list.slice(0, BADGE_CHUNK);
+      const chunk2 = list.slice(0, BADGE_CHUNK);
       const rest = list.slice(BADGE_CHUNK);
       let res;
       try {
-        res = host.cardStats(chunk.map((m) => m.target), { boardUid });
+        res = host.cardStats(chunk2.map((m) => m.target), { boardUid });
       } catch {
         res = void 0;
       }
       const at = Date.now();
-      for (const m of chunk) {
+      for (const m of chunk2) {
         badgePending.delete(m.key);
         if (res === void 0) continue;
         const stats = res instanceof Map ? res.get(m.key) : res?.[m.key];
@@ -105313,6 +105686,7 @@ function buildBoardView(onFail, {
           pinned: Boolean(item?.pinned),
           collapsed: Boolean(item?.collapsed),
           hasNote: Boolean(item && sectionNoteUid(b, item.uid)),
+          bucket: item ? bindingLabel(session.sectionBinding?.(item.uid)) : "",
           locked: members.length > 0 && members.every((u) => b.items.get(u)?.pinned),
           trails: trailRows(b),
           landmark: item?.landmark === true,
@@ -106310,6 +106684,29 @@ function buildBoardView(onFail, {
         break;
       case "section-note":
         if (item?.type === "section") void session.toggleSectionNote?.(item.uid);
+        break;
+      case "bucket-bind": {
+        if (item?.type !== "section") break;
+        askView({
+          caption: bindingLabel(session.sectionBinding?.(item.uid)),
+          showCopy: false,
+          dialogLabel: "Bind section",
+          onSave: ({ caption }) => {
+            const binding = parseBinding(caption);
+            if (!binding) {
+              toast("Use #tag or Name:: value");
+              return;
+            }
+            void session.bindSection?.(item.uid, binding);
+          }
+        });
+        break;
+      }
+      case "bucket-write":
+        if (item?.type === "section") void session.writeSectionToGraph?.(item.uid);
+        break;
+      case "bucket-unbind":
+        if (item?.type === "section") void session.bindSection?.(item.uid, null);
         break;
       case "lock-contents":
         if (item?.type === "section") void session.lockSection?.(item.uid, true);

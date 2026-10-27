@@ -3088,11 +3088,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     generateUid() { return api.util.generateUID(); },
 
-    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType } = {}) {
+    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType, heading, textAlign } = {}) {
       const id = uid ?? api.util.generateUID();
       const block = { uid: id, string };
       if (props !== undefined) block.props = plainKeys(props);
       if (open !== undefined) block.open = open;
+      if (heading) block.heading = heading;
+      if (textAlign) block["text-align"] = textAlign;
       if (viewType) block["children-view-type"] = viewType;
       stats.writes++;
       await mutate(() => data.block.create({ location: { "parent-uid": parentUid, order }, block }));

@@ -3,6 +3,7 @@
 // (commitMove in session.js); card positions are never derived from values after the bind.
 import { DEFAULT_SIZES, FIT_PAD, lookForNewString, serializeItemLayout } from "./model/schema.js";
 import { tableRows } from "./model/table.js";
+import { readBinding } from "./model/bucket.js";
 import { followCardString } from "./model/follow.js";
 import {
   LANE_GAP,
@@ -108,6 +109,8 @@ extendSession((session, api) => {
       const lane = laneOf(id);
       const attr = typeof name === "string" ? name.trim() : "";
       if (!lane || !attr || !laneAttrOk(attr)) return Promise.resolve(false);
+      // A section bound to a tag or value (PXD-10) already writes on each drop.
+      if (readBinding(api.rawPlexus(id))) return Promise.resolve(false);
       const board = api.board();
       const rect = api.rects().get(id);
       if (!rect) return Promise.resolve(false);

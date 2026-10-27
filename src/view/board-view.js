@@ -5114,6 +5114,9 @@ function buildBoardView(onFail, {
     },
     skip: () => new Set([boardUid]),
     place: (strings) => addStringsBeside(strings),
+    // PXD-18: while the board follows its Inbox, the arrivals come through the tray and this pill stays away.
+    hidden: () => followCtl?.menuState?.()?.kind === "inbox",
+    follow: () => { void startFollow("inbox", boardUid); },
   });
   // PXD-9: the followed source's place tray. It reads at idle and never writes on its own.
   followCtl = createFollowTray({
@@ -5137,6 +5140,8 @@ function buildBoardView(onFail, {
       pulseItem(uid);
     },
     onPlaced: (uids) => ctl.select(uids),
+    // Leaving the Inbox source: the pill reads again (it skipped its reads meanwhile).
+    onSource: (kind, was) => { if (was === "inbox" && kind !== "inbox") void inboxCtl?.refresh?.(); else inboxCtl?.sync?.(); },
     toast: (message) => toast(message),
   });
 
@@ -6177,7 +6182,7 @@ function buildBoardView(onFail, {
     const why = ok ? null : session.followRefusal?.() || null;
     if (ok) {
       followCtl?.open?.(owner);
-      toast("Following. New items wait in the tray until you place them.");
+      toast(kind === "inbox" ? "Following this board's Inbox. New daily-note blocks wait under Arrivals until you place them." : "Following. New items wait in the tray until you place them.");
     } else if (why?.reason === "taken") toast(`Already followed by ${why.by}`);
     else if (why?.reason === "cap") toast(followCapText());
     else if (!owner && session.followState?.()?.pointer?.uid === uid) followCtl?.open?.();
@@ -6210,6 +6215,7 @@ function buildBoardView(onFail, {
       case "this-refs": void startFollow("refs", followTargetOf(item, "refs")); break;
       case "this-headings": void startFollow("headings", followTargetOf(item, "refs")); break;
       case "this-board": if (item?.kind === "board") void startFollow("board", item.uid); break;
+      case "inbox": void startFollow("inbox", boardUid); break;
       case "show": followCtl?.open?.(); break;
       case "tree": void session.setFollowTree?.(!state.tree); break;
       case "stop":

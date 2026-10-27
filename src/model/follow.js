@@ -302,6 +302,41 @@ export function trayHeadline({ newCount = 0, leftCount = 0, baseline = false } =
 
 export const followPill = (n) => `Following (${n})`;
 
+// PXD-18: the board's own Inbox (daily-note blocks that cite it) as a source. Its pointer is { kind: "inbox", uid: the
+// board }. New citing blocks arrive in the tray's Arrivals strip, at most ARRIVALS_CAP per visit, so a board opened
+// after a month does not get a wall of rows; the rest say how many wait. The cap is under SPREAD_CAP, so placing the
+// whole strip is one batch and one undo.
+export const INBOX_KIND = "inbox";
+export const ARRIVALS_CAP = 20;
+
+// The strip: the first rows of `pending` (newest first) that this visit still has room for. `allowance` is how many
+// arrivals this visit shows (ARRIVALS_CAP, more after "Show more"); `placed` how many it already placed from the
+// strip (visitPlaced). A row taken away by a "Don't bring back" or by a card made without the source key uses no room.
+export function arrivalsView(pending, { allowance = ARRIVALS_CAP, placed = 0 } = {}) {
+  const list = Array.isArray(pending) ? pending : [];
+  const room = Math.max(0, Math.floor(Number(allowance) || 0) - Math.max(0, Math.floor(Number(placed) || 0)));
+  const rows = list.slice(0, room);
+  return { rows, waiting: list.length - rows.length };
+}
+
+// Cards of source `key` on the board now that were not there when the visit began (`before`: their uids). Read from
+// the board, so a drag counts like Place, and an undo or a delete gives the room back.
+export function visitPlaced(board, key, before) {
+  const had = before instanceof Set ? before : new Set();
+  return followIndex(board, key).followed.filter((card) => !had.has(card.uid)).length;
+}
+
+export const followedUids = (board, key) => new Set(followIndex(board, key).followed.map((card) => card.uid));
+
+export function arrivalsLine({ rows = [], waiting = 0 } = {}) {
+  const n = rows.length;
+  if (!n) return waiting > 0 ? `${waiting} wait for your next visit` : "No arrivals";
+  const head = `${n} arrival${n === 1 ? "" : "s"}`;
+  return waiting > 0 ? `${head} · ${waiting} more wait` : head;
+}
+
+export const arrivalsPill = (n) => `Arrivals (${n})`;
+
 export function followCardString(item) {
   if (item?.kind === "page" && item.title) return `[[${item.title}]]`;
   return `((${item?.uid}))`;

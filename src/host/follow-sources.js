@@ -14,9 +14,10 @@
 // An item is { uid, kind: "block" | "page", text, time, title? (page), crumb?, depth?, parent? (block tree), blank? }. `time` is the later of
 // create and edit time, so the tray can say what is new since the last visit.
 
-import { FOLLOW_PARENT_CAP, FOLLOW_READ_CAP, FOLLOW_SRC, FOLLOW_TREE_DEPTH, queryBody, readFollow, sourceText as textOf } from "../model/follow.js";
+import { FOLLOW_PARENT_CAP, FOLLOW_READ_CAP, FOLLOW_SRC, FOLLOW_TREE_DEPTH, INBOX_KIND, queryBody, readFollow, sourceText as textOf } from "../model/follow.js";
 import { BOARD_MEMBER_RULE } from "../model/board-rule.js";
 import { headingItems } from "../model/follow-headings.js";
+import { filterInbox, inboxTitles, readInbox } from "../model/inbox.js";
 import { classifyString, firstLine, parseBoardTitle, plainText, readPlexus } from "../model/schema.js";
 import { loadQueryRows, parseQuery } from "../model/query-run.js";
 import { createQueryBackend } from "./query-backend.js";
@@ -37,7 +38,7 @@ const kinds = new Map();
 
 // kind: { id, title, describe(pointer, host), read(pointer, ctx), watch?(pointer, host, cb, env) -> off, tree? }.
 // env: { doc } of the board.
-// ctx: { host, boardUid, inBoard() -> Set of the board's own block uids, tick() -> Promise }.
+// ctx: { host, boardUid, boardTitle() -> string, inBoard() -> Set of the board's own block uids, tick() -> Promise }.
 export function defineFollowKind(kind) {
   if (!kind || typeof kind.id !== "string" || typeof kind.read !== "function") return () => {};
   kinds.set(kind.id, kind);
@@ -376,5 +377,36 @@ defineFollowKind({
     const res = boardMemberItems(rows, { root, host, boardUid });
     if (res.cycle) return { ok: false, reason: "cycle" };
     return { ok: true, complete: res.complete, items: res.items, members: res.members, relayed: res.relayed };
+  },
+});
+
+// PXD-18: the board's Inbox. Blocks on daily pages that cite the board (its page title or its own title), newest first:
+// the same reverse pull per title as the Inbox pill (src/model/inbox.js). A pull that threw, or a title with more
+// citing blocks than the pull limit, makes the read partial, so no card is marked as gone.
+defineFollowKind({
+  id: INBOX_KIND,
+  title: "This board's Inbox",
+  describe: () => "this board's Inbox",
+  watch: (p, host, cb, env) => watchSaves(env, cb),
+  async read(p, { host, boardUid, boardTitle, inBoard, tick }) {
+    if (typeof host?.q !== "function") return { ok: false, reason: "error" };
+    let pageTitle = "";
+    try { pageTitle = host.pageTitleOf?.(p.uid) || ""; } catch { pageTitle = ""; }
+    const own = p.uid === boardUid && typeof boardTitle === "function" ? boardTitle() : "";
+    const titles = inboxTitles({ pageTitle, boardTitle: own });
+    if (!titles.length) return { ok: true, complete: true, items: [] };
+    const got = await readInbox((query, ...inputs) => host.q(query, ...inputs), titles, { tick });
+    const skip = new Set(typeof inBoard === "function" ? inBoard() : []);
+    skip.add(p.uid);
+    const kept = filterInbox(got.entries, { skip, cap: FOLLOW_READ_CAP + 1 });
+    const items = kept.slice(0, FOLLOW_READ_CAP).map((e) => ({
+      uid: e.uid,
+      kind: "block",
+      text: textOf(e.string),
+      crumb: e.page,
+      time: e.time,
+      ...(e.string.trim() ? {} : { blank: true }),
+    }));
+    return { ok: true, complete: !got.failed && !got.full && kept.length <= FOLLOW_READ_CAP, items };
   },
 });

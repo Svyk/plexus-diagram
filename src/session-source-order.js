@@ -195,8 +195,9 @@ extendSession((session, api) => {
         for (let i = 0; i < chunks.length; i++) {
           if (api.isGone()) break;
           await api.txn((t) => { for (const m of chunks[i]) t.move(m.uid, parentUid, m.order); });
-          // A failed write (the txn resolves either way) or an edit meanwhile: the next chunk's indexes no longer hold.
-          if (orderChanged(states[i], kidsOf(parentUid).map((k) => k.uid))) {
+          // A failed write (the txn resolves either way) or any edit under the parent meanwhile, an added or deleted
+          // sibling too: the next chunk's indexes no longer hold.
+          if (orderSignature(kidsOf(parentUid).map((k) => k.uid)) !== orderSignature(states[i])) {
             reason = "Stopped: the blocks did not land where expected. Undo to go back.";
             break;
           }

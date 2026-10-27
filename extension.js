@@ -55785,7 +55785,7 @@ extendSession((session, api3) => {
           await api3.txn((t) => {
             for (const m of chunks[i]) t.move(m.uid, parentUid, m.order);
           });
-          if (orderChanged(states[i], kidsOf5(parentUid).map((k) => k.uid))) {
+          if (orderSignature(kidsOf5(parentUid).map((k) => k.uid)) !== orderSignature(states[i])) {
             reason = "Stopped: the blocks did not land where expected. Undo to go back.";
             break;
           }

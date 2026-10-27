@@ -352,3 +352,21 @@ test("PXD-12 keep order: an own order seen again long after Plexus wrote is an o
   assert.deepEqual(outline(fake), ["k1", "k2", "k3"]);
   assert.deepEqual(membersInReading(session), ["k1", "k2", "k3"], "re-tidied");
 });
+
+test("PXD-12 apply: a sibling added between chunks stops the apply before the next chunk runs on shifted indexes", async () => {
+  const ks = Array.from({ length: 100 }, (_, i) => `k${String(i).padStart(3, "0")}`);
+  const { fake, session } = setup({ kids: ks.map((u) => kid(u)), cards: column(ks.slice().reverse()) });
+  const move = fake.api.data.block.move;
+  let calls = 0;
+  fake.api.data.block.move = (arg) => {
+    calls += 1;
+    const out = move.call(fake.api.data.block, arg);
+    if (calls !== SOURCE_ORDER_CHUNK) return out;
+    return out.then(() => fake.api.data.block.create({ location: { "parent-uid": "SRC", order: 0 }, block: { uid: "NEWKID", string: "inserted" } }));
+  };
+  const res = await session.applySourceOrder(ks.map(cardOf));
+  await fake.flush();
+  assert.ok(res.reason, "the caller hears why");
+  assert.equal(calls, SOURCE_ORDER_CHUNK, "the second chunk never ran");
+  assert.equal(outline(fake)[0], "NEWKID", "the added block is left where it was put");
+});

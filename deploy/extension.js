@@ -91079,7 +91079,6 @@ function createFollowTray({
   let queuedAt = 0;
   let held = false;
   let floorWait = null;
-  let owed = false;
   let offEditing = () => {
   };
   let lastStart = -Infinity;
@@ -91143,7 +91142,7 @@ function createFollowTray({
     const edit = editState(doc);
     const cost = known2 ? lastMs : Infinity;
     if (edit.typing && cost >= FOLLOW_TYPING_MS) return "typing";
-    if (!owed && edit.busy && cost > FOLLOW_SLOW_MS && now5() - lastStart < FOLLOW_POLL_MS) return "floor";
+    if (edit.busy && cost > FOLLOW_SLOW_MS && now5() - lastStart < FOLLOW_POLL_MS) return "floor";
     return "";
   }
   function hold(why) {
@@ -91161,12 +91160,12 @@ function createFollowTray({
   }
   const onEditing = (why) => {
     if (disposed) return;
-    if (why === "typing" && (held || quiet) && !job) {
-      owed = true;
-      quiet?.();
+    const cut = why === "typing" && Boolean(quiet) && !job;
+    if (cut) {
+      quiet();
       quiet = null;
     }
-    if ((held || owed) && !gate()) readSoon();
+    if (cut || held && !gate()) readSoon();
   };
   function runRead() {
     job = null;
@@ -91193,7 +91192,6 @@ function createFollowTray({
       return;
     }
     unhold();
-    owed = false;
     const mine = key;
     inFlight = true;
     stale = false;
@@ -91315,7 +91313,6 @@ function createFollowTray({
     lastMs = 0;
     lastStart = -Infinity;
     known2 = false;
-    owed = false;
     unhold();
     pointer = next;
     key = nextKey;

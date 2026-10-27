@@ -89,8 +89,6 @@ export function createFollowTray({
   // PXD-20: a read is owed but waits for editing to go idle (held), or for the slow-read floor (floorWait).
   let held = false;
   let floorWait = null;
-  // Editing went idle with a read pending: that read skips the floor.
-  let owed = false;
   let offEditing = () => {};
   // When this source's last read started, and whether it has one (an unknown cost counts as slow).
   let lastStart = -Infinity;
@@ -157,7 +155,7 @@ export function createFollowTray({
     const edit = editState(doc);
     const cost = known ? lastMs : Infinity;
     if (edit.typing && cost >= FOLLOW_TYPING_MS) return "typing";
-    if (!owed && edit.busy && cost > FOLLOW_SLOW_MS && now() - lastStart < FOLLOW_POLL_MS) return "floor";
+    if (edit.busy && cost > FOLLOW_SLOW_MS && now() - lastStart < FOLLOW_POLL_MS) return "floor";
     return "";
   }
 
@@ -177,16 +175,17 @@ export function createFollowTray({
   }
 
   // Editing went idle (or may have): a held read runs now. When the user's typing stops (a pause, or leaving the
-  // editors), the read the edits asked for is owed at once: a quiet period stretched by a slow read ends early, and the
-  // floor lets this one read through. Save signals that stop on their own (another extension's writes) do neither.
+  // editors), a quiet period stretched by a slow read ends early. The floor still holds until the saves stop as well,
+  // so typing in bursts with short pauses does not read a slow source at every pause. Save signals that stop on their
+  // own (another extension's writes) do not end the quiet period.
   const onEditing = (why) => {
     if (disposed) return;
-    if (why === "typing" && (held || quiet) && !job) {
-      owed = true;
-      quiet?.();
+    const cut = why === "typing" && Boolean(quiet) && !job;
+    if (cut) {
+      quiet();
       quiet = null;
     }
-    if ((held || owed) && !gate()) readSoon();
+    if (cut || (held && !gate())) readSoon();
   };
 
   function runRead() {
@@ -200,7 +199,6 @@ export function createFollowTray({
     const why = gate();
     if (why) { hold(why); return; }
     unhold();
-    owed = false;
     const mine = key;
     inFlight = true;
     stale = false;
@@ -320,7 +318,6 @@ export function createFollowTray({
     lastMs = 0;
     lastStart = -Infinity;
     known = false;
-    owed = false;
     unhold();
     pointer = next;
     key = nextKey;

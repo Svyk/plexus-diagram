@@ -861,11 +861,59 @@ test("PXD-20 tray: when typing stops, a quiet period stretched by a slow read en
     assert.equal(runDom(f.dom, EDIT_IDLE_MS), 1);
     assert.equal(editState(f.dom.document).busy, true, "Roam's write of the keys: still busy");
     await f.timers.run();
-    assert.equal(calls, 2, "the typing stops: one read now, past the floor too");
-    assert.equal(f.timers.pending(12000), 0, "the stretched period is gone");
+    assert.equal(f.timers.pending(12000), 0, "the typing stops: the stretched period is gone");
+    assert.equal(calls, 1, "but a pause is no idle: the floor holds while the saves go on");
+    assert.equal(f.tray.stats().held, true);
+    runDom(f.dom, BUSY_IDLE_MS);
+    await f.timers.run();
+    assert.equal(calls, 2, "the saves stop: one read now");
     runDom(f.dom, BUSY_IDLE_MS);
     await f.timers.run();
     assert.equal(calls, 2, "and nothing more");
+    f.tray.dispose();
+  } finally { off(); }
+});
+
+test("PXD-20 tray: typing in bursts with short pauses reads a slow source at most once per poll period, and once when the typing stops", async () => {
+  const clock = { t: 0 };
+  let calls = 0;
+  const off = liveProbe("pxd20-burst", async () => { calls += 1; clock.t += 1400; return { ok: true, complete: true, items: [liveItem("k2")] }; });
+  try {
+    const f = mount({ plexus: { v: 2, follow: { kind: "pxd20-burst", uid: "P" } }, children: [card("n1", "Note one", 0, 0)], live: true, clock });
+    await f.timers.run();
+    assert.equal(calls, 1, "nobody edits: the first read runs");
+    const { editor } = roamBlock(f.dom);
+    editor.focus();
+    // 5 s of keys, then a 2.5 s pause: the keys go idle 2 s into it, the saves (Roam's write of the keys) do not.
+    const burst = async (k) => {
+      for (let i = 0; i < 5; i += 1) editor.dispatchEvent({ type: "input" });
+      runDom(f.dom, SAVE_LAG_MS);
+      f.live.save();
+      clock.t = 1400 + 7500 * k;
+      assert.equal(runDom(f.dom, EDIT_IDLE_MS), 1);
+      assert.equal(editState(f.dom.document).busy, true);
+      await f.timers.run();
+    };
+    for (let k = 1; k <= 7; k += 1) await burst(k);
+    assert.equal(calls, 1, "a pause in the typing is no idle: no read at each pause");
+    assert.equal(f.tray.stats().held, true);
+    assert.equal(f.timers.pending(60000 - 8900), 1, "the floor waits for a poll period since the last read started");
+    await burst(8);
+    assert.equal(calls, 2, "a poll period later: one read, at a pause");
+    for (let k = 9; k <= 15; k += 1) await burst(k);
+    assert.equal(calls, 2, "then none for another poll period");
+    runDom(f.dom, BUSY_IDLE_MS);
+    await f.timers.run();
+    assert.equal(calls, 3, "the typing stops: one read");
+    for (let i = 0; i < 5; i += 1) editor.dispatchEvent({ type: "input" });
+    await f.timers.run();
+    editor.blur();
+    editor.dispatchEvent({ type: "focusout" });
+    runDom(f.dom, BLUR_IDLE_MS);
+    await f.timers.run();
+    assert.equal(calls, 4, "leaving the editors is idle at once, floor or not");
+    await f.fake.flush();
+    assert.deepEqual(f.fake.writesLog(), [], "no writes");
     f.tray.dispose();
   } finally { off(); }
 });

@@ -90661,6 +90661,7 @@ init_query_backend();
 
 // src/host/local-saves.js
 var SAVE_LAG_MS = 1e3;
+var DOT_CHECK_MS = 1e3;
 var EDIT_IDLE_MS = 2e3;
 var BUSY_IDLE_MS = 5e3;
 var BLUR_IDLE_MS = 400;
@@ -90702,6 +90703,7 @@ function fire(hub, win2, lag = false) {
 }
 function watchDot(doc, hub) {
   if (hub.mo && hub.box?.isConnected !== false) return;
+  hub.lost = hub.lost || Boolean(hub.mo);
   try {
     hub.mo?.disconnect?.();
   } catch {
@@ -90727,6 +90729,10 @@ function watchDot(doc, hub) {
     hub.box = box2;
   } catch {
     hub.mo = null;
+  }
+  if (hub.lost && hub.mo) {
+    hub.lost = false;
+    fire(hub, hub.win);
   }
 }
 function start(doc, hub) {
@@ -90755,11 +90761,18 @@ function start(doc, hub) {
       if (!isEditor(doc.activeElement)) settle2(hub, win2);
     }, BLUR_IDLE_MS);
   };
+  const check = () => {
+    hub.check = win2.setTimeout(check, DOT_CHECK_MS);
+    if (hub.subs.size) watchDot(doc, hub);
+  };
   hub.stop = () => {
     doc.removeEventListener?.("input", hub.onInput, true);
     for (const type of ["focusout", "change", "drop"]) doc.removeEventListener?.(type, hub.onDone, true);
     if (hub.lag) win2.clearTimeout(hub.lag);
     hub.lag = null;
+    if (hub.check) win2.clearTimeout(hub.check);
+    hub.check = null;
+    hub.lost = false;
     try {
       hub.mo?.disconnect?.();
     } catch {
@@ -90770,11 +90783,12 @@ function start(doc, hub) {
   };
   doc.addEventListener?.("input", hub.onInput, true);
   for (const type of ["focusout", "change", "drop"]) doc.addEventListener?.(type, hub.onDone, true);
+  hub.check = win2.setTimeout(check, DOT_CHECK_MS);
 }
 function hubOf(doc) {
   let hub = hubs.get(doc);
   if (!hub) {
-    hub = { subs: /* @__PURE__ */ new Set(), edits: /* @__PURE__ */ new Set(), mo: null, box: null, lag: null, keys: null, quiet: null, blur: null, stop: null };
+    hub = { subs: /* @__PURE__ */ new Set(), edits: /* @__PURE__ */ new Set(), mo: null, box: null, lag: null, check: null, lost: false, keys: null, quiet: null, blur: null, stop: null };
     hubs.set(doc, hub);
   }
   if (!hub.stop) start(doc, hub);
@@ -90791,6 +90805,7 @@ function release(hub, set, token) {
       }
       hub.mo = null;
       hub.box = null;
+      hub.lost = false;
     }
     return;
   }

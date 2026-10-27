@@ -6,13 +6,17 @@
 // - Leaving a block editor (`focusout`), a checkbox (`change`), a drop.
 // - Roam's sync dot (`.rm-sync__icon`) changing class: writes that are not typing (a menu, an undo, an extension).
 //   While Roam's sync is backed up the dot stays on saving and says little; the tray's poll is the backstop.
-// Before the topbar is drawn there is no dot: the next listener looks again.
+// Roam can draw the sync box again (a re-render, a theme change), and an observer on the old box hears nothing. Every
+// DOT_CHECK_MS the hub asks whether its box is still in the page (no observer on the topbar or the document) and, if
+// not, finds the dot again and fires once for any save made while it was deaf. Before the topbar is drawn there is
+// no dot: the same check looks again.
 // PXD-20: the same listeners also say whether the user is editing (watchEditing, editState), so a slow read can wait.
 // Typing: an editor key in the last EDIT_IDLE_MS while a block editor has focus. Busy: any save signal but the lag
 // one in the last BUSY_IDLE_MS (longer: writes every 2 s, from a menu or another extension, are edits that go on).
 // Leaving an editor with no editor focused BLUR_IDLE_MS later ends both at once (Enter moves the caret to a new block
 // through a blur, and that is still typing).
 export const SAVE_LAG_MS = 1000;
+export const DOT_CHECK_MS = 1000;
 export const EDIT_IDLE_MS = 2000;
 export const BUSY_IDLE_MS = 5000;
 export const BLUR_IDLE_MS = 400;
@@ -56,6 +60,8 @@ function fire(hub, win, lag = false) {
 
 function watchDot(doc, hub) {
   if (hub.mo && hub.box?.isConnected !== false) return;
+  // A box that was heard and is gone stays owed one signal until a new dot is found.
+  hub.lost = hub.lost || Boolean(hub.mo);
   try { hub.mo?.disconnect?.(); } catch { /* gone */ }
   hub.mo = null;
   hub.box = null;
@@ -77,6 +83,10 @@ function watchDot(doc, hub) {
     hub.box = box;
   } catch {
     hub.mo = null;
+  }
+  if (hub.lost && hub.mo) {
+    hub.lost = false;
+    fire(hub, hub.win);
   }
 }
 
@@ -103,11 +113,19 @@ function start(doc, hub) {
       if (!isEditor(doc.activeElement)) settle(hub, win);
     }, BLUR_IDLE_MS);
   };
+  const check = () => {
+    hub.check = win.setTimeout(check, DOT_CHECK_MS);
+    // Editing alone has no use for the dot.
+    if (hub.subs.size) watchDot(doc, hub);
+  };
   hub.stop = () => {
     doc.removeEventListener?.("input", hub.onInput, true);
     for (const type of ["focusout", "change", "drop"]) doc.removeEventListener?.(type, hub.onDone, true);
     if (hub.lag) win.clearTimeout(hub.lag);
     hub.lag = null;
+    if (hub.check) win.clearTimeout(hub.check);
+    hub.check = null;
+    hub.lost = false;
     try { hub.mo?.disconnect?.(); } catch { /* gone */ }
     hub.mo = null;
     hub.box = null;
@@ -115,12 +133,13 @@ function start(doc, hub) {
   };
   doc.addEventListener?.("input", hub.onInput, true);
   for (const type of ["focusout", "change", "drop"]) doc.addEventListener?.(type, hub.onDone, true);
+  hub.check = win.setTimeout(check, DOT_CHECK_MS);
 }
 
 function hubOf(doc) {
   let hub = hubs.get(doc);
   if (!hub) {
-    hub = { subs: new Set(), edits: new Set(), mo: null, box: null, lag: null, keys: null, quiet: null, blur: null, stop: null };
+    hub = { subs: new Set(), edits: new Set(), mo: null, box: null, lag: null, check: null, lost: false, keys: null, quiet: null, blur: null, stop: null };
     hubs.set(doc, hub);
   }
   if (!hub.stop) start(doc, hub);
@@ -135,6 +154,7 @@ function release(hub, set, token) {
       try { hub.mo?.disconnect?.(); } catch { /* gone */ }
       hub.mo = null;
       hub.box = null;
+      hub.lost = false;
     }
     return;
   }

@@ -363,6 +363,7 @@ function mountTray(opts = {}) {
   dom.document.body.append(root);
   const timers = manualTimers();
   const moves = [];
+  const lefts = [];
   const tray = createFollowTray({
     doc: dom.document,
     root,
@@ -373,10 +374,11 @@ function mountTray(opts = {}) {
     storage: fake.storage,
     graph: "g",
     onMoved: (map) => moves.push([...map]),
+    onLeft: (set) => lefts.push([...set]),
     onPlaced: () => {},
     toast: () => {},
   });
-  return { fake, host, session, root, timers, tray, moves };
+  return { fake, host, session, root, timers, tray, moves, lefts };
 }
 
 test("PXD-14 tray: grouped headers, the rule note, and Place on a header places that heading", async () => {
@@ -439,6 +441,29 @@ test("PXD-14 tray: a moved block is listed as moved with its new heading, and Di
   assert.deepEqual(f.tray.moved(), []);
   assert.deepEqual(f.moves.at(-1), []);
   assert.equal(plexusOf(f.fake, card.uid).head, "h1");
+  f.tray.dispose();
+});
+
+test("PXD-14 tray: Stop following clears the moved and left marks on the canvas; the cards stay", async () => {
+  const f = mountTray();
+  await f.timers.run();
+  f.root.querySelector(".pxd-follow").click();
+  f.root.querySelector(".pxd-follow__all").click();
+  await flush();
+  await f.fake.flush();
+  await f.fake.api.data.block.move({ location: { "parent-uid": "h1", order: "last" }, block: { uid: "b1" } });
+  await f.fake.api.data.block.move({ location: { "parent-uid": "tp", order: "last" }, block: { uid: "a1" } });
+  await f.fake.flush();
+  for (let i = 0; i < 3; i += 1) await f.timers.run();
+  const cardOf = (uid) => [...f.session.board.items.values()].find((i) => i.target?.uid === uid);
+  assert.deepEqual(f.moves.at(-1), [[cardOf("b1").uid, "Alpha"]]);
+  assert.deepEqual(f.lefts.at(-1), [cardOf("a1").uid]);
+  assert.equal(await f.session.stopFollowing(), true);
+  await flush();
+  await f.fake.flush();
+  assert.deepEqual(f.moves.at(-1), [], "no moved mark once the board stops following");
+  assert.deepEqual(f.lefts.at(-1), [], "no left mark once the board stops following");
+  assert.ok(cardOf("b1") && cardOf("a1"), "the cards stay");
   f.tray.dispose();
 });
 

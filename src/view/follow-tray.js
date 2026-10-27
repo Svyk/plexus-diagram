@@ -545,7 +545,8 @@ export function createFollowTray({
     if (disposed) return;
     const dirty = change?.dirty;
     if (dirty?.has?.(boardUid) || change?.structural) { adopt(); autoOpen(); }
-    if (!pointer) { paintPill(); return; }
+    // Stop (or an undo of Follow) clears the left and moved marks of the source the board no longer follows.
+    if (!pointer) { recompute(); paintPill(); return; }
     if (change?.structural || dirty?.has?.(boardUid) || diff.left.some((uid) => dirty?.has?.(uid))) sync();
     else if (dirty && [...dirty].some((uid) => board()?.items.get(uid)?.src === key)) sync();
   }) || (() => {});

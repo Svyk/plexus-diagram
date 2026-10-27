@@ -175,6 +175,8 @@ export function cardIds(card) {
   }
   if (t?.kind === "block" && t.uid) out.push(`u:${t.uid}`);
   if (card.uid) out.push(`u:${card.uid}`);
+  // PXD-14: a heading's section stands for the heading, so the heading is on the board while its section is.
+  if (card.type === "section" && typeof card.head === "string" && card.head) out.push(`u:${card.head}`);
   return out;
 }
 
@@ -227,7 +229,8 @@ export function followDiff(read, board, { key = "", skip = [], absent = new Map(
     if (!item?.uid || seen.has(item.uid)) continue;
     seen.add(item.uid);
     if (itemIds(item).some((id) => on.has(id))) { placed += 1; continue; }
-    if (skipped.has(item.uid)) { dismissed += 1; continue; }
+    // PXD-14: a block under a heading the user took off the board is dismissed with it.
+    if (skipped.has(item.uid) || (item.heading && item.heading !== item.uid && skipped.has(item.heading))) { dismissed += 1; continue; }
     if (item.blank) continue;
     pending.push({ ...item, fresh: Number.isFinite(since) && Number(item.time) > since });
   }

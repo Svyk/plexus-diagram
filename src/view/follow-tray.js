@@ -5,6 +5,8 @@
 // one read per quiet period and never two at once, only while the board is on screen and the tab is visible; a slow
 // read stretches the quiet period (followQuietMs). A board change only sorts the last read again. Cards that left the
 // source get a mark (onLeft) after two complete reads without them; a partial or failed read never adds one.
+// PXD-14: a page followed by headings groups the tray by heading, and cards whose block moved under another heading
+// get a "moved" mark (onMoved) and a list; the card stays where it is until the user dismisses the mark.
 // PXD-20: a read that would start while the user types waits for editing to go idle when its source's last read was a
 // long task (or it has none yet); a slow one also waits out FOLLOW_POLL_MS since the last read while edits go on.
 // PXD-18: following the board's Inbox, the rows are an Arrivals strip of at most ARRIVALS_CAP per visit (this tray's
@@ -38,6 +40,7 @@ import {
   trayHeadline,
   visitPlaced,
 } from "../model/follow.js";
+import { headingsEmpty, headingsNote, movedCards } from "../model/follow-headings.js";
 import { itemLabel, plainText } from "../model/schema.js";
 import { followKind } from "../host/follow-sources.js";
 import { editState, watchEditing } from "../host/local-saves.js";
@@ -62,6 +65,7 @@ export function createFollowTray({
   storage = globalThis.localStorage,
   graph = "",
   onLeft,
+  onMoved,
   onShowCard,
   onPlaced,
   onSource,
@@ -80,6 +84,8 @@ export function createFollowTray({
   let diff = { pending: [], left: [], placed: 0, dismissed: 0 };
   let label = "";
   let leftShown = "";
+  let moved = [];
+  let movedShown = "";
   let reads = 0;
   let open = false;
   let autoOpened = false;
@@ -158,6 +164,12 @@ export function createFollowTray({
     if (next !== leftShown) {
       leftShown = next;
       onLeft?.(new Set(diff.left));
+    }
+    moved = pointer?.kind === "headings" ? movedCards(read, board(), key) : [];
+    const mark = moved.map((m) => `${m.uid}>${m.to}`).join("\n");
+    if (mark !== movedShown) {
+      movedShown = mark;
+      onMoved?.(new Map(moved.map((m) => [m.uid, m.toText])));
     }
   }
 
@@ -364,13 +376,20 @@ export function createFollowTray({
   const strip = () => (isInbox() ? arrivalsView(diff.pending, { allowance, placed: visitPlaced(board(), key, before) }) : { rows: diff.pending, waiting: 0 });
 
   // ---- placing ----
-  const entryOf = (row) => ({ uid: row.uid, kind: row.kind, ...(row.title ? { title: row.title } : {}) });
+  const entryOf = (row) => ({
+    uid: row.uid,
+    kind: row.kind,
+    ...(row.title ? { title: row.title } : {}),
+    // PXD-14: the heading a row sits under, so a placed card knows its section.
+    ...(row.heading ? { heading: row.heading, ...(row.kind === "heading" ? { text: row.text } : { headingText: row.headingText }) } : {}),
+  });
   // One place at a time: a second click while the first is still writing does nothing.
   function place(rows) {
     if (!rows.length || placing) return Promise.resolve(null);
     placing = true;
     paintPanel();
-    return Promise.resolve(session.placeFollowed?.(rows.map(entryOf))).then((res) => {
+    const opts = pointer?.kind === "headings" ? { order: read?.heads } : undefined;
+    return Promise.resolve(session.placeFollowed?.(rows.map(entryOf), opts)).then((res) => {
       if (disposed || !res) return res;
       if (res.batches > 1) toast?.(`Placed ${res.placed} cards in ${res.batches} batches of up to ${SPREAD_CAP}. Each Cmd+Z takes back one batch.`);
       if (res.uids?.length) onPlaced?.(res.uids);
@@ -449,6 +468,11 @@ export function createFollowTray({
     else if (read?.deeper) note = `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
     if (note) el("div", "pxd-follow__note", panel, note);
     const shown = strip();
+    const heads = pointer?.kind === "headings";
+    if (heads) {
+      el("div", "pxd-follow__note", panel, headingsNote);
+      if (read?.ok && !read.items.some((row) => row.kind === "heading")) el("div", "pxd-follow__note", panel, headingsEmpty);
+    }
     const bar = el("div", "pxd-follow__bar", panel);
     if (isInbox()) {
       el("span", "pxd-follow__arrivals", bar, "Arrivals");
@@ -458,7 +482,8 @@ export function createFollowTray({
     all.disabled = shown.rows.length === 0 || placing;
     const list = el("div", "pxd-follow__list", panel);
     if (!diff.pending.length) el("div", "pxd-follow__empty", list, read ? (isInbox() ? "No daily-note block waits." : "Everything in the source is on the board.") : "");
-    for (const row of shown.rows) rowEl(list, row);
+    if (heads) groupRows(list);
+    else for (const row of shown.rows) rowEl(list, row);
     if (shown.waiting > 0) {
       const more = el("div", "pxd-follow__more", list);
       el("span", "pxd-follow__count", more, `${shown.waiting} more wait`);
@@ -478,6 +503,45 @@ export function createFollowTray({
         button(acts, "pxd-follow__delete", "Delete", () => { void session.deleteItems?.([uid]); });
         shield(node);
       }
+    }
+    if (moved.length) {
+      el("div", "pxd-follow__section", panel, `Moved (${moved.length})`);
+      const moves = el("div", "pxd-follow__list pxd-follow__list--left", panel);
+      for (const m of moved) {
+        const node = el("div", "pxd-follow__row pxd-follow__row--left", moves);
+        node.dataset.uid = m.uid;
+        el("div", "pxd-follow__text", node, cardTitle(m.uid));
+        el("div", "pxd-follow__crumb", node, `Moved to ${m.toText || "another heading"}`);
+        const acts = el("div", "pxd-follow__acts", node);
+        button(acts, "pxd-follow__show", "Show", () => onShowCard?.(m.uid));
+        button(acts, "pxd-follow__dismiss", "Dismiss", () => { void session.dismissMoved?.({ [m.uid]: m.to }); });
+        shield(node);
+      }
+    }
+  }
+
+  // PXD-14: pending rows under a header per heading, in source order. A heading already on the board has a header
+  // only while it has blocks waiting.
+  function groupRows(list) {
+    const groups = new Map();
+    for (const row of diff.pending) {
+      const head = row.kind === "heading" ? row.uid : row.heading;
+      if (!head) continue;
+      if (!groups.has(head)) groups.set(head, { head, text: "", row: null, blocks: [] });
+      const g = groups.get(head);
+      if (row.kind === "heading") { g.row = row; g.text = row.text; } else {
+        g.blocks.push(row);
+        if (!g.text) g.text = row.headingText || "";
+      }
+    }
+    for (const g of groups.values()) {
+      const bar = el("div", "pxd-follow__group", list);
+      el("span", "pxd-follow__text", bar, g.text || "(empty heading)");
+      const acts = el("div", "pxd-follow__acts", bar);
+      button(acts, "pxd-follow__place", "Place", () => { void place(g.row ? [g.row, ...g.blocks] : g.blocks); });
+      if (g.row) button(acts, "pxd-follow__skip", "Don't bring back", () => { void session.dontBringBack?.([g.head]); });
+      shield(bar);
+      for (const row of g.blocks) rowEl(list, row);
     }
   }
 
@@ -514,7 +578,8 @@ export function createFollowTray({
     if (disposed) return;
     const dirty = change?.dirty;
     if (dirty?.has?.(boardUid) || change?.structural) { adopt(); autoOpen(); }
-    if (!pointer) { paintPill(); return; }
+    // Stop (or an undo of Follow) clears the left and moved marks of the source the board no longer follows.
+    if (!pointer) { recompute(); paintPill(); return; }
     if (change?.structural || dirty?.has?.(boardUid) || diff.left.some((uid) => dirty?.has?.(uid))) sync();
     else if (dirty && [...dirty].some((uid) => board()?.items.get(uid)?.src === key)) sync();
   }) || (() => {});
@@ -542,9 +607,10 @@ export function createFollowTray({
     // PXD-18: the Arrivals strip ({ rows, waiting }) while the board follows its Inbox, else every pending row.
     arrivals: () => { const v = strip(); return { rows: v.rows.slice(), waiting: v.waiting }; },
     left: () => diff.left.slice(),
+    moved: () => moved.slice(),
     reads: () => reads,
     // The F10 probe: the source, reads so far, how long the last one took and waited, and the quiet period that sets.
-    stats: () => ({ key, reads, lastMs, waitMs, quietMs: followQuietMs(lastMs), stale, held, editing: editState(doc) }),
+    stats: () => ({ key, moved: moved.length, reads, lastMs, waitMs, quietMs: followQuietMs(lastMs), stale, held, editing: editState(doc) }),
     // The board menu: what Follow shows and offers.
     menuState() {
       const textUid = pointer ? null : textSourceUid(board()?.string || "");

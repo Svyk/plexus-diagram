@@ -373,7 +373,7 @@ test("PXD-9 tray: Follow from the menu shows the tray; Stop removes the pill and
   await f.timers.run();
   assert.equal(f.root.querySelector(".pxd-follow").textContent, "Following (2)");
   const on = flattenMenu(buildMenu("board-menu", { follow: f.tray.menuState() }));
-  assert.deepEqual(on.filter((m) => m.id.startsWith("follow:")).map((m) => m.id), ["follow:label", "follow:show", "follow:tree", "follow:pick-block", "follow:pick-query", "follow:pick-refs", "follow:inbox", "follow:stop"]);
+  assert.deepEqual(on.filter((m) => m.id.startsWith("follow:")).map((m) => m.id), ["follow:label", "follow:show", "follow:tree", "follow:pick-block", "follow:pick-query", "follow:pick-refs", "follow:pick-headings", "follow:inbox", "follow:stop"]);
   assert.equal(on.find((m) => m.id === "follow:label").label, "Children of “Source block”");
   assert.ok(f.listeners() > 0, "following listens for the window coming back");
   await f.session.stopFollowing();

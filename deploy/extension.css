@@ -6684,6 +6684,20 @@ body.roam-body.dark .pxd-root {
 }
 
 .pxd-follow__row--left { cursor: default; }
+
+/* PXD-14: a heading's header in the tray, over its blocks. */
+.pxd-follow__group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 4px 2px;
+  border-top: 1px solid var(--pxd-border, #d0d7de);
+  font-weight: 600;
+}
+.pxd-follow__group > .pxd-follow__text { flex: 1 1 auto; min-width: 0; }
+.pxd-follow__group > .pxd-follow__acts { flex: 0 0 auto; white-space: nowrap; }
 .pxd-follow__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .pxd-follow__new {
@@ -6724,12 +6738,14 @@ body.roam-body.dark .pxd-root {
 .pxd-root button.pxd-follow__close { padding: 0 6px; border-color: transparent; font-size: 14px; line-height: 16px; }
 .pxd-root button.pxd-follow__all:disabled { opacity: 0.45; cursor: default; }
 
-.pxd-root .pxd-item.pxd-item--left {
+.pxd-root .pxd-item.pxd-item--left,
+.pxd-root .pxd-item.pxd-item--moved {
   outline: 2px dashed var(--pxd-muted, #5f6b7c);
   outline-offset: 2px;
 }
 
-.pxd-root .pxd-item.pxd-item--left::after {
+.pxd-root .pxd-item.pxd-item--left::after,
+.pxd-root .pxd-item.pxd-item--moved::after {
   content: "Left the source";
   position: absolute;
   top: 4px;
@@ -6744,6 +6760,8 @@ body.roam-body.dark .pxd-root {
   line-height: 16px;
   pointer-events: none;
 }
+
+.pxd-root .pxd-item.pxd-item--moved::after { content: attr(data-pxd-moved); }
 
 /* MEM-1. Halo popover. A border, and the same surface as other popovers. */
 

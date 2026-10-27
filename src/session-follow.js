@@ -126,7 +126,7 @@ extendSession((session, api) => {
   Object.assign(session, {
     followState() {
       const pointer = readFollow(api.board()?.plexus);
-      return pointer ? { pointer, key: sourceKey(pointer) } : null;
+      return pointer ? { pointer, key: sourceKey(pointer), followDerived: api.board()?.followDerived === true } : null;
     },
 
     // Every block of the board's own tree: never a query or linked-reference result.

@@ -350,9 +350,20 @@ export function classifyString(s) {
   return { kind: "note" };
 }
 
+const BOARD_REF_RE = /^\s*\{\{\s*(?:\[\[diagram\]\]|diagram)\s*(:)?\s*\(\(([\w-]{1,64})\)\)((?:[^{}]|\{\{[^{}]*\}\})*)\}\}/i;
+
+// The leading `{{diagram ((uid))}}` token: `diagram` or `[[diagram]]`, an optional colon, one block ref and optional
+// title text. Anything after the closing `}}` is ignored. null for every other board string.
+export function parseBoardRef(s) {
+  const m = BOARD_REF_RE.exec(String(s ?? ""));
+  return m ? { uid: m[2], title: m[3].trim(), colon: m[1] === ":" } : null;
+}
+
 export function parseBoardTitle(s) {
   const m = /^\s*\{\{\s*(?:\[\[)?diagram(?:\]\])?\s*:([\s\S]*?)\}\}\s*$/i.exec(String(s ?? ""));
-  return m ? m[1].trim() : "";
+  if (m) return m[1].trim();
+  const ref = parseBoardRef(s);
+  return ref && !ref.colon ? ref.title : "";
 }
 
 const cleanBoardTitle = (title) => String(title ?? "").replace(/\s*[\r\n]+\s*/g, " ").split("}}").join("").trim();
@@ -364,9 +375,34 @@ export function boardString(title) {
 // Rewrites only the leading `{{[[diagram]]:...}}` token; the `[[diagram]]` or `diagram` form and any trailing text stay.
 export function setBoardTitle(s, title) {
   const cur = String(s ?? "");
+  const ref = parseBoardRef(cur);
+  if (ref && !ref.colon) {
+    const r = /^(\s*\{\{\s*(?:\[\[diagram\]\]|diagram))\s*(\(\([\w-]{1,64}\)\))(?:[^{}]|\{\{[^{}]*\}\})*\}\}/i.exec(cur);
+    const clean = cleanBoardTitle(title);
+    return `${r[1]} ${r[2]}${clean ? ` ${clean}` : ""}}}${cur.slice(r[0].length)}`;
+  }
   const m = /^(\s*\{\{\s*(?:\[\[)?diagram(?:\]\])?)\s*(?::[^}]*)?\}\}/i.exec(cur);
   if (!m) return boardString(title);
   return `${m[1]}:${cleanBoardTitle(title) || UNTITLED_BOARD}}}${cur.slice(m[0].length)}`;
+}
+
+// The title to show for a board string: never a raw `((uid))`. An empty title or a bare ref shows the first line of the
+// block it points at; a ref inside a longer title is replaced the same way.
+export function boardLabel(s, resolve) {
+  const line = (uid) => {
+    let text = null;
+    try { text = typeof resolve === "function" ? resolve(uid) : null; } catch { text = null; }
+    return typeof text === "string" ? firstLine(text) : "";
+  };
+  const title = parseBoardTitle(s);
+  const bare = /^\(\(([\w-]+)\)\)$/.exec(title);
+  if (bare) return line(bare[1]) || UNTITLED_BOARD;
+  if (title === "") {
+    const ref = parseBoardRef(s);
+    return (ref && line(ref.uid)) || UNTITLED_BOARD;
+  }
+  const out = title.replace(/\(\(([\w-]+)\)\)/g, (_, uid) => line(uid)).replace(/\s+/g, " ").trim();
+  return out || UNTITLED_BOARD;
 }
 
 export function isUntitledBoard(title) {

@@ -48264,11 +48264,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     generateUid() {
       return api3.util.generateUID();
     },
-    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType } = {}) {
+    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType, heading, textAlign } = {}) {
       const id = uid ?? api3.util.generateUID();
       const block = { uid: id, string };
       if (props !== void 0) block.props = plainKeys(props);
       if (open !== void 0) block.open = open;
+      if (heading) block.heading = heading;
+      if (textAlign) block["text-align"] = textAlign;
       if (viewType) block["children-view-type"] = viewType;
       stats.writes++;
       await mutate(() => data.block.create({ location: { "parent-uid": parentUid, order }, block }));
@@ -51648,7 +51650,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   async function runOp(op) {
     switch (op.op) {
       case "create":
-        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open });
+        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open, heading: op.heading, textAlign: op.textAlign });
         break;
       case "move":
         await host.moveBlock(op.uid, op.parent, op.order);
@@ -55876,6 +55878,11 @@ var STR3 = ":block/string";
 var KIDS5 = ":block/children";
 var UID5 = ":block/uid";
 var OPEN2 = ":block/open";
+var ORDER2 = ":block/order";
+var HEADING = ":block/heading";
+var ALIGN = ":block/text-align";
+var PROPS3 = ":block/props";
+var SUBTREE = "[:block/uid :block/string :block/order :block/open :block/heading :block/text-align :block/props {(limit :block/children nil) ...}]";
 extendSession((session, api3) => {
   const { host } = api3;
   const boardUid = session.uid;
@@ -55930,16 +55937,32 @@ extendSession((session, api3) => {
   };
   const subtreeCreates = (target, attrUid, order) => {
     const out = [];
-    const kidsIn = (node2) => Array.isArray(node2?.[KIDS5]) ? api3.kidsOf(node2) : [];
+    const kidsIn = (node2) => {
+      const list = Array.isArray(node2?.[KIDS5]) ? node2[KIDS5] : Array.isArray(node2?.children) ? node2.children : [];
+      return [...list].sort((a, b) => (a?.[ORDER2] ?? 0) - (b?.[ORDER2] ?? 0));
+    };
     const walk3 = (node2, parent, ord) => {
       const op = { op: "create", uid: node2[UID5] ?? node2.uid, parent, order: ord, string: String(node2[STR3] ?? node2.string ?? "") };
-      if (node2[OPEN2] !== void 0) op.open = node2[OPEN2];
+      const open = node2[OPEN2] ?? node2.open;
+      if (open !== void 0) op.open = open;
+      const heading = node2[HEADING] ?? node2.heading;
+      if (Number.isInteger(heading) && heading > 0) op.heading = heading;
+      const align = node2[ALIGN] ?? node2.textAlign;
+      if (typeof align === "string" && align) op.textAlign = align;
+      const props = node2[PROPS3];
+      if (props && typeof props === "object" && Object.keys(props).length) op.props = props;
       out.push(op);
       kidsIn(node2).forEach((k, i) => walk3(k, op.uid, i));
     };
     const attr = target.kids.find((k) => (k[UID5] ?? k.uid) === attrUid) ?? { [UID5]: attrUid };
-    let full = target.self ? api3.rawNode(attrUid) : null;
-    if (!target.self) {
+    let full = null;
+    try {
+      full = host.pullEntity?.(SUBTREE, attrUid) ?? null;
+    } catch {
+      full = null;
+    }
+    if (!full && target.self) full = api3.rawNode(attrUid);
+    if (!full) {
       let kids = [];
       try {
         const got = host.pullTree?.(attrUid, 20, 2e3);
@@ -55949,7 +55972,7 @@ extendSession((session, api3) => {
       }
       full = { ...attr, [KIDS5]: kids };
     }
-    walk3(full ?? attr, target.uid, order);
+    walk3(full, target.uid, order);
     return out;
   };
   const emitPlan = (t, plan, target, undo) => {

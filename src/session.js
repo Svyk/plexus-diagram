@@ -1195,7 +1195,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   async function runOp(op) {
     switch (op.op) {
       case "create":
-        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open });
+        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open, heading: op.heading, textAlign: op.textAlign });
         break;
       case "move": await host.moveBlock(op.uid, op.parent, op.order); break;
       case "delete": await host.deleteBlock(op.uid); break;

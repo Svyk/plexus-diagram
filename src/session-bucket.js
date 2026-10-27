@@ -9,6 +9,11 @@ const STR = ":block/string";
 const KIDS = ":block/children";
 const UID = ":block/uid";
 const OPEN = ":block/open";
+const ORDER = ":block/order";
+const HEADING = ":block/heading";
+const ALIGN = ":block/text-align";
+const PROPS = ":block/props";
+const SUBTREE = "[:block/uid :block/string :block/order :block/open :block/heading :block/text-align :block/props {(limit :block/children nil) ...}]";
 
 extendSession((session, api) => {
   const { host } = api;
@@ -64,19 +69,32 @@ extendSession((session, api) => {
     return String(kid?.[STR] ?? kid?.string ?? "");
   };
 
-  // Create ops for a block and everything under it, parent first, each with its own uid, string, order and fold.
+  // Create ops for a block and everything under it, parent first, each with its own uid, string, order, fold,
+  // heading, alignment and props. Read from Roam in one recursive pull; the board's copy or pullTree when that misses.
   const subtreeCreates = (target, attrUid, order) => {
     const out = [];
-    const kidsIn = (node) => (Array.isArray(node?.[KIDS]) ? api.kidsOf(node) : []);
+    const kidsIn = (node) => {
+      const list = Array.isArray(node?.[KIDS]) ? node[KIDS] : Array.isArray(node?.children) ? node.children : [];
+      return [...list].sort((a, b) => (a?.[ORDER] ?? 0) - (b?.[ORDER] ?? 0));
+    };
     const walk = (node, parent, ord) => {
       const op = { op: "create", uid: node[UID] ?? node.uid, parent, order: ord, string: String(node[STR] ?? node.string ?? "") };
-      if (node[OPEN] !== undefined) op.open = node[OPEN];
+      const open = node[OPEN] ?? node.open;
+      if (open !== undefined) op.open = open;
+      const heading = node[HEADING] ?? node.heading;
+      if (Number.isInteger(heading) && heading > 0) op.heading = heading;
+      const align = node[ALIGN] ?? node.textAlign;
+      if (typeof align === "string" && align) op.textAlign = align;
+      const props = node[PROPS];
+      if (props && typeof props === "object" && Object.keys(props).length) op.props = props;
       out.push(op);
       kidsIn(node).forEach((k, i) => walk(k, op.uid, i));
     };
     const attr = target.kids.find((k) => (k[UID] ?? k.uid) === attrUid) ?? { [UID]: attrUid };
-    let full = target.self ? api.rawNode(attrUid) : null;
-    if (!target.self) {
+    let full = null;
+    try { full = host.pullEntity?.(SUBTREE, attrUid) ?? null; } catch { full = null; }
+    if (!full && target.self) full = api.rawNode(attrUid);
+    if (!full) {
       let kids = [];
       try {
         const got = host.pullTree?.(attrUid, 20, 2000);
@@ -84,7 +102,7 @@ extendSession((session, api) => {
       } catch { kids = []; }
       full = { ...attr, [KIDS]: kids };
     }
-    walk(full ?? attr, target.uid, order);
+    walk(full, target.uid, order);
     return out;
   };
 

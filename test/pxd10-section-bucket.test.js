@@ -417,6 +417,56 @@ test("PXD-10 big drag out of an attribute section (ref target): undo restores th
   assert.equal(fake.block("keep1").parent, "st1");
 });
 
+// Review round 2: a folded heading outline three levels under the attribute, on a ref target and on a board card.
+const deepOutline = (p) => [{
+  uid: `${p}at`, string: "Status:: Review", heading: 3, children: [{
+    uid: `${p}keep`, string: "keep me", heading: 2, open: false, children: [{
+      uid: `${p}deep`, string: "deeper", open: false, children: [{ uid: `${p}deeper`, string: "deeper still" }],
+    }],
+  }],
+}];
+const assertOutline = (fake, p, parent) => {
+  const at = fake.block(`${p}at`);
+  assert.equal(at.parent, parent);
+  assert.equal(at.heading, 3);
+  const keep = fake.block(`${p}keep`);
+  assert.equal(keep.parent, `${p}at`);
+  assert.equal(keep.heading, 2);
+  assert.equal(keep.open, false, "a folded block stays folded");
+  const deep = fake.block(`${p}deep`);
+  assert.equal(deep.parent, `${p}keep`);
+  assert.equal(deep.open, false);
+  assert.equal(fake.block(`${p}deeper`).parent, `${p}deep`);
+  assert.equal(fake.block(`${p}deeper`).string, "deeper still");
+};
+
+test("PXD-10 big drag out (ref target): undo restores the whole folded heading outline under the attribute", async () => {
+  const cards = Array.from({ length: 45 }, (_, i) => card(`k${i}`, `card ${i}`, 20, 20));
+  const { fake, session, customs } = setup({
+    bucket: ATTR,
+    kids: deepOutline("r"),
+    children: [section("S", 400, 0, { bucket: ATTR, w: 1000, h: 1000 }, [card("c1", "((abc))", 20, 20), ...cards])],
+  });
+  await session.commitMove(["c1", ...cards.map((c) => c.uid)], -500, 0);
+  await fake.flush();
+  assert.equal(fake.block("rat"), null);
+  assert.equal(fake.block("rdeeper"), null);
+  await customs.filter(Boolean).at(-1).undo();
+  await fake.flush();
+  assertOutline(fake, "r", "abc");
+});
+
+test("PXD-10 big drag out (board card): undo restores the whole folded heading outline under the attribute", async () => {
+  const mk = (i) => card(`k${i}`, `card ${i}`, 20 + i, 20 + i, {}, i === 0 ? deepOutline("s") : [{ uid: `at${i}`, string: "Status:: Review" }]);
+  const { fake, session, customs } = setup({ bucket: ATTR, children: [section("S", 400, 0, { bucket: ATTR, w: 1000, h: 1000 }, Array.from({ length: 16 }, (_, i) => mk(i)))] });
+  await session.commitMove(Array.from({ length: 16 }, (_, i) => `k${i}`), -500, 0);
+  await fake.flush();
+  assert.equal(fake.block("sat"), null);
+  await customs.filter(Boolean).at(-1).undo();
+  await fake.flush();
+  assertOutline(fake, "s", "k0");
+});
+
 test("PXD-10 tagBlocked: an image or query card is left untagged, a task note still tagged", async () => {
   assert.equal(planBucketAdd(TAG, { uid: "u", string: "![plot](https://example.com/a.png)", attrs: [] }), null);
   assert.equal(planBucketAdd(TAG, { uid: "u", string: "{{[[query]]: {and: [[Lab]]}}}", attrs: [] }), null);

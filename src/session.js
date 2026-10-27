@@ -77,6 +77,7 @@ import { SHAPES } from "./model/shapes.js";
 import { sameSize as sameSizeRects, spaceOut as spaceOutRects, tidyRects } from "./model/layout.js";
 import { coveredBy, filterLinks, linksQuery, reduceLinks } from "./model/links.js";
 import { isQueryString } from "./model/query.js";
+import { boardRefSource, readFollow, withFollow } from "./model/follow.js";
 import { autoEligibility, storedLayoutIn } from "./discovery.js";
 import { HOME_PULL, resolveArrowHomes, resolveOutsideArrows } from "./model/arrow-home.js";
 import { MAX_GROUP_WRITES, createEchoLedger, createWriteQueue } from "./host/roam.js";
@@ -498,6 +499,29 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     publish();
   };
 
+  // `{{diagram ((uid))}}` on a board nobody has stamped follows that block (or query) without a write: the pointer is
+  // derived here and lands in the props with the board marker on the first write. Memoized by board string, so a
+  // keystroke rebuild does not read the source again.
+  let derivedMemo = { string: null, pointer: null };
+  const derivedFollow = () => {
+    if (!raw) return null;
+    const stored = readPlexus(raw[PROPS]);
+    if (stored?.v === SCHEMA_VERSION || stored?.native === true || readFollow(stored)) return null;
+    const string = raw[STR];
+    if (derivedMemo.string !== string) {
+      const src = boardRefSource(string);
+      let pointer = null;
+      let text = null;
+      if (src) {
+        try { text = host.blockString?.(src); } catch { text = null; }
+        pointer = isQueryString(text) ? { kind: "query", uid: src } : { kind: "block", uid: src, tree: true };
+      }
+      // A source that is not readable yet is read again on the next rebuild (it may be a query once it loads).
+      derivedMemo = { string: src && typeof text !== "string" ? null : string, pointer };
+    }
+    return derivedMemo.pointer;
+  };
+
   const rebuild = () => {
     rix = null;
     const plexusApi = globalThis.window?.RoamPlexus ?? globalThis.RoamPlexus ?? null;
@@ -534,6 +558,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       for (const [id, rev] of outlineRev) {
         const item = board.items.get(id);
         if (item && rev) item.outlineRev = rev;
+      }
+    }
+    if (board) {
+      const pointer = derivedFollow();
+      if (pointer) {
+        board.plexus = withFollow(board.plexus || {}, pointer);
+        board.followDerived = true;
       }
     }
     if (board && virtualAllowed && autoEnhanceOn() && !board.enhanced && !board.native) {
@@ -1397,7 +1428,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   }
 
   // ---- layout helpers ----
-  const rawPlexus = (id) => readPlexus(rawNode(id)?.[PROPS]) ?? {};
+  const rawPlexus = (id) => {
+    const base = readPlexus(rawNode(id)?.[PROPS]) ?? {};
+    const pointer = id === uid ? derivedFollow() : null;
+    return pointer ? withFollow(base, pointer) : base;
+  };
 
   // Stored x/y means a previous enhance already laid this board out. Auto-placed memory coords do not count.
   function hasStoredLayout() {

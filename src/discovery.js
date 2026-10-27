@@ -7,6 +7,9 @@ export const PREPAINT_STYLE_ID = "plexus-diagram-prepaint-guard";
 export const PENDING_CLASS = "pxd-native-pending";
 export const NATIVE_HIDDEN_CLASS = "pxd-native-hidden";
 export const OUTLINE_NATIVE_CLASS = "pxd-outline-native";
+// Roam renders `{{diagram ((uid))}}` (no colon, no [[ ]]) as this plain button, not as a diagram: Plexus mounts on it.
+export const REF_BUTTON_SELECTOR = "button.rm-xparser-default-diagram";
+export const DIAGRAM_SELECTOR = `.rm-diagram, ${REF_BUTTON_SELECTOR}`;
 
 export function isDiagramString(value) {
   const text = String(value ?? "");
@@ -70,6 +73,7 @@ export function enhancedUidGuardCss(uids) {
     ]) {
       selectors.push(
         `${host} .rm-diagram:not(.${NATIVE_HIDDEN_CLASS}):not(.${OUTLINE_NATIVE_CLASS})`,
+        `${host} ${REF_BUTTON_SELECTOR}:not(.${NATIVE_HIDDEN_CLASS}):not(.${OUTLINE_NATIVE_CLASS})`,
         `${host} .rm-diagram-title-panel:not(.${OUTLINE_NATIVE_CLASS})`,
         `${host} .react-flow:not(.${OUTLINE_NATIVE_CLASS} *)`,
       );
@@ -253,13 +257,14 @@ export function findDiagramUidFromEl(element, isDiagramUid) {
 export function diagramElForUid(uid, root = globalThis.document) {
   if (!uid || !root?.querySelector) return null;
   const escaped = (globalThis.CSS?.escape || String)(String(uid));
-  return root.querySelector(`[id$="${escaped}"] .rm-diagram`)
-    || root.querySelector(`[data-uid="${escaped}"] .rm-diagram`)
-    || root.querySelector(`.rm-block-ref[data-uid="${escaped}"] .rm-diagram`);
+  const within = (host) => `${host} .rm-diagram, ${host} ${REF_BUTTON_SELECTOR}`;
+  return root.querySelector(within(`[id$="${escaped}"]`))
+    || root.querySelector(within(`[data-uid="${escaped}"]`))
+    || root.querySelector(within(`.rm-block-ref[data-uid="${escaped}"]`));
 }
 
 export function waitForDiagramEl(uid, { timeout = 2500, root = globalThis.document } = {}) {
-  const immediate = diagramElForUid(uid, root) || root?.querySelector?.(".rm-diagram");
+  const immediate = diagramElForUid(uid, root) || root?.querySelector?.(DIAGRAM_SELECTOR);
   if (immediate) return Promise.resolve(immediate);
   return new Promise((resolve) => {
     let settled = false;
@@ -272,7 +277,7 @@ export function waitForDiagramEl(uid, { timeout = 2500, root = globalThis.docume
       resolve(node || null);
     };
     const tick = () => {
-      const node = diagramElForUid(uid, root) || root?.querySelector?.(".rm-diagram");
+      const node = diagramElForUid(uid, root) || root?.querySelector?.(DIAGRAM_SELECTOR);
       if (node) finish(node);
     };
     const Mutation = globalThis.MutationObserver;
@@ -281,7 +286,7 @@ export function waitForDiagramEl(uid, { timeout = 2500, root = globalThis.docume
         for (const record of records) {
           for (const added of record.addedNodes || []) {
             if (added.nodeType !== 1) continue;
-            if (added.matches?.(".rm-diagram") || added.querySelector?.(".rm-diagram")) {
+            if (added.matches?.(DIAGRAM_SELECTOR) || added.querySelector?.(DIAGRAM_SELECTOR)) {
               tick();
               return;
             }
@@ -298,15 +303,15 @@ export function waitForDiagramEl(uid, { timeout = 2500, root = globalThis.docume
 export function diagramsWithin(root) {
   if (!root) return [];
   const values = [];
-  if (root.matches?.(".rm-diagram")) values.push(root);
-  for (const diagram of root.querySelectorAll?.(".rm-diagram") || []) {
+  if (root.matches?.(DIAGRAM_SELECTOR)) values.push(root);
+  for (const diagram of root.querySelectorAll?.(DIAGRAM_SELECTOR) || []) {
     if (!values.includes(diagram)) values.push(diagram);
   }
   return values;
 }
 
 export function diagramInstanceInfo(nativeElement, enhancedUids = new Set()) {
-  if (!nativeElement?.classList?.contains?.("rm-diagram")) return null;
+  if (!nativeElement?.classList?.contains?.("rm-diagram") && !nativeElement?.matches?.(REF_BUTTON_SELECTOR)) return null;
   const uid = findDiagramUidFromEl(nativeElement);
   if (!uid || !enhancedUids.has(uid)) return null;
   return { uid, nativeElement };

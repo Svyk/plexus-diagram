@@ -11,6 +11,7 @@ import {
   normalizeEdge,
   normalizeItemLayout,
   normalizeSectionDefaults,
+  boardLabel,
   parseBoardTitle,
   parseEdgeLabel,
   readPlexus,
@@ -397,7 +398,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
   return {
     uid,
     string,
-    title: parseBoardTitle(string),
+    title: typeof resolve === "function" && String(string).includes("((") ? boardLabel(string, resolve) : parseBoardTitle(string),
     plexus,
     enhanced: plexus?.v === 2,
     native: plexus?.native === true,

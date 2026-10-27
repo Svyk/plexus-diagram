@@ -1315,18 +1315,50 @@ function classifyString(s) {
   if (parseRegion(t)) return { kind: "region" };
   return { kind: "note" };
 }
+function parseBoardRef(s) {
+  const m = BOARD_REF_RE.exec(String(s ?? ""));
+  return m ? { uid: m[2], title: m[3].trim(), colon: m[1] === ":" } : null;
+}
 function parseBoardTitle(s) {
   const m = /^\s*\{\{\s*(?:\[\[)?diagram(?:\]\])?\s*:([\s\S]*?)\}\}\s*$/i.exec(String(s ?? ""));
-  return m ? m[1].trim() : "";
+  if (m) return m[1].trim();
+  const ref = parseBoardRef(s);
+  return ref && !ref.colon ? ref.title : "";
 }
 function boardString(title) {
   return `{{[[diagram]]:${cleanBoardTitle(title) || UNTITLED_BOARD}}}`;
 }
 function setBoardTitle(s, title) {
   const cur = String(s ?? "");
+  const ref = parseBoardRef(cur);
+  if (ref && !ref.colon) {
+    const r = /^(\s*\{\{\s*(?:\[\[diagram\]\]|diagram))\s*(\(\([\w-]{1,64}\)\))[^}]*\}\}/i.exec(cur);
+    const clean2 = cleanBoardTitle(title);
+    return `${r[1]} ${r[2]}${clean2 ? ` ${clean2}` : ""}}}${cur.slice(r[0].length)}`;
+  }
   const m = /^(\s*\{\{\s*(?:\[\[)?diagram(?:\]\])?)\s*(?::[^}]*)?\}\}/i.exec(cur);
   if (!m) return boardString(title);
   return `${m[1]}:${cleanBoardTitle(title) || UNTITLED_BOARD}}}${cur.slice(m[0].length)}`;
+}
+function boardLabel(s, resolve) {
+  const line = (uid) => {
+    let text4 = null;
+    try {
+      text4 = typeof resolve === "function" ? resolve(uid) : null;
+    } catch {
+      text4 = null;
+    }
+    return typeof text4 === "string" ? firstLine(text4) : "";
+  };
+  const title = parseBoardTitle(s);
+  const bare = /^\(\(([\w-]+)\)\)$/.exec(title);
+  if (bare) return line(bare[1]) || UNTITLED_BOARD;
+  if (title === "") {
+    const ref = parseBoardRef(s);
+    return ref && line(ref.uid) || UNTITLED_BOARD;
+  }
+  const out = title.replace(/\(\(([\w-]+)\)\)/g, (_, uid) => line(uid)).replace(/\s+/g, " ").trim();
+  return out || UNTITLED_BOARD;
 }
 function isUntitledBoard(title) {
   const t = String(title ?? "").trim().toLowerCase();
@@ -1432,7 +1464,7 @@ function attrNameOf(s) {
   const name = m[1].trim();
   return name ? name : null;
 }
-var PLEXUS_KEY, SCHEMA_VERSION, PALETTE, ITEM_TYPES, DEFAULT_SIZES, PAGE_CARD, MIN_SIZES, DEFAULT_BOARD_CARD, UNTITLED_BOARD, FONT_SIZES, CARD_LOOKS, TEXT_LOOKS, STICKY_SIZE, STICKY_COLOR, SECTION_LOOKS, LANE_SIZE, CARD_FONT_MIN, CARD_FONT_MAX, CARD_FONT_DEFAULT, SECTION_TITLE_MIN, SECTION_TITLE_MAX, SECTION_TITLE_DEFAULT, ALIGNS, EDGE_DEFAULTS, EDGE_WEIGHTS, SIDES2, ARROWS, DIRS, ROUTES, DASHES, BOARD_PATTERNS, DOCK_POSITIONS, BOARD_TONES, FIT_PAD, NATIVE_SWATCHES, ITEM_STYLE_KEYS, SECTION_STYLE_KEYS, ARROW_TOKENS, HEX_RE, BLOCK_UID_RE, blockUid, intIn, isObject, isNum, round12, MONTHS, cleanBoardTitle;
+var PLEXUS_KEY, SCHEMA_VERSION, PALETTE, ITEM_TYPES, DEFAULT_SIZES, PAGE_CARD, MIN_SIZES, DEFAULT_BOARD_CARD, UNTITLED_BOARD, FONT_SIZES, CARD_LOOKS, TEXT_LOOKS, STICKY_SIZE, STICKY_COLOR, SECTION_LOOKS, LANE_SIZE, CARD_FONT_MIN, CARD_FONT_MAX, CARD_FONT_DEFAULT, SECTION_TITLE_MIN, SECTION_TITLE_MAX, SECTION_TITLE_DEFAULT, ALIGNS, EDGE_DEFAULTS, EDGE_WEIGHTS, SIDES2, ARROWS, DIRS, ROUTES, DASHES, BOARD_PATTERNS, DOCK_POSITIONS, BOARD_TONES, FIT_PAD, NATIVE_SWATCHES, ITEM_STYLE_KEYS, SECTION_STYLE_KEYS, ARROW_TOKENS, HEX_RE, BLOCK_UID_RE, blockUid, intIn, isObject, isNum, round12, MONTHS, BOARD_REF_RE, cleanBoardTitle;
 var init_schema = __esm({
   "src/model/schema.js"() {
     init_shapes();
@@ -1497,6 +1529,7 @@ var init_schema = __esm({
     isNum = (v) => typeof v === "number" && Number.isFinite(v);
     round12 = (n3) => Math.round(n3 * 10) / 10;
     MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    BOARD_REF_RE = /^\s*\{\{\s*(?:\[\[diagram\]\]|diagram)\s*(:)?\s*\(\(([\w-]{1,64})\)\)([^}]*)\}\}/i;
     cleanBoardTitle = (title) => String(title ?? "").replace(/\s*[\r\n]+\s*/g, " ").split("}}").join("").trim();
   }
 });
@@ -4287,7 +4320,7 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
   return {
     uid,
     string,
-    title: parseBoardTitle(string),
+    title: typeof resolve === "function" && String(string).includes("((") ? boardLabel(string, resolve) : parseBoardTitle(string),
     plexus,
     enhanced: plexus?.v === 2,
     native: plexus?.native === true,
@@ -17461,6 +17494,7 @@ function enhancedUidGuardCss(uids) {
     ]) {
       selectors.push(
         `${host} .rm-diagram:not(.${NATIVE_HIDDEN_CLASS}):not(.${OUTLINE_NATIVE_CLASS})`,
+        `${host} ${REF_BUTTON_SELECTOR}:not(.${NATIVE_HIDDEN_CLASS}):not(.${OUTLINE_NATIVE_CLASS})`,
         `${host} .rm-diagram-title-panel:not(.${OUTLINE_NATIVE_CLASS})`,
         `${host} .react-flow:not(.${OUTLINE_NATIVE_CLASS} *)`
       );
@@ -17618,8 +17652,8 @@ function findDiagramUidFromEl(element, isDiagramUid) {
 function diagramsWithin(root) {
   if (!root) return [];
   const values = [];
-  if (root.matches?.(".rm-diagram")) values.push(root);
-  for (const diagram of root.querySelectorAll?.(".rm-diagram") || []) {
+  if (root.matches?.(DIAGRAM_SELECTOR)) values.push(root);
+  for (const diagram of root.querySelectorAll?.(DIAGRAM_SELECTOR) || []) {
     if (!values.includes(diagram)) values.push(diagram);
   }
   return values;
@@ -17649,7 +17683,7 @@ function autoEligibility({ plexus, nativeNodeCount = 0, storedLayout = false } =
   if (nativeNodeCount > 0 || storedLayout) return "convert";
   return "virtual";
 }
-var DIAGRAM_MARKER, MAX_GUARD_UIDS, ENHANCED_UID_CACHE_PREFIX, PREPAINT_STYLE_ID, PENDING_CLASS, NATIVE_HIDDEN_CLASS, OUTLINE_NATIVE_CLASS, BLOCK_CONTAINER_SELECTOR, EMBED_WRAP_SELECTORS, EMBED_REF;
+var DIAGRAM_MARKER, MAX_GUARD_UIDS, ENHANCED_UID_CACHE_PREFIX, PREPAINT_STYLE_ID, PENDING_CLASS, NATIVE_HIDDEN_CLASS, OUTLINE_NATIVE_CLASS, REF_BUTTON_SELECTOR, DIAGRAM_SELECTOR, BLOCK_CONTAINER_SELECTOR, EMBED_WRAP_SELECTORS, EMBED_REF;
 var init_discovery = __esm({
   "src/discovery.js"() {
     init_schema();
@@ -17660,6 +17694,8 @@ var init_discovery = __esm({
     PENDING_CLASS = "pxd-native-pending";
     NATIVE_HIDDEN_CLASS = "pxd-native-hidden";
     OUTLINE_NATIVE_CLASS = "pxd-outline-native";
+    REF_BUTTON_SELECTOR = "button.rm-xparser-default-diagram";
+    DIAGRAM_SELECTOR = `.rm-diagram, ${REF_BUTTON_SELECTOR}`;
     BLOCK_CONTAINER_SELECTOR = ".roam-block-container";
     EMBED_WRAP_SELECTORS = [".rm-embed-container", ".block-embed", ".rm-embed"];
     EMBED_REF = /\{\{(?:\[\[embed\]\]|embed):\s*\(\(([A-Za-z0-9_-]+)\)\)/;
@@ -18644,13 +18680,13 @@ function linkedRefLabel(count) {
 }
 function linkedRefCard(uid) {
   const s = String(uid ?? "");
-  return UID_RE5.test(s) ? `((${s}))` : null;
+  return UID_RE6.test(s) ? `((${s}))` : null;
 }
-var LINKED_REF_CAP, UID_RE5;
+var LINKED_REF_CAP, UID_RE6;
 var init_refs = __esm({
   "src/model/refs.js"() {
     LINKED_REF_CAP = 20;
-    UID_RE5 = /^[A-Za-z0-9_-]{9}$/;
+    UID_RE6 = /^[A-Za-z0-9_-]{9}$/;
   }
 });
 
@@ -41942,6 +41978,233 @@ function coveredBy(links, board2) {
 
 // src/session.js
 init_query();
+
+// src/model/follow.js
+init_schema();
+var FOLLOW_KEY = "follow";
+var FOLLOW_KEPT_KEY = "followSkip";
+var FOLLOW_KEPT_SOURCES = 5;
+var FOLLOW_SRC = "src";
+var FOLLOW_MIME = "application/x-plexus-follow";
+var FOLLOW_SKIP_CAP = 300;
+var FOLLOW_READ_CAP = 300;
+var FOLLOW_TREE_DEPTH = 8;
+var FOLLOW_PARENT_CAP = 60;
+var FOLLOW_QUIET_MS = 1500;
+var FOLLOW_POLL_MS = 6e4;
+var FOLLOW_BACKOFF = 10;
+var followQuietMs = (lastMs) => Math.min(FOLLOW_POLL_MS, Math.max(FOLLOW_QUIET_MS, FOLLOW_BACKOFF * (Number(lastMs) || 0)));
+var LEFT_CONFIRM = 2;
+var FOLLOW_COLUMN_GAP = 48;
+var FOLLOW_STACK_GAP = 24;
+var KIND_RE = /^[a-z][a-z0-9-]{0,31}$/;
+var UID_RE5 = /^[\w-]{1,64}$/;
+var isObject3 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+function cleanSkip(list, cap4 = FOLLOW_SKIP_CAP) {
+  if (!Array.isArray(list)) return [];
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const v of list) {
+    if (typeof v !== "string" || !UID_RE5.test(v) || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out.length > cap4 ? out.slice(out.length - cap4) : out;
+}
+function normalizePointer(raw) {
+  if (!isObject3(raw)) return null;
+  const kind = typeof raw.kind === "string" && KIND_RE.test(raw.kind) ? raw.kind : null;
+  const uid = typeof raw.uid === "string" && UID_RE5.test(raw.uid) ? raw.uid : null;
+  if (!kind || !uid) return null;
+  return { kind, uid, ...raw.tree === true ? { tree: true } : {}, skip: cleanSkip(raw.skip) };
+}
+function serializePointer(pointer) {
+  const p = normalizePointer(pointer);
+  if (!p) return null;
+  const out = { kind: p.kind, uid: p.uid };
+  if (p.tree) out.tree = true;
+  if (p.skip.length) out.skip = p.skip;
+  return out;
+}
+function readFollow(plexus) {
+  return isObject3(plexus) ? normalizePointer(plexus[FOLLOW_KEY]) : null;
+}
+var sourceKey = (pointer) => pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}` : "";
+function keptList(plexus) {
+  const raw = isObject3(plexus) ? plexus[FOLLOW_KEPT_KEY] : null;
+  return (Array.isArray(raw) ? raw : raw ? [raw] : []).map(normalizePointer).filter((p) => p && p.skip.length);
+}
+function keptFollow(plexus, key) {
+  return keptList(plexus).find((p) => sourceKey(p) === key) || null;
+}
+function withFollow(plexus, pointer) {
+  const base2 = isObject3(plexus) ? { ...plexus } : {};
+  const next = pointer ? serializePointer(pointer) : null;
+  const prev = readFollow(base2);
+  const nextKey = sourceKey(next);
+  const kept = keptList(base2).filter((p) => sourceKey(p) !== nextKey);
+  if (prev && sourceKey(prev) !== nextKey && prev.skip.length) kept.push(prev);
+  let list = kept.slice(-FOLLOW_KEPT_SOURCES).map((p) => ({ kind: p.kind, uid: p.uid, skip: p.skip }));
+  while (list.length > 1 && list.reduce((n3, p) => n3 + p.skip.length, 0) > FOLLOW_SKIP_CAP) list = list.slice(1);
+  if (list.length) base2[FOLLOW_KEPT_KEY] = list;
+  else delete base2[FOLLOW_KEPT_KEY];
+  if (next) base2[FOLLOW_KEY] = next;
+  else delete base2[FOLLOW_KEY];
+  return base2;
+}
+function followPointerFor(current3, kind, uid, { tree } = {}) {
+  const same3 = current3?.kind === kind && current3?.uid === uid;
+  const deep = tree === void 0 ? same3 && current3.tree === true : tree === true;
+  return { kind, uid, ...deep ? { tree: true } : {}, skip: same3 ? current3.skip : [] };
+}
+function addSkip(skip, uids, cap4 = FOLLOW_SKIP_CAP) {
+  const add = (uids || []).filter((u) => typeof u === "string" && UID_RE5.test(u));
+  const drop = new Set(add);
+  return cleanSkip([...(skip || []).filter((u) => !drop.has(u)), ...add], cap4);
+}
+function boardRefSource(boardString2) {
+  const ref = parseBoardRef(boardString2);
+  if (!ref) return null;
+  if (ref.colon && ref.title !== "") return null;
+  return ref.uid;
+}
+var textSourceUid = boardRefSource;
+var QUERY_BODY = /^\{\{\s*(?:\[\[query\]\]|query)\s*:([\s\S]*)\}\}$/;
+function queryBody(string) {
+  const m = QUERY_BODY.exec(String(string || "").trim());
+  return m ? plainText(m[1].replace(/[{}]/g, " "), 120) : null;
+}
+function sourceText(string) {
+  const body = queryBody(string);
+  return body === null ? firstLine(string) : `Query ${body}`.trim();
+}
+function itemIds(item) {
+  const out = [];
+  if (item?.uid) out.push(`u:${item.uid}`);
+  if (item?.kind === "page" && item.title) out.push(`p:${item.title}`);
+  return out;
+}
+function cardIds(card2) {
+  const out = [];
+  if (!card2) return out;
+  const t = card2.target;
+  if (t?.kind === "page") {
+    if (t.uid) out.push(`u:${t.uid}`);
+    if (t.title) out.push(`p:${t.title}`);
+    return out;
+  }
+  if (t?.kind === "block" && t.uid) out.push(`u:${t.uid}`);
+  if (card2.uid) out.push(`u:${card2.uid}`);
+  return out;
+}
+function followIndex(board2, key = "") {
+  const on = /* @__PURE__ */ new Map();
+  const followed = [];
+  for (const item of board2?.items?.values?.() || []) {
+    for (const id of cardIds(item)) if (!on.has(id)) on.set(id, item.uid);
+    if (key && item.src === key) followed.push(item);
+  }
+  return { on, followed };
+}
+function membership(read2) {
+  const set = /* @__PURE__ */ new Set();
+  for (const item of read2?.items || []) for (const id of itemIds(item)) set.add(id);
+  for (const uid of read2?.members || []) if (typeof uid === "string" && uid) set.add(`u:${uid}`);
+  return set;
+}
+function absentStep(prev, read2, board2, key) {
+  const before = prev instanceof Map ? prev : /* @__PURE__ */ new Map();
+  if (!read2?.ok) return new Map(before);
+  const members = membership(read2);
+  const next = /* @__PURE__ */ new Map();
+  for (const card2 of followIndex(board2, key).followed) {
+    if (cardIds(card2).some((id) => members.has(id))) continue;
+    const n3 = (before.get(card2.uid) || 0) + (read2.complete ? 1 : 0);
+    if (n3 > 0) next.set(card2.uid, n3);
+  }
+  return next;
+}
+var leftUnsettled = (absent) => [...absent instanceof Map ? absent.values() : []].some((n3) => n3 > 0 && n3 < LEFT_CONFIRM);
+function followDiff(read2, board2, { key = "", skip = [], absent = /* @__PURE__ */ new Map(), since = null } = {}) {
+  const { on, followed } = followIndex(board2, key);
+  const skipped = new Set(skip);
+  const pending = [];
+  let placed = 0;
+  let dismissed = 0;
+  const seen = /* @__PURE__ */ new Set();
+  for (const item of read2?.ok ? read2.items || [] : []) {
+    if (!item?.uid || seen.has(item.uid)) continue;
+    seen.add(item.uid);
+    if (itemIds(item).some((id) => on.has(id))) {
+      placed += 1;
+      continue;
+    }
+    if (skipped.has(item.uid)) {
+      dismissed += 1;
+      continue;
+    }
+    if (item.blank) continue;
+    pending.push({ ...item, fresh: Number.isFinite(since) && Number(item.time) > since });
+  }
+  const gone = absent instanceof Map ? absent : /* @__PURE__ */ new Map();
+  const left = followed.filter((card2) => (gone.get(card2.uid) || 0) >= LEFT_CONFIRM).map((card2) => card2.uid);
+  return { pending, left, placed, dismissed };
+}
+function sinceVisit(diff, { since = null, leftBefore = null } = {}) {
+  if (!Number.isFinite(since)) return { newCount: 0, leftCount: 0, baseline: false };
+  const before = leftBefore instanceof Set ? leftBefore : null;
+  return {
+    newCount: (diff?.pending || []).filter((row4) => row4.fresh).length,
+    leftCount: (diff?.left || []).filter((uid) => !before?.has(uid)).length,
+    baseline: true
+  };
+}
+function trayHeadline({ newCount = 0, leftCount = 0, baseline = false } = {}) {
+  if (!baseline) return "";
+  const parts = [];
+  if (newCount > 0) parts.push(`${newCount} new`);
+  if (leftCount > 0) parts.push(`${leftCount} left`);
+  return parts.length ? `${parts.join(", ")} since your last visit` : "Nothing new since your last visit";
+}
+var followPill = (n3) => `Following (${n3})`;
+function followCardString(item) {
+  if (item?.kind === "page" && item.title) return `[[${item.title}]]`;
+  return `((${item?.uid}))`;
+}
+function followBatches(list, cap4) {
+  const size = Math.max(1, Math.floor(Number(cap4) || 1));
+  const out = [];
+  for (let i = 0; i < (list || []).length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+function followColumn(bounds, count, { w, h, column = 0, at = null, gap = FOLLOW_COLUMN_GAP, stack = FOLLOW_STACK_GAP } = {}) {
+  const x0 = at ? at.x : bounds ? bounds.x + bounds.w + gap : 0;
+  const y0 = at ? at.y : bounds ? bounds.y : 0;
+  const x = x0 + column * (w + gap);
+  return Array.from({ length: Math.max(0, count) }, (_, i) => ({ x, y: y0 + i * (h + stack) }));
+}
+function createLeftMemory({ storage = globalThis.localStorage, graph = "" } = {}) {
+  const key = (uid) => `plexus-diagram:follow-left:${graph}:${uid}`;
+  return {
+    get(uid) {
+      try {
+        const raw = storage?.getItem?.(key(uid));
+        const list = raw ? JSON.parse(raw) : null;
+        return Array.isArray(list) ? new Set(list.filter((u) => typeof u === "string")) : null;
+      } catch {
+        return null;
+      }
+    },
+    set(uid, uids) {
+      try {
+        storage?.setItem?.(key(uid), JSON.stringify([...uids || []].slice(0, FOLLOW_SKIP_CAP)));
+      } catch {
+      }
+    }
+  };
+}
+
+// src/session.js
 init_discovery();
 init_arrow_home();
 
@@ -50631,6 +50894,28 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     for (const id of outlineRev.keys()) outlineRev.set(id, (outlineRev.get(id) || 0) + 1);
     publish2();
   };
+  let derivedMemo = { string: null, pointer: null };
+  const derivedFollow = () => {
+    if (!raw) return null;
+    const stored2 = readPlexus(raw[PROPS]);
+    if (stored2?.v === SCHEMA_VERSION || stored2?.native === true || readFollow(stored2)) return null;
+    const string = raw[STR];
+    if (derivedMemo.string !== string) {
+      const src = boardRefSource(string);
+      let pointer = null;
+      let text4 = null;
+      if (src) {
+        try {
+          text4 = host.blockString?.(src);
+        } catch {
+          text4 = null;
+        }
+        pointer = isQueryString(text4) ? { kind: "query", uid: src } : { kind: "block", uid: src, tree: true };
+      }
+      derivedMemo = { string: src && typeof text4 !== "string" ? null : string, pointer };
+    }
+    return derivedMemo.pointer;
+  };
   const rebuild = () => {
     rix = null;
     const plexusApi = globalThis.window?.RoamPlexus ?? globalThis.RoamPlexus ?? null;
@@ -50675,6 +50960,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       for (const [id, rev] of outlineRev) {
         const item = board2.items.get(id);
         if (item && rev) item.outlineRev = rev;
+      }
+    }
+    if (board2) {
+      const pointer = derivedFollow();
+      if (pointer) {
+        board2.plexus = withFollow(board2.plexus || {}, pointer);
+        board2.followDerived = true;
       }
     }
     if (board2 && virtualAllowed && autoEnhanceOn() && !board2.enhanced && !board2.native) {
@@ -51597,7 +51889,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const result = fn(t);
     return commit(ops, result, custom);
   }
-  const rawPlexus = (id) => readPlexus(rawNode(id)?.[PROPS]) ?? {};
+  const rawPlexus = (id) => {
+    const base2 = readPlexus(rawNode(id)?.[PROPS]) ?? {};
+    const pointer = id === uid ? derivedFollow() : null;
+    return pointer ? withFollow(base2, pointer) : base2;
+  };
   function hasStoredLayout() {
     for (const item of board2.items.values()) {
       const stored2 = readPlexus(rawNode(item.uid)?.[PROPS]);
@@ -54988,230 +55284,6 @@ extendSession((session, api3) => {
 // src/session-follow.js
 init_board();
 init_schema();
-
-// src/model/follow.js
-init_schema();
-var FOLLOW_KEY = "follow";
-var FOLLOW_KEPT_KEY = "followSkip";
-var FOLLOW_KEPT_SOURCES = 5;
-var FOLLOW_SRC = "src";
-var FOLLOW_MIME = "application/x-plexus-follow";
-var FOLLOW_SKIP_CAP = 300;
-var FOLLOW_READ_CAP = 300;
-var FOLLOW_TREE_DEPTH = 8;
-var FOLLOW_PARENT_CAP = 60;
-var FOLLOW_QUIET_MS = 1500;
-var FOLLOW_POLL_MS = 6e4;
-var FOLLOW_BACKOFF = 10;
-var followQuietMs = (lastMs) => Math.min(FOLLOW_POLL_MS, Math.max(FOLLOW_QUIET_MS, FOLLOW_BACKOFF * (Number(lastMs) || 0)));
-var LEFT_CONFIRM = 2;
-var FOLLOW_COLUMN_GAP = 48;
-var FOLLOW_STACK_GAP = 24;
-var KIND_RE = /^[a-z][a-z0-9-]{0,31}$/;
-var UID_RE6 = /^[\w-]{1,64}$/;
-var isObject3 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-function cleanSkip(list, cap4 = FOLLOW_SKIP_CAP) {
-  if (!Array.isArray(list)) return [];
-  const seen = /* @__PURE__ */ new Set();
-  const out = [];
-  for (const v of list) {
-    if (typeof v !== "string" || !UID_RE6.test(v) || seen.has(v)) continue;
-    seen.add(v);
-    out.push(v);
-  }
-  return out.length > cap4 ? out.slice(out.length - cap4) : out;
-}
-function normalizePointer(raw) {
-  if (!isObject3(raw)) return null;
-  const kind = typeof raw.kind === "string" && KIND_RE.test(raw.kind) ? raw.kind : null;
-  const uid = typeof raw.uid === "string" && UID_RE6.test(raw.uid) ? raw.uid : null;
-  if (!kind || !uid) return null;
-  return { kind, uid, ...raw.tree === true ? { tree: true } : {}, skip: cleanSkip(raw.skip) };
-}
-function serializePointer(pointer) {
-  const p = normalizePointer(pointer);
-  if (!p) return null;
-  const out = { kind: p.kind, uid: p.uid };
-  if (p.tree) out.tree = true;
-  if (p.skip.length) out.skip = p.skip;
-  return out;
-}
-function readFollow(plexus) {
-  return isObject3(plexus) ? normalizePointer(plexus[FOLLOW_KEY]) : null;
-}
-var sourceKey = (pointer) => pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}` : "";
-function keptList(plexus) {
-  const raw = isObject3(plexus) ? plexus[FOLLOW_KEPT_KEY] : null;
-  return (Array.isArray(raw) ? raw : raw ? [raw] : []).map(normalizePointer).filter((p) => p && p.skip.length);
-}
-function keptFollow(plexus, key) {
-  return keptList(plexus).find((p) => sourceKey(p) === key) || null;
-}
-function withFollow(plexus, pointer) {
-  const base2 = isObject3(plexus) ? { ...plexus } : {};
-  const next = pointer ? serializePointer(pointer) : null;
-  const prev = readFollow(base2);
-  const nextKey = sourceKey(next);
-  const kept = keptList(base2).filter((p) => sourceKey(p) !== nextKey);
-  if (prev && sourceKey(prev) !== nextKey && prev.skip.length) kept.push(prev);
-  let list = kept.slice(-FOLLOW_KEPT_SOURCES).map((p) => ({ kind: p.kind, uid: p.uid, skip: p.skip }));
-  while (list.length > 1 && list.reduce((n3, p) => n3 + p.skip.length, 0) > FOLLOW_SKIP_CAP) list = list.slice(1);
-  if (list.length) base2[FOLLOW_KEPT_KEY] = list;
-  else delete base2[FOLLOW_KEPT_KEY];
-  if (next) base2[FOLLOW_KEY] = next;
-  else delete base2[FOLLOW_KEY];
-  return base2;
-}
-function followPointerFor(current3, kind, uid, { tree } = {}) {
-  const same3 = current3?.kind === kind && current3?.uid === uid;
-  const deep = tree === void 0 ? same3 && current3.tree === true : tree === true;
-  return { kind, uid, ...deep ? { tree: true } : {}, skip: same3 ? current3.skip : [] };
-}
-function addSkip(skip, uids, cap4 = FOLLOW_SKIP_CAP) {
-  const add = (uids || []).filter((u) => typeof u === "string" && UID_RE6.test(u));
-  const drop = new Set(add);
-  return cleanSkip([...(skip || []).filter((u) => !drop.has(u)), ...add], cap4);
-}
-function textSourceUid(boardString2) {
-  const m = /^\(\(([\w-]{6,64})\)\)$/.exec(parseBoardTitle(boardString2));
-  return m ? m[1] : null;
-}
-var QUERY_BODY = /^\{\{\s*(?:\[\[query\]\]|query)\s*:([\s\S]*)\}\}$/;
-function queryBody(string) {
-  const m = QUERY_BODY.exec(String(string || "").trim());
-  return m ? plainText(m[1].replace(/[{}]/g, " "), 120) : null;
-}
-function sourceText(string) {
-  const body = queryBody(string);
-  return body === null ? firstLine(string) : `Query ${body}`.trim();
-}
-function itemIds(item) {
-  const out = [];
-  if (item?.uid) out.push(`u:${item.uid}`);
-  if (item?.kind === "page" && item.title) out.push(`p:${item.title}`);
-  return out;
-}
-function cardIds(card2) {
-  const out = [];
-  if (!card2) return out;
-  const t = card2.target;
-  if (t?.kind === "page") {
-    if (t.uid) out.push(`u:${t.uid}`);
-    if (t.title) out.push(`p:${t.title}`);
-    return out;
-  }
-  if (t?.kind === "block" && t.uid) out.push(`u:${t.uid}`);
-  if (card2.uid) out.push(`u:${card2.uid}`);
-  return out;
-}
-function followIndex(board2, key = "") {
-  const on = /* @__PURE__ */ new Map();
-  const followed = [];
-  for (const item of board2?.items?.values?.() || []) {
-    for (const id of cardIds(item)) if (!on.has(id)) on.set(id, item.uid);
-    if (key && item.src === key) followed.push(item);
-  }
-  return { on, followed };
-}
-function membership(read2) {
-  const set = /* @__PURE__ */ new Set();
-  for (const item of read2?.items || []) for (const id of itemIds(item)) set.add(id);
-  for (const uid of read2?.members || []) if (typeof uid === "string" && uid) set.add(`u:${uid}`);
-  return set;
-}
-function absentStep(prev, read2, board2, key) {
-  const before = prev instanceof Map ? prev : /* @__PURE__ */ new Map();
-  if (!read2?.ok) return new Map(before);
-  const members = membership(read2);
-  const next = /* @__PURE__ */ new Map();
-  for (const card2 of followIndex(board2, key).followed) {
-    if (cardIds(card2).some((id) => members.has(id))) continue;
-    const n3 = (before.get(card2.uid) || 0) + (read2.complete ? 1 : 0);
-    if (n3 > 0) next.set(card2.uid, n3);
-  }
-  return next;
-}
-var leftUnsettled = (absent) => [...absent instanceof Map ? absent.values() : []].some((n3) => n3 > 0 && n3 < LEFT_CONFIRM);
-function followDiff(read2, board2, { key = "", skip = [], absent = /* @__PURE__ */ new Map(), since = null } = {}) {
-  const { on, followed } = followIndex(board2, key);
-  const skipped = new Set(skip);
-  const pending = [];
-  let placed = 0;
-  let dismissed = 0;
-  const seen = /* @__PURE__ */ new Set();
-  for (const item of read2?.ok ? read2.items || [] : []) {
-    if (!item?.uid || seen.has(item.uid)) continue;
-    seen.add(item.uid);
-    if (itemIds(item).some((id) => on.has(id))) {
-      placed += 1;
-      continue;
-    }
-    if (skipped.has(item.uid)) {
-      dismissed += 1;
-      continue;
-    }
-    if (item.blank) continue;
-    pending.push({ ...item, fresh: Number.isFinite(since) && Number(item.time) > since });
-  }
-  const gone = absent instanceof Map ? absent : /* @__PURE__ */ new Map();
-  const left = followed.filter((card2) => (gone.get(card2.uid) || 0) >= LEFT_CONFIRM).map((card2) => card2.uid);
-  return { pending, left, placed, dismissed };
-}
-function sinceVisit(diff, { since = null, leftBefore = null } = {}) {
-  if (!Number.isFinite(since)) return { newCount: 0, leftCount: 0, baseline: false };
-  const before = leftBefore instanceof Set ? leftBefore : null;
-  return {
-    newCount: (diff?.pending || []).filter((row4) => row4.fresh).length,
-    leftCount: (diff?.left || []).filter((uid) => !before?.has(uid)).length,
-    baseline: true
-  };
-}
-function trayHeadline({ newCount = 0, leftCount = 0, baseline = false } = {}) {
-  if (!baseline) return "";
-  const parts = [];
-  if (newCount > 0) parts.push(`${newCount} new`);
-  if (leftCount > 0) parts.push(`${leftCount} left`);
-  return parts.length ? `${parts.join(", ")} since your last visit` : "Nothing new since your last visit";
-}
-var followPill = (n3) => `Following (${n3})`;
-function followCardString(item) {
-  if (item?.kind === "page" && item.title) return `[[${item.title}]]`;
-  return `((${item?.uid}))`;
-}
-function followBatches(list, cap4) {
-  const size = Math.max(1, Math.floor(Number(cap4) || 1));
-  const out = [];
-  for (let i = 0; i < (list || []).length; i += size) out.push(list.slice(i, i + size));
-  return out;
-}
-function followColumn(bounds, count, { w, h, column = 0, at = null, gap = FOLLOW_COLUMN_GAP, stack = FOLLOW_STACK_GAP } = {}) {
-  const x0 = at ? at.x : bounds ? bounds.x + bounds.w + gap : 0;
-  const y0 = at ? at.y : bounds ? bounds.y : 0;
-  const x = x0 + column * (w + gap);
-  return Array.from({ length: Math.max(0, count) }, (_, i) => ({ x, y: y0 + i * (h + stack) }));
-}
-function createLeftMemory({ storage = globalThis.localStorage, graph = "" } = {}) {
-  const key = (uid) => `plexus-diagram:follow-left:${graph}:${uid}`;
-  return {
-    get(uid) {
-      try {
-        const raw = storage?.getItem?.(key(uid));
-        const list = raw ? JSON.parse(raw) : null;
-        return Array.isArray(list) ? new Set(list.filter((u) => typeof u === "string")) : null;
-      } catch {
-        return null;
-      }
-    },
-    set(uid, uids) {
-      try {
-        storage?.setItem?.(key(uid), JSON.stringify([...uids || []].slice(0, FOLLOW_SKIP_CAP)));
-      } catch {
-      }
-    }
-  };
-}
-
-// src/session-follow.js
 var same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 extendSession((session, api3) => {
   const { host } = api3;
@@ -55308,7 +55380,7 @@ extendSession((session, api3) => {
   Object.assign(session, {
     followState() {
       const pointer = readFollow(api3.board()?.plexus);
-      return pointer ? { pointer, key: sourceKey(pointer) } : null;
+      return pointer ? { pointer, key: sourceKey(pointer), followDerived: api3.board()?.followDerived === true } : null;
     },
     // Every block of the board's own tree: never a query or linked-reference result.
     followExclude() {
@@ -90955,6 +91027,7 @@ defineFollowKind({
 // src/view/follow-tray.js
 var REASONS = {
   missing: "The source block is gone.",
+  missingText: "The block in the board text does not exist.",
   unsupported: "Plexus cannot run this query. It reads page and block refs with and, or and not.",
   slow: "The query took too long to read.",
   unknown: "This board follows a kind of source this version cannot read."
@@ -90989,6 +91062,7 @@ function createFollowTray({
   let leftShown = "";
   let reads = 0;
   let open = false;
+  let autoOpened = false;
   let disposed = false;
   let btn2 = null;
   let panel = null;
@@ -91035,8 +91109,10 @@ function createFollowTray({
     tick: () => new Promise((resolve) => timers.idle(resolve)),
     followed: () => followIndex(board2(), key).followed.map((card2) => card2.target?.uid).filter(Boolean)
   });
+  const textMissing = () => reason === "missing" && pointer?.kind === "block" && board2()?.followDerived === true;
   const describe = () => {
     const kind = pointer ? followKind(pointer.kind) : null;
+    if (textMissing()) return "a block that does not exist";
     try {
       return kind?.describe?.(pointer, host) || kind?.title || "a source";
     } catch {
@@ -91295,7 +91371,7 @@ function createFollowTray({
     if (line) el2("div", "pxd-follow__since", panel, line);
     let note = "";
     if (status === "reading" && !read2) note = "Reading the source…";
-    else if (status === "error") note = REASONS[reason] || "Could not read the source. The last list stays.";
+    else if (status === "error") note = textMissing() ? REASONS.missingText : REASONS[reason] || "Could not read the source. The last list stays.";
     else if (read2 && !read2.complete) note = "Only part of the source was read, so nothing is marked as left.";
     else if (read2?.deeper) note = `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
     if (note) el2("div", "pxd-follow__note", panel, note);
@@ -91358,7 +91434,10 @@ function createFollowTray({
   const offChange = session?.on?.("change", (change) => {
     if (disposed) return;
     const dirty = change?.dirty;
-    if (dirty?.has?.(boardUid) || change?.structural) adopt();
+    if (dirty?.has?.(boardUid) || change?.structural) {
+      adopt();
+      autoOpen();
+    }
     if (!pointer) {
       paintPill();
       return;
@@ -91367,8 +91446,16 @@ function createFollowTray({
     else if (dirty && [...dirty].some((uid) => board2()?.items.get(uid)?.src === key)) sync();
   }) || (() => {
   });
+  function autoOpen() {
+    if (autoOpened || disposed || !pointer || open) return;
+    const b = board2();
+    if (b?.followDerived !== true || b.roots.length > 0) return;
+    autoOpened = true;
+    openPanel();
+  }
   adopt();
   sync();
+  autoOpen();
   return {
     sync,
     refresh: () => schedule(),
@@ -114607,7 +114694,7 @@ var AUTO_PATTERN = "[:block/props {(limit :block/children nil) [:block/props]}]"
 var CONVERT_LABEL = "Open as Plexus board";
 var CONVERT_TITLE = "Imports this diagram's shapes and arrows into a Plexus board. Plexus: Restore native diagram gives it back.";
 var ANCESTORS_PATTERN = "[:block/uid :block/string {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]";
-var boardTitle2 = (s) => parseBoardTitle(s) || UNTITLED_BOARD;
+var boardTitle2 = (s, resolve) => boardLabel(s, resolve);
 var currentUid = (rec) => rec.crumbs[rec.crumbs.length - 1].uid;
 function crumbCopy(list) {
   return (list || []).map((c) => ({ uid: c.uid, title: c.title }));
@@ -115239,7 +115326,7 @@ async function installPlexusDiagram({
   function pathFor(uid) {
     const cached = pathCache.get(uid);
     if (cached) return cached.slice();
-    const self = { uid, title: boardTitle2(host.blockString?.(uid)) };
+    const self = { uid, title: boardTitle2(host.blockString?.(uid), (id) => host.blockString?.(id)) };
     let res = null;
     try {
       res = pullVia(host, ANCESTORS_PATTERN, [":block/uid", uid]);
@@ -116335,13 +116422,13 @@ async function installPlexusDiagram({
       autofocus,
       initialViewport: viewport2,
       onOpenBoard: (child, opts) => {
-        const trail = trailFor(child, [...owner.rec.crumbs, { uid: child, title: boardTitle2(host.blockString?.(child)) }]);
+        const trail = trailFor(child, [...owner.rec.crumbs, { uid: child, title: boardTitle2(host.blockString?.(child), (id) => host.blockString?.(id)) }]);
         if (opts?.focus) enterNested(owner.rec, trail, opts.focus);
         else visit(owner.rec, trail);
       },
       onSelectTab: (uid) => {
         if (!uid) return;
-        visit(owner.rec, trailFor(uid, [{ uid, title: boardTitle2(host.blockString?.(uid)) }]));
+        visit(owner.rec, trailFor(uid, [{ uid, title: boardTitle2(host.blockString?.(uid), (id) => host.blockString?.(id)) }]));
       },
       tabStore: host.tabs,
       boardsOf: (uid) => {
@@ -117658,6 +117745,10 @@ async function installPlexusDiagram({
       }
       uidByNative.set(native, uid);
     }
+    if (native.matches?.(REF_BUTTON_SELECTOR)) {
+      const ref = uid ? parseBoardRef(readString(uid)) : null;
+      if (!ref || ref.colon) return;
+    }
     if (!uid || !isBoardEnhanced(uid)) {
       syncConvert(native, uid);
       return;
@@ -118453,7 +118544,9 @@ async function installPlexusDiagram({
     }
     if (!doc) return;
     tryPendingPin();
-    for (const diagram of doc.querySelectorAll(".rm-diagram")) consider2(diagram);
+    for (const selector of [".rm-diagram", REF_BUTTON_SELECTOR]) {
+      for (const diagram of doc.querySelectorAll(selector)) consider2(diagram);
+    }
     dropCoverHold();
   }
   function onHash(event) {

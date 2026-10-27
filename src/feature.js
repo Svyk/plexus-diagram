@@ -45,7 +45,7 @@ import { boardsFromRefs, PIN_BOARDS_QUERY, pinOpenFallback, pinOpenPlan, pinPdfU
 import { pdfMacroUrl } from "./model/pdf.js";
 import { mountPdfPin } from "./view/pdf-pin-view.js";
 import { boardPath } from "./model/board-path.js";
-import { classifyString, firstLine, parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
+import { boardLabel, classifyString, firstLine, parseBoardRef, parseBoardTitle, readPlexus } from "./model/schema.js";
 import { parseTrailBlock, renderTrailStrip, trailStrip } from "./model/trails.js";
 import { eachRegionButton, openRegionCrop, openRegionView, regionUidForButton, resetCropUrls } from "./view/region-crop.js";
 import { chromeObstacles } from "./view/avoid.js";
@@ -77,6 +77,7 @@ import {
   NATIVE_HIDDEN_CLASS,
   OUTLINE_NATIVE_CLASS,
   PREPAINT_STYLE_ID,
+  REF_BUTTON_SELECTOR,
   readEnhanced,
   readEnhancedUidCache,
   routeLeftZoomedDiagram,
@@ -121,7 +122,7 @@ const AUTO_PATTERN = "[:block/props {(limit :block/children nil) [:block/props]}
 const CONVERT_LABEL = "Open as Plexus board";
 const CONVERT_TITLE = "Imports this diagram's shapes and arrows into a Plexus board. Plexus: Restore native diagram gives it back.";
 const ANCESTORS_PATTERN = "[:block/uid :block/string {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]";
-const boardTitle = (s) => parseBoardTitle(s) || UNTITLED_BOARD;
+const boardTitle = (s, resolve) => boardLabel(s, resolve);
 const currentUid = (rec) => rec.crumbs[rec.crumbs.length - 1].uid;
 
 function crumbCopy(list) {
@@ -750,7 +751,7 @@ export async function installPlexusDiagram({
   function pathFor(uid) {
     const cached = pathCache.get(uid);
     if (cached) return cached.slice();
-    const self = { uid, title: boardTitle(host.blockString?.(uid)) };
+    const self = { uid, title: boardTitle(host.blockString?.(uid), (id) => host.blockString?.(id)) };
     let res = null;
     try { res = pullVia(host, ANCESTORS_PATTERN, [":block/uid", uid]); } catch { res = null; }
     const parents = res?.[":block/parents"];
@@ -1702,13 +1703,13 @@ export async function installPlexusDiagram({
       autofocus,
       initialViewport: viewport,
       onOpenBoard: (child, opts) => {
-        const trail = trailFor(child, [...owner.rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }]);
+        const trail = trailFor(child, [...owner.rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child), (id) => host.blockString?.(id)) }]);
         if (opts?.focus) enterNested(owner.rec, trail, opts.focus);
         else visit(owner.rec, trail);
       },
       onSelectTab: (uid) => {
         if (!uid) return;
-        visit(owner.rec, trailFor(uid, [{ uid, title: boardTitle(host.blockString?.(uid)) }]));
+        visit(owner.rec, trailFor(uid, [{ uid, title: boardTitle(host.blockString?.(uid), (id) => host.blockString?.(id)) }]));
       },
       tabStore: host.tabs,
       boardsOf: (uid) => {
@@ -2942,6 +2943,11 @@ export async function installPlexusDiagram({
       }
       uidByNative.set(native, uid);
     }
+    // Roam draws `{{diagram ((uid))}}` as a plain button. Only that exact form is a board; `{{diagram foo}}` stays a button.
+    if (native.matches?.(REF_BUTTON_SELECTOR)) {
+      const ref = uid ? parseBoardRef(readString(uid)) : null;
+      if (!ref || ref.colon) return;
+    }
     if (!uid || !isBoardEnhanced(uid)) {
       syncConvert(native, uid);
       return;
@@ -3647,7 +3653,9 @@ export async function installPlexusDiagram({
     }
     if (!doc) return;
     tryPendingPin();
-    for (const diagram of doc.querySelectorAll(".rm-diagram")) consider(diagram);
+    for (const selector of [".rm-diagram", REF_BUTTON_SELECTOR]) {
+      for (const diagram of doc.querySelectorAll(selector)) consider(diagram);
+    }
     dropCoverHold();
   }
 

@@ -862,6 +862,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
           opt("duplicate", "pxd-ctx__duplicate", "duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
           opt("saveViewSelection", "pxd-ctx__save-view", "camera", "Save view", "Save a view of the selection", () => on.saveViewSelection());
         }
+        if (kind === "card" && model?.refLinks > 0) opt("pinRefs", "pxd-ctx__pin-refs", "new-link", "Pin ref arrows", "Turn the faint ref arrows on this card into connections", () => on.pinRefs());
         btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       }

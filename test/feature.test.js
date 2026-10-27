@@ -951,6 +951,7 @@ test("PF-1: Commands… lists every action and keeps the focused block after the
       "Fold sections in the outline",
       "Unfold sections",
       "Find related to the selected card",
+      "Toggle ref arrows",
     ]);
     t.env.focused = null;
     const row = t.doc.querySelectorAll(".pxd-commands__row").find((node) => node.textContent === "Enhance this diagram");

@@ -4260,7 +4260,8 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         ...kind === "image" || kind === "pdf" ? { hitsKey: endpointHitsKey(cardKids) } : {},
         ...openKey ? { openKey } : {},
         // PXD-9: the source a placed card came from (its follow key). Only such cards can be marked "left the source".
-        ...typeof cplexus?.src === "string" && cplexus.src ? { src: cplexus.src } : {}
+        ...typeof cplexus?.src === "string" && cplexus.src ? { src: cplexus.src } : {},
+        ...typeof cplexus?.day === "string" && cplexus.day && typeof cplexus?.src === "string" && cplexus.src ? { day: cplexus.day } : {}
       };
       items.set(cuid, item);
       preorder.push(cuid);
@@ -17441,6 +17442,289 @@ var init_parse_to_roam_md = __esm({
   }
 });
 
+// src/model/follow.js
+function cleanSkip(list, cap4 = FOLLOW_SKIP_CAP) {
+  if (!Array.isArray(list)) return [];
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const v of list) {
+    if (typeof v !== "string" || !UID_RE5.test(v) || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out.length > cap4 ? out.slice(out.length - cap4) : out;
+}
+function normalizePointer(raw) {
+  if (!isObject3(raw)) return null;
+  const kind = typeof raw.kind === "string" && KIND_RE.test(raw.kind) ? raw.kind : null;
+  const uid = typeof raw.uid === "string" && UID_RE5.test(raw.uid) ? raw.uid : null;
+  if (!kind || !uid) return null;
+  return { kind, uid, ...raw.tree === true ? { tree: true } : {}, ...raw.columns === true ? { columns: true } : {}, skip: cleanSkip(raw.skip) };
+}
+function serializePointer(pointer) {
+  const p = normalizePointer(pointer);
+  if (!p) return null;
+  const out = { kind: p.kind, uid: p.uid };
+  if (p.tree) out.tree = true;
+  if (p.columns) out.columns = true;
+  if (p.skip.length) out.skip = p.skip;
+  return out;
+}
+function readFollow(plexus) {
+  return isObject3(plexus) ? normalizePointer(plexus[FOLLOW_KEY]) : null;
+}
+function keptList(plexus) {
+  const raw = isObject3(plexus) ? plexus[FOLLOW_KEPT_KEY] : null;
+  return (Array.isArray(raw) ? raw : raw ? [raw] : []).map(normalizePointer).filter((p) => p && p.skip.length);
+}
+function keptFollow(plexus, key) {
+  return keptList(plexus).find((p) => sourceKey(p) === key) || null;
+}
+function withFollow(plexus, pointer) {
+  const base2 = isObject3(plexus) ? { ...plexus } : {};
+  const next = pointer ? serializePointer(pointer) : null;
+  const prev = readFollow(base2);
+  const nextKey = sourceKey(next);
+  const kept = keptList(base2).filter((p) => sourceKey(p) !== nextKey);
+  if (prev && sourceKey(prev) !== nextKey && prev.skip.length) kept.push(prev);
+  let list = kept.slice(-FOLLOW_KEPT_SOURCES).map((p) => ({ kind: p.kind, uid: p.uid, skip: p.skip }));
+  while (list.length > 1 && list.reduce((n3, p) => n3 + p.skip.length, 0) > FOLLOW_SKIP_CAP) list = list.slice(1);
+  if (list.length) base2[FOLLOW_KEPT_KEY] = list;
+  else delete base2[FOLLOW_KEPT_KEY];
+  if (next) base2[FOLLOW_KEY] = next;
+  else delete base2[FOLLOW_KEY];
+  return base2;
+}
+function followPointerFor(current3, kind, uid, { tree, columns } = {}) {
+  const same3 = current3?.kind === kind && current3?.uid === uid;
+  const deep = tree === void 0 ? same3 && current3.tree === true : tree === true;
+  const cols = columns === void 0 ? same3 && current3.columns === true : columns === true;
+  return { kind, uid, ...deep ? { tree: true } : {}, ...cols ? { columns: true } : {}, skip: same3 ? current3.skip : [] };
+}
+function journalSpec(uid) {
+  if (uid === "week") return { week: true };
+  const m = /^days-([1-9]\d?)$/.exec(String(uid ?? ""));
+  const days = m ? Number(m[1]) : 0;
+  return days >= 1 && days <= JOURNAL_MAX_DAYS ? { days } : null;
+}
+function journalUid(spec) {
+  if (spec?.week) return "week";
+  const days = Math.floor(Number(spec?.days));
+  return days >= 1 && days <= JOURNAL_MAX_DAYS ? `days-${days}` : "";
+}
+function addSkip(skip, uids, cap4 = FOLLOW_SKIP_CAP) {
+  const add = (uids || []).filter((u) => typeof u === "string" && UID_RE5.test(u));
+  const drop = new Set(add);
+  return cleanSkip([...(skip || []).filter((u) => !drop.has(u)), ...add], cap4);
+}
+function boardRefSource(boardString2) {
+  const ref = parseBoardRef(boardString2);
+  if (!ref) return null;
+  if (ref.colon && ref.title !== "") return null;
+  return ref.uid;
+}
+function queryBody(string) {
+  const m = QUERY_BODY.exec(String(string || "").trim());
+  return m ? plainText(m[1].replace(/[{}]/g, " "), 120) : null;
+}
+function sourceText(string) {
+  const body = queryBody(string);
+  return body === null ? firstLine(string) : `Query ${body}`.trim();
+}
+function itemIds(item) {
+  const out = [];
+  if (item?.uid) out.push(`u:${item.uid}`);
+  if (item?.kind === "page" && item.title) out.push(`p:${item.title}`);
+  return out;
+}
+function cardIds(card2) {
+  const out = [];
+  if (!card2) return out;
+  const t = card2.target;
+  if (t?.kind === "page") {
+    if (t.uid) out.push(`u:${t.uid}`);
+    if (t.title) out.push(`p:${t.title}`);
+    return out;
+  }
+  if (t?.kind === "block" && t.uid) out.push(`u:${t.uid}`);
+  if (card2.uid) out.push(`u:${card2.uid}`);
+  return out;
+}
+function followIndex(board2, key = "") {
+  const on = /* @__PURE__ */ new Map();
+  const followed = [];
+  for (const item of board2?.items?.values?.() || []) {
+    for (const id of cardIds(item)) if (!on.has(id)) on.set(id, item.uid);
+    if (key && item.src === key) followed.push(item);
+  }
+  return { on, followed };
+}
+function membership(read2) {
+  const set = /* @__PURE__ */ new Set();
+  for (const item of read2?.items || []) for (const id of itemIds(item)) set.add(id);
+  for (const uid of read2?.members || []) if (typeof uid === "string" && uid) set.add(`u:${uid}`);
+  return set;
+}
+function absentStep(prev, read2, board2, key) {
+  const before = prev instanceof Map ? prev : /* @__PURE__ */ new Map();
+  if (!read2?.ok) return new Map(before);
+  const members = membership(read2);
+  const next = /* @__PURE__ */ new Map();
+  for (const card2 of followIndex(board2, key).followed) {
+    if (cardIds(card2).some((id) => members.has(id))) continue;
+    const n3 = (before.get(card2.uid) || 0) + (read2.complete ? 1 : 0);
+    if (n3 > 0) next.set(card2.uid, n3);
+  }
+  return next;
+}
+function followDiff(read2, board2, { key = "", skip = [], absent = /* @__PURE__ */ new Map(), since = null } = {}) {
+  const { on, followed } = followIndex(board2, key);
+  const skipped = new Set(skip);
+  const pending = [];
+  let placed = 0;
+  let dismissed = 0;
+  const seen = /* @__PURE__ */ new Set();
+  for (const item of read2?.ok ? read2.items || [] : []) {
+    if (!item?.uid || seen.has(item.uid)) continue;
+    seen.add(item.uid);
+    if (itemIds(item).some((id) => on.has(id))) {
+      placed += 1;
+      continue;
+    }
+    if (skipped.has(item.uid)) {
+      dismissed += 1;
+      continue;
+    }
+    if (item.blank) continue;
+    pending.push({ ...item, fresh: Number.isFinite(since) && Number(item.time) > since });
+  }
+  const gone = absent instanceof Map ? absent : /* @__PURE__ */ new Map();
+  const left = followed.filter((card2) => (gone.get(card2.uid) || 0) >= LEFT_CONFIRM).map((card2) => card2.uid);
+  return { pending, left, placed, dismissed };
+}
+function sinceVisit(diff, { since = null, leftBefore = null } = {}) {
+  if (!Number.isFinite(since)) return { newCount: 0, leftCount: 0, baseline: false };
+  const before = leftBefore instanceof Set ? leftBefore : null;
+  return {
+    newCount: (diff?.pending || []).filter((row4) => row4.fresh).length,
+    leftCount: (diff?.left || []).filter((uid) => !before?.has(uid)).length,
+    baseline: true
+  };
+}
+function trayHeadline({ newCount = 0, leftCount = 0, baseline = false } = {}) {
+  if (!baseline) return "";
+  const parts = [];
+  if (newCount > 0) parts.push(`${newCount} new`);
+  if (leftCount > 0) parts.push(`${leftCount} left`);
+  return parts.length ? `${parts.join(", ")} since your last visit` : "Nothing new since your last visit";
+}
+function followCardString(item) {
+  if (item?.kind === "page" && item.title) return `[[${item.title}]]`;
+  return `((${item?.uid}))`;
+}
+function followBatches(list, cap4) {
+  const size = Math.max(1, Math.floor(Number(cap4) || 1));
+  const out = [];
+  for (let i = 0; i < (list || []).length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+function followColumn(bounds, count, { w, h, column = 0, at = null, gap = FOLLOW_COLUMN_GAP, stack = FOLLOW_STACK_GAP } = {}) {
+  const x0 = at ? at.x : bounds ? bounds.x + bounds.w + gap : 0;
+  const y0 = at ? at.y : bounds ? bounds.y : 0;
+  const x = x0 + column * (w + gap);
+  return Array.from({ length: Math.max(0, count) }, (_, i) => ({ x, y: y0 + i * (h + stack) }));
+}
+function journalColumnSpots(existing, entries, { bounds = null, w, h, gap = FOLLOW_COLUMN_GAP, stack = FOLLOW_STACK_GAP } = {}) {
+  const rects = (existing || []).filter((r) => r?.day);
+  const cols = /* @__PURE__ */ new Map();
+  let right = -Infinity;
+  let top = Infinity;
+  for (const r of rects) {
+    right = Math.max(right, r.x + r.w);
+    top = Math.min(top, r.y);
+    const shared5 = rects.some((o) => o.day !== r.day && o.x < r.x + r.w && o.x + o.w > r.x);
+    const col2 = cols.get(r.day);
+    if (!shared5 && (!col2 || r.y + r.h > col2.bottom)) cols.set(r.day, { x: r.x, bottom: r.y + r.h });
+  }
+  const x0 = Number.isFinite(right) ? right + gap : bounds ? bounds.x + bounds.w + gap : 0;
+  const y0 = Number.isFinite(top) ? top : bounds ? bounds.y : 0;
+  const fresh = [...new Set((entries || []).map((e2) => e2?.day ?? "").filter((d) => !cols.has(d)))].sort((a, b) => dayKey(a) < dayKey(b) ? -1 : dayKey(a) > dayKey(b) ? 1 : 0);
+  const made = new Map(fresh.map((d, i) => [d, { x: x0 + i * (w + gap), next: y0 }]));
+  const below = /* @__PURE__ */ new Map();
+  return (entries || []).map((e2) => {
+    const day = e2?.day ?? "";
+    const col2 = cols.get(day);
+    if (col2) {
+      const y2 = below.has(day) ? below.get(day) : col2.bottom + stack;
+      below.set(day, y2 + h + stack);
+      return { x: col2.x, y: y2 };
+    }
+    const c = made.get(day);
+    const y = c.next;
+    c.next += h + stack;
+    return { x: c.x, y };
+  });
+}
+function createLeftMemory({ storage = globalThis.localStorage, graph = "" } = {}) {
+  const key = (uid) => `plexus-diagram:follow-left:${graph}:${uid}`;
+  return {
+    get(uid) {
+      try {
+        const raw = storage?.getItem?.(key(uid));
+        const list = raw ? JSON.parse(raw) : null;
+        return Array.isArray(list) ? new Set(list.filter((u) => typeof u === "string")) : null;
+      } catch {
+        return null;
+      }
+    },
+    set(uid, uids) {
+      try {
+        storage?.setItem?.(key(uid), JSON.stringify([...uids || []].slice(0, FOLLOW_SKIP_CAP)));
+      } catch {
+      }
+    }
+  };
+}
+var FOLLOW_KEY, FOLLOW_KEPT_KEY, FOLLOW_KEPT_SOURCES, FOLLOW_SRC, FOLLOW_DAY, JOURNAL_DEFAULT_DAYS, JOURNAL_MAX_DAYS, FOLLOW_MIME, FOLLOW_SKIP_CAP, FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH, FOLLOW_PARENT_CAP, FOLLOW_QUIET_MS, FOLLOW_POLL_MS, FOLLOW_BACKOFF, FOLLOW_TYPING_MS, FOLLOW_SLOW_MS, followQuietMs, LEFT_CONFIRM, FOLLOW_COLUMN_GAP, FOLLOW_STACK_GAP, KIND_RE, UID_RE5, isObject3, sourceKey, textSourceUid, QUERY_BODY, leftUnsettled, followPill, dayKey;
+var init_follow = __esm({
+  "src/model/follow.js"() {
+    init_schema();
+    FOLLOW_KEY = "follow";
+    FOLLOW_KEPT_KEY = "followSkip";
+    FOLLOW_KEPT_SOURCES = 5;
+    FOLLOW_SRC = "src";
+    FOLLOW_DAY = "day";
+    JOURNAL_DEFAULT_DAYS = 7;
+    JOURNAL_MAX_DAYS = 31;
+    FOLLOW_MIME = "application/x-plexus-follow";
+    FOLLOW_SKIP_CAP = 300;
+    FOLLOW_READ_CAP = 300;
+    FOLLOW_TREE_DEPTH = 8;
+    FOLLOW_PARENT_CAP = 60;
+    FOLLOW_QUIET_MS = 1500;
+    FOLLOW_POLL_MS = 6e4;
+    FOLLOW_BACKOFF = 10;
+    FOLLOW_TYPING_MS = 50;
+    FOLLOW_SLOW_MS = 200;
+    followQuietMs = (lastMs) => Math.min(FOLLOW_POLL_MS, Math.max(FOLLOW_QUIET_MS, FOLLOW_BACKOFF * (Number(lastMs) || 0)));
+    LEFT_CONFIRM = 2;
+    FOLLOW_COLUMN_GAP = 48;
+    FOLLOW_STACK_GAP = 24;
+    KIND_RE = /^[a-z][a-z0-9-]{0,31}$/;
+    UID_RE5 = /^[\w-]{1,64}$/;
+    isObject3 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+    sourceKey = (pointer) => pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}` : "";
+    textSourceUid = boardRefSource;
+    QUERY_BODY = /^\{\{\s*(?:\[\[query\]\]|query)\s*:([\s\S]*)\}\}$/;
+    leftUnsettled = (absent) => [...absent instanceof Map ? absent.values() : []].some((n3) => n3 > 0 && n3 < LEFT_CONFIRM);
+    followPill = (n3) => `Following (${n3})`;
+    dayKey = (day) => {
+      const m = /^(\d\d)-(\d\d)-(\d{4})$/.exec(String(day ?? ""));
+      return m ? `${m[3]}${m[1]}${m[2]}` : String(day ?? "");
+    };
+  }
+});
+
 // src/discovery.js
 function isDiagramString2(value) {
   const text4 = String(value ?? "");
@@ -18708,6 +18992,19 @@ function dailyUid(date) {
   const dd = String(d.getDate()).padStart(2, "0");
   return `${mm}-${dd}-${d.getFullYear()}`;
 }
+function journalWindow(uid, now5 = Date.now()) {
+  const spec = journalSpec(uid);
+  if (!spec) return [];
+  const today = startOfDay(now5);
+  if (spec.week) {
+    const monday = stepDay(today, -((new Date(today).getDay() + 6) % 7));
+    return Array.from({ length: 7 }, (_, i) => stepDay(monday, i));
+  }
+  return Array.from({ length: spec.days }, (_, i) => stepDay(today, i - (spec.days - 1)));
+}
+function titleToTime(title) {
+  return pageTitleToDate(title);
+}
 function firstLine2(string) {
   const text4 = String(string ?? "");
   const cut = text4.search(/\r?\n/);
@@ -18744,6 +19041,7 @@ var init_journal = __esm({
   "src/model/journal.js"() {
     init_resurface();
     init_schema();
+    init_follow();
   }
 });
 
@@ -41978,235 +42276,7 @@ function coveredBy(links, board2) {
 
 // src/session.js
 init_query();
-
-// src/model/follow.js
-init_schema();
-var FOLLOW_KEY = "follow";
-var FOLLOW_KEPT_KEY = "followSkip";
-var FOLLOW_KEPT_SOURCES = 5;
-var FOLLOW_SRC = "src";
-var FOLLOW_MIME = "application/x-plexus-follow";
-var FOLLOW_SKIP_CAP = 300;
-var FOLLOW_READ_CAP = 300;
-var FOLLOW_TREE_DEPTH = 8;
-var FOLLOW_PARENT_CAP = 60;
-var FOLLOW_QUIET_MS = 1500;
-var FOLLOW_POLL_MS = 6e4;
-var FOLLOW_BACKOFF = 10;
-var FOLLOW_TYPING_MS = 50;
-var FOLLOW_SLOW_MS = 200;
-var followQuietMs = (lastMs) => Math.min(FOLLOW_POLL_MS, Math.max(FOLLOW_QUIET_MS, FOLLOW_BACKOFF * (Number(lastMs) || 0)));
-var LEFT_CONFIRM = 2;
-var FOLLOW_COLUMN_GAP = 48;
-var FOLLOW_STACK_GAP = 24;
-var KIND_RE = /^[a-z][a-z0-9-]{0,31}$/;
-var UID_RE5 = /^[\w-]{1,64}$/;
-var isObject3 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-function cleanSkip(list, cap4 = FOLLOW_SKIP_CAP) {
-  if (!Array.isArray(list)) return [];
-  const seen = /* @__PURE__ */ new Set();
-  const out = [];
-  for (const v of list) {
-    if (typeof v !== "string" || !UID_RE5.test(v) || seen.has(v)) continue;
-    seen.add(v);
-    out.push(v);
-  }
-  return out.length > cap4 ? out.slice(out.length - cap4) : out;
-}
-function normalizePointer(raw) {
-  if (!isObject3(raw)) return null;
-  const kind = typeof raw.kind === "string" && KIND_RE.test(raw.kind) ? raw.kind : null;
-  const uid = typeof raw.uid === "string" && UID_RE5.test(raw.uid) ? raw.uid : null;
-  if (!kind || !uid) return null;
-  return { kind, uid, ...raw.tree === true ? { tree: true } : {}, skip: cleanSkip(raw.skip) };
-}
-function serializePointer(pointer) {
-  const p = normalizePointer(pointer);
-  if (!p) return null;
-  const out = { kind: p.kind, uid: p.uid };
-  if (p.tree) out.tree = true;
-  if (p.skip.length) out.skip = p.skip;
-  return out;
-}
-function readFollow(plexus) {
-  return isObject3(plexus) ? normalizePointer(plexus[FOLLOW_KEY]) : null;
-}
-var sourceKey = (pointer) => pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}` : "";
-function keptList(plexus) {
-  const raw = isObject3(plexus) ? plexus[FOLLOW_KEPT_KEY] : null;
-  return (Array.isArray(raw) ? raw : raw ? [raw] : []).map(normalizePointer).filter((p) => p && p.skip.length);
-}
-function keptFollow(plexus, key) {
-  return keptList(plexus).find((p) => sourceKey(p) === key) || null;
-}
-function withFollow(plexus, pointer) {
-  const base2 = isObject3(plexus) ? { ...plexus } : {};
-  const next = pointer ? serializePointer(pointer) : null;
-  const prev = readFollow(base2);
-  const nextKey = sourceKey(next);
-  const kept = keptList(base2).filter((p) => sourceKey(p) !== nextKey);
-  if (prev && sourceKey(prev) !== nextKey && prev.skip.length) kept.push(prev);
-  let list = kept.slice(-FOLLOW_KEPT_SOURCES).map((p) => ({ kind: p.kind, uid: p.uid, skip: p.skip }));
-  while (list.length > 1 && list.reduce((n3, p) => n3 + p.skip.length, 0) > FOLLOW_SKIP_CAP) list = list.slice(1);
-  if (list.length) base2[FOLLOW_KEPT_KEY] = list;
-  else delete base2[FOLLOW_KEPT_KEY];
-  if (next) base2[FOLLOW_KEY] = next;
-  else delete base2[FOLLOW_KEY];
-  return base2;
-}
-function followPointerFor(current3, kind, uid, { tree } = {}) {
-  const same3 = current3?.kind === kind && current3?.uid === uid;
-  const deep = tree === void 0 ? same3 && current3.tree === true : tree === true;
-  return { kind, uid, ...deep ? { tree: true } : {}, skip: same3 ? current3.skip : [] };
-}
-function addSkip(skip, uids, cap4 = FOLLOW_SKIP_CAP) {
-  const add = (uids || []).filter((u) => typeof u === "string" && UID_RE5.test(u));
-  const drop = new Set(add);
-  return cleanSkip([...(skip || []).filter((u) => !drop.has(u)), ...add], cap4);
-}
-function boardRefSource(boardString2) {
-  const ref = parseBoardRef(boardString2);
-  if (!ref) return null;
-  if (ref.colon && ref.title !== "") return null;
-  return ref.uid;
-}
-var textSourceUid = boardRefSource;
-var QUERY_BODY = /^\{\{\s*(?:\[\[query\]\]|query)\s*:([\s\S]*)\}\}$/;
-function queryBody(string) {
-  const m = QUERY_BODY.exec(String(string || "").trim());
-  return m ? plainText(m[1].replace(/[{}]/g, " "), 120) : null;
-}
-function sourceText(string) {
-  const body = queryBody(string);
-  return body === null ? firstLine(string) : `Query ${body}`.trim();
-}
-function itemIds(item) {
-  const out = [];
-  if (item?.uid) out.push(`u:${item.uid}`);
-  if (item?.kind === "page" && item.title) out.push(`p:${item.title}`);
-  return out;
-}
-function cardIds(card2) {
-  const out = [];
-  if (!card2) return out;
-  const t = card2.target;
-  if (t?.kind === "page") {
-    if (t.uid) out.push(`u:${t.uid}`);
-    if (t.title) out.push(`p:${t.title}`);
-    return out;
-  }
-  if (t?.kind === "block" && t.uid) out.push(`u:${t.uid}`);
-  if (card2.uid) out.push(`u:${card2.uid}`);
-  return out;
-}
-function followIndex(board2, key = "") {
-  const on = /* @__PURE__ */ new Map();
-  const followed = [];
-  for (const item of board2?.items?.values?.() || []) {
-    for (const id of cardIds(item)) if (!on.has(id)) on.set(id, item.uid);
-    if (key && item.src === key) followed.push(item);
-  }
-  return { on, followed };
-}
-function membership(read2) {
-  const set = /* @__PURE__ */ new Set();
-  for (const item of read2?.items || []) for (const id of itemIds(item)) set.add(id);
-  for (const uid of read2?.members || []) if (typeof uid === "string" && uid) set.add(`u:${uid}`);
-  return set;
-}
-function absentStep(prev, read2, board2, key) {
-  const before = prev instanceof Map ? prev : /* @__PURE__ */ new Map();
-  if (!read2?.ok) return new Map(before);
-  const members = membership(read2);
-  const next = /* @__PURE__ */ new Map();
-  for (const card2 of followIndex(board2, key).followed) {
-    if (cardIds(card2).some((id) => members.has(id))) continue;
-    const n3 = (before.get(card2.uid) || 0) + (read2.complete ? 1 : 0);
-    if (n3 > 0) next.set(card2.uid, n3);
-  }
-  return next;
-}
-var leftUnsettled = (absent) => [...absent instanceof Map ? absent.values() : []].some((n3) => n3 > 0 && n3 < LEFT_CONFIRM);
-function followDiff(read2, board2, { key = "", skip = [], absent = /* @__PURE__ */ new Map(), since = null } = {}) {
-  const { on, followed } = followIndex(board2, key);
-  const skipped = new Set(skip);
-  const pending = [];
-  let placed = 0;
-  let dismissed = 0;
-  const seen = /* @__PURE__ */ new Set();
-  for (const item of read2?.ok ? read2.items || [] : []) {
-    if (!item?.uid || seen.has(item.uid)) continue;
-    seen.add(item.uid);
-    if (itemIds(item).some((id) => on.has(id))) {
-      placed += 1;
-      continue;
-    }
-    if (skipped.has(item.uid)) {
-      dismissed += 1;
-      continue;
-    }
-    if (item.blank) continue;
-    pending.push({ ...item, fresh: Number.isFinite(since) && Number(item.time) > since });
-  }
-  const gone = absent instanceof Map ? absent : /* @__PURE__ */ new Map();
-  const left = followed.filter((card2) => (gone.get(card2.uid) || 0) >= LEFT_CONFIRM).map((card2) => card2.uid);
-  return { pending, left, placed, dismissed };
-}
-function sinceVisit(diff, { since = null, leftBefore = null } = {}) {
-  if (!Number.isFinite(since)) return { newCount: 0, leftCount: 0, baseline: false };
-  const before = leftBefore instanceof Set ? leftBefore : null;
-  return {
-    newCount: (diff?.pending || []).filter((row4) => row4.fresh).length,
-    leftCount: (diff?.left || []).filter((uid) => !before?.has(uid)).length,
-    baseline: true
-  };
-}
-function trayHeadline({ newCount = 0, leftCount = 0, baseline = false } = {}) {
-  if (!baseline) return "";
-  const parts = [];
-  if (newCount > 0) parts.push(`${newCount} new`);
-  if (leftCount > 0) parts.push(`${leftCount} left`);
-  return parts.length ? `${parts.join(", ")} since your last visit` : "Nothing new since your last visit";
-}
-var followPill = (n3) => `Following (${n3})`;
-function followCardString(item) {
-  if (item?.kind === "page" && item.title) return `[[${item.title}]]`;
-  return `((${item?.uid}))`;
-}
-function followBatches(list, cap4) {
-  const size = Math.max(1, Math.floor(Number(cap4) || 1));
-  const out = [];
-  for (let i = 0; i < (list || []).length; i += size) out.push(list.slice(i, i + size));
-  return out;
-}
-function followColumn(bounds, count, { w, h, column = 0, at = null, gap = FOLLOW_COLUMN_GAP, stack = FOLLOW_STACK_GAP } = {}) {
-  const x0 = at ? at.x : bounds ? bounds.x + bounds.w + gap : 0;
-  const y0 = at ? at.y : bounds ? bounds.y : 0;
-  const x = x0 + column * (w + gap);
-  return Array.from({ length: Math.max(0, count) }, (_, i) => ({ x, y: y0 + i * (h + stack) }));
-}
-function createLeftMemory({ storage = globalThis.localStorage, graph = "" } = {}) {
-  const key = (uid) => `plexus-diagram:follow-left:${graph}:${uid}`;
-  return {
-    get(uid) {
-      try {
-        const raw = storage?.getItem?.(key(uid));
-        const list = raw ? JSON.parse(raw) : null;
-        return Array.isArray(list) ? new Set(list.filter((u) => typeof u === "string")) : null;
-      } catch {
-        return null;
-      }
-    },
-    set(uid, uids) {
-      try {
-        storage?.setItem?.(key(uid), JSON.stringify([...uids || []].slice(0, FOLLOW_SKIP_CAP)));
-      } catch {
-      }
-    }
-  };
-}
-
-// src/session.js
+init_follow();
 init_discovery();
 init_arrow_home();
 
@@ -47644,6 +47714,12 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const cached = cache.blockOf(id);
       if (cached?.[":block/uid"]) return cached;
       return host.pullBoard(id, { light: true, deferRefs: true });
+    },
+    // One unwatched read of a page by its title. A failed pull throws, so a caller can tell it from a missing page.
+    pullTitle(pattern, title) {
+      if (typeof pattern !== "string" || pattern === "" || typeof title !== "string" || !title) return null;
+      const res = pull(pattern, [":node/title", title]);
+      return res && typeof res === "object" ? res : null;
     },
     // One unwatched read. Not added to the board pull watch.
     pullEntity(pattern, uid) {
@@ -55286,6 +55362,7 @@ extendSession((session, api3) => {
 // src/session-follow.js
 init_board();
 init_schema();
+init_follow();
 var same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 extendSession((session, api3) => {
   const { host } = api3;
@@ -55337,13 +55414,22 @@ extendSession((session, api3) => {
     const bounds = boundsOf(board2.roots.map((id) => rects.get(id)).filter(Boolean));
     const batches = followBatches(list, SPREAD_CAP);
     const made = [];
+    const byDay = pointer.kind === "journals" && pointer.columns === true && !at;
+    const dayRects = [];
+    if (byDay) {
+      for (const item of board2.items.values()) {
+        const r = rects.get(item.uid);
+        if (item.src === key && item.day && r) dayRects.push({ day: item.day, x: r.x, y: r.y, w: r.w, h: r.h });
+      }
+    }
+    const planned = byDay ? journalColumnSpots(dayRects, list, { bounds, ...size }) : null;
     let chain = Promise.resolve();
     batches.forEach((batch, column) => {
       chain = chain.then(() => {
         if (api3.isGone()) return null;
-        const spots = followColumn(bounds, batch.length, { ...size, column, at });
+        const spots = planned ? planned.slice(column * SPREAD_CAP, column * SPREAD_CAP + batch.length) : followColumn(bounds, batch.length, { ...size, column, at });
         return api3.txn((t) => {
-          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key));
+          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key, pointer.kind === "journals" && /^\d\d-\d\d-\d{4}$/.test(entry.day || "") ? entry.day : null));
           api3.applyFit(t, ids);
           return ids;
         }).then((ids) => {
@@ -55369,7 +55455,7 @@ extendSession((session, api3) => {
     }
     if (add.length) t.props(boardUid, withFollow(base2, { ...pointer, skip: addSkip(pointer.skip, add) }));
   });
-  function placeOne(t, string, spot, size, key) {
+  function placeOne(t, string, spot, size, key, day = null) {
     const board2 = api3.board();
     const rects = api3.rects();
     const parent = containerAt(board2, { x: spot.x + size.w / 2, y: spot.y + size.h / 2 }, { rects });
@@ -55377,7 +55463,7 @@ extendSession((session, api3) => {
     const layout = { x: api3.round1(rel.x), y: api3.round1(rel.y) };
     const look = lookForNewString(string, api3.setting("default-card-look", "block"));
     if (look) layout.look = look;
-    return t.create({ parent, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key } });
+    return t.create({ parent, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key, ...day ? { [FOLLOW_DAY]: day } : {} } });
   }
   Object.assign(session, {
     followState() {
@@ -55391,12 +55477,15 @@ extendSession((session, api3) => {
       return out;
     },
     // { kind, uid, tree }. The same source keeps its skip list. Resolves true when the pointer changed.
-    followSource({ kind, uid, tree } = {}) {
+    followSource({ kind, uid, tree, columns } = {}) {
       if (typeof kind !== "string" || typeof uid !== "string" || !uid || uid === boardUid) return Promise.resolve(false);
-      return writePointer((cur, base2) => followPointerFor(keptFollow(base2, `${kind}:${uid}`) || cur, kind, uid, { tree }));
+      return writePointer((cur, base2) => followPointerFor(keptFollow(base2, `${kind}:${uid}`) || cur, kind, uid, { tree, columns }));
     },
     setFollowTree(on) {
       return writePointer((cur) => cur?.kind === "block" ? { ...cur, tree: on === true } : cur);
+    },
+    setFollowColumns(on) {
+      return writePointer((cur) => cur?.kind === "journals" ? { ...cur, columns: on === true } : cur);
     },
     // The cards stay; only the pointer (and its skip list) goes.
     stopFollowing() {
@@ -60636,9 +60725,9 @@ function createInteractions({ actions, settings } = {}) {
         const hit = hitTest(b, ev.world, hr, { exclude: g.exclude });
         const drop = hit?.part === "body" && (b.items.get(hit.uid)?.kind === "board" && b.items.get(hit.uid)?.enhanced) ? hit.uid : null;
         const day = !drop && !ev.shift ? dayTargetOf(b, hit) : null;
-        const dayKey = day ? `${day.uid}:${day.iso}` : null;
-        if (dayKey !== (g.dayKey ?? null)) {
-          g.dayKey = dayKey;
+        const dayKey2 = day ? `${day.uid}:${day.iso}` : null;
+        if (dayKey2 !== (g.dayKey ?? null)) {
+          g.dayKey = dayKey2;
           g.day = day;
           if (!drop) call2("onHover", day ? day.uid : null);
         }
@@ -61594,7 +61683,8 @@ function openPagePicker({
   heading = "Add page",
   placeholder = "Search pages…",
   hint = "Type to search pages",
-  none = "No matching pages"
+  none = "No matching pages",
+  initial = false
 } = {}) {
   current?.close();
   const offs = [];
@@ -61656,13 +61746,13 @@ function openPagePicker({
     timer = null;
     const text4 = String(filter.value || "").trim();
     const mine = ++ticket;
-    if (!text4) {
+    if (!text4 && !initial) {
       show([], "");
       return;
     }
     Promise.resolve(typeof search === "function" ? search(text4) : []).then((got) => {
       if (closed || mine !== ticket) return;
-      show((Array.isArray(got) ? got : []).filter((row4) => row4 && typeof row4.title === "string" && row4.title), text4);
+      show((Array.isArray(got) ? got : []).filter((row4) => row4 && typeof row4.title === "string" && row4.title), text4 || initial);
     }, () => {
       if (closed || mine !== ticket) return;
       show([], text4);
@@ -61710,6 +61800,7 @@ function openPagePicker({
       busy = false;
     });
   });
+  if (initial) run();
   try {
     filter.focus();
   } catch {
@@ -90724,9 +90815,12 @@ function createInbox({ doc = globalThis.document, root, host, timers, titles, on
 
 // src/view/follow-tray.js
 init_drop();
+init_follow();
 init_schema();
 
 // src/host/follow-sources.js
+init_follow();
+init_journal();
 init_schema();
 init_query_run();
 init_query_backend();
@@ -91112,6 +91206,65 @@ defineFollowKind({
     return { ok: true, complete: refs.length < REFS_LIMIT, items: items.slice(0, FOLLOW_READ_CAP) };
   }
 });
+var JOURNAL_PULL_LIMIT = FOLLOW_READ_CAP + 1;
+var JOURNAL_DAY_CAP = 20;
+var JOURNAL_PULL = `[:block/uid :node/title {(limit :block/children ${JOURNAL_PULL_LIMIT}) [${FIELDS2}]}]`;
+defineFollowKind({
+  id: "journals",
+  title: "Journals",
+  describe(p) {
+    const spec = journalSpec(p.uid);
+    return `Journals, ${spec?.week ? "this week" : `last ${spec?.days ?? "?"} days`}${p.columns ? ", one column per day" : ""}`;
+  },
+  watch: (p, host, cb, env) => watchSaves(env, cb),
+  async read(p, { host, now: now5 }) {
+    const days = journalWindow(p.uid, typeof now5 === "function" ? now5() ?? Date.now() : Date.now());
+    if (!days.length) return { ok: false, reason: "window" };
+    const items = [];
+    const members = [];
+    const omitted = [];
+    let complete = true;
+    let failed = 0;
+    for (const day of days) {
+      const title = dailyTitle(day);
+      let node2 = null;
+      try {
+        node2 = host?.pullTitle?.(JOURNAL_PULL, title) || null;
+      } catch {
+        failed += 1;
+        complete = false;
+        continue;
+      }
+      if (!node2 || titleToTime(node2[":node/title"]) !== day || typeof node2[UID8] !== "string") continue;
+      const kids = sorted(node2).filter((kid) => typeof kid?.[UID8] === "string");
+      if (kids.length >= JOURNAL_PULL_LIMIT) complete = false;
+      const blank = (kid) => !(typeof kid[STR4] === "string" && kid[STR4].trim());
+      if (kids.every(blank)) continue;
+      const duid = dailyUid(day);
+      items.push({ uid: node2[UID8], kind: "page", title, text: title, time: day, day: duid });
+      if (p.columns !== true) continue;
+      let n3 = 0;
+      let left = 0;
+      for (const kid of kids) {
+        const string = typeof kid[STR4] === "string" ? kid[STR4] : "";
+        if (blank(kid)) {
+          items.push({ uid: kid[UID8], kind: "block", text: "", time: timeOf(kid), crumb: title, day: duid, blank: true });
+          continue;
+        }
+        if (n3 >= JOURNAL_DAY_CAP) {
+          members.push(kid[UID8]);
+          left += 1;
+          continue;
+        }
+        n3 += 1;
+        items.push({ uid: kid[UID8], kind: "block", text: sourceText(string), time: timeOf(kid), crumb: title, day: duid });
+      }
+      if (left) omitted.push({ day: duid, title, n: left });
+    }
+    if (failed === days.length) return { ok: false, reason: "error" };
+    return { ok: true, complete, items, ...members.length ? { members } : {}, ...omitted.length ? { omitted } : {} };
+  }
+});
 
 // src/view/follow-tray.js
 var REASONS = {
@@ -91119,6 +91272,7 @@ var REASONS = {
   missingText: "The block in the board text does not exist.",
   unsupported: "Plexus cannot run this query. It reads page and block refs with and, or and not.",
   slow: "The query took too long to read.",
+  window: "This journal window is not one this version knows.",
   unknown: "This board follows a kind of source this version cannot read."
 };
 function createFollowTray({
@@ -91135,7 +91289,8 @@ function createFollowTray({
   onShowCard,
   onPlaced,
   toast,
-  now: now5 = () => globalThis.performance?.now?.() ?? Date.now()
+  now: now5 = () => globalThis.performance?.now?.() ?? Date.now(),
+  clock = null
 } = {}) {
   const boardUid = session?.uid;
   const memory = createLeftMemory({ storage, graph });
@@ -91202,6 +91357,8 @@ function createFollowTray({
     boardUid,
     inBoard: () => session.followExclude?.() || /* @__PURE__ */ new Set([boardUid]),
     tick: () => new Promise((resolve) => timers.idle(resolve)),
+    // PXD-15: the journal window's "today"; tests roll it.
+    ...typeof clock === "function" ? { now: clock } : {},
     followed: () => followIndex(board2(), key).followed.map((card2) => card2.target?.uid).filter(Boolean)
   });
   const textMissing = () => reason === "missing" && pointer?.kind === "block" && board2()?.followDerived === true;
@@ -91385,7 +91542,7 @@ function createFollowTray({
     const next = readFollow(board2()?.plexus);
     const nextKey = sourceKey(next);
     if (nextKey === key) {
-      const reshaped = pointer?.tree === true !== (next?.tree === true);
+      const reshaped = pointer?.tree === true !== (next?.tree === true) || pointer?.columns === true !== (next?.columns === true);
       pointer = next;
       if (reshaped) {
         label = describe();
@@ -91426,7 +91583,7 @@ function createFollowTray({
     armPoll();
     return true;
   }
-  const entryOf = (row4) => ({ uid: row4.uid, kind: row4.kind, ...row4.title ? { title: row4.title } : {} });
+  const entryOf = (row4) => ({ uid: row4.uid, kind: row4.kind, ...row4.title ? { title: row4.title } : {}, ...row4.day ? { day: row4.day } : {} });
   function place3(rows) {
     if (!rows.length || placing) return Promise.resolve(null);
     placing = true;
@@ -91514,6 +91671,10 @@ function createFollowTray({
     else if (read2 && !read2.complete) note = "Only part of the source was read, so nothing is marked as left.";
     else if (read2?.deeper) note = `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
     if (note) el2("div", "pxd-follow__note", panel, note);
+    if (read2?.omitted?.length) {
+      const parts = read2.omitted.slice().reverse().map((o, i) => `${o.n} ${i ? "of" : "left out of"} ${o.title}`);
+      el2("div", "pxd-follow__note", panel, `At most ${JOURNAL_DAY_CAP} blocks per day: ${parts.join(", ")}.`);
+    }
     const bar = el2("div", "pxd-follow__bar", panel);
     el2("span", "pxd-follow__count", bar, `${diff.pending.length} waiting · ${diff.placed} on the board`);
     const all = button3(bar, "pxd-follow__all", diff.pending.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => {
@@ -91613,6 +91774,7 @@ function createFollowTray({
         following: Boolean(pointer),
         kind: pointer?.kind || "",
         tree: pointer?.tree === true,
+        columns: pointer?.columns === true,
         label,
         waiting: diff.pending.length,
         textUid
@@ -91644,6 +91806,7 @@ function createFollowTray({
 }
 
 // src/view/board-view.js
+init_follow();
 init_drop();
 init_anydoc_to_parse();
 
@@ -96778,9 +96941,11 @@ function followMenu(f) {
         ...f.label ? [make3("follow:label", f.label, { disabled: true })] : [],
         make3("follow:show", `Show tray (${Number(f.waiting) || 0} waiting)`),
         ...f.kind === "block" ? [make3("follow:tree", "Include the whole tree", { checked: f.tree === true })] : [],
+        ...f.kind === "journals" ? [make3("follow:columns", "One column per day", { checked: f.columns === true })] : [],
         make3("follow:pick-block", "Switch to a block's children…"),
         make3("follow:pick-query", "Switch to a query…"),
         make3("follow:pick-refs", "Switch to linked references of…"),
+        make3("follow:pick-journals", "Switch to journals…"),
         make3("follow:stop", "Stop following")
       ]
     })];
@@ -96790,7 +96955,8 @@ function followMenu(f) {
       ...f.textUid ? [make3("follow:text", "The block in the board text")] : [],
       make3("follow:pick-block", "A block's children…"),
       make3("follow:pick-query", "A query…"),
-      make3("follow:pick-refs", "Linked references of…")
+      make3("follow:pick-refs", "Linked references of…"),
+      make3("follow:pick-journals", "Journals…")
     ]
   })];
 }
@@ -104893,9 +105059,35 @@ function buildBoardView(onFail, {
       }
     });
   };
-  const startFollow = async (kind, uid) => {
+  const journalPick = () => {
+    pagePicker?.close();
+    pagePicker = openPagePicker({
+      doc,
+      heading: "Follow journals",
+      placeholder: "Days to follow (default 7)",
+      hint: "Type a number of days, or pick this week",
+      none: "Nothing matches",
+      initial: true,
+      search: (text4) => {
+        const typed = Math.floor(Number(/\d+/.exec(String(text4 || ""))?.[0]));
+        const days = Number.isFinite(typed) ? Math.min(JOURNAL_MAX_DAYS, Math.max(1, typed)) : JOURNAL_DEFAULT_DAYS;
+        const uid = journalUid({ days });
+        return [
+          { title: `Last ${days} days`, value: uid },
+          { title: `Last ${days} days, one column per day`, value: `${uid}|columns` },
+          { title: "This week", value: "week" },
+          { title: "This week, one column per day", value: "week|columns" }
+        ];
+      },
+      onPick: async (value) => {
+        const [uid, mode] = String(value).split("|");
+        return startFollow("journals", uid, { columns: mode === "columns" });
+      }
+    });
+  };
+  const startFollow = async (kind, uid, opts = {}) => {
     if (!uid) return false;
-    const ok = await session.followSource?.({ kind, uid });
+    const ok = await session.followSource?.({ kind, uid, ...opts });
     if (disposed) return false;
     if (ok) {
       followCtl?.open?.();
@@ -104923,6 +105115,9 @@ function buildBoardView(onFail, {
       case "pick-refs":
         followPick("refs");
         break;
+      case "pick-journals":
+        journalPick();
+        break;
       case "text": {
         const uid = textSourceUid(board2()?.string || "");
         if (uid) void startFollow(isQueryString(host?.blockString?.(uid) || "") ? "query" : "block", uid);
@@ -104942,6 +105137,9 @@ function buildBoardView(onFail, {
         break;
       case "tree":
         void session.setFollowTree?.(!state.tree);
+        break;
+      case "columns":
+        void session.setFollowColumns?.(!state.columns);
         break;
       case "stop":
         void Promise.resolve(session.stopFollowing?.()).then((ok) => {

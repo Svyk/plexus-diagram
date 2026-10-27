@@ -6624,6 +6624,14 @@ body.roam-body.dark .pxd-root {
 
 .pxd-root button.pxd-follow { color: var(--pxd-text, inherit); }
 
+/* Only the lists shrink: a long list must not squeeze the head and bar under each other (PXD-18, live). */
+.pxd-follow__head,
+.pxd-follow__since,
+.pxd-follow__note,
+.pxd-follow__bar,
+.pxd-follow__section { flex-shrink: 0; }
+.pxd-follow__bar .pxd-follow__count { flex: 1 1 auto; min-width: 0; }
+
 .pxd-follow__head {
   display: flex;
   align-items: flex-start;
@@ -6645,6 +6653,17 @@ body.roam-body.dark .pxd-root {
   justify-content: space-between;
   gap: 6px;
   padding: 2px 0 4px;
+}
+
+/* PXD-18: the Inbox source's Arrivals strip. */
+.pxd-follow__arrivals { flex-shrink: 0; font-weight: 600; white-space: nowrap; overflow-wrap: normal; }
+.pxd-follow__more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 4px;
+  border-top: 1px solid var(--pxd-border, #d0d7de);
 }
 
 .pxd-follow__list { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
@@ -6713,6 +6732,7 @@ body.roam-body.dark .pxd-root {
 .pxd-root button.pxd-follow__show,
 .pxd-root button.pxd-follow__dismiss,
 .pxd-root button.pxd-follow__delete,
+.pxd-root button.pxd-follow__show-more,
 .pxd-root button.pxd-follow__close {
   padding: 0 8px;
   border: 1px solid var(--pxd-border, #d0d7de);
@@ -6726,6 +6746,7 @@ body.roam-body.dark .pxd-root {
 .pxd-root button.pxd-follow__place:hover,
 .pxd-root button.pxd-follow__all:hover:not(:disabled),
 .pxd-root button.pxd-follow__show:hover,
+.pxd-root button.pxd-follow__show-more:hover,
 .pxd-root button.pxd-follow__dismiss:hover { border-color: var(--pxd-accent, #0d9488); }
 .pxd-root button.pxd-follow__close { padding: 0 6px; border-color: transparent; font-size: 14px; line-height: 16px; }
 .pxd-root button.pxd-follow__all:disabled { opacity: 0.45; cursor: default; }
@@ -11476,6 +11497,7 @@ body.roam-body.dark .pxd-root,
 .pxd-inbox__place { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
 
 .pxd-inbox__place,
+.pxd-inbox__follow,
 .pxd-inbox__all {
   padding: 0 8px;
   border: 1px solid var(--pxd-border, #d0d7de);

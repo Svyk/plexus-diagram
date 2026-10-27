@@ -10,6 +10,7 @@ import { FOLLOW_HEAD, headingPlan } from "./model/follow-headings.js";
 import {
   BOARD_OWNER_NAME,
   FOLLOW_SRC,
+  INBOX_KIND,
   addSkip,
   followBatches,
   followCardString,
@@ -257,14 +258,17 @@ extendSession((session, api) => {
 
     // { kind, uid, tree, owner }. The same source keeps its skip list. Resolves true when the pointer changed; on false
     // followRefusal() says why. A source key is followed by one owner per board, at most FOLLOW_SECTION_CAP sections
-    // follow one, and a section cannot follow its own block or the board.
+    // follow one, and a section cannot follow its own block or the board. PXD-18: the Inbox kind takes the board's own
+    // uid, and only the board follows it.
     followSource({ kind, uid, tree, owner: ownerArg } = {}) {
       const owner = ownerOf(ownerArg);
       const refuse = (reason, by) => { refusal = by ? { reason, by } : { reason }; return Promise.resolve(false); };
       refusal = null;
       if (typeof kind !== "string" || typeof uid !== "string" || !uid) return refuse("invalid");
       if (owner !== boardUid && !isSection(owner)) return refuse("not-section");
-      if (uid === boardUid || uid === owner) return refuse("self");
+      if (kind === INBOX_KIND) {
+        if (uid !== boardUid || owner !== boardUid) return refuse("self");
+      } else if (uid === boardUid || uid === owner) return refuse("self");
       // A headings source makes sections of its own: only the board follows one.
       if (kind === "headings" && owner !== boardUid) return refuse("kind");
       const key = `${kind}:${uid}`;

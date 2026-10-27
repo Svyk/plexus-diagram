@@ -56,15 +56,17 @@ export function inboxEntries(rows) {
 export async function readInbox(q, titles, { tick = () => Promise.resolve() } = {}) {
   const all = [];
   let full = false;
+  // A pull that threw: the list is not the whole inbox (PXD-18's source then marks nothing as gone).
+  let failed = false;
   for (const step of inboxPlan(titles)) {
     let rows = [];
-    try { rows = q(step.query, ...step.inputs); } catch { rows = []; }
+    try { rows = q(step.query, ...step.inputs); } catch { rows = []; failed = true; }
     const got = inboxEntries(rows);
     all.push(...got.entries);
     if (got.full) full = true;
     await tick();
   }
-  return { entries: all, full };
+  return { entries: all, full, failed };
 }
 
 // Daily pages only, newest first, nothing already on the board. `onBoard` holds uids; `skip` holds blocks that are the board itself.

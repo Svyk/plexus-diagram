@@ -32096,6 +32096,7 @@ function createItemRenderer({
   };
   const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash", "pxd-item--roam-table", "pxd-item--into", "pxd-item--pdf-bar"];
   let followLeft = null;
+  let filterCardUid = null;
   const imageRegionString2 = (text4) => {
     const region = parseRegion(text4);
     return Boolean(region && region.kind === "img" && region.supported === true && region.owner === "plexus-diagram" && region.error == null);
@@ -32141,6 +32142,7 @@ function createItemRenderer({
     }
     if (focusSet && !focusSet.has(item.uid)) cls.push(item.type === "section" ? "pxd-section--focus-dim" : "pxd-item--focus-dim");
     if (item.type !== "section" && followLeft?.has(item.uid)) cls.push("pxd-item--left");
+    if (item.type !== "section" && filterCardUid === item.uid) cls.push("pxd-item--filtering");
     if (item.type !== "section") {
       if (isKidsCard(item)) {
         cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
@@ -37173,6 +37175,13 @@ function createItemRenderer({
       rec.el.classList?.toggle?.("pxd-item--left", Boolean(followLeft?.has(rec.uid)));
     }
   };
+  const setFilterCard = (uid) => {
+    filterCardUid = uid || null;
+    for (const rec of shells.values()) {
+      if (rec.type === "section") continue;
+      rec.el.classList?.toggle?.("pxd-item--filtering", rec.uid === filterCardUid);
+    }
+  };
   const setChanged = (set) => {
     changedUids = set instanceof Set && set.size ? set : null;
     for (const rec of shells.values()) renderBadges(rec);
@@ -38492,6 +38501,7 @@ function createItemRenderer({
     setBadges,
     setChanged,
     setFollowLeft,
+    setFilterCard,
     setShowBadges,
     setTrailBadges,
     setTaskChips,
@@ -92015,6 +92025,243 @@ function createFollowTray({
   };
 }
 
+// src/view/query-filter.js
+init_query_run();
+init_query();
+init_query_backend();
+var FILTER_QUIET_MS = 800;
+var FILTER_RETRY_MS = 1200;
+var FILTER_SLOW_RETRY_MS = 4e3;
+var FALLBACK_TRIES = 8;
+function createQueryFilter({ host, doc = globalThis.document, liveNode = () => null, onResults = () => {
+}, backend, later, cancel } = {}) {
+  const win2 = doc?.defaultView || globalThis;
+  const wait2 = later || ((fn, ms) => win2.setTimeout(fn, ms));
+  const unwait = cancel || ((id) => win2.clearTimeout(id));
+  let cur = null;
+  const excludeOf = (uid) => {
+    const out = /* @__PURE__ */ new Set([uid]);
+    const walk3 = (nodes) => {
+      for (const node2 of Array.isArray(nodes) ? nodes : []) {
+        const id = node2?.uid || node2?.[":block/uid"];
+        if (typeof id === "string") out.add(id);
+        walk3(node2?.children || node2?.[":block/children"]);
+      }
+    };
+    try {
+      walk3(host?.pullTree?.(uid, 6, 400));
+    } catch {
+    }
+    return out;
+  };
+  const emit2 = (f, uids, partial, status) => {
+    if (cur !== f) return;
+    f.uids = uids;
+    onResults({ queryUid: f.queryUid, cardUid: f.cardUid, uids, partial, mode: f.mode, status });
+  };
+  const schedule = (f, ms = FILTER_QUIET_MS) => {
+    if (cur !== f) return;
+    if (f.timer != null) unwait(f.timer);
+    f.timer = wait2(() => {
+      f.timer = null;
+      if (cur !== f) return;
+      if (editState(doc).typing) {
+        schedule(f);
+        return;
+      }
+      void read2(f);
+    }, ms);
+  };
+  const runOnce = async (f) => {
+    const string = host?.blockString?.(f.queryUid);
+    const parsed = parseQuery(string);
+    if (!parsed.ok || !parsed.ast) {
+      f.mode = "dom";
+      readDom(f);
+      return;
+    }
+    f.title = parsed.title || f.title;
+    const gen = ++f.gen;
+    const exclude = excludeOf(f.queryUid);
+    const src = backend || createQueryBackend(host);
+    const res = await runQuery(parsed.ast, src, { tick: () => new Promise((r) => wait2(r, 0)), isCancelled: () => cur !== f || gen !== f.gen });
+    if (cur !== f || gen !== f.gen) return;
+    if (res.status !== "ok") {
+      if (res.status !== "cancelled") emit2(f, f.uids, true, res.status);
+      return;
+    }
+    emit2(f, new Set(res.uids.filter((u) => !exclude.has(u))), res.partial, "ok");
+  };
+  const watchDom = (f, node2) => {
+    if (f.observed === node2) return;
+    f.mo?.disconnect?.();
+    f.mo = null;
+    f.observed = node2;
+    const MO = win2.MutationObserver;
+    if (typeof MO !== "function") return;
+    f.mo = new MO(() => schedule(f, 300));
+    try {
+      f.mo.observe(node2, { childList: true, subtree: true });
+    } catch {
+      f.mo = null;
+    }
+  };
+  function readDom(f) {
+    const node2 = liveNode(f.cardUid);
+    if (!node2) {
+      f.tries += 1;
+      schedule(f, f.tries <= FALLBACK_TRIES ? FILTER_RETRY_MS : FILTER_SLOW_RETRY_MS);
+      if (!f.uids && !f.waited) {
+        f.waited = true;
+        emit2(f, null, true, "waiting");
+      }
+      return;
+    }
+    f.tries = 0;
+    watchDom(f, node2);
+    const uids = queryResultUids(node2, f.queryUid);
+    const failed = Boolean(node2.querySelector?.(".rm-render-failed, .rm-api-render--failed"));
+    emit2(f, new Set(uids), failed, failed ? "error" : "ok");
+  }
+  async function read2(f) {
+    if (f.mode === "dom") {
+      readDom(f);
+      return;
+    }
+    try {
+      await runOnce(f);
+    } catch {
+      emit2(f, f.uids, true, "error");
+    }
+  }
+  const stop3 = () => {
+    const f = cur;
+    if (!f) return false;
+    cur = null;
+    if (f.timer != null) unwait(f.timer);
+    f.mo?.disconnect?.();
+    for (const off of f.offs) {
+      try {
+        off();
+      } catch {
+      }
+    }
+    onResults(null);
+    return true;
+  };
+  const start2 = ({ queryUid, cardUid }) => {
+    if (!queryUid || !cardUid) return false;
+    stop3();
+    const parsed = parseQuery(host?.blockString?.(queryUid));
+    const f = {
+      queryUid,
+      cardUid,
+      mode: parsed.ok && parsed.ast ? "run" : "dom",
+      title: parsed.ok ? parsed.title : "",
+      uids: null,
+      gen: 0,
+      tries: 0,
+      waited: false,
+      timer: null,
+      mo: null,
+      observed: null,
+      offs: []
+    };
+    cur = f;
+    f.offs.push(watchLocalSaves(doc, () => schedule(f)));
+    f.offs.push(watchEditing(doc, () => {
+    }));
+    if (typeof host?.watchBlock === "function") {
+      try {
+        f.offs.push(host.watchBlock(queryUid, () => schedule(f)));
+      } catch {
+      }
+    }
+    void read2(f);
+    return true;
+  };
+  const poke = () => {
+    const f = cur;
+    if (!f || f.mode !== "dom") return;
+    const node2 = liveNode(f.cardUid);
+    if (node2 && node2 !== f.observed) {
+      f.tries = 0;
+      schedule(f, 300);
+    }
+  };
+  return {
+    start: start2,
+    stop: stop3,
+    poke,
+    refresh: () => {
+      if (cur) void read2(cur);
+    },
+    active: () => cur ? { queryUid: cur.queryUid, cardUid: cur.cardUid, title: cur.title, mode: cur.mode } : null,
+    dispose: stop3
+  };
+}
+
+// src/model/query-filter.js
+init_query();
+function filterQueryUid(item, blockString4) {
+  if (!item || item.type === "section") return null;
+  if (isQueryString(item.string)) return item.uid;
+  if (item.target?.kind === "block" && item.target.uid) {
+    let s = null;
+    try {
+      s = blockString4?.(item.target.uid);
+    } catch {
+      s = null;
+    }
+    if (isQueryString(s)) return item.target.uid;
+  }
+  return null;
+}
+function filterTargets(item, pageUid2) {
+  const out = [];
+  if (!item?.uid || item.type === "section") return out;
+  out.push(item.uid);
+  const t = item.target;
+  if (t?.kind === "block" && t.uid) out.push(t.uid);
+  if (t?.kind === "page") {
+    if (t.uid) out.push(t.uid);
+    else if (t.title && typeof pageUid2 === "function") {
+      let uid = null;
+      try {
+        uid = pageUid2(t.title);
+      } catch {
+        uid = null;
+      }
+      if (uid) out.push(uid);
+    }
+  }
+  if (item.highlight?.uid) out.push(item.highlight.uid);
+  return out;
+}
+function filterBright(items, results, filterCardUid, pageUid2) {
+  const hits = results instanceof Set ? results : new Set(results || []);
+  const bright = /* @__PURE__ */ new Set();
+  if (filterCardUid) bright.add(filterCardUid);
+  for (const item of items || []) {
+    if (!item?.uid || item.type === "section") continue;
+    if (filterTargets(item, pageUid2).some((u) => hits.has(u))) bright.add(item.uid);
+  }
+  return bright;
+}
+function intersectBright(a, b) {
+  if (!a) return b ? new Set(b) : null;
+  if (!b) return new Set(a);
+  const out = /* @__PURE__ */ new Set();
+  for (const uid of a) if (b.has(uid)) out.add(uid);
+  return out;
+}
+function filterLabel(title, count, { partial = false, waiting = false } = {}) {
+  const name = String(title || "Query").trim() || "Query";
+  if (waiting) return `Filter: ${name} · running…`;
+  const n3 = Number(count) || 0;
+  return `Filter: ${name} · ${n3} ${n3 === 1 ? "match" : "matches"}${partial ? " · partial" : ""}`;
+}
+
 // src/view/board-view.js
 init_drop();
 init_anydoc_to_parse();
@@ -97354,7 +97601,10 @@ function buildMenu(kind, ctx = {}) {
         out.push(mindPresetMenu());
       }
       if (c.canSpread) out.push(make3("spread-children", "Spread children as cards"));
-      if (c.isQuery) out.push(make3("query-results", "Add results as cards"));
+      if (c.isQuery) {
+        out.push(make3("query-results", "Add results as cards"));
+        out.push(make3("query-filter", c.filtering ? "Stop filtering" : "Use as filter", { checked: Boolean(c.filtering) }));
+      }
       if (c.canExpand) {
         out.push(make3("neighbors:out", "Add pages it links to"));
         out.push(make3("neighbors:in", "Add pages that link here"));
@@ -97521,6 +97771,7 @@ function buildMenu(kind, ctx = {}) {
         make3("save-view", "Save view…"),
         make3("memory-lane", "Memory lane", { hint: "Shift T" }),
         ...c.changes ? [make3("changed-since", "Changed since last visit", { checked: c.changed === true })] : [],
+        ...c.filtering ? [make3("query-filter-stop", "Stop filtering")] : [],
         ...c.lens ? [
           make3("lens-strength", "Strength", { checked: c.strength === true }),
           make3("lens-dust", "Dust", {
@@ -99778,6 +100029,11 @@ function buildBoardView(onFail, {
   let focusKey = null;
   let lensTag = null;
   let lensIndex = /* @__PURE__ */ new Map();
+  let filterCard = null;
+  let filterResults = null;
+  let filterPartial = false;
+  let filterCtl = null;
+  let filterPill = null;
   let highlightDialog = null;
   let presentSet = null;
   let sendPending = null;
@@ -104171,6 +104427,19 @@ function buildBoardView(onFail, {
     onPlaced: (uids) => ctl.select(uids),
     toast: (message) => toast(message)
   });
+  filterCtl = createQueryFilter({
+    host,
+    doc,
+    liveNode: (cardUid) => root.querySelector?.(`[data-uid="${cardUid}"] .pxd-item__query .pxd-rs__live`) || null,
+    onResults: (res) => {
+      if (disposed) return;
+      filterCard = res ? res.cardUid : null;
+      filterResults = res ? res.uids : null;
+      filterPartial = Boolean(res?.partial);
+      itemsR.setFilterCard?.(filterCard);
+      applyFocus();
+    }
+  });
   let crumbList = Array.isArray(crumbs) ? crumbs.slice() : [];
   const boardTargetOf = (uid) => {
     const item = board2()?.items.get(uid);
@@ -104653,12 +104922,56 @@ function buildBoardView(onFail, {
     lensIndex = catalog.byUid;
     return catalog;
   };
+  const filterSetNow = () => {
+    if (!filterCard || !filterResults) return null;
+    return filterBright(board2()?.items.values(), filterResults, filterCard, (title) => host?.pageUid?.(title));
+  };
+  const paintFilterPill = (bright) => {
+    if (!filterCard) {
+      filterPill?.remove?.();
+      filterPill = null;
+      return;
+    }
+    if (!filterPill) {
+      filterPill = el2("div", "pxd-qfilter pxd-chrome", root);
+      filterPill.setAttribute("role", "status");
+      const show = el2("button", "pxd-qfilter__name", filterPill);
+      show.type = "button";
+      show.title = "Show the filtering card";
+      const stop3 = el2("button", "pxd-qfilter__stop", filterPill);
+      stop3.type = "button";
+      stop3.textContent = "×";
+      stop3.title = "Stop filtering";
+      stop3.setAttribute("aria-label", "Stop filtering");
+      for (const node2 of [show, stop3]) listen(node2, "pointerdown", (event) => event.stopPropagation());
+      listen(show, "click", (event) => {
+        event.stopPropagation();
+        const r = filterCard ? rects().get(filterCard) : null;
+        if (!r) return;
+        ctl.select([filterCard]);
+        centerOn({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+        pulseItem(filterCard);
+      });
+      listen(stop3, "click", (event) => {
+        event.stopPropagation();
+        filterCtl?.stop();
+      });
+    }
+    const active2 = filterCtl?.active?.();
+    const count = bright ? Math.max(0, bright.size - (bright.has(filterCard) ? 1 : 0)) : 0;
+    const text4 = filterLabel(active2?.title, count, { partial: filterPartial, waiting: !filterResults });
+    const name = filterPill.querySelector(".pxd-qfilter__name");
+    if (name && name.textContent !== text4) name.textContent = text4;
+  };
   const applyFocus = () => {
     if (disposed) return;
     const focus = focusSetNow();
-    const set = lensTag ? lensBright(lensIndex, lensTag, focus) : focus;
-    const key = `${lensTag || ""}|${set ? [...set].sort().join("|") : ""}`;
-    setRootFlag("focus", Boolean(set) || focusOn || Boolean(lensTag));
+    const lensSet = lensTag ? lensBright(lensIndex, lensTag, focus) : focus;
+    const filterSet = filterSetNow();
+    const set = filterSet ? intersectBright(lensSet, filterSet) : lensSet;
+    paintFilterPill(filterSet);
+    const key = `${lensTag || ""}|${filterCard || ""}|${set ? [...set].sort().join("|") : ""}`;
+    setRootFlag("focus", Boolean(set) || focusOn || Boolean(lensTag) || Boolean(filterCard));
     chrome.toolbar.setFocus(focusOn);
     chrome.toolbar.setLens?.(Boolean(lensTag));
     if (key === focusKey) return;
@@ -105075,7 +105388,7 @@ function buildBoardView(onFail, {
       case "canvas":
         return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting2("task-tool") === true };
       case "board-menu":
-        return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null };
+        return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, filtering: Boolean(filterCard), strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -105107,7 +105420,7 @@ function buildBoardView(onFail, {
           followed: Boolean(followKey) && item.src === followKey,
           left: Boolean(followCtl?.left?.().includes(item.uid))
         } : null;
-        return { ...task ? { statusTags, status: task.status || "" } : {}, follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        return { ...task ? { statusTags, status: task.status || "" } : {}, follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), filtering: Boolean(item) && filterCard === item.uid, canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -105988,6 +106301,23 @@ function buildBoardView(onFail, {
         });
         break;
       }
+      case "query-filter": {
+        if (!item) break;
+        if (filterCard === item.uid) {
+          filterCtl?.stop();
+          break;
+        }
+        const queryUid = filterQueryUid(item, (uid) => host?.blockString?.(uid));
+        if (!queryUid) {
+          toast("This card holds no query");
+          break;
+        }
+        filterCtl?.start({ queryUid, cardUid: item.uid });
+        break;
+      }
+      case "query-filter-stop":
+        filterCtl?.stop();
+        break;
       case "query-results": {
         if (!item) break;
         const sourceUid = isQueryString(item.string) ? item.uid : item.target?.kind === "block" ? item.target.uid : item.uid;
@@ -110762,11 +111092,12 @@ ${url}`;
       scheduleLift();
       syncProps();
       if (lensTag && dirty.structural) rebuildLens();
-      if (focusOn || lensTag) applyFocus();
+      if (focusOn || lensTag || filterCard) applyFocus();
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLiftIdle();
+    if (filterCard && (itemsChanged || dirty.viewport && !gesturing)) filterCtl?.poke();
     const wheelMinimap = wheelLayer && !itemsChanged && !dirty.minimap || Boolean(dragRide) && !itemsChanged;
     if ((itemsChanged || dirty.minimap || dirty.viewport && !gesturing) && !(wheelMinimap && perfNow3() - minimapAt < MINIMAP_WHEEL_MS)) {
       minimapAt = perfNow3();
@@ -111861,6 +112192,12 @@ ${url}`;
       step(() => {
         followCtl?.dispose();
         followCtl = null;
+      });
+      step(() => {
+        filterCtl?.dispose();
+        filterCtl = null;
+        filterPill?.remove?.();
+        filterPill = null;
       });
       step(() => closeHalo());
       step(() => {

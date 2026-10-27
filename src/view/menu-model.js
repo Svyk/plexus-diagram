@@ -122,6 +122,25 @@ function followCardItems(f) {
   return out;
 }
 
+// PXD-11. `lane` is { bound, fields } for a lane section only. Sub-lanes by attribute, then (when bound) stop and pull.
+function laneItems(lane) {
+  if (!lane) return [];
+  const names = Array.isArray(lane.fields) ? lane.fields.slice() : [];
+  if (lane.bound && !names.includes(lane.bound)) names.push(lane.bound);
+  const out = [make("lane-attr", "Sub-lanes by attribute ▸", {
+    children: names.length
+      ? names.map((name) => make(`lane-attr:${name}`, name, { checked: name === lane.bound }))
+      : [make("lane-hint", "No Name:: attributes on this board", { disabled: true })],
+  })];
+  if (lane.bound) {
+    out.push(make("lane-stop", `Stop sub-lanes (${lane.bound})`));
+    out.push(make("lane-pull", `Pull blocks with ${lane.bound}::`));
+    const fresh = Array.isArray(lane.fresh) ? lane.fresh : [];
+    if (fresh.length) out.push(make("lane-add", `Add sub-lanes for ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? ` +${fresh.length - 3}` : ""}`));
+  }
+  return out;
+}
+
 // Optional keys are only written when set, so items compare cleanly and carry no undefined noise.
 const make = (id, label, extra = {}) => {
   const out = { id, label };
@@ -345,7 +364,8 @@ export function buildMenu(kind, ctx = {}) {
         make("select-connected", "Select connected"),
         make("collapse-section", c.collapsed ? "Expand" : "Collapse"),
         make("section-note", c.hasNote ? "Remove description" : "Add description"),
-        make("bucket-bind", c.bucket ? `Bound to ${c.bucket}…` : "Bind to tag or attribute…"),
+        // A lane with sub-lanes (PXD-11) writes values itself, so it offers no section binding, and the other way round.
+        ...(c.lane?.bound ? [] : [make("bucket-bind", c.bucket ? `Bound to ${c.bucket}…` : "Bind to tag or attribute…")]),
         ...(c.bucket ? [make("bucket-write", "Write section to graph", { disabled: empty }), make("bucket-unbind", "Unbind")] : []),
         c.locked ? make("unlock-contents", "Unlock") : make("lock-contents", "Lock"),
         make("present-section", "Present this section"),
@@ -358,10 +378,13 @@ export function buildMenu(kind, ctx = {}) {
           ],
         }),
         make("focus-timer", "Focus timer"),
+        ...(c.bucket ? [] : laneItems(c.lane)),
         sep(),
         make("fit-section", "Fit to contents", { disabled: empty }),
         make("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),
         tidyMenu(empty),
+        make("apply-source-order", "Apply order to source", { disabled: !(c.refCards >= 2) }),
+        make("keep-order", "Keep outline order", { checked: Boolean(c.keepOrder) }),
         make("fold-all-in", "Fold all inside", { disabled: empty }),
         make("unfold-all-in", "Unfold all inside", { disabled: empty }),
         sep(),
@@ -455,6 +478,7 @@ export function buildMenu(kind, ctx = {}) {
           children: [make("distribute:h", "Horizontally"), make("distribute:v", "Vertically")],
         }),
         tidyMenu(false),
+        make("apply-source-order", "Apply order to source", { disabled: !(c.refCards >= 2) }),
         make("same-size", "Same size", {
           disabled: few,
           children: [make("same-size:width", "Width"), make("same-size:height", "Height"), make("same-size:both", "Width and height")],

@@ -113,6 +113,8 @@ import { syncEmptyHint } from "./empty-hint.js";
 import { applyMotionClasses, motionProfile, resolveMotion } from "./motion.js";
 import { mountTable } from "./table-view.js";
 import { mountKanban } from "./kanban-view.js";
+import { laneFields } from "../model/attr-lanes.js";
+import { tableRows } from "../model/table.js";
 import { createPropsPanel } from "./props-panel.js";
 import { PANEL_WIDTH_DEFAULT, nextPanelWidth } from "../model/info.js";
 import { LONG_PRESS_CANCEL_PX, LONG_PRESS_MS, longPressAt } from "../model/touch.js";
@@ -4985,6 +4987,35 @@ function buildBoardView(onFail, {
       locked: Boolean(b) && uids.every((u) => b.items.get(u)?.pinned),
     };
   };
+  // Block ref cards among the items; a section stands for its direct members.
+  const refCardCount = (uids) => {
+    const b = board();
+    const seen = new Set();
+    const add = (id) => {
+      const it = b?.items.get(id);
+      if (!it) return;
+      if (it.type === "section") { for (const m of it.members) { const mi = b.items.get(m); if (mi?.type !== "section") add(m); } return; }
+      if (it.type === "card" && it.kind === "block" && it.target?.kind === "block") seen.add(id);
+    };
+    for (const id of uids) add(id);
+    return seen.size;
+  };
+  const applySourceOrder = (uids) => {
+    const plan = session.sourceOrderPlan?.(uids);
+    if (!plan) return;
+    if (plan.reason) { toast(plan.reason); return; }
+    const skipped = plan.skippedCards > 0 ? ` ${plan.skippedCards} ${plan.skippedCards === 1 ? "card" : "cards"} from other parents ${plan.skippedCards === 1 ? "is" : "are"} left alone.` : "";
+    const label = plan.parentLabel.length > 60 ? `${plan.parentLabel.slice(0, 57)}...` : plan.parentLabel;
+    const message = `Reorder ${plan.count} blocks under \u201c${label}\u201d to match the board? Cards stay where they are.${skipped}`;
+    let ok = false;
+    try { ok = typeof win?.confirm === "function" && win.confirm(message) === true; } catch { ok = false; }
+    if (!ok) return;
+    Promise.resolve(session.applySourceOrder?.(uids)).then((res) => {
+      if (disposed || !res) return;
+      if (res.reason || !res.moved) { toast(res.reason || "Nothing to reorder"); return; }
+      toast(`Moved ${res.moved} ${res.moved === 1 ? "block" : "blocks"} to match the board`, true);
+    }).catch(() => {});
+  };
   const showCtx = () => {
     const b = board();
     if (!b) return chrome.ctx.hide();
@@ -5923,6 +5954,8 @@ function buildBoardView(onFail, {
           item,
           count: item?.members?.length ?? 0,
           fitOn: item?.autofit !== false,
+          keepOrder: item?.keepOrder === true,
+          refCards: item ? refCardCount([item.uid]) : 0,
           pinned: Boolean(item?.pinned),
           collapsed: Boolean(item?.collapsed),
           hasNote: Boolean(item && sectionNoteUid(b, item.uid)),
@@ -5932,6 +5965,7 @@ function buildBoardView(onFail, {
           landmark: item?.landmark === true,
           landmarkSize: item?.size || "M",
           dateSource: dateMode,
+          ...(item?.look === "lane" ? { lane: { bound: item.laneAttr || null, fields: session.laneFieldsFor?.(item.uid) ?? laneFields(tableRows(b)), fresh: item.laneAttr ? (session.laneNewValues?.(item.uid) ?? []) : [] } } : {}),
         };
       }
       case "text": return { item, pinned: Boolean(item?.pinned), trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
@@ -5941,6 +5975,7 @@ function buildBoardView(onFail, {
         return {
           ...(items.some(isTaskItem) ? { statusTags, status: "" } : {}),
           count: items.length,
+          refCards: refCardCount(items.map((i) => i.uid)),
           allPinned: items.length > 0 && items.every((i) => i.pinned),
           anyCollapsed: items.some((i) => i.type === "card" && i.collapsed),
           sectionPair: sectionPair(items.map((i) => i.uid), (id) => b?.items.get(id)),
@@ -6204,6 +6239,25 @@ function buildBoardView(onFail, {
           look: "lane",
           axis: vertical ? "vertical" : "horizontal",
         })).then((uid) => { if (uid && !disposed) ctl.select([uid]); }).catch(() => {});
+        break;
+      }
+      case "lane-attr":
+        if (item?.look === "lane" && arg) void session.bindLane?.(item.uid, arg);
+        break;
+      case "lane-stop":
+        if (item?.look === "lane") void session.unbindLane?.(item.uid);
+        break;
+      case "lane-add":
+        if (item?.look === "lane" && item.laneAttr) void session.addLaneValues?.(item.uid);
+        break;
+      case "lane-pull": {
+        if (item?.look !== "lane" || !item.laneAttr) break;
+        const name = item.laneAttr;
+        Promise.resolve(session.pullLaneSource?.(item.uid)).then((res) => {
+          if (disposed) return;
+          if (res?.placed > 0) toast(`Placed ${res.placed} of ${res.total} blocks with ${name}::`);
+          else toast(`No more blocks with ${name}::`);
+        }).catch(() => {});
         break;
       }
       case "new-board": {
@@ -6602,6 +6656,8 @@ function buildBoardView(onFail, {
       case "toggle-fit": if (item) void session.setFit?.(item.uid, item.autofit === false); break;
       case "tidy": void session.tidyItems?.(mc.kind === "board-menu" ? b.roots : uids, arg); break;
       case "sort-outline": void session.sortOutline?.(); break;
+      case "apply-source-order": applySourceOrder(uids); break;
+      case "keep-order": if (item) void session.setKeepOrder?.(item.uid, item.keepOrder !== true); break;
       case "follow": runFollow(arg, item); break;
       case "pdf-pages": void movePdfsToPages(); break;
       case "table-captions": void foldTableCaptions(); break;

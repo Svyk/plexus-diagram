@@ -111,8 +111,8 @@ function panToShow(vp, size, rect, { pad: pad2 = 24 } = {}) {
   const zoom0 = Number(vp?.zoom);
   const width = Number(size?.width);
   const height = Number(size?.height);
-  const same3 = { x: Number(vp?.x) || 0, y: Number(vp?.y) || 0, zoom: zoom0 > 0 ? zoom0 : 1, moved: false };
-  if (!vp || !(zoom0 > 0) || !(width > 0) || !(height > 0) || !rect || !(Number(rect.w) > 0) || !(Number(rect.h) > 0)) return same3;
+  const same4 = { x: Number(vp?.x) || 0, y: Number(vp?.y) || 0, zoom: zoom0 > 0 ? zoom0 : 1, moved: false };
+  if (!vp || !(zoom0 > 0) || !(width > 0) || !(height > 0) || !rect || !(Number(rect.w) > 0) || !(Number(rect.h) > 0)) return same4;
   const view = visibleWorldRect(vp, size, 0);
   const padW = pad2 / zoom0;
   const padH = pad2 / zoom0;
@@ -1128,8 +1128,11 @@ function normalizeItemLayout(plexus) {
     min: type === "text" && p.look === "sticky" && p.min === true ? true : void 0,
     kids: type === "card" && p.kids === true ? true : void 0,
     fit: p.fit === false ? false : void 0,
+    keepOrder: section2 && p.keepOrder === true ? true : void 0,
     look: type === "text" ? TEXT_LOOKS.includes(p.look) ? p.look : void 0 : type === "section" ? SECTION_LOOKS.includes(p.look) ? p.look : void 0 : CARD_LOOKS.includes(p.look) ? p.look : void 0,
     axis: type === "section" && p.look === "lane" ? p.axis === "vertical" ? "vertical" : "horizontal" : void 0,
+    attr: type === "section" && p.look === "lane" && typeof p.attr === "string" && p.attr.trim() ? p.attr.trim() : void 0,
+    bands: type === "section" && p.look === "lane" && typeof p.attr === "string" && p.attr.trim() && Array.isArray(p.bands) ? p.bands.filter((v) => typeof v === "string" && v.trim()).slice(0, LANE_BANDS_MAX) : void 0,
     textColor: section2 ? void 0 : styleColor(p.textColor),
     align: section2 || !ALIGNS.includes(p.align) ? void 0 : p.align,
     fill: section2 ? void 0 : styleColor(p.fill),
@@ -1201,12 +1204,20 @@ function serializeItemLayout(layout) {
   if (type === "text" && l.look === "sticky" && l.min === true) out.min = true;
   if (type === "card" && l.kids === true) out.kids = true;
   if (l.type === "section" && l.fit === false) out.fit = false;
+  if (l.type === "section" && l.keepOrder === true) out.keepOrder = true;
   if (type === "text") {
     if (TEXT_LOOKS.includes(l.look)) out.look = l.look;
     if (SHAPES.includes(l.shape)) out.shape = l.shape;
   } else if (type === "section" && SECTION_LOOKS.includes(l.look)) {
     out.look = l.look;
-    if (l.look === "lane") out.axis = l.axis === "vertical" ? "vertical" : "horizontal";
+    if (l.look === "lane") {
+      out.axis = l.axis === "vertical" ? "vertical" : "horizontal";
+      if (typeof l.attr === "string" && l.attr.trim()) {
+        out.attr = l.attr.trim();
+        const bands = Array.isArray(l.bands) ? l.bands.filter((v) => typeof v === "string" && v.trim()).slice(0, LANE_BANDS_MAX) : [];
+        if (bands.length) out.bands = bands;
+      }
+    }
   } else if (CARD_LOOKS.includes(l.look)) out.look = l.look;
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
   const tone = boardColor(l.bgColor);
@@ -1464,7 +1475,7 @@ function attrNameOf(s) {
   const name = m[1].trim();
   return name ? name : null;
 }
-var PLEXUS_KEY, SCHEMA_VERSION, PALETTE, ITEM_TYPES, DEFAULT_SIZES, PAGE_CARD, MIN_SIZES, DEFAULT_BOARD_CARD, UNTITLED_BOARD, FONT_SIZES, CARD_LOOKS, TEXT_LOOKS, STICKY_SIZE, STICKY_COLOR, SECTION_LOOKS, LANE_SIZE, CARD_FONT_MIN, CARD_FONT_MAX, CARD_FONT_DEFAULT, SECTION_TITLE_MIN, SECTION_TITLE_MAX, SECTION_TITLE_DEFAULT, ALIGNS, EDGE_DEFAULTS, EDGE_WEIGHTS, SIDES2, ARROWS, DIRS, ROUTES, DASHES, BOARD_PATTERNS, DOCK_POSITIONS, BOARD_TONES, FIT_PAD, NATIVE_SWATCHES, ITEM_STYLE_KEYS, SECTION_STYLE_KEYS, ARROW_TOKENS, HEX_RE, BLOCK_UID_RE, blockUid, intIn, isObject, isNum, round12, MONTHS, BOARD_REF_RE, cleanBoardTitle;
+var PLEXUS_KEY, SCHEMA_VERSION, PALETTE, ITEM_TYPES, DEFAULT_SIZES, PAGE_CARD, MIN_SIZES, DEFAULT_BOARD_CARD, UNTITLED_BOARD, FONT_SIZES, CARD_LOOKS, TEXT_LOOKS, STICKY_SIZE, STICKY_COLOR, SECTION_LOOKS, LANE_BANDS_MAX, LANE_SIZE, CARD_FONT_MIN, CARD_FONT_MAX, CARD_FONT_DEFAULT, SECTION_TITLE_MIN, SECTION_TITLE_MAX, SECTION_TITLE_DEFAULT, ALIGNS, EDGE_DEFAULTS, EDGE_WEIGHTS, SIDES2, ARROWS, DIRS, ROUTES, DASHES, BOARD_PATTERNS, DOCK_POSITIONS, BOARD_TONES, FIT_PAD, NATIVE_SWATCHES, ITEM_STYLE_KEYS, SECTION_STYLE_KEYS, ARROW_TOKENS, HEX_RE, BLOCK_UID_RE, blockUid, intIn, isObject, isNum, round12, MONTHS, BOARD_REF_RE, cleanBoardTitle;
 var init_schema = __esm({
   "src/model/schema.js"() {
     init_shapes();
@@ -1484,6 +1495,7 @@ var init_schema = __esm({
     STICKY_SIZE = { w: 200, h: 200 };
     STICKY_COLOR = "yellow";
     SECTION_LOOKS = ["lane", "calendar", "timer"];
+    LANE_BANDS_MAX = 16;
     LANE_SIZE = { horizontal: { w: 960, h: 180 }, vertical: { w: 240, h: 640 } };
     CARD_FONT_MIN = 10;
     CARD_FONT_MAX = 48;
@@ -1531,6 +1543,919 @@ var init_schema = __esm({
     MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     BOARD_REF_RE = /^\s*\{\{\s*(?:\[\[diagram\]\]|diagram)\s*(:)?\s*\(\(([\w-]{1,64})\)\)((?:[^{}]|\{\{[^{}]*\}\})*)\}\}/i;
     cleanBoardTitle = (title) => String(title ?? "").replace(/\s*[\r\n]+\s*/g, " ").split("}}").join("").trim();
+  }
+});
+
+// src/model/highlight.js
+function isObject2(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function highlightRecord(props) {
+  if (!isObject2(props)) return null;
+  const keys = Object.keys(props);
+  const colon = keys.includes(":pdf-highlight");
+  const plain2 = keys.includes("pdf-highlight");
+  if (!colon && !plain2) return null;
+  const raw = colon ? props[":pdf-highlight"] : props["pdf-highlight"];
+  if (!isObject2(raw)) return {};
+  const flat3 = plainKeys(raw);
+  return isObject2(flat3) ? flat3 : {};
+}
+function pageNumberOf(record) {
+  const position = record.position;
+  if (!isObject2(position)) return null;
+  const rect = position.boundingRect;
+  if (!isObject2(rect)) return null;
+  const page = rect.pageNumber;
+  return typeof page === "number" && Number.isFinite(page) ? page : null;
+}
+function contentTextOf(record) {
+  const content = record.content;
+  if (!isObject2(content)) return "";
+  return typeof content.text === "string" ? content.text : "";
+}
+function highlightColor(string) {
+  if (typeof string !== "string") return "gray";
+  const match = COLOR_TOKEN.exec(string);
+  if (!match) return "gray";
+  const name = match[1].toLowerCase();
+  return PALETTE.includes(name) ? name : "gray";
+}
+function stripHighlightTokens(string) {
+  if (typeof string !== "string") return "";
+  return string.replace(/#h\/[A-Za-z]+/g, " ").replace(/[ \t]{2,}/g, " ").trim();
+}
+function footerOf(page, pageTitle) {
+  const title = typeof pageTitle === "string" ? pageTitle.trim() : "";
+  const parts = [];
+  if (page != null) parts.push(`p. ${page}`);
+  if (title) parts.push(title);
+  return parts.join(" · ");
+}
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+function fieldNumber(obj, name) {
+  const colon = finiteNumber(obj[`:${name}`]);
+  if (colon != null) return colon;
+  return finiteNumber(obj[name]);
+}
+function sizePair(obj) {
+  if (!isObject2(obj)) return null;
+  const w = fieldNumber(obj, "width");
+  const h = fieldNumber(obj, "height");
+  if (w == null || h == null) return null;
+  return { w, h };
+}
+function firstSize(value, seen) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = firstSize(item, seen);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!isObject2(value) || seen.has(value)) return null;
+  seen.add(value);
+  const pair2 = sizePair(value);
+  if (pair2) return pair2;
+  for (const key of Object.keys(value)) {
+    if (key === "url" || key === ":url") continue;
+    const found = firstSize(value[key], seen);
+    if (found) return found;
+  }
+  return null;
+}
+function rewriteHighlightTag(string, name) {
+  if (typeof string !== "string") return string;
+  if (typeof name !== "string" || !HIGHLIGHT_COLORS.includes(name)) return string;
+  const token = `#h/${name}`;
+  if (!TAG_TOKEN.test(string)) return `${string} ${token}`;
+  return string.replace(TAG_TOKEN, token);
+}
+function naturalSize(props) {
+  if (!isObject2(props)) return null;
+  const seen = /* @__PURE__ */ new Set();
+  if (Object.prototype.hasOwnProperty.call(props, ":image-size")) {
+    const found = firstSize(props[":image-size"], seen);
+    if (found) return found;
+  }
+  if (Object.prototype.hasOwnProperty.call(props, "image-size")) {
+    return firstSize(props["image-size"], seen);
+  }
+  return null;
+}
+function childFields(node2, index) {
+  if (!isObject2(node2)) return null;
+  const string = typeof node2.string === "string" ? node2.string : typeof node2[":block/string"] === "string" ? node2[":block/string"] : "";
+  const props = isObject2(node2.props) ? node2.props : isObject2(node2[":block/props"]) ? node2[":block/props"] : {};
+  const orderRaw = node2.order ?? node2[":block/order"];
+  const order = typeof orderRaw === "number" && Number.isFinite(orderRaw) ? orderRaw : index;
+  const uidRaw = typeof node2.uid === "string" && node2.uid ? node2.uid : typeof node2[":block/uid"] === "string" ? node2[":block/uid"] : "";
+  return { string, props, order, index, uid: uidRaw };
+}
+function orderedChildren(children) {
+  const list = Array.isArray(children) ? children : [];
+  const rows = [];
+  for (let i = 0; i < list.length; i += 1) {
+    const row4 = childFields(list[i], i);
+    if (row4) rows.push(row4);
+  }
+  rows.sort((a, b) => a.order - b.order || a.index - b.index);
+  return rows;
+}
+function highlightNote(children) {
+  for (const row4 of orderedChildren(children)) {
+    if (highlightRecord(row4.props)) continue;
+    return row4.string;
+  }
+  return "";
+}
+function noteActionPlan(children) {
+  for (const row4 of orderedChildren(children)) {
+    if (highlightRecord(row4.props)) continue;
+    return { kind: "focus", uid: row4.uid };
+  }
+  return { kind: "create" };
+}
+function highlightModel(input) {
+  const src = isObject2(input) ? input : {};
+  const record = highlightRecord(src.props);
+  if (!record) return null;
+  const block = typeof src.string === "string" ? src.string : "";
+  const rawType = typeof record.type === "string" ? record.type : "";
+  const area2 = rawType === "area" || block.includes("![");
+  const stored = contentTextOf(record);
+  const page = pageNumberOf(record);
+  return {
+    type: area2 ? "area" : rawType || "text",
+    text: area2 || stored === "" ? stripHighlightTokens(block) : stored,
+    image: area2,
+    natural: naturalSize(src.props),
+    page,
+    color: highlightColor(block),
+    footer: footerOf(page, src.pageTitle),
+    note: highlightNote(src.children)
+  };
+}
+var HIGHLIGHT_COLORS, COLOR_TOKEN, TAG_TOKEN;
+var init_highlight = __esm({
+  "src/model/highlight.js"() {
+    init_schema();
+    HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink", "purple", "orange", "red"];
+    COLOR_TOKEN = /#h\/([A-Za-z]+)/;
+    TAG_TOKEN = /#h\/[A-Za-z]+/;
+  }
+});
+
+// src/model/tasks.js
+function setTaskAttrNames(map) {
+  liveNames = map instanceof Map && map.size ? map : null;
+  namesSig = liveNames ? [...liveNames].map(([id, set]) => `${id}=${[...set].sort().join("|")}`).join(";") : "";
+}
+function taskAttrId(text4, names = liveNames) {
+  if (String(text4 ?? "").trim() === ACTIVITY_LOG) return "activity";
+  const name = attrNameOf(text4);
+  if (!name) return null;
+  const key = lower(name);
+  if (names) {
+    for (const [id, set] of names) if (set.has(key)) return id;
+  }
+  if (DEFAULT_IDS.has(key)) return DEFAULT_IDS.get(key);
+  return key.startsWith("bt_attr") ? "other" : null;
+}
+function isTaskAttr(child, names = liveNames) {
+  return taskAttrId(child?.[":block/string"] ?? child?.string ?? "", names) !== null;
+}
+function parseRoamDay(title) {
+  const m = DAILY_RE.exec(String(title ?? "").trim());
+  if (!m) return null;
+  const day = Number(m[2]);
+  const suffix = day >= 11 && day <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th";
+  if (m[3] !== suffix || day < 1 || day > 31) return null;
+  const month = MONTHS2.indexOf(m[1]);
+  if (month < 0) return null;
+  return { y: Number(m[4]), m: month + 1, d: day };
+}
+function childString2(child) {
+  return child?.[":block/string"] ?? child?.string ?? "";
+}
+function dayOf(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return { y: value.getFullYear(), m: value.getMonth() + 1, d: value.getDate() };
+  }
+  return parseRoamDay(value);
+}
+function stamp(part) {
+  return part.y * 1e4 + part.m * 100 + part.d;
+}
+function dueChip(content, today = /* @__PURE__ */ new Date()) {
+  let raw = null;
+  let title = "";
+  for (const child of content || []) {
+    const text4 = String(childString2(child));
+    if (taskAttrId(text4) !== "due") continue;
+    raw = text4;
+    const rest = text4.slice(text4.indexOf("::") + 2).trim();
+    const wiki = /^\[\[([\s\S]+)\]\]$/.exec(rest);
+    title = (wiki ? wiki[1] : rest).trim();
+    break;
+  }
+  if (raw == null || !title) return null;
+  const due = parseRoamDay(title);
+  const now5 = dayOf(today);
+  return { text: title, overdue: Boolean(due && now5 && stamp(due) < stamp(now5)), today: Boolean(due && now5 && stamp(due) === stamp(now5)), raw, day: due };
+}
+function shortDay(day, today = /* @__PURE__ */ new Date()) {
+  if (!day) return "";
+  const now5 = dayOf(today);
+  const base2 = `${SHORT_MONTHS[day.m - 1]} ${day.d}`;
+  return now5 && day.y !== now5.y ? `${base2}, ${day.y}` : base2;
+}
+function dayChoices(today = /* @__PURE__ */ new Date()) {
+  const at = (n3) => iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + n3));
+  const toMonday = (8 - today.getDay()) % 7 || 7;
+  return [
+    { label: "Today", value: at(0) },
+    { label: "Tomorrow", value: at(1) },
+    { label: "Next week", value: at(toMonday) }
+  ];
+}
+function attrValue(text4) {
+  const rest = String(text4).slice(String(text4).indexOf("::") + 2).trim();
+  const ref = /\[\[([^\]]+)\]\]/.exec(rest);
+  if (ref) return ref[1].trim();
+  return rest.replace(/\{\{[\s\S]*$/, "").trim();
+}
+function taskMeta(string, content, today = /* @__PURE__ */ new Date(), names = liveNames) {
+  const state = taskState(string);
+  if (!state) return null;
+  const meta = { done: state === "DONE", status: "", cancelled: false, due: null, project: "", priority: "", priorityGlyph: "", repeat: "", waitingFor: "", gtd: "", energy: "", context: "", notes: "" };
+  const tag = STATUS_TAG.exec(String(string));
+  if (tag) {
+    meta.status = tag[1].trim();
+    meta.cancelled = lower(meta.status) === "cancelled";
+  }
+  const seen = /* @__PURE__ */ new Set();
+  for (const child of content || []) {
+    const text4 = String(childString2(child));
+    const id = taskAttrId(text4, names);
+    if (!id || id === "other" || id === "activity" || seen.has(id)) continue;
+    seen.add(id);
+    const value = attrValue(text4);
+    if (!value) continue;
+    if (id === "due") {
+      const chip = dueChip([child], today);
+      if (chip) meta.due = { text: chip.text, short: shortDay(chip.day, today), overdue: chip.overdue && !meta.done, today: chip.today };
+    } else if (id === "priority") {
+      meta.priority = lower(value);
+      meta.priorityGlyph = PRIORITY_GLYPH[meta.priority] || "";
+    } else if (id in meta) meta[id] = value;
+  }
+  return meta;
+}
+var ACTIVITY_LOG, lower, DEFAULT_LABELS, DEFAULT_IDS, liveNames, namesSig, taskNamesSig, TASK_RE, taskState, isTaskString, isBareTask, MONTHS2, DAILY_RE, SHORT_MONTHS, iso, isoDay, PRIORITY_GLYPH, STATUS_TAG;
+var init_tasks = __esm({
+  "src/model/tasks.js"() {
+    init_schema();
+    ACTIVITY_LOG = "**Activity log**";
+    lower = (s) => String(s ?? "").trim().toLowerCase();
+    DEFAULT_LABELS = {
+      repeat: "BT_attrRepeat",
+      start: "BT_attrStart",
+      defer: "BT_attrDefer",
+      due: "BT_attrDue",
+      completed: "BT_attrCompleted",
+      project: "BT_attrProject",
+      gtd: "BT_attrGTD",
+      waitingFor: "BT_attrWaitingFor",
+      context: "BT_attrContext",
+      priority: "BT_attrPriority",
+      energy: "BT_attrEnergy",
+      depends: "BT_attrDepends",
+      parent: "BT_attrParent",
+      notes: "BT_attrNotes"
+    };
+    DEFAULT_IDS = new Map(Object.entries(DEFAULT_LABELS).map(([id, label]) => [lower(label), id]));
+    liveNames = null;
+    namesSig = "";
+    taskNamesSig = () => namesSig;
+    TASK_RE = /^\s*\{\{\[\[(TODO|DONE)\]\]\}\}/;
+    taskState = (string) => TASK_RE.exec(String(string ?? ""))?.[1] ?? "";
+    isTaskString = (string) => TASK_RE.test(String(string ?? ""));
+    isBareTask = (string) => isTaskString(string) && !String(string).replace(TASK_RE, "").replace(/#\[\[task-status\/[^\]]*\]\]/g, "").trim();
+    MONTHS2 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    DAILY_RE = new RegExp(`^(${MONTHS2.join("|")}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
+    SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    isoDay = iso;
+    PRIORITY_GLYPH = { low: "!", medium: "!!", high: "!!!" };
+    STATUS_TAG = /#\[\[task-status\/([^\]]+)\]\]/;
+  }
+});
+
+// src/model/status-tags.js
+function row(key, name, glyph, lightBase, lightText, darkBase, darkText) {
+  return Object.freeze({
+    key,
+    name,
+    tag: `task-status/${name}`,
+    glyph,
+    light: Object.freeze({ base: lightBase, text: lightText }),
+    dark: Object.freeze({ base: darkBase, text: darkText })
+  });
+}
+function side(value) {
+  if (!value || typeof value !== "object") return { base: "", text: "" };
+  return { base: String(value.base || ""), text: String(value.text || "") };
+}
+function statusKey(name) {
+  return String(name ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function statusApi(win2) {
+  const api3 = win2?.RoamTaskStatusTags;
+  if (!api3 || api3.apiVersion !== 1 || typeof api3.statuses !== "function") return null;
+  return api3;
+}
+function normalize(raw) {
+  const name = String(raw?.name || "").trim();
+  if (!name) return null;
+  const glyphRaw = String(raw?.glyph || "").trim();
+  const glyph = !glyphRaw || glyphRaw === "custom" ? "diamond" : glyphRaw;
+  const known2 = FALLBACK.find((entry) => entry.name.toLowerCase() === name.toLowerCase());
+  return {
+    key: raw?.key ? String(raw.key) : known2?.key || statusKey(name).toUpperCase().replace(/-/g, "_"),
+    name,
+    tag: raw?.tag ? String(raw.tag) : `task-status/${name}`,
+    glyph: glyph === "diamond" && known2 ? known2.glyph : glyph,
+    light: raw?.light ? side(raw.light) : known2 ? { ...known2.light } : { ...NEUTRAL.light },
+    dark: raw?.dark ? side(raw.dark) : known2 ? { ...known2.dark } : { ...NEUTRAL.dark }
+  };
+}
+function statusPalette(api3) {
+  let rows = null;
+  if (api3 && typeof api3.statuses === "function") {
+    try {
+      const got = api3.statuses();
+      if (Array.isArray(got) && got.length) rows = got;
+    } catch {
+      rows = null;
+    }
+  }
+  const map = /* @__PURE__ */ new Map();
+  for (const raw of rows || FALLBACK) {
+    const entry = rows ? normalize(raw) : raw;
+    if (!entry?.name) continue;
+    const id = entry.name.toLowerCase();
+    if (map.has(id)) continue;
+    map.set(id, entry);
+  }
+  return map;
+}
+function paletteEntries(palette) {
+  if (!palette) return [];
+  if (typeof palette.values === "function" && !Array.isArray(palette)) return [...palette.values()];
+  return [...palette];
+}
+function findEntry(palette, name) {
+  const id = String(name ?? "").trim().toLowerCase();
+  if (!id) return null;
+  if (palette && typeof palette.get === "function") {
+    const hit = palette.get(id);
+    if (hit) return hit;
+  }
+  for (const entry of paletteEntries(palette)) {
+    if (!entry?.name) continue;
+    if (entry.name.toLowerCase() === id || String(entry.key || "").toLowerCase() === id) return entry;
+  }
+  return null;
+}
+function paletteVars(entry, theme) {
+  const dark = theme === "dark" || theme === "bp3-dark";
+  const pair2 = (dark ? entry?.dark : entry?.light) || {};
+  return {
+    "--pxd-status-base": pair2.base || "",
+    "--pxd-status-text": pair2.text || ""
+  };
+}
+function taskStatusOf(string, palette) {
+  const text4 = String(string ?? "");
+  let raw = "";
+  const meta = taskMeta(text4, []);
+  if (meta?.status) raw = meta.status;
+  else {
+    const tag = STATUS_TAG2.exec(text4);
+    if (tag) raw = tag[1].trim();
+  }
+  if (!raw) return null;
+  const entry = findEntry(palette, raw);
+  return entry ? entry.name : null;
+}
+function statusLook(name, palette) {
+  const hit = findEntry(palette, name);
+  if (hit) return hit;
+  const label = String(name ?? "").trim();
+  return {
+    key: statusKey(label) || "unknown",
+    name: label,
+    tag: label ? `task-status/${label}` : "",
+    glyph: "diamond",
+    light: { base: NEUTRAL.light.base, text: NEUTRAL.light.text },
+    dark: { base: NEUTRAL.dark.base, text: NEUTRAL.dark.text }
+  };
+}
+var STATUS_TAG2, NEUTRAL, FALLBACK;
+var init_status_tags = __esm({
+  "src/model/status-tags.js"() {
+    init_tasks();
+    STATUS_TAG2 = /#\[\[task-status\/([^\]]+)\]\]/;
+    NEUTRAL = Object.freeze({
+      light: Object.freeze({ base: "rgba(100, 116, 139, 0.1)", text: "rgb(88, 102, 122)" }),
+      dark: Object.freeze({ base: "rgba(100, 116, 139, 0.2)", text: "rgb(158, 168, 183)" })
+    });
+    FALLBACK = Object.freeze([
+      row("ACTIVE", "Active", "active", "rgba(20, 184, 166, 0.1)", "rgb(13, 116, 104)", "rgba(20, 184, 166, 0.2)", "rgb(68, 198, 184)"),
+      row("WAITING", "Waiting", "waiting", "rgba(234, 179, 8, 0.1)", "rgb(131, 100, 4)", "rgba(234, 179, 8, 0.2)", "rgb(234, 179, 8)"),
+      row("IN_REVIEW", "In Review", "in-review", "rgba(14, 165, 233, 0.1)", "rgb(9, 109, 154)", "rgba(14, 165, 233, 0.2)", "rgb(76, 188, 239)"),
+      row("HOLDING", "Holding", "holding", "rgba(148, 163, 184, 0.1)", "rgb(95, 104, 118)", "rgba(148, 163, 184, 0.2)", "rgb(169, 181, 198)"),
+      row("INCUBATING", "Incubating", "incubating", "rgba(99, 102, 241, 0.1)", "rgb(84, 86, 203)", "rgba(99, 102, 241, 0.2)", "rgb(158, 160, 246)"),
+      row("ALERT", "Alert", "alert", "rgba(244, 63, 94, 0.1)", "rgb(184, 48, 71)", "rgba(244, 63, 94, 0.2)", "rgb(248, 130, 150)"),
+      row("CANCELLED", "Cancelled", "cancelled", "rgba(30, 41, 59, 0.1)", "rgb(30, 41, 59)", "rgba(30, 41, 59, 0.2)", "rgb(145, 150, 159)")
+    ]);
+  }
+});
+
+// src/model/table.js
+function cleanName(name) {
+  if (name == null) return "";
+  const attr = String(name).trim();
+  if (!attr || attr.startsWith("BT_attr") || FIXED.includes(attr)) return "";
+  return attr;
+}
+function columnNameOk(name) {
+  return Boolean(cleanName(name));
+}
+function isTableRow(item) {
+  if (!item) return false;
+  if (item.type === "section" || item.type === "text") return false;
+  if (item.type === "card") return true;
+  return item.kind === "card" || item.kind === "board";
+}
+function tableColumns(rows) {
+  const names = [];
+  for (const row4 of rows || []) {
+    for (const attr of row4.attrs || []) {
+      if (attr?.name && !names.includes(attr.name)) names.push(attr.name);
+    }
+  }
+  return FIXED.concat(names);
+}
+function cellText(row4, column) {
+  if (!row4) return "";
+  if (column === "Title") return String(row4.title ?? "");
+  if (column === "Section") return String(row4.section ?? "");
+  if (column === "Type") return String(row4.type ?? "");
+  if (column === "Edited") return row4.edited == null ? "" : String(row4.edited);
+  const hit = (row4.attrs || []).find((attr) => attr.name === column);
+  return hit ? String(hit.value ?? "") : "";
+}
+function filterRows(rows, text4) {
+  const needle = String(text4 ?? "").trim().toLowerCase();
+  if (!needle) return (rows || []).slice();
+  const cols = tableColumns(rows);
+  return (rows || []).filter((row4) => cols.some((column) => cellText(row4, column).toLowerCase().includes(needle)));
+}
+function sortRows(rows, column, dir = "asc") {
+  const sign = dir === "desc" ? -1 : 1;
+  const list = (rows || []).slice();
+  list.sort((a, b) => {
+    if (column === "Edited") {
+      const av = Number(a.edited) || 0;
+      const bv = Number(b.edited) || 0;
+      return (av - bv) * sign;
+    }
+    return cellText(a, column).localeCompare(cellText(b, column)) * sign;
+  });
+  return list;
+}
+function planAttrCell({ name, value, blockUid: blockUid3 = null, parentUid = null } = {}) {
+  const attr = cleanName(name);
+  if (!attr) return null;
+  const text4 = String(value ?? "").trim();
+  const string = text4 ? `${attr}:: ${text4}` : `${attr}::`;
+  if (blockUid3) return { op: "update", uid: blockUid3, string };
+  if (!text4 || !parentUid) return null;
+  return { op: "create", parent: parentUid, string };
+}
+function tableRow(board2, item, resolve, kids = null) {
+  const items = board2?.items;
+  const parent = items?.get?.(item.parentUid);
+  const section2 = parent?.type === "section" ? String(parent.title || "") : "";
+  const attrs = [];
+  for (const child of kids || item.content || []) {
+    const string = child?.[":block/string"] ?? child?.string ?? "";
+    const name = cleanName(attrNameOf(String(string)));
+    if (!name) continue;
+    const text4 = String(string);
+    const cut = text4.indexOf("::");
+    attrs.push({
+      name,
+      value: cut >= 0 ? text4.slice(cut + 2).trim() : "",
+      uid: child?.[":block/uid"] ?? child?.uid ?? null
+    });
+  }
+  return {
+    uid: item.uid,
+    kind: item.kind,
+    title: itemLabel(item, resolve),
+    section: section2,
+    type: item.kind || "",
+    edited: item.edited ?? null,
+    attrs
+  };
+}
+function tableRows(board2, resolve) {
+  const items = board2?.items;
+  if (!items || typeof items.get !== "function") return [];
+  const order = Array.isArray(board2.order) ? board2.order : [...items.keys()];
+  const rows = [];
+  for (const uid of order) {
+    const item = items.get(uid);
+    if (!isTableRow(item)) continue;
+    rows.push(tableRow(board2, item, resolve));
+  }
+  return rows;
+}
+var FIXED;
+var init_table = __esm({
+  "src/model/table.js"() {
+    init_schema();
+    FIXED = ["Title", "Section", "Type", "Edited"];
+  }
+});
+
+// src/model/kanban.js
+function todoState(string) {
+  const hit = MARK.exec(String(string || ""));
+  if (!hit) return "";
+  return hit[1] === "DONE" ? DONE_COLUMN : TODO_FIELD;
+}
+function kanbanRows(board2, resolve) {
+  const items = board2?.items;
+  return tableRows(board2, resolve).map((row4) => {
+    const item = items?.get?.(row4.uid);
+    const next = { ...row4, string: item?.string ?? row4.title ?? "" };
+    if (item?.kind !== "highlight") return next;
+    const targetUid = item.target?.uid;
+    let targetString;
+    if (typeof resolve === "function") {
+      try {
+        targetString = resolve(targetUid);
+      } catch {
+        targetString = void 0;
+      }
+    }
+    next.highlightColor = item.highlight?.color;
+    next.targetUid = targetUid;
+    next.targetString = targetString;
+    return next;
+  });
+}
+function kanbanFields(rows) {
+  const names = [];
+  let highlight = false;
+  for (const row4 of rows || []) {
+    if (typeof row4?.highlightColor === "string" && row4.highlightColor !== "") highlight = true;
+    for (const attr of row4.attrs || []) {
+      if (attr?.name && columnNameOk(attr.name) && !names.includes(attr.name)) names.push(attr.name);
+    }
+  }
+  return highlight ? [TODO_FIELD, HIGHLIGHT_FIELD, ...names] : [TODO_FIELD, ...names];
+}
+function columnOf(row4, field) {
+  if (field === TODO_FIELD) return todoState(row4?.string);
+  if (field === HIGHLIGHT_FIELD) {
+    const color = row4?.highlightColor;
+    return typeof color === "string" && color !== "" ? color : "";
+  }
+  const hit = (row4?.attrs || []).find((attr) => attr.name === field);
+  return hit ? String(hit.value ?? "") : "";
+}
+function kanbanColumns(rows, field) {
+  const list = rows || [];
+  if (field === TODO_FIELD) {
+    const columns2 = [
+      { name: TODO_FIELD, cards: [] },
+      { name: DONE_COLUMN, cards: [] }
+    ];
+    const extra = [];
+    for (const row4 of list) {
+      const name = columnOf(row4, field);
+      if (name === TODO_FIELD) columns2[0].cards.push(row4);
+      else if (name === DONE_COLUMN) columns2[1].cards.push(row4);
+      else extra.push(row4);
+    }
+    if (extra.length) columns2.push({ name: "", cards: extra });
+    return columns2;
+  }
+  if (!columnNameOk(field)) return [];
+  const columns = [];
+  const byName = /* @__PURE__ */ new Map();
+  for (const row4 of list) {
+    const name = columnOf(row4, field);
+    if (!byName.has(name)) {
+      const column = { name, cards: [] };
+      byName.set(name, column);
+      columns.push(column);
+    }
+    byName.get(name).cards.push(row4);
+  }
+  return columns;
+}
+function withMarker(string, column) {
+  const mark = column === DONE_COLUMN ? "{{[[DONE]]}}" : "{{[[TODO]]}}";
+  const current3 = String(string || "");
+  if (MARK.test(current3)) return current3.replace(MARK, mark);
+  return current3.trim() ? `${mark} ${current3}` : mark;
+}
+function planKanbanMove({ field, column, row: row4 } = {}) {
+  if (!row4?.uid || column == null || column === "") return null;
+  if (field === TODO_FIELD) {
+    if (column !== TODO_FIELD && column !== DONE_COLUMN) return null;
+    if (todoState(row4.string) === column) return null;
+    const string = withMarker(row4.string, column);
+    if (string === String(row4.string || "")) return null;
+    return { op: "string", uid: row4.uid, string, status: column === DONE_COLUMN ? "DONE" : "TODO" };
+  }
+  if (field === HIGHLIGHT_FIELD) {
+    if (row4.kind === "note") return null;
+    const targetUid = row4.targetUid;
+    const targetString = row4.targetString;
+    if (!targetUid || typeof targetString !== "string" || targetString === "") return null;
+    if (row4.highlightColor === column) return null;
+    if (!HIGHLIGHT_COLORS.includes(column)) return null;
+    return { op: "string", uid: targetUid, string: rewriteHighlightTag(targetString, column) };
+  }
+  if (field === STATUS_FIELD) return null;
+  if (!columnNameOk(field)) return null;
+  const attr = (row4.attrs || []).find((item) => item.name === field);
+  if (String(attr?.value ?? "") === column) return null;
+  const plan = planAttrCell({
+    name: field,
+    value: column,
+    blockUid: attr?.uid || null,
+    parentUid: row4.uid
+  });
+  if (!plan) return null;
+  if (plan.op === "update") return { op: "string", uid: plan.uid, string: plan.string };
+  return plan;
+}
+function isDoneItem(item) {
+  if (item?.done === true) return true;
+  return todoState(item?.string ?? "") === DONE_COLUMN;
+}
+function groupByStatus(items, palette) {
+  const columns = paletteEntries(palette).map((entry) => ({
+    name: entry.name,
+    key: entry.key,
+    glyph: entry.glyph,
+    cards: [],
+    count: 0
+  }));
+  const none = { name: NO_STATUS, key: "", glyph: "diamond", cards: [], count: 0 };
+  const done3 = { name: DONE_COLUMN, key: "done", glyph: "", cards: [], count: 0 };
+  const byName = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
+  for (const item of items || []) {
+    if (isDoneItem(item)) {
+      done3.cards.push(item);
+      continue;
+    }
+    const name = taskStatusOf(item?.string ?? "", palette);
+    const column = name ? byName.get(name.toLowerCase()) : null;
+    (column || none).cards.push(item);
+  }
+  for (const column of columns) column.count = column.cards.length;
+  none.count = none.cards.length;
+  done3.count = done3.cards.length;
+  return [...columns, none, done3];
+}
+var TODO_FIELD, DONE_COLUMN, HIGHLIGHT_FIELD, STATUS_FIELD, NO_STATUS, MARK;
+var init_kanban = __esm({
+  "src/model/kanban.js"() {
+    init_highlight();
+    init_status_tags();
+    init_table();
+    TODO_FIELD = "To do";
+    DONE_COLUMN = "Done";
+    HIGHLIGHT_FIELD = "Highlight colour";
+    STATUS_FIELD = "Lanes: Status";
+    NO_STATUS = "No status";
+    MARK = /\{\{\[\[(TODO|DONE)\]\]\}\}/;
+  }
+});
+
+// src/model/attr-lanes.js
+function laneFields(rows) {
+  return kanbanFields(rows).filter((name) => name !== TODO_FIELD && name !== HIGHLIGHT_FIELD && laneAttrOk(name));
+}
+function valueTokens(value) {
+  const text4 = String(value ?? "");
+  const trimmed = text4.trim();
+  if (!trimmed) return [];
+  const out = [];
+  let rest = text4;
+  TOKEN.lastIndex = 0;
+  let hit;
+  while (hit = TOKEN.exec(text4)) out.push({ raw: hit[0], at: hit.index });
+  if (out.length) {
+    for (const t of out) rest = rest.replace(t.raw, "");
+    if (/^[\s,]*$/.test(rest)) return out;
+  }
+  return [{ raw: trimmed, at: text4.indexOf(trimmed) }];
+}
+function valueKey(raw) {
+  const s = String(raw ?? "").trim();
+  const m = /^#?\[\[([^\]]+)\]\]$/.exec(s) || /^#([^\s,#\[\]]+)$/.exec(s);
+  return (m ? m[1] : s).trim();
+}
+function laneValueOf(row4, name) {
+  const attrs = (row4?.attrs || []).filter((a) => a?.name === name);
+  const attr = attrs[0] || null;
+  const tokens2 = valueTokens(attr?.value);
+  const raw = tokens2[0]?.raw ?? "";
+  return { key: valueKey(raw), raw, attr, tokens: tokens2, two: attrs.length > 1 || tokens2.length > 1 };
+}
+function readLaneBind(plexus) {
+  const name = typeof plexus?.[LANE_ATTR_KEY] === "string" ? plexus[LANE_ATTR_KEY].trim() : "";
+  if (!name || !laneAttrOk(name)) return null;
+  const bands = Array.isArray(plexus?.[LANE_BANDS_KEY]) ? plexus[LANE_BANDS_KEY].filter((v) => typeof v === "string" && valueKey(v)).slice(0, LANE_BAND_CAP) : [];
+  return { name, bands };
+}
+function laneBands(rows, name, stored = []) {
+  const bands = [];
+  const seen = /* @__PURE__ */ new Set();
+  const add = (raw) => {
+    const key = valueKey(raw);
+    if (!key || seen.has(key) || bands.length >= LANE_BAND_CAP) return;
+    seen.add(key);
+    bands.push({ key, raw: String(raw).trim(), label: key });
+  };
+  for (const raw of stored || []) add(raw);
+  for (const row4 of rows || []) {
+    const v = laneValueOf(row4, name);
+    if (v.key) add(v.raw);
+  }
+  bands.push({ key: "", raw: "", label: LANE_NONE_LABEL, none: true });
+  return bands;
+}
+function newLaneValues(rows, name, stored) {
+  const room = LANE_BAND_CAP - (stored || []).length;
+  if (room <= 0) return [];
+  const all = laneBands(rows, name, stored);
+  return all.filter((b) => !b.none).slice((stored || []).filter((v) => valueKey(v)).length).slice(0, room).map((b) => b.raw);
+}
+function growLane({ w, h, axis: axis2, count, added }) {
+  const n0 = Math.max(1, count);
+  const vertical = axisOf(axis2) === "vertical";
+  const band = (vertical ? h : w) / n0;
+  const shift = band * added;
+  return { band, shift, noneIndex: n0 - 1, count: n0 + added, ...vertical ? { w, h: h + shift } : { w: w + shift, h } };
+}
+function bandOfRow(bands, row4, name) {
+  const { key } = laneValueOf(row4, name);
+  const i = key ? bands.findIndex((b) => b.key === key) : -1;
+  return i >= 0 ? i : bands.length - 1;
+}
+function bandRect(rect, axis2, count, i) {
+  const n3 = Math.max(1, count);
+  if (axisOf(axis2) === "vertical") {
+    const h = rect.h / n3;
+    return { x: rect.x, y: rect.y + h * i, w: rect.w, h };
+  }
+  const w = rect.w / n3;
+  return { x: rect.x + w * i, y: rect.y, w, h: rect.h };
+}
+function bandIndexAt(rect, axis2, count, point) {
+  const n3 = Math.max(1, count);
+  const vertical = axisOf(axis2) === "vertical";
+  const span = vertical ? rect.h : rect.w;
+  if (!(span > 0)) return 0;
+  const off = vertical ? point.y - rect.y : point.x - rect.x;
+  return Math.min(n3 - 1, Math.max(0, Math.floor(off / span * n3)));
+}
+function snapIntoBand(band, axis2, r, lane2 = null, pad2 = 0) {
+  const vertical = axisOf(axis2) === "vertical";
+  let start2 = vertical ? band.y : band.x;
+  let end = start2 + (vertical ? band.h : band.w);
+  if (lane2) {
+    const ls = vertical ? lane2.y : lane2.x;
+    start2 = Math.max(start2, ls + pad2);
+    end = Math.min(end, ls + (vertical ? lane2.h : lane2.w) - pad2);
+  }
+  const span = Math.max(0, end - start2);
+  const pos = vertical ? r.y : r.x;
+  const size = vertical ? r.h : r.w;
+  const want = size >= span ? start2 + (span - size) / 2 : Math.min(Math.max(pos, start2), start2 + span - size);
+  const d = want - pos;
+  return vertical ? { dx: 0, dy: d } : { dx: d, dy: 0 };
+}
+function rewriteTokens(value, tokens2, band) {
+  const text4 = String(value ?? "");
+  const first = tokens2[0];
+  const same4 = tokens2.findIndex((t, i) => i > 0 && valueKey(t.raw) === band.key);
+  if (same4 > 0) {
+    const other = tokens2[same4];
+    return text4.slice(0, first.at) + other.raw + text4.slice(first.at + first.raw.length, other.at) + first.raw + text4.slice(other.at + other.raw.length);
+  }
+  return text4.slice(0, first.at) + band.raw + text4.slice(first.at + first.raw.length);
+}
+function planLaneDrop({ name, row: row4, band } = {}) {
+  if (!row4?.uid || !band || !laneAttrOk(name)) return null;
+  const v = laneValueOf(row4, name);
+  if (band.none) {
+    if (!v.key || v.two || !v.attr?.uid) return null;
+    return { op: "string", uid: v.attr.uid, string: `${name.trim()}::` };
+  }
+  if (v.key === band.key) return null;
+  if (v.tokens.length > 1 && v.attr?.uid) {
+    const value = rewriteTokens(v.attr.value, v.tokens, band).trim();
+    return { op: "string", uid: v.attr.uid, string: `${name.trim()}:: ${value}` };
+  }
+  const plan = planAttrCell({ name, value: band.raw, blockUid: v.attr?.uid || null, parentUid: row4.writeUid ?? row4.uid });
+  if (!plan) return null;
+  if (plan.op === "update") return { op: "string", uid: plan.uid, string: plan.string };
+  return plan;
+}
+function arrangeLane({ w, h, axis: axis2, bands, cards, pad: pad2 = LANE_PAD, gap = LANE_GAP } = {}) {
+  const n3 = Math.max(1, bands?.length || 1);
+  const vertical = axisOf(axis2) === "vertical";
+  const along = (c) => vertical ? c.h : c.w;
+  const across = (c) => vertical ? c.w : c.h;
+  const list = cards || [];
+  const bandSize = Math.max((vertical ? h : w) / n3, ...list.map((c) => along(c) + pad2 * 2));
+  const stacks = Array.from({ length: n3 }, () => pad2);
+  const out = [];
+  for (const c of list) {
+    const i = Math.min(n3 - 1, Math.max(0, c.band ?? n3 - 1));
+    const a = bandSize * i + (bandSize - along(c)) / 2;
+    const b = stacks[i];
+    stacks[i] += across(c) + gap;
+    out.push(vertical ? { uid: c.uid, x: b, y: a } : { uid: c.uid, x: a, y: b });
+  }
+  const cross = Math.max(vertical ? w : h, ...stacks.map((s) => s - gap + pad2));
+  const size = vertical ? { w: cross, h: bandSize * n3 } : { w: bandSize * n3, h: cross };
+  return { ...size, cards: out };
+}
+function laneRow(board2, item, readKids, resolve) {
+  if (item.kind === "block" && item.target?.uid) {
+    let kids = [];
+    try {
+      kids = readKids?.(item.target.uid) || [];
+    } catch {
+      kids = [];
+    }
+    return { ...tableRow(board2, item, resolve, kids), writeUid: item.target.uid };
+  }
+  return tableRow(board2, item, resolve);
+}
+function laneRows(board2, laneUid, readKids, resolve) {
+  const lane2 = board2?.items?.get(laneUid);
+  const rows = [];
+  for (const id of lane2?.members || []) {
+    const item = board2.items.get(id);
+    if (isTableRow(item)) rows.push(laneRow(board2, item, readKids, resolve));
+  }
+  return rows;
+}
+function laneView(bands, rows, name) {
+  const counts = bands.map(() => 0);
+  const marks = /* @__PURE__ */ new Map();
+  for (const row4 of rows) {
+    const i = bandOfRow(bands, row4, name);
+    counts[i] += 1;
+    const v = laneValueOf(row4, name);
+    const loose = Boolean(v.key) && !bands.some((b) => b.key === v.key);
+    if (loose) counts[i] -= 1;
+    marks.set(row4.uid, { label: v.key || LANE_NONE_LABEL, ...v.key ? {} : { none: true }, ...v.two ? { two: true } : {}, ...loose ? { loose: true } : {}, name });
+  }
+  return { bands: bands.map((b, i) => ({ key: b.key, label: b.label, n: counts[i], ...b.none ? { none: true } : {} })), marks };
+}
+var LANE_ATTR_KEY, LANE_BANDS_KEY, LANE_NONE_LABEL, LANE_BAND_CAP, LANE_PAD, LANE_GAP, laneAttrOk, TOKEN, shownBands, serializeBands, axisOf;
+var init_attr_lanes = __esm({
+  "src/model/attr-lanes.js"() {
+    init_kanban();
+    init_table();
+    LANE_ATTR_KEY = "attr";
+    LANE_BANDS_KEY = "bands";
+    LANE_NONE_LABEL = "none";
+    LANE_BAND_CAP = 16;
+    LANE_PAD = 16;
+    LANE_GAP = 12;
+    laneAttrOk = (name) => columnNameOk(name);
+    TOKEN = /#\[\[[^\]]+\]\]|\[\[[^\]]+\]\]|#[^\s,#\[\]]+/g;
+    shownBands = (stored) => laneBands([], "", stored);
+    serializeBands = (bands) => (bands || []).filter((b) => !b.none && b.key).map((b) => b.raw);
+    axisOf = (axis2) => axis2 === "vertical" ? "vertical" : "horizontal";
   }
 });
 
@@ -2209,168 +3134,6 @@ var init_trails = __esm({
   "src/model/trails.js"() {
     TRAIL_RE = /^\{\{\[\[plexus-trail\]\]\}\}\s*([\s\S]*)$/;
     STOP_RE = /^\(\(([\w-]+)\)\)$/;
-  }
-});
-
-// src/model/highlight.js
-function isObject2(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-function highlightRecord(props) {
-  if (!isObject2(props)) return null;
-  const keys = Object.keys(props);
-  const colon = keys.includes(":pdf-highlight");
-  const plain2 = keys.includes("pdf-highlight");
-  if (!colon && !plain2) return null;
-  const raw = colon ? props[":pdf-highlight"] : props["pdf-highlight"];
-  if (!isObject2(raw)) return {};
-  const flat3 = plainKeys(raw);
-  return isObject2(flat3) ? flat3 : {};
-}
-function pageNumberOf(record) {
-  const position = record.position;
-  if (!isObject2(position)) return null;
-  const rect = position.boundingRect;
-  if (!isObject2(rect)) return null;
-  const page = rect.pageNumber;
-  return typeof page === "number" && Number.isFinite(page) ? page : null;
-}
-function contentTextOf(record) {
-  const content = record.content;
-  if (!isObject2(content)) return "";
-  return typeof content.text === "string" ? content.text : "";
-}
-function highlightColor(string) {
-  if (typeof string !== "string") return "gray";
-  const match = COLOR_TOKEN.exec(string);
-  if (!match) return "gray";
-  const name = match[1].toLowerCase();
-  return PALETTE.includes(name) ? name : "gray";
-}
-function stripHighlightTokens(string) {
-  if (typeof string !== "string") return "";
-  return string.replace(/#h\/[A-Za-z]+/g, " ").replace(/[ \t]{2,}/g, " ").trim();
-}
-function footerOf(page, pageTitle) {
-  const title = typeof pageTitle === "string" ? pageTitle.trim() : "";
-  const parts = [];
-  if (page != null) parts.push(`p. ${page}`);
-  if (title) parts.push(title);
-  return parts.join(" · ");
-}
-function finiteNumber(value) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-function fieldNumber(obj, name) {
-  const colon = finiteNumber(obj[`:${name}`]);
-  if (colon != null) return colon;
-  return finiteNumber(obj[name]);
-}
-function sizePair(obj) {
-  if (!isObject2(obj)) return null;
-  const w = fieldNumber(obj, "width");
-  const h = fieldNumber(obj, "height");
-  if (w == null || h == null) return null;
-  return { w, h };
-}
-function firstSize(value, seen) {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = firstSize(item, seen);
-      if (found) return found;
-    }
-    return null;
-  }
-  if (!isObject2(value) || seen.has(value)) return null;
-  seen.add(value);
-  const pair2 = sizePair(value);
-  if (pair2) return pair2;
-  for (const key of Object.keys(value)) {
-    if (key === "url" || key === ":url") continue;
-    const found = firstSize(value[key], seen);
-    if (found) return found;
-  }
-  return null;
-}
-function rewriteHighlightTag(string, name) {
-  if (typeof string !== "string") return string;
-  if (typeof name !== "string" || !HIGHLIGHT_COLORS.includes(name)) return string;
-  const token = `#h/${name}`;
-  if (!TAG_TOKEN.test(string)) return `${string} ${token}`;
-  return string.replace(TAG_TOKEN, token);
-}
-function naturalSize(props) {
-  if (!isObject2(props)) return null;
-  const seen = /* @__PURE__ */ new Set();
-  if (Object.prototype.hasOwnProperty.call(props, ":image-size")) {
-    const found = firstSize(props[":image-size"], seen);
-    if (found) return found;
-  }
-  if (Object.prototype.hasOwnProperty.call(props, "image-size")) {
-    return firstSize(props["image-size"], seen);
-  }
-  return null;
-}
-function childFields(node2, index) {
-  if (!isObject2(node2)) return null;
-  const string = typeof node2.string === "string" ? node2.string : typeof node2[":block/string"] === "string" ? node2[":block/string"] : "";
-  const props = isObject2(node2.props) ? node2.props : isObject2(node2[":block/props"]) ? node2[":block/props"] : {};
-  const orderRaw = node2.order ?? node2[":block/order"];
-  const order = typeof orderRaw === "number" && Number.isFinite(orderRaw) ? orderRaw : index;
-  const uidRaw = typeof node2.uid === "string" && node2.uid ? node2.uid : typeof node2[":block/uid"] === "string" ? node2[":block/uid"] : "";
-  return { string, props, order, index, uid: uidRaw };
-}
-function orderedChildren(children) {
-  const list = Array.isArray(children) ? children : [];
-  const rows = [];
-  for (let i = 0; i < list.length; i += 1) {
-    const row4 = childFields(list[i], i);
-    if (row4) rows.push(row4);
-  }
-  rows.sort((a, b) => a.order - b.order || a.index - b.index);
-  return rows;
-}
-function highlightNote(children) {
-  for (const row4 of orderedChildren(children)) {
-    if (highlightRecord(row4.props)) continue;
-    return row4.string;
-  }
-  return "";
-}
-function noteActionPlan(children) {
-  for (const row4 of orderedChildren(children)) {
-    if (highlightRecord(row4.props)) continue;
-    return { kind: "focus", uid: row4.uid };
-  }
-  return { kind: "create" };
-}
-function highlightModel(input) {
-  const src = isObject2(input) ? input : {};
-  const record = highlightRecord(src.props);
-  if (!record) return null;
-  const block = typeof src.string === "string" ? src.string : "";
-  const rawType = typeof record.type === "string" ? record.type : "";
-  const area2 = rawType === "area" || block.includes("![");
-  const stored = contentTextOf(record);
-  const page = pageNumberOf(record);
-  return {
-    type: area2 ? "area" : rawType || "text",
-    text: area2 || stored === "" ? stripHighlightTokens(block) : stored,
-    image: area2,
-    natural: naturalSize(src.props),
-    page,
-    color: highlightColor(block),
-    footer: footerOf(page, src.pageTitle),
-    note: highlightNote(src.children)
-  };
-}
-var HIGHLIGHT_COLORS, COLOR_TOKEN, TAG_TOKEN;
-var init_highlight = __esm({
-  "src/model/highlight.js"() {
-    init_schema();
-    HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink", "purple", "orange", "red"];
-    COLOR_TOKEN = /#h\/([A-Za-z]+)/;
-    TAG_TOKEN = /#h\/[A-Za-z]+/;
   }
 });
 
@@ -3349,7 +4112,7 @@ function isMetaBanner(metaTitle, { pageTitle = "", lines = [] } = {}) {
   }
   return false;
 }
-var TITLE_CAP, titleLexicon, SEG_MIN, SEG_MAX_WORDS, SEG_WORD_MIN, FUNCTION_WORDS, TITLE_REV, MONTHS2, JUNK_LINE_RES, ARTICLE_LABEL, CITATION_REST;
+var TITLE_CAP, titleLexicon, SEG_MIN, SEG_MAX_WORDS, SEG_WORD_MIN, FUNCTION_WORDS, TITLE_REV, MONTHS3, JUNK_LINE_RES, ARTICLE_LABEL, CITATION_REST;
 var init_title_cap = __esm({
   "src/model/title-cap.js"() {
     TITLE_CAP = 80;
@@ -3359,7 +4122,7 @@ var init_title_cap = __esm({
     SEG_WORD_MIN = 4;
     FUNCTION_WORDS = /* @__PURE__ */ new Set(["of", "the", "and", "in", "to", "for", "per", "on", "at", "by", "with", "from", "or", "an", "a"]);
     TITLE_REV = 3;
-    MONTHS2 = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+    MONTHS3 = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
     JUNK_LINE_RES = [
       /^(?:notes?|sources?)\s*(?:[:.\-–—]|$)/i,
       /^[*†‡§¶•]/,
@@ -3369,7 +4132,7 @@ var init_title_cap = __esm({
       /^\d{1,4}\s*\/\s*\d{1,4}$/,
       /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/,
       /^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/,
-      new RegExp(`^(?:\\d{1,2}\\s+)?(?:${MONTHS2})\\.?\\s+(?:\\d{1,2},?\\s+)?\\d{4}$`, "i"),
+      new RegExp(`^(?:\\d{1,2}\\s+)?(?:${MONTHS3})\\.?\\s+(?:\\d{1,2},?\\s+)?\\d{4}$`, "i"),
       /\bcontents lists? available at\b/i,
       /\bjournal homepage\b/i,
       /\b(?:https?:\/\/|www\.)\S+/i,
@@ -4244,9 +5007,14 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         kids: type === "card" && layout.kids === true,
         look: type === "card" ? cardLook(kind, layout.look) : type === "text" || type === "section" ? layout.look : void 0,
         ...type === "section" && layout.look === "lane" ? { axis: layout.axis || "horizontal" } : {},
+        ...type === "section" && layout.look === "lane" && readLaneBind(cplexus) ? (() => {
+          const b = readLaneBind(cplexus);
+          return { laneAttr: b.name, laneBands: b.bands };
+        })() : {},
         ...type === "text" && layout.shape ? { shape: layout.shape } : {},
         open: type === "card" ? child[":block/open"] !== false : void 0,
         autofit: !(type === "section" && layout.fit === false),
+        keepOrder: type === "section" && layout.keepOrder === true,
         title,
         target,
         ...tableKid ? { tableUid: tableKid[":block/uid"] } : {},
@@ -4565,7 +5333,7 @@ function sectionFitPlan(board2, rects, touchedUids, {
   parentOf = (u) => board2.items.get(u)?.parentUid
 } = {}) {
   const work = /* @__PURE__ */ new Map();
-  const same3 = (a, b) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01 && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01;
+  const same4 = (a, b) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01 && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01;
   for (const touched of touchedUids) {
     let cur = touched;
     for (let guard = 0; guard < 256; guard++) {
@@ -4577,7 +5345,7 @@ function sectionFitPlan(board2, rects, touchedUids, {
       const childRect = work.get(cur) ?? rects.get(cur);
       if (!secRect || !childRect) break;
       const need2 = unionRect2(secRect, inflate(childRect, pad2));
-      if (same3(need2, secRect)) break;
+      if (same4(need2, secRect)) break;
       work.set(pid, need2);
       cur = pid;
     }
@@ -4601,18 +5369,21 @@ function sidebarOutlineUids(board2) {
   if (board2.containerUid) uids.push(board2.containerUid);
   return uids;
 }
-function readingOrder(board2, rects) {
-  if (!board2) return [];
+function byReadingPosition(uids, board2, rects) {
   const key = (uid) => {
     const r = rects?.get?.(uid);
-    const item = board2.items.get(uid);
+    const item = board2?.items?.get(uid);
     return { y: r?.y ?? item?.y ?? 0, x: r?.x ?? item?.x ?? 0 };
   };
-  const byPos = (uids) => [...uids || []].sort((a, b) => {
+  return [...uids || []].sort((a, b) => {
     const pa = key(a);
     const pb = key(b);
     return pa.y - pb.y || pa.x - pb.x || (a < b ? -1 : a > b ? 1 : 0);
   });
+}
+function readingOrder(board2, rects) {
+  if (!board2) return [];
+  const byPos = (uids) => byReadingPosition(uids, board2, rects);
   const groups2 = [];
   const visit = (parent, uids) => {
     const sorted3 = byPos(uids);
@@ -4784,14 +5555,14 @@ function diffBoards(prev, next) {
     }
     return { structural: true, dirty: dirty2 };
   }
-  const same3 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const same4 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const body = (item) => {
     const { content, ...rest } = item;
     return rest;
   };
-  let structural = prev.containerUid !== next.containerUid || prev.items.size !== next.items.size || prev.edges.size !== next.edges.size || !same3(prev.roots, next.roots) || !same3(prev.order, next.order) || !same3(prev.views, next.views) || !same3(prev.trails || [], next.trails || []);
+  let structural = prev.containerUid !== next.containerUid || prev.items.size !== next.items.size || prev.edges.size !== next.edges.size || !same4(prev.roots, next.roots) || !same4(prev.order, next.order) || !same4(prev.views, next.views) || !same4(prev.trails || [], next.trails || []);
   const dirty = /* @__PURE__ */ new Set();
-  if (prev.string !== next.string || !same3(prev.plexus, next.plexus)) dirty.add(next.uid);
+  if (prev.string !== next.string || !same4(prev.plexus, next.plexus)) dirty.add(next.uid);
   for (const [uid, item] of next.items) {
     const old = prev.items.get(uid);
     if (!old) {
@@ -4799,8 +5570,8 @@ function diffBoards(prev, next) {
       dirty.add(uid);
       continue;
     }
-    if (old.parentUid !== item.parentUid || !same3(old.members, item.members)) structural = true;
-    if (old.string !== item.string || old.kind !== item.kind || old.parentUid !== item.parentUid || old.order !== item.order || !same3(body(old), body(item))) dirty.add(uid);
+    if (old.parentUid !== item.parentUid || !same4(old.members, item.members)) structural = true;
+    if (old.string !== item.string || old.kind !== item.kind || old.parentUid !== item.parentUid || old.order !== item.order || !same4(body(old), body(item))) dirty.add(uid);
   }
   for (const [uid, edge] of next.edges) {
     const old = prev.edges.get(uid);
@@ -4809,7 +5580,7 @@ function diffBoards(prev, next) {
       dirty.add(uid);
       continue;
     }
-    if (!same3(old, edge)) dirty.add(uid);
+    if (!same4(old, edge)) dirty.add(uid);
   }
   return { structural, dirty };
 }
@@ -4817,6 +5588,7 @@ var AUTO_GAP, AUTO_OFFSET, AUTO_ROWS, TITLE_BAND, BORDER_BAND, isNum2, OPEN_KEY_
 var init_board = __esm({
   "src/model/board.js"() {
     init_geometry();
+    init_attr_lanes();
     init_schema();
     init_query();
     init_roam_table();
@@ -7309,8 +8081,8 @@ function splitColumn(rowsIn, col2, size) {
       if (r) right.push(r);
     }
     if (left.length < 3 || right.length < 3) continue;
-    const same3 = (ws) => new Set(ws.map((w) => w.text.toLowerCase())).size === 1;
-    if (same3(right) || same3(left)) continue;
+    const same4 = (ws) => new Set(ws.map((w) => w.text.toLowerCase())).size === 1;
+    if (same4(right) || same4(left)) continue;
     const spread = (v) => Math.max(...v) - Math.min(...v);
     const tol = Math.max(1.5, 0.2 * size);
     const tightL = spread(left.map((w) => w.x1)) <= tol;
@@ -8839,22 +9611,22 @@ function tickGrid(table) {
 function normCell(s) {
   return String(s || "").replace(/[^\w.]/g, "").toLowerCase();
 }
-function valueTokens(tokens2) {
+function valueTokens2(tokens2) {
   return (tokens2 || []).slice(1).map((t) => normCell(t.text)).filter((s) => s && s.length <= 12);
 }
 function headerOf(run) {
-  const multi = run.filter((r) => valueTokens(r.tokens).length >= 2);
+  const multi = run.filter((r) => valueTokens2(r.tokens).length >= 2);
   return multi.length ? multi[0].tokens : null;
 }
 function repeatsHeader(tokens2, header) {
   if (!header || !tokens2) return false;
-  const a = valueTokens(header);
-  const b = valueTokens(tokens2);
+  const a = valueTokens2(header);
+  const b = valueTokens2(tokens2);
   if (a.length < 2 || b.length < 2) return false;
-  let same3 = 0;
+  let same4 = 0;
   const n3 = Math.min(a.length, b.length);
-  for (let i = 0; i < n3; i++) if (a[i] === b[i]) same3++;
-  if (same3 >= 2 && same3 / n3 >= 0.6) return true;
+  for (let i = 0; i < n3; i++) if (a[i] === b[i]) same4++;
+  if (same4 >= 2 && same4 / n3 >= 0.6) return true;
   const tail = b.slice(-a.length);
   return tail.length === a.length && tail.every((s, i) => s === a[i]);
 }
@@ -10459,8 +11231,8 @@ function peelFigLabels(lines) {
     }
     if (cursor < words.length) pieces2.push(words.slice(cursor));
     const rewritten = words.some((w, i) => w !== line.words[i]);
-    const same3 = !rewritten && pieces2.length === 1 && pieces2[0].length === words.length && pieces2[0].every((w, i) => w === words[i]);
-    if (same3) {
+    const same4 = !rewritten && pieces2.length === 1 && pieces2[0].length === words.length && pieces2[0].every((w, i) => w === words[i]);
+    if (same4) {
       out.push(line);
       continue;
     }
@@ -12382,9 +13154,9 @@ function blankRepeatedFill(table) {
       if (c1 - c < 3) continue;
       let r12 = r + 1;
       while (r12 < table.rows) {
-        let same3 = true;
-        for (let k = c; k < c1; k++) if (fillOf(r12, k) !== text4) same3 = false;
-        if (!same3) break;
+        let same4 = true;
+        for (let k = c; k < c1; k++) if (fillOf(r12, k) !== text4) same4 = false;
+        if (!same4) break;
         r12++;
       }
       if (r12 - r < 3 || !otherIn(c, c1, text4)) continue;
@@ -14388,9 +15160,9 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
   applyNumbering(headings);
   for (const entry of refs) {
     if (!entry.ref) continue;
-    const same3 = footnotes.filter((f) => f.mark === entry.ref.mark);
-    const after = same3.filter((f) => f.page >= entry.page).sort((a, b) => a.page - b.page);
-    const pick3 = after[0] || same3[same3.length - 1];
+    const same4 = footnotes.filter((f) => f.mark === entry.ref.mark);
+    const after = same4.filter((f) => f.page >= entry.page).sort((a, b) => a.page - b.page);
+    const pick3 = after[0] || same4[same4.length - 1];
     if (pick3) entry.ref.to = pick3.id;
   }
   for (const id of order) if (blocks[id]?.footnoteRefs) inlineUnlinkedRefs(blocks[id]);
@@ -14552,9 +15324,9 @@ function stitchTables(tables, textBlocks, bodySize) {
     const ox = Math.min(a.bbox[2], b.bbox[2]) - Math.max(a.bbox[0], b.bbox[0]);
     if (ox < 0.8 * Math.min(a.bbox[2] - a.bbox[0], b.bbox[2] - b.bbox[0])) continue;
     const colW = (a.bbox[2] - a.bbox[0]) / a.cols;
-    let same3 = true;
-    for (let c = 1; c < a.cols; c++) if (Math.abs(a.grid.xs[c] - b.grid.xs[c]) > 0.35 * colW) same3 = false;
-    if (!same3) continue;
+    let same4 = true;
+    for (let c = 1; c < a.cols; c++) if (Math.abs(a.grid.xs[c] - b.grid.xs[c]) > 0.35 * colW) same4 = false;
+    if (!same4) continue;
     const between = textBlocks.filter((tb) => tb.bbox.y0 >= a.bbox[3] - 1 && tb.bbox.y1 <= b.bbox[1] + 1 && Math.min(tb.bbox.x1, a.bbox[2]) - Math.max(tb.bbox.x0, a.bbox[0]) > 0);
     const banner = between.length === 1 ? sectionLineBetween(between[0], a, b, bodySize) : null;
     if (between.length && !banner) continue;
@@ -16323,9 +17095,9 @@ function galleryGrid(items, { cols = 4, cell = 160, gap = 12 } = {}) {
 }
 function parseCardDate(item) {
   const title = String(item?.title ?? "").trim();
-  const daily = new RegExp(`^(${MONTHS3.join("|")})\\s+${DAY.source},\\s+(\\d{4})$`).exec(title);
+  const daily = new RegExp(`^(${MONTHS4.join("|")})\\s+${DAY.source},\\s+(\\d{4})$`).exec(title);
   if (daily) {
-    const month2 = MONTHS3.indexOf(daily[1]);
+    const month2 = MONTHS4.indexOf(daily[1]);
     const day2 = Number(daily[2]);
     const year2 = Number(daily[3]);
     if (month2 >= 0 && day2 >= 1 && day2 <= 31) return Date.UTC(year2, month2, day2);
@@ -16544,11 +17316,11 @@ function versionPeekRequest(api3) {
   if (typeof api3.ui?.blockHistory === "function") return "ui.blockHistory";
   return null;
 }
-var MONTHS3, DAY, ATTRIBUTE_TEMPLATE, FOCUS_MS, THUMBNAIL_CAP, VIA_CAP;
+var MONTHS4, DAY, ATTRIBUTE_TEMPLATE, FOCUS_MS, THUMBNAIL_CAP, VIA_CAP;
 var init_section6 = __esm({
   "src/model/section6.js"() {
     init_schema();
-    MONTHS3 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    MONTHS4 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     DAY = /(\d{1,2})(?:st|nd|rd|th)?/;
     ATTRIBUTE_TEMPLATE = [
       { string: "Owner:: " },
@@ -16565,7 +17337,7 @@ var init_section6 = __esm({
 function pageTitleToDate(title) {
   const match = String(title ?? "").trim().match(/^([A-Z][a-z]+) (\d{1,2})(?:st|nd|rd|th), (\d{4})$/);
   if (!match) return null;
-  const month = MONTHS4.indexOf(match[1]);
+  const month = MONTHS5.indexOf(match[1]);
   const day = Number(match[2]);
   const year = Number(match[3]);
   if (month < 0) return null;
@@ -16604,13 +17376,13 @@ function matchResurface(rows, pageDate, intervals, { slack = DAY2, cap: cap4 = R
   }
   return tabs;
 }
-var DEFAULT_INTERVALS, RESURFACE_CAP, DAY2, MONTHS4;
+var DEFAULT_INTERVALS, RESURFACE_CAP, DAY2, MONTHS5;
 var init_resurface = __esm({
   "src/model/resurface.js"() {
     DEFAULT_INTERVALS = Object.freeze([7, 30, 90, 365]);
     RESURFACE_CAP = 6;
     DAY2 = 864e5;
-    MONTHS4 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    MONTHS5 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   }
 });
 
@@ -17972,7 +18744,7 @@ var init_info = __esm({
 
 // src/model/library.js
 function isDailyTitle(title) {
-  const m = DAILY_RE.exec(String(title ?? ""));
+  const m = DAILY_RE2.exec(String(title ?? ""));
   if (!m) return false;
   const day = Number(m[2]);
   if (day < 1 || day > 31) return false;
@@ -18166,7 +18938,7 @@ function recentDailyTitles(days = 14, now5 = /* @__PURE__ */ new Date()) {
 function libraryCap() {
   return LIBRARY_CAP;
 }
-var LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, LIBRARY_TYPES, PARSE_PART_TYPES, BOUNDED_TYPES, TYPE_SET2, LIBRARY_CAP, DAY_MS, MONTHS5, DAILY_RE, PDF_BLOCK_RE, IMAGE_RE, WEB_RE, PDF_URL_RE, IMAGE_PARTS_RE;
+var LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, LIBRARY_TYPES, PARSE_PART_TYPES, BOUNDED_TYPES, TYPE_SET2, LIBRARY_CAP, DAY_MS, MONTHS6, DAILY_RE2, PDF_BLOCK_RE, IMAGE_RE, WEB_RE, PDF_URL_RE, IMAGE_PARTS_RE;
 var init_library = __esm({
   "src/model/library.js"() {
     init_schema();
@@ -18180,8 +18952,8 @@ var init_library = __esm({
     TYPE_SET2 = new Set(LIBRARY_TYPES.filter((t) => t !== "all"));
     LIBRARY_CAP = 80;
     DAY_MS = 864e5;
-    MONTHS5 = "January|February|March|April|May|June|July|August|September|October|November|December";
-    DAILY_RE = new RegExp(`^(${MONTHS5}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
+    MONTHS6 = "January|February|March|April|May|June|July|August|September|October|November|December";
+    DAILY_RE2 = new RegExp(`^(${MONTHS6}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
     PDF_BLOCK_RE = /\{\{(?:\[\[)?pdf(?:\]\])?:/i;
     IMAGE_RE = /!\[[^\]]*\]\([^)\s]+[^)]*\)/;
     WEB_RE = /^(?:\[[^\]]*\]\(\s*https?:\/\/[^\s)]+\s*\)|https?:\/\/\S+)$/i;
@@ -18191,7 +18963,7 @@ var init_library = __esm({
 });
 
 // src/model/search-sort.js
-function sortRows(rows, sort) {
+function sortRows2(rows, sort) {
   const list = Array.isArray(rows) ? rows.slice() : [];
   const cmp = COMPARE[normalizeSort(sort)];
   if (!cmp) return list;
@@ -18210,7 +18982,7 @@ function ago(time, now5) {
 function dateText(time, now5) {
   const d = new Date(time);
   const nowY = new Date(now5).getFullYear();
-  return `${MONTHS6[d.getMonth()]} ${d.getDate()}${d.getFullYear() === nowY ? "" : `, ${d.getFullYear()}`}`;
+  return `${MONTHS7[d.getMonth()]} ${d.getDate()}${d.getFullYear() === nowY ? "" : `, ${d.getFullYear()}`}`;
 }
 function metaLine(row4, sort, now5 = Date.now()) {
   const meta = row4?.meta;
@@ -18355,7 +19127,7 @@ function assembleMeta(uids, { pullMany, q: q2 }) {
   }
   return out;
 }
-var SORTS, DEFAULT_SORT, SORT_IDS, normalizeSort, sortLabel, num4, titleOf, lengthOf, byNumber, COMPARE, sortNeedsMeta, MONTHS6, by, plural, DAY_MS2, USER_PULL, META_PULL, META_REFS, USER_NAME_QUERIES, META_CHUNK, META_TTL_MS, META_MAX, userName;
+var SORTS, DEFAULT_SORT, SORT_IDS, normalizeSort, sortLabel, num4, titleOf, lengthOf, byNumber, COMPARE, sortNeedsMeta, MONTHS7, by, plural, DAY_MS2, USER_PULL, META_PULL, META_REFS, USER_NAME_QUERIES, META_CHUNK, META_TTL_MS, META_MAX, userName;
 var init_search_sort = __esm({
   "src/model/search-sort.js"() {
     SORTS = Object.freeze([
@@ -18393,7 +19165,7 @@ var init_search_sort = __esm({
       title: (a, b) => titleOf(a).localeCompare(titleOf(b), void 0, { sensitivity: "base", numeric: true })
     };
     sortNeedsMeta = (sort) => normalizeSort(sort) !== DEFAULT_SORT && normalizeSort(sort) !== "title";
-    MONTHS6 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    MONTHS7 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     by = (name) => name && String(name).length <= 20 ? ` by ${name}` : "";
     plural = (n3, one, many) => `${n3.toLocaleString("en-US")} ${n3 === 1 ? one : many}`;
     DAY_MS2 = 864e5;
@@ -18999,11 +19771,11 @@ function apiVersionText(api3) {
   const text4 = plainVersion(api3.apiVersion);
   return text4 ? `apiVersion ${text4}` : "";
 }
-function row(id, label, state, version) {
+function row2(id, label, state, version) {
   return { id, label, state, version: version || "" };
 }
 function missing(id, label) {
-  return row(id, label, MISSING, "");
+  return row2(id, label, MISSING, "");
 }
 function betterTasks(win2) {
   let entry = null;
@@ -19017,24 +19789,24 @@ function betterTasks(win2) {
   const btOn = bt != null && typeof bt === "object";
   if (!entryOn && !btOn) return missing("better-tasks", "Better Tasks");
   const version = plainVersion(entry?.version) || plainVersion(bt?.version) || plainVersion(bt?.v1?.version) || plainVersion(bt?.v2?.version);
-  return row("better-tasks", "Better Tasks", FOUND, version);
+  return row2("better-tasks", "Better Tasks", FOUND, version);
 }
 function taskStatusTags(win2) {
   const api3 = read(win2, "RoamTaskStatusTags");
   if (!api3 || typeof api3 !== "object") return missing("task-status-tags", "Task Status Tags");
-  return row("task-status-tags", "Task Status Tags", FOUND, apiVersionText(api3));
+  return row2("task-status-tags", "Task Status Tags", FOUND, apiVersionText(api3));
 }
 function roamPlexus(win2) {
   const api3 = read(win2, "RoamPlexus");
   if (!api3 || typeof api3 !== "object") return missing("roam-plexus", "Roam Plexus");
-  return row("roam-plexus", "Roam Plexus", FOUND, apiVersionText(api3));
+  return row2("roam-plexus", "Roam Plexus", FOUND, apiVersionText(api3));
 }
 function compass(win2) {
   const api3 = read(win2, "RoamCompass");
   const flag = plainVersion(read(win2, "__ROAM_COMPASS_VERSION"));
   const apiOn = api3 != null && typeof api3 === "object";
   if (!apiOn && !flag) return missing("compass", "Compass");
-  return row("compass", "Compass", FOUND, flag || apiVersionText(api3));
+  return row2("compass", "Compass", FOUND, flag || apiVersionText(api3));
 }
 function styleText(doc) {
   let text4 = "";
@@ -19106,7 +19878,7 @@ function highlighter(win2) {
     marked = false;
   }
   if (!global && !marked) return missing("highlighter", "Colour highlighter");
-  return row("highlighter", "Colour highlighter", FOUND, plainVersion(global?.version));
+  return row2("highlighter", "Colour highlighter", FOUND, plainVersion(global?.version));
 }
 function integrations(win2) {
   return [betterTasks(win2), taskStatusTags(win2), roamPlexus(win2), compass(win2), highlighter(win2)];
@@ -20383,283 +21155,6 @@ var init_card_children = __esm({
   }
 });
 
-// src/model/tasks.js
-function setTaskAttrNames(map) {
-  liveNames = map instanceof Map && map.size ? map : null;
-  namesSig = liveNames ? [...liveNames].map(([id, set]) => `${id}=${[...set].sort().join("|")}`).join(";") : "";
-}
-function taskAttrId(text4, names = liveNames) {
-  if (String(text4 ?? "").trim() === ACTIVITY_LOG) return "activity";
-  const name = attrNameOf(text4);
-  if (!name) return null;
-  const key = lower(name);
-  if (names) {
-    for (const [id, set] of names) if (set.has(key)) return id;
-  }
-  if (DEFAULT_IDS.has(key)) return DEFAULT_IDS.get(key);
-  return key.startsWith("bt_attr") ? "other" : null;
-}
-function isTaskAttr(child, names = liveNames) {
-  return taskAttrId(child?.[":block/string"] ?? child?.string ?? "", names) !== null;
-}
-function parseRoamDay(title) {
-  const m = DAILY_RE2.exec(String(title ?? "").trim());
-  if (!m) return null;
-  const day = Number(m[2]);
-  const suffix = day >= 11 && day <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th";
-  if (m[3] !== suffix || day < 1 || day > 31) return null;
-  const month = MONTHS7.indexOf(m[1]);
-  if (month < 0) return null;
-  return { y: Number(m[4]), m: month + 1, d: day };
-}
-function childString3(child) {
-  return child?.[":block/string"] ?? child?.string ?? "";
-}
-function dayOf(value) {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return { y: value.getFullYear(), m: value.getMonth() + 1, d: value.getDate() };
-  }
-  return parseRoamDay(value);
-}
-function stamp(part) {
-  return part.y * 1e4 + part.m * 100 + part.d;
-}
-function dueChip(content, today = /* @__PURE__ */ new Date()) {
-  let raw = null;
-  let title = "";
-  for (const child of content || []) {
-    const text4 = String(childString3(child));
-    if (taskAttrId(text4) !== "due") continue;
-    raw = text4;
-    const rest = text4.slice(text4.indexOf("::") + 2).trim();
-    const wiki = /^\[\[([\s\S]+)\]\]$/.exec(rest);
-    title = (wiki ? wiki[1] : rest).trim();
-    break;
-  }
-  if (raw == null || !title) return null;
-  const due = parseRoamDay(title);
-  const now5 = dayOf(today);
-  return { text: title, overdue: Boolean(due && now5 && stamp(due) < stamp(now5)), today: Boolean(due && now5 && stamp(due) === stamp(now5)), raw, day: due };
-}
-function shortDay(day, today = /* @__PURE__ */ new Date()) {
-  if (!day) return "";
-  const now5 = dayOf(today);
-  const base2 = `${SHORT_MONTHS[day.m - 1]} ${day.d}`;
-  return now5 && day.y !== now5.y ? `${base2}, ${day.y}` : base2;
-}
-function dayChoices(today = /* @__PURE__ */ new Date()) {
-  const at = (n3) => iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + n3));
-  const toMonday = (8 - today.getDay()) % 7 || 7;
-  return [
-    { label: "Today", value: at(0) },
-    { label: "Tomorrow", value: at(1) },
-    { label: "Next week", value: at(toMonday) }
-  ];
-}
-function attrValue(text4) {
-  const rest = String(text4).slice(String(text4).indexOf("::") + 2).trim();
-  const ref = /\[\[([^\]]+)\]\]/.exec(rest);
-  if (ref) return ref[1].trim();
-  return rest.replace(/\{\{[\s\S]*$/, "").trim();
-}
-function taskMeta(string, content, today = /* @__PURE__ */ new Date(), names = liveNames) {
-  const state = taskState(string);
-  if (!state) return null;
-  const meta = { done: state === "DONE", status: "", cancelled: false, due: null, project: "", priority: "", priorityGlyph: "", repeat: "", waitingFor: "", gtd: "", energy: "", context: "", notes: "" };
-  const tag = STATUS_TAG.exec(String(string));
-  if (tag) {
-    meta.status = tag[1].trim();
-    meta.cancelled = lower(meta.status) === "cancelled";
-  }
-  const seen = /* @__PURE__ */ new Set();
-  for (const child of content || []) {
-    const text4 = String(childString3(child));
-    const id = taskAttrId(text4, names);
-    if (!id || id === "other" || id === "activity" || seen.has(id)) continue;
-    seen.add(id);
-    const value = attrValue(text4);
-    if (!value) continue;
-    if (id === "due") {
-      const chip = dueChip([child], today);
-      if (chip) meta.due = { text: chip.text, short: shortDay(chip.day, today), overdue: chip.overdue && !meta.done, today: chip.today };
-    } else if (id === "priority") {
-      meta.priority = lower(value);
-      meta.priorityGlyph = PRIORITY_GLYPH[meta.priority] || "";
-    } else if (id in meta) meta[id] = value;
-  }
-  return meta;
-}
-var ACTIVITY_LOG, lower, DEFAULT_LABELS, DEFAULT_IDS, liveNames, namesSig, taskNamesSig, TASK_RE, taskState, isTaskString, isBareTask, MONTHS7, DAILY_RE2, SHORT_MONTHS, iso, isoDay, PRIORITY_GLYPH, STATUS_TAG;
-var init_tasks = __esm({
-  "src/model/tasks.js"() {
-    init_schema();
-    ACTIVITY_LOG = "**Activity log**";
-    lower = (s) => String(s ?? "").trim().toLowerCase();
-    DEFAULT_LABELS = {
-      repeat: "BT_attrRepeat",
-      start: "BT_attrStart",
-      defer: "BT_attrDefer",
-      due: "BT_attrDue",
-      completed: "BT_attrCompleted",
-      project: "BT_attrProject",
-      gtd: "BT_attrGTD",
-      waitingFor: "BT_attrWaitingFor",
-      context: "BT_attrContext",
-      priority: "BT_attrPriority",
-      energy: "BT_attrEnergy",
-      depends: "BT_attrDepends",
-      parent: "BT_attrParent",
-      notes: "BT_attrNotes"
-    };
-    DEFAULT_IDS = new Map(Object.entries(DEFAULT_LABELS).map(([id, label]) => [lower(label), id]));
-    liveNames = null;
-    namesSig = "";
-    taskNamesSig = () => namesSig;
-    TASK_RE = /^\s*\{\{\[\[(TODO|DONE)\]\]\}\}/;
-    taskState = (string) => TASK_RE.exec(String(string ?? ""))?.[1] ?? "";
-    isTaskString = (string) => TASK_RE.test(String(string ?? ""));
-    isBareTask = (string) => isTaskString(string) && !String(string).replace(TASK_RE, "").replace(/#\[\[task-status\/[^\]]*\]\]/g, "").trim();
-    MONTHS7 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    DAILY_RE2 = new RegExp(`^(${MONTHS7.join("|")}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
-    SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    isoDay = iso;
-    PRIORITY_GLYPH = { low: "!", medium: "!!", high: "!!!" };
-    STATUS_TAG = /#\[\[task-status\/([^\]]+)\]\]/;
-  }
-});
-
-// src/model/status-tags.js
-function row2(key, name, glyph, lightBase, lightText, darkBase, darkText) {
-  return Object.freeze({
-    key,
-    name,
-    tag: `task-status/${name}`,
-    glyph,
-    light: Object.freeze({ base: lightBase, text: lightText }),
-    dark: Object.freeze({ base: darkBase, text: darkText })
-  });
-}
-function side(value) {
-  if (!value || typeof value !== "object") return { base: "", text: "" };
-  return { base: String(value.base || ""), text: String(value.text || "") };
-}
-function statusKey(name) {
-  return String(name ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-function statusApi(win2) {
-  const api3 = win2?.RoamTaskStatusTags;
-  if (!api3 || api3.apiVersion !== 1 || typeof api3.statuses !== "function") return null;
-  return api3;
-}
-function normalize(raw) {
-  const name = String(raw?.name || "").trim();
-  if (!name) return null;
-  const glyphRaw = String(raw?.glyph || "").trim();
-  const glyph = !glyphRaw || glyphRaw === "custom" ? "diamond" : glyphRaw;
-  const known2 = FALLBACK.find((entry) => entry.name.toLowerCase() === name.toLowerCase());
-  return {
-    key: raw?.key ? String(raw.key) : known2?.key || statusKey(name).toUpperCase().replace(/-/g, "_"),
-    name,
-    tag: raw?.tag ? String(raw.tag) : `task-status/${name}`,
-    glyph: glyph === "diamond" && known2 ? known2.glyph : glyph,
-    light: raw?.light ? side(raw.light) : known2 ? { ...known2.light } : { ...NEUTRAL.light },
-    dark: raw?.dark ? side(raw.dark) : known2 ? { ...known2.dark } : { ...NEUTRAL.dark }
-  };
-}
-function statusPalette(api3) {
-  let rows = null;
-  if (api3 && typeof api3.statuses === "function") {
-    try {
-      const got = api3.statuses();
-      if (Array.isArray(got) && got.length) rows = got;
-    } catch {
-      rows = null;
-    }
-  }
-  const map = /* @__PURE__ */ new Map();
-  for (const raw of rows || FALLBACK) {
-    const entry = rows ? normalize(raw) : raw;
-    if (!entry?.name) continue;
-    const id = entry.name.toLowerCase();
-    if (map.has(id)) continue;
-    map.set(id, entry);
-  }
-  return map;
-}
-function paletteEntries(palette) {
-  if (!palette) return [];
-  if (typeof palette.values === "function" && !Array.isArray(palette)) return [...palette.values()];
-  return [...palette];
-}
-function findEntry(palette, name) {
-  const id = String(name ?? "").trim().toLowerCase();
-  if (!id) return null;
-  if (palette && typeof palette.get === "function") {
-    const hit = palette.get(id);
-    if (hit) return hit;
-  }
-  for (const entry of paletteEntries(palette)) {
-    if (!entry?.name) continue;
-    if (entry.name.toLowerCase() === id || String(entry.key || "").toLowerCase() === id) return entry;
-  }
-  return null;
-}
-function paletteVars(entry, theme) {
-  const dark = theme === "dark" || theme === "bp3-dark";
-  const pair2 = (dark ? entry?.dark : entry?.light) || {};
-  return {
-    "--pxd-status-base": pair2.base || "",
-    "--pxd-status-text": pair2.text || ""
-  };
-}
-function taskStatusOf(string, palette) {
-  const text4 = String(string ?? "");
-  let raw = "";
-  const meta = taskMeta(text4, []);
-  if (meta?.status) raw = meta.status;
-  else {
-    const tag = STATUS_TAG2.exec(text4);
-    if (tag) raw = tag[1].trim();
-  }
-  if (!raw) return null;
-  const entry = findEntry(palette, raw);
-  return entry ? entry.name : null;
-}
-function statusLook(name, palette) {
-  const hit = findEntry(palette, name);
-  if (hit) return hit;
-  const label = String(name ?? "").trim();
-  return {
-    key: statusKey(label) || "unknown",
-    name: label,
-    tag: label ? `task-status/${label}` : "",
-    glyph: "diamond",
-    light: { base: NEUTRAL.light.base, text: NEUTRAL.light.text },
-    dark: { base: NEUTRAL.dark.base, text: NEUTRAL.dark.text }
-  };
-}
-var STATUS_TAG2, NEUTRAL, FALLBACK;
-var init_status_tags = __esm({
-  "src/model/status-tags.js"() {
-    init_tasks();
-    STATUS_TAG2 = /#\[\[task-status\/([^\]]+)\]\]/;
-    NEUTRAL = Object.freeze({
-      light: Object.freeze({ base: "rgba(100, 116, 139, 0.1)", text: "rgb(88, 102, 122)" }),
-      dark: Object.freeze({ base: "rgba(100, 116, 139, 0.2)", text: "rgb(158, 168, 183)" })
-    });
-    FALLBACK = Object.freeze([
-      row2("ACTIVE", "Active", "active", "rgba(20, 184, 166, 0.1)", "rgb(13, 116, 104)", "rgba(20, 184, 166, 0.2)", "rgb(68, 198, 184)"),
-      row2("WAITING", "Waiting", "waiting", "rgba(234, 179, 8, 0.1)", "rgb(131, 100, 4)", "rgba(234, 179, 8, 0.2)", "rgb(234, 179, 8)"),
-      row2("IN_REVIEW", "In Review", "in-review", "rgba(14, 165, 233, 0.1)", "rgb(9, 109, 154)", "rgba(14, 165, 233, 0.2)", "rgb(76, 188, 239)"),
-      row2("HOLDING", "Holding", "holding", "rgba(148, 163, 184, 0.1)", "rgb(95, 104, 118)", "rgba(148, 163, 184, 0.2)", "rgb(169, 181, 198)"),
-      row2("INCUBATING", "Incubating", "incubating", "rgba(99, 102, 241, 0.1)", "rgb(84, 86, 203)", "rgba(99, 102, 241, 0.2)", "rgb(158, 160, 246)"),
-      row2("ALERT", "Alert", "alert", "rgba(244, 63, 94, 0.1)", "rgb(184, 48, 71)", "rgba(244, 63, 94, 0.2)", "rgb(248, 130, 150)"),
-      row2("CANCELLED", "Cancelled", "cancelled", "rgba(30, 41, 59, 0.1)", "rgb(30, 41, 59)", "rgba(30, 41, 59, 0.2)", "rgb(145, 150, 159)")
-    ]);
-  }
-});
-
 // src/model/highlighter.js
 function bgName(match) {
   return match[1] || match[2] || match[4] || match[5] || match[7] || match[8] || null;
@@ -20812,7 +21307,7 @@ function colorOf2(string) {
 }
 function snippetOf(string) {
   if (typeof string !== "string") return "";
-  return string.replace(TOKEN, " ").replace(/[ \t]{2,}/g, " ").trim().slice(0, 80);
+  return string.replace(TOKEN2, " ").replace(/[ \t]{2,}/g, " ").trim().slice(0, 80);
 }
 function groupOf(ancestors) {
   for (let i = ancestors.length - 1; i >= 0; i -= 1) {
@@ -20902,7 +21397,7 @@ function expandDateHighlights(block) {
   }
   return uids.length ? uids : null;
 }
-var NAMES, GROUP_RE, COLOR_TOKEN2, TOKEN, CARD_W3, CARD_H3, GAP4, COLS, CAP;
+var NAMES, GROUP_RE, COLOR_TOKEN2, TOKEN2, CARD_W3, CARD_H3, GAP4, COLS, CAP;
 var init_highlight_pick = __esm({
   "src/model/highlight-pick.js"() {
     init_highlight();
@@ -20910,7 +21405,7 @@ var init_highlight_pick = __esm({
     NAMES = /* @__PURE__ */ new Set(["red", "orange", "yellow", "green", "blue", "purple", "pink"]);
     GROUP_RE = /^\[\[[^\[\]]+\]\]$/;
     COLOR_TOKEN2 = /#h\/([A-Za-z]+)/;
-    TOKEN = /#h\/[A-Za-z]+/g;
+    TOKEN2 = /#h\/[A-Za-z]+/g;
     CARD_W3 = 300;
     CARD_H3 = 140;
     GAP4 = 24;
@@ -32230,7 +32725,47 @@ function createItemRenderer({
     if (item.landmark || rec.landmarkEl) paintLandmarkMark(rec, item);
     if (trailBadgeMap.size || rec.trailBadge) paintTrailBadge(rec, item.uid);
     if (item.type !== "section") paintOutside(rec, item.uid);
+    if (item.type === "section" ? item.laneView || rec.laneEl : item.laneMark || rec.laneMarkEl) paintLane(rec, item);
     if (item.type === "card" && (item.kind === "block" || item.kind === "page")) armLinkHover(rec, item);
+  };
+  const paintLane = (rec, item) => {
+    if (item.type === "section") {
+      const bands = Array.isArray(item.laneView) && item.laneView.length ? item.laneView : null;
+      if (!bands) {
+        if (rec.laneEl) {
+          rec.laneEl.remove();
+          rec.laneEl = null;
+          rec.laneKey = null;
+        }
+        return;
+      }
+      const key = JSON.stringify(bands);
+      if (rec.laneKey === key && rec.laneEl) return;
+      if (!rec.laneEl) rec.laneEl = rec.el.querySelector?.(":scope > .pxd-lane-bands") || el2("div", "pxd-lane-bands", rec.el);
+      rec.laneEl.textContent = "";
+      for (const band of bands) {
+        const cell = el2("div", band.none ? "pxd-lane-band pxd-lane-band--none" : "pxd-lane-band", rec.laneEl);
+        const label = el2("span", "pxd-lane-band__label", cell);
+        label.textContent = `${band.label} ${band.n}`;
+      }
+      rec.laneKey = key;
+      return;
+    }
+    const mark = item.laneMark;
+    if (!mark) {
+      if (rec.laneMarkEl) {
+        rec.laneMarkEl.remove();
+        rec.laneMarkEl = null;
+      }
+      return;
+    }
+    if (!rec.laneMarkEl) rec.laneMarkEl = el2("span", "pxd-lane-mark", rec.el);
+    const chip = rec.laneMarkEl;
+    chip.className = `pxd-lane-mark${mark.none ? " pxd-lane-mark--none" : ""}${mark.two ? " pxd-lane-mark--two" : ""}${mark.loose ? " pxd-lane-mark--loose" : ""}`;
+    const text4 = mark.two ? `${mark.label} +1` : mark.label;
+    if (chip.textContent !== text4) chip.textContent = text4;
+    const tip = mark.loose ? `${mark.name}: ${mark.label} (no sub-lane for this value yet; Add sub-lanes in the lane menu)` : mark.two ? `${mark.name}: ${mark.label} (2 values; the first one sets the sub-lane)` : `${mark.name}: ${mark.label}`;
+    if (chip.title !== tip) chip.title = tip;
   };
   const paintLandmarkMark = (rec, item) => {
     if (!item.landmark) {
@@ -32826,7 +33361,7 @@ function createItemRenderer({
       priorityLeft = pri;
     }
     const holdQueue = shells.size > 0 && shellQueue.length > 0;
-    let orderChanged = structural;
+    let orderChanged2 = structural;
     let defer = null;
     if (!shells.size && board2.order.length > 80 && typeof timers?.frame === "function" && canvasCards()) {
       const now5 = [];
@@ -32928,7 +33463,7 @@ function createItemRenderer({
       const fresh = !rec;
       if (!rec) {
         rec = buildShell2(item);
-        orderChanged = true;
+        orderChanged2 = true;
       }
       const rect = rects.get(uid);
       rec.el.style.display = rect ? "" : "none";
@@ -32969,7 +33504,7 @@ function createItemRenderer({
         position(rec, rect);
       }
     }
-    if (orderChanged) {
+    if (orderChanged2) {
       if (attachView || view) cullRect = attachView || view;
       if (!shellsHeld) {
         if (virtual()) placeVirtual();
@@ -38326,7 +38861,7 @@ function createItemRenderer({
       if (eventUid && drawing !== eventUid && ref !== eventUid) continue;
       const nextKind = model ? "region-ref" : "block";
       const nextTitle = model ? model.caption ?? "" : firstLine(item.string);
-      const same3 = item.kind === nextKind && (item.title || "") === nextTitle && (item.regionDrawing || "") === (model?.drawingUid || "");
+      const same4 = item.kind === nextKind && (item.title || "") === nextTitle && (item.regionDrawing || "") === (model?.drawingUid || "");
       if (!model && item.kind !== "region-ref") continue;
       if (model) {
         item.kind = "region-ref";
@@ -38339,7 +38874,7 @@ function createItemRenderer({
       }
       const rec = shells.get(item.uid);
       if (rec && editing?.uid !== item.uid) paintShell(rec, item);
-      if (!same3 || eventUid) {
+      if (!same4 || eventUid) {
         changed2 = true;
         if (rec && mounted.has(item.uid) && editing?.uid !== item.uid) unmountContent(item.uid);
       }
@@ -41715,6 +42250,8 @@ init_pdf_pin();
 init_section6();
 init_timeline();
 init_board();
+init_table();
+init_attr_lanes();
 init_why();
 init_pdf_page();
 
@@ -41844,14 +42381,14 @@ function gridCellText(text4, { linkSafe = true } = {}) {
   const line = flattenLine(text4);
   return linkSafe ? linkSafeText(line) : line;
 }
-function cellText(slot2, repeatAnchor) {
+function cellText2(slot2, repeatAnchor) {
   if (!slot2 || slot2.cell == null) return "";
   if (slot2.covered && !repeatAnchor) return "";
   return gridCellText(slot2.text ?? "");
 }
 function toGridSpec(table) {
   const grid = tableGrid(table);
-  const rows = grid.map((row4) => row4.map((slot2) => cellText(slot2, false)));
+  const rows = grid.map((row4) => row4.map((slot2) => cellText2(slot2, false)));
   const merges = [];
   for (const cell of table?.cells || []) {
     const rowSpan = cell.rowSpan ?? 1;
@@ -41880,7 +42417,7 @@ function toGridSpec(table) {
   return { rows, merges, headerRows, alignments, widths: null, enhance: true };
 }
 function flatRows(table) {
-  return tableGrid(table).map((row4) => row4.map((slot2) => cellText(slot2, true)));
+  return tableGrid(table).map((row4) => row4.map((slot2) => cellText2(slot2, true)));
 }
 var PX_PER_PT2 = 96 / 72;
 function toGridModelSpec(table) {
@@ -42076,9 +42613,9 @@ function withFollow(plexus, pointer) {
   return base2;
 }
 function followPointerFor(current3, kind, uid, { tree } = {}) {
-  const same3 = current3?.kind === kind && current3?.uid === uid;
-  const deep = tree === void 0 ? same3 && current3.tree === true : tree === true;
-  return { kind, uid, ...deep ? { tree: true } : {}, skip: same3 ? current3.skip : [] };
+  const same4 = current3?.kind === kind && current3?.uid === uid;
+  const deep = tree === void 0 ? same4 && current3.tree === true : tree === true;
+  return { kind, uid, ...deep ? { tree: true } : {}, skip: same4 ? current3.skip : [] };
 }
 function addSkip(skip, uids, cap4 = FOLLOW_SKIP_CAP) {
   const add = (uids || []).filter((u) => typeof u === "string" && UID_RE5.test(u));
@@ -42826,7 +43363,7 @@ function soleStringChange(prev, next) {
   }
   return hit;
 }
-function childString2(node2, id) {
+function childString3(node2, id) {
   for (const kid of kidsOf2(node2)) if (kid?.[UID] === id) return kid[":block/string"] ?? "";
   return null;
 }
@@ -42956,7 +43493,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, onEditSt
     const sole = before && editingUid ? soleStringChange(before, after) : null;
     nodes.set(id, after);
     if (sole && sole === editingUid && editQuietOn()) {
-      const text4 = childString2(after, sole);
+      const text4 = childString3(after, sole);
       if (text4 != null) {
         patchTreeString(lastTree, sole, text4);
         try {
@@ -45467,6 +46004,7 @@ var OUTLINE_KIDS_PATTERN = "[:block/uid {(limit :block/children nil) [:block/uid
 var PDF_PAGE_PATTERN = "[:block/uid :node/title {(limit :block/children nil) [:block/uid :block/string :block/order]}]";
 var PDF_HASH_PAGE_QUERY = `[:find ?u ?t :in $ ?h :where [?p :pdf/content-hash ?h] [?p :block/uid ?u] [?p :node/title ?t]]`;
 var PDF_TOP_BLOCK_QUERY = `[:find ?u ?t :in $ ?url :where [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/page ?p] [?p :block/children ?b] [?p :block/uid ?u] [?p :node/title ?t]]`;
+var CHILDREN_WATCH_PATTERN = "[:block/uid {(limit :block/children nil) [:block/uid :block/order]}]";
 var BLOCK_PROPS_PATTERN = "[:block/string :block/props {:block/page [:node/title]}]";
 var BLOCK_WATCH_PATTERN = "[:block/string {(limit :block/children nil) [:block/string :block/order :block/props]}]";
 var HIGHLIGHT_TREE_PATTERN = `[:block/uid
@@ -46491,6 +47029,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const unwatchedAt = /* @__PURE__ */ new Map();
   let pullSeq = 0;
   const watchedBlocks = /* @__PURE__ */ new Map();
+  const watchedKids = /* @__PURE__ */ new Map();
   const eidByUid = /* @__PURE__ */ new Map();
   const eidByTitle = /* @__PURE__ */ new Map();
   const statsCache = /* @__PURE__ */ new Map();
@@ -47875,6 +48414,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       }
       registered.clear();
       watchedBlocks.clear();
+      watchedKids.clear();
     },
     splitStats(uid) {
       return splitWatches.get(uid)?.stats() ?? null;
@@ -47925,6 +48465,38 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         if (slot2.subs.length > 0 || watchedBlocks.get(id) !== slot2) return;
         watchedBlocks.delete(id);
         watchData.removePullWatch(BLOCK_WATCH_PATTERN, slot2.entity, slot2.wrapped);
+        stats.watches--;
+      };
+    },
+    // One shared pull watch per parent uid for its children and their order. cb gets no arguments worth reading:
+    // the caller reads the level again (outlineKids). Released with the last caller.
+    watchChildren(uid, cb) {
+      const id = String(uid ?? "");
+      if (!id || typeof cb !== "function") return () => {
+      };
+      cb = guardCallback("watchChildren", cb, { stats });
+      let slot2 = watchedKids.get(id);
+      if (!slot2) {
+        const entity = watchEntity(id);
+        const subs = [];
+        const wrapped = guardCallback("watchChildren", () => {
+          for (const token2 of subs.slice()) if (token2.on) token2.cb();
+        }, { stats });
+        slot2 = { entity, wrapped, subs };
+        watchData.addPullWatch(CHILDREN_WATCH_PATTERN, entity, wrapped);
+        watchedKids.set(id, slot2);
+        stats.watches++;
+      }
+      const token = { cb, on: true };
+      slot2.subs.push(token);
+      return () => {
+        if (!token.on) return;
+        token.on = false;
+        const i = slot2.subs.indexOf(token);
+        if (i >= 0) slot2.subs.splice(i, 1);
+        if (slot2.subs.length > 0 || watchedKids.get(id) !== slot2) return;
+        watchedKids.delete(id);
+        watchData.removePullWatch(CHILDREN_WATCH_PATTERN, slot2.entity, slot2.wrapped);
         stats.watches--;
       };
     },
@@ -48374,6 +48946,23 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         max,
         hasLine: at > 0 && strOf2(top[at - 1]).trim() === "---"
       };
+    },
+    // Date.now() of this host's last write, undo or redo (-Infinity before any).
+    lastWriteAt() {
+      return lastWriteAt;
+    },
+    // First line of a block's text, or a page's title. Empty when the uid is unknown.
+    blockLabel(uid) {
+      const id = String(uid ?? "");
+      if (!id) return "";
+      let res = null;
+      try {
+        res = rawPull("[:block/string :node/title]", eidKey(id));
+      } catch {
+        return "";
+      }
+      const text4 = typeof res?.[":node/title"] === "string" ? res[":node/title"] : typeof res?.[":block/string"] === "string" ? res[":block/string"] : "";
+      return text4.split("\n")[0].trim();
     },
     // { parentUid, order } for a block, or null when Roam has no integer order.
     blockLocation(uid) {
@@ -49504,7 +50093,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         });
         kept = narrowByMeta(kept, filter, { days: f.days, now: nowMs2 });
       }
-      const rows = sortRows(kept, sort).slice(0, lim).map(libraryCard);
+      const rows = sortRows2(kept, sort).slice(0, lim).map(libraryCard);
       return { rows, queries, total: kept.length, more: kept.length > lim || candidates2.length >= cap4 };
     },
     // Rows with no search text: the pages a sort puts first (recently edited / created, oldest, title), with their numbers.
@@ -49522,7 +50111,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         browsePages = { at: now6, pages };
       }
       const rows = browsePages.pages.map((p) => ({ kind: "page", title: p.title, uid: p.uid, meta: { created: p.created, edited: p.edited, createdBy: "", editedBy: "", refs: null, children: null, length: null }, onBoard: false, tags: [] }));
-      const top = sortRows(rows, id).slice(0, Math.max(1, Math.floor(Number(limit) || 40)));
+      const top = sortRows2(rows, id).slice(0, Math.max(1, Math.floor(Number(limit) || 40)));
       attachMeta(top);
       return { rows: top.map(libraryCard), queries: [] };
     },
@@ -49644,7 +50233,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           attachMeta(kept);
           return [];
         });
-        top = sortRows(kept, pdfOnly && sort === "best" ? "edited" : sort).slice(0, lim);
+        top = sortRows2(kept, pdfOnly && sort === "best" ? "edited" : sort).slice(0, lim);
       }
       const rows = top.map((r) => libraryCard(r));
       if (key) {
@@ -49752,7 +50341,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         kept = narrowByMeta(kept, filter, { days: f.days });
       }
       if (filter?.parsed === true || filter?.highlights === true) kept = pdfKeep(kept, { parsed: filter.parsed === true, highlights: filter.highlights === true, parsedUrls }, timed);
-      if (sort !== "best") kept = sortRows(kept, sort);
+      if (sort !== "best") kept = sortRows2(kept, sort);
       return { rows: kept.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map((row4) => ({ ...libraryCard(row4), semantic: true })), queries };
     },
     // A card's text for "Find related": the page title or block string and its first children.
@@ -50567,7 +51156,7 @@ var KIDS3 = ":block/children";
 var PROPS = ":block/props";
 var OPEN = ":block/open";
 var LINK_MODES = ["off", "attributes", "all"];
-var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
+var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "keepOrder", "look", "axis", "attr", "bands", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
 var EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 var MAX_PARENT_STRINGS = 200;
 var RESUME_RETRY_MS = 1e3;
@@ -50840,6 +51429,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   });
   const listeners3 = /* @__PURE__ */ new Map();
   const deleteHooks = [];
+  const destroyHooks = [];
   const moveHooks = [];
   const runMoveHooks = (t, moves, track2) => {
     if (!moves.length) return;
@@ -50953,6 +51543,70 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
     return derivedMemo.pointer;
   };
+  const laneWrites = /* @__PURE__ */ new Map();
+  const LANE_WRITE_MS = 1e4;
+  function laneKids(targetUid) {
+    let kids = [];
+    try {
+      kids = host.pullTree?.(targetUid, 1, 40) || [];
+    } catch {
+      kids = [];
+    }
+    const w = laneWrites.get(targetUid);
+    if (!w) return kids;
+    const hit = kids.find((k) => k.uid === w.uid);
+    if (hit && hit.string === w.string || Date.now() - w.at > LANE_WRITE_MS) {
+      laneWrites.delete(targetUid);
+      return kids;
+    }
+    return hit ? kids.map((k) => k.uid === w.uid ? { ...k, string: w.string } : k) : [...kids, { uid: w.uid, string: w.string }];
+  }
+  const laneResolve = (id) => {
+    try {
+      const text4 = host.blockString?.(id);
+      return typeof text4 === "string" ? text4 : null;
+    } catch {
+      return null;
+    }
+  };
+  function annotateLanes(b) {
+    if (!b) return;
+    for (const item of b.items.values()) {
+      if (item.type !== "section" || item.look !== "lane" || !item.laneAttr) continue;
+      const rows = laneRows(b, item.uid, laneKids, laneResolve);
+      const view = laneView(shownBands(item.laneBands), rows, item.laneAttr);
+      item.laneView = view.bands;
+      for (const [id, mark] of view.marks) {
+        const card2 = b.items.get(id);
+        if (card2) card2.laneMark = mark;
+      }
+    }
+  }
+  function planLaneDrops(top, plan, moved) {
+    const out = { writes: [], snap: /* @__PURE__ */ new Map() };
+    for (const id of top) {
+      const item = board2.items.get(id);
+      if (!item || !isTableRow(item)) continue;
+      const lane2 = board2.items.get(plan.get(id)?.toParent ?? item.parentUid);
+      if (!lane2 || lane2.type !== "section" || lane2.look !== "lane" || !lane2.laneAttr) continue;
+      const laneRect = rects.get(lane2.uid);
+      const r = moved.get(id);
+      if (!laneRect || !r) continue;
+      const bands = shownBands(lane2.laneBands);
+      const center2 = (q2) => ({ x: q2.x + q2.w / 2, y: q2.y + q2.h / 2 });
+      const at = bandIndexAt(laneRect, lane2.axis, bands.length, center2(r));
+      const shift = snapIntoBand(bandRect(laneRect, lane2.axis, bands.length, at), lane2.axis, r, laneRect, FIT_PAD);
+      if (shift.dx || shift.dy) out.snap.set(id, shift);
+      const was = rects.get(id);
+      if (item.parentUid === lane2.uid && was && bandIndexAt(laneRect, lane2.axis, bands.length, center2(was)) === at) continue;
+      const row4 = laneRow(board2, item, laneKids, laneResolve);
+      const key = laneValueOf(row4, lane2.laneAttr).key;
+      if (bands[at].none && key && !bands.some((b) => b.key === key)) continue;
+      const step = planLaneDrop({ name: lane2.laneAttr, row: row4, band: bands[at] });
+      if (step) out.writes.push({ ...step, ref: item.kind === "block" ? item.target?.uid ?? null : null });
+    }
+    return out;
+  }
   const rebuild = () => {
     rix = null;
     const plexusApi = globalThis.window?.RoamPlexus ?? globalThis.RoamPlexus ?? null;
@@ -50993,6 +51647,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         return pending;
       }
     }) : null;
+    annotateLanes(board2);
     if (board2 && outlineRev.size) {
       for (const [id, rev] of outlineRev) {
         const item = board2.items.get(id);
@@ -52690,16 +53345,32 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           moved.set(id, { ...r, x: r.x + dx, y: r.y + dy });
         }
         const plan = new Map(membershipPlan(board2, top, moved).map((p) => [p.uid, p]));
+        const drops = planLaneDrops(top, plan, moved);
         const parents = [];
         for (const id of top) {
           const item = board2.items.get(id);
           const p = plan.get(id);
+          const s = drops.snap.get(id);
+          const at = (v, d) => d ? round14(v + d) : v;
           if (p) {
             if (p.toParent !== item.parentUid) parents.push({ uid: id, from: item.parentUid, to: p.toParent });
             t.move(id, p.toParent, "last");
-            t.props(id, itemPlexus(id, { x: p.x, y: p.y }));
+            t.props(id, itemPlexus(id, { x: at(p.x, s?.dx), y: at(p.y, s?.dy) }));
           } else {
-            t.props(id, itemPlexus(id, { x: item.x + dx, y: item.y + dy }));
+            t.props(id, itemPlexus(id, { x: at(item.x + dx, s?.dx), y: at(item.y + dy, s?.dy) }));
+          }
+        }
+        for (const w of drops.writes) {
+          if (w.op === "string") {
+            let prev = rawNode(w.uid)?.[STR];
+            if (typeof prev !== "string") prev = laneResolve(w.uid);
+            t.string(w.uid, w.string);
+            if (typeof prev === "string") track2.undo.push({ op: "string", uid: w.uid, string: prev });
+            if (w.ref) laneWrites.set(w.ref, { uid: w.uid, string: w.string, at: Date.now() });
+          } else if (w.op === "create") {
+            const made = t.create({ parent: w.parent, string: w.string, order: "last" });
+            track2.undo.push({ op: "delete", uid: made });
+            if (w.ref) laneWrites.set(w.ref, { uid: made, string: w.string, at: Date.now() });
           }
         }
         runMoveHooks(t, parents, track2);
@@ -53932,6 +54603,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         return true;
       });
     },
+    setKeepOrder(id, on) {
+      return txn((t) => {
+        const item = board2.items.get(id);
+        if (!item || item.type !== "section" || item.keepOrder === true === (on === true)) return;
+        t.props(id, itemPlexus(id, { keepOrder: on === true ? true : void 0 }));
+      });
+    },
     setFit(id, on) {
       return txn((t) => {
         const item = board2.items.get(id);
@@ -54111,7 +54789,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     },
     // Modes: row, column, grid, outline. A lone selected section tidies its members; otherwise each parent's
     // selected items are tidied among themselves. Writes only x and y. Resolves the number of items moved.
-    tidyItems(uids, mode = "grid", { gap } = {}) {
+    // An explicit `order` (item uids) replaces the outline order for mode "outline"; unlisted items follow in reading order.
+    tidyItems(uids, mode = "grid", { gap, order } = {}) {
       return txn((t) => {
         const top = topLevelOf(board2, uids ?? []);
         const groups2 = /* @__PURE__ */ new Map();
@@ -54126,7 +54805,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           }
         }
         const opts = gap !== void 0 ? { gap } : {};
-        if (mode === "outline") opts.order = outlineOrder(board2);
+        if (mode === "outline") opts.order = Array.isArray(order) ? order : outlineOrder(board2);
         const moved = [];
         for (const ids of groups2.values()) {
           if (ids.length < 2) continue;
@@ -54633,6 +55312,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       linkResolve = null;
       listeners3.clear();
       ledger.clear();
+      for (const fn of destroyHooks.splice(0)) {
+        try {
+          fn();
+        } catch (err) {
+          console.error("[plexus session]", err);
+        }
+      }
     }
   };
   function makeBoard(t, rect, title, exclude, centerOf5 = rect) {
@@ -54725,6 +55411,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     rawPlexus,
     itemPlexus,
     edgePlexus,
+    laneKids,
+    laneResolve,
+    laneWrites,
     insertOrder,
     ensureContainer,
     edgeStringFor,
@@ -54738,6 +55427,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     clone,
     round1: round14,
     emit: emit2,
+    onDestroy(fn) {
+      if (typeof fn === "function") destroyHooks.push(fn);
+    },
     onMoveItems(fn) {
       if (typeof fn !== "function") return () => {
       };
@@ -55727,268 +56419,15 @@ extendSession((session, api3) => {
   });
 });
 
-// src/session-bucket.js
-init_board();
+// src/session-lanes.js
+init_schema();
+init_table();
 
 // src/model/bucket.js
 init_schema();
 init_query();
-
-// src/model/table.js
-init_schema();
-var FIXED = ["Title", "Section", "Type", "Edited"];
-function cleanName(name) {
-  if (name == null) return "";
-  const attr = String(name).trim();
-  if (!attr || attr.startsWith("BT_attr") || FIXED.includes(attr)) return "";
-  return attr;
-}
-function columnNameOk(name) {
-  return Boolean(cleanName(name));
-}
-function isTableRow(item) {
-  if (!item) return false;
-  if (item.type === "section" || item.type === "text") return false;
-  if (item.type === "card") return true;
-  return item.kind === "card" || item.kind === "board";
-}
-function tableColumns(rows) {
-  const names = [];
-  for (const row4 of rows || []) {
-    for (const attr of row4.attrs || []) {
-      if (attr?.name && !names.includes(attr.name)) names.push(attr.name);
-    }
-  }
-  return FIXED.concat(names);
-}
-function cellText2(row4, column) {
-  if (!row4) return "";
-  if (column === "Title") return String(row4.title ?? "");
-  if (column === "Section") return String(row4.section ?? "");
-  if (column === "Type") return String(row4.type ?? "");
-  if (column === "Edited") return row4.edited == null ? "" : String(row4.edited);
-  const hit = (row4.attrs || []).find((attr) => attr.name === column);
-  return hit ? String(hit.value ?? "") : "";
-}
-function filterRows(rows, text4) {
-  const needle = String(text4 ?? "").trim().toLowerCase();
-  if (!needle) return (rows || []).slice();
-  const cols = tableColumns(rows);
-  return (rows || []).filter((row4) => cols.some((column) => cellText2(row4, column).toLowerCase().includes(needle)));
-}
-function sortRows2(rows, column, dir = "asc") {
-  const sign = dir === "desc" ? -1 : 1;
-  const list = (rows || []).slice();
-  list.sort((a, b) => {
-    if (column === "Edited") {
-      const av = Number(a.edited) || 0;
-      const bv = Number(b.edited) || 0;
-      return (av - bv) * sign;
-    }
-    return cellText2(a, column).localeCompare(cellText2(b, column)) * sign;
-  });
-  return list;
-}
-function planAttrCell({ name, value, blockUid: blockUid3 = null, parentUid = null } = {}) {
-  const attr = cleanName(name);
-  if (!attr) return null;
-  const text4 = String(value ?? "").trim();
-  const string = text4 ? `${attr}:: ${text4}` : `${attr}::`;
-  if (blockUid3) return { op: "update", uid: blockUid3, string };
-  if (!text4 || !parentUid) return null;
-  return { op: "create", parent: parentUid, string };
-}
-function tableRows(board2, resolve) {
-  const items = board2?.items;
-  if (!items || typeof items.get !== "function") return [];
-  const order = Array.isArray(board2.order) ? board2.order : [...items.keys()];
-  const rows = [];
-  for (const uid of order) {
-    const item = items.get(uid);
-    if (!isTableRow(item)) continue;
-    const parent = items.get(item.parentUid);
-    const section2 = parent?.type === "section" ? String(parent.title || "") : "";
-    const attrs = [];
-    for (const child of item.content || []) {
-      const string = child?.[":block/string"] ?? child?.string ?? "";
-      const name = cleanName(attrNameOf(String(string)));
-      if (!name) continue;
-      const text4 = String(string);
-      const cut = text4.indexOf("::");
-      attrs.push({
-        name,
-        value: cut >= 0 ? text4.slice(cut + 2).trim() : "",
-        uid: child?.[":block/uid"] ?? child?.uid ?? null
-      });
-    }
-    rows.push({
-      uid: item.uid,
-      kind: item.kind,
-      title: itemLabel(item, resolve),
-      section: section2,
-      type: item.kind || "",
-      edited: item.edited ?? null,
-      attrs
-    });
-  }
-  return rows;
-}
-
-// src/model/kanban.js
-init_highlight();
-init_status_tags();
-var TODO_FIELD = "To do";
-var DONE_COLUMN = "Done";
-var HIGHLIGHT_FIELD = "Highlight colour";
-var STATUS_FIELD = "Lanes: Status";
-var NO_STATUS = "No status";
-var MARK = /\{\{\[\[(TODO|DONE)\]\]\}\}/;
-function todoState(string) {
-  const hit = MARK.exec(String(string || ""));
-  if (!hit) return "";
-  return hit[1] === "DONE" ? DONE_COLUMN : TODO_FIELD;
-}
-function kanbanRows(board2, resolve) {
-  const items = board2?.items;
-  return tableRows(board2, resolve).map((row4) => {
-    const item = items?.get?.(row4.uid);
-    const next = { ...row4, string: item?.string ?? row4.title ?? "" };
-    if (item?.kind !== "highlight") return next;
-    const targetUid = item.target?.uid;
-    let targetString;
-    if (typeof resolve === "function") {
-      try {
-        targetString = resolve(targetUid);
-      } catch {
-        targetString = void 0;
-      }
-    }
-    next.highlightColor = item.highlight?.color;
-    next.targetUid = targetUid;
-    next.targetString = targetString;
-    return next;
-  });
-}
-function kanbanFields(rows) {
-  const names = [];
-  let highlight = false;
-  for (const row4 of rows || []) {
-    if (typeof row4?.highlightColor === "string" && row4.highlightColor !== "") highlight = true;
-    for (const attr of row4.attrs || []) {
-      if (attr?.name && columnNameOk(attr.name) && !names.includes(attr.name)) names.push(attr.name);
-    }
-  }
-  return highlight ? [TODO_FIELD, HIGHLIGHT_FIELD, ...names] : [TODO_FIELD, ...names];
-}
-function columnOf(row4, field) {
-  if (field === TODO_FIELD) return todoState(row4?.string);
-  if (field === HIGHLIGHT_FIELD) {
-    const color = row4?.highlightColor;
-    return typeof color === "string" && color !== "" ? color : "";
-  }
-  const hit = (row4?.attrs || []).find((attr) => attr.name === field);
-  return hit ? String(hit.value ?? "") : "";
-}
-function kanbanColumns(rows, field) {
-  const list = rows || [];
-  if (field === TODO_FIELD) {
-    const columns2 = [
-      { name: TODO_FIELD, cards: [] },
-      { name: DONE_COLUMN, cards: [] }
-    ];
-    const extra = [];
-    for (const row4 of list) {
-      const name = columnOf(row4, field);
-      if (name === TODO_FIELD) columns2[0].cards.push(row4);
-      else if (name === DONE_COLUMN) columns2[1].cards.push(row4);
-      else extra.push(row4);
-    }
-    if (extra.length) columns2.push({ name: "", cards: extra });
-    return columns2;
-  }
-  if (!columnNameOk(field)) return [];
-  const columns = [];
-  const byName = /* @__PURE__ */ new Map();
-  for (const row4 of list) {
-    const name = columnOf(row4, field);
-    if (!byName.has(name)) {
-      const column = { name, cards: [] };
-      byName.set(name, column);
-      columns.push(column);
-    }
-    byName.get(name).cards.push(row4);
-  }
-  return columns;
-}
-function withMarker(string, column) {
-  const mark = column === DONE_COLUMN ? "{{[[DONE]]}}" : "{{[[TODO]]}}";
-  const current3 = String(string || "");
-  if (MARK.test(current3)) return current3.replace(MARK, mark);
-  return current3.trim() ? `${mark} ${current3}` : mark;
-}
-function planKanbanMove({ field, column, row: row4 } = {}) {
-  if (!row4?.uid || column == null || column === "") return null;
-  if (field === TODO_FIELD) {
-    if (column !== TODO_FIELD && column !== DONE_COLUMN) return null;
-    if (todoState(row4.string) === column) return null;
-    const string = withMarker(row4.string, column);
-    if (string === String(row4.string || "")) return null;
-    return { op: "string", uid: row4.uid, string, status: column === DONE_COLUMN ? "DONE" : "TODO" };
-  }
-  if (field === HIGHLIGHT_FIELD) {
-    if (row4.kind === "note") return null;
-    const targetUid = row4.targetUid;
-    const targetString = row4.targetString;
-    if (!targetUid || typeof targetString !== "string" || targetString === "") return null;
-    if (row4.highlightColor === column) return null;
-    if (!HIGHLIGHT_COLORS.includes(column)) return null;
-    return { op: "string", uid: targetUid, string: rewriteHighlightTag(targetString, column) };
-  }
-  if (field === STATUS_FIELD) return null;
-  if (!columnNameOk(field)) return null;
-  const attr = (row4.attrs || []).find((item) => item.name === field);
-  if (String(attr?.value ?? "") === column) return null;
-  const plan = planAttrCell({
-    name: field,
-    value: column,
-    blockUid: attr?.uid || null,
-    parentUid: row4.uid
-  });
-  if (!plan) return null;
-  if (plan.op === "update") return { op: "string", uid: plan.uid, string: plan.string };
-  return plan;
-}
-function isDoneItem(item) {
-  if (item?.done === true) return true;
-  return todoState(item?.string ?? "") === DONE_COLUMN;
-}
-function groupByStatus(items, palette) {
-  const columns = paletteEntries(palette).map((entry) => ({
-    name: entry.name,
-    key: entry.key,
-    glyph: entry.glyph,
-    cards: [],
-    count: 0
-  }));
-  const none = { name: NO_STATUS, key: "", glyph: "diamond", cards: [], count: 0 };
-  const done3 = { name: DONE_COLUMN, key: "done", glyph: "", cards: [], count: 0 };
-  const byName = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
-  for (const item of items || []) {
-    if (isDoneItem(item)) {
-      done3.cards.push(item);
-      continue;
-    }
-    const name = taskStatusOf(item?.string ?? "", palette);
-    const column = name ? byName.get(name.toLowerCase()) : null;
-    (column || none).cards.push(item);
-  }
-  for (const column of columns) column.count = column.cards.length;
-  none.count = none.cards.length;
-  done3.count = done3.cards.length;
-  return [...columns, none, done3];
-}
-
-// src/model/bucket.js
+init_table();
+init_kanban();
 var WRITE_CHUNK = 45;
 var PLAIN_TAG = /^[\w\-/.]+$/u;
 var escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&");
@@ -56117,7 +56556,474 @@ function chunk(list, n3 = WRITE_CHUNK) {
   return out;
 }
 
+// src/session-lanes.js
+init_attr_lanes();
+var ATTR_BLOCKS = "[:find ?pu ?s ?o :in $ ?title :where [?p :node/title ?title] [?a :block/refs ?p] [?a :block/string ?s] [?a :block/order ?o] [?par :block/children ?a] [?par :block/uid ?pu] (not [?par :node/title _])]";
+var same2 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+extendSession((session, api3) => {
+  const { host } = api3;
+  const boardUid = session.uid;
+  const laneOf = (id) => {
+    const lane2 = api3.board()?.items.get(id);
+    return lane2 && lane2.type === "section" && lane2.look === "lane" ? lane2 : null;
+  };
+  const rowsOf2 = (id) => laneRows(api3.board(), id, api3.laneKids, api3.laneResolve);
+  function growWith(lane2, rect, bands) {
+    const n0 = shownBands(lane2.laneBands).length;
+    const added = Math.max(0, bands.length - n0);
+    const grown = growLane({ w: rect.w, h: rect.h, axis: lane2.axis, count: n0, added });
+    const vertical = lane2.axis === "vertical";
+    const old = { x: 0, y: 0, w: rect.w, h: rect.h };
+    const local = { x: 0, y: 0, w: grown.w, h: grown.h };
+    const moves = [];
+    const ends = bands.map(() => LANE_PAD);
+    for (const row4 of rowsOf2(lane2.uid)) {
+      const r = api3.rects().get(row4.uid);
+      if (!r) continue;
+      let q2 = { x: r.x - rect.x, y: r.y - rect.y, w: r.w, h: r.h };
+      const was = bandIndexAt(old, lane2.axis, n0, { x: q2.x + q2.w / 2, y: q2.y + q2.h / 2 });
+      if (added && was === grown.noneIndex) {
+        q2 = vertical ? { ...q2, y: q2.y + grown.shift } : { ...q2, x: q2.x + grown.shift };
+        moves.push({ uid: row4.uid, x: q2.x, y: q2.y });
+      }
+      const at = bandIndexAt(local, lane2.axis, bands.length, { x: q2.x + q2.w / 2, y: q2.y + q2.h / 2 });
+      ends[at] = Math.max(ends[at], vertical ? q2.x + q2.w + LANE_GAP : q2.y + q2.h + LANE_GAP);
+    }
+    return { ...grown, bands, moves, ends };
+  }
+  function writeGrow(t, id, lane2, g, extra = {}) {
+    for (const m of g.moves) t.props(m.uid, api3.itemPlexus(m.uid, { x: api3.round1(m.x), y: api3.round1(m.y) }));
+    const patch = { w: api3.round1(Math.max(g.w, extra.w ?? 0)), h: api3.round1(Math.max(g.h, extra.h ?? 0)) };
+    const next = serializeBands(g.bands);
+    if (!same2(next, lane2.laneBands)) patch.bands = next;
+    t.props(id, api3.itemPlexus(id, patch));
+  }
+  Object.assign(session, {
+    // Values on the lane's cards that have no band yet (a value typed in Roam), up to the band cap.
+    laneNewValues(id) {
+      const lane2 = laneOf(id);
+      if (!lane2?.laneAttr) return [];
+      return newLaneValues(rowsOf2(id), lane2.laneAttr, lane2.laneBands).map(valueKey);
+    },
+    // One band per new value, appended before none. Old band edges stay; cards in none move with it; no value is written.
+    addLaneValues(id) {
+      const lane2 = laneOf(id);
+      if (!lane2?.laneAttr) return Promise.resolve(0);
+      const rect = api3.rects().get(id);
+      const add = newLaneValues(rowsOf2(id), lane2.laneAttr, lane2.laneBands);
+      if (!rect || !add.length) return Promise.resolve(0);
+      const g = growWith(lane2, rect, laneBands([], lane2.laneAttr, [...lane2.laneBands || [], ...add]));
+      return api3.txn((t) => {
+        writeGrow(t, id, lane2, g);
+        return add.length;
+      }).then((n3) => n3 ?? 0);
+    },
+    // Names the lane menu offers: attributes on the board's cards plus those on the lane's ref cards' blocks.
+    laneFieldsFor(id) {
+      const board2 = api3.board();
+      if (!board2) return [];
+      return laneFields([...tableRows(board2), ...laneOf(id) ? rowsOf2(id) : []]);
+    },
+    // One transaction: the lane keeps `attr` and the band order, its cards are arranged into their bands, and the lane
+    // grows to hold them. Text and sections inside it stay where they are.
+    bindLane(id, name) {
+      const lane2 = laneOf(id);
+      const attr = typeof name === "string" ? name.trim() : "";
+      if (!lane2 || !attr || !laneAttrOk(attr)) return Promise.resolve(false);
+      if (readBinding(api3.rawPlexus(id))) return Promise.resolve(false);
+      const board2 = api3.board();
+      const rect = api3.rects().get(id);
+      if (!rect) return Promise.resolve(false);
+      const rows = rowsOf2(id);
+      const bands = laneBands(rows, attr, lane2.laneAttr === attr ? lane2.laneBands : []);
+      const cards = rows.map((row4) => {
+        const r = api3.rects().get(row4.uid);
+        return { uid: row4.uid, w: r?.w ?? DEFAULT_SIZES.card.w, h: r?.h ?? DEFAULT_SIZES.card.h, band: bandOfRow(bands, row4, attr) };
+      });
+      const arranged = arrangeLane({ w: rect.w, h: rect.h, axis: lane2.axis, bands, cards });
+      return api3.txn((t) => {
+        for (const c of arranged.cards) {
+          if (!board2.items.has(c.uid)) continue;
+          t.props(c.uid, api3.itemPlexus(c.uid, { x: api3.round1(c.x), y: api3.round1(c.y) }));
+        }
+        t.props(id, api3.itemPlexus(id, { attr, bands: serializeBands(bands), w: api3.round1(arranged.w), h: api3.round1(arranged.h) }));
+        return true;
+      }).then((ok) => ok === true);
+    },
+    // Only the binding goes. Cards, values and everything else on the lane stay.
+    unbindLane(id) {
+      const lane2 = laneOf(id);
+      if (!lane2 || !lane2.laneAttr) return Promise.resolve(false);
+      return api3.txn((t) => {
+        t.props(id, api3.itemPlexus(id, { attr: void 0, bands: void 0 }));
+        return true;
+      }).then((ok) => ok === true);
+    },
+    // Blocks in the graph that have a `Name::` child and are not on this board yet, as block-ref cards in the lane,
+    // each in the band of its value. SPREAD_CAP per call (one undo). Resolves { placed, total }.
+    pullLaneSource(id) {
+      const none = { placed: 0, total: 0 };
+      const lane2 = laneOf(id);
+      const name = lane2?.laneAttr;
+      if (!lane2 || !name) return Promise.resolve(none);
+      const board2 = api3.board();
+      const onBoard = /* @__PURE__ */ new Set([boardUid]);
+      for (const item of board2.items.values()) {
+        onBoard.add(item.uid);
+        if (item.target?.uid) onBoard.add(item.target.uid);
+      }
+      const inTree = api3.ix();
+      let rows = [];
+      try {
+        rows = host.q?.(ATTR_BLOCKS, name) || [];
+      } catch {
+        rows = [];
+      }
+      const prefix = `${name}::`;
+      const found = /* @__PURE__ */ new Map();
+      for (const row4 of rows) {
+        const [parent, string, order] = Array.isArray(row4) ? row4 : [];
+        if (typeof parent !== "string" || typeof string !== "string") continue;
+        const text4 = string.trim();
+        if (!text4.startsWith(prefix)) continue;
+        if (onBoard.has(parent) || inTree.has(parent)) continue;
+        if (!found.has(parent)) found.set(parent, []);
+        found.get(parent).push({ order: Number(order) || 0, value: text4.slice(prefix.length).trim() });
+      }
+      const all = [...found.entries()].sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+      if (!all.length) return Promise.resolve(none);
+      const batch = all.slice(0, SPREAD_CAP);
+      const fake = batch.map(([uid, list]) => ({
+        uid,
+        attrs: list.sort((a, b) => a.order - b.order).map((v) => ({ name, value: v.value, uid: null }))
+      }));
+      const rect = api3.rects().get(id);
+      if (!rect) return Promise.resolve(none);
+      const size = {
+        w: Number(api3.setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w,
+        h: Number(api3.setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h
+      };
+      const g = growWith(lane2, rect, laneBands(fake, name, lane2.laneBands));
+      const vertical = lane2.axis === "vertical";
+      const local = { x: 0, y: 0, w: g.w, h: g.h };
+      let needW = g.w;
+      let needH = g.h;
+      const spots = fake.map((row4) => {
+        const at = bandOfRow(g.bands, row4, name);
+        const band = bandRect(local, lane2.axis, g.bands.length, at);
+        const box2 = { x: band.x + (band.w - size.w) / 2, y: band.y + (band.h - size.h) / 2, w: size.w, h: size.h };
+        const snap = snapIntoBand(band, lane2.axis, box2, local, FIT_PAD);
+        const cross = g.ends[at];
+        g.ends[at] = cross + (vertical ? size.w : size.h) + LANE_GAP;
+        const spot = vertical ? { uid: row4.uid, x: cross, y: box2.y + snap.dy } : { uid: row4.uid, x: box2.x + snap.dx, y: cross };
+        needW = Math.max(needW, spot.x + size.w + LANE_PAD);
+        needH = Math.max(needH, spot.y + size.h + LANE_PAD);
+        return spot;
+      });
+      return api3.txn((t) => {
+        writeGrow(t, id, lane2, g, vertical ? { w: needW } : { h: needH });
+        const ids = spots.map((spot) => {
+          const string = followCardString({ kind: "block", uid: spot.uid });
+          const layout = { x: api3.round1(spot.x), y: api3.round1(spot.y) };
+          const look = lookForNewString(string, api3.setting("default-card-look", "block"));
+          if (look) layout.look = look;
+          return t.create({ parent: id, string, plexus: serializeItemLayout(layout) });
+        });
+        api3.applyFit(t, ids);
+        return ids.length;
+      }).then((placed) => ({ placed: placed ?? 0, total: all.length }));
+    }
+  });
+});
+
+// src/session-source-order.js
+init_board();
+
+// src/model/source-order.js
+var SOURCE_ORDER_CHUNK = 45;
+var isDueChild = (string) => /^\s*BT_attrDue::/.test(String(string ?? ""));
+function pickSourceParent(cards) {
+  const seen = /* @__PURE__ */ new Set();
+  const list = [];
+  for (const c of cards || []) {
+    if (!c?.target || seen.has(c.target)) continue;
+    seen.add(c.target);
+    list.push(c);
+  }
+  const counts = /* @__PURE__ */ new Map();
+  for (const c of list) if (c.parent) counts.set(c.parent, (counts.get(c.parent) || 0) + 1);
+  let parentUid = "";
+  let best = 0;
+  for (const c of list) {
+    const n3 = c.parent ? counts.get(c.parent) : 0;
+    if (n3 > best) {
+      best = n3;
+      parentUid = c.parent;
+    }
+  }
+  return { parentUid, skipped: parentUid ? list.filter((c) => c.parent !== parentUid).length : list.length };
+}
+function planSourceOrder(kids, targets) {
+  const current3 = (kids || []).map((k) => k.uid);
+  const movable = new Set((kids || []).filter((k) => !isDueChild(k.string)).map((k) => k.uid));
+  const wanted = [];
+  const taken = /* @__PURE__ */ new Set();
+  for (const uid of targets || []) {
+    if (!movable.has(uid) || taken.has(uid)) continue;
+    taken.add(uid);
+    wanted.push(uid);
+  }
+  const desired = [];
+  let next = 0;
+  for (const uid of current3) desired.push(taken.has(uid) ? wanted[next++] : uid);
+  const moves = [];
+  const sim = current3.slice();
+  for (let i = 0; i < desired.length; ) {
+    if (sim[i] === desired[i]) {
+      i++;
+      continue;
+    }
+    const uid = taken.has(desired[i]) ? desired[i] : sim[i];
+    const order = uid === desired[i] ? i : "last";
+    applyMove(sim, { uid, order });
+    moves.push({ uid, order });
+  }
+  return { current: current3, desired, moves, targets: wanted };
+}
+function applyMove(list, { uid, order }) {
+  list.splice(list.indexOf(uid), 1);
+  if (order === "last") list.push(uid);
+  else list.splice(order, 0, uid);
+}
+function chunkMoves(moves, size = SOURCE_ORDER_CHUNK) {
+  const out = [];
+  for (let i = 0; i < moves.length; i += size) out.push(moves.slice(i, i + size));
+  return out;
+}
+function chunkStates(current3, chunks) {
+  const sim = current3.slice();
+  const out = [];
+  for (const chunk2 of chunks) {
+    for (const m of chunk2) applyMove(sim, m);
+    out.push(sim.slice());
+  }
+  return out;
+}
+function orderChanged(prev, next) {
+  const a = prev || [];
+  const b = next || [];
+  const inB = new Set(b);
+  const inA = new Set(a);
+  const x = a.filter((u) => inB.has(u));
+  const y = b.filter((u) => inA.has(u));
+  return x.length !== y.length || x.some((u, i) => u !== y[i]);
+}
+var orderSignature = (uids) => (uids || []).join("\0");
+function outlineOrderByTarget(childUids, cards) {
+  const index = new Map((childUids || []).map((u, i) => [u, i]));
+  return (cards || []).filter((c) => index.has(c.target)).map((c, i) => ({ card: c.card, at: index.get(c.target), i })).sort((a, b) => a.at - b.at || a.i - b.i).map((c) => c.card);
+}
+
+// src/session-source-order.js
+var SETTLE_MS = 150;
+var SIGNATURE_CAP = 400;
+var OWN_ECHO_MS = 3e3;
+var isRefCard = (item) => item?.type === "card" && item.kind === "block" && item.target?.kind === "block" && typeof item.target.uid === "string" && item.target.uid;
+extendSession((session, api3) => {
+  const { host } = api3;
+  const sorted3 = (kids) => (kids || []).slice().sort((a, b) => a.order - b.order);
+  const kidsOf5 = (parentUid) => sorted3(host.outlineKids?.([parentUid])?.get(parentUid));
+  const refCardsOf = (uids) => {
+    const board2 = api3.board();
+    if (!board2) return [];
+    const seen = /* @__PURE__ */ new Set();
+    const cards = [];
+    const add = (id) => {
+      const item = board2.items.get(id);
+      if (!item || seen.has(id)) return;
+      seen.add(id);
+      if (item.type === "section") return;
+      if (isRefCard(item)) cards.push({ card: id, target: item.target.uid });
+    };
+    for (const id of uids ?? []) {
+      const item = board2.items.get(id);
+      if (item?.type === "section") {
+        seen.add(id);
+        for (const m of item.members) add(m);
+      } else add(id);
+    }
+    const byCard = new Map(cards.map((c) => [c.card, c]));
+    return byReadingPosition(cards.map((c) => c.card), board2, api3.rects()).map((id) => byCard.get(id));
+  };
+  const parentOf = (target) => {
+    try {
+      return host.blockLocation?.(target)?.parentUid || "";
+    } catch {
+      return "";
+    }
+  };
+  function compute(uids) {
+    const cards = refCardsOf(uids);
+    const distinct = new Set(cards.map((c) => c.target));
+    if (distinct.size < 2) return { reason: "Select at least two block cards to apply their order" };
+    const rows = cards.map((c) => ({ target: c.target, parent: parentOf(c.target) }));
+    const { parentUid } = pickSourceParent(rows);
+    if (!parentUid) return { reason: "Those blocks have no parent to reorder" };
+    const kids = kidsOf5(parentUid);
+    const plan = planSourceOrder(kids, rows.filter((r) => r.parent === parentUid).map((r) => r.target));
+    const skippedCards = distinct.size - plan.targets.length;
+    if (plan.targets.length < 2) return { reason: "Fewer than two of those blocks can be reordered here" };
+    if (!plan.moves.length) return { reason: "The blocks are already in the board's order" };
+    let parentLabel = "";
+    try {
+      parentLabel = host.blockLabel?.(parentUid) || "";
+    } catch {
+      parentLabel = "";
+    }
+    return { parentUid, parentLabel: parentLabel || "the parent block", plan, skippedCards, moveCount: plan.moves.length, count: plan.targets.length };
+  }
+  const own2 = /* @__PURE__ */ new Map();
+  const applying = /* @__PURE__ */ new Set();
+  const remember2 = (parentUid, orders) => {
+    let set = own2.get(parentUid);
+    if (!set || set.size > SIGNATURE_CAP) own2.set(parentUid, set = /* @__PURE__ */ new Set());
+    for (const o of orders) set.add(orderSignature(o));
+  };
+  const watches = /* @__PURE__ */ new Map();
+  let marked = /* @__PURE__ */ new Map();
+  let markKey = "";
+  const markedSections = () => {
+    const board2 = api3.board();
+    const out = [];
+    if (!board2?.enhanced) return out;
+    for (const item of board2.items.values()) if (item.type === "section" && item.keepOrder === true) out.push(item);
+    return out;
+  };
+  const retidy = (parentUid, next) => {
+    for (const [sectionUid, p] of marked) {
+      if (p !== parentUid) continue;
+      const board2 = api3.board();
+      const section2 = board2?.items.get(sectionUid);
+      if (!section2 || section2.keepOrder !== true) continue;
+      const cards = section2.members.map((m) => board2.items.get(m)).filter(isRefCard).map((item) => ({ card: item.uid, target: item.target.uid }));
+      if (cards.length < 2) continue;
+      const order = outlineOrderByTarget(next, cards);
+      void session.tidyItems([sectionUid], "outline", { order });
+    }
+  };
+  const settle3 = (parentUid) => {
+    const slot2 = watches.get(parentUid);
+    if (!slot2 || api3.isGone()) return;
+    slot2.timer = null;
+    if (applying.has(parentUid)) return;
+    const next = kidsOf5(parentUid).map((k) => k.uid);
+    const prev = slot2.baseline;
+    slot2.baseline = next;
+    if (!prev || !orderChanged(prev, next)) return;
+    const ownWrite = Date.now() - (host.lastWriteAt?.() ?? -Infinity) < OWN_ECHO_MS;
+    if (ownWrite && own2.get(parentUid)?.has(orderSignature(next))) return;
+    retidy(parentUid, next);
+  };
+  const watchParent = (parentUid) => {
+    if (watches.has(parentUid)) return;
+    const slot2 = { off: () => {
+    }, baseline: kidsOf5(parentUid).map((k) => k.uid), timer: null };
+    slot2.off = host.watchChildren?.(parentUid, () => {
+      if (slot2.timer != null) clearTimeout(slot2.timer);
+      slot2.timer = setTimeout(() => settle3(parentUid), SETTLE_MS);
+    }) ?? (() => {
+    });
+    watches.set(parentUid, slot2);
+  };
+  const dropParent = (parentUid) => {
+    const slot2 = watches.get(parentUid);
+    if (!slot2) return;
+    if (slot2.timer != null) clearTimeout(slot2.timer);
+    try {
+      slot2.off();
+    } catch {
+    }
+    watches.delete(parentUid);
+  };
+  const resync = () => {
+    if (api3.isGone()) return;
+    const board2 = api3.board();
+    const sections = markedSections();
+    const key = sections.map((s) => `${s.uid}:${s.members.map((m) => isRefCard(board2.items.get(m)) ? board2.items.get(m).target.uid : "").join(",")}`).join("|");
+    if (key === markKey) return;
+    markKey = key;
+    const next = /* @__PURE__ */ new Map();
+    for (const section2 of sections) {
+      const cards = refCardsOf([section2.uid]);
+      const { parentUid } = pickSourceParent(cards.map((c) => ({ target: c.target, parent: parentOf(c.target) })));
+      if (parentUid) next.set(section2.uid, parentUid);
+    }
+    marked = next;
+    const want = new Set(next.values());
+    for (const parentUid of [...watches.keys()]) if (!want.has(parentUid)) dropParent(parentUid);
+    for (const parentUid of want) watchParent(parentUid);
+  };
+  const offChange = session.on?.("change", (diff) => {
+    const board2 = api3.board();
+    if (diff && !diff.structural && ![...diff.dirty ?? []].some((id) => board2?.items.get(id)?.type === "section")) return;
+    resync();
+  });
+  api3.onDestroy?.(() => {
+    try {
+      offChange?.();
+    } catch {
+    }
+    for (const parentUid of [...watches.keys()]) dropParent(parentUid);
+  });
+  if (api3.board()) resync();
+  Object.assign(session, {
+    // Read-only. { parentUid, parentLabel, moveCount, count, skippedCards } or { reason } when there is nothing to do.
+    sourceOrderPlan(uids) {
+      const res = compute(uids);
+      if (res.reason) return { reason: res.reason };
+      const { parentUid, parentLabel, moveCount, count, skippedCards } = res;
+      return { parentUid, parentLabel, moveCount, count, skippedCards };
+    },
+    // Moves the real blocks, 45 per transaction. One chunk is one native undo step; more go back in one custom step.
+    // Resolves { moved, parentUid, skippedCards, chunks }.
+    async applySourceOrder(uids) {
+      const res = compute(uids);
+      if (res.reason) return { moved: 0, parentUid: res.parentUid ?? null, skippedCards: 0, chunks: 0, reason: res.reason };
+      const { parentUid, plan, skippedCards } = res;
+      const chunks = chunkMoves(plan.moves, SOURCE_ORDER_CHUNK);
+      const states = chunkStates(plan.current, chunks);
+      remember2(parentUid, [plan.current, ...states, plan.desired]);
+      let done3 = 0;
+      let reason;
+      const walk3 = async (state) => {
+        for (const m of planSourceOrder(kidsOf5(parentUid), state).moves) await host.moveBlock(m.uid, parentUid, m.order);
+      };
+      const customFor = (i) => chunks.length > 1 ? { undo: () => walk3(plan.current), redo: () => walk3(states[i]) } : null;
+      applying.add(parentUid);
+      try {
+        for (let i = 0; i < chunks.length; i++) {
+          if (api3.isGone()) break;
+          await api3.txn((t) => {
+            for (const m of chunks[i]) t.move(m.uid, parentUid, m.order);
+          }, customFor(i));
+          if (orderSignature(kidsOf5(parentUid).map((k) => k.uid)) !== orderSignature(states[i])) {
+            reason = "Stopped: the blocks did not land where expected. Undo to go back.";
+            break;
+          }
+          done3 += chunks[i].length;
+        }
+      } finally {
+        applying.delete(parentUid);
+      }
+      const slot2 = watches.get(parentUid);
+      if (slot2) slot2.baseline = kidsOf5(parentUid).map((k) => k.uid);
+      return { moved: done3, parentUid, skippedCards, chunks: chunks.length, ...reason ? { reason } : {} };
+    }
+  });
+});
+
 // src/session-bucket.js
+init_board();
 var STR4 = ":block/string";
 var KIDS6 = ":block/children";
 var UID6 = ":block/uid";
@@ -56270,7 +57176,9 @@ extendSession((session, api3) => {
     return readBinding(api3.rawPlexus(id));
   };
   session.bindSection = (id, binding) => {
-    if (api3.board()?.items.get(id)?.type !== "section") return Promise.resolve(false);
+    const item = api3.board()?.items.get(id);
+    if (item?.type !== "section") return Promise.resolve(false);
+    if (binding && item.laneAttr) return Promise.resolve(false);
     const base2 = api3.itemPlexus(id, {});
     const current3 = readBinding(base2);
     if (binding ? current3 && bindingKey(current3) === bindingKey(binding) : !base2.bucket) return Promise.resolve(false);
@@ -62195,8 +63103,8 @@ function createInteractions({ actions, settings } = {}) {
           call2("commitMove", uids, dx, dy);
           return true;
         }
-        const same3 = state.nudge && state.nudge.uids.length === uids.length && state.nudge.uids.every((u, i) => u === uids[i]);
-        if (!same3) flushNudge();
+        const same4 = state.nudge && state.nudge.uids.length === uids.length && state.nudge.uids.every((u, i) => u === uids[i]);
+        if (!same4) flushNudge();
         if (!state.nudge) state.nudge = { uids, dx: 0, dy: 0, timer: null };
         state.nudge.dx += dx;
         state.nudge.dy += dy;
@@ -65711,7 +66619,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
       }
     }
     if (arbitrate && !host && !gridReading(built) && !verifiedPages.includes(structure.page)) continue;
-    const same3 = host && (setJaccard(host, built) >= minJaccard || tokenJaccard(host, built) >= minJaccard);
+    const same4 = host && (setJaccard(host, built) >= minJaccard || tokenJaccard(host, built) >= minJaccard);
     if (arbitrate && host) {
       const page = (evidence || []).find((item) => item.page === structure.page) || { words: [], rules: [] };
       const decision = chooseTableReading(host, built, page);
@@ -65759,7 +66667,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
       applied.push({ id: host.id, page: structure.page, rows: chosen.rows, cols: chosen.cols, choice: decision.choice });
       continue;
     }
-    if (host && !same3 && !trust) continue;
+    if (host && !same4 && !trust) continue;
     if (trust) {
       for (const id of [...order]) {
         const block = blocks[id];
@@ -73902,9 +74810,9 @@ function createPopover(doc, host) {
     }
   };
   function open(spec2, anchorEl) {
-    const same3 = el2 && anchor === anchorEl;
+    const same4 = el2 && anchor === anchorEl;
     close({ refocus: false });
-    if (same3) return false;
+    if (same4) return false;
     spec = spec2;
     anchor = anchorEl || null;
     at = 0;
@@ -76139,7 +77047,7 @@ function toNumber(value) {
   return Number.isFinite(n3) ? n3 : NaN;
 }
 var text3 = (value, max = 120) => typeof value === "string" || typeof value === "number" ? clip6(squash5(value), max) : "";
-function axisOf(value) {
+function axisOf2(value) {
   if (typeof value === "string") return { label: text3(value), unit: "" };
   const a = value && typeof value === "object" ? value : {};
   return { label: text3(a.label ?? a.name ?? a.title), unit: text3(a.unit ?? a.units, 40) };
@@ -76203,7 +77111,7 @@ function normalizeChart(raw) {
   if (dropped) warnings.push(`Dropped ${dropped} unreadable or repeated ${dropped === 1 ? "point" : "points"}.`);
   return {
     ok: true,
-    chart: { title: text3(obj.title, 200), x: axisOf(obj.x), y: axisOf(obj.y), series, notes: text3(obj.notes, 400) },
+    chart: { title: text3(obj.title, 200), x: axisOf2(obj.x), y: axisOf2(obj.y), series, notes: text3(obj.notes, 400) },
     warnings
   };
 }
@@ -80871,8 +81779,8 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
     }
     el2.removeAttribute("hidden");
     el2.setAttribute("data-kind", model.kind);
-    const same3 = current3 && current3.kind === model.kind && current3.text === model.text && current3.progress === model.progress && current3.buttons.map((b) => b.id).join() === model.buttons.map((b) => b.id).join();
-    if (!same3) paint2(model);
+    const same4 = current3 && current3.kind === model.kind && current3.text === model.text && current3.progress === model.progress && current3.buttons.map((b) => b.id).join() === model.buttons.map((b) => b.id).join();
+    if (!same4) paint2(model);
     if (model.autoHideMs && (!current3 || current3.kind !== model.kind)) {
       clearTimer();
       if (typeof later === "function") {
@@ -82407,7 +83315,7 @@ function createReadPane({
     }
     moveFrame = 0;
   };
-  const applyMove = () => {
+  const applyMove2 = () => {
     const move = lastMove;
     lastMove = null;
     if (!move || dragging) return;
@@ -82451,13 +83359,13 @@ function createReadPane({
     const raf2 = clock().requestAnimationFrame || globalThis.requestAnimationFrame;
     if (typeof raf2 !== "function") {
       moveScheduled = false;
-      applyMove();
+      applyMove2();
       return;
     }
     moveFrame = raf2(() => {
       moveFrame = 0;
       moveScheduled = false;
-      applyMove();
+      applyMove2();
     });
   };
   const DRAG_START_PX = 6;
@@ -90145,6 +91053,7 @@ function syncEmptyHint(node2, board2) {
 }
 
 // src/view/table-view.js
+init_table();
 var EDITED_QUERY = "[:find ?u ?e :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/time ?e]]";
 function editedLabel(value) {
   const n3 = Number(value);
@@ -90249,7 +91158,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
   };
   const shownRows = (rows) => {
     const filtered = filterRows(rows, filterText);
-    return sortColumn ? sortRows2(filtered, sortColumn, sortDir) : filtered;
+    return sortColumn ? sortRows(filtered, sortColumn, sortDir) : filtered;
   };
   const commitFill = async (row4, column, raw) => {
     const key = `${row4.uid}\0${column}`;
@@ -90328,7 +91237,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
           const button3 = doc.createElement("button");
           button3.type = "button";
           button3.className = "pxd-btn pxd-table__value";
-          button3.textContent = cellText2(row4, column);
+          button3.textContent = cellText(row4, column);
           button3.setAttribute("aria-label", `${column} for ${row4.title || row4.uid}`);
           listen(button3, "click", () => openEditor(td, attr.uid), paintOffs);
           td.append(button3);
@@ -90355,7 +91264,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
         } else {
           const span = doc.createElement("span");
           span.className = "pxd-table__text";
-          span.textContent = column === "Edited" ? editedLabel(row4.edited) : cellText2(row4, column);
+          span.textContent = column === "Edited" ? editedLabel(row4.edited) : cellText(row4, column);
           td.append(span);
         }
         tr.append(td);
@@ -90452,6 +91361,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
 
 // src/view/kanban-view.js
 init_schema();
+init_kanban();
 init_status_tags();
 var BAD_STATUS = /* @__PURE__ */ new Set(["rejected", "unknown", "conflict", "not-updated"]);
 function kanbanTitle(card2) {
@@ -90818,6 +91728,10 @@ function mountKanban({
   };
 }
 
+// src/view/board-view.js
+init_attr_lanes();
+init_table();
+
 // src/view/props-panel.js
 init_schema();
 var STORAGE_KEY = "pxd-props-collapsed";
@@ -90970,22 +91884,22 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     const text4 = items.filter((it) => it.type === "text");
     const sample = cards[0] || text4[0];
     const fallback = sample?.type === "text" ? 24 : CARD_FONT_DEFAULT;
-    const same3 = items.every((it) => (it.fontSize ?? fallback) === (sample.fontSize ?? fallback));
+    const same4 = items.every((it) => (it.fontSize ?? fallback) === (sample.fontSize ?? fallback));
     el2("span", "pxd-props__label", g, "Text size");
     stepper(g, {
-      value: same3 ? sample.fontSize : void 0,
+      value: same4 ? sample.fontSize : void 0,
       fallback,
       min: CARD_FONT_MIN,
       max: CARD_FONT_MAX,
       aria: "Text size",
       onCommit: (v) => on.setItemStyle?.({ fontSize: v })
     });
-    colorField(g, "Text color", same3 ? sample.textColor : void 0, (c) => on.setItemStyle?.({ textColor: c }));
+    colorField(g, "Text color", same4 ? sample.textColor : void 0, (c) => on.setItemStyle?.({ textColor: c }));
     el2("span", "pxd-props__label", g, "Align");
-    const align = same3 ? sample.align || "" : "";
+    const align = same4 ? sample.align || "" : "";
     choice(g, [["", "Default"], ...ALIGNS.map((a) => [a, a[0].toUpperCase() + a.slice(1)])], align, (v) => on.setItemStyle?.({ align: v || null }), "align");
-    colorField(g, "Fill", same3 ? sample.fill : void 0, (c) => on.setItemStyle?.({ fill: c }));
-    colorField(g, "Border", same3 ? sample.border : void 0, (c) => on.setItemStyle?.({ border: c }));
+    colorField(g, "Fill", same4 ? sample.fill : void 0, (c) => on.setItemStyle?.({ fill: c }));
+    colorField(g, "Border", same4 ? sample.border : void 0, (c) => on.setItemStyle?.({ border: c }));
     button3(g, "pxd-props__reset", "Reset selected", "Remove text size, color, align, fill, and border", () => on.resetItems?.(), "props.reset");
   };
   const edgeGroup = (edge) => {
@@ -94921,17 +95835,17 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
 function rowMerged(parts, w, h, tol = 2) {
   const out = [];
   for (const part of [...parts].sort((a, b) => a.x0 - b.x0)) {
-    const same3 = out.find((o) => Math.abs(o.y0 - part.y0) <= tol && Math.abs(o.y1 - part.y1) <= tol);
-    if (!same3) {
+    const same4 = out.find((o) => Math.abs(o.y0 - part.y0) <= tol && Math.abs(o.y1 - part.y1) <= tol);
+    if (!same4) {
       out.push(part);
       continue;
     }
-    for (let i = 0; i < w * h; i++) if (part.mask[i]) same3.mask[i] = 1;
-    same3.x0 = Math.min(same3.x0, part.x0);
-    same3.x1 = Math.max(same3.x1, part.x1);
-    same3.y0 = Math.min(same3.y0, part.y0);
-    same3.y1 = Math.max(same3.y1, part.y1);
-    same3.area += part.area;
+    for (let i = 0; i < w * h; i++) if (part.mask[i]) same4.mask[i] = 1;
+    same4.x0 = Math.min(same4.x0, part.x0);
+    same4.x1 = Math.max(same4.x1, part.x1);
+    same4.y0 = Math.min(same4.y0, part.y0);
+    same4.y1 = Math.max(same4.y1, part.y1);
+    same4.area += part.area;
   }
   return out;
 }
@@ -97518,6 +98432,21 @@ function followCardItems(f) {
   if (f.followed) out.push(make3("follow:remove", "Remove, don't bring back", { danger: true }));
   return out;
 }
+function laneItems(lane2) {
+  if (!lane2) return [];
+  const names = Array.isArray(lane2.fields) ? lane2.fields.slice() : [];
+  if (lane2.bound && !names.includes(lane2.bound)) names.push(lane2.bound);
+  const out = [make3("lane-attr", "Sub-lanes by attribute ▸", {
+    children: names.length ? names.map((name) => make3(`lane-attr:${name}`, name, { checked: name === lane2.bound })) : [make3("lane-hint", "No Name:: attributes on this board", { disabled: true })]
+  })];
+  if (lane2.bound) {
+    out.push(make3("lane-stop", `Stop sub-lanes (${lane2.bound})`));
+    out.push(make3("lane-pull", `Pull blocks with ${lane2.bound}::`));
+    const fresh = Array.isArray(lane2.fresh) ? lane2.fresh : [];
+    if (fresh.length) out.push(make3("lane-add", `Add sub-lanes for ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? ` +${fresh.length - 3}` : ""}`));
+  }
+  return out;
+}
 var make3 = (id, label, extra = {}) => {
   const out = { id, label };
   for (const [key, value] of Object.entries(extra)) {
@@ -97729,7 +98658,8 @@ function buildMenu(kind, ctx = {}) {
         make3("select-connected", "Select connected"),
         make3("collapse-section", c.collapsed ? "Expand" : "Collapse"),
         make3("section-note", c.hasNote ? "Remove description" : "Add description"),
-        make3("bucket-bind", c.bucket ? `Bound to ${c.bucket}…` : "Bind to tag or attribute…"),
+        // A lane with sub-lanes (PXD-11) writes values itself, so it offers no section binding, and the other way round.
+        ...c.lane?.bound ? [] : [make3("bucket-bind", c.bucket ? `Bound to ${c.bucket}…` : "Bind to tag or attribute…")],
         ...c.bucket ? [make3("bucket-write", "Write section to graph", { disabled: empty }), make3("bucket-unbind", "Unbind")] : [],
         c.locked ? make3("unlock-contents", "Unlock") : make3("lock-contents", "Lock"),
         make3("present-section", "Present this section"),
@@ -97742,10 +98672,13 @@ function buildMenu(kind, ctx = {}) {
           ]
         }),
         make3("focus-timer", "Focus timer"),
+        ...c.bucket ? [] : laneItems(c.lane),
         sep(),
         make3("fit-section", "Fit to contents", { disabled: empty }),
         make3("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),
         tidyMenu(empty),
+        make3("apply-source-order", "Apply order to source", { disabled: !(c.refCards >= 2) }),
+        make3("keep-order", "Keep outline order", { checked: Boolean(c.keepOrder) }),
         make3("fold-all-in", "Fold all inside", { disabled: empty }),
         make3("unfold-all-in", "Unfold all inside", { disabled: empty }),
         sep(),
@@ -97836,6 +98769,7 @@ function buildMenu(kind, ctx = {}) {
           children: [make3("distribute:h", "Horizontally"), make3("distribute:v", "Vertically")]
         }),
         tidyMenu(false),
+        make3("apply-source-order", "Apply order to source", { disabled: !(c.refCards >= 2) }),
         make3("same-size", "Same size", {
           disabled: few,
           children: [make3("same-size:width", "Width"), make3("same-size:height", "Height"), make3("same-size:both", "Width and height")]
@@ -104385,6 +105319,51 @@ function buildBoardView(onFail, {
       locked: Boolean(b) && uids.every((u) => b.items.get(u)?.pinned)
     };
   };
+  const refCardCount = (uids) => {
+    const b = board2();
+    const seen = /* @__PURE__ */ new Set();
+    const add = (id) => {
+      const it = b?.items.get(id);
+      if (!it) return;
+      if (it.type === "section") {
+        for (const m of it.members) {
+          const mi = b.items.get(m);
+          if (mi?.type !== "section") add(m);
+        }
+        return;
+      }
+      if (it.type === "card" && it.kind === "block" && it.target?.kind === "block") seen.add(id);
+    };
+    for (const id of uids) add(id);
+    return seen.size;
+  };
+  const applySourceOrder = (uids) => {
+    const plan = session.sourceOrderPlan?.(uids);
+    if (!plan) return;
+    if (plan.reason) {
+      toast(plan.reason);
+      return;
+    }
+    const skipped = plan.skippedCards > 0 ? ` ${plan.skippedCards} ${plan.skippedCards === 1 ? "card" : "cards"} from other parents ${plan.skippedCards === 1 ? "is" : "are"} left alone.` : "";
+    const label = plan.parentLabel.length > 60 ? `${plan.parentLabel.slice(0, 57)}...` : plan.parentLabel;
+    const message = `Reorder ${plan.count} blocks under “${label}” to match the board? Cards stay where they are.${skipped}`;
+    let ok = false;
+    try {
+      ok = typeof win2?.confirm === "function" && win2.confirm(message) === true;
+    } catch {
+      ok = false;
+    }
+    if (!ok) return;
+    Promise.resolve(session.applySourceOrder?.(uids)).then((res) => {
+      if (disposed || !res) return;
+      if (res.reason || !res.moved) {
+        toast(res.reason || "Nothing to reorder");
+        return;
+      }
+      toast(`Moved ${res.moved} ${res.moved === 1 ? "block" : "blocks"} to match the board`, true);
+    }).catch(() => {
+    });
+  };
   const showCtx = () => {
     const b = board2();
     if (!b) return chrome.ctx.hide();
@@ -105457,6 +106436,8 @@ function buildBoardView(onFail, {
           item,
           count: item?.members?.length ?? 0,
           fitOn: item?.autofit !== false,
+          keepOrder: item?.keepOrder === true,
+          refCards: item ? refCardCount([item.uid]) : 0,
           pinned: Boolean(item?.pinned),
           collapsed: Boolean(item?.collapsed),
           hasNote: Boolean(item && sectionNoteUid(b, item.uid)),
@@ -105465,7 +106446,8 @@ function buildBoardView(onFail, {
           trails: trailRows(b),
           landmark: item?.landmark === true,
           landmarkSize: item?.size || "M",
-          dateSource: dateMode
+          dateSource: dateMode,
+          ...item?.look === "lane" ? { lane: { bound: item.laneAttr || null, fields: session.laneFieldsFor?.(item.uid) ?? laneFields(tableRows(b)), fresh: item.laneAttr ? session.laneNewValues?.(item.uid) ?? [] : [] } } : {}
         };
       }
       case "text":
@@ -105479,6 +106461,7 @@ function buildBoardView(onFail, {
         return {
           ...items.some(isTaskItem) ? { statusTags, status: "" } : {},
           count: items.length,
+          refCards: refCardCount(items.map((i) => i.uid)),
           allPinned: items.length > 0 && items.every((i) => i.pinned),
           anyCollapsed: items.some((i) => i.type === "card" && i.collapsed),
           sectionPair: sectionPair(items.map((i) => i.uid), (id) => b?.items.get(id)),
@@ -105814,6 +106797,26 @@ function buildBoardView(onFail, {
           axis: vertical ? "vertical" : "horizontal"
         })).then((uid) => {
           if (uid && !disposed) ctl.select([uid]);
+        }).catch(() => {
+        });
+        break;
+      }
+      case "lane-attr":
+        if (item?.look === "lane" && arg) void session.bindLane?.(item.uid, arg);
+        break;
+      case "lane-stop":
+        if (item?.look === "lane") void session.unbindLane?.(item.uid);
+        break;
+      case "lane-add":
+        if (item?.look === "lane" && item.laneAttr) void session.addLaneValues?.(item.uid);
+        break;
+      case "lane-pull": {
+        if (item?.look !== "lane" || !item.laneAttr) break;
+        const name = item.laneAttr;
+        Promise.resolve(session.pullLaneSource?.(item.uid)).then((res) => {
+          if (disposed) return;
+          if (res?.placed > 0) toast(`Placed ${res.placed} of ${res.total} blocks with ${name}::`);
+          else toast(`No more blocks with ${name}::`);
         }).catch(() => {
         });
         break;
@@ -106403,8 +107406,8 @@ function buildBoardView(onFail, {
         break;
       }
       case "select-same-color": {
-        const same3 = item ? sameColorUids(b, item.uid) : [];
-        if (same3.length) ctl.select(same3);
+        const same4 = item ? sameColorUids(b, item.uid) : [];
+        if (same4.length) ctl.select(same4);
         break;
       }
       case "select-connected": {
@@ -106423,6 +107426,12 @@ function buildBoardView(onFail, {
         break;
       case "sort-outline":
         void session.sortOutline?.();
+        break;
+      case "apply-source-order":
+        applySourceOrder(uids);
+        break;
+      case "keep-order":
+        if (item) void session.setKeepOrder?.(item.uid, item.keepOrder !== true);
         break;
       case "follow":
         runFollow(arg, item);
@@ -107022,8 +108031,8 @@ function buildBoardView(onFail, {
       },
       selectSameColor: () => {
         const it = singleItem();
-        const same3 = it ? sameColorUids(board2(), it.uid) : [];
-        if (same3.length) ctl.select(same3);
+        const same4 = it ? sameColorUids(board2(), it.uid) : [];
+        if (same4.length) ctl.select(same4);
       },
       selectConnected: () => {
         const it = singleItem();
@@ -110385,8 +111394,8 @@ ${url}`;
     if (droppedDrawingUids(planned.map((x) => x.string), (id) => host?.blockString?.(id)).length) toast(DRAWING_DROP_TOAST);
     const fromReader = Boolean(doc.activeElement?.closest?.(".pxd-read"));
     const made = session.addRefCards?.(planned);
-    const same3 = planned.length === list.length && planned.every((row4, i) => row4.string === list[i].string);
-    const offer = same3 ? dropNamespace(list.map((x) => x.string)) : null;
+    const same4 = planned.length === list.length && planned.every((row4, i) => row4.string === list[i].string);
+    const offer = same4 ? dropNamespace(list.map((x) => x.string)) : null;
     Promise.resolve(made).then((uids) => {
       if (Array.isArray(uids) && uids.length) {
         ctl.select(uids);
@@ -113708,7 +114717,7 @@ function dedupe(list) {
   }
   return out;
 }
-function same2(a, b) {
+function same3(a, b) {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
   return true;
@@ -113833,7 +114842,7 @@ function createPrefetch({
     if (enabled() === false) return;
     const list = dedupe(Array.isArray(uids) ? uids : [uids]);
     if (!list.length) return;
-    if (timer && same2(pending, list)) {
+    if (timer && same3(pending, list)) {
       if (el2) pendingEl = el2;
       return;
     }
@@ -116502,13 +117511,13 @@ async function installPlexusDiagram({
     if (fresh && fresh.key === key && fresh.dark === dark) {
       const prev = snapStore.get(key);
       const vp = src.vp;
-      let same3 = false;
+      let same4 = false;
       try {
-        same3 = Boolean(prev && prev === fresh.snap && vp && prev.vp && prev.vp.x === vp.x && prev.vp.y === vp.y && prev.vp.zoom === vp.zoom && prev.stamp === boardStamp(src.board, src.rects));
+        same4 = Boolean(prev && prev === fresh.snap && vp && prev.vp && prev.vp.x === vp.x && prev.vp.y === vp.y && prev.vp.zoom === vp.zoom && prev.stamp === boardStamp(src.board, src.rects));
       } catch {
-        same3 = false;
+        same4 = false;
       }
-      if (same3) {
+      if (same4) {
         rec.snapDirty = false;
         if (host.stats && typeof host.stats === "object") host.stats.snapSkips = (host.stats.snapSkips || 0) + 1;
         return true;
@@ -116545,13 +117554,13 @@ async function installPlexusDiagram({
         if (!now5 || now5.gesturing || now5.board !== src.board || now5.vp?.x !== src.vp?.x || now5.vp?.y !== src.vp?.y || now5.vp?.zoom !== src.vp?.zoom || currentUid(rec) !== uid || isDarkTheme(rec) !== dark) return null;
         const out = capture.result();
         if (!out) return false;
-        let same3 = false;
+        let same4 = false;
         try {
-          same3 = out.stamp === boardStamp(now5.board, now5.rects);
+          same4 = out.stamp === boardStamp(now5.board, now5.rects);
         } catch {
-          same3 = false;
+          same4 = false;
         }
-        if (!same3) return null;
+        if (!same4) return null;
         rec.snapDirty = false;
         return snapStore.set(key, out, thumbs);
       };

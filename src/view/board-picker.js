@@ -112,7 +112,8 @@ export function openAddToBoard({ doc = globalThis.document, listBoards, onPick }
 // "Add page…" picker (PG-4). Same chrome as the board picker; rows come from a page search as you type.
 // `search(text)` returns [{ uid, title }] (sync or async). Nothing is searched until the filter has text.
 // PXD-9 reuses it for blocks and queries: a row may carry `value` (what onPick gets instead of the title) and `meta`
-// (a second, muted line); `heading`, `placeholder`, `hint` and `none` change the words.
+// (a second, muted line); `initial` runs the search once at open with empty text (a picker that needs no typing);
+// `heading`, `placeholder`, `hint` and `none` change the words.
 export function openPagePicker({
   doc = globalThis.document,
   search,
@@ -122,6 +123,7 @@ export function openPagePicker({
   placeholder = "Search pages…",
   hint = "Type to search pages",
   none = "No matching pages",
+  initial = false,
 } = {}) {
   current?.close();
   const offs = [];
@@ -186,10 +188,10 @@ export function openPagePicker({
     timer = null;
     const text = String(filter.value || "").trim();
     const mine = ++ticket;
-    if (!text) { show([], ""); return; }
+    if (!text && !initial) { show([], ""); return; }
     Promise.resolve(typeof search === "function" ? search(text) : []).then((got) => {
       if (closed || mine !== ticket) return;
-      show((Array.isArray(got) ? got : []).filter((row) => row && typeof row.title === "string" && row.title), text);
+      show((Array.isArray(got) ? got : []).filter((row) => row && typeof row.title === "string" && row.title), text || initial);
     }, () => {
       if (closed || mine !== ticket) return;
       show([], text);
@@ -226,6 +228,7 @@ export function openPagePicker({
       close();
     }, () => { busy = false; });
   });
+  if (initial) run();
   try { filter.focus(); } catch { /* the host has no focus */ }
   return api;
 }

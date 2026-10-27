@@ -6,7 +6,7 @@
 
 import { firstLine, parseBoardRef, plainText } from "./schema.js";
 
-// Board plexus key: { kind, uid, tree?, skip? }. Written only from the Follow menu and the tray's own buttons.
+// Board plexus key: { kind, uid, tree?, columns?, skip? }. Written only from the Follow menu and the tray's own buttons.
 export const FOLLOW_KEY = "follow";
 // Board plexus key: [{ kind, uid, skip }] of sources the board stopped following, newest last: at most
 // FOLLOW_KEPT_SOURCES of them and FOLLOW_SKIP_CAP uids in all (the oldest sources go first; the newest always stays).
@@ -14,6 +14,11 @@ export const FOLLOW_KEPT_KEY = "followSkip";
 export const FOLLOW_KEPT_SOURCES = 5;
 // A placed card's plexus key: the source key it came from, so "left the source" only marks this source's cards.
 export const FOLLOW_SRC = "src";
+// PXD-15: a card placed from a journal window also keeps its day (MM-DD-YYYY), so its column is found again.
+export const FOLLOW_DAY = "day";
+// The journals source: uid "days-N" (today and the N-1 days before) or "week" (Monday to Sunday of this week).
+export const JOURNAL_DEFAULT_DAYS = 7;
+export const JOURNAL_MAX_DAYS = 31;
 export const FOLLOW_MIME = "application/x-plexus-follow";
 // "Don't bring back" uids per board. Past the cap the oldest go first.
 export const FOLLOW_SKIP_CAP = 300;
@@ -65,7 +70,7 @@ export function normalizePointer(raw) {
   const kind = typeof raw.kind === "string" && KIND_RE.test(raw.kind) ? raw.kind : null;
   const uid = typeof raw.uid === "string" && UID_RE.test(raw.uid) ? raw.uid : null;
   if (!kind || !uid) return null;
-  return { kind, uid, ...(raw.tree === true ? { tree: true } : {}), skip: cleanSkip(raw.skip) };
+  return { kind, uid, ...(raw.tree === true ? { tree: true } : {}), ...(raw.columns === true ? { columns: true } : {}), skip: cleanSkip(raw.skip) };
 }
 
 export function serializePointer(pointer) {
@@ -73,6 +78,7 @@ export function serializePointer(pointer) {
   if (!p) return null;
   const out = { kind: p.kind, uid: p.uid };
   if (p.tree) out.tree = true;
+  if (p.columns) out.columns = true;
   if (p.skip.length) out.skip = p.skip;
   return out;
 }
@@ -114,10 +120,25 @@ export function withFollow(plexus, pointer) {
 }
 
 // Following the same source again keeps its skip list and tree choice; a new source starts clean.
-export function followPointerFor(current, kind, uid, { tree } = {}) {
+export function followPointerFor(current, kind, uid, { tree, columns } = {}) {
   const same = current?.kind === kind && current?.uid === uid;
   const deep = tree === undefined ? same && current.tree === true : tree === true;
-  return { kind, uid, ...(deep ? { tree: true } : {}), skip: same ? current.skip : [] };
+  const cols = columns === undefined ? same && current.columns === true : columns === true;
+  return { kind, uid, ...(deep ? { tree: true } : {}), ...(cols ? { columns: true } : {}), skip: same ? current.skip : [] };
+}
+
+// "days-N" -> { days: N } (1..JOURNAL_MAX_DAYS), "week" -> { week: true }, anything else null.
+export function journalSpec(uid) {
+  if (uid === "week") return { week: true };
+  const m = /^days-([1-9]\d?)$/.exec(String(uid ?? ""));
+  const days = m ? Number(m[1]) : 0;
+  return days >= 1 && days <= JOURNAL_MAX_DAYS ? { days } : null;
+}
+
+export function journalUid(spec) {
+  if (spec?.week) return "week";
+  const days = Math.floor(Number(spec?.days));
+  return days >= 1 && days <= JOURNAL_MAX_DAYS ? `days-${days}` : "";
 }
 
 export function addSkip(skip, uids, cap = FOLLOW_SKIP_CAP) {
@@ -275,6 +296,47 @@ export function followColumn(bounds, count, { w, h, column = 0, at = null, gap =
   const y0 = at ? at.y : bounds ? bounds.y : 0;
   const x = x0 + column * (w + gap);
   return Array.from({ length: Math.max(0, count) }, (_, i) => ({ x, y: y0 + i * (h + stack) }));
+}
+
+// PXD-15: world top-left of each entry for a journal source with one column per day. `existing`: [{ day, x, y, w, h }]
+// rects of the board's cards from this source. A day's column is the x band of its lowest card that no other day's
+// card shares (page cards the plain mode stacked one under another are in no day's column); its new cards go under
+// that card. A day without one gets a new column right of every journal card (or of `bounds`), oldest day first.
+// Nothing placed moves.
+const dayKey = (day) => {
+  const m = /^(\d\d)-(\d\d)-(\d{4})$/.exec(String(day ?? ""));
+  return m ? `${m[3]}${m[1]}${m[2]}` : String(day ?? "");
+};
+export function journalColumnSpots(existing, entries, { bounds = null, w, h, gap = FOLLOW_COLUMN_GAP, stack = FOLLOW_STACK_GAP } = {}) {
+  const rects = (existing || []).filter((r) => r?.day);
+  const cols = new Map();
+  let right = -Infinity;
+  let top = Infinity;
+  for (const r of rects) {
+    right = Math.max(right, r.x + r.w);
+    top = Math.min(top, r.y);
+    const shared = rects.some((o) => o.day !== r.day && o.x < r.x + r.w && o.x + o.w > r.x);
+    const col = cols.get(r.day);
+    if (!shared && (!col || r.y + r.h > col.bottom)) cols.set(r.day, { x: r.x, bottom: r.y + r.h });
+  }
+  const x0 = Number.isFinite(right) ? right + gap : bounds ? bounds.x + bounds.w + gap : 0;
+  const y0 = Number.isFinite(top) ? top : bounds ? bounds.y : 0;
+  const fresh = [...new Set((entries || []).map((e) => e?.day ?? "").filter((d) => !cols.has(d)))].sort((a, b) => (dayKey(a) < dayKey(b) ? -1 : dayKey(a) > dayKey(b) ? 1 : 0));
+  const made = new Map(fresh.map((d, i) => [d, { x: x0 + i * (w + gap), next: y0 }]));
+  const below = new Map();
+  return (entries || []).map((e) => {
+    const day = e?.day ?? "";
+    const col = cols.get(day);
+    if (col) {
+      const y = below.has(day) ? below.get(day) : col.bottom + stack;
+      below.set(day, y + h + stack);
+      return { x: col.x, y };
+    }
+    const c = made.get(day);
+    const y = c.next;
+    c.next += h + stack;
+    return { x: c.x, y };
+  });
 }
 
 // Per device, like the visit stamp: the cards that had left when the board last closed, so the headline counts only

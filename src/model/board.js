@@ -333,6 +333,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         ...(openKey ? { openKey } : {}),
         // PXD-9: the source a placed card came from (its follow key). Only such cards can be marked "left the source".
         ...(typeof cplexus?.src === "string" && cplexus.src ? { src: cplexus.src } : {}),
+        ...(typeof cplexus?.day === "string" && cplexus.day && typeof cplexus?.src === "string" && cplexus.src ? { day: cplexus.day } : {}),
       };
       items.set(cuid, item);
       preorder.push(cuid);

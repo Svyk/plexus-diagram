@@ -88,9 +88,11 @@ function followMenu(f) {
         ...(f.label ? [make("follow:label", f.label, { disabled: true })] : []),
         make("follow:show", `Show tray (${Number(f.waiting) || 0} waiting)`),
         ...(f.kind === "block" ? [make("follow:tree", "Include the whole tree", { checked: f.tree === true })] : []),
+        ...(f.kind === "journals" ? [make("follow:columns", "One column per day", { checked: f.columns === true })] : []),
         make("follow:pick-block", "Switch to a block's children…"),
         make("follow:pick-query", "Switch to a query…"),
         make("follow:pick-refs", "Switch to linked references of…"),
+        make("follow:pick-journals", "Switch to journals…"),
         make("follow:stop", "Stop following"),
       ],
     })];
@@ -101,6 +103,7 @@ function followMenu(f) {
       make("follow:pick-block", "A block's children…"),
       make("follow:pick-query", "A query…"),
       make("follow:pick-refs", "Linked references of…"),
+      make("follow:pick-journals", "Journals…"),
     ],
   })];
 }

@@ -30,7 +30,7 @@ import {
   trayHeadline,
 } from "../model/follow.js";
 import { itemLabel, plainText } from "../model/schema.js";
-import { followKind } from "../host/follow-sources.js";
+import { JOURNAL_DAY_CAP, followKind } from "../host/follow-sources.js";
 import { editState, watchEditing } from "../host/local-saves.js";
 import { SPREAD_CAP } from "../session-clip.js";
 
@@ -39,6 +39,7 @@ const REASONS = {
   missingText: "The block in the board text does not exist.",
   unsupported: "Plexus cannot run this query. It reads page and block refs with and, or and not.",
   slow: "The query took too long to read.",
+  window: "This journal window is not one this version knows.",
   unknown: "This board follows a kind of source this version cannot read.",
 };
 
@@ -57,6 +58,7 @@ export function createFollowTray({
   onPlaced,
   toast,
   now = () => globalThis.performance?.now?.() ?? Date.now(),
+  clock = null,
 } = {}) {
   const boardUid = session?.uid;
   const memory = createLeftMemory({ storage, graph });
@@ -126,6 +128,8 @@ export function createFollowTray({
     boardUid,
     inBoard: () => session.followExclude?.() || new Set([boardUid]),
     tick: () => new Promise((resolve) => timers.idle(resolve)),
+    // PXD-15: the journal window's "today"; tests roll it.
+    ...(typeof clock === "function" ? { now: clock } : {}),
     followed: () => followIndex(board(), key).followed.map((card) => card.target?.uid).filter(Boolean),
   });
 
@@ -307,7 +311,7 @@ export function createFollowTray({
     const nextKey = sourceKey(next);
     if (nextKey === key) {
       // Same source, other options (the whole tree): a new name and a read, but the gone counts carry on.
-      const reshaped = (pointer?.tree === true) !== (next?.tree === true);
+      const reshaped = (pointer?.tree === true) !== (next?.tree === true) || (pointer?.columns === true) !== (next?.columns === true);
       pointer = next;
       if (reshaped) {
         label = describe();
@@ -341,7 +345,7 @@ export function createFollowTray({
   }
 
   // ---- placing ----
-  const entryOf = (row) => ({ uid: row.uid, kind: row.kind, ...(row.title ? { title: row.title } : {}) });
+  const entryOf = (row) => ({ uid: row.uid, kind: row.kind, ...(row.title ? { title: row.title } : {}), ...(row.day ? { day: row.day } : {}) });
   // One place at a time: a second click while the first is still writing does nothing.
   function place(rows) {
     if (!rows.length || placing) return Promise.resolve(null);
@@ -425,6 +429,10 @@ export function createFollowTray({
     else if (read && !read.complete) note = "Only part of the source was read, so nothing is marked as left.";
     else if (read?.deeper) note = `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
     if (note) el("div", "pxd-follow__note", panel, note);
+    if (read?.omitted?.length) {
+      const parts = read.omitted.slice().reverse().map((o, i) => `${o.n} ${i ? "of" : "left out of"} ${o.title}`);
+      el("div", "pxd-follow__note", panel, `At most ${JOURNAL_DAY_CAP} blocks per day: ${parts.join(", ")}.`);
+    }
     const bar = el("div", "pxd-follow__bar", panel);
     el("span", "pxd-follow__count", bar, `${diff.pending.length} waiting · ${diff.placed} on the board`);
     const all = button(bar, "pxd-follow__all", diff.pending.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => { void place(diff.pending.slice()); });
@@ -517,6 +525,7 @@ export function createFollowTray({
         following: Boolean(pointer),
         kind: pointer?.kind || "",
         tree: pointer?.tree === true,
+        columns: pointer?.columns === true,
         label,
         waiting: diff.pending.length,
         textUid,

@@ -2511,6 +2511,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return host.pullBoard(id, { light: true, deferRefs: true });
     },
 
+    // One unwatched read of a page by its title. A failed pull throws, so a caller can tell it from a missing page.
+    pullTitle(pattern, title) {
+      if (typeof pattern !== "string" || pattern === "" || typeof title !== "string" || !title) return null;
+      const res = pull(pattern, [":node/title", title]);
+      return res && typeof res === "object" ? res : null;
+    },
+
     // One unwatched read. Not added to the board pull watch.
     pullEntity(pattern, uid) {
       if (typeof pattern !== "string" || pattern === "" || !uid) return null;

@@ -6,6 +6,7 @@
 import { boundsOf, containerAt, toRelative } from "./model/board.js";
 import { DEFAULT_SIZES, lookForNewString, serializeItemLayout } from "./model/schema.js";
 import {
+  FOLLOW_DAY,
   FOLLOW_SRC,
   addSkip,
   followBatches,
@@ -13,6 +14,7 @@ import {
   followColumn,
   followIndex,
   followPointerFor,
+  journalColumnSpots,
   itemIds,
   keptFollow,
   readFollow,
@@ -78,13 +80,23 @@ extendSession((session, api) => {
     const bounds = boundsOf(board.roots.map((id) => rects.get(id)).filter(Boolean));
     const batches = followBatches(list, SPREAD_CAP);
     const made = [];
+    // One column per day: every spot is computed first, from the cards already on the board.
+    const byDay = pointer.kind === "journals" && pointer.columns === true && !at;
+    const dayRects = [];
+    if (byDay) {
+      for (const item of board.items.values()) {
+        const r = rects.get(item.uid);
+        if (item.src === key && item.day && r) dayRects.push({ day: item.day, x: r.x, y: r.y, w: r.w, h: r.h });
+      }
+    }
+    const planned = byDay ? journalColumnSpots(dayRects, list, { bounds, ...size }) : null;
     let chain = Promise.resolve();
     batches.forEach((batch, column) => {
       chain = chain.then(() => {
         if (api.isGone()) return null;
-        const spots = followColumn(bounds, batch.length, { ...size, column, at });
+        const spots = planned ? planned.slice(column * SPREAD_CAP, column * SPREAD_CAP + batch.length) : followColumn(bounds, batch.length, { ...size, column, at });
         return api.txn((t) => {
-          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key));
+          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key, pointer.kind === "journals" && /^\d\d-\d\d-\d{4}$/.test(entry.day || "") ? entry.day : null));
           api.applyFit(t, ids);
           return ids;
         }).then((ids) => { if (Array.isArray(ids)) made.push(...ids); });
@@ -112,7 +124,7 @@ extendSession((session, api) => {
   });
 
   // One ref card. The parent is the section under its center, as for any drop.
-  function placeOne(t, string, spot, size, key) {
+  function placeOne(t, string, spot, size, key, day = null) {
     const board = api.board();
     const rects = api.rects();
     const parent = containerAt(board, { x: spot.x + size.w / 2, y: spot.y + size.h / 2 }, { rects });
@@ -120,7 +132,7 @@ extendSession((session, api) => {
     const layout = { x: api.round1(rel.x), y: api.round1(rel.y) };
     const look = lookForNewString(string, api.setting("default-card-look", "block"));
     if (look) layout.look = look;
-    return t.create({ parent, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key } });
+    return t.create({ parent, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key, ...(day ? { [FOLLOW_DAY]: day } : {}) } });
   }
 
   Object.assign(session, {
@@ -137,14 +149,18 @@ extendSession((session, api) => {
     },
 
     // { kind, uid, tree }. The same source keeps its skip list. Resolves true when the pointer changed.
-    followSource({ kind, uid, tree } = {}) {
+    followSource({ kind, uid, tree, columns } = {}) {
       if (typeof kind !== "string" || typeof uid !== "string" || !uid || uid === boardUid) return Promise.resolve(false);
       // The kept skip list of this source, when the board stopped following it before.
-      return writePointer((cur, base) => followPointerFor(keptFollow(base, `${kind}:${uid}`) || cur, kind, uid, { tree }));
+      return writePointer((cur, base) => followPointerFor(keptFollow(base, `${kind}:${uid}`) || cur, kind, uid, { tree, columns }));
     },
 
     setFollowTree(on) {
       return writePointer((cur) => (cur?.kind === "block" ? { ...cur, tree: on === true } : cur));
+    },
+
+    setFollowColumns(on) {
+      return writePointer((cur) => (cur?.kind === "journals" ? { ...cur, columns: on === true } : cur));
     },
 
     // The cards stay; only the pointer (and its skip list) goes.

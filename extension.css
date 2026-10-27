@@ -3642,6 +3642,11 @@ body.pxd-fs-cover .roam-article .pxd-mount--fullscreen {
 
 .pxd-root .pxd-item > .pxd-lane-mark.pxd-lane-mark--two { border-style: dashed; }
 
+.pxd-root .pxd-item > .pxd-lane-mark.pxd-lane-mark--loose {
+  border-color: var(--pxd-accent, #2d72d2);
+  color: var(--pxd-accent, #2d72d2);
+}
+
 /* Plexus Diagram 1.2 backgrounds: the grid pattern (minor + major lines) and board tones. Rules are
    scoped .pxd-root .pxd-x or .pxd-root.pxd-bg-x (two classes at least). Tones only set --pxd-surface,
    which .pxd-root already paints; palette tones mix the palette line into the base surface at ~9%

@@ -2306,6 +2306,19 @@ function laneBands(rows, name, stored = []) {
   bands.push({ key: "", raw: "", label: LANE_NONE_LABEL, none: true });
   return bands;
 }
+function newLaneValues(rows, name, stored) {
+  const room = LANE_BAND_CAP - (stored || []).length;
+  if (room <= 0) return [];
+  const all = laneBands(rows, name, stored);
+  return all.filter((b) => !b.none).slice((stored || []).filter((v) => valueKey(v)).length).slice(0, room).map((b) => b.raw);
+}
+function growLane({ w, h, axis: axis2, count, added }) {
+  const n0 = Math.max(1, count);
+  const vertical = axisOf(axis2) === "vertical";
+  const band = (vertical ? h : w) / n0;
+  const shift = band * added;
+  return { band, shift, noneIndex: n0 - 1, count: n0 + added, ...vertical ? { w, h: h + shift } : { w: w + shift, h } };
+}
 function bandOfRow(bands, row4, name) {
   const { key } = laneValueOf(row4, name);
   const i = key ? bands.findIndex((b) => b.key === key) : -1;
@@ -2419,11 +2432,13 @@ function laneView(bands, rows, name) {
     const i = bandOfRow(bands, row4, name);
     counts[i] += 1;
     const v = laneValueOf(row4, name);
-    marks.set(row4.uid, { label: v.key || LANE_NONE_LABEL, ...v.key ? {} : { none: true }, ...v.two ? { two: true } : {}, name });
+    const loose = Boolean(v.key) && !bands.some((b) => b.key === v.key);
+    if (loose) counts[i] -= 1;
+    marks.set(row4.uid, { label: v.key || LANE_NONE_LABEL, ...v.key ? {} : { none: true }, ...v.two ? { two: true } : {}, ...loose ? { loose: true } : {}, name });
   }
   return { bands: bands.map((b, i) => ({ key: b.key, label: b.label, n: counts[i], ...b.none ? { none: true } : {} })), marks };
 }
-var LANE_ATTR_KEY, LANE_BANDS_KEY, LANE_NONE_LABEL, LANE_BAND_CAP, LANE_PAD, LANE_GAP, laneAttrOk, TOKEN, serializeBands, axisOf;
+var LANE_ATTR_KEY, LANE_BANDS_KEY, LANE_NONE_LABEL, LANE_BAND_CAP, LANE_PAD, LANE_GAP, laneAttrOk, TOKEN, shownBands, serializeBands, axisOf;
 var init_attr_lanes = __esm({
   "src/model/attr-lanes.js"() {
     init_kanban();
@@ -2436,6 +2451,7 @@ var init_attr_lanes = __esm({
     LANE_GAP = 12;
     laneAttrOk = (name) => columnNameOk(name);
     TOKEN = /#\[\[[^\]]+\]\]|\[\[[^\]]+\]\]|#[^\s,#\[\]]+/g;
+    shownBands = (stored) => laneBands([], "", stored);
     serializeBands = (bands) => (bands || []).filter((b) => !b.none && b.key).map((b) => b.raw);
     axisOf = (axis2) => axis2 === "vertical" ? "vertical" : "horizontal";
   }
@@ -32732,10 +32748,10 @@ function createItemRenderer({
     }
     if (!rec.laneMarkEl) rec.laneMarkEl = el2("span", "pxd-lane-mark", rec.el);
     const chip = rec.laneMarkEl;
-    chip.className = `pxd-lane-mark${mark.none ? " pxd-lane-mark--none" : ""}${mark.two ? " pxd-lane-mark--two" : ""}`;
+    chip.className = `pxd-lane-mark${mark.none ? " pxd-lane-mark--none" : ""}${mark.two ? " pxd-lane-mark--two" : ""}${mark.loose ? " pxd-lane-mark--loose" : ""}`;
     const text4 = mark.two ? `${mark.label} +1` : mark.label;
     if (chip.textContent !== text4) chip.textContent = text4;
-    const tip = mark.two ? `${mark.name}: ${mark.label} (2 values; the first one sets the sub-lane)` : `${mark.name}: ${mark.label}`;
+    const tip = mark.loose ? `${mark.name}: ${mark.label} (no sub-lane for this value yet; Add sub-lanes in the lane menu)` : mark.two ? `${mark.name}: ${mark.label} (2 values; the first one sets the sub-lane)` : `${mark.name}: ${mark.label}`;
     if (chip.title !== tip) chip.title = tip;
   };
   const paintLandmarkMark = (rec, item) => {
@@ -51464,7 +51480,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     for (const item of b.items.values()) {
       if (item.type !== "section" || item.look !== "lane" || !item.laneAttr) continue;
       const rows = laneRows(b, item.uid, laneKids, laneResolve);
-      const view = laneView(laneBands(rows, item.laneAttr, item.laneBands), rows, item.laneAttr);
+      const view = laneView(shownBands(item.laneBands), rows, item.laneAttr);
       item.laneView = view.bands;
       for (const [id, mark] of view.marks) {
         const card2 = b.items.get(id);
@@ -51473,8 +51489,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
   }
   function planLaneDrops(top, plan, moved) {
-    const out = { writes: [], bands: /* @__PURE__ */ new Map(), snap: /* @__PURE__ */ new Map() };
-    const perLane = /* @__PURE__ */ new Map();
+    const out = { writes: [], snap: /* @__PURE__ */ new Map() };
     for (const id of top) {
       const item = board2.items.get(id);
       if (!item || !isTableRow(item)) continue;
@@ -51483,17 +51498,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       const laneRect = rects.get(lane2.uid);
       const r = moved.get(id);
       if (!laneRect || !r) continue;
-      let ctx = perLane.get(lane2.uid);
-      if (!ctx) {
-        ctx = { bands: laneBands(laneRows(board2, lane2.uid, laneKids, laneResolve), lane2.laneAttr, lane2.laneBands) };
-        perLane.set(lane2.uid, ctx);
-        const ser = serializeBands(ctx.bands);
-        if (JSON.stringify(ser) !== JSON.stringify(lane2.laneBands)) out.bands.set(lane2.uid, ser);
-      }
-      const at = bandIndexAt(laneRect, lane2.axis, ctx.bands.length, { x: r.x + r.w / 2, y: r.y + r.h / 2 });
-      const shift = snapIntoBand(bandRect(laneRect, lane2.axis, ctx.bands.length, at), lane2.axis, r, laneRect, FIT_PAD);
+      const bands = shownBands(lane2.laneBands);
+      const center2 = (q2) => ({ x: q2.x + q2.w / 2, y: q2.y + q2.h / 2 });
+      const at = bandIndexAt(laneRect, lane2.axis, bands.length, center2(r));
+      const shift = snapIntoBand(bandRect(laneRect, lane2.axis, bands.length, at), lane2.axis, r, laneRect, FIT_PAD);
       if (shift.dx || shift.dy) out.snap.set(id, shift);
-      const step = planLaneDrop({ name: lane2.laneAttr, row: laneRow(board2, item, laneKids, laneResolve), band: ctx.bands[at] });
+      const was = rects.get(id);
+      if (item.parentUid === lane2.uid && was && bandIndexAt(laneRect, lane2.axis, bands.length, center2(was)) === at) continue;
+      const row4 = laneRow(board2, item, laneKids, laneResolve);
+      const key = laneValueOf(row4, lane2.laneAttr).key;
+      if (bands[at].none && key && !bands.some((b) => b.key === key)) continue;
+      const step = planLaneDrop({ name: lane2.laneAttr, row: row4, band: bands[at] });
       if (step) out.writes.push({ ...step, ref: item.kind === "block" ? item.target?.uid ?? null : null });
     }
     return out;
@@ -53261,7 +53276,6 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
             if (w.ref) laneWrites.set(w.ref, { uid: made, string: w.string, at: Date.now() });
           }
         }
-        for (const [laneUid, bands] of drops.bands) t.props(laneUid, itemPlexus(laneUid, { bands }));
         applyFit(t, top);
         if (flag("space-out", false)) spaceOutAfter(t, top);
       }, custom);
@@ -56065,7 +56079,56 @@ extendSession((session, api3) => {
     return lane2 && lane2.type === "section" && lane2.look === "lane" ? lane2 : null;
   };
   const rowsOf2 = (id) => laneRows(api3.board(), id, api3.laneKids, api3.laneResolve);
+  function growWith(lane2, rect, bands) {
+    const n0 = shownBands(lane2.laneBands).length;
+    const added = Math.max(0, bands.length - n0);
+    const grown = growLane({ w: rect.w, h: rect.h, axis: lane2.axis, count: n0, added });
+    const vertical = lane2.axis === "vertical";
+    const old = { x: 0, y: 0, w: rect.w, h: rect.h };
+    const local = { x: 0, y: 0, w: grown.w, h: grown.h };
+    const moves = [];
+    const ends = bands.map(() => LANE_PAD);
+    for (const row4 of rowsOf2(lane2.uid)) {
+      const r = api3.rects().get(row4.uid);
+      if (!r) continue;
+      let q2 = { x: r.x - rect.x, y: r.y - rect.y, w: r.w, h: r.h };
+      const was = bandIndexAt(old, lane2.axis, n0, { x: q2.x + q2.w / 2, y: q2.y + q2.h / 2 });
+      if (added && was === grown.noneIndex) {
+        q2 = vertical ? { ...q2, y: q2.y + grown.shift } : { ...q2, x: q2.x + grown.shift };
+        moves.push({ uid: row4.uid, x: q2.x, y: q2.y });
+      }
+      const at = bandIndexAt(local, lane2.axis, bands.length, { x: q2.x + q2.w / 2, y: q2.y + q2.h / 2 });
+      ends[at] = Math.max(ends[at], vertical ? q2.x + q2.w + LANE_GAP : q2.y + q2.h + LANE_GAP);
+    }
+    return { ...grown, bands, moves, ends };
+  }
+  function writeGrow(t, id, lane2, g, extra = {}) {
+    for (const m of g.moves) t.props(m.uid, api3.itemPlexus(m.uid, { x: api3.round1(m.x), y: api3.round1(m.y) }));
+    const patch = { w: api3.round1(Math.max(g.w, extra.w ?? 0)), h: api3.round1(Math.max(g.h, extra.h ?? 0)) };
+    const next = serializeBands(g.bands);
+    if (!same2(next, lane2.laneBands)) patch.bands = next;
+    t.props(id, api3.itemPlexus(id, patch));
+  }
   Object.assign(session, {
+    // Values on the lane's cards that have no band yet (a value typed in Roam), up to the band cap.
+    laneNewValues(id) {
+      const lane2 = laneOf(id);
+      if (!lane2?.laneAttr) return [];
+      return newLaneValues(rowsOf2(id), lane2.laneAttr, lane2.laneBands).map(valueKey);
+    },
+    // One band per new value, appended before none. Old band edges stay; cards in none move with it; no value is written.
+    addLaneValues(id) {
+      const lane2 = laneOf(id);
+      if (!lane2?.laneAttr) return Promise.resolve(0);
+      const rect = api3.rects().get(id);
+      const add = newLaneValues(rowsOf2(id), lane2.laneAttr, lane2.laneBands);
+      if (!rect || !add.length) return Promise.resolve(0);
+      const g = growWith(lane2, rect, laneBands([], lane2.laneAttr, [...lane2.laneBands || [], ...add]));
+      return api3.txn((t) => {
+        writeGrow(t, id, lane2, g);
+        return add.length;
+      }).then((n3) => n3 ?? 0);
+    },
     // Names the lane menu offers: attributes on the board's cards plus those on the lane's ref cards' blocks.
     laneFieldsFor(id) {
       const board2 = api3.board();
@@ -56082,7 +56145,7 @@ extendSession((session, api3) => {
       const rect = api3.rects().get(id);
       if (!rect) return Promise.resolve(false);
       const rows = rowsOf2(id);
-      const bands = laneBands(rows, attr, []);
+      const bands = laneBands(rows, attr, lane2.laneAttr === attr ? lane2.laneBands : []);
       const cards = rows.map((row4) => {
         const r = api3.rects().get(row4.uid);
         return { uid: row4.uid, w: r?.w ?? DEFAULT_SIZES.card.w, h: r?.h ?? DEFAULT_SIZES.card.h, band: bandOfRow(bands, row4, attr) };
@@ -56144,42 +56207,31 @@ extendSession((session, api3) => {
         uid,
         attrs: list.sort((a, b) => a.order - b.order).map((v) => ({ name, value: v.value, uid: null }))
       }));
-      const existing = rowsOf2(id);
-      const bands = laneBands([...existing, ...fake], name, lane2.laneBands);
       const rect = api3.rects().get(id);
       if (!rect) return Promise.resolve(none);
       const size = {
         w: Number(api3.setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w,
         h: Number(api3.setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h
       };
+      const g = growWith(lane2, rect, laneBands(fake, name, lane2.laneBands));
       const vertical = lane2.axis === "vertical";
-      const local = { x: 0, y: 0, w: rect.w, h: rect.h };
-      const arranged = arrangeLane({
-        w: rect.w,
-        h: rect.h,
-        axis: lane2.axis,
-        bands,
-        cards: fake.map((row4) => ({ uid: row4.uid, w: size.w, h: size.h, band: bandOfRow(bands, row4, name) }))
-      });
-      const ends = bands.map(() => LANE_PAD);
-      for (const row4 of existing) {
-        const r = api3.rects().get(row4.uid);
-        if (!r) continue;
-        const at = bandIndexAt(local, lane2.axis, bands.length, { x: r.x - rect.x + r.w / 2, y: r.y - rect.y + r.h / 2 });
-        ends[at] = Math.max(ends[at], vertical ? r.x - rect.x + r.w + LANE_GAP : r.y - rect.y + r.h + LANE_GAP);
-      }
-      let needW = Math.max(rect.w, arranged.w);
-      let needH = Math.max(rect.h, arranged.h);
-      const spots = arranged.cards.map((c) => {
-        const at = bandIndexAt({ x: 0, y: 0, w: arranged.w, h: arranged.h }, lane2.axis, bands.length, { x: c.x + size.w / 2, y: c.y + size.h / 2 });
-        const shift = Math.max(0, ends[at] - LANE_PAD);
-        const spot = vertical ? { uid: c.uid, x: c.x + shift, y: c.y } : { uid: c.uid, x: c.x, y: c.y + shift };
+      const local = { x: 0, y: 0, w: g.w, h: g.h };
+      let needW = g.w;
+      let needH = g.h;
+      const spots = fake.map((row4) => {
+        const at = bandOfRow(g.bands, row4, name);
+        const band = bandRect(local, lane2.axis, g.bands.length, at);
+        const box2 = { x: band.x + (band.w - size.w) / 2, y: band.y + (band.h - size.h) / 2, w: size.w, h: size.h };
+        const snap = snapIntoBand(band, lane2.axis, box2, local, FIT_PAD);
+        const cross = g.ends[at];
+        g.ends[at] = cross + (vertical ? size.w : size.h) + LANE_GAP;
+        const spot = vertical ? { uid: row4.uid, x: cross, y: box2.y + snap.dy } : { uid: row4.uid, x: box2.x + snap.dx, y: cross };
         needW = Math.max(needW, spot.x + size.w + LANE_PAD);
         needH = Math.max(needH, spot.y + size.h + LANE_PAD);
         return spot;
       });
-      const nextBands = serializeBands(bands);
       return api3.txn((t) => {
+        writeGrow(t, id, lane2, g, vertical ? { w: needW } : { h: needH });
         const ids = spots.map((spot) => {
           const string = followCardString({ kind: "block", uid: spot.uid });
           const layout = { x: api3.round1(spot.x), y: api3.round1(spot.y) };
@@ -56187,9 +56239,6 @@ extendSession((session, api3) => {
           if (look) layout.look = look;
           return t.create({ parent: id, string, plexus: serializeItemLayout(layout) });
         });
-        const patch = { w: api3.round1(needW), h: api3.round1(needH) };
-        if (!same2(nextBands, lane2.laneBands)) patch.bands = nextBands;
-        t.props(id, api3.itemPlexus(id, patch));
         api3.applyFit(t, ids);
         return ids.length;
       }).then((placed) => ({ placed: placed ?? 0, total: all.length }));
@@ -97320,6 +97369,8 @@ function laneItems(lane2) {
   if (lane2.bound) {
     out.push(make3("lane-stop", `Stop sub-lanes (${lane2.bound})`));
     out.push(make3("lane-pull", `Pull blocks with ${lane2.bound}::`));
+    const fresh = Array.isArray(lane2.fresh) ? lane2.fresh : [];
+    if (fresh.length) out.push(make3("lane-add", `Add sub-lanes for ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? ` +${fresh.length - 3}` : ""}`));
   }
   return out;
 }
@@ -105267,7 +105318,7 @@ function buildBoardView(onFail, {
           landmark: item?.landmark === true,
           landmarkSize: item?.size || "M",
           dateSource: dateMode,
-          ...item?.look === "lane" ? { lane: { bound: item.laneAttr || null, fields: session.laneFieldsFor?.(item.uid) ?? laneFields(tableRows(b)) } } : {}
+          ...item?.look === "lane" ? { lane: { bound: item.laneAttr || null, fields: session.laneFieldsFor?.(item.uid) ?? laneFields(tableRows(b)), fresh: item.laneAttr ? session.laneNewValues?.(item.uid) ?? [] : [] } } : {}
         };
       }
       case "text":
@@ -105618,6 +105669,9 @@ function buildBoardView(onFail, {
         break;
       case "lane-stop":
         if (item?.look === "lane") void session.unbindLane?.(item.uid);
+        break;
+      case "lane-add":
+        if (item?.look === "lane" && item.laneAttr) void session.addLaneValues?.(item.uid);
         break;
       case "lane-pull": {
         if (item?.look !== "lane" || !item.laneAttr) break;

@@ -3819,6 +3819,10 @@ export async function installPlexusDiagram({
     return targetView(context)?.findRelated?.();
   }
 
+  function toggleRefArrowsCommand(context) {
+    return targetView(context)?.toggleRefArrows?.();
+  }
+
   function newDrawingCommand(context) {
     return targetView(context)?.newDrawing?.();
   }
@@ -3852,6 +3856,7 @@ export async function installPlexusDiagram({
     ["Plexus: Fold sections in the outline", foldSectionsCommand],
     ["Plexus: Unfold sections", unfoldSectionsCommand],
     ["Plexus: Find related to the selected card", findRelatedCommand],
+    ["Plexus: Toggle ref arrows", toggleRefArrowsCommand],
   ];
 
   function runCommand(label, fn) {

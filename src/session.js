@@ -76,8 +76,9 @@ import { inflate, rectsIntersect, unionRect } from "./model/geometry.js";
 import { SHAPES } from "./model/shapes.js";
 import { sameSize as sameSizeRects, spaceOut as spaceOutRects, tidyRects } from "./model/layout.js";
 import { coveredBy, filterLinks, linksQuery, reduceLinks } from "./model/links.js";
+import { CARD_REFS_MAX, cardRefLinks, cardRefsOn, mergeLinks, treeLinks } from "./model/card-refs.js";
 import { isQueryString } from "./model/query.js";
-import { boardRefSource, readFollow, withFollow } from "./model/follow.js";
+import { boardRefSource, readFollow, sourceKey, withFollow } from "./model/follow.js";
 import { autoEligibility, storedLayoutIn } from "./discovery.js";
 import { HOME_PULL, resolveArrowHomes, resolveOutsideArrows } from "./model/arrow-home.js";
 import { MAX_GROUP_WRITES, createEchoLedger, createWriteQueue } from "./host/roam.js";
@@ -116,6 +117,8 @@ const extensions = [];
 
 // Roam's undo stack holds 50 changes, so one bulk add stays under it: past 45 cards only the first 45 are made.
 export const BULK_CARD_CAP = 45;
+// One pin batch: the Connections container (1 write) and a create per edge stay inside the 45-write undo step.
+export const PIN_BATCH = 20;
 // F12. Roam's sync queue confirms one write at a time, slower the longer the queue (18k queued writes wedged a
 // graph for ~30 hours on 2026-10-12). One transaction that plans this many writes asks first; past the second
 // line it is refused (duplicating one big section of the PhD main board was ~18.5k creates).
@@ -1814,9 +1817,34 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return parts.join("\n");
   }
 
+  // Refs written on the board itself (a note card's text, a card's child rows) and the outline of a followed block.
+  // Read from the board already built, once per board object; never a query and never a write.
+  let followParents = null;
+  let localMemo = { board: null, parents: null, links: [] };
+  let mergedMemo = { a: null, b: null, out: [] };
+  function followPointer() {
+    return (raw ? readFollow(readPlexus(raw[PROPS])) : null) || derivedFollow();
+  }
+  function localLinks() {
+    if (!board || !cardRefsOn(board)) return [];
+    if (localMemo.board === board && localMemo.parents === followParents) return localMemo.links;
+    const pointer = followPointer();
+    const tree = pointer?.tree && followParents ? treeLinks(board, followParents, sourceKey(pointer)) : [];
+    let links = [];
+    try { links = mergeLinks(cardRefLinks(board), tree); } catch (err) { console.error("[plexus session] card refs", err); }
+    localMemo = { board, parents: followParents, links };
+    return links;
+  }
+  function allWithLocal() {
+    const local = localLinks();
+    if (!local.length) return allLinks;
+    if (mergedMemo.a !== allLinks || mergedMemo.b !== local) mergedMemo = { a: allLinks, b: local, out: mergeLinks(allLinks, local) };
+    return mergedMemo.out;
+  }
+
   function recomputeLinks(force) {
     if (!board) return;
-    const filtered = filterLinks(allLinks, linkMode);
+    const filtered = filterLinks(allWithLocal(), linkMode);
     const res = coveredBy(filtered, board);
     const fp = `${linkMode}|${res.visible.map((l) => l.key).join(",")}|${[...res.coveredEdges].sort().join(",")}`;
     const changed = fp !== linkFingerprint;
@@ -3959,6 +3987,48 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       const first = link?.labels?.[0];
       const label = first && first !== "mentions" ? first : "";
       return session.addEdge({ from: link.from, to: link.to, label, dir: "one" });
+    },
+
+    // Up to PIN_BATCH faint links as connections in one undo step. Links a connection already covers are skipped.
+    pinLinks(links) {
+      return txn((t) => {
+        const list = Array.isArray(links) ? links : [];
+        const seen = new Set();
+        const fresh = coveredBy(list.filter((l) => l?.from && l?.to && l.from !== l.to && !seen.has(l.key) && seen.add(l.key)), board).visible;
+        const made = [];
+        let container = null;
+        for (const link of fresh.slice(0, PIN_BATCH)) {
+          if (!board.items.has(link.from) || !board.items.has(link.to)) continue;
+          const first = link.labels?.[0];
+          const label = first && first !== "mentions" ? first : "";
+          const props = serializeEdge({ from: link.from, to: link.to, dir: "one" });
+          container ??= ensureContainer(t);
+          made.push(t.create({ parent: container, order: "last", string: edgeStringFor(link.from, link.to, "one", label, props.fromBlock, props.toBlock), plexus: props }));
+        }
+        return made;
+      });
+    },
+
+    get cardRefs() {
+      return { on: cardRefsOn(board), big: (board?.items?.size || 0) > CARD_REFS_MAX };
+    },
+
+    // The enhanced board's ref arrows. Under the size cap the default is on; past it the key does not matter.
+    setCardRefs(on) {
+      return txn((t) => {
+        if (!board.enhanced) return false;
+        const base = rawPlexus(uid);
+        const next = { ...base, refs: on !== false };
+        if (stable(next) !== stable(base)) t.props(uid, next);
+        return true;
+      });
+    },
+
+    // The tray's child -> parent map of the followed outline. Only a tree pointer uses it.
+    setFollowParents(map) {
+      if (destroyed || !followPointer()?.tree) return;
+      followParents = map instanceof Map && map.size ? map : null;
+      recomputeLinks(false);
     },
 
     async writeToGraph(edgeUid) {

@@ -806,9 +806,10 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     rec.to = link.to;
     const dim = dimmed(link);
     const dash = link.dash === "solid" || link.dash === "dashed" || link.dash === "dotted" ? ` pxd-link--${link.dash}` : "";
-    setClass(rec.g, `pxd-link pxd-c-${link.color || "gray"}${dash}${selected ? " pxd-link--selected" : ""}${dim ? " pxd-edge--dim" : ""}`);
+    const tree = link.kind === "tree" ? " pxd-link--tree" : "";
+    setClass(rec.g, `pxd-link pxd-c-${link.color || "gray"}${dash}${tree}${selected ? " pxd-link--selected" : ""}${dim ? " pxd-edge--dim" : ""}`);
     rec.label.className = `pxd-label pxd-label--link pxd-c-${link.color || "gray"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
-    rec.label.textContent = link.labels?.[0] || "mentions";
+    rec.label.textContent = link.labels?.[0] || (link.kind === "tree" ? "" : "mentions");
     if (!a || !b) { rec.g.setAttribute("display", "none"); rec.label.style.display = "none"; return; }
     rec.g.removeAttribute("display");
     rec.label.style.display = "";

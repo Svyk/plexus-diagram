@@ -119,6 +119,13 @@ function followCardItems(f) {
   return out;
 }
 
+// c.refs: { on, big } from session.cardRefs. Past the size cap the item stays and says why it is off.
+const refArrowsItem = (refs) => make("ref-arrows", "Ref arrows", {
+  checked: Boolean(refs?.on),
+  disabled: Boolean(refs?.big),
+  hint: refs?.big ? "Board is too big (over 400 items)" : undefined,
+});
+
 // Optional keys are only written when set, so items compare cleanly and carry no undefined noise.
 const make = (id, label, extra = {}) => {
   const out = { id, label };
@@ -248,6 +255,7 @@ export function buildMenu(kind, ctx = {}) {
         sep(),
         make("background", "Background…"),
         make("bg-image", "Lock copied image as background"),
+        refArrowsItem(c.refs),
         viewsMenu(),
         make("print", "Print…"),
         make("highlights", "Highlight marks"),
@@ -514,6 +522,7 @@ export function buildMenu(kind, ctx = {}) {
         make("add-week", "Add this week's journals"),
         sep(),
         make("background", "Background…"),
+        refArrowsItem(c.refs),
         ...(c.readOpen ? [
           make("bar-table", "Table view"),
           make("bar-kanban", "Kanban view"),

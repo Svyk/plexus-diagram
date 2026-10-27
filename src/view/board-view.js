@@ -122,6 +122,8 @@ import { closeTab, openTab, tabAt } from "../model/tabs.js";
 import { createPanel, parseDropPayload } from "./panel.js";
 import { createInbox } from "./inbox.js";
 import { REASONS as FOLLOW_REASONS, createFollowTray } from "./follow-tray.js";
+import { createQueryFilter } from "./query-filter.js";
+import { filterBright, filterLabel, filterQueryUid, intersectBright } from "../model/query-filter.js";
 import { FOLLOW_MIME, followCapText, sourceText, textSourceUid } from "../model/follow.js";
 import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
@@ -1346,6 +1348,12 @@ function buildBoardView(onFail, {
   let focusKey = null;
   let lensTag = null;
   let lensIndex = new Map();
+  // PXD-17: the query card filtering the board, and the last result uids it read (null while the first read runs).
+  let filterCard = null;
+  let filterResults = null;
+  let filterPartial = false;
+  let filterCtl = null;
+  let filterPill = null;
   let highlightDialog = null;
   let presentSet = null;
   let sendPending = null; // uids waiting for a target board picked in the Boards tab
@@ -5145,6 +5153,21 @@ function buildBoardView(onFail, {
     toast: (message) => toast(message),
   });
 
+  // PXD-17: "Use as filter" on a query card. Reads only; the dim is the focus/lens class path.
+  filterCtl = createQueryFilter({
+    host,
+    doc,
+    liveNode: (cardUid) => root.querySelector?.(`[data-uid="${cardUid}"] .pxd-item__query .pxd-rs__live`) || null,
+    onResults: (res) => {
+      if (disposed) return;
+      filterCard = res ? res.cardUid : null;
+      filterResults = res ? res.uids : null;
+      filterPartial = Boolean(res?.partial);
+      itemsR.setFilterCard?.(filterCard);
+      applyFocus();
+    },
+  });
+
   // ------------------------------------------------------------ nested boards
   // `crumbs` entries are shared with the feature's record, so a rename shows up in both.
   let crumbList = Array.isArray(crumbs) ? crumbs.slice() : [];
@@ -5587,12 +5610,49 @@ function buildBoardView(onFail, {
     lensIndex = catalog.byUid;
     return catalog;
   };
+  const filterSetNow = () => {
+    if (!filterCard || !filterResults) return null;
+    return filterBright(board()?.items.values(), filterResults, filterCard, (title) => host?.pageUid?.(title));
+  };
+  const paintFilterPill = (bright) => {
+    if (!filterCard) { filterPill?.remove?.(); filterPill = null; return; }
+    if (!filterPill) {
+      filterPill = el("div", "pxd-qfilter pxd-chrome", root);
+      filterPill.setAttribute("role", "status");
+      const show = el("button", "pxd-qfilter__name", filterPill);
+      show.type = "button";
+      show.title = "Show the filtering card";
+      const stop = el("button", "pxd-qfilter__stop", filterPill);
+      stop.type = "button";
+      stop.textContent = "×";
+      stop.title = "Stop filtering";
+      stop.setAttribute("aria-label", "Stop filtering");
+      for (const node of [show, stop]) listen(node, "pointerdown", (event) => event.stopPropagation());
+      listen(show, "click", (event) => {
+        event.stopPropagation();
+        const r = filterCard ? rects().get(filterCard) : null;
+        if (!r) return;
+        ctl.select([filterCard]);
+        centerOn({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+        pulseItem(filterCard);
+      });
+      listen(stop, "click", (event) => { event.stopPropagation(); filterCtl?.stop(); });
+    }
+    const active = filterCtl?.active?.();
+    const count = bright ? Math.max(0, bright.size - (bright.has(filterCard) ? 1 : 0)) : 0;
+    const text = filterLabel(active?.title, count, { partial: filterPartial, waiting: !filterResults });
+    const name = filterPill.querySelector(".pxd-qfilter__name");
+    if (name && name.textContent !== text) name.textContent = text;
+  };
   const applyFocus = () => {
     if (disposed) return;
     const focus = focusSetNow();
-    const set = lensTag ? lensBright(lensIndex, lensTag, focus) : focus;
-    const key = `${lensTag || ""}|${set ? [...set].sort().join("|") : ""}`;
-    setRootFlag("focus", Boolean(set) || focusOn || Boolean(lensTag));
+    const lensSet = lensTag ? lensBright(lensIndex, lensTag, focus) : focus;
+    const filterSet = filterSetNow();
+    const set = filterSet ? intersectBright(lensSet, filterSet) : lensSet;
+    paintFilterPill(filterSet);
+    const key = `${lensTag || ""}|${filterCard || ""}|${set ? [...set].sort().join("|") : ""}`;
+    setRootFlag("focus", Boolean(set) || focusOn || Boolean(lensTag) || Boolean(filterCard));
     chrome.toolbar.setFocus(focusOn);
     chrome.toolbar.setLens?.(Boolean(lensTag));
     if (key === focusKey) return;
@@ -5933,7 +5993,7 @@ function buildBoardView(onFail, {
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true, refs: session.cardRefs };
-      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null, refs: session.cardRefs };
+      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, filtering: Boolean(filterCard), strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null, refs: session.cardRefs };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -5963,7 +6023,7 @@ function buildBoardView(onFail, {
           followed: Boolean(item.src) && followKeys.has(item.src),
           left: Boolean(followCtl?.left?.().includes(item.uid)),
         } : null;
-        return { ...(task ? { statusTags, status: task.status || "" } : {}), follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        return { ...(task ? { statusTags, status: task.status || "" } : {}), follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), filtering: Boolean(item) && filterCard === item.uid, canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -6713,6 +6773,15 @@ function buildBoardView(onFail, {
         }).catch(() => {});
         break;
       }
+      case "query-filter": {
+        if (!item) break;
+        if (filterCard === item.uid) { filterCtl?.stop(); break; }
+        const queryUid = filterQueryUid(item, (uid) => host?.blockString?.(uid));
+        if (!queryUid) { toast("This card holds no query"); break; }
+        filterCtl?.start({ queryUid, cardUid: item.uid });
+        break;
+      }
+      case "query-filter-stop": filterCtl?.stop(); break;
       case "query-results": {
         if (!item) break;
         const sourceUid = isQueryString(item.string) ? item.uid : (item.target?.kind === "block" ? item.target.uid : item.uid);
@@ -10779,11 +10848,14 @@ function buildBoardView(onFail, {
       scheduleLift();
       syncProps();
       if (lensTag && dirty.structural) rebuildLens();
-      if (focusOn || lensTag) applyFocus();
+      if (focusOn || lensTag || filterCard) applyFocus();
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLiftIdle();
+    // The filtering card left the board (deleted, moved out): its filter ends with it.
+    if (filterCard && itemsChanged && board() && !board().items.has(filterCard)) filterCtl?.stop();
+    else if (filterCard && (itemsChanged || (dirty.viewport && !gesturing))) filterCtl?.poke();
     // During a wheel pan or zoom the minimap and landmark dots repaint at most every MINIMAP_WHEEL_MS (they rebuilt
     // their marks every frame, and every DOM write inside Roam's block re-runs its :has() checks); the settle paints them.
     const wheelMinimap = (wheelLayer && !itemsChanged && !dirty.minimap) || (Boolean(dragRide) && !itemsChanged);
@@ -11675,6 +11747,7 @@ function buildBoardView(onFail, {
       step(() => { offBasketPill(); basketPill?.remove(); basketPill = null; });
       step(() => { inboxCtl?.dispose(); inboxCtl = null; });
       step(() => { followCtl?.dispose(); followCtl = null; });
+      step(() => { filterCtl?.dispose(); filterCtl = null; filterPill?.remove?.(); filterPill = null; });
       step(() => closeHalo());
       step(() => { regionMark?.destroy?.(); regionMark = null; });
       step(() => visitStore.set(boardUid, Date.now()));

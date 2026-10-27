@@ -266,13 +266,22 @@ export const ARRIVALS_CAP = 20;
 
 // The strip: the first rows of `pending` (newest first) that this visit still has room for. `allowance` is how many
 // arrivals this visit shows (ARRIVALS_CAP, more after "Show more"); `placed` how many it already placed from the
-// strip. A row taken away by a "Don't bring back" or by a card made elsewhere uses no room.
+// strip (visitPlaced). A row taken away by a "Don't bring back" or by a card made without the source key uses no room.
 export function arrivalsView(pending, { allowance = ARRIVALS_CAP, placed = 0 } = {}) {
   const list = Array.isArray(pending) ? pending : [];
   const room = Math.max(0, Math.floor(Number(allowance) || 0) - Math.max(0, Math.floor(Number(placed) || 0)));
   const rows = list.slice(0, room);
   return { rows, waiting: list.length - rows.length };
 }
+
+// Cards of source `key` on the board now that were not there when the visit began (`before`: their uids). Read from
+// the board, so a drag counts like Place, and an undo or a delete gives the room back.
+export function visitPlaced(board, key, before) {
+  const had = before instanceof Set ? before : new Set();
+  return followIndex(board, key).followed.filter((card) => !had.has(card.uid)).length;
+}
+
+export const followedUids = (board, key) => new Set(followIndex(board, key).followed.map((card) => card.uid));
 
 export function arrivalsLine({ rows = [], waiting = 0 } = {}) {
   const n = rows.length;

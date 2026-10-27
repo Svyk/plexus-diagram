@@ -42186,6 +42186,11 @@ function arrivalsView(pending, { allowance = ARRIVALS_CAP, placed = 0 } = {}) {
   const rows = list.slice(0, room);
   return { rows, waiting: list.length - rows.length };
 }
+function visitPlaced(board2, key, before) {
+  const had = before instanceof Set ? before : /* @__PURE__ */ new Set();
+  return followIndex(board2, key).followed.filter((card2) => !had.has(card2.uid)).length;
+}
+var followedUids = (board2, key) => new Set(followIndex(board2, key).followed.map((card2) => card2.uid));
 function arrivalsLine({ rows = [], waiting = 0 } = {}) {
   const n3 = rows.length;
   if (!n3) return waiting > 0 ? `${waiting} wait for your next visit` : "No arrivals";
@@ -91979,7 +91984,7 @@ function createFollowTray({
   let again = false;
   let placing = false;
   let allowance = ARRIVALS_CAP;
-  let arrived = 0;
+  let before = /* @__PURE__ */ new Set();
   let lastMs = 0;
   let waitMs = 0;
   let queuedAt = 0;
@@ -92228,7 +92233,7 @@ function createFollowTray({
     key = nextKey;
     read2 = null;
     allowance = ARRIVALS_CAP;
-    arrived = 0;
+    before = followedUids(board2(), nextKey);
     absent = /* @__PURE__ */ new Map();
     status = pointer ? "reading" : "idle";
     reason = "";
@@ -92252,16 +92257,14 @@ function createFollowTray({
     return true;
   }
   const isInbox = () => pointer?.kind === INBOX_KIND;
-  const strip = () => isInbox() ? arrivalsView(diff.pending, { allowance, placed: arrived }) : { rows: diff.pending, waiting: 0 };
+  const strip = () => isInbox() ? arrivalsView(diff.pending, { allowance, placed: visitPlaced(board2(), key, before) }) : { rows: diff.pending, waiting: 0 };
   const entryOf = (row4) => ({ uid: row4.uid, kind: row4.kind, ...row4.title ? { title: row4.title } : {} });
   function place3(rows) {
     if (!rows.length || placing) return Promise.resolve(null);
     placing = true;
     paintPanel();
-    const inbox = isInbox();
     return Promise.resolve(session.placeFollowed?.(rows.map(entryOf))).then((res) => {
       if (disposed || !res) return res;
-      if (inbox && isInbox()) arrived += Number(res.placed) || 0;
       if (res.batches > 1) toast?.(`Placed ${res.placed} cards in ${res.batches} batches of up to ${SPREAD_CAP}. Each Cmd+Z takes back one batch.`);
       if (res.uids?.length) onPlaced?.(res.uids);
       return res;

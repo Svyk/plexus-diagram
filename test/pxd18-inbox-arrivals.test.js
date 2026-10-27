@@ -9,7 +9,7 @@ import { acquireSession, resetSessions } from "../src/session.js";
 import "../src/session-follow.js";
 import { createFollowTray } from "../src/view/follow-tray.js";
 import { followKind } from "../src/host/follow-sources.js";
-import { ARRIVALS_CAP, FOLLOW_QUIET_MS, arrivalsLine, arrivalsPill, arrivalsView, followDiff } from "../src/model/follow.js";
+import { ARRIVALS_CAP, FOLLOW_QUIET_MS, arrivalsLine, arrivalsPill, arrivalsView, followDiff, followedUids, visitPlaced } from "../src/model/follow.js";
 import { INBOX_PULL_LIMIT, readInbox } from "../src/model/inbox.js";
 import { createInbox } from "../src/view/inbox.js";
 import { SPREAD_CAP } from "../src/session-clip.js";
@@ -53,8 +53,9 @@ function inboxQ(cites, calls = [], state = { fail: false }) {
   };
 }
 
-function mount({ plexus = INBOX, children, cites = { Lab: [] }, storage } = {}) {
+function mount({ plexus = INBOX, children, cites = { Lab: [] }, storage, undo = false } = {}) {
   const fake = createFakeRoam();
+  fake.trackUndo = undo;
   const base = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
   fake.seedBoard({ uid: "b1", props: { plexus }, children: children ?? [card("n1", "Note one", 0, 0)] });
   const calls = [];
@@ -273,4 +274,54 @@ test("PXD-18 Inbox pill: hidden while the board follows its Inbox, with no read;
   assert.equal(root.querySelector(".pxd-inbox"), null);
   assert.equal(root.querySelector(".pxd-inbox__panel"), null, "the open list goes too");
   inbox.dispose();
+});
+
+test("PXD-18 visit count: read from the board, so any way a card of the source is made counts, and undo gives it back", () => {
+  const board = (uids) => ({ items: new Map(uids.map((u) => [u, { uid: u, src: u.startsWith("x") ? "block:S" : "inbox:b1" }])) });
+  const before = followedUids(board(["old1", "x1"]), "inbox:b1");
+  assert.deepEqual([...before], ["old1"]);
+  assert.equal(visitPlaced(board(["old1", "x1"]), "inbox:b1", before), 0, "cards from before the visit and other sources do not count");
+  assert.equal(visitPlaced(board(["old1", "new1", "new2", "x2"]), "inbox:b1", before), 2);
+  assert.equal(visitPlaced(board(["new1"]), "inbox:b1", before), 1, "a card from before that went does not refund room twice");
+});
+
+test("PXD-18 tray: a dragged arrival (the drop's placeFollowed) uses the visit's room like Place", async () => {
+  const f = mount({ cites: { Lab: many(25) } });
+  await f.timers.run();
+  f.root.querySelector(".pxd-follow").click();
+  const placedAll = [];
+  for (let i = 0; i < 25; i += 1) {
+    const rows = f.tray.arrivals().rows;
+    if (!rows.length) break;
+    // What the board's drop handler does with a FOLLOW_MIME row.
+    await f.session.placeFollowed([{ uid: rows[0].uid, kind: "block", src: "inbox:b1" }], { at: { x: 400, y: 40 * i } });
+    await f.fake.flush();
+    placedAll.push(rows[0].uid);
+    assert.equal(f.tray.arrivals().rows.length, ARRIVALS_CAP - placedAll.length, "the strip does not refill");
+    assert.equal(f.tray.arrivals().waiting, 5);
+  }
+  assert.equal(placedAll.length, ARRIVALS_CAP, "one visit places at most the cap");
+  assert.equal(f.root.querySelectorAll(".pxd-follow__row").length, 0);
+  assert.match(f.root.querySelector(".pxd-follow__count").textContent, /^5 wait for your next visit/);
+  f.tray.dispose();
+});
+
+test("PXD-18 tray: undoing Place all gives the visit its room back", async () => {
+  const f = mount({ cites: { Lab: many(25) }, undo: true });
+  await f.timers.run();
+  f.root.querySelector(".pxd-follow").click();
+  f.root.querySelector(".pxd-follow__all").click();
+  await flush();
+  await f.fake.flush();
+  assert.equal(f.tray.arrivals().rows.length, 0);
+  await f.session.undo();
+  await f.fake.flush();
+  await flush();
+  assert.equal([...f.session.board.items.values()].filter((i) => i.src === "inbox:b1").length, 0, "the cards are gone");
+  assert.equal(f.tray.arrivals().rows.length, ARRIVALS_CAP);
+  assert.equal(f.tray.arrivals().waiting, 5);
+  assert.equal(f.root.querySelectorAll(".pxd-follow__row").length, ARRIVALS_CAP, "the panel shows them again");
+  assert.equal(f.root.querySelector(".pxd-follow__all").disabled, false);
+  assert.match(f.root.querySelector(".pxd-follow__count").textContent, /^20 arrivals · 5 more wait · 0 on the board/);
+  f.tray.dispose();
 });

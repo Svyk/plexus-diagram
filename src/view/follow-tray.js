@@ -24,6 +24,7 @@ import {
   arrivalsPill,
   arrivalsView,
   createLeftMemory,
+  followedUids,
   followCardString,
   followDiff,
   followIndex,
@@ -35,6 +36,7 @@ import {
   sourceKey,
   textSourceUid,
   trayHeadline,
+  visitPlaced,
 } from "../model/follow.js";
 import { itemLabel, plainText } from "../model/schema.js";
 import { followKind } from "../host/follow-sources.js";
@@ -91,9 +93,10 @@ export function createFollowTray({
   let inFlight = false;
   let again = false;
   let placing = false;
-  // PXD-18: this visit's Arrivals room, and how many arrivals it placed.
+  // PXD-18: this visit's Arrivals room, and the source's cards already on the board when the visit (or the source)
+  // began: every other card of the source counts as placed this visit, however it was made.
   let allowance = ARRIVALS_CAP;
-  let arrived = 0;
+  let before = new Set();
   // How long the last read took: the next quiet period is ten times that (at least FOLLOW_QUIET_MS).
   let lastMs = 0;
   // How long the last read waited for the shared background budget after its quiet period.
@@ -341,7 +344,7 @@ export function createFollowTray({
     key = nextKey;
     read = null;
     allowance = ARRIVALS_CAP;
-    arrived = 0;
+    before = followedUids(board(), nextKey);
     absent = new Map();
     status = pointer ? "reading" : "idle";
     reason = "";
@@ -358,7 +361,7 @@ export function createFollowTray({
 
   const isInbox = () => pointer?.kind === INBOX_KIND;
   // The rows the tray offers: every pending row, or for the Inbox the Arrivals strip.
-  const strip = () => (isInbox() ? arrivalsView(diff.pending, { allowance, placed: arrived }) : { rows: diff.pending, waiting: 0 });
+  const strip = () => (isInbox() ? arrivalsView(diff.pending, { allowance, placed: visitPlaced(board(), key, before) }) : { rows: diff.pending, waiting: 0 });
 
   // ---- placing ----
   const entryOf = (row) => ({ uid: row.uid, kind: row.kind, ...(row.title ? { title: row.title } : {}) });
@@ -367,10 +370,8 @@ export function createFollowTray({
     if (!rows.length || placing) return Promise.resolve(null);
     placing = true;
     paintPanel();
-    const inbox = isInbox();
     return Promise.resolve(session.placeFollowed?.(rows.map(entryOf))).then((res) => {
       if (disposed || !res) return res;
-      if (inbox && isInbox()) arrived += Number(res.placed) || 0;
       if (res.batches > 1) toast?.(`Placed ${res.placed} cards in ${res.batches} batches of up to ${SPREAD_CAP}. Each Cmd+Z takes back one batch.`);
       if (res.uids?.length) onPlaced?.(res.uids);
       return res;

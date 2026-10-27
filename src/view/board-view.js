@@ -118,6 +118,8 @@ import { LONG_PRESS_CANCEL_PX, LONG_PRESS_MS, longPressAt } from "../model/touch
 import { closeTab, openTab, tabAt } from "../model/tabs.js";
 import { createPanel, parseDropPayload } from "./panel.js";
 import { createInbox } from "./inbox.js";
+import { createFollowTray } from "./follow-tray.js";
+import { FOLLOW_MIME, sourceText, textSourceUid } from "../model/follow.js";
 import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
@@ -1221,6 +1223,7 @@ function buildBoardView(onFail, {
   // old one's values shadowing or missing.
   const zoomVarScope = (() => { try { return notedSpeedFlags().zoomVarScope !== false; } catch { return true; } })();
   let inboxCtl = null;
+  let followCtl = null;
   const emptyHint = el("div", "pxd-empty pxd-chrome", root);
   const resizeGrip = el("div", "pxd-resize-grip pxd-chrome", root);
   resizeGrip.title = "Drag to resize the board";
@@ -5078,6 +5081,28 @@ function buildBoardView(onFail, {
     skip: () => new Set([boardUid]),
     place: (strings) => addStringsBeside(strings),
   });
+  // PXD-9: the followed source's place tray. It reads at idle and never writes on its own.
+  followCtl = createFollowTray({
+    doc,
+    root,
+    host,
+    session,
+    timers,
+    board,
+    since: prevVisit,
+    storage,
+    graph,
+    onLeft: (set) => itemsR.setFollowLeft?.(set),
+    onShowCard: (uid) => {
+      const r = rects().get(uid);
+      if (!r) return;
+      ctl.select([uid]);
+      centerOn({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+      pulseItem(uid);
+    },
+    onPlaced: (uids) => ctl.select(uids),
+    toast: (message) => toast(message),
+  });
 
   // ------------------------------------------------------------ nested boards
   // `crumbs` entries are shared with the feature's record, so a rename shows up in both.
@@ -5860,7 +5885,7 @@ function buildBoardView(onFail, {
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true };
-      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn };
+      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -5879,7 +5904,15 @@ function buildBoardView(onFail, {
           } catch { /* keep the card string */ }
         }
         const officeFile = officeTargetFromText(officeText);
-        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        const followKey = session.followState?.()?.key || "";
+        const follow = item?.type === "card" ? {
+          block: !isQueryString(queryText) && (item.kind === "note" || item.kind === "block" || item.kind === "page"),
+          query: isQueryString(queryText),
+          refs: item.kind === "note" || item.kind === "block" || item.kind === "page",
+          followed: Boolean(followKey) && item.src === followKey,
+          left: Boolean(followCtl?.left?.().includes(item.uid)),
+        } : null;
+        return { ...(task ? { statusTags, status: task.status || "" } : {}), follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -5964,6 +5997,106 @@ function buildBoardView(onFail, {
       point,
     }).then(showOffice).catch(() => toast("Could not convert this file"));
   };
+  // ------------------------------------------------------------ PXD-9 follow a source
+  const pageUidOf = (title) => {
+    try { return host?.pageUid?.(title) || null; } catch { return null; }
+  };
+  // A pasted ((ref)) names a block, and that block is the whole answer.
+  const refUidIn = (text) => /^\(\(([\w-]{6,64})\)\)$/.exec(String(text || "").trim())?.[1] || null;
+  const blockRow = (uid, meta) => {
+    let s = null;
+    try { s = host?.blockString?.(uid); } catch { s = null; }
+    return typeof s === "string" ? { title: plainText(sourceText(s), 80) || "(empty block)", value: uid, meta } : null;
+  };
+  const followPick = (what) => {
+    const kind = what === "query" ? "query" : what === "refs" ? "refs" : "block";
+    const words = {
+      block: { heading: "Follow a block's children", placeholder: "Search blocks and pages…", hint: "Type to search, or paste a ((block ref))" },
+      query: { heading: "Follow a query", placeholder: "Search query blocks…", hint: "Type words from the query, or paste its ((block ref))" },
+      refs: { heading: "Follow linked references of", placeholder: "Search pages…", hint: "Type to search pages, or paste a ((block ref))" },
+    }[kind];
+    pagePicker?.close();
+    pagePicker = openPagePicker({
+      doc,
+      ...words,
+      none: "Nothing matches",
+      search: (text) => {
+        const rows = [];
+        const fits = (uid) => kind !== "query" || isQueryString(host?.blockString?.(uid) || "");
+        const pasted = refUidIn(text);
+        if (pasted) {
+          const row = blockRow(pasted, "Block");
+          if (row && fits(pasted)) rows.push(row);
+          return rows;
+        }
+        // A bare 9-character word may be a block uid or just a word ("Inventory"): the block it names comes first, and
+        // the search runs either way.
+        const word = String(text || "").trim();
+        const bare = /^[\w-]{9}$/.test(word) && fits(word) ? blockRow(word, "Block") : null;
+        if (bare) rows.push(bare);
+        if (kind !== "query") {
+          for (const p of host?.searchPages?.(text, kind === "refs" ? 30 : 10) || []) rows.push({ title: p.title, value: p.uid || p.title, meta: "Page" });
+        }
+        if (kind !== "refs") {
+          for (const r of host?.searchBlocks?.(text, 40) || []) {
+            if (r.uid === boardUid || (bare && r.uid === word)) continue;
+            const isQ = isQueryString(r.string);
+            if (kind === "query" ? !isQ : isQ) continue;
+            rows.push({ title: plainText(sourceText(r.string), 80) || "(empty block)", value: r.uid, meta: r.pageTitle });
+            if (rows.length >= 40) break;
+          }
+        }
+        return rows;
+      },
+      onPick: async (value) => {
+        const uid = /^[\w-]{1,64}$/.test(value) && host?.blockString?.(value) != null ? value : pageUidOf(value) || value;
+        return startFollow(kind, uid);
+      },
+    });
+  };
+  const startFollow = async (kind, uid) => {
+    if (!uid) return false;
+    const ok = await session.followSource?.({ kind, uid });
+    if (disposed) return false;
+    if (ok) {
+      followCtl?.open?.();
+      toast("Following. New items wait in the tray until you place them.");
+    } else if (session.followState?.()?.pointer?.uid === uid) followCtl?.open?.();
+    else toast("Couldn't follow that source");
+    return true;
+  };
+  const followTargetOf = (item, what) => {
+    if (!item) return null;
+    if (what === "query") return isQueryString(item.string) ? item.uid : item.target?.kind === "block" ? item.target.uid : null;
+    if (item.target?.kind === "page") return item.target.uid || pageUidOf(item.target.title);
+    if (item.target?.kind === "block" && item.target.uid) return item.target.uid;
+    return item.uid;
+  };
+  const runFollow = (arg, item) => {
+    const state = followCtl?.menuState?.() || {};
+    switch (arg) {
+      case "pick-block": followPick("block"); break;
+      case "pick-query": followPick("query"); break;
+      case "pick-refs": followPick("refs"); break;
+      case "text": {
+        const uid = textSourceUid(board()?.string || "");
+        if (uid) void startFollow(isQueryString(host?.blockString?.(uid) || "") ? "query" : "block", uid);
+        break;
+      }
+      case "this": void startFollow("block", followTargetOf(item, "block")); break;
+      case "this-query": void startFollow("query", followTargetOf(item, "query")); break;
+      case "this-refs": void startFollow("refs", followTargetOf(item, "refs")); break;
+      case "show": followCtl?.open?.(); break;
+      case "tree": void session.setFollowTree?.(!state.tree); break;
+      case "stop":
+        void Promise.resolve(session.stopFollowing?.()).then((ok) => { if (ok && !disposed) toast("Stopped following. The cards stay on the board."); });
+        break;
+      case "dismiss": if (item) void session.dismissLeft?.([item.uid]); break;
+      case "remove": if (item) void session.removeFollowed?.([item.uid]); break;
+      default: break;
+    }
+  };
+
   const onMenuPick = (id) => {
     const b = board();
     if (!b || disposed) return;
@@ -6462,6 +6595,7 @@ function buildBoardView(onFail, {
       case "toggle-fit": if (item) void session.setFit?.(item.uid, item.autofit === false); break;
       case "tidy": void session.tidyItems?.(mc.kind === "board-menu" ? b.roots : uids, arg); break;
       case "sort-outline": void session.sortOutline?.(); break;
+      case "follow": runFollow(arg, item); break;
       case "pdf-pages": void movePdfsToPages(); break;
       case "table-captions": void foldTableCaptions(); break;
       case "fold-all-in": if (item) void session.collapseAll?.(true, { within: item.uid }); break;
@@ -9664,6 +9798,17 @@ function buildBoardView(onFail, {
     if (pdfFiles.length) { void addPdfFiles(pdfFiles, p); return; }
     const files = filesFromDataTransfer(event.dataTransfer);
     if (files.length) { void pasteImages(files, p); return; }
+    // PXD-9: a row dragged out of this board's follow tray becomes a ref card that remembers its source. A row from
+    // another board's tray (or from a source this board no longer follows) falls through to the plain ref card below.
+    let followed = null;
+    try { followed = JSON.parse(event.dataTransfer?.getData?.(FOLLOW_MIME) || "null"); } catch { followed = null; }
+    const followKey = session.followState?.()?.key || "";
+    if (followed?.uid && followed.board === boardUid && followKey && followed.src === followKey) {
+      void Promise.resolve(session.placeFollowed?.([followed], { at: p })).then((res) => {
+        if (!disposed && res?.uids?.length) ctl.select(res.uids);
+      }).catch(() => {});
+      return;
+    }
     const resolveUid = (u) => (host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`);
     const list = parseDropPayload(event.dataTransfer, { resolveUid, graph: host?.graph || "" });
     if (!list.length) return;
@@ -11045,6 +11190,11 @@ function buildBoardView(onFail, {
       if (!inputProfile) inputProfile = createInputProfile({ win: globalThis, spans: () => sharedTaskProbe().spans() });
       return inputProfile.read(opts);
     },
+    // PXD-9 F10 probe: the follow tray's source key, reads, the last read's length and wait, and the quiet period it sets
+    // (null: no source).
+    followStats() {
+      return followCtl?.stats?.() || null;
+    },
     // Card bodies that took 50 ms or more to mount ({ uid, kind, ms, at }), to name a long "content" task.
     slowMounts() {
       return itemsR.slowMounts?.() || [];
@@ -11324,6 +11474,7 @@ function buildBoardView(onFail, {
       });
       step(() => { offBasketPill(); basketPill?.remove(); basketPill = null; });
       step(() => { inboxCtl?.dispose(); inboxCtl = null; });
+      step(() => { followCtl?.dispose(); followCtl = null; });
       step(() => closeHalo());
       step(() => { regionMark?.destroy?.(); regionMark = null; });
       step(() => visitStore.set(boardUid, Date.now()));

@@ -330,6 +330,8 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         // Regions and pins sit in content, which can change in place. This string is fixed at build, so the diff sees them.
         ...(kind === "image" || kind === "pdf" ? { hitsKey: endpointHitsKey(cardKids) } : {}),
         ...(openKey ? { openKey } : {}),
+        // PXD-9: the source a placed card came from (its follow key). Only such cards can be marked "left the source".
+        ...(typeof cplexus?.src === "string" && cplexus.src ? { src: cplexus.src } : {}),
       };
       items.set(cuid, item);
       preorder.push(cuid);

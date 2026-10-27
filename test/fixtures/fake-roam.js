@@ -318,19 +318,22 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   }
 
   // Roam's DataScript pull returns at most 1000 values of a ref-many attribute unless the pattern says
-  // `(limit :block/children nil)`.
+  // `(limit :block/children nil)`. `(limit :block/children N)` joins cap their level, outermost first.
   const CHILDREN_CAP = 1000;
-  function capChildren(node) {
+  function capChildren(node, caps = [], depth = 0) {
     const kids = node?.[":block/children"];
     if (!kids) return;
-    if (kids.length > CHILDREN_CAP) node[":block/children"] = kids.slice(0, CHILDREN_CAP);
-    for (const k of node[":block/children"]) capChildren(k);
+    const cap = caps[depth] ?? CHILDREN_CAP;
+    if (kids.length > cap) node[":block/children"] = kids.slice(0, cap);
+    for (const k of node[":block/children"]) capChildren(k, caps, depth + 1);
   }
 
   function pull(pattern, entity) {
     if (fake.pullLog) fake.pullLog.push({ pattern: String(pattern), entity });
     let out = pullUncapped(pattern, entity);
-    if (out && !String(pattern).includes("(limit :block/children nil)")) capChildren(out);
+    const childLimits = [...String(pattern).matchAll(/\(limit :block\/children (\d+)\)/g)].map((m) => Number(m[1]));
+    if (out && childLimits.length) capChildren(out, childLimits);
+    else if (out && !String(pattern).includes("(limit :block/children nil)")) capChildren(out);
     if (out && stamps && /:edit\/time|:page\/edit-/.test(String(pattern))) {
       let vec = null;
       try { vec = parseEdn(String(pattern)); } catch { vec = null; }
@@ -379,6 +382,10 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
     // Arrow homes ask for parents by this exact pattern. A broader board pull must not grow parents.
     if (out && String(pattern) === HOME_PULL) {
       out[":block/parents"] = topUid(out[":block/uid"]).slice(1).map(parentNode).filter(Boolean);
+    }
+    // A PXD-9 tree read asks a placed card's ancestors by this exact pattern.
+    if (out && String(pattern) === "[:block/uid {:block/parents [:block/uid]}]") {
+      out[":block/parents"] = topUid(out[":block/uid"]).slice(1).map((u) => ({ ":block/uid": u }));
     }
     // Arrows that mention a card, for the quiet badge on a nested board. Same exact-pattern rule.
     if (out && String(pattern) === REFS_PULL) {

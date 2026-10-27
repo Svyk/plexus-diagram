@@ -369,7 +369,10 @@ export function buildMenu(kind, ctx = {}) {
         out.push(mindPresetMenu());
       }
       if (c.canSpread) out.push(make("spread-children", "Spread children as cards"));
-      if (c.isQuery) out.push(make("query-results", "Add results as cards"));
+      if (c.isQuery) {
+        out.push(make("query-results", "Add results as cards"));
+        out.push(make("query-filter", c.filtering ? "Stop filtering" : "Use as filter", { checked: Boolean(c.filtering) }));
+      }
       if (c.canExpand) {
         out.push(make("neighbors:out", "Add pages it links to"));
         out.push(make("neighbors:in", "Add pages that link here"));
@@ -547,6 +550,7 @@ export function buildMenu(kind, ctx = {}) {
         make("save-view", "Save view…"),
         make("memory-lane", "Memory lane", { hint: "Shift T" }),
         ...(c.changes ? [make("changed-since", "Changed since last visit", { checked: c.changed === true })] : []),
+        ...(c.filtering ? [make("query-filter-stop", "Stop filtering")] : []),
         ...(c.lens ? [
           make("lens-strength", "Strength", { checked: c.strength === true }),
           make("lens-dust", "Dust", {

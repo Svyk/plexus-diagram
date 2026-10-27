@@ -1,5 +1,6 @@
 import "./session-clip.js";
 import "./session-follow.js";
+import "./session-source-order.js";
 import "./session-bucket.js";
 import "./templates.js";
 import "./snapshots.js";

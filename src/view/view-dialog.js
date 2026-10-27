@@ -23,12 +23,13 @@ export function openViewDialog(doc, { caption = "", showCopy = true, dialogLabel
   const glyph = dialogLabel === "Landmark glyph";
   const label = doc.createElement("label");
   const comment = dialogLabel === "Comment";
-  label.textContent = glyph ? "Glyph" : comment ? "Comment" : "Name";
+  const bind = dialogLabel === "Bind section";
+  label.textContent = glyph ? "Glyph" : comment ? "Comment" : bind ? "Tag or attribute" : "Name";
   const input = doc.createElement("input");
   input.className = "pxd-input";
   input.type = "text";
   input.value = caption;
-  input.setAttribute("aria-label", glyph ? "Landmark glyph" : comment ? "Comment" : "View name");
+  input.setAttribute("aria-label", glyph ? "Landmark glyph" : comment ? "Comment" : bind ? "Tag or attribute" : "View name");
   label.append(input);
   card.append(label);
 

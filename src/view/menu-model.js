@@ -345,6 +345,8 @@ export function buildMenu(kind, ctx = {}) {
         make("select-connected", "Select connected"),
         make("collapse-section", c.collapsed ? "Expand" : "Collapse"),
         make("section-note", c.hasNote ? "Remove description" : "Add description"),
+        make("bucket-bind", c.bucket ? `Bound to ${c.bucket}…` : "Bind to tag or attribute…"),
+        ...(c.bucket ? [make("bucket-write", "Write section to graph", { disabled: empty }), make("bucket-unbind", "Unbind")] : []),
         c.locked ? make("unlock-contents", "Unlock") : make("lock-contents", "Lock"),
         make("present-section", "Present this section"),
         make("layout-dates", "Lay out by date"),

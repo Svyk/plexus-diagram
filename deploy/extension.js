@@ -2026,15 +2026,15 @@ function planRestore(entries, board2) {
     if (unit.length) units.push(unit);
   }
   const chunks = [];
-  let chunk = [];
+  let chunk2 = [];
   for (const unit of units) {
-    if (chunk.length && chunk.length + unit.length > SNAPSHOT_CHUNK) {
-      chunks.push(chunk);
-      chunk = [];
+    if (chunk2.length && chunk2.length + unit.length > SNAPSHOT_CHUNK) {
+      chunks.push(chunk2);
+      chunk2 = [];
     }
-    chunk.push(...unit);
+    chunk2.push(...unit);
   }
-  if (chunk.length) chunks.push(chunk);
+  if (chunk2.length) chunks.push(chunk2);
   return chunks;
 }
 var SNAPSHOTS_TITLE, SNAPSHOT_KEEP, SNAPSHOT_CHUNK, pad;
@@ -14291,8 +14291,8 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
         }
         let j = i + 1;
         while (j < lines.length && !levelAt(j)) j++;
-        const chunk = lines.slice(i, j);
-        for (const group of groupParagraphs(chunk, { bodySize })) {
+        const chunk2 = lines.slice(i, j);
+        for (const group of groupParagraphs(chunk2, { bodySize })) {
           const peeled = pg.ocr ? peelCaptionColumn(group) : { keep: group, rest: [] };
           const pieces2 = pg.ocr ? splitOcrCaptionGroup(peeled.keep) : [peeled.keep];
           for (const part of pieces2) emitTextGroup(part);
@@ -18316,10 +18316,10 @@ function assembleMeta(uids, { pullMany, q: q2 }) {
   const out = /* @__PURE__ */ new Map();
   const list = (uids || []).filter(Boolean);
   for (let i = 0; i < list.length; i += META_CHUNK) {
-    const chunk = list.slice(i, i + META_CHUNK);
+    const chunk2 = list.slice(i, i + META_CHUNK);
     let nodes = [];
     try {
-      nodes = pullMany(META_PULL, chunk.map((u) => [":block/uid", u])) || [];
+      nodes = pullMany(META_PULL, chunk2.map((u) => [":block/uid", u])) || [];
     } catch {
       nodes = [];
     }
@@ -20383,6 +20383,283 @@ var init_card_children = __esm({
   }
 });
 
+// src/model/tasks.js
+function setTaskAttrNames(map) {
+  liveNames = map instanceof Map && map.size ? map : null;
+  namesSig = liveNames ? [...liveNames].map(([id, set]) => `${id}=${[...set].sort().join("|")}`).join(";") : "";
+}
+function taskAttrId(text4, names = liveNames) {
+  if (String(text4 ?? "").trim() === ACTIVITY_LOG) return "activity";
+  const name = attrNameOf(text4);
+  if (!name) return null;
+  const key = lower(name);
+  if (names) {
+    for (const [id, set] of names) if (set.has(key)) return id;
+  }
+  if (DEFAULT_IDS.has(key)) return DEFAULT_IDS.get(key);
+  return key.startsWith("bt_attr") ? "other" : null;
+}
+function isTaskAttr(child, names = liveNames) {
+  return taskAttrId(child?.[":block/string"] ?? child?.string ?? "", names) !== null;
+}
+function parseRoamDay(title) {
+  const m = DAILY_RE2.exec(String(title ?? "").trim());
+  if (!m) return null;
+  const day = Number(m[2]);
+  const suffix = day >= 11 && day <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th";
+  if (m[3] !== suffix || day < 1 || day > 31) return null;
+  const month = MONTHS7.indexOf(m[1]);
+  if (month < 0) return null;
+  return { y: Number(m[4]), m: month + 1, d: day };
+}
+function childString3(child) {
+  return child?.[":block/string"] ?? child?.string ?? "";
+}
+function dayOf(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return { y: value.getFullYear(), m: value.getMonth() + 1, d: value.getDate() };
+  }
+  return parseRoamDay(value);
+}
+function stamp(part) {
+  return part.y * 1e4 + part.m * 100 + part.d;
+}
+function dueChip(content, today = /* @__PURE__ */ new Date()) {
+  let raw = null;
+  let title = "";
+  for (const child of content || []) {
+    const text4 = String(childString3(child));
+    if (taskAttrId(text4) !== "due") continue;
+    raw = text4;
+    const rest = text4.slice(text4.indexOf("::") + 2).trim();
+    const wiki = /^\[\[([\s\S]+)\]\]$/.exec(rest);
+    title = (wiki ? wiki[1] : rest).trim();
+    break;
+  }
+  if (raw == null || !title) return null;
+  const due = parseRoamDay(title);
+  const now5 = dayOf(today);
+  return { text: title, overdue: Boolean(due && now5 && stamp(due) < stamp(now5)), today: Boolean(due && now5 && stamp(due) === stamp(now5)), raw, day: due };
+}
+function shortDay(day, today = /* @__PURE__ */ new Date()) {
+  if (!day) return "";
+  const now5 = dayOf(today);
+  const base2 = `${SHORT_MONTHS[day.m - 1]} ${day.d}`;
+  return now5 && day.y !== now5.y ? `${base2}, ${day.y}` : base2;
+}
+function dayChoices(today = /* @__PURE__ */ new Date()) {
+  const at = (n3) => iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + n3));
+  const toMonday = (8 - today.getDay()) % 7 || 7;
+  return [
+    { label: "Today", value: at(0) },
+    { label: "Tomorrow", value: at(1) },
+    { label: "Next week", value: at(toMonday) }
+  ];
+}
+function attrValue(text4) {
+  const rest = String(text4).slice(String(text4).indexOf("::") + 2).trim();
+  const ref = /\[\[([^\]]+)\]\]/.exec(rest);
+  if (ref) return ref[1].trim();
+  return rest.replace(/\{\{[\s\S]*$/, "").trim();
+}
+function taskMeta(string, content, today = /* @__PURE__ */ new Date(), names = liveNames) {
+  const state = taskState(string);
+  if (!state) return null;
+  const meta = { done: state === "DONE", status: "", cancelled: false, due: null, project: "", priority: "", priorityGlyph: "", repeat: "", waitingFor: "", gtd: "", energy: "", context: "", notes: "" };
+  const tag = STATUS_TAG.exec(String(string));
+  if (tag) {
+    meta.status = tag[1].trim();
+    meta.cancelled = lower(meta.status) === "cancelled";
+  }
+  const seen = /* @__PURE__ */ new Set();
+  for (const child of content || []) {
+    const text4 = String(childString3(child));
+    const id = taskAttrId(text4, names);
+    if (!id || id === "other" || id === "activity" || seen.has(id)) continue;
+    seen.add(id);
+    const value = attrValue(text4);
+    if (!value) continue;
+    if (id === "due") {
+      const chip = dueChip([child], today);
+      if (chip) meta.due = { text: chip.text, short: shortDay(chip.day, today), overdue: chip.overdue && !meta.done, today: chip.today };
+    } else if (id === "priority") {
+      meta.priority = lower(value);
+      meta.priorityGlyph = PRIORITY_GLYPH[meta.priority] || "";
+    } else if (id in meta) meta[id] = value;
+  }
+  return meta;
+}
+var ACTIVITY_LOG, lower, DEFAULT_LABELS, DEFAULT_IDS, liveNames, namesSig, taskNamesSig, TASK_RE, taskState, isTaskString, isBareTask, MONTHS7, DAILY_RE2, SHORT_MONTHS, iso, isoDay, PRIORITY_GLYPH, STATUS_TAG;
+var init_tasks = __esm({
+  "src/model/tasks.js"() {
+    init_schema();
+    ACTIVITY_LOG = "**Activity log**";
+    lower = (s) => String(s ?? "").trim().toLowerCase();
+    DEFAULT_LABELS = {
+      repeat: "BT_attrRepeat",
+      start: "BT_attrStart",
+      defer: "BT_attrDefer",
+      due: "BT_attrDue",
+      completed: "BT_attrCompleted",
+      project: "BT_attrProject",
+      gtd: "BT_attrGTD",
+      waitingFor: "BT_attrWaitingFor",
+      context: "BT_attrContext",
+      priority: "BT_attrPriority",
+      energy: "BT_attrEnergy",
+      depends: "BT_attrDepends",
+      parent: "BT_attrParent",
+      notes: "BT_attrNotes"
+    };
+    DEFAULT_IDS = new Map(Object.entries(DEFAULT_LABELS).map(([id, label]) => [lower(label), id]));
+    liveNames = null;
+    namesSig = "";
+    taskNamesSig = () => namesSig;
+    TASK_RE = /^\s*\{\{\[\[(TODO|DONE)\]\]\}\}/;
+    taskState = (string) => TASK_RE.exec(String(string ?? ""))?.[1] ?? "";
+    isTaskString = (string) => TASK_RE.test(String(string ?? ""));
+    isBareTask = (string) => isTaskString(string) && !String(string).replace(TASK_RE, "").replace(/#\[\[task-status\/[^\]]*\]\]/g, "").trim();
+    MONTHS7 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    DAILY_RE2 = new RegExp(`^(${MONTHS7.join("|")}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
+    SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    isoDay = iso;
+    PRIORITY_GLYPH = { low: "!", medium: "!!", high: "!!!" };
+    STATUS_TAG = /#\[\[task-status\/([^\]]+)\]\]/;
+  }
+});
+
+// src/model/status-tags.js
+function row2(key, name, glyph, lightBase, lightText, darkBase, darkText) {
+  return Object.freeze({
+    key,
+    name,
+    tag: `task-status/${name}`,
+    glyph,
+    light: Object.freeze({ base: lightBase, text: lightText }),
+    dark: Object.freeze({ base: darkBase, text: darkText })
+  });
+}
+function side(value) {
+  if (!value || typeof value !== "object") return { base: "", text: "" };
+  return { base: String(value.base || ""), text: String(value.text || "") };
+}
+function statusKey(name) {
+  return String(name ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function statusApi(win2) {
+  const api3 = win2?.RoamTaskStatusTags;
+  if (!api3 || api3.apiVersion !== 1 || typeof api3.statuses !== "function") return null;
+  return api3;
+}
+function normalize(raw) {
+  const name = String(raw?.name || "").trim();
+  if (!name) return null;
+  const glyphRaw = String(raw?.glyph || "").trim();
+  const glyph = !glyphRaw || glyphRaw === "custom" ? "diamond" : glyphRaw;
+  const known2 = FALLBACK.find((entry) => entry.name.toLowerCase() === name.toLowerCase());
+  return {
+    key: raw?.key ? String(raw.key) : known2?.key || statusKey(name).toUpperCase().replace(/-/g, "_"),
+    name,
+    tag: raw?.tag ? String(raw.tag) : `task-status/${name}`,
+    glyph: glyph === "diamond" && known2 ? known2.glyph : glyph,
+    light: raw?.light ? side(raw.light) : known2 ? { ...known2.light } : { ...NEUTRAL.light },
+    dark: raw?.dark ? side(raw.dark) : known2 ? { ...known2.dark } : { ...NEUTRAL.dark }
+  };
+}
+function statusPalette(api3) {
+  let rows = null;
+  if (api3 && typeof api3.statuses === "function") {
+    try {
+      const got = api3.statuses();
+      if (Array.isArray(got) && got.length) rows = got;
+    } catch {
+      rows = null;
+    }
+  }
+  const map = /* @__PURE__ */ new Map();
+  for (const raw of rows || FALLBACK) {
+    const entry = rows ? normalize(raw) : raw;
+    if (!entry?.name) continue;
+    const id = entry.name.toLowerCase();
+    if (map.has(id)) continue;
+    map.set(id, entry);
+  }
+  return map;
+}
+function paletteEntries(palette) {
+  if (!palette) return [];
+  if (typeof palette.values === "function" && !Array.isArray(palette)) return [...palette.values()];
+  return [...palette];
+}
+function findEntry(palette, name) {
+  const id = String(name ?? "").trim().toLowerCase();
+  if (!id) return null;
+  if (palette && typeof palette.get === "function") {
+    const hit = palette.get(id);
+    if (hit) return hit;
+  }
+  for (const entry of paletteEntries(palette)) {
+    if (!entry?.name) continue;
+    if (entry.name.toLowerCase() === id || String(entry.key || "").toLowerCase() === id) return entry;
+  }
+  return null;
+}
+function paletteVars(entry, theme) {
+  const dark = theme === "dark" || theme === "bp3-dark";
+  const pair2 = (dark ? entry?.dark : entry?.light) || {};
+  return {
+    "--pxd-status-base": pair2.base || "",
+    "--pxd-status-text": pair2.text || ""
+  };
+}
+function taskStatusOf(string, palette) {
+  const text4 = String(string ?? "");
+  let raw = "";
+  const meta = taskMeta(text4, []);
+  if (meta?.status) raw = meta.status;
+  else {
+    const tag = STATUS_TAG2.exec(text4);
+    if (tag) raw = tag[1].trim();
+  }
+  if (!raw) return null;
+  const entry = findEntry(palette, raw);
+  return entry ? entry.name : null;
+}
+function statusLook(name, palette) {
+  const hit = findEntry(palette, name);
+  if (hit) return hit;
+  const label = String(name ?? "").trim();
+  return {
+    key: statusKey(label) || "unknown",
+    name: label,
+    tag: label ? `task-status/${label}` : "",
+    glyph: "diamond",
+    light: { base: NEUTRAL.light.base, text: NEUTRAL.light.text },
+    dark: { base: NEUTRAL.dark.base, text: NEUTRAL.dark.text }
+  };
+}
+var STATUS_TAG2, NEUTRAL, FALLBACK;
+var init_status_tags = __esm({
+  "src/model/status-tags.js"() {
+    init_tasks();
+    STATUS_TAG2 = /#\[\[task-status\/([^\]]+)\]\]/;
+    NEUTRAL = Object.freeze({
+      light: Object.freeze({ base: "rgba(100, 116, 139, 0.1)", text: "rgb(88, 102, 122)" }),
+      dark: Object.freeze({ base: "rgba(100, 116, 139, 0.2)", text: "rgb(158, 168, 183)" })
+    });
+    FALLBACK = Object.freeze([
+      row2("ACTIVE", "Active", "active", "rgba(20, 184, 166, 0.1)", "rgb(13, 116, 104)", "rgba(20, 184, 166, 0.2)", "rgb(68, 198, 184)"),
+      row2("WAITING", "Waiting", "waiting", "rgba(234, 179, 8, 0.1)", "rgb(131, 100, 4)", "rgba(234, 179, 8, 0.2)", "rgb(234, 179, 8)"),
+      row2("IN_REVIEW", "In Review", "in-review", "rgba(14, 165, 233, 0.1)", "rgb(9, 109, 154)", "rgba(14, 165, 233, 0.2)", "rgb(76, 188, 239)"),
+      row2("HOLDING", "Holding", "holding", "rgba(148, 163, 184, 0.1)", "rgb(95, 104, 118)", "rgba(148, 163, 184, 0.2)", "rgb(169, 181, 198)"),
+      row2("INCUBATING", "Incubating", "incubating", "rgba(99, 102, 241, 0.1)", "rgb(84, 86, 203)", "rgba(99, 102, 241, 0.2)", "rgb(158, 160, 246)"),
+      row2("ALERT", "Alert", "alert", "rgba(244, 63, 94, 0.1)", "rgb(184, 48, 71)", "rgba(244, 63, 94, 0.2)", "rgb(248, 130, 150)"),
+      row2("CANCELLED", "Cancelled", "cancelled", "rgba(30, 41, 59, 0.1)", "rgb(30, 41, 59)", "rgba(30, 41, 59, 0.2)", "rgb(145, 150, 159)")
+    ]);
+  }
+});
+
 // src/model/highlighter.js
 function bgName(match) {
   return match[1] || match[2] || match[4] || match[5] || match[7] || match[8] || null;
@@ -20425,7 +20702,7 @@ function fillFromTags(tags, probe) {
   const parsed = typeof tags === "string" || tags == null ? highlighterTags(tags) : tags;
   const name = typeof parsed?.bg === "string" ? parsed.bg : "";
   if (!name) return "";
-  return fromProbe(probe, name) || FALLBACK[name.toLowerCase()] || "";
+  return fromProbe(probe, name) || FALLBACK2[name.toLowerCase()] || "";
 }
 function bgSpans(string) {
   const out = [];
@@ -20466,7 +20743,7 @@ function rewriteBgTag(string, name) {
   }
   return next.slice(0, spans[0][0]) + token + next.slice(spans[0][1]);
 }
-var NAME, BG_SRC, TAG_SRC, GRAY, FALLBACK;
+var NAME, BG_SRC, TAG_SRC, GRAY, FALLBACK2;
 var init_highlighter = __esm({
   "src/model/highlighter.js"() {
     NAME = "[A-Za-z0-9_]+";
@@ -20489,7 +20766,7 @@ var init_highlighter = __esm({
       `\\[\\[bg-(${NAME})\\]\\]`
     ].join("|");
     GRAY = "#dddddd";
-    FALLBACK = {
+    FALLBACK2 = {
       red: "#fcb8b8",
       orange: "#ffecd0",
       yellow: "#fff6b9",
@@ -20942,6 +21219,9 @@ var init_tooltip_text = __esm({
       "ctx.collapse-section": e("Collapse", "Fold the section down to its title."),
       "ctx.collapse-section:on": e("Expand", "Show the section's cards again."),
       "ctx.section-note": e("Description", "Add a one-line description under the section's title."),
+      "ctx.bucket-bind": e("Bind to tag or attribute", "Cards dropped in this section get the tag or Name:: value; dragged out, it comes off."),
+      "ctx.bucket-write": e("Write section to graph", "Tag every card in this section now."),
+      "ctx.bucket-unbind": e("Unbind", "Stop writing a tag or attribute to cards. Cards keep what they have."),
       "ctx.section-note:on": e("Remove note", "Delete the section's description line."),
       "ctx.lock": e("Lock", "Pin the section and everything inside it."),
       "ctx.lock:on": e("Unlock", "Unpin the section and everything inside it."),
@@ -22217,283 +22497,6 @@ var init_relchips = __esm({
       const point = { x: side2 === "right" ? item.x + item.w : item.x, y: bar.y + bar.h / 2 };
       return { side: side2, point, inner: blockInner({ rect: item, side: side2, point, rowLeft: ROW_PAD, rowRight: item.w - ROW_PAD }) };
     };
-  }
-});
-
-// src/model/tasks.js
-function setTaskAttrNames(map) {
-  liveNames = map instanceof Map && map.size ? map : null;
-  namesSig = liveNames ? [...liveNames].map(([id, set]) => `${id}=${[...set].sort().join("|")}`).join(";") : "";
-}
-function taskAttrId(text4, names = liveNames) {
-  if (String(text4 ?? "").trim() === ACTIVITY_LOG) return "activity";
-  const name = attrNameOf(text4);
-  if (!name) return null;
-  const key = lower(name);
-  if (names) {
-    for (const [id, set] of names) if (set.has(key)) return id;
-  }
-  if (DEFAULT_IDS.has(key)) return DEFAULT_IDS.get(key);
-  return key.startsWith("bt_attr") ? "other" : null;
-}
-function isTaskAttr(child, names = liveNames) {
-  return taskAttrId(child?.[":block/string"] ?? child?.string ?? "", names) !== null;
-}
-function parseRoamDay(title) {
-  const m = DAILY_RE3.exec(String(title ?? "").trim());
-  if (!m) return null;
-  const day = Number(m[2]);
-  const suffix = day >= 11 && day <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th";
-  if (m[3] !== suffix || day < 1 || day > 31) return null;
-  const month = MONTHS9.indexOf(m[1]);
-  if (month < 0) return null;
-  return { y: Number(m[4]), m: month + 1, d: day };
-}
-function childString3(child) {
-  return child?.[":block/string"] ?? child?.string ?? "";
-}
-function dayOf(value) {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return { y: value.getFullYear(), m: value.getMonth() + 1, d: value.getDate() };
-  }
-  return parseRoamDay(value);
-}
-function stamp(part) {
-  return part.y * 1e4 + part.m * 100 + part.d;
-}
-function dueChip(content, today = /* @__PURE__ */ new Date()) {
-  let raw = null;
-  let title = "";
-  for (const child of content || []) {
-    const text4 = String(childString3(child));
-    if (taskAttrId(text4) !== "due") continue;
-    raw = text4;
-    const rest = text4.slice(text4.indexOf("::") + 2).trim();
-    const wiki = /^\[\[([\s\S]+)\]\]$/.exec(rest);
-    title = (wiki ? wiki[1] : rest).trim();
-    break;
-  }
-  if (raw == null || !title) return null;
-  const due = parseRoamDay(title);
-  const now5 = dayOf(today);
-  return { text: title, overdue: Boolean(due && now5 && stamp(due) < stamp(now5)), today: Boolean(due && now5 && stamp(due) === stamp(now5)), raw, day: due };
-}
-function shortDay(day, today = /* @__PURE__ */ new Date()) {
-  if (!day) return "";
-  const now5 = dayOf(today);
-  const base2 = `${SHORT_MONTHS[day.m - 1]} ${day.d}`;
-  return now5 && day.y !== now5.y ? `${base2}, ${day.y}` : base2;
-}
-function dayChoices(today = /* @__PURE__ */ new Date()) {
-  const at = (n3) => iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + n3));
-  const toMonday = (8 - today.getDay()) % 7 || 7;
-  return [
-    { label: "Today", value: at(0) },
-    { label: "Tomorrow", value: at(1) },
-    { label: "Next week", value: at(toMonday) }
-  ];
-}
-function attrValue(text4) {
-  const rest = String(text4).slice(String(text4).indexOf("::") + 2).trim();
-  const ref = /\[\[([^\]]+)\]\]/.exec(rest);
-  if (ref) return ref[1].trim();
-  return rest.replace(/\{\{[\s\S]*$/, "").trim();
-}
-function taskMeta(string, content, today = /* @__PURE__ */ new Date(), names = liveNames) {
-  const state = taskState(string);
-  if (!state) return null;
-  const meta = { done: state === "DONE", status: "", cancelled: false, due: null, project: "", priority: "", priorityGlyph: "", repeat: "", waitingFor: "", gtd: "", energy: "", context: "", notes: "" };
-  const tag = STATUS_TAG.exec(String(string));
-  if (tag) {
-    meta.status = tag[1].trim();
-    meta.cancelled = lower(meta.status) === "cancelled";
-  }
-  const seen = /* @__PURE__ */ new Set();
-  for (const child of content || []) {
-    const text4 = String(childString3(child));
-    const id = taskAttrId(text4, names);
-    if (!id || id === "other" || id === "activity" || seen.has(id)) continue;
-    seen.add(id);
-    const value = attrValue(text4);
-    if (!value) continue;
-    if (id === "due") {
-      const chip = dueChip([child], today);
-      if (chip) meta.due = { text: chip.text, short: shortDay(chip.day, today), overdue: chip.overdue && !meta.done, today: chip.today };
-    } else if (id === "priority") {
-      meta.priority = lower(value);
-      meta.priorityGlyph = PRIORITY_GLYPH[meta.priority] || "";
-    } else if (id in meta) meta[id] = value;
-  }
-  return meta;
-}
-var ACTIVITY_LOG, lower, DEFAULT_LABELS, DEFAULT_IDS, liveNames, namesSig, taskNamesSig, TASK_RE, taskState, isTaskString, isBareTask, MONTHS9, DAILY_RE3, SHORT_MONTHS, iso, isoDay, PRIORITY_GLYPH, STATUS_TAG;
-var init_tasks = __esm({
-  "src/model/tasks.js"() {
-    init_schema();
-    ACTIVITY_LOG = "**Activity log**";
-    lower = (s) => String(s ?? "").trim().toLowerCase();
-    DEFAULT_LABELS = {
-      repeat: "BT_attrRepeat",
-      start: "BT_attrStart",
-      defer: "BT_attrDefer",
-      due: "BT_attrDue",
-      completed: "BT_attrCompleted",
-      project: "BT_attrProject",
-      gtd: "BT_attrGTD",
-      waitingFor: "BT_attrWaitingFor",
-      context: "BT_attrContext",
-      priority: "BT_attrPriority",
-      energy: "BT_attrEnergy",
-      depends: "BT_attrDepends",
-      parent: "BT_attrParent",
-      notes: "BT_attrNotes"
-    };
-    DEFAULT_IDS = new Map(Object.entries(DEFAULT_LABELS).map(([id, label]) => [lower(label), id]));
-    liveNames = null;
-    namesSig = "";
-    taskNamesSig = () => namesSig;
-    TASK_RE = /^\s*\{\{\[\[(TODO|DONE)\]\]\}\}/;
-    taskState = (string) => TASK_RE.exec(String(string ?? ""))?.[1] ?? "";
-    isTaskString = (string) => TASK_RE.test(String(string ?? ""));
-    isBareTask = (string) => isTaskString(string) && !String(string).replace(TASK_RE, "").replace(/#\[\[task-status\/[^\]]*\]\]/g, "").trim();
-    MONTHS9 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    DAILY_RE3 = new RegExp(`^(${MONTHS9.join("|")}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
-    SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    isoDay = iso;
-    PRIORITY_GLYPH = { low: "!", medium: "!!", high: "!!!" };
-    STATUS_TAG = /#\[\[task-status\/([^\]]+)\]\]/;
-  }
-});
-
-// src/model/status-tags.js
-function row3(key, name, glyph, lightBase, lightText, darkBase, darkText) {
-  return Object.freeze({
-    key,
-    name,
-    tag: `task-status/${name}`,
-    glyph,
-    light: Object.freeze({ base: lightBase, text: lightText }),
-    dark: Object.freeze({ base: darkBase, text: darkText })
-  });
-}
-function side(value) {
-  if (!value || typeof value !== "object") return { base: "", text: "" };
-  return { base: String(value.base || ""), text: String(value.text || "") };
-}
-function statusKey(name) {
-  return String(name ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-function statusApi(win2) {
-  const api3 = win2?.RoamTaskStatusTags;
-  if (!api3 || api3.apiVersion !== 1 || typeof api3.statuses !== "function") return null;
-  return api3;
-}
-function normalize(raw) {
-  const name = String(raw?.name || "").trim();
-  if (!name) return null;
-  const glyphRaw = String(raw?.glyph || "").trim();
-  const glyph = !glyphRaw || glyphRaw === "custom" ? "diamond" : glyphRaw;
-  const known2 = FALLBACK2.find((entry) => entry.name.toLowerCase() === name.toLowerCase());
-  return {
-    key: raw?.key ? String(raw.key) : known2?.key || statusKey(name).toUpperCase().replace(/-/g, "_"),
-    name,
-    tag: raw?.tag ? String(raw.tag) : `task-status/${name}`,
-    glyph: glyph === "diamond" && known2 ? known2.glyph : glyph,
-    light: raw?.light ? side(raw.light) : known2 ? { ...known2.light } : { ...NEUTRAL.light },
-    dark: raw?.dark ? side(raw.dark) : known2 ? { ...known2.dark } : { ...NEUTRAL.dark }
-  };
-}
-function statusPalette(api3) {
-  let rows = null;
-  if (api3 && typeof api3.statuses === "function") {
-    try {
-      const got = api3.statuses();
-      if (Array.isArray(got) && got.length) rows = got;
-    } catch {
-      rows = null;
-    }
-  }
-  const map = /* @__PURE__ */ new Map();
-  for (const raw of rows || FALLBACK2) {
-    const entry = rows ? normalize(raw) : raw;
-    if (!entry?.name) continue;
-    const id = entry.name.toLowerCase();
-    if (map.has(id)) continue;
-    map.set(id, entry);
-  }
-  return map;
-}
-function paletteEntries(palette) {
-  if (!palette) return [];
-  if (typeof palette.values === "function" && !Array.isArray(palette)) return [...palette.values()];
-  return [...palette];
-}
-function findEntry(palette, name) {
-  const id = String(name ?? "").trim().toLowerCase();
-  if (!id) return null;
-  if (palette && typeof palette.get === "function") {
-    const hit = palette.get(id);
-    if (hit) return hit;
-  }
-  for (const entry of paletteEntries(palette)) {
-    if (!entry?.name) continue;
-    if (entry.name.toLowerCase() === id || String(entry.key || "").toLowerCase() === id) return entry;
-  }
-  return null;
-}
-function paletteVars(entry, theme) {
-  const dark = theme === "dark" || theme === "bp3-dark";
-  const pair2 = (dark ? entry?.dark : entry?.light) || {};
-  return {
-    "--pxd-status-base": pair2.base || "",
-    "--pxd-status-text": pair2.text || ""
-  };
-}
-function taskStatusOf(string, palette) {
-  const text4 = String(string ?? "");
-  let raw = "";
-  const meta = taskMeta(text4, []);
-  if (meta?.status) raw = meta.status;
-  else {
-    const tag = STATUS_TAG2.exec(text4);
-    if (tag) raw = tag[1].trim();
-  }
-  if (!raw) return null;
-  const entry = findEntry(palette, raw);
-  return entry ? entry.name : null;
-}
-function statusLook(name, palette) {
-  const hit = findEntry(palette, name);
-  if (hit) return hit;
-  const label = String(name ?? "").trim();
-  return {
-    key: statusKey(label) || "unknown",
-    name: label,
-    tag: label ? `task-status/${label}` : "",
-    glyph: "diamond",
-    light: { base: NEUTRAL.light.base, text: NEUTRAL.light.text },
-    dark: { base: NEUTRAL.dark.base, text: NEUTRAL.dark.text }
-  };
-}
-var STATUS_TAG2, NEUTRAL, FALLBACK2;
-var init_status_tags = __esm({
-  "src/model/status-tags.js"() {
-    init_tasks();
-    STATUS_TAG2 = /#\[\[task-status\/([^\]]+)\]\]/;
-    NEUTRAL = Object.freeze({
-      light: Object.freeze({ base: "rgba(100, 116, 139, 0.1)", text: "rgb(88, 102, 122)" }),
-      dark: Object.freeze({ base: "rgba(100, 116, 139, 0.2)", text: "rgb(158, 168, 183)" })
-    });
-    FALLBACK2 = Object.freeze([
-      row3("ACTIVE", "Active", "active", "rgba(20, 184, 166, 0.1)", "rgb(13, 116, 104)", "rgba(20, 184, 166, 0.2)", "rgb(68, 198, 184)"),
-      row3("WAITING", "Waiting", "waiting", "rgba(234, 179, 8, 0.1)", "rgb(131, 100, 4)", "rgba(234, 179, 8, 0.2)", "rgb(234, 179, 8)"),
-      row3("IN_REVIEW", "In Review", "in-review", "rgba(14, 165, 233, 0.1)", "rgb(9, 109, 154)", "rgba(14, 165, 233, 0.2)", "rgb(76, 188, 239)"),
-      row3("HOLDING", "Holding", "holding", "rgba(148, 163, 184, 0.1)", "rgb(95, 104, 118)", "rgba(148, 163, 184, 0.2)", "rgb(169, 181, 198)"),
-      row3("INCUBATING", "Incubating", "incubating", "rgba(99, 102, 241, 0.1)", "rgb(84, 86, 203)", "rgba(99, 102, 241, 0.2)", "rgb(158, 160, 246)"),
-      row3("ALERT", "Alert", "alert", "rgba(244, 63, 94, 0.1)", "rgb(184, 48, 71)", "rgba(244, 63, 94, 0.2)", "rgb(248, 130, 150)"),
-      row3("CANCELLED", "Cancelled", "cancelled", "rgba(30, 41, 59, 0.1)", "rgb(30, 41, 59)", "rgba(30, 41, 59, 0.2)", "rgb(145, 150, 159)")
-    ]);
   }
 });
 
@@ -24404,16 +24407,16 @@ function createQueryBackend(host) {
     details(uids) {
       const by2 = /* @__PURE__ */ new Map();
       for (let i = 0; i < uids.length; i += DETAIL_CHUNK) {
-        const chunk = uids.slice(i, i + DETAIL_CHUNK);
+        const chunk2 = uids.slice(i, i + DETAIL_CHUNK);
         for (const [u, s, title, t] of q2(
           '[:find ?u ?s ?title ?t :in $ [?u ...] :where [?b :block/uid ?u] [(get-else $ ?b :block/string "") ?s] [(get-else $ ?b :node/title "") ?title] [(get-else $ ?b :edit/time 0) ?t]]',
-          chunk
+          chunk2
         )) by2.set(u, { uid: u, string: s, title, time: Number(t) || 0 });
-        for (const [u, page] of q2("[:find ?u ?pt :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt]]", chunk)) {
+        for (const [u, page] of q2("[:find ?u ?pt :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt]]", chunk2)) {
           const d = by2.get(u);
           if (d) d.page = page;
         }
-        for (const [u, parent] of q2("[:find ?u ?ps :in $ [?u ...] :where [?b :block/uid ?u] [?pa :block/children ?b] [?pa :block/string ?ps]]", chunk)) {
+        for (const [u, parent] of q2("[:find ?u ?ps :in $ [?u ...] :where [?b :block/uid ?u] [?pa :block/children ?b] [?pa :block/string ?ps]]", chunk2)) {
           const d = by2.get(u);
           if (d) d.parent = parent;
         }
@@ -30223,14 +30226,14 @@ function uidFromBlockInput(id) {
   const prefix = "block-input-";
   if (!id.startsWith(prefix)) return null;
   const rest = id.slice(prefix.length);
-  if (UID8.test(rest) || SHORT_UID.test(rest)) return rest;
+  if (UID9.test(rest) || SHORT_UID.test(rest)) return rest;
   const last = rest.slice(rest.lastIndexOf("-") + 1);
   const short = last.length < 9 && SHORT_UID.test(last) ? last : null;
   for (let i = rest.length - 1; i >= 0; i -= 1) {
     if (rest[i] !== "-") continue;
     const tail = rest.slice(i + 1);
     if (tail.length > 15) return short;
-    if (UID8.test(tail)) return tail;
+    if (UID9.test(tail)) return tail;
   }
   return short;
 }
@@ -30240,9 +30243,9 @@ function blockUidFromNode(node2) {
     const id = String(el2.id || el2.getAttribute?.("id") || "");
     const fromInput = uidFromBlockInput(id);
     if (fromInput) return fromInput;
-    if (UID8.test(id)) return id;
+    if (UID9.test(id)) return id;
     const data = el2.dataset?.uid || el2.getAttribute?.("data-uid") || "";
-    if (UID8.test(data) || SHORT_UID.test(data)) return data;
+    if (UID9.test(data) || SHORT_UID.test(data)) return data;
     el2 = el2.parentElement;
   }
   return null;
@@ -30283,10 +30286,10 @@ function editorKeyAction({
   }
   return { type: "roam" };
 }
-var UID8, SHORT_UID, inside4;
+var UID9, SHORT_UID, inside4;
 var init_editor_keys = __esm({
   "src/view/editor-keys.js"() {
-    UID8 = /^[A-Za-z0-9_-]{9,15}$/;
+    UID9 = /^[A-Za-z0-9_-]{9,15}$/;
     SHORT_UID = /^[A-Za-z0-9_]{5,15}$/;
     inside4 = (node2, ancestor) => {
       let el2 = node2;
@@ -38831,7 +38834,7 @@ var init_cards = __esm({
 function listOf2(rows) {
   return Array.isArray(rows) ? rows : [];
 }
-function sortRows2(rows) {
+function sortRows3(rows) {
   return listOf2(rows).map((row4, index) => ({ row: row4, index })).sort((a, b) => {
     const ap = typeof a.row?.page === "number" ? a.row.page : Infinity;
     const bp = typeof b.row?.page === "number" ? b.row.page : Infinity;
@@ -38839,7 +38842,7 @@ function sortRows2(rows) {
     return a.index - b.index;
   }).map((entry) => entry.row);
 }
-function filterRows2(rows, { colors, page, needle } = {}) {
+function filterRows3(rows, { colors, page, needle } = {}) {
   const set = colors instanceof Set && colors.size > 0 ? colors : null;
   const pageWant = typeof page === "number" && Number.isFinite(page) ? page : null;
   const q2 = typeof needle === "string" ? needle.trim().toLowerCase() : "";
@@ -38947,7 +38950,7 @@ __export(read_drawer_exports, {
   createReadDrawer: () => createReadDrawer
 });
 function clampFraction(n3) {
-  if (typeof n3 !== "number" || !Number.isFinite(n3)) return OPEN2;
+  if (typeof n3 !== "number" || !Number.isFinite(n3)) return OPEN3;
   return Math.min(MAX_F, Math.max(MIN_F, n3));
 }
 function countLabel2(n3) {
@@ -39045,7 +39048,7 @@ function createReadDrawer({
   let pinnedCount = null;
   let pillRow = null;
   let pillTimer = null;
-  let fraction = OPEN2;
+  let fraction = OPEN3;
   const colors = /* @__PURE__ */ new Set();
   let page = null;
   let needle = "";
@@ -39261,7 +39264,7 @@ function createReadDrawer({
     return node2;
   };
   const paintRows = () => {
-    shown = filterRows2(catalog, { colors, page, needle });
+    shown = filterRows3(catalog, { colors, page, needle });
     list.replaceChildren?.();
     for (const row4 of shown) list.append(renderRow(row4));
     paintSelected();
@@ -39541,7 +39544,7 @@ function createReadDrawer({
   listen(root, "pointerdown", onEdgeDown);
   listen(root, "input", onInput);
   const refresh = () => {
-    const sorted3 = sortRows2(readRows());
+    const sorted3 = sortRows3(readRows());
     const have = readPlaced();
     const marked = sorted3.map((row5) => {
       if (!row5 || typeof row5 !== "object" || row5.placed === true || !have.has(row5.uid)) return row5;
@@ -39612,13 +39615,13 @@ function createReadDrawer({
     }
   };
 }
-var OPEN2, MIN_F, MAX_F, PULSE_MS, PILL_MS, SVG, LINES;
+var OPEN3, MIN_F, MAX_F, PULSE_MS, PILL_MS, SVG, LINES;
 var init_read_drawer = __esm({
   "src/view/read-drawer.js"() {
     init_ask_icon();
     init_cards();
     init_read_drawer_model();
-    OPEN2 = 0.4;
+    OPEN3 = 0.4;
     MIN_F = 0.2;
     MAX_F = 0.72;
     PULSE_MS = 600;
@@ -39768,14 +39771,14 @@ function editorPastePlan({
 }
 function inlineAtCaret(value, selectionStart, selectionEnd, insert) {
   const v = String(value ?? "");
-  const chunk = String(insert ?? "");
+  const chunk2 = String(insert ?? "");
   let a = Number(selectionStart);
   let b = Number(selectionEnd);
   if (!Number.isFinite(a)) a = v.length;
   if (!Number.isFinite(b)) b = a;
   const start2 = Math.max(0, Math.min(Math.min(a, b), v.length));
   const end = Math.max(start2, Math.min(Math.max(a, b), v.length));
-  return { string: v.slice(0, start2) + chunk + v.slice(end), caret: start2 + chunk.length };
+  return { string: v.slice(0, start2) + chunk2 + v.slice(end), caret: start2 + chunk2.length };
 }
 function imageMarkdown(urls2) {
   return [...urls2 ?? []].filter((u) => typeof u === "string" && u).map((u) => `![](${u})`).join("");
@@ -45998,12 +46001,12 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   let lastWriteAt = -Infinity;
   let dropBurst = () => {
   };
-  const closeChunk = (chunk) => {
-    if (!(chunk.n || chunk.created?.length)) return;
-    undoLog.push(chunk);
+  const closeChunk = (chunk2) => {
+    if (!(chunk2.n || chunk2.created?.length)) return;
+    undoLog.push(chunk2);
     if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
-    const named2 = typeof chunk.label === "string" && chunk.label ? chunk.label : (chunk.kinds || []).join("+");
-    stats.lastAction = { label: named2, writes: chunk.n || 0 };
+    const named2 = typeof chunk2.label === "string" && chunk2.label ? chunk2.label : (chunk2.kinds || []).join("+");
+    stats.lastAction = { label: named2, writes: chunk2.n || 0 };
   };
   let structureEpoch = 0;
   const noteWrite = (kind) => {
@@ -47360,15 +47363,15 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         }
         dropStats(uid);
         if (!found.stats.length) return;
-        const chunk = statsInParts(node2, found.stats) ? STATS_CHUNK : found.stats.length;
+        const chunk2 = statsInParts(node2, found.stats) ? STATS_CHUNK : found.stats.length;
         try {
-          host.cardStats(found.stats.slice(0, chunk), { boardUid: uid });
+          host.cardStats(found.stats.slice(0, chunk2), { boardUid: uid });
         } catch {
         }
         const idle = globalThis.requestIdleCallback;
         const later = (fn) => idleLater(idle, fn);
         const pulledAt = pullSeq;
-        let si = chunk;
+        let si = chunk2;
         const clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
         const step = (deadline) => {
           if (si >= found.stats.length || unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt) return;
@@ -48280,11 +48283,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     generateUid() {
       return api3.util.generateUID();
     },
-    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType } = {}) {
+    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType, heading, textAlign } = {}) {
       const id = uid ?? api3.util.generateUID();
       const block = { uid: id, string };
       if (props !== void 0) block.props = plainKeys(props);
       if (open !== void 0) block.open = open;
+      if (heading) block.heading = heading;
+      if (textAlign) block["text-align"] = textAlign;
       if (viewType) block["children-view-type"] = viewType;
       stats.writes++;
       await mutate(() => data.block.create({ location: { "parent-uid": parentUid, order }, block }));
@@ -49597,13 +49602,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         const pullMany2 = (eids) => typeof data.pull_many === "function" ? data.pull_many(BROWSE_PULL, eids) : eids.map((e2) => rawPull(BROWSE_PULL, e2));
         const keepMax = Math.max(BROWSE_ROWS, lim);
         for (let i = 0; i < order.length && i < BROWSE_SCAN && kept.length < keepMax; i += BROWSE_CHUNK) {
-          const chunk = order.slice(i, Math.min(i + BROWSE_CHUNK, BROWSE_SCAN));
-          const nodes = timed("browse-pull", () => pullMany2(chunk.map((o) => o.eid)) || []);
+          const chunk2 = order.slice(i, Math.min(i + BROWSE_CHUNK, BROWSE_SCAN));
+          const nodes = timed("browse-pull", () => pullMany2(chunk2.map((o) => o.eid)) || []);
           const rows2 = [];
           nodes.forEach((node2, j) => {
             const uid = node2?.[":block/uid"];
             if (typeof uid !== "string" || !uid) return;
-            const o = chunk[j];
+            const o = chunk2[j];
             const title = node2[":node/title"];
             const base2 = { uid, edited: edited ? o.time : null, tags: [], onBoard: false };
             if (typeof title === "string") {
@@ -50835,6 +50840,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   });
   const listeners3 = /* @__PURE__ */ new Map();
   const deleteHooks = [];
+  const moveHooks = [];
+  const runMoveHooks = (t, moves, track2) => {
+    if (!moves.length) return;
+    for (const fn of moveHooks) {
+      try {
+        fn(t, moves, track2);
+      } catch (err) {
+        console.error("[plexus session] move hook", err);
+      }
+    }
+  };
   const emit2 = (name, payload) => {
     for (const fn of [...listeners3.get(name) ?? []]) {
       try {
@@ -51653,7 +51669,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   async function runOp(op) {
     switch (op.op) {
       case "create":
-        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open });
+        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open, heading: op.heading, textAlign: op.textAlign });
         break;
       case "move":
         await host.moveBlock(op.uid, op.parent, op.order);
@@ -51861,6 +51877,53 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       handleFailure(err);
       return result;
     });
+  }
+  function dragUndo() {
+    const before = /* @__PURE__ */ new Map();
+    const remember2 = (id) => {
+      if (before.has(id)) return;
+      const node2 = rawNode(id);
+      if (!node2) return;
+      const hit = ix().get(id);
+      before.set(id, { parent: hit?.parent?.[UID3] || uid, order: node2[ORD], plexus: clone(rawPlexus(id)) });
+    };
+    const track2 = { undo: [] };
+    const custom = {
+      when: "over-native-limit",
+      async undo() {
+        const moves = [];
+        const propsOps = [];
+        const wroteMove = /* @__PURE__ */ new Set();
+        const wroteProps = /* @__PURE__ */ new Set();
+        for (const op of custom.forward || []) {
+          if (op.op === "move") wroteMove.add(op.uid);
+          else if (op.op === "props") wroteProps.add(op.uid);
+        }
+        for (const [id, prev] of before) {
+          const parentNow = ix().get(id)?.parent?.[UID3] || uid;
+          if (wroteMove.has(id) || prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
+          if (wroteProps.has(id) || stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
+        }
+        moves.sort((a, b) => a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0));
+        await execute([...moves, ...propsOps, ...[...track2.undo].reverse()]);
+      },
+      async redo() {
+        await execute(custom.forward);
+      }
+    };
+    const wrap = (t) => {
+      const move = t.move.bind(t);
+      const props = t.props.bind(t);
+      t.move = (id, parent, order) => {
+        remember2(id);
+        move(id, parent, order);
+      };
+      t.props = (id, plexus) => {
+        remember2(id);
+        props(id, plexus);
+      };
+    };
+    return { remember: remember2, track: track2, custom, wrap };
   }
   function txn(fn, custom = null) {
     if (!board2 || destroyed || gone) return Promise.resolve(void 0);
@@ -52615,48 +52678,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     refreshLinks,
     commitMove(uids, dx, dy) {
       if (!board2 || !dx && !dy) return Promise.resolve();
-      const before = /* @__PURE__ */ new Map();
-      const remember2 = (id) => {
-        if (before.has(id)) return;
-        const node2 = rawNode(id);
-        if (!node2) return;
-        const hit = ix().get(id);
-        before.set(id, { parent: hit?.parent?.[UID3] || uid, order: node2[ORD], plexus: clone(rawPlexus(id)) });
-      };
-      const custom = {
-        when: "over-native-limit",
-        async undo() {
-          const moves = [];
-          const propsOps = [];
-          const wroteMove = /* @__PURE__ */ new Set();
-          const wroteProps = /* @__PURE__ */ new Set();
-          for (const op of custom.forward || []) {
-            if (op.op === "move") wroteMove.add(op.uid);
-            else if (op.op === "props") wroteProps.add(op.uid);
-          }
-          for (const [id, prev] of before) {
-            const parentNow = ix().get(id)?.parent?.[UID3] || uid;
-            if (wroteMove.has(id) || prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
-            if (wroteProps.has(id) || stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
-          }
-          moves.sort((a, b) => a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0));
-          await execute([...moves, ...propsOps]);
-        },
-        async redo() {
-          await execute(custom.forward);
-        }
-      };
+      const { remember: remember2, track: track2, custom, wrap } = dragUndo();
       return txn((t) => {
-        const move = t.move.bind(t);
-        const props = t.props.bind(t);
-        t.move = (id, parent, order) => {
-          remember2(id);
-          move(id, parent, order);
-        };
-        t.props = (id, plexus) => {
-          remember2(id);
-          props(id, plexus);
-        };
+        wrap(t);
         const top = topLevelOf(board2, uids).filter((id) => !board2.items.get(id).pinned);
         if (!top.length) return;
         for (const id of top) remember2(id);
@@ -52666,23 +52690,28 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           moved.set(id, { ...r, x: r.x + dx, y: r.y + dy });
         }
         const plan = new Map(membershipPlan(board2, top, moved).map((p) => [p.uid, p]));
+        const parents = [];
         for (const id of top) {
           const item = board2.items.get(id);
           const p = plan.get(id);
           if (p) {
+            if (p.toParent !== item.parentUid) parents.push({ uid: id, from: item.parentUid, to: p.toParent });
             t.move(id, p.toParent, "last");
             t.props(id, itemPlexus(id, { x: p.x, y: p.y }));
           } else {
             t.props(id, itemPlexus(id, { x: item.x + dx, y: item.y + dy }));
           }
         }
+        runMoveHooks(t, parents, track2);
         applyFit(t, top);
         if (flag("space-out", false)) spaceOutAfter(t, top);
       }, custom);
     },
     commitRects(list) {
       if (!board2 || !list?.length) return Promise.resolve();
+      const { track: track2, custom, wrap } = dragUndo();
       return txn((t) => {
+        wrap(t);
         const changedSections = [];
         const fitTouched = [];
         for (const r of list) {
@@ -52703,15 +52732,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           t.sync();
           for (const sid of changedSections) {
             const plan = sectionAdoptPlan(board2, sid, rects);
+            const parents = plan.filter((p) => p.toParent !== board2.items.get(p.uid)?.parentUid).map((p) => ({ uid: p.uid, from: board2.items.get(p.uid).parentUid, to: p.toParent }));
             for (const p of plan) {
               t.move(p.uid, p.toParent, "last");
               t.props(p.uid, itemPlexus(p.uid, { x: p.x, y: p.y }));
             }
+            runMoveHooks(t, parents, track2);
             if (plan.length) t.sync();
           }
         }
         applyFit(t, fitTouched, { skip: changedSections });
-      });
+      }, custom);
     },
     addPublicCard({ string, x, y } = {}) {
       return txn((t) => addPublicCard({
@@ -52809,8 +52840,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           const again = chunkParsedMarkdown(fn.apply(markdown));
           if (again.ok) chunks = again.chunks;
         }
-        for (const chunk of chunks) {
-          const roots = await host.fromMarkdown({ parentUid: loc.parentUid, order, markdown: chunk });
+        for (const chunk2 of chunks) {
+          const roots = await host.fromMarkdown({ parentUid: loc.parentUid, order, markdown: chunk2 });
           uids.push(...roots);
           order = advanceOrder(order, roots.length);
         }
@@ -54707,6 +54738,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     clone,
     round1: round14,
     emit: emit2,
+    onMoveItems(fn) {
+      if (typeof fn !== "function") return () => {
+      };
+      moveHooks.push(fn);
+      return () => {
+        const at = moveHooks.indexOf(fn);
+        if (at >= 0) moveHooks.splice(at, 1);
+      };
+    },
     onDeleteItems(fn) {
       if (typeof fn !== "function") return () => {
       };
@@ -55687,6 +55727,593 @@ extendSession((session, api3) => {
   });
 });
 
+// src/session-bucket.js
+init_board();
+
+// src/model/bucket.js
+init_schema();
+init_query();
+
+// src/model/table.js
+init_schema();
+var FIXED = ["Title", "Section", "Type", "Edited"];
+function cleanName(name) {
+  if (name == null) return "";
+  const attr = String(name).trim();
+  if (!attr || attr.startsWith("BT_attr") || FIXED.includes(attr)) return "";
+  return attr;
+}
+function columnNameOk(name) {
+  return Boolean(cleanName(name));
+}
+function isTableRow(item) {
+  if (!item) return false;
+  if (item.type === "section" || item.type === "text") return false;
+  if (item.type === "card") return true;
+  return item.kind === "card" || item.kind === "board";
+}
+function tableColumns(rows) {
+  const names = [];
+  for (const row4 of rows || []) {
+    for (const attr of row4.attrs || []) {
+      if (attr?.name && !names.includes(attr.name)) names.push(attr.name);
+    }
+  }
+  return FIXED.concat(names);
+}
+function cellText2(row4, column) {
+  if (!row4) return "";
+  if (column === "Title") return String(row4.title ?? "");
+  if (column === "Section") return String(row4.section ?? "");
+  if (column === "Type") return String(row4.type ?? "");
+  if (column === "Edited") return row4.edited == null ? "" : String(row4.edited);
+  const hit = (row4.attrs || []).find((attr) => attr.name === column);
+  return hit ? String(hit.value ?? "") : "";
+}
+function filterRows(rows, text4) {
+  const needle = String(text4 ?? "").trim().toLowerCase();
+  if (!needle) return (rows || []).slice();
+  const cols = tableColumns(rows);
+  return (rows || []).filter((row4) => cols.some((column) => cellText2(row4, column).toLowerCase().includes(needle)));
+}
+function sortRows2(rows, column, dir = "asc") {
+  const sign = dir === "desc" ? -1 : 1;
+  const list = (rows || []).slice();
+  list.sort((a, b) => {
+    if (column === "Edited") {
+      const av = Number(a.edited) || 0;
+      const bv = Number(b.edited) || 0;
+      return (av - bv) * sign;
+    }
+    return cellText2(a, column).localeCompare(cellText2(b, column)) * sign;
+  });
+  return list;
+}
+function planAttrCell({ name, value, blockUid: blockUid3 = null, parentUid = null } = {}) {
+  const attr = cleanName(name);
+  if (!attr) return null;
+  const text4 = String(value ?? "").trim();
+  const string = text4 ? `${attr}:: ${text4}` : `${attr}::`;
+  if (blockUid3) return { op: "update", uid: blockUid3, string };
+  if (!text4 || !parentUid) return null;
+  return { op: "create", parent: parentUid, string };
+}
+function tableRows(board2, resolve) {
+  const items = board2?.items;
+  if (!items || typeof items.get !== "function") return [];
+  const order = Array.isArray(board2.order) ? board2.order : [...items.keys()];
+  const rows = [];
+  for (const uid of order) {
+    const item = items.get(uid);
+    if (!isTableRow(item)) continue;
+    const parent = items.get(item.parentUid);
+    const section2 = parent?.type === "section" ? String(parent.title || "") : "";
+    const attrs = [];
+    for (const child of item.content || []) {
+      const string = child?.[":block/string"] ?? child?.string ?? "";
+      const name = cleanName(attrNameOf(String(string)));
+      if (!name) continue;
+      const text4 = String(string);
+      const cut = text4.indexOf("::");
+      attrs.push({
+        name,
+        value: cut >= 0 ? text4.slice(cut + 2).trim() : "",
+        uid: child?.[":block/uid"] ?? child?.uid ?? null
+      });
+    }
+    rows.push({
+      uid: item.uid,
+      kind: item.kind,
+      title: itemLabel(item, resolve),
+      section: section2,
+      type: item.kind || "",
+      edited: item.edited ?? null,
+      attrs
+    });
+  }
+  return rows;
+}
+
+// src/model/kanban.js
+init_highlight();
+init_status_tags();
+var TODO_FIELD = "To do";
+var DONE_COLUMN = "Done";
+var HIGHLIGHT_FIELD = "Highlight colour";
+var STATUS_FIELD = "Lanes: Status";
+var NO_STATUS = "No status";
+var MARK = /\{\{\[\[(TODO|DONE)\]\]\}\}/;
+function todoState(string) {
+  const hit = MARK.exec(String(string || ""));
+  if (!hit) return "";
+  return hit[1] === "DONE" ? DONE_COLUMN : TODO_FIELD;
+}
+function kanbanRows(board2, resolve) {
+  const items = board2?.items;
+  return tableRows(board2, resolve).map((row4) => {
+    const item = items?.get?.(row4.uid);
+    const next = { ...row4, string: item?.string ?? row4.title ?? "" };
+    if (item?.kind !== "highlight") return next;
+    const targetUid = item.target?.uid;
+    let targetString;
+    if (typeof resolve === "function") {
+      try {
+        targetString = resolve(targetUid);
+      } catch {
+        targetString = void 0;
+      }
+    }
+    next.highlightColor = item.highlight?.color;
+    next.targetUid = targetUid;
+    next.targetString = targetString;
+    return next;
+  });
+}
+function kanbanFields(rows) {
+  const names = [];
+  let highlight = false;
+  for (const row4 of rows || []) {
+    if (typeof row4?.highlightColor === "string" && row4.highlightColor !== "") highlight = true;
+    for (const attr of row4.attrs || []) {
+      if (attr?.name && columnNameOk(attr.name) && !names.includes(attr.name)) names.push(attr.name);
+    }
+  }
+  return highlight ? [TODO_FIELD, HIGHLIGHT_FIELD, ...names] : [TODO_FIELD, ...names];
+}
+function columnOf(row4, field) {
+  if (field === TODO_FIELD) return todoState(row4?.string);
+  if (field === HIGHLIGHT_FIELD) {
+    const color = row4?.highlightColor;
+    return typeof color === "string" && color !== "" ? color : "";
+  }
+  const hit = (row4?.attrs || []).find((attr) => attr.name === field);
+  return hit ? String(hit.value ?? "") : "";
+}
+function kanbanColumns(rows, field) {
+  const list = rows || [];
+  if (field === TODO_FIELD) {
+    const columns2 = [
+      { name: TODO_FIELD, cards: [] },
+      { name: DONE_COLUMN, cards: [] }
+    ];
+    const extra = [];
+    for (const row4 of list) {
+      const name = columnOf(row4, field);
+      if (name === TODO_FIELD) columns2[0].cards.push(row4);
+      else if (name === DONE_COLUMN) columns2[1].cards.push(row4);
+      else extra.push(row4);
+    }
+    if (extra.length) columns2.push({ name: "", cards: extra });
+    return columns2;
+  }
+  if (!columnNameOk(field)) return [];
+  const columns = [];
+  const byName = /* @__PURE__ */ new Map();
+  for (const row4 of list) {
+    const name = columnOf(row4, field);
+    if (!byName.has(name)) {
+      const column = { name, cards: [] };
+      byName.set(name, column);
+      columns.push(column);
+    }
+    byName.get(name).cards.push(row4);
+  }
+  return columns;
+}
+function withMarker(string, column) {
+  const mark = column === DONE_COLUMN ? "{{[[DONE]]}}" : "{{[[TODO]]}}";
+  const current3 = String(string || "");
+  if (MARK.test(current3)) return current3.replace(MARK, mark);
+  return current3.trim() ? `${mark} ${current3}` : mark;
+}
+function planKanbanMove({ field, column, row: row4 } = {}) {
+  if (!row4?.uid || column == null || column === "") return null;
+  if (field === TODO_FIELD) {
+    if (column !== TODO_FIELD && column !== DONE_COLUMN) return null;
+    if (todoState(row4.string) === column) return null;
+    const string = withMarker(row4.string, column);
+    if (string === String(row4.string || "")) return null;
+    return { op: "string", uid: row4.uid, string, status: column === DONE_COLUMN ? "DONE" : "TODO" };
+  }
+  if (field === HIGHLIGHT_FIELD) {
+    if (row4.kind === "note") return null;
+    const targetUid = row4.targetUid;
+    const targetString = row4.targetString;
+    if (!targetUid || typeof targetString !== "string" || targetString === "") return null;
+    if (row4.highlightColor === column) return null;
+    if (!HIGHLIGHT_COLORS.includes(column)) return null;
+    return { op: "string", uid: targetUid, string: rewriteHighlightTag(targetString, column) };
+  }
+  if (field === STATUS_FIELD) return null;
+  if (!columnNameOk(field)) return null;
+  const attr = (row4.attrs || []).find((item) => item.name === field);
+  if (String(attr?.value ?? "") === column) return null;
+  const plan = planAttrCell({
+    name: field,
+    value: column,
+    blockUid: attr?.uid || null,
+    parentUid: row4.uid
+  });
+  if (!plan) return null;
+  if (plan.op === "update") return { op: "string", uid: plan.uid, string: plan.string };
+  return plan;
+}
+function isDoneItem(item) {
+  if (item?.done === true) return true;
+  return todoState(item?.string ?? "") === DONE_COLUMN;
+}
+function groupByStatus(items, palette) {
+  const columns = paletteEntries(palette).map((entry) => ({
+    name: entry.name,
+    key: entry.key,
+    glyph: entry.glyph,
+    cards: [],
+    count: 0
+  }));
+  const none = { name: NO_STATUS, key: "", glyph: "diamond", cards: [], count: 0 };
+  const done3 = { name: DONE_COLUMN, key: "done", glyph: "", cards: [], count: 0 };
+  const byName = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
+  for (const item of items || []) {
+    if (isDoneItem(item)) {
+      done3.cards.push(item);
+      continue;
+    }
+    const name = taskStatusOf(item?.string ?? "", palette);
+    const column = name ? byName.get(name.toLowerCase()) : null;
+    (column || none).cards.push(item);
+  }
+  for (const column of columns) column.count = column.cards.length;
+  none.count = none.cards.length;
+  done3.count = done3.cards.length;
+  return [...columns, none, done3];
+}
+
+// src/model/bucket.js
+var WRITE_CHUNK = 45;
+var PLAIN_TAG = /^[\w\-/.]+$/u;
+var escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&");
+function parseTag(text4) {
+  let m = /^#\[\[([^\]\n]+)\]\]$/.exec(text4) || /^\[\[([^\]\n]+)\]\]$/.exec(text4);
+  let tag = m ? m[1].trim() : null;
+  if (tag == null) {
+    const bare = text4.startsWith("#") ? text4.slice(1) : text4;
+    if (!PLAIN_TAG.test(bare)) return null;
+    tag = bare;
+  }
+  return tag ? { kind: "tag", tag } : null;
+}
+function parseAttr(text4) {
+  const name = attrNameOf(text4);
+  if (!name || !columnNameOk(name)) return null;
+  const value = text4.slice(text4.indexOf("::") + 2).trim();
+  return value ? { kind: "attr", name, value } : null;
+}
+function parseBinding(text4) {
+  if (typeof text4 !== "string") return null;
+  const s = text4.trim();
+  if (!s) return null;
+  if (s.includes("::")) return parseAttr(s);
+  return parseTag(s);
+}
+function readBinding(plexus) {
+  const b = plexus?.bucket;
+  if (!b || typeof b !== "object") return null;
+  if (b.kind === "tag" && typeof b.tag === "string" && b.tag.trim()) return { kind: "tag", tag: b.tag.trim() };
+  if (b.kind === "attr" && typeof b.name === "string" && typeof b.value === "string") return parseAttr(`${b.name}:: ${b.value}`);
+  return null;
+}
+function tagToken(tag) {
+  return PLAIN_TAG.test(tag) ? `#${tag}` : `#[[${tag}]]`;
+}
+function bindingLabel(b) {
+  if (!b) return "";
+  return b.kind === "tag" ? tagToken(b.tag) : `${b.name}:: ${b.value}`;
+}
+function bindingKey(b) {
+  return b.kind === "tag" ? `tag:${b.tag}` : `attr:${b.name}:${b.value}`;
+}
+var tagTail = "(?![\\w/.-])";
+var plainRe = (tag, flags) => new RegExp(`(?<![\\w/.-])#${escapeRe(tag)}${tagTail}`, flags);
+function hasTag(string, tag) {
+  const s = String(string ?? "");
+  return plainRe(tag, "u").test(s) || s.includes(`#[[${tag}]]`) || s.includes(`[[${tag}]]`);
+}
+function addTag(string, tag) {
+  const s = String(string ?? "");
+  if (hasTag(s, tag)) return s;
+  return s ? `${s} ${tagToken(tag)}` : tagToken(tag);
+}
+function removeTag(string, tag) {
+  const s = String(string ?? "");
+  const gone = new RegExp(`(?<![\\w/.-])#(?:\\[\\[${escapeRe(tag)}\\]\\]|${escapeRe(tag)}${tagTail}) ?`, "gu");
+  return s.replace(gone, "").trimEnd();
+}
+function attrsOfKids(kids) {
+  const out = [];
+  for (const child of kids || []) {
+    const string = String(child?.[":block/string"] ?? child?.string ?? "");
+    const name = attrNameOf(string);
+    if (!name || !columnNameOk(name)) continue;
+    out.push({ name, value: string.slice(string.indexOf("::") + 2).trim(), uid: child?.[":block/uid"] ?? child?.uid ?? null });
+  }
+  return out;
+}
+function tagBlocked(binding, string) {
+  if (binding?.kind !== "tag" || hasTag(string, binding.tag)) return false;
+  const before = String(string ?? "");
+  const after = addTag(before, binding.tag);
+  return classifyString(before).kind !== classifyString(after).kind || isQueryString(before) !== isQueryString(after);
+}
+function planBucketAdd(binding, row4) {
+  if (!binding || !row4?.uid) return null;
+  if (binding.kind === "tag") {
+    if (tagBlocked(binding, row4.string)) return null;
+    const string = addTag(row4.string, binding.tag);
+    return string === String(row4.string ?? "") ? null : { op: "string", uid: row4.uid, string };
+  }
+  return planKanbanMove({ field: binding.name, column: binding.value, row: row4 });
+}
+function planBucketRemove(binding, row4) {
+  if (!binding || !row4?.uid) return null;
+  if (binding.kind === "tag") {
+    const string = removeTag(row4.string, binding.tag);
+    return string === String(row4.string ?? "") ? null : { op: "string", uid: row4.uid, string };
+  }
+  const attr = (row4.attrs || []).find((a) => a.name === binding.name);
+  if (!attr?.uid || attr.value !== binding.value) return null;
+  return { op: "delete", uid: attr.uid };
+}
+function applyPlan(row4, plan) {
+  if (plan.op === "string" && plan.uid === row4.uid) return { ...row4, string: plan.string };
+  if (plan.op === "string") return { ...row4, attrs: row4.attrs.map((a) => a.uid === plan.uid ? { ...a, value: plan.string.slice(plan.string.indexOf("::") + 2).trim() } : a) };
+  if (plan.op === "delete") return { ...row4, attrs: row4.attrs.filter((a) => a.uid !== plan.uid) };
+  if (plan.op === "create") {
+    const name = attrNameOf(plan.string);
+    return { ...row4, attrs: [...row4.attrs, { name, value: plan.string.slice(plan.string.indexOf("::") + 2).trim(), uid: null, pending: true }] };
+  }
+  return row4;
+}
+function planChainChange(before, after, row4) {
+  const had = new Map((before || []).map((b) => [bindingKey(b), b]));
+  const has = new Map((after || []).map((b) => [bindingKey(b), b]));
+  const adds = [...has].filter(([k]) => !had.has(k)).map(([, b]) => b);
+  const removes = [...had].filter(([k]) => !has.has(k)).map(([, b]) => b).filter((b) => b.kind !== "attr" || !adds.some((a) => a.kind === "attr" && a.name === b.name));
+  const plans = [];
+  let work = { uid: row4.uid, string: row4.string ?? "", attrs: (row4.attrs || []).map((a) => ({ ...a })) };
+  const push = (plan) => {
+    if (!plan) return;
+    const last = plans.at(-1);
+    if (plan.op === "string" && plan.uid === work.uid && last?.op === "string" && last.uid === plan.uid) last.string = plan.string;
+    else plans.push(plan);
+    work = applyPlan(work, plan);
+  };
+  for (const b of removes) push(planBucketRemove(b, work));
+  for (const b of adds) push(planBucketAdd(b, work));
+  return plans.filter((p) => !(p.op === "string" && p.uid === row4.uid && p.string === String(row4.string ?? "")));
+}
+function chunk(list, n3 = WRITE_CHUNK) {
+  const out = [];
+  for (let i = 0; i < list.length; i += n3) out.push(list.slice(i, i + n3));
+  return out;
+}
+
+// src/session-bucket.js
+var STR4 = ":block/string";
+var KIDS6 = ":block/children";
+var UID6 = ":block/uid";
+var OPEN2 = ":block/open";
+var ORDER2 = ":block/order";
+var HEADING = ":block/heading";
+var ALIGN = ":block/text-align";
+var PROPS3 = ":block/props";
+var SUBTREE = "[:block/uid :block/string :block/order :block/open :block/heading :block/text-align :block/props {(limit :block/children nil) ...}]";
+extendSession((session, api3) => {
+  const { host } = api3;
+  const boardUid = session.uid;
+  const chainOf = (parentUid) => {
+    const board2 = api3.board();
+    const out = [];
+    let at = parentUid;
+    for (let n3 = 0; at && at !== boardUid && n3 < 64; n3++) {
+      const item = board2?.items.get(at);
+      if (!item) break;
+      if (item.type === "section") {
+        const b = readBinding(api3.rawPlexus(at));
+        if (b) out.push(b);
+      }
+      at = item.parentUid;
+    }
+    return out;
+  };
+  const targetOf2 = (id) => {
+    const item = api3.board()?.items.get(id);
+    if (!item || item.type !== "card") return null;
+    const target = item.target;
+    if (target?.kind === "self") {
+      const node2 = api3.rawNode(item.uid);
+      if (!node2) return null;
+      const kids = api3.kidsOf(node2);
+      return { uid: item.uid, string: String(node2[STR4] ?? node2.string ?? ""), kids, self: true };
+    }
+    if (target?.kind === "block" && target.uid && !target.page) {
+      let string = null;
+      try {
+        string = host.blockString?.(target.uid);
+      } catch {
+        string = null;
+      }
+      if (typeof string !== "string") return null;
+      let kids = [];
+      try {
+        const node2 = host.pullTree?.(target.uid, 1, 500);
+        kids = Array.isArray(node2) ? node2 : Array.isArray(node2?.[KIDS6]) ? node2[KIDS6] : [];
+      } catch {
+        kids = [];
+      }
+      return { uid: target.uid, string, kids };
+    }
+    return null;
+  };
+  const rowOf = (target) => ({ uid: target.uid, string: target.string, attrs: attrsOfKids(target.kids) });
+  const kidString = (target, uid) => {
+    const kid = target.kids.find((k) => (k[UID6] ?? k.uid) === uid);
+    return String(kid?.[STR4] ?? kid?.string ?? "");
+  };
+  const subtreeCreates = (target, attrUid, order) => {
+    const out = [];
+    const kidsIn = (node2) => {
+      const list = Array.isArray(node2?.[KIDS6]) ? node2[KIDS6] : Array.isArray(node2?.children) ? node2.children : [];
+      return [...list].sort((a, b) => (a?.[ORDER2] ?? 0) - (b?.[ORDER2] ?? 0));
+    };
+    const walk3 = (node2, parent, ord) => {
+      const op = { op: "create", uid: node2[UID6] ?? node2.uid, parent, order: ord, string: String(node2[STR4] ?? node2.string ?? "") };
+      const open = node2[OPEN2] ?? node2.open;
+      if (open !== void 0) op.open = open;
+      const heading = node2[HEADING] ?? node2.heading;
+      if (Number.isInteger(heading) && heading > 0) op.heading = heading;
+      const align = node2[ALIGN] ?? node2.textAlign;
+      if (typeof align === "string" && align) op.textAlign = align;
+      const props = node2[PROPS3];
+      if (props && typeof props === "object" && Object.keys(props).length) op.props = props;
+      out.push(op);
+      kidsIn(node2).forEach((k, i) => walk3(k, op.uid, i));
+    };
+    const attr = target.kids.find((k) => (k[UID6] ?? k.uid) === attrUid) ?? { [UID6]: attrUid };
+    let full = null;
+    try {
+      full = host.pullEntity?.(SUBTREE, attrUid) ?? null;
+    } catch {
+      full = null;
+    }
+    if (!full && target.self) full = api3.rawNode(attrUid);
+    if (!full) {
+      let kids = [];
+      try {
+        const got = host.pullTree?.(attrUid, 20, 2e3);
+        kids = Array.isArray(got) ? got : Array.isArray(got?.[KIDS6]) ? got[KIDS6] : [];
+      } catch {
+        kids = [];
+      }
+      full = { ...attr, [KIDS6]: kids };
+    }
+    walk3(full, target.uid, order);
+    return out;
+  };
+  const emitPlan = (t, plan, target, undo) => {
+    if (plan.op === "string") {
+      const prev = plan.uid === target.uid ? target.string : kidString(target, plan.uid);
+      t.string(plan.uid, plan.string);
+      undo.push({ op: "string", uid: plan.uid, string: prev });
+    } else if (plan.op === "create") {
+      const id = t.create({ parent: plan.parent, string: plan.string, order: "last" });
+      undo.push({ op: "delete", uid: id });
+    } else if (plan.op === "delete") {
+      const at = target.kids.findIndex((k) => (k[UID6] ?? k.uid) === plan.uid);
+      const creates = subtreeCreates(target, plan.uid, at >= 0 ? at : "last");
+      t.del(plan.uid);
+      for (const op of creates.reverse()) undo.push(op);
+    }
+  };
+  const cardsUnder = (id) => {
+    const board2 = api3.board();
+    const item = board2?.items.get(id);
+    if (!item) return [];
+    if (item.type === "section") return [...descendantsOf(board2, id)].filter((d) => board2.items.get(d)?.type === "card");
+    return item.type === "card" ? [id] : [];
+  };
+  const countBlocked = (before, after, target) => {
+    const had = new Set(before.map(bindingKey));
+    return after.some((b) => !had.has(bindingKey(b)) && tagBlocked(b, target.string)) ? 1 : 0;
+  };
+  const skipToast = (n3) => {
+    if (n3) api3.emit("toast", { message: `Left ${n3} card${n3 === 1 ? "" : "s"} untagged: a tag would change what ${n3 === 1 ? "it shows" : "they show"}` });
+  };
+  api3.onMoveItems((t, moves, track2) => {
+    const seen = /* @__PURE__ */ new Set();
+    let skipped = 0;
+    for (const m of moves) {
+      const before = chainOf(m.from);
+      const after = chainOf(m.to);
+      if (!before.length && !after.length) continue;
+      for (const id of cardsUnder(m.uid)) {
+        const target = targetOf2(id);
+        if (!target || seen.has(target.uid)) continue;
+        seen.add(target.uid);
+        skipped += countBlocked(before, after, target);
+        for (const plan of planChainChange(before, after, rowOf(target))) emitPlan(t, plan, target, track2.undo);
+      }
+    }
+    skipToast(skipped);
+  });
+  session.sectionBinding = (id) => {
+    if (api3.board()?.items.get(id)?.type !== "section") return null;
+    return readBinding(api3.rawPlexus(id));
+  };
+  session.bindSection = (id, binding) => {
+    if (api3.board()?.items.get(id)?.type !== "section") return Promise.resolve(false);
+    const base2 = api3.itemPlexus(id, {});
+    const current3 = readBinding(base2);
+    if (binding ? current3 && bindingKey(current3) === bindingKey(binding) : !base2.bucket) return Promise.resolve(false);
+    const { bucket: _gone, ...rest } = base2;
+    const next = binding ? { ...rest, bucket: binding.kind === "tag" ? { kind: "tag", tag: binding.tag } : { kind: "attr", name: binding.name, value: binding.value } } : rest;
+    return api3.txn((t) => {
+      t.props(id, next);
+      return true;
+    }).then((ok) => ok === true);
+  };
+  session.writeSectionToGraph = async (id) => {
+    const binding = session.sectionBinding(id);
+    if (!binding) return 0;
+    const jobs = [];
+    const seen = /* @__PURE__ */ new Set();
+    let skipped = 0;
+    for (const cid of cardsUnder(id)) {
+      const target = targetOf2(cid);
+      if (!target || seen.has(target.uid)) continue;
+      seen.add(target.uid);
+      const plan = planBucketAdd(binding, rowOf(target));
+      if (plan) jobs.push({ plan, target });
+      else if (tagBlocked(binding, target.string)) skipped++;
+    }
+    const label = bindingLabel(binding);
+    if (!jobs.length) {
+      skipToast(skipped);
+      if (!skipped) api3.emit("toast", { message: seen.size ? `Every card already has ${label}` : "No cards to tag" });
+      return 0;
+    }
+    let written = 0;
+    for (const part of chunk(jobs)) {
+      await api3.txn((t) => {
+        for (const { plan, target } of part) emitPlan(t, plan, target, []);
+      });
+      written += part.length;
+    }
+    api3.emit("toast", { message: `Tagged ${written} card${written === 1 ? "" : "s"} with ${label}` });
+    skipToast(skipped);
+    return written;
+  };
+});
+
 // src/templates.js
 init_board();
 init_schema();
@@ -55743,7 +56370,7 @@ function flow() {
   ];
   return [...lanes, node("edges", "Connections", { type: "edges" }, edges, false)];
 }
-var row2 = (labels, y = 40, w = 300, h = 360, gap = 24) => labels.map((title, i) => section(
+var row3 = (labels, y = 40, w = 300, h = 360, gap = 24) => labels.map((title, i) => section(
   `c${i}`,
   title,
   40 + i * (w + gap),
@@ -55753,14 +56380,14 @@ var row2 = (labels, y = 40, w = 300, h = 360, gap = 24) => labels.map((title, i)
 ));
 var STARTERS = [
   { id: "five-why", title: "5-Why", tree: board("root", "5-Why", [1, 2, 3, 4, 5].map((n3) => card(`w${n3}`, `Why ${n3}`, 40, 40 + (n3 - 1) * 160))) },
-  { id: "fishbone", title: "Fishbone (6M)", tree: board("root", "Fishbone (6M)", row2(["Man", "Machine", "Method", "Material", "Measurement", "Environment"], 40, 240, 280, 16)) },
-  { id: "8d", title: "8D", tree: board("root", "8D", row2(["D1 Team", "D2 Problem", "D3 Containment", "D4 Root cause", "D5 Action", "D6 Implement", "D7 Prevent", "D8 Congratulate"], 40, 220, 240, 16)) },
-  { id: "swot", title: "SWOT", tree: board("root", "SWOT", row2(["Strengths", "Weaknesses", "Opportunities", "Threats"])) },
-  { id: "kanban", title: "Kanban", tree: board("root", "Kanban", row2(["To do", "Doing", "Done"])) },
+  { id: "fishbone", title: "Fishbone (6M)", tree: board("root", "Fishbone (6M)", row3(["Man", "Machine", "Method", "Material", "Measurement", "Environment"], 40, 240, 280, 16)) },
+  { id: "8d", title: "8D", tree: board("root", "8D", row3(["D1 Team", "D2 Problem", "D3 Containment", "D4 Root cause", "D5 Action", "D6 Implement", "D7 Prevent", "D8 Congratulate"], 40, 220, 240, 16)) },
+  { id: "swot", title: "SWOT", tree: board("root", "SWOT", row3(["Strengths", "Weaknesses", "Opportunities", "Threats"])) },
+  { id: "kanban", title: "Kanban", tree: board("root", "Kanban", row3(["To do", "Doing", "Done"])) },
   { id: "timeline", title: "Timeline", tree: board("root", "Timeline", ["Start", "Middle", "Next", "End"].map((title, i) => card(`t${i}`, title, 40 + i * 300, 80, 240, 120))) },
   { id: "process", title: "Process flow", tree: board("root", "Process flow", flow()) },
-  { id: "meeting", title: "Meeting notes", tree: board("root", "Meeting notes", row2(["Agenda", "Notes", "Actions"])) },
-  { id: "retro", title: "Retro", tree: board("root", "Retro", row2(["Went well", "To improve", "Actions"])) }
+  { id: "meeting", title: "Meeting notes", tree: board("root", "Meeting notes", row3(["Agenda", "Notes", "Actions"])) },
+  { id: "retro", title: "Retro", tree: board("root", "Retro", row3(["Went well", "To improve", "Actions"])) }
 ];
 function starterById(id) {
   return STARTERS.find((s) => s.id === id) ?? null;
@@ -55816,8 +56443,8 @@ extendSession((session, api3) => {
     });
     if (!plan?.creates.length) return Promise.resolve(null);
     const rootUid = plan.rootUid;
-    return writeChunks(plan.chunks, (chunk) => api3.txn((t) => {
-      for (const op of chunk) {
+    return writeChunks(plan.chunks, (chunk2) => api3.txn((t) => {
+      for (const op of chunk2) {
         t.create({
           uid: op.uid,
           parent: op.parent,
@@ -55847,9 +56474,9 @@ extendSession((session, api3) => {
     if (!plan.creates.length) return null;
     if (api3.bulkAllowed && !api3.bulkAllowed(plan.creates.length)) return null;
     const rootUid = plan.rootUid;
-    await writeChunks(plan.chunks, async (chunk) => {
+    await writeChunks(plan.chunks, async (chunk2) => {
       await host.group(async () => {
-        for (const op of chunk) {
+        for (const op of chunk2) {
           await host.createBlock({
             parentUid: op.parent,
             order: op.order,
@@ -55900,9 +56527,9 @@ extendSession((session, api3) => {
     const snap = board2?.snapshots?.find((item) => item.uid === snapUid);
     if (!snap) return false;
     const chunks = planRestore(snap.items, board2);
-    for (const chunk of chunks) {
+    for (const chunk2 of chunks) {
       await api3.txn((t) => {
-        for (const op of chunk) {
+        for (const op of chunk2) {
           if (op.op === "move") t.move(op.uid, op.parent);
           else {
             t.props(op.uid, api3.itemPlexus(op.uid, {
@@ -55978,22 +56605,22 @@ function captionForView(sections, point, fallbackTitle) {
 }
 
 // src/views.js
-var UID6 = ":block/uid";
-var STR4 = ":block/string";
+var UID7 = ":block/uid";
+var STR5 = ":block/string";
 var CONTAINER = "{{[[plexus-regions]]}}";
 function regionsParent(api3, board2) {
   if (board2.regionsUid) return board2.regionsUid;
   const root = api3.rawNode(api3.uid);
   for (const child of api3.kidsOf(root)) {
-    const text4 = child[STR4] ?? child.string ?? "";
-    if (isContainerString(text4)) return child[UID6] || child.uid;
+    const text4 = child[STR5] ?? child.string ?? "";
+    if (isContainerString(text4)) return child[UID7] || child.uid;
   }
   return null;
 }
 function viewRegion(api3, uid) {
   const node2 = api3.rawNode(uid);
   if (!node2) return null;
-  const region = parseRegion(node2[STR4] ?? node2.string ?? "");
+  const region = parseRegion(node2[STR5] ?? node2.string ?? "");
   if (!region || region.kind !== "view" || region.supported !== true) return null;
   return region;
 }
@@ -56001,9 +56628,9 @@ function imageCardContainer(api3, cardUid) {
   const card2 = api3.rawNode(cardUid);
   if (!card2) return null;
   for (const child of api3.kidsOf(card2)) {
-    const id = child[UID6] || child.uid;
+    const id = child[UID7] || child.uid;
     if (!id) continue;
-    const text4 = child[STR4] ?? child.string ?? "";
+    const text4 = child[STR5] ?? child.string ?? "";
     if (isContainerString(text4) || api3.rawPlexus(id)?.type === "regions") return id;
   }
   return null;
@@ -57910,7 +58537,7 @@ function isBlankCanvas(canvas, { threshold = 235 } = {}) {
 
 // src/model/pdf-drag.js
 var PDF_MARK = ".TextHighlight__part, .AreaHighlight__part, .AreaHighlight";
-var UID7 = /^[A-Za-z0-9_-]{9}$/;
+var UID8 = /^[A-Za-z0-9_-]{9}$/;
 var FIBER_LIMIT = 10;
 var CHIP_LEN = 60;
 function fiberOf(node2) {
@@ -57938,7 +58565,7 @@ function highlightFromFiber(fiber) {
   return null;
 }
 function acceptId(id, exists) {
-  if (typeof id !== "string" || !UID7.test(id)) return null;
+  if (typeof id !== "string" || !UID8.test(id)) return null;
   if (typeof exists !== "function") return id;
   try {
     if (exists(id) !== true) return null;
@@ -58473,7 +59100,7 @@ function highlightLensTag(color) {
 
 // src/model/halo.js
 var DAY_MS4 = 864e5;
-var MONTHS7 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+var MONTHS8 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 var HALO_PULL_LIGHT = "[:create/time :edit/time {:create/user [:user/display-name]}]";
 var HALO_REF_CAP = 200;
 var HALO_REFS_SPAN_QUERY = "[:find (count ?r) (min ?t) (max ?t) :in $ ?u :where [?e :block/uid ?u] [?r :block/refs ?e] [?r :create/time ?t]]";
@@ -58529,7 +59156,7 @@ function formatMade(ms) {
   const n3 = finite5(ms);
   if (n3 == null) return "";
   const date = new Date(n3);
-  return `${MONTHS7[date.getMonth()]} ${ordinal(date.getDate())}, ${date.getFullYear()}`;
+  return `${MONTHS8[date.getMonth()]} ${ordinal(date.getDate())}, ${date.getFullYear()}`;
 }
 function headerText({ created, board: board2, section: section2, userName: userName3 } = {}) {
   const when = formatMade(created);
@@ -59285,7 +59912,7 @@ function breadcrumb(page, parent) {
 function snippetOf2(text4, max = 200) {
   return clip4(text4, max);
 }
-function filterRows(rows, query) {
+function filterRows2(rows, query) {
   const q2 = String(query ?? "").trim().toLowerCase();
   if (!q2) return rows || [];
   return (rows || []).filter((row4) => `${row4.crumb || ""} ${row4.snippet || ""}`.toLowerCase().includes(q2));
@@ -59336,7 +59963,7 @@ function mountContextsDrawer({
     filter.type = "search";
     filter.setAttribute("aria-label", "Filter references");
     filter.addEventListener("input", () => {
-      const shown = new Set(filterRows(flat3, filter.value).map((row4) => row4.uid));
+      const shown = new Set(filterRows2(flat3, filter.value).map((row4) => row4.uid));
       for (const node2 of list.querySelectorAll(".pxd-contexts__row")) {
         node2.hidden = !shown.has(node2.getAttribute("data-uid"));
       }
@@ -59350,8 +59977,8 @@ function mountContextsDrawer({
     el2.append(note);
   }
   let year;
-  const paint2 = (chunk) => {
-    for (const row4 of chunk) {
+  const paint2 = (chunk2) => {
+    for (const row4 of chunk2) {
       if (row4.year !== year) {
         year = row4.year;
         const head = doc.createElement("div");
@@ -59514,11 +60141,11 @@ function mountMemoryLane({
 // src/model/suggest.js
 var SUGGEST_CAP = 60;
 var SUGGEST_LIMIT = 300;
-var MONTHS8 = "January|February|March|April|May|June|July|August|September|October|November|December";
-var DAILY_RE2 = new RegExp(`^(${MONTHS8}) \\d{1,2}(?:st|nd|rd|th), \\d{4}$`);
+var MONTHS9 = "January|February|March|April|May|June|July|August|September|October|November|December";
+var DAILY_RE3 = new RegExp(`^(${MONTHS9}) \\d{1,2}(?:st|nd|rd|th), \\d{4}$`);
 var escapeReg = (text4) => String(text4).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function isDailyTitle2(title) {
-  return DAILY_RE2.test(String(title ?? "").trim());
+  return DAILY_RE3.test(String(title ?? "").trim());
 }
 function boundary(title) {
   return new RegExp(`(^|[^A-Za-z0-9])(${escapeReg(title)})(?=$|[^A-Za-z0-9])`, "gi");
@@ -63675,14 +64302,14 @@ function allWords(pages, doc) {
   return words;
 }
 var NON_LETTER = /^[^A-Za-z]+$/;
-var MARK = /[^\x20-\x7e]/g;
+var MARK2 = /[^\x20-\x7e]/g;
 function coreOf(t) {
   return String(t).replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "").toLowerCase();
 }
 function lineScore(tokens2, oldTokens, opts) {
   let n3 = tokens2.reduce((k, w) => k + (suspiciousWord(w, opts) ? 1 : 0), 0);
   for (const t of oldTokens) if (NON_LETTER.test(t) && !tokens2.some((w) => w === t || t.length >= 2 && w.includes(t))) n3++;
-  const marks = (list) => list.join(" ").match(MARK) || [];
+  const marks = (list) => list.join(" ").match(MARK2) || [];
   const have = marks(tokens2);
   for (const m of marks(oldTokens)) {
     const at = have.indexOf(m);
@@ -72691,9 +73318,9 @@ async function ask({ context = "", roamContext = null, prompt = "", messages = n
   if (effort) options.effort = String(effort);
   if (signal) options.signal = signal;
   if (json) options.responseFormat = "json_object";
-  if (typeof onChunk === "function") options.onChunk = (chunk) => {
+  if (typeof onChunk === "function") options.onChunk = (chunk2) => {
     try {
-      onChunk(chunk);
+      onChunk(chunk2);
     } catch {
     }
   };
@@ -74787,11 +75414,11 @@ ${lines.join("\n")}` : "";
     lastPaint = now3();
     if (stick) toBottom();
   };
-  const appendChunk = (turn, chunk) => {
+  const appendChunk = (turn, chunk2) => {
     let n3 = turn.bubble.lastChild;
     while (n3 && n3.nodeType === 1 && /^(UL|OL)$/.test(n3.tagName) && n3.lastChild) n3 = n3.lastChild;
     const into = n3 && n3.nodeType === 1 && /^(P|LI)$/.test(n3.tagName) ? n3 : turn.bubble;
-    into.append(dom.createTextNode(chunk));
+    into.append(dom.createTextNode(chunk2));
   };
   const userBubble = (text4) => {
     const msg = make2(dom, "div", "pxd-ask__msg pxd-ask__msg--user", null);
@@ -74951,15 +75578,15 @@ ${lines.join("\n")}` : "";
       ...effortOptions(effort, curModel()),
       signal: ctl.signal,
       window: win2,
-      onChunk: (chunk) => {
+      onChunk: (chunk2) => {
         if (dead || mine !== token) return;
-        turn.answer += chunk;
+        turn.answer += chunk2;
         s.status.textContent = "";
         if (now3() - lastPaint >= PAINT_MS) {
           paintTurn(turn);
           return;
         }
-        appendChunk(turn, chunk);
+        appendChunk(turn, chunk2);
         if (!paintTimer) paintTimer = setTimeout(() => {
           paintTimer = null;
           if (!dead && mine === token) paintTurn(turn);
@@ -80903,7 +81530,7 @@ function indexNodes(nodes, map) {
     if (Array.isArray(node2.children)) indexNodes(node2.children, map);
   }
 }
-function sortRows3(rows) {
+function sortRows4(rows) {
   return rows.map((row4, index) => ({ row: row4, index })).sort((a, b) => {
     const ap = typeof a.row.page === "number" ? a.row.page : Infinity;
     const bp = typeof b.row.page === "number" ? b.row.page : Infinity;
@@ -81410,7 +82037,7 @@ function createReadPane({
     } catch {
       rows = [];
     }
-    catalog = sortRows3(rows);
+    catalog = sortRows4(rows);
     return catalog;
   };
   const legacyDrawer = () => {
@@ -85942,12 +86569,13 @@ function openViewDialog(doc, { caption = "", showCopy = true, dialogLabel = "", 
   const glyph = dialogLabel === "Landmark glyph";
   const label = doc.createElement("label");
   const comment = dialogLabel === "Comment";
-  label.textContent = glyph ? "Glyph" : comment ? "Comment" : "Name";
+  const bind = dialogLabel === "Bind section";
+  label.textContent = glyph ? "Glyph" : comment ? "Comment" : bind ? "Tag or attribute" : "Name";
   const input = doc.createElement("input");
   input.className = "pxd-input";
   input.type = "text";
   input.value = caption;
-  input.setAttribute("aria-label", glyph ? "Landmark glyph" : comment ? "Comment" : "View name");
+  input.setAttribute("aria-label", glyph ? "Landmark glyph" : comment ? "Comment" : bind ? "Tag or attribute" : "View name");
   label.append(input);
   card2.append(label);
   let copyBox = null;
@@ -89516,106 +90144,6 @@ function syncEmptyHint(node2, board2) {
   return show;
 }
 
-// src/model/table.js
-init_schema();
-var FIXED = ["Title", "Section", "Type", "Edited"];
-function cleanName(name) {
-  if (name == null) return "";
-  const attr = String(name).trim();
-  if (!attr || attr.startsWith("BT_attr") || FIXED.includes(attr)) return "";
-  return attr;
-}
-function columnNameOk(name) {
-  return Boolean(cleanName(name));
-}
-function isTableRow(item) {
-  if (!item) return false;
-  if (item.type === "section" || item.type === "text") return false;
-  if (item.type === "card") return true;
-  return item.kind === "card" || item.kind === "board";
-}
-function tableColumns(rows) {
-  const names = [];
-  for (const row4 of rows || []) {
-    for (const attr of row4.attrs || []) {
-      if (attr?.name && !names.includes(attr.name)) names.push(attr.name);
-    }
-  }
-  return FIXED.concat(names);
-}
-function cellText2(row4, column) {
-  if (!row4) return "";
-  if (column === "Title") return String(row4.title ?? "");
-  if (column === "Section") return String(row4.section ?? "");
-  if (column === "Type") return String(row4.type ?? "");
-  if (column === "Edited") return row4.edited == null ? "" : String(row4.edited);
-  const hit = (row4.attrs || []).find((attr) => attr.name === column);
-  return hit ? String(hit.value ?? "") : "";
-}
-function filterRows3(rows, text4) {
-  const needle = String(text4 ?? "").trim().toLowerCase();
-  if (!needle) return (rows || []).slice();
-  const cols = tableColumns(rows);
-  return (rows || []).filter((row4) => cols.some((column) => cellText2(row4, column).toLowerCase().includes(needle)));
-}
-function sortRows4(rows, column, dir = "asc") {
-  const sign = dir === "desc" ? -1 : 1;
-  const list = (rows || []).slice();
-  list.sort((a, b) => {
-    if (column === "Edited") {
-      const av = Number(a.edited) || 0;
-      const bv = Number(b.edited) || 0;
-      return (av - bv) * sign;
-    }
-    return cellText2(a, column).localeCompare(cellText2(b, column)) * sign;
-  });
-  return list;
-}
-function planAttrCell({ name, value, blockUid: blockUid3 = null, parentUid = null } = {}) {
-  const attr = cleanName(name);
-  if (!attr) return null;
-  const text4 = String(value ?? "").trim();
-  const string = text4 ? `${attr}:: ${text4}` : `${attr}::`;
-  if (blockUid3) return { op: "update", uid: blockUid3, string };
-  if (!text4 || !parentUid) return null;
-  return { op: "create", parent: parentUid, string };
-}
-function tableRows(board2, resolve) {
-  const items = board2?.items;
-  if (!items || typeof items.get !== "function") return [];
-  const order = Array.isArray(board2.order) ? board2.order : [...items.keys()];
-  const rows = [];
-  for (const uid of order) {
-    const item = items.get(uid);
-    if (!isTableRow(item)) continue;
-    const parent = items.get(item.parentUid);
-    const section2 = parent?.type === "section" ? String(parent.title || "") : "";
-    const attrs = [];
-    for (const child of item.content || []) {
-      const string = child?.[":block/string"] ?? child?.string ?? "";
-      const name = cleanName(attrNameOf(String(string)));
-      if (!name) continue;
-      const text4 = String(string);
-      const cut = text4.indexOf("::");
-      attrs.push({
-        name,
-        value: cut >= 0 ? text4.slice(cut + 2).trim() : "",
-        uid: child?.[":block/uid"] ?? child?.uid ?? null
-      });
-    }
-    rows.push({
-      uid: item.uid,
-      kind: item.kind,
-      title: itemLabel(item, resolve),
-      section: section2,
-      type: item.kind || "",
-      edited: item.edited ?? null,
-      attrs
-    });
-  }
-  return rows;
-}
-
 // src/view/table-view.js
 var EDITED_QUERY = "[:find ?u ?e :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/time ?e]]";
 function editedLabel(value) {
@@ -89720,8 +90248,8 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
     return cols;
   };
   const shownRows = (rows) => {
-    const filtered = filterRows3(rows, filterText);
-    return sortColumn ? sortRows4(filtered, sortColumn, sortDir) : filtered;
+    const filtered = filterRows(rows, filterText);
+    return sortColumn ? sortRows2(filtered, sortColumn, sortDir) : filtered;
   };
   const commitFill = async (row4, column, raw) => {
     const key = `${row4.uid}\0${column}`;
@@ -89924,162 +90452,6 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
 
 // src/view/kanban-view.js
 init_schema();
-
-// src/model/kanban.js
-init_highlight();
-init_status_tags();
-var TODO_FIELD = "To do";
-var DONE_COLUMN = "Done";
-var HIGHLIGHT_FIELD = "Highlight colour";
-var STATUS_FIELD = "Lanes: Status";
-var NO_STATUS = "No status";
-var MARK2 = /\{\{\[\[(TODO|DONE)\]\]\}\}/;
-function todoState(string) {
-  const hit = MARK2.exec(String(string || ""));
-  if (!hit) return "";
-  return hit[1] === "DONE" ? DONE_COLUMN : TODO_FIELD;
-}
-function kanbanRows(board2, resolve) {
-  const items = board2?.items;
-  return tableRows(board2, resolve).map((row4) => {
-    const item = items?.get?.(row4.uid);
-    const next = { ...row4, string: item?.string ?? row4.title ?? "" };
-    if (item?.kind !== "highlight") return next;
-    const targetUid = item.target?.uid;
-    let targetString;
-    if (typeof resolve === "function") {
-      try {
-        targetString = resolve(targetUid);
-      } catch {
-        targetString = void 0;
-      }
-    }
-    next.highlightColor = item.highlight?.color;
-    next.targetUid = targetUid;
-    next.targetString = targetString;
-    return next;
-  });
-}
-function kanbanFields(rows) {
-  const names = [];
-  let highlight = false;
-  for (const row4 of rows || []) {
-    if (typeof row4?.highlightColor === "string" && row4.highlightColor !== "") highlight = true;
-    for (const attr of row4.attrs || []) {
-      if (attr?.name && columnNameOk(attr.name) && !names.includes(attr.name)) names.push(attr.name);
-    }
-  }
-  return highlight ? [TODO_FIELD, HIGHLIGHT_FIELD, ...names] : [TODO_FIELD, ...names];
-}
-function columnOf(row4, field) {
-  if (field === TODO_FIELD) return todoState(row4?.string);
-  if (field === HIGHLIGHT_FIELD) {
-    const color = row4?.highlightColor;
-    return typeof color === "string" && color !== "" ? color : "";
-  }
-  const hit = (row4?.attrs || []).find((attr) => attr.name === field);
-  return hit ? String(hit.value ?? "") : "";
-}
-function kanbanColumns(rows, field) {
-  const list = rows || [];
-  if (field === TODO_FIELD) {
-    const columns2 = [
-      { name: TODO_FIELD, cards: [] },
-      { name: DONE_COLUMN, cards: [] }
-    ];
-    const extra = [];
-    for (const row4 of list) {
-      const name = columnOf(row4, field);
-      if (name === TODO_FIELD) columns2[0].cards.push(row4);
-      else if (name === DONE_COLUMN) columns2[1].cards.push(row4);
-      else extra.push(row4);
-    }
-    if (extra.length) columns2.push({ name: "", cards: extra });
-    return columns2;
-  }
-  if (!columnNameOk(field)) return [];
-  const columns = [];
-  const byName = /* @__PURE__ */ new Map();
-  for (const row4 of list) {
-    const name = columnOf(row4, field);
-    if (!byName.has(name)) {
-      const column = { name, cards: [] };
-      byName.set(name, column);
-      columns.push(column);
-    }
-    byName.get(name).cards.push(row4);
-  }
-  return columns;
-}
-function withMarker(string, column) {
-  const mark = column === DONE_COLUMN ? "{{[[DONE]]}}" : "{{[[TODO]]}}";
-  const current3 = String(string || "");
-  if (MARK2.test(current3)) return current3.replace(MARK2, mark);
-  return current3.trim() ? `${mark} ${current3}` : mark;
-}
-function planKanbanMove({ field, column, row: row4 } = {}) {
-  if (!row4?.uid || column == null || column === "") return null;
-  if (field === TODO_FIELD) {
-    if (column !== TODO_FIELD && column !== DONE_COLUMN) return null;
-    if (todoState(row4.string) === column) return null;
-    const string = withMarker(row4.string, column);
-    if (string === String(row4.string || "")) return null;
-    return { op: "string", uid: row4.uid, string, status: column === DONE_COLUMN ? "DONE" : "TODO" };
-  }
-  if (field === HIGHLIGHT_FIELD) {
-    if (row4.kind === "note") return null;
-    const targetUid = row4.targetUid;
-    const targetString = row4.targetString;
-    if (!targetUid || typeof targetString !== "string" || targetString === "") return null;
-    if (row4.highlightColor === column) return null;
-    if (!HIGHLIGHT_COLORS.includes(column)) return null;
-    return { op: "string", uid: targetUid, string: rewriteHighlightTag(targetString, column) };
-  }
-  if (field === STATUS_FIELD) return null;
-  if (!columnNameOk(field)) return null;
-  const attr = (row4.attrs || []).find((item) => item.name === field);
-  if (String(attr?.value ?? "") === column) return null;
-  const plan = planAttrCell({
-    name: field,
-    value: column,
-    blockUid: attr?.uid || null,
-    parentUid: row4.uid
-  });
-  if (!plan) return null;
-  if (plan.op === "update") return { op: "string", uid: plan.uid, string: plan.string };
-  return plan;
-}
-function isDoneItem(item) {
-  if (item?.done === true) return true;
-  return todoState(item?.string ?? "") === DONE_COLUMN;
-}
-function groupByStatus(items, palette) {
-  const columns = paletteEntries(palette).map((entry) => ({
-    name: entry.name,
-    key: entry.key,
-    glyph: entry.glyph,
-    cards: [],
-    count: 0
-  }));
-  const none = { name: NO_STATUS, key: "", glyph: "diamond", cards: [], count: 0 };
-  const done3 = { name: DONE_COLUMN, key: "done", glyph: "", cards: [], count: 0 };
-  const byName = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
-  for (const item of items || []) {
-    if (isDoneItem(item)) {
-      done3.cards.push(item);
-      continue;
-    }
-    const name = taskStatusOf(item?.string ?? "", palette);
-    const column = name ? byName.get(name.toLowerCase()) : null;
-    (column || none).cards.push(item);
-  }
-  for (const column of columns) column.count = column.cards.length;
-  none.count = none.cards.length;
-  done3.count = done3.cards.length;
-  return [...columns, none, done3];
-}
-
-// src/view/kanban-view.js
 init_status_tags();
 var BAD_STATUS = /* @__PURE__ */ new Set(["rejected", "unknown", "conflict", "not-updated"]);
 function kanbanTitle(card2) {
@@ -91157,10 +91529,10 @@ function editState(doc) {
 }
 
 // src/host/follow-sources.js
-var UID9 = ":block/uid";
-var STR5 = ":block/string";
+var UID10 = ":block/uid";
+var STR6 = ":block/string";
 var ORD3 = ":block/order";
-var KIDS6 = ":block/children";
+var KIDS7 = ":block/children";
 var FIELDS2 = ":block/uid :block/string :block/order :create/time :edit/time";
 var META2 = /^BT_attr[\w-]*::/;
 var REFS_LIMIT = FOLLOW_READ_CAP + 1;
@@ -91177,7 +91549,7 @@ function defineFollowKind(kind) {
 var followKind = (id) => kinds.get(id) || null;
 var quote = (text4) => `“${plainText(text4, 48) || "Untitled"}”`;
 var timeOf2 = (node2) => Math.max(Number(node2?.[":create/time"]) || 0, Number(node2?.[":edit/time"]) || 0);
-var sorted2 = (node2) => Array.isArray(node2?.[KIDS6]) ? node2[KIDS6].slice().sort((a, b) => (a?.[ORD3] ?? 0) - (b?.[ORD3] ?? 0)) : [];
+var sorted2 = (node2) => Array.isArray(node2?.[KIDS7]) ? node2[KIDS7].slice().sort((a, b) => (a?.[ORD3] ?? 0) - (b?.[ORD3] ?? 0)) : [];
 function treePattern(depth) {
   let inner = `[${FIELDS2}]`;
   for (let d = 1; d < depth; d += 1) inner = `[${FIELDS2} {(limit :block/children ${CHILD_LIMIT}) ${inner}}]`;
@@ -91194,16 +91566,16 @@ function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__
     if (kids.length > cap4) cut = true;
     for (const kid of kids) {
       if (!complete) return;
-      const uid = kid?.[UID9];
+      const uid = kid?.[UID10];
       if (typeof uid !== "string" || skip.has(uid)) continue;
-      const string = typeof kid[STR5] === "string" ? kid[STR5] : "";
+      const string = typeof kid[STR6] === "string" ? kid[STR6] : "";
       if (META2.test(string.trim())) continue;
       if (items.length >= cap4) {
         complete = false;
         return;
       }
       items.push({ uid, kind: "block", text: sourceText(string), time: timeOf2(kid), depth: level, ...string.trim() ? {} : { blank: true } });
-      const more = Array.isArray(kid[KIDS6]) && kid[KIDS6].length > 0;
+      const more = Array.isArray(kid[KIDS7]) && kid[KIDS7].length > 0;
       if (!more) continue;
       if (level >= depth) {
         deeper = true;
@@ -91225,7 +91597,7 @@ function underSource(host, uid, sourceUid, boardUid) {
   } catch {
     return true;
   }
-  const parents = Array.isArray(node2?.[":block/parents"]) ? node2[":block/parents"].map((p) => p?.[UID9]) : [];
+  const parents = Array.isArray(node2?.[":block/parents"]) ? node2[":block/parents"].map((p) => p?.[UID10]) : [];
   return parents.includes(sourceUid) && !parents.includes(boardUid);
 }
 function nameOf(host, uid) {
@@ -91236,7 +91608,7 @@ function nameOf(host, uid) {
     node2 = null;
   }
   if (!node2) return "";
-  return typeof node2[":node/title"] === "string" ? node2[":node/title"] : sourceText(node2[STR5] || "");
+  return typeof node2[":node/title"] === "string" ? node2[":node/title"] : sourceText(node2[STR6] || "");
 }
 var watchBlock = (pointer, host, cb) => typeof host?.watchBlock === "function" ? host.watchBlock(pointer.uid, cb) : () => {
 };
@@ -91271,15 +91643,15 @@ defineFollowKind({
   }
 });
 function subtreeUids(node2, out = /* @__PURE__ */ new Set()) {
-  for (const kid of Array.isArray(node2?.[KIDS6]) ? node2[KIDS6] : []) {
-    if (typeof kid?.[UID9] === "string") out.add(kid[UID9]);
+  for (const kid of Array.isArray(node2?.[KIDS7]) ? node2[KIDS7] : []) {
+    if (typeof kid?.[UID10] === "string") out.add(kid[UID10]);
     subtreeUids(kid, out);
   }
   return out;
 }
 var queryString = (host, uid) => {
   try {
-    return host?.pullEntity?.("[:block/string]", uid)?.[STR5] ?? null;
+    return host?.pullEntity?.("[:block/string]", uid)?.[STR6] ?? null;
   } catch {
     return null;
   }
@@ -95151,17 +95523,17 @@ async function readCrops(crops, scaleX, scaleY, runRec, dict, signal) {
   const items = [];
   for (let i = 0; i < crops.length; i += BATCH) {
     throwIfAborted(signal);
-    const chunk = crops.slice(i, i + BATCH);
-    const maxW = Math.max(...chunk.map((c) => c.resized.w));
+    const chunk2 = crops.slice(i, i + BATCH);
+    const maxW = Math.max(...chunk2.map((c) => c.resized.w));
     const height = REC_H;
-    const data = new Float32Array(chunk.length * 3 * height * maxW);
-    const normals = chunk.map((c) => nchwNormalize(c.resized.rgb, c.resized.w, c.resized.h));
-    chunk.forEach((c, b) => blitLeft(data, b, maxW, normals[b], c.resized.w, height));
-    const out = await runRec(data, [chunk.length, 3, height, maxW]);
+    const data = new Float32Array(chunk2.length * 3 * height * maxW);
+    const normals = chunk2.map((c) => nchwNormalize(c.resized.rgb, c.resized.w, c.resized.h));
+    chunk2.forEach((c, b) => blitLeft(data, b, maxW, normals[b], c.resized.w, height));
+    const out = await runRec(data, [chunk2.length, 3, height, maxW]);
     const time = out.time;
     const classes = out.classes;
     const logits = out.logits;
-    chunk.forEach((c, b) => {
+    chunk2.forEach((c, b) => {
       const contentT = Math.max(1, Math.min(time, Math.round(time * (c.resized.contentW || c.resized.w) / maxW)));
       const start2 = b * time * classes;
       const slice = logits.subarray(start2, start2 + contentT * classes);
@@ -97356,6 +97728,8 @@ function buildMenu(kind, ctx = {}) {
         make3("select-connected", "Select connected"),
         make3("collapse-section", c.collapsed ? "Expand" : "Collapse"),
         make3("section-note", c.hasNote ? "Remove description" : "Add description"),
+        make3("bucket-bind", c.bucket ? `Bound to ${c.bucket}…` : "Bind to tag or attribute…"),
+        ...c.bucket ? [make3("bucket-write", "Write section to graph", { disabled: empty }), make3("bucket-unbind", "Unbind")] : [],
         c.locked ? make3("unlock-contents", "Unlock") : make3("lock-contents", "Lock"),
         make3("present-section", "Present this section"),
         make3("layout-dates", "Lay out by date"),
@@ -103193,16 +103567,16 @@ function buildBoardView(onFail, {
     }
     const runChunk = (list) => {
       if (disposed) return;
-      const chunk = list.slice(0, BADGE_CHUNK);
+      const chunk2 = list.slice(0, BADGE_CHUNK);
       const rest = list.slice(BADGE_CHUNK);
       let res;
       try {
-        res = host.cardStats(chunk.map((m) => m.target), { boardUid });
+        res = host.cardStats(chunk2.map((m) => m.target), { boardUid });
       } catch {
         res = void 0;
       }
       const at = Date.now();
-      for (const m of chunk) {
+      for (const m of chunk2) {
         badgePending.delete(m.key);
         if (res === void 0) continue;
         const stats = res instanceof Map ? res.get(m.key) : res?.[m.key];
@@ -105085,6 +105459,7 @@ function buildBoardView(onFail, {
           pinned: Boolean(item?.pinned),
           collapsed: Boolean(item?.collapsed),
           hasNote: Boolean(item && sectionNoteUid(b, item.uid)),
+          bucket: item ? bindingLabel(session.sectionBinding?.(item.uid)) : "",
           locked: members.length > 0 && members.every((u) => b.items.get(u)?.pinned),
           trails: trailRows(b),
           landmark: item?.landmark === true,
@@ -106068,6 +106443,29 @@ function buildBoardView(onFail, {
         break;
       case "section-note":
         if (item?.type === "section") void session.toggleSectionNote?.(item.uid);
+        break;
+      case "bucket-bind": {
+        if (item?.type !== "section") break;
+        askView({
+          caption: bindingLabel(session.sectionBinding?.(item.uid)),
+          showCopy: false,
+          dialogLabel: "Bind section",
+          onSave: ({ caption }) => {
+            const binding = parseBinding(caption);
+            if (!binding) {
+              toast("Use #tag or Name:: value");
+              return;
+            }
+            void session.bindSection?.(item.uid, binding);
+          }
+        });
+        break;
+      }
+      case "bucket-write":
+        if (item?.type === "section") void session.writeSectionToGraph?.(item.uid);
+        break;
+      case "bucket-unbind":
+        if (item?.type === "section") void session.bindSection?.(item.uid, null);
         break;
       case "lock-contents":
         if (item?.type === "section") void session.lockSection?.(item.uid, true);

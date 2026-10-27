@@ -95,7 +95,7 @@ const PROPS = ":block/props";
 const OPEN = ":block/open";
 
 const LINK_MODES = ["off", "attributes", "all"];
-const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
+const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "keepOrder", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
 const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 const MAX_PARENT_STRINGS = 200;
 // A held big board whose resume Roam refused (rate limit while rebuilding an expired hold) tries again after this.
@@ -421,6 +421,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   const listeners = new Map();
   // fn(t, uids, opts) inside deleteItems' own transaction: uids are every item that goes (contents included).
   const deleteHooks = [];
+  const destroyHooks = [];
   // fn(t, moves, track) inside commitMove / commitRects: moves are [{ uid, from, to }] parent uids before and after;
   // the hook pushes inverse ops into track.undo for the custom undo of a big drag.
   const moveHooks = [];
@@ -3445,6 +3446,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       });
     },
 
+    setKeepOrder(id, on) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type !== "section" || (item.keepOrder === true) === (on === true)) return;
+        t.props(id, itemPlexus(id, { keepOrder: on === true ? true : undefined }));
+      });
+    },
+
     setFit(id, on) {
       return txn((t) => {
         const item = board.items.get(id);
@@ -3637,7 +3646,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
     // Modes: row, column, grid, outline. A lone selected section tidies its members; otherwise each parent's
     // selected items are tidied among themselves. Writes only x and y. Resolves the number of items moved.
-    tidyItems(uids, mode = "grid", { gap } = {}) {
+    // An explicit `order` (item uids) replaces the outline order for mode "outline"; unlisted items follow in reading order.
+    tidyItems(uids, mode = "grid", { gap, order } = {}) {
       return txn((t) => {
         const top = topLevelOf(board, uids ?? []);
         const groups = new Map();
@@ -3652,7 +3662,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           }
         }
         const opts = gap !== undefined ? { gap } : {};
-        if (mode === "outline") opts.order = outlineOrder(board);
+        if (mode === "outline") opts.order = Array.isArray(order) ? order : outlineOrder(board);
         const moved = [];
         for (const ids of groups.values()) {
           if (ids.length < 2) continue;
@@ -4196,6 +4206,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       linkResolve = null;
       listeners.clear();
       ledger.clear();
+      for (const fn of destroyHooks.splice(0)) {
+        try { fn(); } catch (err) { console.error("[plexus session]", err); }
+      }
     },
   };
 
@@ -4309,6 +4322,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     clone,
     round1,
     emit,
+    onDestroy(fn) {
+      if (typeof fn === "function") destroyHooks.push(fn);
+    },
     onMoveItems(fn) {
       if (typeof fn !== "function") return () => {};
       moveHooks.push(fn);

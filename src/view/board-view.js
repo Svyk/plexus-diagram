@@ -112,6 +112,8 @@ import { syncEmptyHint } from "./empty-hint.js";
 import { applyMotionClasses, motionProfile, resolveMotion } from "./motion.js";
 import { mountTable } from "./table-view.js";
 import { mountKanban } from "./kanban-view.js";
+import { laneFields } from "../model/attr-lanes.js";
+import { tableRows } from "../model/table.js";
 import { createPropsPanel } from "./props-panel.js";
 import { PANEL_WIDTH_DEFAULT, nextPanelWidth } from "../model/info.js";
 import { LONG_PRESS_CANCEL_PX, LONG_PRESS_MS, longPressAt } from "../model/touch.js";
@@ -5928,6 +5930,7 @@ function buildBoardView(onFail, {
           landmark: item?.landmark === true,
           landmarkSize: item?.size || "M",
           dateSource: dateMode,
+          ...(item?.look === "lane" ? { lane: { bound: item.laneAttr || null, fields: laneFields(tableRows(b)) } } : {}),
         };
       }
       case "text": return { item, pinned: Boolean(item?.pinned), trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
@@ -6197,6 +6200,22 @@ function buildBoardView(onFail, {
           look: "lane",
           axis: vertical ? "vertical" : "horizontal",
         })).then((uid) => { if (uid && !disposed) ctl.select([uid]); }).catch(() => {});
+        break;
+      }
+      case "lane-attr":
+        if (item?.look === "lane" && arg) void session.bindLane?.(item.uid, arg);
+        break;
+      case "lane-stop":
+        if (item?.look === "lane") void session.unbindLane?.(item.uid);
+        break;
+      case "lane-pull": {
+        if (item?.look !== "lane" || !item.laneAttr) break;
+        const name = item.laneAttr;
+        Promise.resolve(session.pullLaneSource?.(item.uid)).then((res) => {
+          if (disposed) return;
+          if (res?.placed > 0) toast(`Placed ${res.placed} of ${res.total} blocks with ${name}::`);
+          else toast(`No more blocks with ${name}::`);
+        }).catch(() => {});
         break;
       }
       case "new-board": {

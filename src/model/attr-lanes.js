@@ -4,7 +4,7 @@
 // card's mark, not the card. Pure helpers, no Roam calls. BT_attr* names are refused here (Kanban owns them).
 
 import { HIGHLIGHT_FIELD, TODO_FIELD, kanbanFields } from "./kanban.js";
-import { columnNameOk, planAttrCell } from "./table.js";
+import { columnNameOk, isTableRow, planAttrCell, tableRow } from "./table.js";
 
 // Lane plexus keys: the bound attribute name and the band order seen at bind (raw values, none excluded).
 export const LANE_ATTR_KEY = "attr";
@@ -169,4 +169,39 @@ export function arrangeLane({ w, h, axis, bands, cards, pad = LANE_PAD, gap = LA
   const cross = Math.max(vertical ? w : h, ...stacks.map((s) => s - gap + pad));
   const size = vertical ? { w: cross, h: bandSize * n } : { w: bandSize * n, h: cross };
   return { ...size, cards: out };
+}
+
+// Rows for a lane's member cards (tableRows shape). A block-ref card takes its attributes from the referenced block's
+// children (`readKids(targetUid)` -> [{uid, string}]) and writes to that block (`writeUid`). Sections and text are
+// not rows.
+export function laneRow(board, item, readKids, resolve) {
+  if (item.kind === "block" && item.target?.uid) {
+    let kids = [];
+    try { kids = readKids?.(item.target.uid) || []; } catch { kids = []; }
+    return { ...tableRow(board, item, resolve, kids), writeUid: item.target.uid };
+  }
+  return tableRow(board, item, resolve);
+}
+
+export function laneRows(board, laneUid, readKids, resolve) {
+  const lane = board?.items?.get(laneUid);
+  const rows = [];
+  for (const id of lane?.members || []) {
+    const item = board.items.get(id);
+    if (isTableRow(item)) rows.push(laneRow(board, item, readKids, resolve));
+  }
+  return rows;
+}
+
+// What the view draws: the bands with their card counts, and the mark of each member card.
+export function laneView(bands, rows, name) {
+  const counts = bands.map(() => 0);
+  const marks = new Map();
+  for (const row of rows) {
+    const i = bandOfRow(bands, row, name);
+    counts[i] += 1;
+    const v = laneValueOf(row, name);
+    marks.set(row.uid, { label: v.key || LANE_NONE_LABEL, ...(v.key ? {} : { none: true }), ...(v.two ? { two: true } : {}), name });
+  }
+  return { bands: bands.map((b, i) => ({ key: b.key, label: b.label, n: counts[i], ...(b.none ? { none: true } : {}) })), marks };
 }

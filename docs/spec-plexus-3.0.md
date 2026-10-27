@@ -62,6 +62,8 @@ Palette names are `gray` `red` `orange` `yellow` `green` `teal` `blue` `indigo` 
 | `fit` | section | `false` opts out of auto-fit | Absent means fit on |
 | `look` | card, text, section | Card `block` `card`. Text `section-note` `sticky`. Section `lane` `calendar` `timer` | Omitted. A note with no look draws as a block. Page, ref, image, and board cards draw as cards |
 | `axis` | lane section | `horizontal` `vertical` | Horizontal when the look is `lane` |
+| `attr` | lane section | attribute name | Absent: the lane has no sub-lanes. Present: one band per value of that `Name::` attribute, plus none |
+| `bands` | lane section with `attr` | list of raw values | Band order seen at bind; up to 16; values not listed are appended on a drop |
 | `min` | sticky | `true` | Absent means the sticky is open. Only stored for `look` `sticky` |
 | `kids` | card | `true` | Absent means the children badge is off |
 | `titleSize` | section | Integer 10–48 | 18 is omitted |

@@ -8,7 +8,7 @@ import { acquireSession, resetSessions } from "../src/session.js";
 import "../src/session-follow.js";
 import { createFollowTray } from "../src/view/follow-tray.js";
 import { defineFollowKind, followKind } from "../src/host/follow-sources.js";
-import { SAVE_LAG_MS, watchLocalSaves } from "../src/host/local-saves.js";
+import { DOT_CHECK_MS, SAVE_LAG_MS, watchLocalSaves } from "../src/host/local-saves.js";
 import { FOLLOW_MIME, FOLLOW_POLL_MS, FOLLOW_QUIET_MS, FOLLOW_TREE_DEPTH, followQuietMs } from "../src/model/follow.js";
 import { SPREAD_CAP } from "../src/session-clip.js";
 import { buildMenu, flattenMenu } from "../src/view/menu-model.js";
@@ -54,21 +54,30 @@ function liveDom(dom) {
     observe(target) { this.on = true; this.target = target; }
     disconnect() { this.on = false; }
   };
-  const box = dom.document.createElement("div");
-  box.className = "rm-sync";
-  const icon = dom.document.createElement("div");
-  icon.className = "rm-sync__icon rm-sync--synced";
-  box.append(icon);
-  dom.document.body.append(box);
+  let box = null;
+  let icon = null;
+  const draw = () => {
+    box = dom.document.createElement("div");
+    box.className = "rm-sync";
+    icon = dom.document.createElement("div");
+    icon.className = "rm-sync__icon rm-sync--synced";
+    box.append(icon);
+    dom.document.body.append(box);
+  };
+  draw();
+  // Only an observer on the box that holds the dot now hears it, as in the browser.
   const flip = (next) => {
     const old = icon.className;
     icon.className = next;
-    for (const mo of mos) if (mo.on) mo.cb([{ type: "attributes", target: icon, attributeName: "class", oldValue: old }]);
+    for (const mo of mos) if (mo.on && mo.target === box) mo.cb([{ type: "attributes", target: icon, attributeName: "class", oldValue: old }]);
   };
   return {
     mos,
     ios,
     observing: () => mos.filter((mo) => mo.on).length,
+    box: () => box,
+    // Roam draws the sync box again: the old one leaves the page, a new one takes its place.
+    redraw() { box.remove(); draw(); },
     // One write in this window: the dot says saving, then synced.
     save() { flip("rm-sync__icon rm-sync--saving-remote"); flip("rm-sync__icon rm-sync--synced"); },
     show(on) { for (const io of ios) if (io.on) io.cb([{ isIntersecting: on, target: io.target }]); },
@@ -424,8 +433,9 @@ test("PXD-9 F10 save signal: typing (at once, and once more after Roam's write l
   assert.deepEqual([a, b], [1, 1], "a key is heard at once");
   editor.dispatchEvent({ type: "input" });
   assert.deepEqual([a, b], [2, 2]);
-  assert.equal(dom.timers.size, 1, "one lag timer, moved by each key");
-  assert.equal([...dom.timers][0].ms, SAVE_LAG_MS);
+  const lags = () => [...dom.timers].filter((t) => t.fn.name !== "check");
+  assert.equal(lags().length, 1, "one lag timer, moved by each key");
+  assert.equal(lags()[0].ms, SAVE_LAG_MS);
   dom.flushTimers();
   assert.deepEqual([a, b], [3, 3], "and once more after Roam's write lag");
   other.dispatchEvent({ type: "input" });
@@ -445,7 +455,7 @@ test("PXD-9 F10 save signal: typing (at once, and once more after Roam's write l
   offB();
   assert.equal(live.observing(), 0, "the last listener lets the dot go");
   assert.equal(dom.listenerCount() - base, 0, "and the document listeners");
-  assert.equal(dom.timers.size, 0, "and the lag timer");
+  assert.equal(dom.timers.size, 0, "and the lag timer and the dot check");
   const bare = createDomStub();
   let c = 0;
   const offC = watchLocalSaves(bare.document, () => { c += 1; });
@@ -646,5 +656,104 @@ test("PXD-9 F10 tray: a source switched while a read runs is read as soon as tha
     await f.timers.run();
     assert.deepEqual(f.tray.rows().map((r) => r.uid), ["k1", "k2", "k3"]);
     f.tray.dispose();
+  } finally { off(); }
+});
+
+// ---- PXD-21: the save signal outlives Roam drawing its sync box again ----
+
+// Run the stub's dot check once, and nothing else that is waiting (Roam's write lag is as long).
+function runDotCheck(dom) {
+  const due = [...dom.timers].filter((t) => t.fn.name === "check" && t.ms === DOT_CHECK_MS);
+  for (const t of due) { dom.timers.delete(t); t.fn(); }
+  return due.length;
+}
+
+test("PXD-21 save signal: a sync box drawn again is found by the next dot check, which owes one signal; later saves are heard", () => {
+  const dom = createDomStub();
+  const live = liveDom(dom);
+  let n = 0;
+  const off = watchLocalSaves(dom.document, () => { n += 1; });
+  const first = live.box();
+  assert.equal(live.mos[0].target, first);
+  assert.equal(runDotCheck(dom), 1, "one dot check waiting");
+  assert.equal(live.mos.length, 1, "a box still in the page: no new observer");
+  assert.equal(n, 0, "and no signal");
+  live.redraw();
+  live.save();
+  assert.equal(n, 0, "the old box's observer hears nothing: the gap this check closes");
+  assert.equal(runDotCheck(dom), 1);
+  assert.equal(live.observing(), 1, "one observer");
+  assert.equal(live.mos.at(-1).target, live.box(), "on the new box");
+  assert.equal(live.mos[0].on, false, "the old one let go");
+  assert.equal(n, 1, "one signal for saves made while it was deaf");
+  live.save();
+  assert.equal(n, 3, "a save on the new dot is heard (saving, then synced)");
+  runDotCheck(dom);
+  assert.equal(n, 3, "the check says nothing while the box stays");
+  off();
+  assert.equal(live.observing(), 0, "the last listener lets the new dot go");
+  assert.equal(dom.timers.size, 0, "and the dot check");
+});
+
+test("PXD-21 save signal: a box gone with no new one yet keeps the signal owed until a dot is drawn; no dot at first is found later", () => {
+  const dom = createDomStub();
+  const live = liveDom(dom);
+  let n = 0;
+  const off = watchLocalSaves(dom.document, () => { n += 1; });
+  live.box().remove();
+  runDotCheck(dom);
+  assert.equal(live.observing(), 0, "no dot in the page: nothing to watch");
+  runDotCheck(dom);
+  assert.equal(n, 0, "nothing to say yet");
+  live.redraw();
+  runDotCheck(dom);
+  assert.equal(live.observing(), 1);
+  assert.equal(n, 1, "the owed signal, once the new dot is found");
+  off();
+
+  const bare = createDomStub();
+  const late = { mos: [] };
+  bare.document.defaultView.MutationObserver = class {
+    constructor(cb) { this.cb = cb; late.mos.push(this); }
+    observe(target) { this.target = target; this.on = true; }
+    disconnect() { this.on = false; }
+  };
+  let m = 0;
+  const offLate = watchLocalSaves(bare.document, () => { m += 1; });
+  assert.equal(late.mos.length, 0, "the topbar is not drawn yet");
+  const box = bare.document.createElement("div");
+  const icon = bare.document.createElement("div");
+  icon.className = "rm-sync__icon rm-sync--synced";
+  box.append(icon);
+  bare.document.body.append(box);
+  runDotCheck(bare);
+  assert.equal(late.mos.length, 1, "the check finds the dot once it is drawn");
+  assert.equal(late.mos[0].target, box);
+  assert.equal(m, 0, "a first dot owes nothing");
+  offLate();
+  assert.equal(bare.timers.size, 0);
+});
+
+test("PXD-21 tray: after Roam draws the sync box again, a save that is not typing still asks for a read", async () => {
+  let calls = 0;
+  const off = liveProbe("live-redraw", async () => { calls += 1; return { ok: true, complete: true, items: [liveItem("k2")] }; });
+  try {
+    const f = mount({ plexus: { v: 2, follow: { kind: "live-redraw", uid: "P" } }, children: [card("n1", "Note one", 0, 0)], live: true });
+    await f.timers.run();
+    assert.equal(calls, 1);
+    f.live.redraw();
+    runDotCheck(f.dom);
+    await f.timers.run();
+    assert.equal(calls, 2, "the owed signal: one read for the redraw");
+    for (let i = 0; i < 3; i += 1) await f.timers.run();
+    assert.equal(calls, 2, "then it rests");
+    f.live.save();
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 1, "a menu or undo save on the new dot asks for a read");
+    await f.timers.run();
+    assert.equal(calls, 3);
+    f.tray.dispose();
+    assert.equal(f.live.observing(), 0);
+    assert.equal(f.listeners(), 0);
+    assert.equal(f.dom.timers.size, 0, "no dot check left");
   } finally { off(); }
 });

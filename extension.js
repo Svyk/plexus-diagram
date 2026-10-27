@@ -50774,6 +50774,7 @@ var registry = /* @__PURE__ */ new Map();
 var extensions = [];
 var BULK_CARD_CAP = 45;
 var PIN_BATCH = 20;
+var LOCAL_EDIT_MS = 300;
 var BULK_CONFIRM_WRITES = 600;
 var BULK_REFUSE_WRITES = 3e3;
 function addPublicCard(opts = {}, createFn) {
@@ -51637,6 +51638,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const typed = editingUid ? typingFlush(prev, raw, editingUid) : null;
     if (typed) {
       if (typed.dirty) {
+        noteLocalEdit();
         emit2("change", { structural: false, dirty: /* @__PURE__ */ new Set([typed.dirty]) });
         if (!queue.pending) host.invalidateUndo?.();
       }
@@ -51680,6 +51682,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         writeItemString(item, string);
         const node2 = ix().get(itemUid)?.node;
         if (node2) node2[STR] = string;
+        noteLocalEdit();
         emit2("change", { structural: false, dirty: /* @__PURE__ */ new Set([itemUid]) });
       });
       if (typeof off === "function") editStringOff = off;
@@ -52482,14 +52485,16 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     return parts.join("\n");
   }
   let followParents = null;
-  let localMemo = { board: null, parents: null, links: [] };
+  let localEpoch = 0;
+  let localEditTimer = null;
+  let localMemo = { board: null, parents: null, epoch: -1, links: [] };
   let mergedMemo = { a: null, b: null, out: [] };
   function followPointer() {
     return (raw ? readFollow(readPlexus(raw[PROPS])) : null) || derivedFollow();
   }
   function localLinks() {
     if (!board2 || !cardRefsOn(board2)) return [];
-    if (localMemo.board === board2 && localMemo.parents === followParents) return localMemo.links;
+    if (localMemo.board === board2 && localMemo.parents === followParents && localMemo.epoch === localEpoch) return localMemo.links;
     const pointer = followPointer();
     const tree = pointer?.tree && followParents ? treeLinks(board2, followParents, sourceKey(pointer)) : [];
     let links = [];
@@ -52498,8 +52503,24 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     } catch (err) {
       console.error("[plexus session] card refs", err);
     }
-    localMemo = { board: board2, parents: followParents, links };
+    localMemo = { board: board2, parents: followParents, epoch: localEpoch, links };
     return links;
+  }
+  function settleLocalEdit() {
+    if (localEditTimer == null) return;
+    clearTimeout(localEditTimer);
+    localEditTimer = null;
+    if (!destroyed) recomputeLinks(false);
+  }
+  function noteLocalEdit() {
+    localEpoch += 1;
+    if (!board2 || !cardRefsOn(board2)) return;
+    if (localEditTimer != null) clearTimeout(localEditTimer);
+    localEditTimer = setTimeout(() => {
+      localEditTimer = null;
+      if (!destroyed) recomputeLinks(false);
+    }, LOCAL_EDIT_MS);
+    localEditTimer.unref?.();
   }
   function allWithLocal() {
     const local = localLinks();
@@ -52888,6 +52909,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         host.noteEditing?.(uid, editingUid);
       } catch {
       }
+      if (!editingUid) settleLocalEdit();
     },
     idle: () => queue.idle(),
     setLinkMode(mode) {
@@ -54670,15 +54692,22 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         return writeImageRegion(t, board2.items.get(on), frac, label, uid2, poly);
       });
     },
-    pinLink(link) {
+    // A pin reads the links as they are now: a drawn arrow (it has a key) the card's text no longer has is not written.
+    pinLink(given) {
+      settleLocalEdit();
+      const link = given?.key ? visibleLinks.find((l) => l.key === given.key) : given;
+      if (!link) return Promise.resolve(null);
       const first = link?.labels?.[0];
       const label = first && first !== "mentions" ? first : "";
       return session.addEdge({ from: link.from, to: link.to, label, dir: "one" });
     },
     // Up to PIN_BATCH faint links as connections in one undo step. Links a connection already covers are skipped.
-    pinLinks(links) {
+    pinLinks(given) {
+      settleLocalEdit();
+      const now6 = new Map(visibleLinks.map((l) => [l.key, l]));
+      const links = (Array.isArray(given) ? given : []).map((l) => l?.key ? now6.get(l.key) : l).filter(Boolean);
       return txn((t) => {
-        const list = Array.isArray(links) ? links : [];
+        const list = links;
         const seen = /* @__PURE__ */ new Set();
         const fresh = coveredBy(list.filter((l) => l?.from && l?.to && l.from !== l.to && !seen.has(l.key) && seen.add(l.key)), board2).visible;
         const made = [];
@@ -54892,6 +54921,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       if (highlightHoldTimer != null) {
         clearTimeout(highlightHoldTimer);
         highlightHoldTimer = null;
+      }
+      if (localEditTimer != null) {
+        clearTimeout(localEditTimer);
+        localEditTimer = null;
       }
       disposeHighlightWatches();
       cancelScheduledLinks();

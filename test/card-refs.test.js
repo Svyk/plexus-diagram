@@ -7,7 +7,7 @@ import { treeItems } from "../src/host/follow-sources.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { createHost } from "../src/host/roam.js";
 import { FOLLOW_KEY } from "../src/model/follow.js";
-import { PIN_BATCH, acquireSession, resetSessions } from "../src/session.js";
+import { LOCAL_EDIT_MS, PIN_BATCH, acquireSession, resetSessions } from "../src/session.js";
 
 afterEach(() => resetSessions());
 
@@ -186,11 +186,50 @@ test("pinLinks is one capped batch: container once, PIN_BATCH edges, covered lin
   assert.deepEqual(await session.pinLinks([]), []);
 });
 
-test("pinLink on a tree link pins with no label", async () => {
-  const { session, cards } = setup(2);
+// The watch flush runs on the session's own frame: wait for the edit to land, not a fixed time.
+async function settled(fake, done) {
+  for (let i = 0; i < 100 && !done(); i += 1) {
+    await fake.flush();
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  assert.ok(done(), "the edit reached the board");
+}
+
+// In-place typing keeps the board object: the arrows must still follow the text, and a pin must not write a target
+// the text dropped.
+test("editing a card in place moves its arrow; a pin of the old arrow writes nothing", async () => {
+  const { fake, host, session, cards } = setup(2);
+  await fake.flush();
   await session.linksPromise;
-  const uid = await session.pinLink({ key: "k", from: cards[0].uid, to: cards[1].uid, kind: "tree", labels: [] });
-  assert.equal(session.board.edges.get(uid).label, "");
+  const old = session.links.find((l) => l.key === `note00001->${cards[0].uid}`);
+  assert.ok(old);
+  session.setEditing("note00001");
+  const before = session.board;
+  await fake.api.data.block.update({ block: { uid: "note00001", string: "see [[P1]] today" } });
+  await settled(fake, () => session.board.items.get("note00001").string === "see [[P1]] today");
+  assert.equal(session.board, before, "the typing flush patched the same board object");
+  assert.equal(session.board.items.get("note00001").string, "see [[P1]] today");
+  const writes = host.stats.writes;
+  assert.equal(await session.pinLink(old), null, "the stale arrow is not pinned, even before editing ends");
+  assert.equal(host.stats.writes, writes);
+  assert.deepEqual(session.links.filter((l) => l.from === "note00001").map((l) => l.to), [cards[1].uid]);
+  session.setEditing(null);
+  assert.equal(session.links.some((l) => l.key === old.key), false);
+  assert.deepEqual(await session.pinLinks([old]), []);
+  assert.equal(session.board.edges.size, 0);
+  const uid = await session.pinLink(session.links.find((l) => l.key === `note00001->${cards[1].uid}`));
+  assert.equal(session.board.edges.get(uid)?.to, cards[1].uid);
+});
+
+test("the arrows follow typing a short pause later, with no pin and no editing end", async () => {
+  const { fake, session, cards } = setup(2);
+  await fake.flush();
+  await session.linksPromise;
+  session.setEditing("note00001");
+  await fake.api.data.block.update({ block: { uid: "note00001", string: "only [[P1]]" } });
+  await settled(fake, () => session.board.items.get("note00001").string === "only [[P1]]");
+  await new Promise((r) => setTimeout(r, LOCAL_EDIT_MS + 50));
+  assert.deepEqual(session.links.filter((l) => l.from === "note00001").map((l) => l.to), [cards[1].uid]);
 });
 
 test("setFollowParents is ignored when the board does not follow a tree", async () => {
@@ -218,4 +257,6 @@ test("setFollowParents on a tree board draws a dotted parent -> child link, and 
   const l = session.links.find((x) => x.key === "cP000001->cC000001");
   assert.equal(l?.kind, "tree");
   assert.equal(host.stats.writes, 0);
+  const uid = await session.pinLink(l);
+  assert.equal(session.board.edges.get(uid).label, "", "a tree link pins with no label");
 });

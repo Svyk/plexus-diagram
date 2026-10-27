@@ -2518,6 +2518,341 @@ var init_query = __esm({
   }
 });
 
+// src/model/follow.js
+function cleanSkip(list, cap4 = FOLLOW_SKIP_CAP) {
+  if (!Array.isArray(list)) return [];
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const v of list) {
+    if (typeof v !== "string" || !UID_RE2.test(v) || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out.length > cap4 ? out.slice(out.length - cap4) : out;
+}
+function normalizePointer(raw) {
+  if (!isObject3(raw)) return null;
+  const kind = typeof raw.kind === "string" && KIND_RE.test(raw.kind) ? raw.kind : null;
+  const uid = typeof raw.uid === "string" && UID_RE2.test(raw.uid) ? raw.uid : null;
+  if (!kind || !uid) return null;
+  const section2 = typeof raw.section === "string" && UID_RE2.test(raw.section) ? raw.section : null;
+  return { kind, uid, ...raw.tree === true ? { tree: true } : {}, ...section2 ? { section: section2 } : {}, skip: cleanSkip(raw.skip) };
+}
+function serializePointer(pointer) {
+  const p = normalizePointer(pointer);
+  if (!p) return null;
+  const out = { kind: p.kind, uid: p.uid };
+  if (p.tree) out.tree = true;
+  if (p.section) out.section = p.section;
+  if (p.skip.length) out.skip = p.skip;
+  return out;
+}
+function readFollow(plexus) {
+  return isObject3(plexus) ? normalizePointer(plexus[FOLLOW_KEY]) : null;
+}
+function keptList(plexus) {
+  const raw = isObject3(plexus) ? plexus[FOLLOW_KEPT_KEY] : null;
+  return (Array.isArray(raw) ? raw : raw ? [raw] : []).map(normalizePointer).filter((p) => p && p.skip.length);
+}
+function keptFollow(plexus, key) {
+  return keptList(plexus).find((p) => sourceKey(p) === key) || null;
+}
+function withFollow(plexus, pointer) {
+  const base2 = isObject3(plexus) ? { ...plexus } : {};
+  const next = pointer ? serializePointer(pointer) : null;
+  const prev = readFollow(base2);
+  const nextKey = sourceKey(next);
+  const kept = keptList(base2).filter((p) => sourceKey(p) !== nextKey);
+  if (prev && sourceKey(prev) !== nextKey && prev.skip.length) kept.push(prev);
+  let list = kept.slice(-FOLLOW_KEPT_SOURCES).map((p) => ({ kind: p.kind, uid: p.uid, ...p.section ? { section: p.section } : {}, skip: p.skip }));
+  while (list.length > 1 && list.reduce((n3, p) => n3 + p.skip.length, 0) > FOLLOW_SKIP_CAP) list = list.slice(1);
+  if (list.length) base2[FOLLOW_KEPT_KEY] = list;
+  else delete base2[FOLLOW_KEPT_KEY];
+  if (next) base2[FOLLOW_KEY] = next;
+  else delete base2[FOLLOW_KEY];
+  return base2;
+}
+function followPointerFor(current3, kind, uid, { tree, section: section2 } = {}) {
+  const sec = typeof section2 === "string" && UID_RE2.test(section2) ? section2 : "";
+  const same4 = current3?.kind === kind && current3?.uid === uid && (current3.section || "") === sec;
+  const deep = tree === void 0 ? same4 && current3.tree === true : tree === true;
+  return { kind, uid, ...deep ? { tree: true } : {}, ...sec ? { section: sec } : {}, skip: same4 ? current3.skip : [] };
+}
+function mirrorRefusal({ boardUid, pointer, followsOf } = {}) {
+  if (!pointer || pointer.kind !== "board" || !pointer.uid) return "";
+  if (pointer.uid === boardUid) return "self";
+  const seen = /* @__PURE__ */ new Set();
+  const queue = [pointer.uid];
+  while (queue.length && seen.size < MIRROR_CHAIN_CAP) {
+    const uid = queue.shift();
+    if (seen.has(uid)) continue;
+    seen.add(uid);
+    let next = [];
+    try {
+      next = typeof followsOf === "function" ? followsOf(uid) || [] : [];
+    } catch {
+      next = [];
+    }
+    for (const n3 of next) {
+      if (n3 === boardUid) return "cycle";
+      if (typeof n3 === "string" && n3 && !seen.has(n3)) queue.push(n3);
+    }
+  }
+  return "";
+}
+function mirroredBoards(plexusList) {
+  const out = [];
+  for (const plexus of plexusList || []) {
+    const p = readFollow(plexus);
+    if (p?.kind === "board" && !out.includes(p.uid)) out.push(p.uid);
+  }
+  return out;
+}
+function addSkip(skip, uids, cap4 = FOLLOW_SKIP_CAP) {
+  const add = (uids || []).filter((u) => typeof u === "string" && UID_RE2.test(u));
+  const drop = new Set(add);
+  return cleanSkip([...(skip || []).filter((u) => !drop.has(u)), ...add], cap4);
+}
+function boardRefSource(boardString2) {
+  const ref = parseBoardRef(boardString2);
+  if (!ref) return null;
+  if (ref.colon && ref.title !== "") return null;
+  return ref.uid;
+}
+function queryBody(string) {
+  const m = QUERY_BODY.exec(String(string || "").trim());
+  return m ? plainText(m[1].replace(/[{}]/g, " "), 120) : null;
+}
+function sourceText(string) {
+  const body = queryBody(string);
+  return body === null ? firstLine(string) : `Query ${body}`.trim();
+}
+function itemIds(item) {
+  const out = [];
+  if (item?.uid) out.push(`u:${item.uid}`);
+  if (item?.kind === "page" && item.title) out.push(`p:${item.title}`);
+  return out;
+}
+function cardIds(card2) {
+  const out = [];
+  if (!card2) return out;
+  const t = card2.target;
+  if (t?.kind === "page") {
+    if (t.uid) out.push(`u:${t.uid}`);
+    if (t.title) out.push(`p:${t.title}`);
+    return out;
+  }
+  if (t?.kind === "block" && t.uid) out.push(`u:${t.uid}`);
+  if (card2.uid) out.push(`u:${card2.uid}`);
+  if (card2.type === "section" && typeof card2.head === "string" && card2.head) out.push(`u:${card2.head}`);
+  return out;
+}
+function followIndex(board2, key = "") {
+  const on = /* @__PURE__ */ new Map();
+  const followed = [];
+  for (const item of board2?.items?.values?.() || []) {
+    for (const id of cardIds(item)) if (!on.has(id)) on.set(id, item.uid);
+    if (key && item.src === key) followed.push(item);
+  }
+  return { on, followed };
+}
+function membership(read2) {
+  const set = /* @__PURE__ */ new Set();
+  for (const item of read2?.items || []) for (const id of itemIds(item)) set.add(id);
+  for (const uid of read2?.members || []) if (typeof uid === "string" && uid) set.add(`u:${uid}`);
+  return set;
+}
+function absentStep(prev, read2, board2, key) {
+  const before = prev instanceof Map ? prev : /* @__PURE__ */ new Map();
+  if (!read2?.ok) return new Map(before);
+  const members = membership(read2);
+  const next = /* @__PURE__ */ new Map();
+  for (const card2 of followIndex(board2, key).followed) {
+    if (cardIds(card2).some((id) => members.has(id))) continue;
+    const n3 = (before.get(card2.uid) || 0) + (read2.complete ? 1 : 0);
+    if (n3 > 0) next.set(card2.uid, n3);
+  }
+  return next;
+}
+function followDiff(read2, board2, { key = "", skip = [], absent = /* @__PURE__ */ new Map(), since = null } = {}) {
+  const { on, followed } = followIndex(board2, key);
+  const skipped = new Set(skip);
+  const pending = [];
+  let placed = 0;
+  let dismissed = 0;
+  const seen = /* @__PURE__ */ new Set();
+  for (const item of read2?.ok ? read2.items || [] : []) {
+    if (!item?.uid || seen.has(item.uid)) continue;
+    seen.add(item.uid);
+    if (itemIds(item).some((id) => on.has(id))) {
+      placed += 1;
+      continue;
+    }
+    if (skipped.has(item.uid) || item.heading && item.heading !== item.uid && skipped.has(item.heading)) {
+      dismissed += 1;
+      continue;
+    }
+    if (item.blank) continue;
+    pending.push({ ...item, fresh: Number.isFinite(since) && Number(item.time) > since });
+  }
+  const gone = absent instanceof Map ? absent : /* @__PURE__ */ new Map();
+  const left = followed.filter((card2) => (gone.get(card2.uid) || 0) >= LEFT_CONFIRM).map((card2) => card2.uid);
+  return { pending, left, placed, dismissed };
+}
+function sinceVisit(diff, { since = null, leftBefore = null } = {}) {
+  if (!Number.isFinite(since)) return { newCount: 0, leftCount: 0, baseline: false };
+  const before = leftBefore instanceof Set ? leftBefore : null;
+  return {
+    newCount: (diff?.pending || []).filter((row4) => row4.fresh).length,
+    leftCount: (diff?.left || []).filter((uid) => !before?.has(uid)).length,
+    baseline: true
+  };
+}
+function trayHeadline({ newCount = 0, leftCount = 0, baseline = false } = {}) {
+  if (!baseline) return "";
+  const parts = [];
+  if (newCount > 0) parts.push(`${newCount} new`);
+  if (leftCount > 0) parts.push(`${leftCount} left`);
+  return parts.length ? `${parts.join(", ")} since your last visit` : "Nothing new since your last visit";
+}
+function followCardString(item) {
+  if (item?.kind === "page" && item.title) return `[[${item.title}]]`;
+  return `((${item?.uid}))`;
+}
+function followBatches(list, cap4) {
+  const size = Math.max(1, Math.floor(Number(cap4) || 1));
+  const out = [];
+  for (let i = 0; i < (list || []).length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+function followColumn(bounds, count, { w, h, column = 0, at = null, gap = FOLLOW_COLUMN_GAP, stack = FOLLOW_STACK_GAP } = {}) {
+  const x0 = at ? at.x : bounds ? bounds.x + bounds.w + gap : 0;
+  const y0 = at ? at.y : bounds ? bounds.y : 0;
+  const x = x0 + column * (w + gap);
+  return Array.from({ length: Math.max(0, count) }, (_, i) => ({ x, y: y0 + i * (h + stack) }));
+}
+function createLeftMemory({ storage = globalThis.localStorage, graph = "" } = {}) {
+  const key = (uid) => `plexus-diagram:follow-left:${graph}:${uid}`;
+  return {
+    get(uid) {
+      try {
+        const raw = storage?.getItem?.(key(uid));
+        const list = raw ? JSON.parse(raw) : null;
+        return Array.isArray(list) ? new Set(list.filter((u) => typeof u === "string")) : null;
+      } catch {
+        return null;
+      }
+    },
+    set(uid, uids) {
+      try {
+        storage?.setItem?.(key(uid), JSON.stringify([...uids || []].slice(0, FOLLOW_SKIP_CAP)));
+      } catch {
+      }
+    }
+  };
+}
+function sectionOwnerName(item) {
+  return `“${plainText(item?.title || item?.string || "", 48) || "Untitled section"}”`;
+}
+function followOwnersOf(board2) {
+  const out = [];
+  if (!board2?.items) return { owners: out, capped: false, sections: 0 };
+  const byOrder2 = (uids) => (uids || []).map((u, i) => ({ u, i, o: board2.items.get(u)?.order ?? i })).sort((a, b) => a.o - b.o || a.i - b.i).map(({ u }) => u);
+  const visit = (uids) => {
+    for (const uid of byOrder2(uids)) {
+      const item = board2.items.get(uid);
+      if (item?.type !== "section") continue;
+      if (item.follow) out.push({ uid, section: true, pointer: item.follow, key: sourceKey(item.follow), name: sectionOwnerName(item) });
+      visit(item.members);
+    }
+  };
+  visit(board2.roots);
+  let sections = 0;
+  for (const o of out) {
+    sections += 1;
+    o.over = sections > FOLLOW_SECTION_CAP;
+  }
+  const pointer = readFollow(board2.plexus);
+  if (pointer) out.push({ uid: board2.uid, section: false, pointer, key: sourceKey(pointer), name: BOARD_OWNER_NAME, over: false });
+  const first = /* @__PURE__ */ new Map();
+  for (const o of out) {
+    o.dup = !o.over && first.has(o.key) ? first.get(o.key) : null;
+    if (!o.over && !first.has(o.key)) first.set(o.key, o.name);
+  }
+  return { owners: out, capped: sections >= FOLLOW_SECTION_CAP, sections };
+}
+function dedupeFollow(lanes) {
+  const claimed2 = /* @__PURE__ */ new Map();
+  return (lanes || []).map((lane2) => {
+    const pending = [];
+    const hints = [];
+    for (const row4 of lane2?.diff?.pending || []) {
+      const ids = itemIds(row4);
+      const by2 = ids.map((id) => claimed2.get(id)).find(Boolean);
+      if (by2?.skip) continue;
+      if (by2) {
+        hints.push({ ...row4, also: by2.name });
+        continue;
+      }
+      for (const id of ids) claimed2.set(id, { name: lane2.name });
+      pending.push(row4);
+    }
+    const skipped = new Set(lane2?.skip || []);
+    for (const item of lane2?.read?.ok ? lane2.read.items || [] : []) {
+      if (!item?.uid || !skipped.has(item.uid)) continue;
+      for (const id of itemIds(item)) if (!claimed2.has(id)) claimed2.set(id, { name: lane2.name, skip: true });
+    }
+    return { pending, hints };
+  });
+}
+function sectionGrid(section2, members, count, { w, h, pad: pad2 = 24, gap = FOLLOW_STACK_GAP, start: start2 = 0 } = {}) {
+  const inner = Math.max(0, (section2?.w || 0) - 2 * pad2);
+  const cols = Math.max(1, Math.floor((inner + gap) / (w + gap)));
+  const x0 = (section2?.x || 0) + pad2;
+  const bottom = (members || []).reduce((m, r) => Math.max(m, r.y + r.h), -Infinity);
+  const y0 = Number.isFinite(bottom) ? bottom + gap : (section2?.y || 0) + pad2;
+  return Array.from({ length: Math.max(0, count) }, (_, k) => {
+    const i = start2 + k;
+    return { x: x0 + i % cols * (w + gap), y: y0 + Math.floor(i / cols) * (h + gap) };
+  });
+}
+var FOLLOW_KEY, FOLLOW_KEPT_KEY, FOLLOW_KEPT_SOURCES, FOLLOW_SRC, FOLLOW_MIME, FOLLOW_SKIP_CAP, FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH, FOLLOW_PARENT_CAP, FOLLOW_QUIET_MS, FOLLOW_POLL_MS, FOLLOW_BACKOFF, FOLLOW_TYPING_MS, FOLLOW_SLOW_MS, followQuietMs, LEFT_CONFIRM, FOLLOW_COLUMN_GAP, FOLLOW_STACK_GAP, KIND_RE, UID_RE2, isObject3, sourceKey, MIRROR_CHAIN_CAP, textSourceUid, QUERY_BODY, leftUnsettled, followPill, FOLLOW_SECTION_CAP, followCapText, BOARD_OWNER_NAME;
+var init_follow = __esm({
+  "src/model/follow.js"() {
+    init_schema();
+    FOLLOW_KEY = "follow";
+    FOLLOW_KEPT_KEY = "followSkip";
+    FOLLOW_KEPT_SOURCES = 5;
+    FOLLOW_SRC = "src";
+    FOLLOW_MIME = "application/x-plexus-follow";
+    FOLLOW_SKIP_CAP = 300;
+    FOLLOW_READ_CAP = 300;
+    FOLLOW_TREE_DEPTH = 8;
+    FOLLOW_PARENT_CAP = 60;
+    FOLLOW_QUIET_MS = 1500;
+    FOLLOW_POLL_MS = 6e4;
+    FOLLOW_BACKOFF = 10;
+    FOLLOW_TYPING_MS = 50;
+    FOLLOW_SLOW_MS = 200;
+    followQuietMs = (lastMs) => Math.min(FOLLOW_POLL_MS, Math.max(FOLLOW_QUIET_MS, FOLLOW_BACKOFF * (Number(lastMs) || 0)));
+    LEFT_CONFIRM = 2;
+    FOLLOW_COLUMN_GAP = 48;
+    FOLLOW_STACK_GAP = 24;
+    KIND_RE = /^[a-z][a-z0-9-]{0,31}$/;
+    UID_RE2 = /^[\w-]{1,64}$/;
+    isObject3 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+    sourceKey = (pointer) => pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}${typeof pointer.section === "string" && pointer.section ? `/${pointer.section}` : ""}` : "";
+    MIRROR_CHAIN_CAP = 8;
+    textSourceUid = boardRefSource;
+    QUERY_BODY = /^\{\{\s*(?:\[\[query\]\]|query)\s*:([\s\S]*)\}\}$/;
+    leftUnsettled = (absent) => [...absent instanceof Map ? absent.values() : []].some((n3) => n3 > 0 && n3 < LEFT_CONFIRM);
+    followPill = (n3) => `Following (${n3})`;
+    FOLLOW_SECTION_CAP = 8;
+    followCapText = () => `Up to ${FOLLOW_SECTION_CAP} sections follow a source on one board`;
+    BOARD_OWNER_NAME = "this board";
+  }
+});
+
 // src/model/roam-table.js
 function clampInt(n3, lo, hi) {
   const v = Math.round(Number(n3));
@@ -2830,7 +3165,7 @@ function isDrawingString(value) {
   return text4.startsWith(DRAWING_STRING) || text4.startsWith(ALT_DRAWING_STRING);
 }
 function drawingRefString(uid) {
-  return typeof uid === "string" && UID_RE2.test(uid) ? `((${uid}))` : null;
+  return typeof uid === "string" && UID_RE3.test(uid) ? `((${uid}))` : null;
 }
 function drawingRefModel(targetString) {
   if (!isDrawingString(targetString)) return null;
@@ -2854,12 +3189,12 @@ function droppedDrawingUids(strings, blockString4) {
   }
   return out;
 }
-var DRAWING_STRING, ALT_DRAWING_STRING, UID_RE2, regionMenuKinds, REF_ONLY, DRAWING_DROP_TOAST;
+var DRAWING_STRING, ALT_DRAWING_STRING, UID_RE3, regionMenuKinds, REF_ONLY, DRAWING_DROP_TOAST;
 var init_drawing_card = __esm({
   "src/model/drawing-card.js"() {
     DRAWING_STRING = "{{[[excalidraw]]}}";
     ALT_DRAWING_STRING = "{{excalidraw}}";
-    UID_RE2 = /^[A-Za-z0-9_-]{1,36}$/;
+    UID_RE3 = /^[A-Za-z0-9_-]{1,36}$/;
     regionMenuKinds = Object.freeze(["area", "rect", "frame"]);
     REF_ONLY = /^\(\(([^)]+)\)\)$/;
     DRAWING_DROP_TOAST = "Drawings stay where they are; this is a reference";
@@ -5029,6 +5364,8 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         ...openKey ? { openKey } : {},
         // PXD-9: the source a placed card came from (its follow key). Only such cards can be marked "left the source".
         ...typeof cplexus?.src === "string" && cplexus.src ? { src: cplexus.src } : {},
+        // PXD-13: the source a section follows (its own plexus.follow), normalized.
+        ...type === "section" && readFollow(cplexus) ? { follow: readFollow(cplexus) } : {},
         // PXD-14: the heading a followed section stands for, or the heading a followed card was placed under.
         ...typeof cplexus?.head === "string" && cplexus.head ? { head: cplexus.head } : {}
       };
@@ -5591,6 +5928,7 @@ var init_board = __esm({
     init_attr_lanes();
     init_schema();
     init_query();
+    init_follow();
     init_roam_table();
     init_region_card();
     init_drawing_card();
@@ -5644,7 +5982,7 @@ function cardDeepLink({ graph, pageUid: pageUid2, cardUid } = {}) {
   const g = String(graph ?? "").trim();
   const page = String(pageUid2 ?? "").trim();
   const card2 = String(cardUid ?? "").trim();
-  if (!g || !UID_RE3.test(page) || !UID_RE3.test(card2)) return "";
+  if (!g || !UID_RE4.test(page) || !UID_RE4.test(card2)) return "";
   return `#/app/${encodeURIComponent(g)}/page/${encodeURIComponent(page)}?pxd=${encodeURIComponent(card2)}`;
 }
 function hashFromUrl(url) {
@@ -5662,7 +6000,7 @@ function pxdTarget(hash) {
   } catch {
     return null;
   }
-  if (!UID_RE3.test(card2)) return null;
+  if (!UID_RE4.test(card2)) return null;
   return { cardUid: card2, pageUid: pageUidFromHash(text4), graph: graphFromDeepLink(text4) };
 }
 function copyLinkText(item, { graph, pageUid: pageUid2, cardUid } = {}) {
@@ -5705,11 +6043,11 @@ function assignDeepLink(loc, { graph, pageUid: pageUid2, cardUid } = {}, onSame)
   loc.hash = link;
   return link;
 }
-var UID_RE3;
+var UID_RE4;
 var init_deeplink = __esm({
   "src/model/deeplink.js"() {
     init_schema();
-    UID_RE3 = /^[\w-]{1,32}$/;
+    UID_RE4 = /^[\w-]{1,32}$/;
   }
 });
 
@@ -16048,14 +16386,14 @@ function pinSpecFromBlock(block, doc, pdfUid) {
 function answerSource({ doc, blockId = "", pdfUid = "", wholeDoc = false } = {}) {
   const uid = typeof pdfUid === "string" ? pdfUid.trim() : "";
   if (!uid) return {};
-  if (wholeDoc) return UID_RE4.test(uid) ? { sourceUid: uid } : {};
+  if (wholeDoc) return UID_RE5.test(uid) ? { sourceUid: uid } : {};
   const block = blockId ? doc?.blocks?.[blockId] : null;
   const pin2 = block ? pinSpecFromBlock(block, doc, uid) : null;
   return pin2 ? { pin: pin2 } : {};
 }
 function sourceAttrString(uid) {
   const id = String(uid ?? "").trim();
-  if (!UID_RE4.test(id)) return "";
+  if (!UID_RE5.test(id)) return "";
   return `Source:: ((${id}))`;
 }
 function blankBullet(line) {
@@ -16093,7 +16431,7 @@ function oneBulletTree(text4) {
 }
 function planCopiedSource({ markdown = "", source = "" } = {}) {
   let pin2 = String(source ?? "").trim();
-  if (!UID_RE4.test(pin2)) pin2 = "";
+  if (!UID_RE5.test(pin2)) pin2 = "";
   let found = Boolean(pin2);
   const body = [];
   for (const line of String(markdown ?? "").replace(/\r\n/g, "\n").split("\n")) {
@@ -16285,7 +16623,7 @@ function copiedPartPlan({ block = null, doc = null, markdown = "", source = "", 
   const split = splitMarks(markdown);
   let sourceUid = split.sourceUid;
   const given = String(source ?? "").trim();
-  if (!sourceUid && UID_RE4.test(given)) sourceUid = given;
+  if (!sourceUid && UID_RE5.test(given)) sourceUid = given;
   const sourced = Boolean(sourceUid) || withSource === true;
   const fromBlock = block?.type === "table" ? cellsFromBlock(block) : null;
   const fromText = fromBlock ? null : tableFromMarkdown(split.body);
@@ -16345,7 +16683,7 @@ function copyMenuPlan({ id, block = null, doc = null, markdown = "", source = ""
   if (plan.image && plan.size && plan.size.w > 0 && plan.size.h > 0) {
     lines.push(`pxd-size:: ${Math.round(plan.size.w)} ${Math.round(plan.size.h)}`);
   }
-  const pin2 = id === "source" ? UID_RE4.test(String(source ?? "").trim()) ? String(source).trim() : plan.sourceUid : "";
+  const pin2 = id === "source" ? UID_RE5.test(String(source ?? "").trim()) ? String(source).trim() : plan.sourceUid : "";
   const cite = sourceAttrString(pin2);
   if (cite) lines.push(cite);
   return { ...plan, sourceUid: pin2 || plan.sourceUid, text: lines.join("\n") };
@@ -16443,7 +16781,7 @@ function cardJsonPayload({ markdown = "", size = null, kind = "card", source = "
     kind: String(kind || "card")
   };
   const pin2 = String(source ?? "").trim();
-  if (UID_RE4.test(pin2)) body.source = pin2;
+  if (UID_RE5.test(pin2)) body.source = pin2;
   if (body.kind === "table") {
     const snap = tableSnapshot(table);
     if (snap) body.table = snap;
@@ -16487,7 +16825,7 @@ function pinDeepLink({ graph, pageUid: pageUid2, pinUid } = {}) {
   const g = String(graph ?? "").trim();
   const page = String(pageUid2 ?? "").trim();
   const pin2 = String(pinUid ?? "").trim();
-  if (!g || !UID_RE4.test(page) || !UID_RE4.test(pin2)) return "";
+  if (!g || !UID_RE5.test(page) || !UID_RE5.test(pin2)) return "";
   return `#/app/${encodeURIComponent(g)}/page/${encodeURIComponent(page)}?pxd-pin=${encodeURIComponent(pin2)}`;
 }
 function pxdPinTarget(hash) {
@@ -16500,7 +16838,7 @@ function pxdPinTarget(hash) {
   } catch {
     return null;
   }
-  if (!UID_RE4.test(pin2)) return null;
+  if (!UID_RE5.test(pin2)) return null;
   return { pinUid: pin2, pageUid: pageUidFromHash(text4), graph: graphFromDeepLink(text4) };
 }
 function pinClickMode({ shiftKey = false, metaKey: metaKey2 = false, ctrlKey = false } = {}) {
@@ -16539,7 +16877,7 @@ function pinOpenPlan(region) {
 function pinOpenFallback({ opened = false, plan = null, pageUid: pageUid2 = "", now: now5 = 0 } = {}) {
   if (opened || !plan?.pinUid) return null;
   const page = String(pageUid2 || "").trim();
-  if (!UID_RE4.test(page)) return null;
+  if (!UID_RE5.test(page)) return null;
   return { openPage: page, pending: { pinUid: plan.pinUid, until: Number(now5) + PIN_PENDING_MS } };
 }
 function pinnedToast(page) {
@@ -16608,7 +16946,7 @@ function planPinWrites(spec) {
   creates.push({ role: "pin", parentUid: containerUid, uid: pinUid, string });
   return { uid: pinUid, reused: false, creates, containerUid: spec?.containerUid || "" };
 }
-var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE4, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash, COVER_AREA_SLACK, FIGURE_COPY_W, FIGURE_COPY_PAD, FIGURE_COPY_FONT, FIGURE_COPY_LINE_RATIO, FIGURE_COPY_LINE, FIGURE_COPY_CHARS, FIGURE_COPY_CHIP, FIGURE_COPY_IMAGE_CAP, FIGURE_COPY_IMAGE_MIN, FIGURE_COPY_IMAGE_SLOT, FIGURE_COPY_MAX, SOURCE_LINE_RE, SIZE_LINE_RE, notedPin, KEPT_PARSE_WAIT_MS, PIN_PENDING_MS;
+var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE5, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash, COVER_AREA_SLACK, FIGURE_COPY_W, FIGURE_COPY_PAD, FIGURE_COPY_FONT, FIGURE_COPY_LINE_RATIO, FIGURE_COPY_LINE, FIGURE_COPY_CHARS, FIGURE_COPY_CHIP, FIGURE_COPY_IMAGE_CAP, FIGURE_COPY_IMAGE_MIN, FIGURE_COPY_IMAGE_SLOT, FIGURE_COPY_MAX, SOURCE_LINE_RE, SIZE_LINE_RE, notedPin, KEPT_PARSE_WAIT_MS, PIN_PENDING_MS;
 var init_pdf_pin = __esm({
   "src/model/pdf-pin.js"() {
     init_deeplink();
@@ -16620,7 +16958,7 @@ var init_pdf_pin = __esm({
     WITH_SOURCE_KEY = "plexus-diagram:with-source";
     CARD_JSON_MIME = "application/x-plexus-card+json";
     PIN_BOARDS_QUERY = "[:find ?b ?s :in $ ?pin :where [?c :block/refs ?pin] [?card :block/children ?c] [?b :block/children ?card] [?b :block/string ?s]]";
-    UID_RE4 = /^[\w-]{1,32}$/;
+    UID_RE5 = /^[\w-]{1,32}$/;
     SOURCE_RE = /^Source::\s*\(\(([\w-]{1,32})\)\)\s*$/;
     DIAGRAM_RE = /\{\{(?:\[\[)?diagram(?:\]\])?/;
     COPY_MENU = Object.freeze([
@@ -42690,270 +43028,7 @@ function coveredBy(links, board2) {
 // src/session.js
 init_card_refs();
 init_query();
-
-// src/model/follow.js
-init_schema();
-var FOLLOW_KEY = "follow";
-var FOLLOW_KEPT_KEY = "followSkip";
-var FOLLOW_KEPT_SOURCES = 5;
-var FOLLOW_SRC = "src";
-var FOLLOW_MIME = "application/x-plexus-follow";
-var FOLLOW_SKIP_CAP = 300;
-var FOLLOW_READ_CAP = 300;
-var FOLLOW_TREE_DEPTH = 8;
-var FOLLOW_PARENT_CAP = 60;
-var FOLLOW_QUIET_MS = 1500;
-var FOLLOW_POLL_MS = 6e4;
-var FOLLOW_BACKOFF = 10;
-var FOLLOW_TYPING_MS = 50;
-var FOLLOW_SLOW_MS = 200;
-var followQuietMs = (lastMs) => Math.min(FOLLOW_POLL_MS, Math.max(FOLLOW_QUIET_MS, FOLLOW_BACKOFF * (Number(lastMs) || 0)));
-var LEFT_CONFIRM = 2;
-var FOLLOW_COLUMN_GAP = 48;
-var FOLLOW_STACK_GAP = 24;
-var KIND_RE = /^[a-z][a-z0-9-]{0,31}$/;
-var UID_RE5 = /^[\w-]{1,64}$/;
-var isObject3 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-function cleanSkip(list, cap4 = FOLLOW_SKIP_CAP) {
-  if (!Array.isArray(list)) return [];
-  const seen = /* @__PURE__ */ new Set();
-  const out = [];
-  for (const v of list) {
-    if (typeof v !== "string" || !UID_RE5.test(v) || seen.has(v)) continue;
-    seen.add(v);
-    out.push(v);
-  }
-  return out.length > cap4 ? out.slice(out.length - cap4) : out;
-}
-function normalizePointer(raw) {
-  if (!isObject3(raw)) return null;
-  const kind = typeof raw.kind === "string" && KIND_RE.test(raw.kind) ? raw.kind : null;
-  const uid = typeof raw.uid === "string" && UID_RE5.test(raw.uid) ? raw.uid : null;
-  if (!kind || !uid) return null;
-  const section2 = typeof raw.section === "string" && UID_RE5.test(raw.section) ? raw.section : null;
-  return { kind, uid, ...raw.tree === true ? { tree: true } : {}, ...section2 ? { section: section2 } : {}, skip: cleanSkip(raw.skip) };
-}
-function serializePointer(pointer) {
-  const p = normalizePointer(pointer);
-  if (!p) return null;
-  const out = { kind: p.kind, uid: p.uid };
-  if (p.tree) out.tree = true;
-  if (p.section) out.section = p.section;
-  if (p.skip.length) out.skip = p.skip;
-  return out;
-}
-function readFollow(plexus) {
-  return isObject3(plexus) ? normalizePointer(plexus[FOLLOW_KEY]) : null;
-}
-var sourceKey = (pointer) => pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}${typeof pointer.section === "string" && pointer.section ? `/${pointer.section}` : ""}` : "";
-function keptList(plexus) {
-  const raw = isObject3(plexus) ? plexus[FOLLOW_KEPT_KEY] : null;
-  return (Array.isArray(raw) ? raw : raw ? [raw] : []).map(normalizePointer).filter((p) => p && p.skip.length);
-}
-function keptFollow(plexus, key) {
-  return keptList(plexus).find((p) => sourceKey(p) === key) || null;
-}
-function withFollow(plexus, pointer) {
-  const base2 = isObject3(plexus) ? { ...plexus } : {};
-  const next = pointer ? serializePointer(pointer) : null;
-  const prev = readFollow(base2);
-  const nextKey = sourceKey(next);
-  const kept = keptList(base2).filter((p) => sourceKey(p) !== nextKey);
-  if (prev && sourceKey(prev) !== nextKey && prev.skip.length) kept.push(prev);
-  let list = kept.slice(-FOLLOW_KEPT_SOURCES).map((p) => ({ kind: p.kind, uid: p.uid, ...p.section ? { section: p.section } : {}, skip: p.skip }));
-  while (list.length > 1 && list.reduce((n3, p) => n3 + p.skip.length, 0) > FOLLOW_SKIP_CAP) list = list.slice(1);
-  if (list.length) base2[FOLLOW_KEPT_KEY] = list;
-  else delete base2[FOLLOW_KEPT_KEY];
-  if (next) base2[FOLLOW_KEY] = next;
-  else delete base2[FOLLOW_KEY];
-  return base2;
-}
-function followPointerFor(current3, kind, uid, { tree, section: section2 } = {}) {
-  const sec = typeof section2 === "string" && UID_RE5.test(section2) ? section2 : "";
-  const same4 = current3?.kind === kind && current3?.uid === uid && (current3.section || "") === sec;
-  const deep = tree === void 0 ? same4 && current3.tree === true : tree === true;
-  return { kind, uid, ...deep ? { tree: true } : {}, ...sec ? { section: sec } : {}, skip: same4 ? current3.skip : [] };
-}
-var MIRROR_CHAIN_CAP = 8;
-function mirrorRefusal({ boardUid, pointer, followsOf } = {}) {
-  if (!pointer || pointer.kind !== "board" || !pointer.uid) return "";
-  if (pointer.uid === boardUid) return "self";
-  const seen = /* @__PURE__ */ new Set();
-  const queue = [pointer.uid];
-  while (queue.length && seen.size < MIRROR_CHAIN_CAP) {
-    const uid = queue.shift();
-    if (seen.has(uid)) continue;
-    seen.add(uid);
-    let next = [];
-    try {
-      next = typeof followsOf === "function" ? followsOf(uid) || [] : [];
-    } catch {
-      next = [];
-    }
-    for (const n3 of next) {
-      if (n3 === boardUid) return "cycle";
-      if (typeof n3 === "string" && n3 && !seen.has(n3)) queue.push(n3);
-    }
-  }
-  return "";
-}
-function mirroredBoards(plexusList) {
-  const out = [];
-  for (const plexus of plexusList || []) {
-    const p = readFollow(plexus);
-    if (p?.kind === "board" && !out.includes(p.uid)) out.push(p.uid);
-  }
-  return out;
-}
-function addSkip(skip, uids, cap4 = FOLLOW_SKIP_CAP) {
-  const add = (uids || []).filter((u) => typeof u === "string" && UID_RE5.test(u));
-  const drop = new Set(add);
-  return cleanSkip([...(skip || []).filter((u) => !drop.has(u)), ...add], cap4);
-}
-function boardRefSource(boardString2) {
-  const ref = parseBoardRef(boardString2);
-  if (!ref) return null;
-  if (ref.colon && ref.title !== "") return null;
-  return ref.uid;
-}
-var textSourceUid = boardRefSource;
-var QUERY_BODY = /^\{\{\s*(?:\[\[query\]\]|query)\s*:([\s\S]*)\}\}$/;
-function queryBody(string) {
-  const m = QUERY_BODY.exec(String(string || "").trim());
-  return m ? plainText(m[1].replace(/[{}]/g, " "), 120) : null;
-}
-function sourceText(string) {
-  const body = queryBody(string);
-  return body === null ? firstLine(string) : `Query ${body}`.trim();
-}
-function itemIds(item) {
-  const out = [];
-  if (item?.uid) out.push(`u:${item.uid}`);
-  if (item?.kind === "page" && item.title) out.push(`p:${item.title}`);
-  return out;
-}
-function cardIds(card2) {
-  const out = [];
-  if (!card2) return out;
-  const t = card2.target;
-  if (t?.kind === "page") {
-    if (t.uid) out.push(`u:${t.uid}`);
-    if (t.title) out.push(`p:${t.title}`);
-    return out;
-  }
-  if (t?.kind === "block" && t.uid) out.push(`u:${t.uid}`);
-  if (card2.uid) out.push(`u:${card2.uid}`);
-  if (card2.type === "section" && typeof card2.head === "string" && card2.head) out.push(`u:${card2.head}`);
-  return out;
-}
-function followIndex(board2, key = "") {
-  const on = /* @__PURE__ */ new Map();
-  const followed = [];
-  for (const item of board2?.items?.values?.() || []) {
-    for (const id of cardIds(item)) if (!on.has(id)) on.set(id, item.uid);
-    if (key && item.src === key) followed.push(item);
-  }
-  return { on, followed };
-}
-function membership(read2) {
-  const set = /* @__PURE__ */ new Set();
-  for (const item of read2?.items || []) for (const id of itemIds(item)) set.add(id);
-  for (const uid of read2?.members || []) if (typeof uid === "string" && uid) set.add(`u:${uid}`);
-  return set;
-}
-function absentStep(prev, read2, board2, key) {
-  const before = prev instanceof Map ? prev : /* @__PURE__ */ new Map();
-  if (!read2?.ok) return new Map(before);
-  const members = membership(read2);
-  const next = /* @__PURE__ */ new Map();
-  for (const card2 of followIndex(board2, key).followed) {
-    if (cardIds(card2).some((id) => members.has(id))) continue;
-    const n3 = (before.get(card2.uid) || 0) + (read2.complete ? 1 : 0);
-    if (n3 > 0) next.set(card2.uid, n3);
-  }
-  return next;
-}
-var leftUnsettled = (absent) => [...absent instanceof Map ? absent.values() : []].some((n3) => n3 > 0 && n3 < LEFT_CONFIRM);
-function followDiff(read2, board2, { key = "", skip = [], absent = /* @__PURE__ */ new Map(), since = null } = {}) {
-  const { on, followed } = followIndex(board2, key);
-  const skipped = new Set(skip);
-  const pending = [];
-  let placed = 0;
-  let dismissed = 0;
-  const seen = /* @__PURE__ */ new Set();
-  for (const item of read2?.ok ? read2.items || [] : []) {
-    if (!item?.uid || seen.has(item.uid)) continue;
-    seen.add(item.uid);
-    if (itemIds(item).some((id) => on.has(id))) {
-      placed += 1;
-      continue;
-    }
-    if (skipped.has(item.uid) || item.heading && item.heading !== item.uid && skipped.has(item.heading)) {
-      dismissed += 1;
-      continue;
-    }
-    if (item.blank) continue;
-    pending.push({ ...item, fresh: Number.isFinite(since) && Number(item.time) > since });
-  }
-  const gone = absent instanceof Map ? absent : /* @__PURE__ */ new Map();
-  const left = followed.filter((card2) => (gone.get(card2.uid) || 0) >= LEFT_CONFIRM).map((card2) => card2.uid);
-  return { pending, left, placed, dismissed };
-}
-function sinceVisit(diff, { since = null, leftBefore = null } = {}) {
-  if (!Number.isFinite(since)) return { newCount: 0, leftCount: 0, baseline: false };
-  const before = leftBefore instanceof Set ? leftBefore : null;
-  return {
-    newCount: (diff?.pending || []).filter((row4) => row4.fresh).length,
-    leftCount: (diff?.left || []).filter((uid) => !before?.has(uid)).length,
-    baseline: true
-  };
-}
-function trayHeadline({ newCount = 0, leftCount = 0, baseline = false } = {}) {
-  if (!baseline) return "";
-  const parts = [];
-  if (newCount > 0) parts.push(`${newCount} new`);
-  if (leftCount > 0) parts.push(`${leftCount} left`);
-  return parts.length ? `${parts.join(", ")} since your last visit` : "Nothing new since your last visit";
-}
-var followPill = (n3) => `Following (${n3})`;
-function followCardString(item) {
-  if (item?.kind === "page" && item.title) return `[[${item.title}]]`;
-  return `((${item?.uid}))`;
-}
-function followBatches(list, cap4) {
-  const size = Math.max(1, Math.floor(Number(cap4) || 1));
-  const out = [];
-  for (let i = 0; i < (list || []).length; i += size) out.push(list.slice(i, i + size));
-  return out;
-}
-function followColumn(bounds, count, { w, h, column = 0, at = null, gap = FOLLOW_COLUMN_GAP, stack = FOLLOW_STACK_GAP } = {}) {
-  const x0 = at ? at.x : bounds ? bounds.x + bounds.w + gap : 0;
-  const y0 = at ? at.y : bounds ? bounds.y : 0;
-  const x = x0 + column * (w + gap);
-  return Array.from({ length: Math.max(0, count) }, (_, i) => ({ x, y: y0 + i * (h + stack) }));
-}
-function createLeftMemory({ storage = globalThis.localStorage, graph = "" } = {}) {
-  const key = (uid) => `plexus-diagram:follow-left:${graph}:${uid}`;
-  return {
-    get(uid) {
-      try {
-        const raw = storage?.getItem?.(key(uid));
-        const list = raw ? JSON.parse(raw) : null;
-        return Array.isArray(list) ? new Set(list.filter((u) => typeof u === "string")) : null;
-      } catch {
-        return null;
-      }
-    },
-    set(uid, uids) {
-      try {
-        storage?.setItem?.(key(uid), JSON.stringify([...uids || []].slice(0, FOLLOW_SKIP_CAP)));
-      } catch {
-      }
-    }
-  };
-}
-
-// src/session.js
+init_follow();
 init_discovery();
 init_arrow_home();
 
@@ -56325,6 +56400,7 @@ init_board();
 init_schema();
 
 // src/model/follow-headings.js
+init_follow();
 init_schema();
 var FOLLOW_HEAD = "head";
 var headingsNote = "Sections are the page's top-level H1–H3 headings. Each block directly under a heading becomes a card in its section.";
@@ -56465,6 +56541,7 @@ function headingPlan({ entries = [], order = [], board: board2, rects, key = "",
 var cardOp = (e2, head, into, x, y) => ({ op: "card", uid: e2.uid, kind: e2.kind, ...e2.title ? { title: e2.title } : {}, head, into, x, y });
 
 // src/session-follow.js
+init_follow();
 var same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 extendSession((session, api3) => {
   const { host } = api3;
@@ -56494,24 +56571,30 @@ extendSession((session, api3) => {
     add(node2, 0);
     return mirroredBoards(list);
   };
-  const writePointer = (next) => api3.txn((t) => {
+  const ownerOf = (owner) => owner === void 0 || owner === null || owner === "" ? boardUid : owner;
+  const isSection = (owner) => api3.board()?.items.get(owner)?.type === "section";
+  let refusal = null;
+  const writePointer = (next, owner = boardUid) => api3.txn((t) => {
     const board2 = api3.board();
     if (!board2?.enhanced) return false;
-    const base2 = api3.rawPlexus(boardUid);
+    if (owner !== boardUid && !isSection(owner)) return false;
+    const base2 = api3.rawPlexus(owner);
     const pointer = next(readFollow(base2), base2);
     const plexus = withFollow(base2, pointer);
     if (same(plexus, base2)) return false;
-    t.props(boardUid, plexus);
+    t.props(owner, plexus);
     return true;
   }).then((ok) => ok === true);
-  const placeNow = (entries, { at = null, order = null } = {}) => {
+  const placeNow = (entries, { at = null, owner: ownerArg, order = null } = {}) => {
     const none = { placed: 0, batches: 0, total: 0, uids: [] };
     const board2 = api3.board();
-    const pointer = readFollow(board2?.plexus);
+    const owner = ownerOf(ownerArg);
+    if (owner !== boardUid && !isSection(owner)) return Promise.resolve(none);
+    const pointer = owner === boardUid ? readFollow(board2?.plexus) : board2?.items.get(owner)?.follow || null;
     if (!board2 || !pointer) return Promise.resolve(none);
     const key = sourceKey(pointer);
     const skipped = new Set(pointer.skip);
-    const heads = pointer.kind === "headings";
+    const heads = owner === boardUid && pointer.kind === "headings";
     const { on } = followIndex(board2, key);
     const seen = /* @__PURE__ */ new Set();
     const list = (entries || []).filter((e2) => {
@@ -56530,15 +56613,18 @@ extendSession((session, api3) => {
     if (heads && !at) return placeHeadings(list, size, key, order);
     const rects = api3.rects();
     const bounds = boundsOf(board2.roots.map((id) => rects.get(id)).filter(Boolean));
+    const inSection = owner !== boardUid && !at;
+    const grid = inSection ? sectionGrid(rects.get(owner), board2.items.get(owner).members.map((id) => rects.get(id)).filter(Boolean), list.length, { ...size, pad: FIT_PAD }) : null;
     const batches = followBatches(list, SPREAD_CAP);
     const made = [];
     let chain = Promise.resolve();
     batches.forEach((batch, column) => {
       chain = chain.then(() => {
         if (api3.isGone()) return null;
-        const spots = followColumn(bounds, batch.length, { ...size, column, at });
+        if (inSection && !api3.board()?.items.has(owner)) return null;
+        const spots = inSection ? grid.slice(column * SPREAD_CAP, column * SPREAD_CAP + batch.length) : followColumn(bounds, batch.length, { ...size, column, at });
         return api3.txn((t) => {
-          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key, heads && typeof entry.heading === "string" ? entry.heading : ""));
+          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key, heads && typeof entry.heading === "string" ? entry.heading : "", inSection ? owner : null));
           api3.applyFit(t, ids);
           return ids;
         }).then((ids) => {
@@ -56606,30 +56692,41 @@ extendSession((session, api3) => {
   }
   api3.onDeleteItems?.((t, uids, opts) => {
     const board2 = api3.board();
-    const base2 = api3.rawPlexus(boardUid);
-    const pointer = readFollow(base2);
-    if (!board2 || !pointer) return;
-    const key = sourceKey(pointer);
-    const add = [];
-    const gone = /* @__PURE__ */ new Set();
+    if (!board2) return;
+    const gone = new Set(uids);
+    const byKey = /* @__PURE__ */ new Map();
+    for (const o of followOwnersOf(board2).owners) if (!byKey.has(o.key)) byKey.set(o.key, o.uid);
+    const boardKey2 = sourceKey(readFollow(api3.rawPlexus(boardUid)));
+    const adds = /* @__PURE__ */ new Map();
+    const add = (owner, uid) => {
+      if (!adds.has(owner)) adds.set(owner, []);
+      adds.get(owner).push(uid);
+    };
+    const heads = /* @__PURE__ */ new Set();
     for (const id of uids) {
       const item = board2.items.get(id);
-      if (item?.type === "section" && item.head && (item.src === key || opts?.followSkip === true)) gone.add(item.head);
+      if (boardKey2 && item?.type === "section" && item.head && (item.src === boardKey2 || opts?.followSkip === true)) heads.add(item.head);
     }
-    add.push(...gone);
+    for (const head of heads) add(boardUid, head);
     for (const id of uids) {
       const item = board2.items.get(id);
-      if (!item || item.src !== key && opts?.followSkip !== true) continue;
-      if (item.type === "section" ? item.head : gone.has(item.head)) continue;
+      if (!item) continue;
+      const owner = byKey.get(item.src) ?? (opts?.followSkip === true && boardKey2 ? boardUid : null);
+      if (!owner || gone.has(owner)) continue;
+      if (owner === boardUid && (item.type === "section" ? item.head : heads.has(item.head))) continue;
       const skip = skipIdOf(item);
-      if (skip) add.push(skip);
+      if (skip) add(owner, skip);
     }
-    if (add.length) t.props(boardUid, withFollow(base2, { ...pointer, skip: addSkip(pointer.skip, add) }));
+    for (const [owner, list] of adds) {
+      const base2 = api3.rawPlexus(owner);
+      const pointer = readFollow(base2);
+      if (pointer) t.props(owner, withFollow(base2, { ...pointer, skip: addSkip(pointer.skip, list) }));
+    }
   });
-  function placeOne(t, string, spot, size, key, head = "") {
+  function placeOne(t, string, spot, size, key, head = "", into = null) {
     const board2 = api3.board();
     const rects = api3.rects();
-    const parent = containerAt(board2, { x: spot.x + size.w / 2, y: spot.y + size.h / 2 }, { rects });
+    const parent = into || containerAt(board2, { x: spot.x + size.w / 2, y: spot.y + size.h / 2 }, { rects });
     const rel = toRelative(board2, parent, spot, rects);
     const layout = { x: api3.round1(rel.x), y: api3.round1(rel.y) };
     const look = lookForNewString(string, api3.setting("default-card-look", "block"));
@@ -56641,6 +56738,15 @@ extendSession((session, api3) => {
       const pointer = readFollow(api3.board()?.plexus);
       return pointer ? { pointer, key: sourceKey(pointer), followDerived: api3.board()?.followDerived === true } : null;
     },
+    // PXD-13: every owner that follows a source, sections in outline order then the board ({ owners, capped }).
+    followOwners() {
+      return followOwnersOf(api3.board());
+    },
+    // Why the last followSource was refused: { reason: "invalid" | "not-section" | "self" | "taken" | "cap" | "kind" |
+    // "unchanged", by? (the owner that follows it) }, or null.
+    followRefusal() {
+      return refusal;
+    },
     // Every block of the board's own tree: never a query or linked-reference result.
     followExclude() {
       const out = new Set(api3.ix().keys());
@@ -56648,39 +56754,62 @@ extendSession((session, api3) => {
       return out;
     },
     // PXD-19: why this board cannot mirror { kind: "board", uid, section } ("self", "cycle"), or "".
-    followRefusal({ kind, uid, section: section2 } = {}) {
+    mirrorRefusalOf({ kind, uid, section: section2 } = {}) {
       if (kind !== "board") return "";
       return mirrorRefusal({ boardUid, pointer: { kind, uid, section: section2 }, followsOf });
     },
-    // { kind, uid, tree, section }. The same source keeps its skip list. Resolves true when the pointer changed.
-    followSource({ kind, uid, tree, section: section2 } = {}) {
-      if (typeof kind !== "string" || typeof uid !== "string" || !uid || uid === boardUid) return Promise.resolve(false);
-      if (session.followRefusal({ kind, uid, section: section2 })) return Promise.resolve(false);
-      return writePointer((cur, base2) => followPointerFor(keptFollow(base2, sourceKey({ kind, uid, section: section2 })) || cur, kind, uid, { tree, section: section2 }));
+    // { kind, uid, tree, section, owner }. The same source keeps its skip list. Resolves true when the pointer changed; on false
+    // followRefusal() says why. A source key is followed by one owner per board, at most FOLLOW_SECTION_CAP sections
+    // follow one, and a section cannot follow its own block or the board.
+    followSource({ kind, uid, tree, section: section2, owner: ownerArg } = {}) {
+      const owner = ownerOf(ownerArg);
+      const refuse = (reason, by2) => {
+        refusal = by2 ? { reason, by: by2 } : { reason };
+        return Promise.resolve(false);
+      };
+      refusal = null;
+      if (typeof kind !== "string" || typeof uid !== "string" || !uid) return refuse("invalid");
+      if (owner !== boardUid && !isSection(owner)) return refuse("not-section");
+      if (uid === boardUid || uid === owner) return refuse("self");
+      if (kind === "headings" && owner !== boardUid) return refuse("kind");
+      const mirror = session.mirrorRefusalOf({ kind, uid, section: section2 });
+      if (mirror) return refuse(mirror);
+      const key = sourceKey({ kind, uid, section: section2 });
+      const { owners, capped } = followOwnersOf(api3.board());
+      const other = owners.find((o) => o.key === key && o.uid !== owner);
+      if (other) return refuse("taken", other.name === BOARD_OWNER_NAME ? "the board" : other.name);
+      if (owner !== boardUid && capped && !owners.some((o) => o.uid === owner)) return refuse("cap");
+      return writePointer((cur, base2) => followPointerFor(keptFollow(base2, key) || cur, kind, uid, { tree, section: section2 }), owner).then((ok) => {
+        if (!ok) refusal = { reason: "unchanged" };
+        return ok;
+      });
     },
-    setFollowTree(on) {
-      return writePointer((cur) => cur?.kind === "block" ? { ...cur, tree: on === true } : cur);
+    setFollowTree(on, owner) {
+      return writePointer((cur) => cur?.kind === "block" ? { ...cur, tree: on === true } : cur, ownerOf(owner));
     },
     // The cards stay; only the pointer (and its skip list) goes.
-    stopFollowing() {
-      return writePointer(() => null);
+    stopFollowing(owner) {
+      return writePointer(() => null, ownerOf(owner));
     },
     // Calls run one after another, and each filters against the board the previous one left, so a second Place all
     // (or a drag) while the first is still writing never places a card twice. A skipped uid is never placed.
+    // opts: { at, owner }.
     placeFollowed(entries, opts = {}) {
       const run = () => placeNow(entries, opts);
       placing = placing.then(run, run);
       return placing;
     },
-    // Source uids the tray should stop offering. Resolves the number added.
-    dontBringBack(uids) {
+    // Source uids the tray should stop offering, on the owner's list. Resolves the number added.
+    dontBringBack(uids, ownerArg) {
+      const owner = ownerOf(ownerArg);
       return api3.txn((t) => {
-        const base2 = api3.rawPlexus(boardUid);
+        if (owner !== boardUid && !isSection(owner)) return 0;
+        const base2 = api3.rawPlexus(owner);
         const pointer = readFollow(base2);
         if (!pointer) return 0;
         const skip = addSkip(pointer.skip, uids);
         if (same(skip, pointer.skip)) return 0;
-        t.props(boardUid, withFollow(base2, { ...pointer, skip }));
+        t.props(owner, withFollow(base2, { ...pointer, skip }));
         return skip.length - pointer.skip.length;
       }).then((n3) => n3 ?? 0);
     },
@@ -56861,6 +56990,7 @@ function chunk(list, n3 = WRITE_CHUNK) {
 }
 
 // src/session-lanes.js
+init_follow();
 init_attr_lanes();
 var ATTR_BLOCKS = "[:find ?pu ?s ?o :in $ ?title :where [?p :node/title ?title] [?a :block/refs ?p] [?a :block/string ?s] [?a :block/order ?o] [?par :block/children ?a] [?par :block/uid ?pu] (not [?par :node/title _])]";
 var same2 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -92560,7 +92690,11 @@ function createInbox({ doc = globalThis.document, root, host, timers, titles, on
 
 // src/view/follow-tray.js
 init_drop();
+init_follow();
 init_schema();
+
+// src/host/follow-sources.js
+init_follow();
 
 // src/model/board-rule.js
 var BOARD_MEMBER_NAME = "board-member";
@@ -93167,6 +93301,7 @@ var REASONS = {
   self: "A board cannot mirror itself."
 };
 var RELAYED_NOTE = "Cards this board got from mirroring another board are not passed on.";
+var EMPTY_DIFF = { pending: [], left: [], placed: 0, dismissed: 0 };
 function createFollowTray({
   doc = globalThis.document,
   root,
@@ -93187,44 +93322,74 @@ function createFollowTray({
 } = {}) {
   const boardUid = session?.uid;
   const memory = createLeftMemory({ storage, graph });
-  const leftBefore = boardUid ? memory.get(boardUid) : null;
-  let pointer = null;
-  let key = "";
-  let read2 = null;
-  let status = "idle";
-  let reason = "";
-  let absent = /* @__PURE__ */ new Map();
-  let diff = { pending: [], left: [], placed: 0, dismissed: 0 };
-  let label = "";
+  let lanes = /* @__PURE__ */ new Map();
+  let order = [];
   let leftShown = "";
   let moved = [];
   let movedShown = "";
-  let reads = 0;
   let open = false;
   let autoOpened = false;
   let disposed = false;
   let btn2 = null;
   let panel = null;
-  let unwatch = () => {
-  };
-  let quiet = null;
-  let job = null;
+  let groupEls = /* @__PURE__ */ new Map();
+  let groupsEl = null;
+  let listEl = null;
+  let showAnchor = null;
   let poll = null;
-  let inFlight = false;
-  let again = false;
   let placing = false;
-  let lastMs = 0;
-  let waitMs = 0;
-  let queuedAt = 0;
-  let held = false;
-  let floorWait = null;
+  let job = null;
+  let passing = false;
+  let passAgain = false;
+  let passes = 0;
+  let paints = 0;
+  let readsNow = 0;
+  let maxReads = 0;
   let offEditing = () => {
   };
-  let lastStart = -Infinity;
-  let known2 = false;
-  let stale = false;
   let seen = null;
   let io = null;
+  const newLane = (uid) => ({
+    uid,
+    section: uid !== boardUid,
+    name: "",
+    over: false,
+    dup: null,
+    pointer: null,
+    key: "",
+    read: null,
+    status: "idle",
+    reason: "",
+    absent: /* @__PURE__ */ new Map(),
+    diff: EMPTY_DIFF,
+    pending: [],
+    hints: [],
+    label: "",
+    reads: 0,
+    unwatch: () => {
+    },
+    quiet: null,
+    // Its quiet period ended (or the tray opened): the next pass reads it.
+    due: false,
+    inFlight: false,
+    again: false,
+    // How long the last read took: the next quiet period is ten times that (at least FOLLOW_QUIET_MS).
+    lastMs: 0,
+    // How long the last read waited for the shared background budget after its quiet period.
+    waitMs: 0,
+    queuedAt: 0,
+    // PXD-20: a read is owed but waits for editing to go idle (held), or for the slow-read floor (floorWait).
+    held: false,
+    floorWait: null,
+    // When this source's last read started, and whether it has one (an unknown cost counts as slow).
+    lastStart: -Infinity,
+    known: false,
+    // A trigger came while the board was off screen or the tab hidden: read when it shows again.
+    stale: false,
+    // The cards that had left when the board last closed (per owner, per device).
+    leftBefore: uid ? memory.get(uid) : null
+  });
+  const readable = (lane2) => Boolean(lane2?.pointer) && !lane2.over && !lane2.dup;
   const el2 = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     if (cls) node2.className = cls;
@@ -93247,31 +93412,52 @@ function createFollowTray({
     });
     return b;
   };
-  const ctx = () => ({
+  const ctx = (lane2) => ({
     host,
     boardUid,
     inBoard: () => session.followExclude?.() || /* @__PURE__ */ new Set([boardUid]),
     tick: () => new Promise((resolve) => timers.idle(resolve)),
-    followed: () => followIndex(board2(), key).followed.map((card2) => card2.target?.uid).filter(Boolean)
+    followed: () => followIndex(board2(), lane2.key).followed.map((card2) => card2.target?.uid).filter(Boolean)
   });
-  const textMissing = () => reason === "missing" && pointer?.kind === "block" && board2()?.followDerived === true;
-  const describe = () => {
-    const kind = pointer ? followKind(pointer.kind) : null;
-    if (textMissing()) return "a block that does not exist";
+  const textMissing = (lane2) => !lane2.section && lane2.reason === "missing" && lane2.pointer?.kind === "block" && board2()?.followDerived === true;
+  const describe = (lane2) => {
+    const kind = lane2.pointer ? followKind(lane2.pointer.kind) : null;
+    if (textMissing(lane2)) return "a block that does not exist";
     try {
-      return kind?.describe?.(pointer, host) || kind?.title || "a source";
+      return kind?.describe?.(lane2.pointer, host) || kind?.title || "a source";
     } catch {
       return kind?.title || "a source";
     }
   };
+  const allLeft = () => {
+    const out = [];
+    for (const lane2 of order) out.push(...lane2.diff.left);
+    return out;
+  };
+  const waiting = () => order.reduce((n3, lane2) => n3 + lane2.pending.length, 0);
   function recompute() {
-    diff = pointer ? followDiff(read2, board2(), { key, skip: pointer.skip, absent, since }) : { pending: [], left: [], placed: 0, dismissed: 0 };
-    const next = diff.left.slice().sort().join("\n");
+    const b = board2();
+    for (const lane2 of order) {
+      lane2.diff = readable(lane2) ? followDiff(lane2.read, b, { key: lane2.key, skip: lane2.pointer.skip, absent: lane2.absent, since }) : EMPTY_DIFF;
+    }
+    const live2 = order.filter(readable);
+    const sorted3 = dedupeFollow(live2.map((lane2) => ({ name: lane2.name, read: lane2.read, skip: lane2.pointer.skip, diff: lane2.diff })));
+    for (const lane2 of order) {
+      lane2.pending = [];
+      lane2.hints = [];
+    }
+    live2.forEach((lane2, i) => {
+      lane2.pending = sorted3[i].pending;
+      lane2.hints = sorted3[i].hints;
+    });
+    const left = allLeft();
+    const next = left.slice().sort().join("\n");
     if (next !== leftShown) {
       leftShown = next;
-      onLeft?.(new Set(diff.left));
+      onLeft?.(new Set(left));
     }
-    moved = pointer?.kind === "headings" ? movedCards(read2, board2(), key) : [];
+    const own2 = lanes.get(boardUid);
+    moved = readable(own2) && own2.pointer.kind === "headings" ? movedCards(own2.read, b, own2.key) : [];
     const mark = moved.map((m) => `${m.uid}>${m.to}`).join("\n");
     if (mark !== movedShown) {
       movedShown = mark;
@@ -93280,129 +93466,172 @@ function createFollowTray({
   }
   function sync() {
     if (disposed) return;
+    paints += 1;
     recompute();
     paintPill();
     paintPanel();
   }
   const showing = () => doc?.visibilityState !== "hidden" && seen !== false;
-  function gate() {
+  function gate(lane2) {
     const edit = editState(doc);
-    const cost = known2 ? lastMs : Infinity;
+    const cost = lane2.known ? lane2.lastMs : Infinity;
     if (edit.typing && cost >= FOLLOW_TYPING_MS) return "typing";
-    if (edit.busy && cost > FOLLOW_SLOW_MS && now5() - lastStart < FOLLOW_POLL_MS) return "floor";
+    if (edit.busy && cost > FOLLOW_SLOW_MS && now5() - lane2.lastStart < FOLLOW_POLL_MS) return "floor";
     return "";
   }
-  function hold(why) {
-    held = true;
-    if (why !== "floor" || floorWait) return;
-    floorWait = timers.later(() => {
-      floorWait = null;
-      if (held) readSoon();
-    }, Math.max(0, lastStart + FOLLOW_POLL_MS - now5()));
+  function hold(lane2, why) {
+    lane2.held = true;
+    if (why !== "floor" || lane2.floorWait) return;
+    lane2.floorWait = timers.later(() => {
+      lane2.floorWait = null;
+      if (lane2.held) markDue(lane2);
+    }, Math.max(0, lane2.lastStart + FOLLOW_POLL_MS - now5()));
   }
-  function unhold() {
-    held = false;
-    floorWait?.();
-    floorWait = null;
+  function unhold(lane2) {
+    lane2.held = false;
+    lane2.floorWait?.();
+    lane2.floorWait = null;
   }
   const onEditing = (why) => {
     if (disposed) return;
-    const cut = why === "typing" && Boolean(quiet) && !job;
-    if (cut) {
-      quiet();
-      quiet = null;
+    for (const lane2 of order) {
+      const cut = why === "typing" && Boolean(lane2.quiet) && !lane2.due;
+      if (cut) {
+        lane2.quiet();
+        lane2.quiet = null;
+      }
+      if (cut || lane2.held && !gate(lane2)) markDue(lane2);
     }
-    if (cut || held && !gate()) readSoon();
   };
-  function runRead() {
-    job = null;
-    if (disposed || !pointer) return;
-    if (!showing()) {
-      stale = true;
-      unhold();
+  function requestPass() {
+    if (disposed) return;
+    if (passing) {
+      passAgain = true;
       return;
     }
-    if (inFlight) {
-      again = true;
+    if (job) return;
+    job = timers.bgIdle(() => {
+      void runPass();
+    }, "follow");
+  }
+  function markDue(lane2) {
+    if (disposed || !readable(lane2) || lane2.due) return;
+    if (lane2.inFlight) {
+      lane2.again = true;
       return;
     }
-    const kind = followKind(pointer.kind);
-    if (!kind) {
-      status = "error";
-      reason = "unknown";
-      sync();
-      return;
-    }
-    const why = gate();
-    if (why) {
-      hold(why);
-      return;
-    }
-    unhold();
-    const mine = key;
-    inFlight = true;
-    stale = false;
-    waitMs = Math.max(0, now5() - queuedAt);
-    status = read2 ? status : "reading";
-    if (!read2) paintPanel();
+    lane2.due = true;
+    lane2.queuedAt = now5();
+    requestPass();
+  }
+  async function readLane(lane2, kind) {
+    const mine = lane2.key;
+    lane2.inFlight = true;
+    lane2.stale = false;
+    lane2.waitMs = Math.max(0, now5() - lane2.queuedAt);
+    if (!lane2.read) paintPanel();
     const started = now5();
-    Promise.resolve().then(() => kind.read(pointer, ctx())).catch(() => ({ ok: false, reason: "error" })).then((res) => {
-      inFlight = false;
-      if (disposed) return;
-      if (mine !== key) {
-        if (again) {
-          again = false;
-          schedule();
-        }
-        return;
+    readsNow += 1;
+    maxReads = Math.max(maxReads, readsNow);
+    const res = await Promise.resolve().then(() => kind.read(lane2.pointer, ctx(lane2))).catch(() => ({ ok: false, reason: "error" }));
+    readsNow -= 1;
+    lane2.inFlight = false;
+    if (disposed) return false;
+    if (mine !== lane2.key || lanes.get(lane2.uid) !== lane2) {
+      if (lane2.again) {
+        lane2.again = false;
+        schedule(lane2);
       }
-      lastMs = Math.max(0, now5() - started);
-      lastStart = started;
-      known2 = true;
-      reads += 1;
-      if (res?.ok) {
-        read2 = res;
-        if (pointer.tree && typeof onParents === "function") {
-          const parents = /* @__PURE__ */ new Map();
-          for (const item of res.items || []) if (item?.parent && item.uid) parents.set(item.uid, item.parent);
-          try {
-            onParents(parents);
-          } catch {
-          }
+      return false;
+    }
+    lane2.lastMs = Math.max(0, now5() - started);
+    lane2.lastStart = started;
+    lane2.known = true;
+    lane2.reads += 1;
+    if (res?.ok) {
+      lane2.read = res;
+      if (!lane2.section && lane2.pointer.tree && typeof onParents === "function") {
+        const parents = /* @__PURE__ */ new Map();
+        for (const item of res.items || []) if (item?.parent && item.uid) parents.set(item.uid, item.parent);
+        try {
+          onParents(parents);
+        } catch {
         }
-        absent = absentStep(absent, res, board2(), key);
-        status = "ok";
-        reason = "";
-      } else {
-        status = "error";
-        reason = res?.reason || "error";
       }
-      label = describe();
-      sync();
-      if (again) {
-        again = false;
-        schedule();
-      } else if (res?.ok && res.complete && leftUnsettled(absent)) schedule();
-    });
+      lane2.absent = absentStep(lane2.absent, res, board2(), lane2.key);
+      lane2.status = "ok";
+      lane2.reason = "";
+    } else {
+      lane2.status = "error";
+      lane2.reason = res?.reason || "error";
+    }
+    lane2.label = describe(lane2);
+    lane2.ok = res?.ok === true && res.complete === true;
+    return true;
   }
-  function schedule() {
-    if (disposed || !pointer) return;
+  async function runPass() {
+    job = null;
+    if (disposed) return;
+    passing = true;
+    passes += 1;
+    const read2 = [];
+    let paint2 = false;
+    for (const lane2 of order.filter((l) => l.due)) {
+      if (disposed) break;
+      lane2.due = false;
+      if (lanes.get(lane2.uid) !== lane2 || !readable(lane2)) continue;
+      if (!showing()) {
+        lane2.stale = true;
+        unhold(lane2);
+        continue;
+      }
+      const kind = followKind(lane2.pointer.kind);
+      if (!kind) {
+        lane2.status = "error";
+        lane2.reason = "unknown";
+        paint2 = true;
+        continue;
+      }
+      const why = gate(lane2);
+      if (why) {
+        hold(lane2, why);
+        continue;
+      }
+      unhold(lane2);
+      if (await readLane(lane2, kind)) {
+        read2.push(lane2);
+        paint2 = true;
+      }
+    }
+    passing = false;
+    if (disposed) return;
+    if (paint2) sync();
+    for (const lane2 of read2) {
+      if (lane2.again) {
+        lane2.again = false;
+        schedule(lane2);
+      } else if (lane2.ok && leftUnsettled(lane2.absent)) schedule(lane2);
+    }
+    if (passAgain || order.some((l) => l.due)) {
+      passAgain = false;
+      if (order.some((l) => l.due)) requestPass();
+    }
+  }
+  function schedule(lane2) {
+    if (disposed || !readable(lane2)) return;
     if (!showing()) {
-      stale = true;
+      lane2.stale = true;
       return;
     }
-    if (quiet || held) return;
-    quiet = timers.later(() => {
-      quiet = null;
-      if (disposed || job) return;
-      queuedAt = now5();
-      job = timers.bgIdle(runRead, "follow");
-    }, followQuietMs(lastMs));
+    if (lane2.quiet || lane2.held) return;
+    lane2.quiet = timers.later(() => {
+      lane2.quiet = null;
+      if (disposed || lane2.due) return;
+      markDue(lane2);
+    }, followQuietMs(lane2.lastMs));
   }
-  const readSoon = () => {
-    if (disposed || !pointer || job) return;
-    queuedAt = now5();
-    job = timers.bgIdle(runRead, "follow");
+  const scheduleAll = () => {
+    for (const lane2 of order) schedule(lane2);
   };
   let listening = false;
   function listen(on) {
@@ -93427,7 +93656,9 @@ function createFollowTray({
         const entry = entries[entries.length - 1];
         if (!entry || disposed) return;
         seen = Boolean(entry.isIntersecting);
-        if (seen && stale) schedule();
+        if (seen) {
+          for (const lane2 of order) if (lane2.stale) schedule(lane2);
+        }
       });
       io.observe(root);
     } catch {
@@ -93437,56 +93668,96 @@ function createFollowTray({
   function armPoll() {
     poll?.();
     poll = null;
-    listen(Boolean(pointer) && !disposed);
-    if (!pointer || disposed) return;
+    const on = order.some(readable) && !disposed;
+    listen(on);
+    if (!on) return;
     poll = timers.later(() => {
       poll = null;
-      schedule();
+      scheduleAll();
       armPoll();
     }, FOLLOW_POLL_MS);
   }
-  function adopt() {
-    const next = readFollow(board2()?.plexus);
-    const nextKey = sourceKey(next);
-    if (nextKey === key) {
-      const reshaped = pointer?.tree === true !== (next?.tree === true);
-      pointer = next;
+  function adoptLane(lane2, owner) {
+    const wasReadable = readable(lane2);
+    lane2.name = owner?.name || "";
+    lane2.over = owner?.over === true;
+    lane2.dup = owner?.dup || null;
+    const next = owner?.pointer || null;
+    const nextKey = owner?.key || "";
+    if (nextKey === lane2.key && wasReadable === readable({ ...lane2, pointer: next })) {
+      const reshaped = lane2.pointer?.tree === true !== (next?.tree === true);
+      lane2.pointer = next;
       if (reshaped) {
-        label = describe();
-        schedule();
+        lane2.label = describe(lane2);
+        schedule(lane2);
       }
-      return reshaped;
+      return false;
     }
     try {
-      unwatch();
+      lane2.unwatch();
     } catch {
     }
-    unwatch = () => {
+    lane2.unwatch = () => {
     };
-    quiet?.();
-    quiet = null;
-    lastMs = 0;
-    lastStart = -Infinity;
-    known2 = false;
-    unhold();
-    pointer = next;
-    key = nextKey;
-    read2 = null;
-    absent = /* @__PURE__ */ new Map();
-    status = pointer ? "reading" : "idle";
-    reason = "";
-    label = pointer ? describe() : "";
-    if (pointer) {
-      const kind = followKind(pointer.kind);
+    lane2.quiet?.();
+    lane2.quiet = null;
+    lane2.lastMs = 0;
+    lane2.lastStart = -Infinity;
+    lane2.known = false;
+    unhold(lane2);
+    lane2.pointer = next;
+    lane2.key = nextKey;
+    lane2.read = null;
+    lane2.absent = /* @__PURE__ */ new Map();
+    lane2.status = next ? "reading" : "idle";
+    lane2.reason = "";
+    lane2.label = next ? describe(lane2) : "";
+    if (readable(lane2)) {
+      const kind = followKind(next.kind);
       try {
-        unwatch = kind?.watch?.(pointer, host, () => schedule(), { doc }) || (() => {
+        lane2.unwatch = kind?.watch?.(next, host, () => schedule(lane2), { doc }) || (() => {
         });
       } catch {
-        unwatch = () => {
+        lane2.unwatch = () => {
         };
       }
-      schedule();
-    } else if (open) close();
+      schedule(lane2);
+    }
+    return true;
+  }
+  function dropLane(lane2) {
+    try {
+      lane2.unwatch();
+    } catch {
+    }
+    lane2.unwatch = () => {
+    };
+    lane2.quiet?.();
+    lane2.quiet = null;
+    lane2.due = false;
+    unhold(lane2);
+  }
+  function adopt() {
+    const { owners } = followOwnersOf(board2());
+    const next = /* @__PURE__ */ new Map();
+    let changed2 = false;
+    for (const owner of owners) {
+      let lane2 = lanes.get(owner.uid);
+      if (!lane2) {
+        lane2 = newLane(owner.uid);
+        changed2 = true;
+      }
+      next.set(owner.uid, lane2);
+    }
+    for (const [uid, lane2] of lanes) if (!next.has(uid)) {
+      dropLane(lane2);
+      changed2 = true;
+    }
+    lanes = next;
+    order = owners.map((owner) => lanes.get(owner.uid));
+    for (const owner of owners) if (adoptLane(lanes.get(owner.uid), owner)) changed2 = true;
+    if (!changed2) return false;
+    if (!order.length && open) close();
     armPoll();
     return true;
   }
@@ -93497,12 +93768,13 @@ function createFollowTray({
     // PXD-14: the heading a row sits under, so a placed card knows its section.
     ...row4.heading ? { heading: row4.heading, ...row4.kind === "heading" ? { text: row4.text } : { headingText: row4.headingText } } : {}
   });
-  function place3(rows) {
+  function place3(rows, lane2) {
     if (!rows.length || placing) return Promise.resolve(null);
     placing = true;
     paintPanel();
-    const opts = pointer?.kind === "headings" ? { order: read2?.heads } : void 0;
-    return Promise.resolve(session.placeFollowed?.(rows.map(entryOf), opts)).then((res) => {
+    const entries = rows.map(entryOf);
+    const opts = lane2?.section ? { owner: lane2.uid } : lane2?.pointer?.kind === "headings" ? { order: lane2.read?.heads } : void 0;
+    return Promise.resolve(session.placeFollowed?.(entries, opts)).then((res) => {
       if (disposed || !res) return res;
       if (res.batches > 1) toast?.(`Placed ${res.placed} cards in ${res.batches} batches of up to ${SPREAD_CAP}. Each Cmd+Z takes back one batch.`);
       if (res.uids?.length) onPlaced?.(res.uids);
@@ -93512,8 +93784,18 @@ function createFollowTray({
       if (!disposed) paintPanel();
     });
   }
+  function counts() {
+    const out = { newCount: 0, leftCount: 0, baseline: false };
+    for (const lane2 of order) {
+      const c = sinceVisit({ pending: lane2.pending, left: lane2.diff.left }, { since, leftBefore: lane2.leftBefore });
+      out.newCount += c.newCount;
+      out.leftCount += c.leftCount;
+      out.baseline = out.baseline || c.baseline;
+    }
+    return out;
+  }
   function paintPill() {
-    if (!pointer) {
+    if (!order.length) {
       btn2?.remove();
       btn2 = null;
       return;
@@ -93527,20 +93809,23 @@ function createFollowTray({
         toggle();
       });
     }
-    const counts = sinceVisit(diff, { since, leftBefore });
-    btn2.textContent = followPill(diff.pending.length);
-    btn2.classList.toggle("pxd-follow--new", counts.newCount > 0 || counts.leftCount > 0);
+    const c = counts();
+    const n3 = waiting();
+    btn2.textContent = followPill(n3);
+    btn2.classList.toggle("pxd-follow--new", c.newCount > 0 || c.leftCount > 0);
     btn2.setAttribute("aria-expanded", open ? "true" : "false");
-    const head = trayHeadline(counts);
-    btn2.setAttribute("aria-label", `${diff.pending.length} waiting from ${label || "the source"}${head ? `. ${head}` : ""}`);
+    const head = trayHeadline(c);
+    const from = order.length === 1 ? order[0].label || "the source" : `${order.length} sources`;
+    btn2.setAttribute("aria-label", `${n3} waiting from ${from}${head ? `. ${head}` : ""}`);
   }
   const cardTitle = (uid) => {
     const item = board2()?.items.get(uid);
     if (!item) return "Card";
-    const label2 = itemLabel(item, (id) => host?.blockString?.(id));
-    return plainText(label2 || item.string || "", 80) || "Card";
+    const label = itemLabel(item, (id) => host?.blockString?.(id));
+    return plainText(label || item.string || "", 80) || "Card";
   };
-  function rowEl(list, row4) {
+  const rowText = (row4) => row4.kind === "page" ? row4.title : row4.text || "(empty block)";
+  function rowEl(list, row4, lane2) {
     const node2 = el2("div", "pxd-follow__row", list);
     node2.draggable = true;
     node2.setAttribute("draggable", "true");
@@ -93548,21 +93833,21 @@ function createFollowTray({
     if (row4.depth > 1) node2.style.paddingLeft = `${6 + (row4.depth - 1) * 12}px`;
     const text4 = el2("div", "pxd-follow__text", node2);
     if (row4.fresh) el2("span", "pxd-follow__new", text4, "new");
-    el2("span", "", text4, row4.kind === "page" ? row4.title : row4.text || "(empty block)");
+    el2("span", "", text4, rowText(row4));
     if (row4.crumb) el2("div", "pxd-follow__crumb", node2, row4.crumb);
     const acts = el2("div", "pxd-follow__acts", node2);
     button3(acts, "pxd-follow__place", "Place", () => {
-      void place3([row4]);
+      void place3([row4], lane2);
     });
     button3(acts, "pxd-follow__skip", "Don't bring back", () => {
-      void session.dontBringBack?.([row4.uid]);
+      void (lane2.section ? session.dontBringBack?.([row4.uid], lane2.uid) : session.dontBringBack?.([row4.uid]));
     });
     shield(node2);
     node2.addEventListener("dragstart", (event) => {
       event.stopPropagation();
       const string = followCardString(row4);
       try {
-        event.dataTransfer?.setData?.(FOLLOW_MIME, JSON.stringify({ ...entryOf(row4), board: boardUid, src: key }));
+        event.dataTransfer?.setData?.(FOLLOW_MIME, JSON.stringify({ ...entryOf(row4), board: boardUid, src: lane2.key, ...lane2.section ? { owner: lane2.uid } : {} }));
         event.dataTransfer?.setData?.(CARD_MIME, string);
         event.dataTransfer?.setData?.("text/plain", string);
         if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
@@ -93570,41 +93855,52 @@ function createFollowTray({
       }
     });
   }
-  function paintPanel() {
-    if (!panel) return;
-    panel.replaceChildren?.();
-    const head = el2("div", "pxd-follow__head", panel);
-    el2("div", "pxd-follow__title", head, label ? `Following ${label}` : "Following");
-    button3(head, "pxd-follow__close", "×", () => close(), "Close");
-    const counts = sinceVisit(diff, { since, leftBefore });
-    const line = trayHeadline(counts);
-    if (line) el2("div", "pxd-follow__since", panel, line);
-    let note = "";
-    if (status === "reading" && !read2) note = "Reading the source…";
-    else if (status === "error") note = textMissing() ? REASONS.missingText : REASONS[reason] || "Could not read the source. The last list stays.";
-    else if (read2 && !read2.complete) note = "Only part of the source was read, so nothing is marked as left.";
-    else if (read2?.deeper) note = `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
-    if (note) el2("div", "pxd-follow__note", panel, note);
-    if (pointer?.kind === "board" && read2?.relayed > 0) el2("div", "pxd-follow__note", panel, RELAYED_NOTE);
-    const heads = pointer?.kind === "headings";
-    if (heads) {
-      el2("div", "pxd-follow__note", panel, headingsNote);
-      if (read2?.ok && !read2.items.some((row4) => row4.kind === "heading")) el2("div", "pxd-follow__note", panel, headingsEmpty);
+  function hintEl(list, row4) {
+    const node2 = el2("div", "pxd-follow__row pxd-follow__row--hint", list);
+    node2.dataset.uid = row4.uid;
+    el2("div", "pxd-follow__text", node2, rowText(row4));
+    el2("div", "pxd-follow__also", node2, `Also in ${row4.also}`);
+    shield(node2);
+  }
+  function noteOf(lane2) {
+    if (lane2.over) return `Not read: over the limit of ${FOLLOW_SECTION_CAP}.`;
+    if (lane2.dup) return `Not read: ${lane2.dup === BOARD_OWNER_NAME ? "the board" : lane2.dup} follows this source already.`;
+    if (lane2.status === "reading" && !lane2.read) return "Reading the source…";
+    if (lane2.status === "error") return textMissing(lane2) ? REASONS.missingText : REASONS[lane2.reason] || "Could not read the source. The last list stays.";
+    if (lane2.read && !lane2.read.complete) return "Only part of the source was read, so nothing is marked as left.";
+    if (lane2.read?.deeper) return `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
+    return "";
+  }
+  function paintLane(parent, lane2, grouped) {
+    if (grouped) {
+      const head = el2("div", "pxd-follow__owner-head", parent);
+      el2("div", "pxd-follow__owner-title", head, lane2.section ? lane2.name : "This board");
+      if (lane2.label) el2("div", "pxd-follow__owner-source", head, lane2.label);
     }
-    const bar = el2("div", "pxd-follow__bar", panel);
-    el2("span", "pxd-follow__count", bar, `${diff.pending.length} waiting · ${diff.placed} on the board`);
-    const all = button3(bar, "pxd-follow__all", diff.pending.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => {
-      void place3(diff.pending.slice());
+    const note = noteOf(lane2);
+    if (note) el2("div", "pxd-follow__note", parent, note);
+    if (!readable(lane2)) return;
+    if (lane2.pointer.kind === "board" && lane2.read?.relayed > 0) el2("div", "pxd-follow__note", parent, RELAYED_NOTE);
+    const heads = lane2.pointer.kind === "headings";
+    if (heads) {
+      el2("div", "pxd-follow__note", parent, headingsNote);
+      if (lane2.read?.ok && !lane2.read.items.some((row4) => row4.kind === "heading")) el2("div", "pxd-follow__note", parent, headingsEmpty);
+    }
+    const bar = el2("div", "pxd-follow__bar", parent);
+    el2("span", "pxd-follow__count", bar, `${lane2.pending.length} waiting · ${lane2.diff.placed} on the board`);
+    const all = button3(bar, "pxd-follow__all", lane2.pending.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => {
+      void place3(lane2.pending.slice(), lane2);
     });
-    all.disabled = diff.pending.length === 0 || placing;
-    const list = el2("div", "pxd-follow__list", panel);
-    if (!diff.pending.length) el2("div", "pxd-follow__empty", list, read2 ? "Everything in the source is on the board." : "");
-    if (heads) groupRows(list);
-    else for (const row4 of diff.pending) rowEl(list, row4);
-    if (diff.left.length) {
-      el2("div", "pxd-follow__section", panel, `Left the source (${diff.left.length})`);
-      const gone = el2("div", "pxd-follow__list pxd-follow__list--left", panel);
-      for (const uid of diff.left) {
+    all.disabled = lane2.pending.length === 0 || placing;
+    const list = el2("div", "pxd-follow__list", parent);
+    if (!lane2.pending.length && !lane2.hints.length) el2("div", "pxd-follow__empty", list, lane2.read ? "Everything in the source is on the board." : "");
+    if (heads) groupRows(list, lane2);
+    else for (const row4 of lane2.pending) rowEl(list, row4, lane2);
+    for (const row4 of lane2.hints) hintEl(list, row4);
+    if (lane2.diff.left.length) {
+      el2("div", "pxd-follow__section", parent, `Left the source (${lane2.diff.left.length})`);
+      const gone = el2("div", "pxd-follow__list pxd-follow__list--left", parent);
+      for (const uid of lane2.diff.left) {
         const node2 = el2("div", "pxd-follow__row pxd-follow__row--left", gone);
         node2.dataset.uid = uid;
         el2("div", "pxd-follow__text", node2, cardTitle(uid));
@@ -93619,9 +93915,9 @@ function createFollowTray({
         shield(node2);
       }
     }
-    if (moved.length) {
-      el2("div", "pxd-follow__section", panel, `Moved (${moved.length})`);
-      const moves = el2("div", "pxd-follow__list pxd-follow__list--left", panel);
+    if (!lane2.section && moved.length) {
+      el2("div", "pxd-follow__section", parent, `Moved (${moved.length})`);
+      const moves = el2("div", "pxd-follow__list pxd-follow__list--left", parent);
       for (const m of moved) {
         const node2 = el2("div", "pxd-follow__row pxd-follow__row--left", moves);
         node2.dataset.uid = m.uid;
@@ -93636,9 +93932,9 @@ function createFollowTray({
       }
     }
   }
-  function groupRows(list) {
+  function groupRows(list, lane2) {
     const groups2 = /* @__PURE__ */ new Map();
-    for (const row4 of diff.pending) {
+    for (const row4 of lane2.pending) {
       const head = row4.kind === "heading" ? row4.uid : row4.heading;
       if (!head) continue;
       if (!groups2.has(head)) groups2.set(head, { head, text: "", row: null, blocks: [] });
@@ -93656,17 +93952,74 @@ function createFollowTray({
       el2("span", "pxd-follow__text", bar, g.text || "(empty heading)");
       const acts = el2("div", "pxd-follow__acts", bar);
       button3(acts, "pxd-follow__place", "Place", () => {
-        void place3(g.row ? [g.row, ...g.blocks] : g.blocks);
+        void place3(g.row ? [g.row, ...g.blocks] : g.blocks, lane2);
       });
       if (g.row) button3(acts, "pxd-follow__skip", "Don't bring back", () => {
         void session.dontBringBack?.([g.head]);
       });
       shield(bar);
-      for (const row4 of g.blocks) rowEl(list, row4);
+      for (const row4 of g.blocks) rowEl(list, row4, lane2);
     }
   }
-  function openPanel() {
-    if (disposed || !pointer) return;
+  function scrollAnchor() {
+    if (listEl) return { top: Number(listEl.scrollTop) || 0 };
+    if (!groupsEl) return null;
+    const top = Number(groupsEl.scrollTop) || 0;
+    const base2 = Number(groupsEl.offsetTop) || 0;
+    let anchor = { top };
+    for (const [owner, group] of groupEls) {
+      const at = Number(group.offsetTop);
+      if (Number.isFinite(at) && at - base2 <= top) anchor = { top, owner, delta: top - (at - base2) };
+    }
+    return anchor;
+  }
+  function restoreScroll(anchor) {
+    if (!anchor) return;
+    if (listEl) {
+      listEl.scrollTop = anchor.top;
+      return;
+    }
+    if (!groupsEl) return;
+    const group = anchor.owner ? groupEls.get(anchor.owner) : null;
+    const at = Number(group?.offsetTop);
+    if (group && Number.isFinite(at)) groupsEl.scrollTop = Math.max(0, at - (Number(groupsEl.offsetTop) || 0) + (anchor.delta || 0));
+    else if (group && anchor.show) {
+      try {
+        group.scrollIntoView?.({ block: "start" });
+      } catch {
+      }
+    } else groupsEl.scrollTop = anchor.top || 0;
+  }
+  function paintPanel() {
+    if (!panel) return;
+    const anchor = showAnchor || scrollAnchor();
+    showAnchor = null;
+    panel.replaceChildren?.();
+    groupEls = /* @__PURE__ */ new Map();
+    groupsEl = null;
+    listEl = null;
+    const single = order.length === 1 && !order[0].section ? order[0] : null;
+    const head = el2("div", "pxd-follow__head", panel);
+    el2("div", "pxd-follow__title", head, single?.label ? `Following ${single.label}` : "Following");
+    button3(head, "pxd-follow__close", "×", () => close(), "Close");
+    const line = trayHeadline(counts());
+    if (line) el2("div", "pxd-follow__since", panel, line);
+    if (single) {
+      paintLane(panel, single, false);
+      listEl = panel.querySelector?.(".pxd-follow__list") || null;
+    } else {
+      groupsEl = el2("div", "pxd-follow__owners", panel);
+      for (const lane2 of order) {
+        const group = el2("div", "pxd-follow__owner", groupsEl);
+        group.dataset.owner = lane2.uid;
+        groupEls.set(lane2.uid, group);
+        paintLane(group, lane2, true);
+      }
+    }
+    restoreScroll(anchor);
+  }
+  function openPanel(owner) {
+    if (disposed || !order.length) return;
     if (!open) {
       open = true;
       panel = el2("div", "pxd-follow__panel pxd-chrome", root);
@@ -93674,7 +94027,8 @@ function createFollowTray({
       panel.setAttribute("aria-label", "Followed source");
       shield(panel, ["pointerdown", "mousedown", "dblclick", "wheel"]);
     }
-    readSoon();
+    if (typeof owner === "string" && owner && lanes.has(owner)) showAnchor = { top: 0, owner, delta: 0, show: true };
+    for (const lane2 of order) markDue(lane2);
     sync();
   }
   function close() {
@@ -93682,35 +94036,41 @@ function createFollowTray({
     open = false;
     panel?.remove();
     panel = null;
+    groupEls = /* @__PURE__ */ new Map();
+    groupsEl = null;
+    listEl = null;
     paintPill();
   }
   function toggle() {
     if (open) close();
     else openPanel();
   }
-  const onFocus = () => schedule();
+  const onFocus = () => scheduleAll();
   const onVisible = () => {
-    if (doc?.visibilityState !== "hidden") schedule();
+    if (doc?.visibilityState !== "hidden") scheduleAll();
   };
   const win2 = doc?.defaultView || null;
   const offChange = session?.on?.("change", (change) => {
     if (disposed) return;
     const dirty = change?.dirty;
-    if (dirty?.has?.(boardUid) || change?.structural) {
+    const b = board2();
+    const owners = Boolean(change?.structural) || Boolean(dirty?.has?.(boardUid)) || [...dirty || []].some((uid) => lanes.has(uid) || b?.items.get(uid)?.type === "section");
+    if (owners) {
       adopt();
       autoOpen();
     }
-    if (!pointer) {
+    if (!order.length) {
       recompute();
       paintPill();
       return;
     }
-    if (change?.structural || dirty?.has?.(boardUid) || diff.left.some((uid) => dirty?.has?.(uid))) sync();
-    else if (dirty && [...dirty].some((uid) => board2()?.items.get(uid)?.src === key)) sync();
+    const keys = new Set(order.map((lane2) => lane2.key));
+    if (owners || allLeft().some((uid) => dirty?.has?.(uid))) sync();
+    else if (dirty && [...dirty].some((uid) => keys.has(b?.items.get(uid)?.src))) sync();
   }) || (() => {
   });
   function autoOpen() {
-    if (autoOpened || disposed || !pointer || open) return;
+    if (autoOpened || disposed || !lanes.has(boardUid) || open) return;
     const b = board2();
     if (b?.followDerived !== true || b.roots.length > 0) return;
     autoOpened = true;
@@ -93719,46 +94079,70 @@ function createFollowTray({
   adopt();
   sync();
   autoOpen();
+  const laneStats = (lane2) => ({
+    key: lane2?.key || "",
+    reads: lane2?.reads || 0,
+    lastMs: lane2?.lastMs || 0,
+    waitMs: lane2?.waitMs || 0,
+    quietMs: followQuietMs(lane2?.lastMs || 0),
+    stale: lane2?.stale === true,
+    held: lane2?.held === true
+  });
+  const menuOf = (lane2, extra = {}) => ({
+    following: Boolean(lane2?.pointer),
+    kind: lane2?.pointer?.kind || "",
+    tree: lane2?.pointer?.tree === true,
+    label: lane2?.label || "",
+    waiting: lane2?.pending.length || 0,
+    ...extra
+  });
   return {
     sync,
-    refresh: () => schedule(),
+    refresh: () => scheduleAll(),
     open: openPanel,
     close,
     isOpen: () => open,
-    rows: () => diff.pending.slice(),
-    left: () => diff.left.slice(),
+    // Placeable rows over every owner, or one owner's.
+    rows: (owner) => owner ? lanes.get(owner)?.pending.slice() || [] : order.flatMap((lane2) => lane2.pending),
+    hints: (owner) => owner ? lanes.get(owner)?.hints.slice() || [] : order.flatMap((lane2) => lane2.hints),
+    left: (owner) => owner ? lanes.get(owner)?.diff.left.slice() || [] : allLeft(),
     moved: () => moved.slice(),
-    reads: () => reads,
-    // The F10 probe: the source, reads so far, how long the last one took and waited, and the quiet period that sets.
-    stats: () => ({ key, moved: moved.length, reads, lastMs, waitMs, quietMs: followQuietMs(lastMs), stale, held, editing: editState(doc) }),
+    reads: () => order.reduce((n3, lane2) => n3 + lane2.reads, 0),
+    // Source keys of every owner that is read (a card from any of them is a followed card).
+    keys: () => order.filter(readable).map((lane2) => lane2.key),
+    // The F10 probe: the board's source, reads so far, how long the last one took and waited, and the quiet period that
+    // sets; PXD-13: the same per owner (lanes), shared passes, sorts painted, and the most reads that ever ran at once.
+    stats: () => ({
+      ...laneStats(lanes.get(boardUid)),
+      moved: moved.length,
+      editing: editState(doc),
+      lanes: order.map((lane2) => ({ owner: lane2.uid, ...laneStats(lane2), over: lane2.over, dup: lane2.dup })),
+      passes,
+      paints,
+      maxReads
+    }),
     // The board menu: what Follow shows and offers.
     menuState() {
-      const textUid = pointer ? null : textSourceUid(board2()?.string || "");
-      return {
-        following: Boolean(pointer),
-        kind: pointer?.kind || "",
-        tree: pointer?.tree === true,
-        label,
-        waiting: diff.pending.length,
-        textUid
-      };
+      const lane2 = lanes.get(boardUid);
+      const textUid = lane2 ? null : textSourceUid(board2()?.string || "");
+      return menuOf(lane2, { textUid });
+    },
+    // PXD-13: a section's Follow menu. `capped`: no more sections can follow a source on this board.
+    sectionMenuState(uid) {
+      const lane2 = lanes.get(uid);
+      return menuOf(lane2, { over: lane2?.over === true, capped: !lane2 && followOwnersOf(board2()).capped });
     },
     dispose() {
       if (disposed) return;
-      if (pointer && boardUid && read2) memory.set(boardUid, diff.left);
+      for (const lane2 of order) if (lane2.pointer && lane2.read) memory.set(lane2.uid, lane2.diff.left);
       disposed = true;
-      try {
-        unwatch();
-      } catch {
-      }
       try {
         offChange();
       } catch {
       }
-      quiet?.();
+      for (const lane2 of order) dropLane(lane2);
       job?.();
       poll?.();
-      unhold();
       listen(false);
       btn2?.remove();
       panel?.remove();
@@ -93769,6 +94153,7 @@ function createFollowTray({
 }
 
 // src/view/board-view.js
+init_follow();
 init_drop();
 init_anydoc_to_parse();
 
@@ -98828,6 +99213,7 @@ function createTypeAhead({ doc, isTarget, later, armMs = ARM_MS } = {}) {
 init_tooltip();
 
 // src/view/menu-model.js
+init_follow();
 init_schema();
 init_shapes();
 init_snapshots();
@@ -98920,6 +99306,34 @@ function followMenu(f) {
       make3("follow:pick-refs", "Linked references of…"),
       make3("follow:pick-headings", "A page by headings…"),
       make3("follow:pick-board", "Another board or section…")
+    ]
+  })];
+}
+function followSectionMenu(f) {
+  if (!f) return [];
+  if (f.following) {
+    return [make3("follow-section", "Following", {
+      children: [
+        ...f.label ? [make3("follow-section:label", f.label, { disabled: true })] : [],
+        ...f.over ? [make3("follow-section:over", `Not read: over the limit of ${FOLLOW_SECTION_CAP}`, { disabled: true })] : [],
+        make3("follow-section:show", `Show in tray (${Number(f.waiting) || 0} waiting)`),
+        ...f.kind === "block" ? [make3("follow-section:tree", "Include the whole tree", { checked: f.tree === true })] : [],
+        make3("follow-section:pick-block", "Switch to a block's children…"),
+        make3("follow-section:pick-query", "Switch to a query…"),
+        make3("follow-section:pick-refs", "Switch to linked references of…"),
+        make3("follow-section:pick-board", "Switch to another board or section…"),
+        make3("follow-section:stop", "Stop following")
+      ]
+    })];
+  }
+  const capped = f.capped === true;
+  return [make3("follow-section", "Follow…", {
+    children: [
+      ...capped ? [make3("follow-section:cap", followCapText(), { disabled: true })] : [],
+      make3("follow-section:pick-block", "A block's children…", { disabled: capped }),
+      make3("follow-section:pick-query", "A query…", { disabled: capped }),
+      make3("follow-section:pick-refs", "Linked references of…", { disabled: capped }),
+      make3("follow-section:pick-board", "Another board or section…", { disabled: capped })
     ]
   })];
 }
@@ -99183,6 +99597,7 @@ function buildMenu(kind, ctx = {}) {
           ]
         }),
         make3("focus-timer", "Focus timer"),
+        ...followSectionMenu(c.follow),
         ...c.bucket ? [] : laneItems(c.lane),
         sep(),
         make3("fit-section", "Fit to contents", { disabled: empty }),
@@ -106946,14 +107361,14 @@ function buildBoardView(onFail, {
           }
         }
         const officeFile = officeTargetFromText(officeText);
-        const followKey = session.followState?.()?.key || "";
+        const followKeys = new Set(followCtl?.keys?.() || [session.followState?.()?.key || ""].filter(Boolean));
         const follow = item?.type === "card" ? {
           block: !isQueryString(queryText) && (item.kind === "note" || item.kind === "block" || item.kind === "page"),
           query: isQueryString(queryText),
           refs: item.kind === "note" || item.kind === "block" || item.kind === "page",
           headings: item.kind === "page",
           board: item.kind === "board" && item.uid !== boardUid,
-          followed: Boolean(followKey) && item.src === followKey,
+          followed: Boolean(item.src) && followKeys.has(item.src),
           left: Boolean(followCtl?.left?.().includes(item.uid))
         } : null;
         return { ...task ? { statusTags, status: task.status || "" } : {}, follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
@@ -106975,6 +107390,7 @@ function buildBoardView(onFail, {
           landmark: item?.landmark === true,
           landmarkSize: item?.size || "M",
           dateSource: dateMode,
+          follow: item && followCtl?.sectionMenuState ? followCtl.sectionMenuState(item.uid) : null,
           ...item?.look === "lane" ? { lane: { bound: item.laneAttr || null, fields: session.laneFieldsFor?.(item.uid) ?? laneFields(tableRows(b)), fresh: item.laneAttr ? session.laneNewValues?.(item.uid) ?? [] : [] } } : {}
         };
       }
@@ -107078,7 +107494,7 @@ function buildBoardView(onFail, {
     return typeof s === "string" ? { title: plainText(sourceText(s), 80) || "(empty block)", value: uid, meta } : null;
   };
   const SECTIONS_PULL = "[{(limit :block/children nil) [:block/uid :block/string :block/order :block/props {(limit :block/children nil) [:block/uid :block/string :block/order :block/props]}]}]";
-  const boardPick = () => {
+  const boardPick = (owner) => {
     let boards = null;
     const sections = /* @__PURE__ */ new Map();
     const sectionsOf = (uid) => {
@@ -107135,13 +107551,13 @@ ${b.pageTitle || ""}`.toLowerCase().includes(words)) continue;
       },
       onPick: async (value) => {
         const [uid, section2] = String(value || "").split("/");
-        return startFollow("board", uid, section2 || void 0);
+        return startFollow("board", uid, owner, section2 || void 0);
       }
     });
   };
-  const followPick = (what) => {
+  const followPick = (what, owner) => {
     if (what === "board") {
-      boardPick();
+      boardPick(owner);
       return;
     }
     const kind = what === "query" ? "query" : what === "refs" ? "refs" : what === "headings" ? "headings" : "block";
@@ -107173,7 +107589,7 @@ ${b.pageTitle || ""}`.toLowerCase().includes(words)) continue;
         }
         if (kind !== "refs" && kind !== "headings") {
           for (const r of host?.searchBlocks?.(text4, 40) || []) {
-            if (r.uid === boardUid || bare && r.uid === word) continue;
+            if (r.uid === boardUid || r.uid === owner || bare && r.uid === word) continue;
             const isQ = isQueryString(r.string);
             if (kind === "query" ? !isQ : isQ) continue;
             rows.push({ title: plainText(sourceText(r.string), 80) || "(empty block)", value: r.uid, meta: r.pageTitle });
@@ -107184,23 +107600,28 @@ ${b.pageTitle || ""}`.toLowerCase().includes(words)) continue;
       },
       onPick: async (value) => {
         const uid = kind === "headings" ? pageUidOf(value) || value : /^[\w-]{1,64}$/.test(value) && host?.blockString?.(value) != null ? value : pageUidOf(value) || value;
-        return startFollow(kind, uid);
+        return startFollow(kind, uid, owner);
       }
     });
   };
-  const startFollow = async (kind, uid, section2) => {
+  const startFollow = async (kind, uid, owner, section2) => {
     if (!uid) return false;
-    const refusal = session.followRefusal?.({ kind, uid, section: section2 }) || "";
+    const refusal = session.mirrorRefusalOf?.({ kind, uid, section: section2 }) || "";
     if (refusal === "cycle" || refusal === "self") {
       toast(REASONS[refusal]);
       return true;
     }
-    const ok = await session.followSource?.({ kind, uid, section: section2 });
+    const args = { kind, uid, ...owner ? { owner } : {}, ...section2 ? { section: section2 } : {} };
+    const ok = await session.followSource?.(args);
     if (disposed) return false;
+    const why = ok ? null : session.followRefusal?.() || null;
     if (ok) {
-      followCtl?.open?.();
+      followCtl?.open?.(owner);
       toast("Following. New items wait in the tray until you place them.");
-    } else if (session.followState?.()?.pointer?.uid === uid) followCtl?.open?.();
+    } else if (why?.reason === "taken") toast(`Already followed by ${why.by}`);
+    else if (why?.reason === "cap") toast(followCapText());
+    else if (!owner && session.followState?.()?.pointer?.uid === uid) followCtl?.open?.();
+    else if (owner && why?.reason === "unchanged") followCtl?.open?.(owner);
     else toast("Couldn't follow that source");
     return true;
   };
@@ -107265,6 +107686,38 @@ ${b.pageTitle || ""}`.toLowerCase().includes(words)) continue;
         break;
       case "remove":
         if (item) void session.removeFollowed?.([item.uid]);
+        break;
+      default:
+        break;
+    }
+  };
+  const runFollowSection = (arg, item) => {
+    if (item?.type !== "section") return;
+    const owner = item.uid;
+    const state = followCtl?.sectionMenuState?.(owner) || {};
+    switch (arg) {
+      case "pick-block":
+        followPick("block", owner);
+        break;
+      case "pick-query":
+        followPick("query", owner);
+        break;
+      case "pick-refs":
+        followPick("refs", owner);
+        break;
+      case "pick-board":
+        followPick("board", owner);
+        break;
+      case "show":
+        followCtl?.open?.(owner);
+        break;
+      case "tree":
+        void session.setFollowTree?.(!state.tree, owner);
+        break;
+      case "stop":
+        void Promise.resolve(session.stopFollowing?.(owner)).then((ok) => {
+          if (ok && !disposed) toast("Stopped following. The cards stay in the section.");
+        });
         break;
       default:
         break;
@@ -108043,6 +108496,9 @@ ${b.pageTitle || ""}`.toLowerCase().includes(words)) continue;
         break;
       case "follow":
         runFollow(arg, item);
+        break;
+      case "follow-section":
+        runFollowSection(arg, item);
         break;
       case "pdf-pages":
         void movePdfsToPages();
@@ -111950,9 +112406,10 @@ ${url}`;
     } catch {
       followed = null;
     }
-    const followKey = session.followState?.()?.key || "";
+    const owned = typeof followed?.owner === "string" && followed.owner ? followed.owner : null;
+    const followKey = owned ? session.followOwners?.()?.owners?.find((o) => o.uid === owned && !o.over && !o.dup)?.key || "" : session.followState?.()?.key || "";
     if (followed?.uid && followed.board === boardUid && followKey && followed.src === followKey) {
-      void Promise.resolve(session.placeFollowed?.([followed], { at: p })).then((res) => {
+      void Promise.resolve(session.placeFollowed?.([followed], owned ? { at: p, owner: owned } : { at: p })).then((res) => {
         if (!disposed && res?.uids?.length) ctl.select(res.uids);
       }).catch(() => {
       });

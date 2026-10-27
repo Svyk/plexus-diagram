@@ -122,7 +122,7 @@ import { closeTab, openTab, tabAt } from "../model/tabs.js";
 import { createPanel, parseDropPayload } from "./panel.js";
 import { createInbox } from "./inbox.js";
 import { REASONS as FOLLOW_REASONS, createFollowTray } from "./follow-tray.js";
-import { FOLLOW_MIME, sourceText, textSourceUid } from "../model/follow.js";
+import { FOLLOW_MIME, followCapText, sourceText, textSourceUid } from "../model/follow.js";
 import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
@@ -5947,14 +5947,15 @@ function buildBoardView(onFail, {
           } catch { /* keep the card string */ }
         }
         const officeFile = officeTargetFromText(officeText);
-        const followKey = session.followState?.()?.key || "";
+        // PXD-13: a card from any owner's source (the board's or a section's) is a followed card.
+        const followKeys = new Set(followCtl?.keys?.() || [session.followState?.()?.key || ""].filter(Boolean));
         const follow = item?.type === "card" ? {
           block: !isQueryString(queryText) && (item.kind === "note" || item.kind === "block" || item.kind === "page"),
           query: isQueryString(queryText),
           refs: item.kind === "note" || item.kind === "block" || item.kind === "page",
           headings: item.kind === "page",
           board: item.kind === "board" && item.uid !== boardUid,
-          followed: Boolean(followKey) && item.src === followKey,
+          followed: Boolean(item.src) && followKeys.has(item.src),
           left: Boolean(followCtl?.left?.().includes(item.uid)),
         } : null;
         return { ...(task ? { statusTags, status: task.status || "" } : {}), follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
@@ -5976,6 +5977,7 @@ function buildBoardView(onFail, {
           landmark: item?.landmark === true,
           landmarkSize: item?.size || "M",
           dateSource: dateMode,
+          follow: item && followCtl?.sectionMenuState ? followCtl.sectionMenuState(item.uid) : null,
           ...(item?.look === "lane" ? { lane: { bound: item.laneAttr || null, fields: session.laneFieldsFor?.(item.uid) ?? laneFields(tableRows(b)), fresh: item.laneAttr ? (session.laneNewValues?.(item.uid) ?? []) : [] } } : {}),
         };
       }
@@ -6060,7 +6062,7 @@ function buildBoardView(onFail, {
   };
   // PXD-19: boards (from one listBoards per picker) and their sections (one pull per matching board, on demand).
   const SECTIONS_PULL = "[{(limit :block/children nil) [:block/uid :block/string :block/order :block/props {(limit :block/children nil) [:block/uid :block/string :block/order :block/props]}]}]";
-  const boardPick = () => {
+  const boardPick = (owner) => {
     let boards = null;
     const sections = new Map();
     const sectionsOf = (uid) => {
@@ -6108,12 +6110,13 @@ function buildBoardView(onFail, {
       },
       onPick: async (value) => {
         const [uid, section] = String(value || "").split("/");
-        return startFollow("board", uid, section || undefined);
+        return startFollow("board", uid, owner, section || undefined);
       },
     });
   };
-  const followPick = (what) => {
-    if (what === "board") { boardPick(); return; }
+  // `owner`: a section uid (PXD-13), or none for the board.
+  const followPick = (what, owner) => {
+    if (what === "board") { boardPick(owner); return; }
     const kind = what === "query" ? "query" : what === "refs" ? "refs" : what === "headings" ? "headings" : "block";
     const words = {
       block: { heading: "Follow a block's children", placeholder: "Search blocks and pages…", hint: "Type to search, or paste a ((block ref))" },
@@ -6145,7 +6148,7 @@ function buildBoardView(onFail, {
         }
         if (kind !== "refs" && kind !== "headings") {
           for (const r of host?.searchBlocks?.(text, 40) || []) {
-            if (r.uid === boardUid || (bare && r.uid === word)) continue;
+            if (r.uid === boardUid || r.uid === owner || (bare && r.uid === word)) continue;
             const isQ = isQueryString(r.string);
             if (kind === "query" ? !isQ : isQ) continue;
             rows.push({ title: plainText(sourceText(r.string), 80) || "(empty block)", value: r.uid, meta: r.pageTitle });
@@ -6156,23 +6159,29 @@ function buildBoardView(onFail, {
       },
       onPick: async (value) => {
         const uid = kind === "headings" ? pageUidOf(value) || value : /^[\w-]{1,64}$/.test(value) && host?.blockString?.(value) != null ? value : pageUidOf(value) || value;
-        return startFollow(kind, uid);
+        return startFollow(kind, uid, owner);
       },
     });
   };
-  const startFollow = async (kind, uid, section) => {
+  // `section`: PXD-19, the section of the board a "board" source mirrors.
+  const startFollow = async (kind, uid, owner, section) => {
     if (!uid) return false;
-    const refusal = session.followRefusal?.({ kind, uid, section }) || "";
+    const refusal = session.mirrorRefusalOf?.({ kind, uid, section }) || "";
     if (refusal === "cycle" || refusal === "self") {
       toast(FOLLOW_REASONS[refusal]);
       return true;
     }
-    const ok = await session.followSource?.({ kind, uid, section });
+    const args = { kind, uid, ...(owner ? { owner } : {}), ...(section ? { section } : {}) };
+    const ok = await session.followSource?.(args);
     if (disposed) return false;
+    const why = ok ? null : session.followRefusal?.() || null;
     if (ok) {
-      followCtl?.open?.();
+      followCtl?.open?.(owner);
       toast("Following. New items wait in the tray until you place them.");
-    } else if (session.followState?.()?.pointer?.uid === uid) followCtl?.open?.();
+    } else if (why?.reason === "taken") toast(`Already followed by ${why.by}`);
+    else if (why?.reason === "cap") toast(followCapText());
+    else if (!owner && session.followState?.()?.pointer?.uid === uid) followCtl?.open?.();
+    else if (owner && why?.reason === "unchanged") followCtl?.open?.(owner);
     else toast("Couldn't follow that source");
     return true;
   };
@@ -6208,6 +6217,24 @@ function buildBoardView(onFail, {
         break;
       case "dismiss": if (item) void session.dismissLeft?.([item.uid]); break;
       case "remove": if (item) void session.removeFollowed?.([item.uid]); break;
+      default: break;
+    }
+  };
+  // PXD-13: a section's own source. The section is the owner; its cards land inside its frame.
+  const runFollowSection = (arg, item) => {
+    if (item?.type !== "section") return;
+    const owner = item.uid;
+    const state = followCtl?.sectionMenuState?.(owner) || {};
+    switch (arg) {
+      case "pick-block": followPick("block", owner); break;
+      case "pick-query": followPick("query", owner); break;
+      case "pick-refs": followPick("refs", owner); break;
+      case "pick-board": followPick("board", owner); break;
+      case "show": followCtl?.open?.(owner); break;
+      case "tree": void session.setFollowTree?.(!state.tree, owner); break;
+      case "stop":
+        void Promise.resolve(session.stopFollowing?.(owner)).then((ok) => { if (ok && !disposed) toast("Stopped following. The cards stay in the section."); });
+        break;
       default: break;
     }
   };
@@ -6733,6 +6760,7 @@ function buildBoardView(onFail, {
       case "apply-source-order": applySourceOrder(uids); break;
       case "keep-order": if (item) void session.setKeepOrder?.(item.uid, item.keepOrder !== true); break;
       case "follow": runFollow(arg, item); break;
+      case "follow-section": runFollowSection(arg, item); break;
       case "pdf-pages": void movePdfsToPages(); break;
       case "table-captions": void foldTableCaptions(); break;
       case "fold-all-in": if (item) void session.collapseAll?.(true, { within: item.uid }); break;
@@ -9963,9 +9991,13 @@ function buildBoardView(onFail, {
     // another board's tray (or from a source this board no longer follows) falls through to the plain ref card below.
     let followed = null;
     try { followed = JSON.parse(event.dataTransfer?.getData?.(FOLLOW_MIME) || "null"); } catch { followed = null; }
-    const followKey = session.followState?.()?.key || "";
+    // PXD-13: a section's row carries its owner; it is placed only while that section still follows the same source.
+    const owned = typeof followed?.owner === "string" && followed.owner ? followed.owner : null;
+    const followKey = owned
+      ? session.followOwners?.()?.owners?.find((o) => o.uid === owned && !o.over && !o.dup)?.key || ""
+      : session.followState?.()?.key || "";
     if (followed?.uid && followed.board === boardUid && followKey && followed.src === followKey) {
-      void Promise.resolve(session.placeFollowed?.([followed], { at: p })).then((res) => {
+      void Promise.resolve(session.placeFollowed?.([followed], owned ? { at: p, owner: owned } : { at: p })).then((res) => {
         if (!disposed && res?.uids?.length) ctl.select(res.uids);
       }).catch(() => {});
       return;

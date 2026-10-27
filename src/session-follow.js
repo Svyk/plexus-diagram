@@ -5,21 +5,24 @@
 // arrows of cards already on the board are never written. PXD-14: a page followed by headings places one section per
 // heading (the heading's uid in `head`) with a ref card per block under it.
 import { boundsOf, containerAt, toRelative } from "./model/board.js";
-import { DEFAULT_SIZES, lookForNewString, readPlexus, serializeItemLayout } from "./model/schema.js";
+import { DEFAULT_SIZES, FIT_PAD, lookForNewString, readPlexus, serializeItemLayout } from "./model/schema.js";
 import { FOLLOW_HEAD, headingPlan } from "./model/follow-headings.js";
 import {
+  BOARD_OWNER_NAME,
   FOLLOW_SRC,
   addSkip,
   followBatches,
   followCardString,
   followColumn,
   followIndex,
+  followOwnersOf,
   followPointerFor,
   itemIds,
   keptFollow,
   mirrorRefusal,
   mirroredBoards,
   readFollow,
+  sectionGrid,
   sourceKey,
   withFollow,
 } from "./model/follow.js";
@@ -57,29 +60,39 @@ extendSession((session, api) => {
     return mirroredBoards(list);
   };
 
-  const writePointer = (next) => api.txn((t) => {
+  // PXD-13: an owner is the board or one of its sections; each keeps its pointer in its own block's props.
+  const ownerOf = (owner) => (owner === undefined || owner === null || owner === "" ? boardUid : owner);
+  const isSection = (owner) => api.board()?.items.get(owner)?.type === "section";
+  // The last refused followSource: { reason, by? } (null after one that went through).
+  let refusal = null;
+
+  const writePointer = (next, owner = boardUid) => api.txn((t) => {
     const board = api.board();
     if (!board?.enhanced) return false;
-    const base = api.rawPlexus(boardUid);
+    if (owner !== boardUid && !isSection(owner)) return false;
+    const base = api.rawPlexus(owner);
     const pointer = next(readFollow(base), base);
     const plexus = withFollow(base, pointer);
     if (same(plexus, base)) return false;
-    t.props(boardUid, plexus);
+    t.props(owner, plexus);
     return true;
   }).then((ok) => ok === true);
 
   // entries: source items ({ uid, kind, title? }). Ref cards in a column right of the board's cards, or a column at
   // `at` (a drag). SPREAD_CAP cards per transaction, so each batch is one undo; more go in more batches, one column
   // each. Resolves { placed, batches, total, uids }. A headings source places sections and cards (see placeHeadings);
-  // `order` is the source's heading uids in order, from the tray's last read.
-  const placeNow = (entries, { at = null, order = null } = {}) => {
+  // `order` is the source's heading uids in order, from the tray's last read. PXD-13: `owner`, a section that follows
+  // a source, places into its own frame (only the board follows headings).
+  const placeNow = (entries, { at = null, owner: ownerArg, order = null } = {}) => {
     const none = { placed: 0, batches: 0, total: 0, uids: [] };
     const board = api.board();
-    const pointer = readFollow(board?.plexus);
+    const owner = ownerOf(ownerArg);
+    if (owner !== boardUid && !isSection(owner)) return Promise.resolve(none);
+    const pointer = owner === boardUid ? readFollow(board?.plexus) : board?.items.get(owner)?.follow || null;
     if (!board || !pointer) return Promise.resolve(none);
     const key = sourceKey(pointer);
     const skipped = new Set(pointer.skip);
-    const heads = pointer.kind === "headings";
+    const heads = owner === boardUid && pointer.kind === "headings";
     const { on } = followIndex(board, key);
     const seen = new Set();
     const list = (entries || []).filter((e) => {
@@ -100,15 +113,22 @@ extendSession((session, api) => {
     if (heads && !at) return placeHeadings(list, size, key, order);
     const rects = api.rects();
     const bounds = boundsOf(board.roots.map((id) => rects.get(id)).filter(Boolean));
+    // A section's own Place / Place all: a grid inside its frame, below its cards, as its children (a drag still lands
+    // where it is dropped).
+    const inSection = owner !== boardUid && !at;
+    const grid = inSection
+      ? sectionGrid(rects.get(owner), board.items.get(owner).members.map((id) => rects.get(id)).filter(Boolean), list.length, { ...size, pad: FIT_PAD })
+      : null;
     const batches = followBatches(list, SPREAD_CAP);
     const made = [];
     let chain = Promise.resolve();
     batches.forEach((batch, column) => {
       chain = chain.then(() => {
         if (api.isGone()) return null;
-        const spots = followColumn(bounds, batch.length, { ...size, column, at });
+        if (inSection && !api.board()?.items.has(owner)) return null;
+        const spots = inSection ? grid.slice(column * SPREAD_CAP, column * SPREAD_CAP + batch.length) : followColumn(bounds, batch.length, { ...size, column, at });
         return api.txn((t) => {
-          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key, heads && typeof entry.heading === "string" ? entry.heading : ""));
+          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key, heads && typeof entry.heading === "string" ? entry.heading : "", inSection ? owner : null));
           api.applyFit(t, ids);
           return ids;
         }).then((ids) => { if (Array.isArray(ids)) made.push(...ids); });
@@ -176,36 +196,50 @@ extendSession((session, api) => {
   }
 
   // Deleting a followed card of the current source (or any card with followSkip) keeps it out of the tray.
+  // PXD-13: the skip goes to the owner whose source key the card carries (a section's card to that section). A card
+  // without a source's key goes to the board's list on Remove, don't bring back. An owner deleted in the same call
+  // takes its pointer with it.
   api.onDeleteItems?.((t, uids, opts) => {
     const board = api.board();
-    const base = api.rawPlexus(boardUid);
-    const pointer = readFollow(base);
-    if (!board || !pointer) return;
-    const key = sourceKey(pointer);
-    const add = [];
+    if (!board) return;
+    const gone = new Set(uids);
+    const byKey = new Map();
+    for (const o of followOwnersOf(board).owners) if (!byKey.has(o.key)) byKey.set(o.key, o.uid);
+    const boardKey = sourceKey(readFollow(api.rawPlexus(boardUid)));
+    const adds = new Map();
+    const add = (owner, uid) => {
+      if (!adds.has(owner)) adds.set(owner, []);
+      adds.get(owner).push(uid);
+    };
     // PXD-14: a deleted heading section keeps its heading, and so every block under it, out of the tray; those blocks'
-    // own uids are not listed as well.
-    const gone = new Set();
+    // own uids are not listed as well. Only the board follows headings.
+    const heads = new Set();
     for (const id of uids) {
       const item = board.items.get(id);
-      if (item?.type === "section" && item.head && (item.src === key || opts?.followSkip === true)) gone.add(item.head);
+      if (boardKey && item?.type === "section" && item.head && (item.src === boardKey || opts?.followSkip === true)) heads.add(item.head);
     }
-    add.push(...gone);
+    for (const head of heads) add(boardUid, head);
     for (const id of uids) {
       const item = board.items.get(id);
-      if (!item || (item.src !== key && opts?.followSkip !== true)) continue;
-      if (item.type === "section" ? item.head : gone.has(item.head)) continue;
+      if (!item) continue;
+      const owner = byKey.get(item.src) ?? (opts?.followSkip === true && boardKey ? boardUid : null);
+      if (!owner || gone.has(owner)) continue;
+      if (owner === boardUid && (item.type === "section" ? item.head : heads.has(item.head))) continue;
       const skip = skipIdOf(item);
-      if (skip) add.push(skip);
+      if (skip) add(owner, skip);
     }
-    if (add.length) t.props(boardUid, withFollow(base, { ...pointer, skip: addSkip(pointer.skip, add) }));
+    for (const [owner, list] of adds) {
+      const base = api.rawPlexus(owner);
+      const pointer = readFollow(base);
+      if (pointer) t.props(owner, withFollow(base, { ...pointer, skip: addSkip(pointer.skip, list) }));
+    }
   });
 
-  // One ref card. The parent is the section under its center, as for any drop.
-  function placeOne(t, string, spot, size, key, head = "") {
+  // One ref card. The parent is the section under its center, as for any drop, or `into` (a section's own Place).
+  function placeOne(t, string, spot, size, key, head = "", into = null) {
     const board = api.board();
     const rects = api.rects();
-    const parent = containerAt(board, { x: spot.x + size.w / 2, y: spot.y + size.h / 2 }, { rects });
+    const parent = into || containerAt(board, { x: spot.x + size.w / 2, y: spot.y + size.h / 2 }, { rects });
     const rel = toRelative(board, parent, spot, rects);
     const layout = { x: api.round1(rel.x), y: api.round1(rel.y) };
     const look = lookForNewString(string, api.setting("default-card-look", "block"));
@@ -219,6 +253,17 @@ extendSession((session, api) => {
       return pointer ? { pointer, key: sourceKey(pointer), followDerived: api.board()?.followDerived === true } : null;
     },
 
+    // PXD-13: every owner that follows a source, sections in outline order then the board ({ owners, capped }).
+    followOwners() {
+      return followOwnersOf(api.board());
+    },
+
+    // Why the last followSource was refused: { reason: "invalid" | "not-section" | "self" | "taken" | "cap" | "kind" |
+    // "unchanged", by? (the owner that follows it) }, or null.
+    followRefusal() {
+      return refusal;
+    },
+
     // Every block of the board's own tree: never a query or linked-reference result.
     followExclude() {
       const out = new Set(api.ix().keys());
@@ -227,45 +272,64 @@ extendSession((session, api) => {
     },
 
     // PXD-19: why this board cannot mirror { kind: "board", uid, section } ("self", "cycle"), or "".
-    followRefusal({ kind, uid, section } = {}) {
+    mirrorRefusalOf({ kind, uid, section } = {}) {
       if (kind !== "board") return "";
       return mirrorRefusal({ boardUid, pointer: { kind, uid, section }, followsOf });
     },
 
-    // { kind, uid, tree, section }. The same source keeps its skip list. Resolves true when the pointer changed.
-    followSource({ kind, uid, tree, section } = {}) {
-      if (typeof kind !== "string" || typeof uid !== "string" || !uid || uid === boardUid) return Promise.resolve(false);
-      if (session.followRefusal({ kind, uid, section })) return Promise.resolve(false);
-      // The kept skip list of this source, when the board stopped following it before.
-      return writePointer((cur, base) => followPointerFor(keptFollow(base, sourceKey({ kind, uid, section })) || cur, kind, uid, { tree, section }));
+    // { kind, uid, tree, section, owner }. The same source keeps its skip list. Resolves true when the pointer changed; on false
+    // followRefusal() says why. A source key is followed by one owner per board, at most FOLLOW_SECTION_CAP sections
+    // follow one, and a section cannot follow its own block or the board.
+    followSource({ kind, uid, tree, section, owner: ownerArg } = {}) {
+      const owner = ownerOf(ownerArg);
+      const refuse = (reason, by) => { refusal = by ? { reason, by } : { reason }; return Promise.resolve(false); };
+      refusal = null;
+      if (typeof kind !== "string" || typeof uid !== "string" || !uid) return refuse("invalid");
+      if (owner !== boardUid && !isSection(owner)) return refuse("not-section");
+      if (uid === boardUid || uid === owner) return refuse("self");
+      // A headings source makes sections of its own: only the board follows one.
+      if (kind === "headings" && owner !== boardUid) return refuse("kind");
+      const mirror = session.mirrorRefusalOf({ kind, uid, section });
+      if (mirror) return refuse(mirror);
+      const key = sourceKey({ kind, uid, section });
+      const { owners, capped } = followOwnersOf(api.board());
+      const other = owners.find((o) => o.key === key && o.uid !== owner);
+      if (other) return refuse("taken", other.name === BOARD_OWNER_NAME ? "the board" : other.name);
+      if (owner !== boardUid && capped && !owners.some((o) => o.uid === owner)) return refuse("cap");
+      // The kept skip list of this source, when the owner stopped following it before.
+      return writePointer((cur, base) => followPointerFor(keptFollow(base, key) || cur, kind, uid, { tree, section }), owner)
+        .then((ok) => { if (!ok) refusal = { reason: "unchanged" }; return ok; });
     },
 
-    setFollowTree(on) {
-      return writePointer((cur) => (cur?.kind === "block" ? { ...cur, tree: on === true } : cur));
+    setFollowTree(on, owner) {
+      return writePointer((cur) => (cur?.kind === "block" ? { ...cur, tree: on === true } : cur), ownerOf(owner));
     },
 
     // The cards stay; only the pointer (and its skip list) goes.
-    stopFollowing() {
-      return writePointer(() => null);
+    stopFollowing(owner) {
+      return writePointer(() => null, ownerOf(owner));
     },
 
     // Calls run one after another, and each filters against the board the previous one left, so a second Place all
     // (or a drag) while the first is still writing never places a card twice. A skipped uid is never placed.
+    // opts: { at, owner }.
     placeFollowed(entries, opts = {}) {
       const run = () => placeNow(entries, opts);
       placing = placing.then(run, run);
       return placing;
     },
 
-    // Source uids the tray should stop offering. Resolves the number added.
-    dontBringBack(uids) {
+    // Source uids the tray should stop offering, on the owner's list. Resolves the number added.
+    dontBringBack(uids, ownerArg) {
+      const owner = ownerOf(ownerArg);
       return api.txn((t) => {
-        const base = api.rawPlexus(boardUid);
+        if (owner !== boardUid && !isSection(owner)) return 0;
+        const base = api.rawPlexus(owner);
         const pointer = readFollow(base);
         if (!pointer) return 0;
         const skip = addSkip(pointer.skip, uids);
         if (same(skip, pointer.skip)) return 0;
-        t.props(boardUid, withFollow(base, { ...pointer, skip }));
+        t.props(owner, withFollow(base, { ...pointer, skip }));
         return skip.length - pointer.skip.length;
       }).then((n) => n ?? 0);
     },

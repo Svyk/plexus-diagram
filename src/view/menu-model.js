@@ -2,6 +2,7 @@
 // component renders; item ids are the contract with the view, which maps them onto session calls.
 // No DOM here: everything is data so the ids, disabled and checked logic can be tested directly.
 
+import { FOLLOW_SECTION_CAP, followCapText } from "../model/follow.js";
 import { MIND_DEPTH_MAX, MIND_DEPTH_MIN, MIND_DIRECTIONS, MIND_SPACINGS, normalizeMindPreset } from "../model/mindmap.js";
 import { PALETTE, FONT_SIZES, DOCK_POSITIONS } from "../model/schema.js";
 import { SHAPES } from "../model/shapes.js";
@@ -105,6 +106,37 @@ function followMenu(f) {
       make("follow:pick-refs", "Linked references of…"),
       make("follow:pick-headings", "A page by headings…"),
       make("follow:pick-board", "Another board or section…"),
+    ],
+  })];
+}
+
+// PXD-13. `f` is the tray's sectionMenuState(uid). Following: the source, Show in tray, the tree switch, another
+// source and Stop. Not following: pick a source, unless the board's sections are at the cap (the menu says why).
+function followSectionMenu(f) {
+  if (!f) return [];
+  if (f.following) {
+    return [make("follow-section", "Following", {
+      children: [
+        ...(f.label ? [make("follow-section:label", f.label, { disabled: true })] : []),
+        ...(f.over ? [make("follow-section:over", `Not read: over the limit of ${FOLLOW_SECTION_CAP}`, { disabled: true })] : []),
+        make("follow-section:show", `Show in tray (${Number(f.waiting) || 0} waiting)`),
+        ...(f.kind === "block" ? [make("follow-section:tree", "Include the whole tree", { checked: f.tree === true })] : []),
+        make("follow-section:pick-block", "Switch to a block's children…"),
+        make("follow-section:pick-query", "Switch to a query…"),
+        make("follow-section:pick-refs", "Switch to linked references of…"),
+        make("follow-section:pick-board", "Switch to another board or section…"),
+        make("follow-section:stop", "Stop following"),
+      ],
+    })];
+  }
+  const capped = f.capped === true;
+  return [make("follow-section", "Follow…", {
+    children: [
+      ...(capped ? [make("follow-section:cap", followCapText(), { disabled: true })] : []),
+      make("follow-section:pick-block", "A block's children…", { disabled: capped }),
+      make("follow-section:pick-query", "A query…", { disabled: capped }),
+      make("follow-section:pick-refs", "Linked references of…", { disabled: capped }),
+      make("follow-section:pick-board", "Another board or section…", { disabled: capped }),
     ],
   })];
 }
@@ -389,6 +421,7 @@ export function buildMenu(kind, ctx = {}) {
           ],
         }),
         make("focus-timer", "Focus timer"),
+        ...followSectionMenu(c.follow),
         ...(c.bucket ? [] : laneItems(c.lane)),
         sep(),
         make("fit-section", "Fit to contents", { disabled: empty }),

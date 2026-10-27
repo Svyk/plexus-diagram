@@ -345,16 +345,16 @@ test("PXD-19 tray: a whole-board source lists top-level and section cards and sa
 test("PXD-19 session: refuses self and loops, accepts a section, and placed cards carry the section key", async () => {
   const f = mount({ follow: null, boardKids: [card("n1", "Note one", 0, 0), { uid: "bs", string: "Own section", props: { plexus: SECTION() } }] });
   f.tray.dispose();
-  assert.equal(f.session.followRefusal({ kind: "board", uid: "b1", section: "bs" }), "self");
+  assert.equal(f.session.mirrorRefusalOf({ kind: "board", uid: "b1", section: "bs" }), "self");
   assert.equal(await f.session.followSource({ kind: "board", uid: "b1", section: "bs" }), false);
-  assert.equal(f.session.followRefusal({ kind: "block", uid: "SB" }), "", "other kinds are not mirrors");
+  assert.equal(f.session.mirrorRefusalOf({ kind: "block", uid: "SB" }), "", "other kinds are not mirrors");
   // A section of the source mirrors this board (the PXD-13 shape): a loop.
   await f.fake.api.data.block.update({ block: { uid: "s1", props: { plexus: { ...SECTION(), follow: { kind: "board", uid: "b1" } } } } });
-  assert.equal(f.session.followRefusal({ kind: "board", uid: "SB" }), "cycle");
+  assert.equal(f.session.mirrorRefusalOf({ kind: "board", uid: "SB" }), "cycle");
   assert.equal(await f.session.followSource({ kind: "board", uid: "SB", section: "s1" }), false);
   assert.equal(readFollow(f.fake.props("b1").plexus), null, "nothing written");
   await f.fake.api.data.block.update({ block: { uid: "s1", props: { plexus: SECTION() } } });
-  assert.equal(f.session.followRefusal({ kind: "board", uid: "SB" }), "");
+  assert.equal(f.session.mirrorRefusalOf({ kind: "board", uid: "SB" }), "");
   assert.equal(await f.session.followSource({ kind: "board", uid: "SB", section: "s1" }), true);
   assert.deepEqual(f.fake.props("b1").plexus.follow, { kind: "board", uid: "SB", section: "s1" });
   const res = await f.session.placeFollowed([{ uid: "m1", kind: "block" }]);
@@ -362,6 +362,21 @@ test("PXD-19 session: refuses self and loops, accepts a section, and placed card
   const made = res.uids[0];
   assert.equal(f.fake.api.data.pull("[:block/string]", [":block/uid", made])[":block/string"], "((m1))");
   assert.equal(f.fake.props(made).plexus.src, "board:SB/s1");
+});
+
+test("PXD-19 + PXD-13: a section of this board mirrors a section of another board; loops are refused there too", async () => {
+  const f = mount({ follow: null, boardKids: [{ uid: "own", string: "Mine", props: { plexus: SECTION() } }] });
+  f.tray.dispose();
+  assert.equal(await f.session.followSource({ kind: "board", uid: "b1", section: "own", owner: "own" }), false);
+  assert.deepEqual(f.session.followRefusal(), { reason: "self" });
+  assert.equal(await f.session.followSource({ kind: "board", uid: "SB", section: "s1", owner: "own" }), true);
+  assert.deepEqual(f.fake.props("own").plexus.follow, { kind: "board", uid: "SB", section: "s1" });
+  assert.equal(readFollow(f.fake.props("b1").plexus), null, "the board's own props stay");
+  assert.equal(f.session.followOwners().owners.find((o) => o.uid === "own")?.key, "board:SB/s1");
+  // The whole source board (another key) may go to the board; a loop back from the source may not.
+  await f.fake.api.data.block.update({ block: { uid: "SB", props: { plexus: { v: 2, follow: { kind: "board", uid: "b1" } } } } });
+  assert.equal(await f.session.followSource({ kind: "board", uid: "SB", owner: "own" }), false);
+  assert.deepEqual(f.session.followRefusal(), { reason: "cycle" });
 });
 
 // ---------------------------------------------------------------- menu

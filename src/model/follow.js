@@ -339,3 +339,88 @@ export function createLeftMemory({ storage = globalThis.localStorage, graph = ""
     },
   };
 }
+
+// ---- PXD-13: a source per section ----
+// A section follows a source through plexus.follow on its own block (same shape as the board's). An owner is the board
+// or one section; owners in order are the sections in outline order, then the board (the catch-all). One owner per
+// source key on a board, so a placed card's src names exactly one owner.
+
+// Sections per board that follow a source (the board's own source comes on top).
+export const FOLLOW_SECTION_CAP = 8;
+export const followCapText = () => `Up to ${FOLLOW_SECTION_CAP} sections follow a source on one board`;
+export const BOARD_OWNER_NAME = "this board";
+
+export function sectionOwnerName(item) {
+  return `“${plainText(item?.title || item?.string || "", 48) || "Untitled section"}”`;
+}
+
+// Sections that follow a source, depth first in block order, then the board when it follows one.
+// Each: { uid, section, pointer, key, name, over (past the cap: not read), dup (name of the earlier owner of the same
+// key: not read) }. `capped`: the cap is reached, so one more section cannot follow.
+export function followOwnersOf(board) {
+  const out = [];
+  if (!board?.items) return { owners: out, capped: false, sections: 0 };
+  const byOrder = (uids) => (uids || [])
+    .map((u, i) => ({ u, i, o: board.items.get(u)?.order ?? i }))
+    .sort((a, b) => a.o - b.o || a.i - b.i)
+    .map(({ u }) => u);
+  const visit = (uids) => {
+    for (const uid of byOrder(uids)) {
+      const item = board.items.get(uid);
+      if (item?.type !== "section") continue;
+      if (item.follow) out.push({ uid, section: true, pointer: item.follow, key: sourceKey(item.follow), name: sectionOwnerName(item) });
+      visit(item.members);
+    }
+  };
+  visit(board.roots);
+  let sections = 0;
+  for (const o of out) { sections += 1; o.over = sections > FOLLOW_SECTION_CAP; }
+  const pointer = readFollow(board.plexus);
+  if (pointer) out.push({ uid: board.uid, section: false, pointer, key: sourceKey(pointer), name: BOARD_OWNER_NAME, over: false });
+  const first = new Map();
+  for (const o of out) {
+    o.dup = !o.over && first.has(o.key) ? first.get(o.key) : null;
+    if (!o.over && !first.has(o.key)) first.set(o.key, o.name);
+  }
+  return { owners: out, capped: sections >= FOLLOW_SECTION_CAP, sections };
+}
+
+// One item waiting in several sources shows once, placeable in the first owner (owner order); later owners show it
+// as a hint ("also in …") that Place all skips. An item the first owner skipped is not offered by later owners at all.
+// lanes: [{ name, read, skip, diff }] in owner order. Returns [{ pending, hints: [{ ...row, also }] }] in the same order.
+export function dedupeFollow(lanes) {
+  const claimed = new Map();
+  return (lanes || []).map((lane) => {
+    const pending = [];
+    const hints = [];
+    for (const row of lane?.diff?.pending || []) {
+      const ids = itemIds(row);
+      const by = ids.map((id) => claimed.get(id)).find(Boolean);
+      if (by?.skip) continue;
+      if (by) { hints.push({ ...row, also: by.name }); continue; }
+      for (const id of ids) claimed.set(id, { name: lane.name });
+      pending.push(row);
+    }
+    const skipped = new Set(lane?.skip || []);
+    for (const item of lane?.read?.ok ? lane.read.items || [] : []) {
+      if (!item?.uid || !skipped.has(item.uid)) continue;
+      for (const id of itemIds(item)) if (!claimed.has(id)) claimed.set(id, { name: lane.name, skip: true });
+    }
+    return { pending, hints };
+  });
+}
+
+// World top-left of `count` cards in a grid inside a section: columns fit the inner width, the first row one stack gap
+// below the section's current members (or at the top-left inside the padding when it has none). `start` continues the
+// grid of an earlier batch.
+export function sectionGrid(section, members, count, { w, h, pad = 24, gap = FOLLOW_STACK_GAP, start = 0 } = {}) {
+  const inner = Math.max(0, (section?.w || 0) - 2 * pad);
+  const cols = Math.max(1, Math.floor((inner + gap) / (w + gap)));
+  const x0 = (section?.x || 0) + pad;
+  const bottom = (members || []).reduce((m, r) => Math.max(m, r.y + r.h), -Infinity);
+  const y0 = Number.isFinite(bottom) ? bottom + gap : (section?.y || 0) + pad;
+  return Array.from({ length: Math.max(0, count) }, (_, k) => {
+    const i = start + k;
+    return { x: x0 + (i % cols) * (w + gap), y: y0 + Math.floor(i / cols) * (h + gap) };
+  });
+}

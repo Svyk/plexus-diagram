@@ -3574,6 +3574,80 @@ body.pxd-fs-cover .roam-article .pxd-mount--fullscreen {
   border-color: var(--pxd-border, #4b5563);
 }
 
+/* PXD-11 attribute lanes: the bands of a bound lane (divider plus a header per band) and the value chip on the cards
+   inside it. Scoped under the board root; colors come from the board tokens, so dark mode follows. */
+.pxd-root .pxd-section--lane > .pxd-lane-bands {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: row;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pxd-root .pxd-section--lane.pxd-lane-v > .pxd-lane-bands { flex-direction: column; }
+
+.pxd-root .pxd-lane-bands > .pxd-lane-band {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  border-left: 1px solid var(--pxd-border, #d0d7de);
+}
+
+.pxd-root .pxd-section--lane.pxd-lane-v > .pxd-lane-bands > .pxd-lane-band {
+  border-left: 0;
+  border-top: 1px solid var(--pxd-border, #d0d7de);
+}
+
+.pxd-root .pxd-lane-bands > .pxd-lane-band:first-child { border-color: transparent; }
+
+.pxd-root .pxd-lane-bands > .pxd-lane-band--none { background: color-mix(in srgb, var(--pxd-muted, #5f6b7c) 6%, transparent); }
+
+.pxd-root .pxd-lane-band > .pxd-lane-band__label {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  max-width: calc(100% - 12px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--pxd-muted, #5f6b7c);
+}
+
+.pxd-root .pxd-lane-band--none > .pxd-lane-band__label { font-style: italic; }
+
+.pxd-root .pxd-item > .pxd-lane-mark {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  background: var(--pxd-chrome-bg, #fff);
+  color: var(--pxd-text, inherit);
+  font-size: 11px;
+  line-height: 16px;
+  pointer-events: none;
+}
+
+.pxd-root .pxd-item > .pxd-lane-mark.pxd-lane-mark--none { color: var(--pxd-muted, #5f6b7c); font-style: italic; }
+
+.pxd-root .pxd-item > .pxd-lane-mark.pxd-lane-mark--two { border-style: dashed; }
+
+.pxd-root .pxd-item > .pxd-lane-mark.pxd-lane-mark--loose {
+  border-color: var(--pxd-accent, #2d72d2);
+  color: var(--pxd-accent, #2d72d2);
+}
+
 /* Plexus Diagram 1.2 backgrounds: the grid pattern (minor + major lines) and board tones. Rules are
    scoped .pxd-root .pxd-x or .pxd-root.pxd-bg-x (two classes at least). Tones only set --pxd-surface,
    which .pxd-root already paints; palette tones mix the palette line into the base surface at ~9%
@@ -6592,6 +6666,20 @@ body.roam-body.dark .pxd-root {
 }
 
 .pxd-follow__row--left { cursor: default; }
+
+/* PXD-14: a heading's header in the tray, over its blocks. */
+.pxd-follow__group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 4px 2px;
+  border-top: 1px solid var(--pxd-border, #d0d7de);
+  font-weight: 600;
+}
+.pxd-follow__group > .pxd-follow__text { flex: 1 1 auto; min-width: 0; }
+.pxd-follow__group > .pxd-follow__acts { flex: 0 0 auto; white-space: nowrap; }
 .pxd-follow__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .pxd-follow__new {
@@ -6630,12 +6718,14 @@ body.roam-body.dark .pxd-root {
 .pxd-root button.pxd-follow__close { padding: 0 6px; border-color: transparent; font-size: 14px; line-height: 16px; }
 .pxd-root button.pxd-follow__all:disabled { opacity: 0.45; cursor: default; }
 
-.pxd-root .pxd-item.pxd-item--left {
+.pxd-root .pxd-item.pxd-item--left,
+.pxd-root .pxd-item.pxd-item--moved {
   outline: 2px dashed var(--pxd-muted, #5f6b7c);
   outline-offset: 2px;
 }
 
-.pxd-root .pxd-item.pxd-item--left::after {
+.pxd-root .pxd-item.pxd-item--left::after,
+.pxd-root .pxd-item.pxd-item--moved::after {
   content: "Left the source";
   position: absolute;
   top: 4px;
@@ -6650,6 +6740,8 @@ body.roam-body.dark .pxd-root {
   line-height: 16px;
   pointer-events: none;
 }
+
+.pxd-root .pxd-item.pxd-item--moved::after { content: attr(data-pxd-moved); }
 
 /* MEM-1. Halo popover. A border, and the same surface as other popovers. */
 

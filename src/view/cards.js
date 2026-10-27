@@ -1781,6 +1781,8 @@ export function createItemRenderer({
   const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash", "pxd-item--roam-table", "pxd-item--into", "pxd-item--pdf-bar"];
   // PXD-9: cards whose block left the board's followed source. A mark only; the card stays until the user acts.
   let followLeft = null;
+  // PXD-14: cards whose block now sits under another heading of the followed page: uid -> that heading's text.
+  let followMoved = null;
   const imageRegionString = (text) => {
     const region = parseRegion(text);
     return Boolean(region && region.kind === "img" && region.supported === true && region.owner === "plexus-diagram" && region.error == null);
@@ -1865,6 +1867,7 @@ export function createItemRenderer({
     // Classes other code toggles on the shell (offscreen shell, memory lane, pulse) survive the re-sync.
     for (const keep of TRANSIENT_CLASSES) if (node.classList?.contains(keep)) cls.push(keep);
     node.className = cls.join(" ");
+    if (item.type !== "section") paintMoved(node, item.uid);
     {
       const dueShort = item.type === "card" && cls.includes("pxd-item--task") ? taskMeta(item.string, item.content)?.due?.short : "";
       // The map tier prints it after the header text, and a pseudo element reads its own element's attribute.
@@ -1916,7 +1919,45 @@ export function createItemRenderer({
     if (item.landmark || rec.landmarkEl) paintLandmarkMark(rec, item);
     if (trailBadgeMap.size || rec.trailBadge) paintTrailBadge(rec, item.uid);
     if (item.type !== "section") paintOutside(rec, item.uid);
+    if (item.type === "section" ? (item.laneView || rec.laneEl) : (item.laneMark || rec.laneMarkEl)) paintLane(rec, item);
     if (item.type === "card" && (item.kind === "block" || item.kind === "page")) armLinkHover(rec, item);
+  };
+
+  // PXD-11. A bound lane draws a divider and a "label count" header per band; a card in it carries its value as a
+  // chip. Both exist only for bound lanes and are rebuilt only when their text changes.
+  const paintLane = (rec, item) => {
+    if (item.type === "section") {
+      const bands = Array.isArray(item.laneView) && item.laneView.length ? item.laneView : null;
+      if (!bands) {
+        if (rec.laneEl) { rec.laneEl.remove(); rec.laneEl = null; rec.laneKey = null; }
+        return;
+      }
+      const key = JSON.stringify(bands);
+      if (rec.laneKey === key && rec.laneEl) return;
+      if (!rec.laneEl) rec.laneEl = rec.el.querySelector?.(":scope > .pxd-lane-bands") || el("div", "pxd-lane-bands", rec.el);
+      rec.laneEl.textContent = "";
+      for (const band of bands) {
+        const cell = el("div", band.none ? "pxd-lane-band pxd-lane-band--none" : "pxd-lane-band", rec.laneEl);
+        const label = el("span", "pxd-lane-band__label", cell);
+        label.textContent = `${band.label} ${band.n}`;
+      }
+      rec.laneKey = key;
+      return;
+    }
+    const mark = item.laneMark;
+    if (!mark) {
+      if (rec.laneMarkEl) { rec.laneMarkEl.remove(); rec.laneMarkEl = null; }
+      return;
+    }
+    if (!rec.laneMarkEl) rec.laneMarkEl = el("span", "pxd-lane-mark", rec.el);
+    const chip = rec.laneMarkEl;
+    chip.className = `pxd-lane-mark${mark.none ? " pxd-lane-mark--none" : ""}${mark.two ? " pxd-lane-mark--two" : ""}${mark.loose ? " pxd-lane-mark--loose" : ""}`;
+    const text = mark.two ? `${mark.label} +1` : mark.label;
+    if (chip.textContent !== text) chip.textContent = text;
+    const tip = mark.loose
+      ? `${mark.name}: ${mark.label} (no sub-lane for this value yet; Add sub-lanes in the lane menu)`
+      : mark.two ? `${mark.name}: ${mark.label} (2 values; the first one sets the sub-lane)` : `${mark.name}: ${mark.label}`;
+    if (chip.title !== tip) chip.title = tip;
   };
 
   // Created only for a real landmark or a real badge, so a board with neither adds no nodes.
@@ -6585,11 +6626,25 @@ export function createItemRenderer({
     rec.badgeKey = key;
   };
 
+  // The moved mark and its badge text on a card shell; a card that left the source shows that mark instead.
+  const paintMoved = (el, uid) => {
+    const on = Boolean(followMoved?.has(uid)) && !followLeft?.has(uid);
+    el.classList?.toggle?.("pxd-item--moved", on);
+    if (on) el.setAttribute?.("data-pxd-moved", `Moved to ${followMoved.get(uid) || "another heading"}`);
+    else el.removeAttribute?.("data-pxd-moved");
+  };
   const setFollowLeft = (set) => {
     followLeft = set instanceof Set && set.size ? set : null;
     for (const rec of shells.values()) {
       if (rec.type === "section") continue;
       rec.el.classList?.toggle?.("pxd-item--left", Boolean(followLeft?.has(rec.uid)));
+      if (followMoved) paintMoved(rec.el, rec.uid);
+    }
+  };
+  const setFollowMoved = (map) => {
+    followMoved = map instanceof Map && map.size ? map : null;
+    for (const rec of shells.values()) {
+      if (rec.type !== "section") paintMoved(rec.el, rec.uid);
     }
   };
   const setChanged = (set) => {
@@ -7787,6 +7842,7 @@ export function createItemRenderer({
     setBadges,
     setChanged,
     setFollowLeft,
+    setFollowMoved,
     setShowBadges,
     setTrailBadges,
     setTaskChips,

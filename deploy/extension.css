@@ -6603,6 +6603,8 @@ body.roam-body.dark .pxd-root {
   border-top: 1px solid var(--pxd-border, #d0d7de);
   font-weight: 600;
 }
+.pxd-follow__group > .pxd-follow__text { flex: 1 1 auto; min-width: 0; }
+.pxd-follow__group > .pxd-follow__acts { flex: 0 0 auto; white-space: nowrap; }
 .pxd-follow__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .pxd-follow__new {

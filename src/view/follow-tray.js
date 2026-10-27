@@ -13,9 +13,13 @@
 // own quiet period and hold; a lane whose period ends is due, and one shared pass (one bgIdle job) reads every due lane
 // one after another in owner order, then sorts and dedupes all lanes once and paints once. One poll and one set of
 // window / on-screen listeners per tray.
+// PXD-18: following the board's Inbox, the board's rows are an Arrivals strip of at most ARRIVALS_CAP per visit (this
+// tray's life); the rest say how many wait, and "Show more" makes room for another ARRIVALS_CAP. The visit's placed
+// count is read from the board (visitPlaced), so a drag counts like Place and an undo gives the room back.
 
 import { CARD_MIME } from "../model/drop.js";
 import {
+  ARRIVALS_CAP,
   BOARD_OWNER_NAME,
   FOLLOW_MIME,
   FOLLOW_SECTION_CAP,
@@ -23,7 +27,11 @@ import {
   FOLLOW_SLOW_MS,
   FOLLOW_TREE_DEPTH,
   FOLLOW_TYPING_MS,
+  INBOX_KIND,
   absentStep,
+  arrivalsLine,
+  arrivalsPill,
+  arrivalsView,
   createLeftMemory,
   dedupeFollow,
   followCardString,
@@ -31,12 +39,14 @@ import {
   followIndex,
   followOwnersOf,
   followPill,
+  followedUids,
   followQuietMs,
   leftUnsettled,
   sinceVisit,
   sourceKey,
   textSourceUid,
   trayHeadline,
+  visitPlaced,
 } from "../model/follow.js";
 import { headingsEmpty, headingsNote, movedCards } from "../model/follow-headings.js";
 import { itemLabel, plainText } from "../model/schema.js";
@@ -70,6 +80,7 @@ export function createFollowTray({
   onMoved,
   onShowCard,
   onPlaced,
+  onSource,
   toast,
   now = () => globalThis.performance?.now?.() ?? Date.now(),
 } = {}) {
@@ -144,6 +155,10 @@ export function createFollowTray({
     stale: false,
     // The cards that had left when the board last closed (per owner, per device).
     leftBefore: uid ? memory.get(uid) : null,
+    // PXD-18: this visit's Arrivals room, and the source's cards already on the board when the visit (or the source)
+    // began: every other card of the source counts as placed this visit, however it was made.
+    allowance: ARRIVALS_CAP,
+    before: new Set(),
   });
   // Over the section cap, or a source an earlier owner follows already: listed, never read.
   const readable = (lane) => Boolean(lane?.pointer) && !lane.over && !lane.dup;
@@ -171,6 +186,7 @@ export function createFollowTray({
   const ctx = (lane) => ({
     host,
     boardUid,
+    boardTitle: () => board()?.title || "",
     inBoard: () => session.followExclude?.() || new Set([boardUid]),
     tick: () => new Promise((resolve) => timers.idle(resolve)),
     followed: () => followIndex(board(), lane.key).followed.map((card) => card.target?.uid).filter(Boolean),
@@ -446,6 +462,8 @@ export function createFollowTray({
     lane.pointer = next;
     lane.key = nextKey;
     lane.read = null;
+    lane.allowance = ARRIVALS_CAP;
+    lane.before = followedUids(board(), nextKey);
     lane.absent = new Map();
     lane.status = next ? "reading" : "idle";
     lane.reason = "";
@@ -470,6 +488,7 @@ export function createFollowTray({
   // The board's and the sections' pointers are the only source of truth: Follow, Stop and an undo all arrive as a
   // board change.
   function adopt() {
+    const was = lanes.get(boardUid)?.pointer?.kind || "";
     const { owners } = followOwnersOf(board());
     const next = new Map();
     let changed = false;
@@ -485,8 +504,18 @@ export function createFollowTray({
     if (!changed) return false;
     if (!order.length && open) close();
     armPoll();
+    const kind = lanes.get(boardUid)?.pointer?.kind || "";
+    if (kind !== was) {
+      try { onSource?.(kind, was); } catch { /* the listener's own problem */ }
+    }
     return true;
   }
+
+  const isInbox = (lane) => !lane?.section && lane?.pointer?.kind === INBOX_KIND;
+  // The rows a lane offers: every pending row, or for the board's Inbox the Arrivals strip.
+  const strip = (lane) => (isInbox(lane)
+    ? arrivalsView(lane.pending, { allowance: lane.allowance, placed: visitPlaced(board(), lane.key, lane.before) })
+    : { rows: lane?.pending || [], waiting: 0 });
 
   // ---- placing ----
   const entryOf = (row) => ({
@@ -536,7 +565,7 @@ export function createFollowTray({
     }
     const c = counts();
     const n = waiting();
-    btn.textContent = followPill(n);
+    btn.textContent = order.length === 1 && isInbox(order[0]) ? arrivalsPill(n) : followPill(n);
     btn.classList.toggle("pxd-follow--new", c.newCount > 0 || c.leftCount > 0);
     btn.setAttribute("aria-expanded", open ? "true" : "false");
     const head = trayHeadline(c);
@@ -614,14 +643,25 @@ export function createFollowTray({
       el("div", "pxd-follow__note", parent, headingsNote);
       if (lane.read?.ok && !lane.read.items.some((row) => row.kind === "heading")) el("div", "pxd-follow__note", parent, headingsEmpty);
     }
+    const inbox = isInbox(lane);
+    const shown = strip(lane);
     const bar = el("div", "pxd-follow__bar", parent);
-    el("span", "pxd-follow__count", bar, `${lane.pending.length} waiting · ${lane.diff.placed} on the board`);
-    const all = button(bar, "pxd-follow__all", lane.pending.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => { void place(lane.pending.slice(), lane); });
-    all.disabled = lane.pending.length === 0 || placing;
+    if (inbox) {
+      el("span", "pxd-follow__arrivals", bar, "Arrivals");
+      el("span", "pxd-follow__count", bar, `${arrivalsLine(shown)} · ${lane.diff.placed} on the board`);
+    } else el("span", "pxd-follow__count", bar, `${lane.pending.length} waiting · ${lane.diff.placed} on the board`);
+    const all = button(bar, "pxd-follow__all", shown.rows.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => { void place(shown.rows.slice(), lane); });
+    all.disabled = shown.rows.length === 0 || placing;
     const list = el("div", "pxd-follow__list", parent);
-    if (!lane.pending.length && !lane.hints.length) el("div", "pxd-follow__empty", list, lane.read ? "Everything in the source is on the board." : "");
+    if (!lane.pending.length && !lane.hints.length) el("div", "pxd-follow__empty", list, lane.read ? (inbox ? "No daily-note block waits." : "Everything in the source is on the board.") : "");
     if (heads) groupRows(list, lane);
-    else for (const row of lane.pending) rowEl(list, row, lane);
+    else for (const row of shown.rows) rowEl(list, row, lane);
+    if (shown.waiting > 0) {
+      const more = el("div", "pxd-follow__more", list);
+      el("span", "pxd-follow__count", more, `${shown.waiting} more wait`);
+      const n = Math.min(ARRIVALS_CAP, shown.waiting);
+      button(more, "pxd-follow__show-more", `Show ${n} more`, () => { lane.allowance += ARRIVALS_CAP; paintPanel(); });
+    }
     for (const row of lane.hints) hintEl(list, row);
     if (lane.diff.left.length) {
       el("div", "pxd-follow__section", parent, `Left the source (${lane.diff.left.length})`);
@@ -826,6 +866,8 @@ export function createFollowTray({
     rows: (owner) => (owner ? lanes.get(owner)?.pending.slice() || [] : order.flatMap((lane) => lane.pending)),
     hints: (owner) => (owner ? lanes.get(owner)?.hints.slice() || [] : order.flatMap((lane) => lane.hints)),
     left: (owner) => (owner ? lanes.get(owner)?.diff.left.slice() || [] : allLeft()),
+    // PXD-18: the board's Arrivals strip ({ rows, waiting }) while it follows its Inbox, else its pending rows.
+    arrivals: () => { const v = strip(lanes.get(boardUid)); return { rows: v.rows.slice(), waiting: v.waiting }; },
     moved: () => moved.slice(),
     reads: () => order.reduce((n, lane) => n + lane.reads, 0),
     // Source keys of every owner that is read (a card from any of them is a followed card).

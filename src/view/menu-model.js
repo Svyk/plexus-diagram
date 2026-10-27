@@ -81,6 +81,7 @@ function landmarkItem(c) {
 
 // PXD-9. `f` is the follow tray's menuState(). Following: the source, the tray, the tree switch, another source and
 // Stop. Not following: pick a source; a lone ((uid)) in the board text is offered first, never followed by itself.
+// PXD-18: the board's own Inbox is a source too (its arrivals wait in the tray).
 function followMenu(f) {
   if (!f) return [];
   if (f.following) {
@@ -93,6 +94,7 @@ function followMenu(f) {
         make("follow:pick-query", "Switch to a query…"),
         make("follow:pick-refs", "Switch to linked references of…"),
         make("follow:pick-headings", "Switch to a page by headings…"),
+        ...(f.kind === "inbox" ? [] : [make("follow:inbox", "Switch to this board's Inbox")]),
         make("follow:stop", "Stop following"),
       ],
     })];
@@ -104,6 +106,7 @@ function followMenu(f) {
       make("follow:pick-query", "A query…"),
       make("follow:pick-refs", "Linked references of…"),
       make("follow:pick-headings", "A page by headings…"),
+      make("follow:inbox", "This board's Inbox"),
     ],
   })];
 }

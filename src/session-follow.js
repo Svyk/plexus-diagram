@@ -8,6 +8,7 @@ import { boundsOf, containerAt, toRelative } from "./model/board.js";
 import { DEFAULT_SIZES, FIT_PAD, lookForNewString, readPlexus, serializeItemLayout } from "./model/schema.js";
 import { FOLLOW_HEAD, headingPlan } from "./model/follow-headings.js";
 import {
+  FOLLOW_DAY,
   BOARD_OWNER_NAME,
   FOLLOW_SRC,
   INBOX_KIND,
@@ -18,6 +19,7 @@ import {
   followIndex,
   followOwnersOf,
   followPointerFor,
+  journalColumnSpots,
   itemIds,
   keptFollow,
   mirrorRefusal,
@@ -122,14 +124,26 @@ extendSession((session, api) => {
       : null;
     const batches = followBatches(list, SPREAD_CAP);
     const made = [];
+    // One column per day: every spot is computed first, from the cards already on the board.
+    const byDay = owner === boardUid && pointer.kind === "journals" && pointer.columns === true && !at;
+    const dayRects = [];
+    if (byDay) {
+      for (const item of board.items.values()) {
+        const r = rects.get(item.uid);
+        if (item.src === key && item.day && r) dayRects.push({ day: item.day, x: r.x, y: r.y, w: r.w, h: r.h });
+      }
+    }
+    const planned = byDay ? journalColumnSpots(dayRects, list, { bounds, ...size }) : null;
     let chain = Promise.resolve();
     batches.forEach((batch, column) => {
       chain = chain.then(() => {
         if (api.isGone()) return null;
         if (inSection && !api.board()?.items.has(owner)) return null;
-        const spots = inSection ? grid.slice(column * SPREAD_CAP, column * SPREAD_CAP + batch.length) : followColumn(bounds, batch.length, { ...size, column, at });
+        const spots = inSection
+          ? grid.slice(column * SPREAD_CAP, column * SPREAD_CAP + batch.length)
+          : planned ? planned.slice(column * SPREAD_CAP, column * SPREAD_CAP + batch.length) : followColumn(bounds, batch.length, { ...size, column, at });
         return api.txn((t) => {
-          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key, heads && typeof entry.heading === "string" ? entry.heading : "", inSection ? owner : null));
+          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key, heads && typeof entry.heading === "string" ? entry.heading : "", inSection ? owner : null, pointer.kind === "journals" && /^\d\d-\d\d-\d{4}$/.test(entry.day || "") ? entry.day : null));
           api.applyFit(t, ids);
           return ids;
         }).then((ids) => { if (Array.isArray(ids)) made.push(...ids); });
@@ -237,7 +251,7 @@ extendSession((session, api) => {
   });
 
   // One ref card. The parent is the section under its center, as for any drop, or `into` (a section's own Place).
-  function placeOne(t, string, spot, size, key, head = "", into = null) {
+  function placeOne(t, string, spot, size, key, head = "", into = null, day = null) {
     const board = api.board();
     const rects = api.rects();
     const parent = into || containerAt(board, { x: spot.x + size.w / 2, y: spot.y + size.h / 2 }, { rects });
@@ -245,7 +259,7 @@ extendSession((session, api) => {
     const layout = { x: api.round1(rel.x), y: api.round1(rel.y) };
     const look = lookForNewString(string, api.setting("default-card-look", "block"));
     if (look) layout.look = look;
-    return t.create({ parent, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key, ...(head ? { [FOLLOW_HEAD]: head } : {}) } });
+    return t.create({ parent, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key, ...(head ? { [FOLLOW_HEAD]: head } : {}), ...(day ? { [FOLLOW_DAY]: day } : {}) } });
   }
 
   Object.assign(session, {
@@ -278,11 +292,11 @@ extendSession((session, api) => {
       return mirrorRefusal({ boardUid, pointer: { kind, uid, section }, followsOf });
     },
 
-    // { kind, uid, tree, section, owner }. The same source keeps its skip list. Resolves true when the pointer changed; on false
+    // { kind, uid, tree, columns, section, owner }. The same source keeps its skip list. Resolves true when the pointer changed; on false
     // followRefusal() says why. A source key is followed by one owner per board, at most FOLLOW_SECTION_CAP sections
     // follow one, and a section cannot follow its own block or the board. PXD-18: the Inbox kind takes the board's own
     // uid, and only the board follows it.
-    followSource({ kind, uid, tree, section, owner: ownerArg } = {}) {
+    followSource({ kind, uid, tree, columns, section, owner: ownerArg } = {}) {
       const owner = ownerOf(ownerArg);
       const refuse = (reason, by) => { refusal = by ? { reason, by } : { reason }; return Promise.resolve(false); };
       refusal = null;
@@ -301,12 +315,16 @@ extendSession((session, api) => {
       if (other) return refuse("taken", other.name === BOARD_OWNER_NAME ? "the board" : other.name);
       if (owner !== boardUid && capped && !owners.some((o) => o.uid === owner)) return refuse("cap");
       // The kept skip list of this source, when the owner stopped following it before.
-      return writePointer((cur, base) => followPointerFor(keptFollow(base, key) || cur, kind, uid, { tree, section }), owner)
+      return writePointer((cur, base) => followPointerFor(keptFollow(base, key) || cur, kind, uid, { tree, columns, section }), owner)
         .then((ok) => { if (!ok) refusal = { reason: "unchanged" }; return ok; });
     },
 
     setFollowTree(on, owner) {
       return writePointer((cur) => (cur?.kind === "block" ? { ...cur, tree: on === true } : cur), ownerOf(owner));
+    },
+
+    setFollowColumns(on) {
+      return writePointer((cur) => (cur?.kind === "journals" ? { ...cur, columns: on === true } : cur));
     },
 
     // The cards stay; only the pointer (and its skip list) goes.

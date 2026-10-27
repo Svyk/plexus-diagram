@@ -14,10 +14,11 @@
 // An item is { uid, kind: "block" | "page", text, time, title? (page), crumb?, depth?, parent? (block tree), blank? }. `time` is the later of
 // create and edit time, so the tray can say what is new since the last visit.
 
-import { FOLLOW_PARENT_CAP, FOLLOW_READ_CAP, FOLLOW_SRC, FOLLOW_TREE_DEPTH, INBOX_KIND, queryBody, readFollow, sourceText as textOf } from "../model/follow.js";
+import { FOLLOW_PARENT_CAP, FOLLOW_READ_CAP, FOLLOW_SRC, FOLLOW_TREE_DEPTH, INBOX_KIND, journalSpec, queryBody, readFollow, sourceText as textOf } from "../model/follow.js";
 import { BOARD_MEMBER_RULE } from "../model/board-rule.js";
 import { headingItems } from "../model/follow-headings.js";
 import { filterInbox, inboxTitles, readInbox } from "../model/inbox.js";
+import { dailyTitle, dailyUid, journalWindow, titleToTime } from "../model/journal.js";
 import { classifyString, firstLine, parseBoardTitle, plainText, readPlexus } from "../model/schema.js";
 import { loadQueryRows, parseQuery } from "../model/query-run.js";
 import { createQueryBackend } from "./query-backend.js";
@@ -408,5 +409,56 @@ defineFollowKind({
       ...(e.string.trim() ? {} : { blank: true }),
     }));
     return { ok: true, complete: !got.failed && !got.full && kept.length <= FOLLOW_READ_CAP, items };
+  },
+});
+
+// PXD-15: a rolling window of daily pages. Days come from page titles only (never the MM-DD-YYYY uid, never create
+// time). One pull per day, by title; a day with JOURNAL_PULL_LIMIT children is cut, so the read is partial.
+export const JOURNAL_PULL_LIMIT = FOLLOW_READ_CAP + 1;
+// Blocks per day that become items in columns mode; the rest of the day's uids stay members of the source.
+export const JOURNAL_DAY_CAP = 20;
+export const JOURNAL_PULL = `[:block/uid :node/title {(limit :block/children ${JOURNAL_PULL_LIMIT}) [${FIELDS}]}]`;
+
+defineFollowKind({
+  id: "journals",
+  title: "Journals",
+  describe(p) {
+    const spec = journalSpec(p.uid);
+    return `Journals, ${spec?.week ? "this week" : `last ${spec?.days ?? "?"} days`}${p.columns ? ", one column per day" : ""}`;
+  },
+  watch: (p, host, cb, env) => watchSaves(env, cb),
+  async read(p, { host, now }) {
+    const days = journalWindow(p.uid, typeof now === "function" ? now() ?? Date.now() : Date.now());
+    if (!days.length) return { ok: false, reason: "window" };
+    const items = [];
+    const members = [];
+    const omitted = [];
+    let complete = true;
+    let failed = 0;
+    for (const day of days) {
+      const title = dailyTitle(day);
+      let node = null;
+      try { node = host?.pullTitle?.(JOURNAL_PULL, title) || null; } catch { failed += 1; complete = false; continue; }
+      if (!node || titleToTime(node[":node/title"]) !== day || typeof node[UID] !== "string") continue;
+      const kids = sorted(node).filter((kid) => typeof kid?.[UID] === "string");
+      if (kids.length >= JOURNAL_PULL_LIMIT) complete = false;
+      const blank = (kid) => !(typeof kid[STR] === "string" && kid[STR].trim());
+      if (kids.every(blank)) continue;
+      const duid = dailyUid(day);
+      items.push({ uid: node[UID], kind: "page", title, text: title, time: day, day: duid });
+      if (p.columns !== true) continue;
+      let n = 0;
+      let left = 0;
+      for (const kid of kids) {
+        const string = typeof kid[STR] === "string" ? kid[STR] : "";
+        if (blank(kid)) { items.push({ uid: kid[UID], kind: "block", text: "", time: timeOf(kid), crumb: title, day: duid, blank: true }); continue; }
+        if (n >= JOURNAL_DAY_CAP) { members.push(kid[UID]); left += 1; continue; }
+        n += 1;
+        items.push({ uid: kid[UID], kind: "block", text: textOf(string), time: timeOf(kid), crumb: title, day: duid });
+      }
+      if (left) omitted.push({ day: duid, title, n: left });
+    }
+    if (failed === days.length) return { ok: false, reason: "error" };
+    return { ok: true, complete, items, ...(members.length ? { members } : {}), ...(omitted.length ? { omitted } : {}) };
   },
 });

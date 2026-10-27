@@ -341,6 +341,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         ...(type === "section" && readFollow(cplexus) ? { follow: readFollow(cplexus) } : {}),
         // PXD-14: the heading a followed section stands for, or the heading a followed card was placed under.
         ...(typeof cplexus?.head === "string" && cplexus.head ? { head: cplexus.head } : {}),
+        ...(typeof cplexus?.day === "string" && cplexus.day && typeof cplexus?.src === "string" && cplexus.src ? { day: cplexus.day } : {}),
       };
       items.set(cuid, item);
       preorder.push(cuid);

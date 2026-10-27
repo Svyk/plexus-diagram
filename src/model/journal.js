@@ -3,6 +3,7 @@
 
 import { pageTitleToDate } from "./resurface.js";
 import { dailyPageTitle } from "./schema.js";
+import { journalSpec } from "./follow.js";
 
 export function startOfDay(date) {
   const d = date instanceof Date ? date : new Date(date);
@@ -24,6 +25,18 @@ export function dailyUid(date) {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${mm}-${dd}-${d.getFullYear()}`;
+}
+
+// PXD-15: day starts of a journal window ("days-N" or "week"), oldest first, at `now`. A bad uid gives [].
+export function journalWindow(uid, now = Date.now()) {
+  const spec = journalSpec(uid);
+  if (!spec) return [];
+  const today = startOfDay(now);
+  if (spec.week) {
+    const monday = stepDay(today, -((new Date(today).getDay() + 6) % 7));
+    return Array.from({ length: 7 }, (_, i) => stepDay(monday, i));
+  }
+  return Array.from({ length: spec.days }, (_, i) => stepDay(today, i - (spec.days - 1)));
 }
 
 export function titleToTime(title) {

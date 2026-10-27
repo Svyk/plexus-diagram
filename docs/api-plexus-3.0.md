@@ -264,6 +264,7 @@ Daily-page journal rows. No Roam calls. Titles match Roam (`October 6th, 2026`).
 | `stepDay(date, delta)` | Out: local midnight, `delta` calendar days later (not a fixed 86400000, so a DST change does not skip). `delta` defaults to 1. A non-numeric delta is 0. |
 | `dailyTitle(date)` | Out: the Roam daily title for that local day. |
 | `dailyUid(date)` | Out: `MM-DD-YYYY` for that local day. |
+| `journalWindow(uid, now)` | In: a journals follow uid (`days-N`, 1 to 31, or `week`) and a time. Out: local midnights of the window, oldest first: today and the N-1 days before it, or Monday to Sunday of `now`'s week. Fail: any other uid returns `[]`. |
 | `titleToTime(title)` | Out: `pageTitleToDate(title)`. A non-daily title is null. |
 | `firstLine(string)` | Out: the text before the first newline. Fail: null becomes `""`. |
 | `journalRows(tree)` | In: an array, or an object with `:block/children`, `children`, or `blocks`. Out: top-level rows `{uid, string, text}` in block order. `string` is `((uid))`. `text` is the first line. Fail: a node with no uid is skipped. A missing tree returns `[]`. |

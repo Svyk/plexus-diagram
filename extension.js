@@ -2536,13 +2536,14 @@ function normalizePointer(raw) {
   const uid = typeof raw.uid === "string" && UID_RE2.test(raw.uid) ? raw.uid : null;
   if (!kind || !uid) return null;
   const section2 = typeof raw.section === "string" && UID_RE2.test(raw.section) ? raw.section : null;
-  return { kind, uid, ...raw.tree === true ? { tree: true } : {}, ...section2 ? { section: section2 } : {}, skip: cleanSkip(raw.skip) };
+  return { kind, uid, ...raw.tree === true ? { tree: true } : {}, ...raw.columns === true ? { columns: true } : {}, ...section2 ? { section: section2 } : {}, skip: cleanSkip(raw.skip) };
 }
 function serializePointer(pointer) {
   const p = normalizePointer(pointer);
   if (!p) return null;
   const out = { kind: p.kind, uid: p.uid };
   if (p.tree) out.tree = true;
+  if (p.columns) out.columns = true;
   if (p.section) out.section = p.section;
   if (p.skip.length) out.skip = p.skip;
   return out;
@@ -2572,11 +2573,12 @@ function withFollow(plexus, pointer) {
   else delete base2[FOLLOW_KEY];
   return base2;
 }
-function followPointerFor(current3, kind, uid, { tree, section: section2 } = {}) {
+function followPointerFor(current3, kind, uid, { tree, columns, section: section2 } = {}) {
   const sec = typeof section2 === "string" && UID_RE2.test(section2) ? section2 : "";
   const same4 = current3?.kind === kind && current3?.uid === uid && (current3.section || "") === sec;
   const deep = tree === void 0 ? same4 && current3.tree === true : tree === true;
-  return { kind, uid, ...deep ? { tree: true } : {}, ...sec ? { section: sec } : {}, skip: same4 ? current3.skip : [] };
+  const cols = columns === void 0 ? same4 && current3.columns === true : columns === true;
+  return { kind, uid, ...deep ? { tree: true } : {}, ...cols ? { columns: true } : {}, ...sec ? { section: sec } : {}, skip: same4 ? current3.skip : [] };
 }
 function mirrorRefusal({ boardUid, pointer, followsOf } = {}) {
   if (!pointer || pointer.kind !== "board" || !pointer.uid) return "";
@@ -2607,6 +2609,17 @@ function mirroredBoards(plexusList) {
     if (p?.kind === "board" && !out.includes(p.uid)) out.push(p.uid);
   }
   return out;
+}
+function journalSpec(uid) {
+  if (uid === "week") return { week: true };
+  const m = /^days-([1-9]\d?)$/.exec(String(uid ?? ""));
+  const days = m ? Number(m[1]) : 0;
+  return days >= 1 && days <= JOURNAL_MAX_DAYS ? { days } : null;
+}
+function journalUid(spec) {
+  if (spec?.week) return "week";
+  const days = Math.floor(Number(spec?.days));
+  return days >= 1 && days <= JOURNAL_MAX_DAYS ? `days-${days}` : "";
 }
 function addSkip(skip, uids, cap4 = FOLLOW_SKIP_CAP) {
   const add = (uids || []).filter((u) => typeof u === "string" && UID_RE2.test(u));
@@ -2747,6 +2760,37 @@ function followColumn(bounds, count, { w, h, column = 0, at = null, gap = FOLLOW
   const x = x0 + column * (w + gap);
   return Array.from({ length: Math.max(0, count) }, (_, i) => ({ x, y: y0 + i * (h + stack) }));
 }
+function journalColumnSpots(existing, entries, { bounds = null, w, h, gap = FOLLOW_COLUMN_GAP, stack = FOLLOW_STACK_GAP } = {}) {
+  const rects = (existing || []).filter((r) => r?.day);
+  const cols = /* @__PURE__ */ new Map();
+  let right = -Infinity;
+  let top = Infinity;
+  for (const r of rects) {
+    right = Math.max(right, r.x + r.w);
+    top = Math.min(top, r.y);
+    const shared5 = rects.some((o) => o.day !== r.day && o.x < r.x + r.w && o.x + o.w > r.x);
+    const col2 = cols.get(r.day);
+    if (!shared5 && (!col2 || r.y + r.h > col2.bottom)) cols.set(r.day, { x: r.x, bottom: r.y + r.h });
+  }
+  const x0 = Number.isFinite(right) ? right + gap : bounds ? bounds.x + bounds.w + gap : 0;
+  const y0 = Number.isFinite(top) ? top : bounds ? bounds.y : 0;
+  const fresh = [...new Set((entries || []).map((e2) => e2?.day ?? "").filter((d) => !cols.has(d)))].sort((a, b) => dayKey(a) < dayKey(b) ? -1 : dayKey(a) > dayKey(b) ? 1 : 0);
+  const made = new Map(fresh.map((d, i) => [d, { x: x0 + i * (w + gap), next: y0 }]));
+  const below = /* @__PURE__ */ new Map();
+  return (entries || []).map((e2) => {
+    const day = e2?.day ?? "";
+    const col2 = cols.get(day);
+    if (col2) {
+      const y2 = below.has(day) ? below.get(day) : col2.bottom + stack;
+      below.set(day, y2 + h + stack);
+      return { x: col2.x, y: y2 };
+    }
+    const c = made.get(day);
+    const y = c.next;
+    c.next += h + stack;
+    return { x: c.x, y };
+  });
+}
 function createLeftMemory({ storage = globalThis.localStorage, graph = "" } = {}) {
   const key = (uid) => `plexus-diagram:follow-left:${graph}:${uid}`;
   return {
@@ -2832,7 +2876,7 @@ function sectionGrid(section2, members, count, { w, h, pad: pad2 = 24, gap = FOL
     return { x: x0 + i % cols * (w + gap), y: y0 + Math.floor(i / cols) * (h + gap) };
   });
 }
-var FOLLOW_KEY, FOLLOW_KEPT_KEY, FOLLOW_KEPT_SOURCES, FOLLOW_SRC, FOLLOW_MIME, FOLLOW_SKIP_CAP, FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH, FOLLOW_PARENT_CAP, FOLLOW_QUIET_MS, FOLLOW_POLL_MS, FOLLOW_BACKOFF, FOLLOW_TYPING_MS, FOLLOW_SLOW_MS, followQuietMs, LEFT_CONFIRM, FOLLOW_COLUMN_GAP, FOLLOW_STACK_GAP, KIND_RE, UID_RE2, isObject3, sourceKey, MIRROR_CHAIN_CAP, textSourceUid, QUERY_BODY, leftUnsettled, followPill, INBOX_KIND, ARRIVALS_CAP, followedUids, arrivalsPill, FOLLOW_SECTION_CAP, followCapText, BOARD_OWNER_NAME;
+var FOLLOW_KEY, FOLLOW_KEPT_KEY, FOLLOW_KEPT_SOURCES, FOLLOW_SRC, FOLLOW_DAY, JOURNAL_DEFAULT_DAYS, JOURNAL_MAX_DAYS, FOLLOW_MIME, FOLLOW_SKIP_CAP, FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH, FOLLOW_PARENT_CAP, FOLLOW_QUIET_MS, FOLLOW_POLL_MS, FOLLOW_BACKOFF, FOLLOW_TYPING_MS, FOLLOW_SLOW_MS, followQuietMs, LEFT_CONFIRM, FOLLOW_COLUMN_GAP, FOLLOW_STACK_GAP, KIND_RE, UID_RE2, isObject3, sourceKey, MIRROR_CHAIN_CAP, textSourceUid, QUERY_BODY, leftUnsettled, followPill, INBOX_KIND, ARRIVALS_CAP, followedUids, arrivalsPill, dayKey, FOLLOW_SECTION_CAP, followCapText, BOARD_OWNER_NAME;
 var init_follow = __esm({
   "src/model/follow.js"() {
     init_schema();
@@ -2840,6 +2884,9 @@ var init_follow = __esm({
     FOLLOW_KEPT_KEY = "followSkip";
     FOLLOW_KEPT_SOURCES = 5;
     FOLLOW_SRC = "src";
+    FOLLOW_DAY = "day";
+    JOURNAL_DEFAULT_DAYS = 7;
+    JOURNAL_MAX_DAYS = 31;
     FOLLOW_MIME = "application/x-plexus-follow";
     FOLLOW_SKIP_CAP = 300;
     FOLLOW_READ_CAP = 300;
@@ -2867,6 +2914,10 @@ var init_follow = __esm({
     ARRIVALS_CAP = 20;
     followedUids = (board2, key) => new Set(followIndex(board2, key).followed.map((card2) => card2.uid));
     arrivalsPill = (n3) => `Arrivals (${n3})`;
+    dayKey = (day) => {
+      const m = /^(\d\d)-(\d\d)-(\d{4})$/.exec(String(day ?? ""));
+      return m ? `${m[3]}${m[1]}${m[2]}` : String(day ?? "");
+    };
     FOLLOW_SECTION_CAP = 8;
     followCapText = () => `Up to ${FOLLOW_SECTION_CAP} sections follow a source on one board`;
     BOARD_OWNER_NAME = "this board";
@@ -5387,7 +5438,8 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         // PXD-13: the source a section follows (its own plexus.follow), normalized.
         ...type === "section" && readFollow(cplexus) ? { follow: readFollow(cplexus) } : {},
         // PXD-14: the heading a followed section stands for, or the heading a followed card was placed under.
-        ...typeof cplexus?.head === "string" && cplexus.head ? { head: cplexus.head } : {}
+        ...typeof cplexus?.head === "string" && cplexus.head ? { head: cplexus.head } : {},
+        ...typeof cplexus?.day === "string" && cplexus.day && typeof cplexus?.src === "string" && cplexus.src ? { day: cplexus.day } : {}
       };
       items.set(cuid, item);
       preorder.push(cuid);
@@ -19991,6 +20043,19 @@ function dailyUid(date) {
   const dd = String(d.getDate()).padStart(2, "0");
   return `${mm}-${dd}-${d.getFullYear()}`;
 }
+function journalWindow(uid, now5 = Date.now()) {
+  const spec = journalSpec(uid);
+  if (!spec) return [];
+  const today = startOfDay(now5);
+  if (spec.week) {
+    const monday = stepDay(today, -((new Date(today).getDay() + 6) % 7));
+    return Array.from({ length: 7 }, (_, i) => stepDay(monday, i));
+  }
+  return Array.from({ length: spec.days }, (_, i) => stepDay(today, i - (spec.days - 1)));
+}
+function titleToTime(title) {
+  return pageTitleToDate(title);
+}
 function firstLine2(string) {
   const text4 = String(string ?? "");
   const cut = text4.search(/\r?\n/);
@@ -20027,6 +20092,7 @@ var init_journal = __esm({
   "src/model/journal.js"() {
     init_resurface();
     init_schema();
+    init_follow();
   }
 });
 
@@ -48499,6 +48565,12 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (cached?.[":block/uid"]) return cached;
       return host.pullBoard(id, { light: true, deferRefs: true });
     },
+    // One unwatched read of a page by its title. A failed pull throws, so a caller can tell it from a missing page.
+    pullTitle(pattern, title) {
+      if (typeof pattern !== "string" || pattern === "" || typeof title !== "string" || !title) return null;
+      const res = pull(pattern, [":node/title", title]);
+      return res && typeof res === "object" ? res : null;
+    },
     // One unwatched read. Not added to the board pull watch.
     pullEntity(pattern, uid) {
       if (typeof pattern !== "string" || pattern === "" || !uid) return null;
@@ -56647,14 +56719,23 @@ extendSession((session, api3) => {
     const grid = inSection ? sectionGrid(rects.get(owner), board2.items.get(owner).members.map((id) => rects.get(id)).filter(Boolean), list.length, { ...size, pad: FIT_PAD }) : null;
     const batches = followBatches(list, SPREAD_CAP);
     const made = [];
+    const byDay = owner === boardUid && pointer.kind === "journals" && pointer.columns === true && !at;
+    const dayRects = [];
+    if (byDay) {
+      for (const item of board2.items.values()) {
+        const r = rects.get(item.uid);
+        if (item.src === key && item.day && r) dayRects.push({ day: item.day, x: r.x, y: r.y, w: r.w, h: r.h });
+      }
+    }
+    const planned = byDay ? journalColumnSpots(dayRects, list, { bounds, ...size }) : null;
     let chain = Promise.resolve();
     batches.forEach((batch, column) => {
       chain = chain.then(() => {
         if (api3.isGone()) return null;
         if (inSection && !api3.board()?.items.has(owner)) return null;
-        const spots = inSection ? grid.slice(column * SPREAD_CAP, column * SPREAD_CAP + batch.length) : followColumn(bounds, batch.length, { ...size, column, at });
+        const spots = inSection ? grid.slice(column * SPREAD_CAP, column * SPREAD_CAP + batch.length) : planned ? planned.slice(column * SPREAD_CAP, column * SPREAD_CAP + batch.length) : followColumn(bounds, batch.length, { ...size, column, at });
         return api3.txn((t) => {
-          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key, heads && typeof entry.heading === "string" ? entry.heading : "", inSection ? owner : null));
+          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key, heads && typeof entry.heading === "string" ? entry.heading : "", inSection ? owner : null, pointer.kind === "journals" && /^\d\d-\d\d-\d{4}$/.test(entry.day || "") ? entry.day : null));
           api3.applyFit(t, ids);
           return ids;
         }).then((ids) => {
@@ -56753,7 +56834,7 @@ extendSession((session, api3) => {
       if (pointer) t.props(owner, withFollow(base2, { ...pointer, skip: addSkip(pointer.skip, list) }));
     }
   });
-  function placeOne(t, string, spot, size, key, head = "", into = null) {
+  function placeOne(t, string, spot, size, key, head = "", into = null, day = null) {
     const board2 = api3.board();
     const rects = api3.rects();
     const parent = into || containerAt(board2, { x: spot.x + size.w / 2, y: spot.y + size.h / 2 }, { rects });
@@ -56761,7 +56842,7 @@ extendSession((session, api3) => {
     const layout = { x: api3.round1(rel.x), y: api3.round1(rel.y) };
     const look = lookForNewString(string, api3.setting("default-card-look", "block"));
     if (look) layout.look = look;
-    return t.create({ parent, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key, ...head ? { [FOLLOW_HEAD]: head } : {} } });
+    return t.create({ parent, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key, ...head ? { [FOLLOW_HEAD]: head } : {}, ...day ? { [FOLLOW_DAY]: day } : {} } });
   }
   Object.assign(session, {
     followState() {
@@ -56788,11 +56869,11 @@ extendSession((session, api3) => {
       if (kind !== "board") return "";
       return mirrorRefusal({ boardUid, pointer: { kind, uid, section: section2 }, followsOf });
     },
-    // { kind, uid, tree, section, owner }. The same source keeps its skip list. Resolves true when the pointer changed; on false
+    // { kind, uid, tree, columns, section, owner }. The same source keeps its skip list. Resolves true when the pointer changed; on false
     // followRefusal() says why. A source key is followed by one owner per board, at most FOLLOW_SECTION_CAP sections
     // follow one, and a section cannot follow its own block or the board. PXD-18: the Inbox kind takes the board's own
     // uid, and only the board follows it.
-    followSource({ kind, uid, tree, section: section2, owner: ownerArg } = {}) {
+    followSource({ kind, uid, tree, columns, section: section2, owner: ownerArg } = {}) {
       const owner = ownerOf(ownerArg);
       const refuse = (reason, by2) => {
         refusal = by2 ? { reason, by: by2 } : { reason };
@@ -56812,13 +56893,16 @@ extendSession((session, api3) => {
       const other = owners.find((o) => o.key === key && o.uid !== owner);
       if (other) return refuse("taken", other.name === BOARD_OWNER_NAME ? "the board" : other.name);
       if (owner !== boardUid && capped && !owners.some((o) => o.uid === owner)) return refuse("cap");
-      return writePointer((cur, base2) => followPointerFor(keptFollow(base2, key) || cur, kind, uid, { tree, section: section2 }), owner).then((ok) => {
+      return writePointer((cur, base2) => followPointerFor(keptFollow(base2, key) || cur, kind, uid, { tree, columns, section: section2 }), owner).then((ok) => {
         if (!ok) refusal = { reason: "unchanged" };
         return ok;
       });
     },
     setFollowTree(on, owner) {
       return writePointer((cur) => cur?.kind === "block" ? { ...cur, tree: on === true } : cur, ownerOf(owner));
+    },
+    setFollowColumns(on) {
+      return writePointer((cur) => cur?.kind === "journals" ? { ...cur, columns: on === true } : cur);
     },
     // The cards stay; only the pointer (and its skip list) goes.
     stopFollowing(owner) {
@@ -62882,9 +62966,9 @@ function createInteractions({ actions, settings } = {}) {
         const hit = hitTest(b, ev.world, hr, { exclude: g.exclude });
         const drop = hit?.part === "body" && (b.items.get(hit.uid)?.kind === "board" && b.items.get(hit.uid)?.enhanced) ? hit.uid : null;
         const day = !drop && !ev.shift ? dayTargetOf(b, hit) : null;
-        const dayKey = day ? `${day.uid}:${day.iso}` : null;
-        if (dayKey !== (g.dayKey ?? null)) {
-          g.dayKey = dayKey;
+        const dayKey2 = day ? `${day.uid}:${day.iso}` : null;
+        if (dayKey2 !== (g.dayKey ?? null)) {
+          g.dayKey = dayKey2;
           g.day = day;
           if (!drop) call2("onHover", day ? day.uid : null);
         }
@@ -63840,7 +63924,8 @@ function openPagePicker({
   heading = "Add page",
   placeholder = "Search pages…",
   hint = "Type to search pages",
-  none = "No matching pages"
+  none = "No matching pages",
+  initial = false
 } = {}) {
   current?.close();
   const offs = [];
@@ -63902,13 +63987,13 @@ function openPagePicker({
     timer = null;
     const text4 = String(filter.value || "").trim();
     const mine = ++ticket;
-    if (!text4) {
+    if (!text4 && !initial) {
       show([], "");
       return;
     }
     Promise.resolve(typeof search === "function" ? search(text4) : []).then((got) => {
       if (closed || mine !== ticket) return;
-      show((Array.isArray(got) ? got : []).filter((row4) => row4 && typeof row4.title === "string" && row4.title), text4);
+      show((Array.isArray(got) ? got : []).filter((row4) => row4 && typeof row4.title === "string" && row4.title), text4 || initial);
     }, () => {
       if (closed || mine !== ticket) return;
       show([], text4);
@@ -63956,6 +64041,7 @@ function openPagePicker({
       busy = false;
     });
   });
+  if (initial) run();
   try {
     filter.focus();
   } catch {
@@ -92797,6 +92883,7 @@ function installBoardRules(api3, win2 = globalThis) {
 }
 
 // src/host/follow-sources.js
+init_journal();
 init_schema();
 init_query_run();
 init_query_backend();
@@ -93383,6 +93470,65 @@ defineFollowKind({
     return { ok: true, complete: !got.failed && !got.full && kept.length <= FOLLOW_READ_CAP, items };
   }
 });
+var JOURNAL_PULL_LIMIT = FOLLOW_READ_CAP + 1;
+var JOURNAL_DAY_CAP = 20;
+var JOURNAL_PULL = `[:block/uid :node/title {(limit :block/children ${JOURNAL_PULL_LIMIT}) [${FIELDS2}]}]`;
+defineFollowKind({
+  id: "journals",
+  title: "Journals",
+  describe(p) {
+    const spec = journalSpec(p.uid);
+    return `Journals, ${spec?.week ? "this week" : `last ${spec?.days ?? "?"} days`}${p.columns ? ", one column per day" : ""}`;
+  },
+  watch: (p, host, cb, env) => watchSaves(env, cb),
+  async read(p, { host, now: now5 }) {
+    const days = journalWindow(p.uid, typeof now5 === "function" ? now5() ?? Date.now() : Date.now());
+    if (!days.length) return { ok: false, reason: "window" };
+    const items = [];
+    const members = [];
+    const omitted = [];
+    let complete = true;
+    let failed = 0;
+    for (const day of days) {
+      const title = dailyTitle(day);
+      let node2 = null;
+      try {
+        node2 = host?.pullTitle?.(JOURNAL_PULL, title) || null;
+      } catch {
+        failed += 1;
+        complete = false;
+        continue;
+      }
+      if (!node2 || titleToTime(node2[":node/title"]) !== day || typeof node2[UID10] !== "string") continue;
+      const kids = sorted2(node2).filter((kid) => typeof kid?.[UID10] === "string");
+      if (kids.length >= JOURNAL_PULL_LIMIT) complete = false;
+      const blank = (kid) => !(typeof kid[STR6] === "string" && kid[STR6].trim());
+      if (kids.every(blank)) continue;
+      const duid = dailyUid(day);
+      items.push({ uid: node2[UID10], kind: "page", title, text: title, time: day, day: duid });
+      if (p.columns !== true) continue;
+      let n3 = 0;
+      let left = 0;
+      for (const kid of kids) {
+        const string = typeof kid[STR6] === "string" ? kid[STR6] : "";
+        if (blank(kid)) {
+          items.push({ uid: kid[UID10], kind: "block", text: "", time: timeOf2(kid), crumb: title, day: duid, blank: true });
+          continue;
+        }
+        if (n3 >= JOURNAL_DAY_CAP) {
+          members.push(kid[UID10]);
+          left += 1;
+          continue;
+        }
+        n3 += 1;
+        items.push({ uid: kid[UID10], kind: "block", text: sourceText(string), time: timeOf2(kid), crumb: title, day: duid });
+      }
+      if (left) omitted.push({ day: duid, title, n: left });
+    }
+    if (failed === days.length) return { ok: false, reason: "error" };
+    return { ok: true, complete, items, ...members.length ? { members } : {}, ...omitted.length ? { omitted } : {} };
+  }
+});
 
 // src/view/follow-tray.js
 var REASONS = {
@@ -93390,6 +93536,7 @@ var REASONS = {
   missingText: "The block in the board text does not exist.",
   unsupported: "Plexus cannot run this query. It reads page and block refs with and, or and not.",
   slow: "The query took too long to read.",
+  window: "This journal window is not one this version knows.",
   unknown: "This board follows a kind of source this version cannot read.",
   missingSection: "The followed section is gone.",
   cycle: "That board follows this one, so mirroring it would make a loop.",
@@ -93414,7 +93561,8 @@ function createFollowTray({
   onPlaced,
   onSource,
   toast,
-  now: now5 = () => globalThis.performance?.now?.() ?? Date.now()
+  now: now5 = () => globalThis.performance?.now?.() ?? Date.now(),
+  clock = null
 } = {}) {
   const boardUid = session?.uid;
   const memory = createLeftMemory({ storage, graph });
@@ -93518,6 +93666,8 @@ function createFollowTray({
     boardTitle: () => board2()?.title || "",
     inBoard: () => session.followExclude?.() || /* @__PURE__ */ new Set([boardUid]),
     tick: () => new Promise((resolve) => timers.idle(resolve)),
+    // PXD-15: the journal window's "today"; tests roll it.
+    ...typeof clock === "function" ? { now: clock } : {},
     followed: () => followIndex(board2(), lane2.key).followed.map((card2) => card2.target?.uid).filter(Boolean)
   });
   const textMissing = (lane2) => !lane2.section && lane2.reason === "missing" && lane2.pointer?.kind === "block" && board2()?.followDerived === true;
@@ -93786,7 +93936,7 @@ function createFollowTray({
     const next = owner?.pointer || null;
     const nextKey = owner?.key || "";
     if (nextKey === lane2.key && wasReadable === readable({ ...lane2, pointer: next })) {
-      const reshaped = lane2.pointer?.tree === true !== (next?.tree === true);
+      const reshaped = lane2.pointer?.tree === true !== (next?.tree === true) || lane2.pointer?.columns === true !== (next?.columns === true);
       lane2.pointer = next;
       if (reshaped) {
         lane2.label = describe(lane2);
@@ -93879,7 +94029,8 @@ function createFollowTray({
     kind: row4.kind,
     ...row4.title ? { title: row4.title } : {},
     // PXD-14: the heading a row sits under, so a placed card knows its section.
-    ...row4.heading ? { heading: row4.heading, ...row4.kind === "heading" ? { text: row4.text } : { headingText: row4.headingText } } : {}
+    ...row4.heading ? { heading: row4.heading, ...row4.kind === "heading" ? { text: row4.text } : { headingText: row4.headingText } } : {},
+    ...row4.day ? { day: row4.day } : {}
   });
   function place3(rows, lane2) {
     if (!rows.length || placing) return Promise.resolve(null);
@@ -93993,6 +94144,10 @@ function createFollowTray({
     const note = noteOf(lane2);
     if (note) el2("div", "pxd-follow__note", parent, note);
     if (!readable(lane2)) return;
+    if (lane2.read?.omitted?.length) {
+      const parts = lane2.read.omitted.slice().reverse().map((o, i) => `${o.n} ${i ? "of" : "left out of"} ${o.title}`);
+      el2("div", "pxd-follow__note", parent, `At most ${JOURNAL_DAY_CAP} blocks per day: ${parts.join(", ")}.`);
+    }
     if (lane2.pointer.kind === "board" && lane2.read?.relayed > 0) el2("div", "pxd-follow__note", parent, RELAYED_NOTE);
     const heads = lane2.pointer.kind === "headings";
     if (heads) {
@@ -94219,6 +94374,7 @@ function createFollowTray({
     following: Boolean(lane2?.pointer),
     kind: lane2?.pointer?.kind || "",
     tree: lane2?.pointer?.tree === true,
+    columns: lane2?.pointer?.columns === true,
     label: lane2?.label || "",
     waiting: lane2?.pending.length || 0,
     ...extra
@@ -99667,12 +99823,14 @@ function followMenu(f) {
         ...f.label ? [make3("follow:label", f.label, { disabled: true })] : [],
         make3("follow:show", `Show tray (${Number(f.waiting) || 0} waiting)`),
         ...f.kind === "block" ? [make3("follow:tree", "Include the whole tree", { checked: f.tree === true })] : [],
+        ...f.kind === "journals" ? [make3("follow:columns", "One column per day", { checked: f.columns === true })] : [],
         make3("follow:pick-block", "Switch to a block's children…"),
         make3("follow:pick-query", "Switch to a query…"),
         make3("follow:pick-refs", "Switch to linked references of…"),
         make3("follow:pick-headings", "Switch to a page by headings…"),
         make3("follow:pick-board", "Switch to another board or section…"),
         ...f.kind === "inbox" ? [] : [make3("follow:inbox", "Switch to this board's Inbox")],
+        make3("follow:pick-journals", "Switch to journals…"),
         make3("follow:stop", "Stop following")
       ]
     })];
@@ -99685,6 +99843,7 @@ function followMenu(f) {
       make3("follow:pick-refs", "Linked references of…"),
       make3("follow:pick-headings", "A page by headings…"),
       make3("follow:pick-board", "Another board or section…"),
+      make3("follow:pick-journals", "Journals…"),
       make3("follow:inbox", "This board's Inbox")
     ]
   })];
@@ -108060,14 +108219,40 @@ ${b.pageTitle || ""}`.toLowerCase().includes(words)) continue;
       }
     });
   };
-  const startFollow = async (kind, uid, owner, section2) => {
+  const journalPick = () => {
+    pagePicker?.close();
+    pagePicker = openPagePicker({
+      doc,
+      heading: "Follow journals",
+      placeholder: "Days to follow (default 7)",
+      hint: "Type a number of days, or pick this week",
+      none: "Nothing matches",
+      initial: true,
+      search: (text4) => {
+        const typed = Math.floor(Number(/\d+/.exec(String(text4 || ""))?.[0]));
+        const days = Number.isFinite(typed) ? Math.min(JOURNAL_MAX_DAYS, Math.max(1, typed)) : JOURNAL_DEFAULT_DAYS;
+        const uid = journalUid({ days });
+        return [
+          { title: `Last ${days} days`, value: uid },
+          { title: `Last ${days} days, one column per day`, value: `${uid}|columns` },
+          { title: "This week", value: "week" },
+          { title: "This week, one column per day", value: "week|columns" }
+        ];
+      },
+      onPick: async (value) => {
+        const [uid, mode] = String(value).split("|");
+        return startFollow("journals", uid, null, void 0, { columns: mode === "columns" });
+      }
+    });
+  };
+  const startFollow = async (kind, uid, owner, section2, opts = {}) => {
     if (!uid) return false;
     const refusal = session.mirrorRefusalOf?.({ kind, uid, section: section2 }) || "";
     if (refusal === "cycle" || refusal === "self") {
       toast(REASONS[refusal]);
       return true;
     }
-    const args = { kind, uid, ...owner ? { owner } : {}, ...section2 ? { section: section2 } : {} };
+    const args = { kind, uid, ...owner ? { owner } : {}, ...section2 ? { section: section2 } : {}, ...opts };
     const ok = await session.followSource?.(args);
     if (disposed) return false;
     const why = ok ? null : session.followRefusal?.() || null;
@@ -108099,6 +108284,9 @@ ${b.pageTitle || ""}`.toLowerCase().includes(words)) continue;
         break;
       case "pick-refs":
         followPick("refs");
+        break;
+      case "pick-journals":
+        journalPick();
         break;
       case "pick-headings":
         followPick("headings");
@@ -108134,6 +108322,9 @@ ${b.pageTitle || ""}`.toLowerCase().includes(words)) continue;
         break;
       case "tree":
         void session.setFollowTree?.(!state.tree);
+        break;
+      case "columns":
+        void session.setFollowColumns?.(!state.columns);
         break;
       case "stop":
         void Promise.resolve(session.stopFollowing?.()).then((ok) => {

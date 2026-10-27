@@ -90,12 +90,14 @@ function followMenu(f) {
         ...(f.label ? [make("follow:label", f.label, { disabled: true })] : []),
         make("follow:show", `Show tray (${Number(f.waiting) || 0} waiting)`),
         ...(f.kind === "block" ? [make("follow:tree", "Include the whole tree", { checked: f.tree === true })] : []),
+        ...(f.kind === "journals" ? [make("follow:columns", "One column per day", { checked: f.columns === true })] : []),
         make("follow:pick-block", "Switch to a block's children…"),
         make("follow:pick-query", "Switch to a query…"),
         make("follow:pick-refs", "Switch to linked references of…"),
         make("follow:pick-headings", "Switch to a page by headings…"),
         make("follow:pick-board", "Switch to another board or section…"),
         ...(f.kind === "inbox" ? [] : [make("follow:inbox", "Switch to this board's Inbox")]),
+        make("follow:pick-journals", "Switch to journals…"),
         make("follow:stop", "Stop following"),
       ],
     })];
@@ -108,6 +110,7 @@ function followMenu(f) {
       make("follow:pick-refs", "Linked references of…"),
       make("follow:pick-headings", "A page by headings…"),
       make("follow:pick-board", "Another board or section…"),
+      make("follow:pick-journals", "Journals…"),
       make("follow:inbox", "This board's Inbox"),
     ],
   })];

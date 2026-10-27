@@ -124,7 +124,7 @@ import { createInbox } from "./inbox.js";
 import { REASONS as FOLLOW_REASONS, createFollowTray } from "./follow-tray.js";
 import { createQueryFilter } from "./query-filter.js";
 import { filterBright, filterLabel, filterQueryUid, intersectBright } from "../model/query-filter.js";
-import { FOLLOW_MIME, followCapText, sourceText, textSourceUid } from "../model/follow.js";
+import { FOLLOW_MIME, JOURNAL_DEFAULT_DAYS, JOURNAL_MAX_DAYS, followCapText, journalUid, sourceText, textSourceUid } from "../model/follow.js";
 import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
@@ -6228,15 +6228,42 @@ function buildBoardView(onFail, {
       },
     });
   };
+  // PXD-15: days to follow from the picker's text (blank or not a number: the default), and the four rows it offers.
+  const journalPick = () => {
+    pagePicker?.close();
+    pagePicker = openPagePicker({
+      doc,
+      heading: "Follow journals",
+      placeholder: "Days to follow (default 7)",
+      hint: "Type a number of days, or pick this week",
+      none: "Nothing matches",
+      initial: true,
+      search: (text) => {
+        const typed = Math.floor(Number(/\d+/.exec(String(text || ""))?.[0]));
+        const days = Number.isFinite(typed) ? Math.min(JOURNAL_MAX_DAYS, Math.max(1, typed)) : JOURNAL_DEFAULT_DAYS;
+        const uid = journalUid({ days });
+        return [
+          { title: `Last ${days} days`, value: uid },
+          { title: `Last ${days} days, one column per day`, value: `${uid}|columns` },
+          { title: "This week", value: "week" },
+          { title: "This week, one column per day", value: "week|columns" },
+        ];
+      },
+      onPick: async (value) => {
+        const [uid, mode] = String(value).split("|");
+        return startFollow("journals", uid, null, undefined, { columns: mode === "columns" });
+      },
+    });
+  };
   // `section`: PXD-19, the section of the board a "board" source mirrors.
-  const startFollow = async (kind, uid, owner, section) => {
+  const startFollow = async (kind, uid, owner, section, opts = {}) => {
     if (!uid) return false;
     const refusal = session.mirrorRefusalOf?.({ kind, uid, section }) || "";
     if (refusal === "cycle" || refusal === "self") {
       toast(FOLLOW_REASONS[refusal]);
       return true;
     }
-    const args = { kind, uid, ...(owner ? { owner } : {}), ...(section ? { section } : {}) };
+    const args = { kind, uid, ...(owner ? { owner } : {}), ...(section ? { section } : {}), ...opts };
     const ok = await session.followSource?.(args);
     if (disposed) return false;
     const why = ok ? null : session.followRefusal?.() || null;
@@ -6263,6 +6290,7 @@ function buildBoardView(onFail, {
       case "pick-block": followPick("block"); break;
       case "pick-query": followPick("query"); break;
       case "pick-refs": followPick("refs"); break;
+      case "pick-journals": journalPick(); break;
       case "pick-headings": followPick("headings"); break;
       case "pick-board": followPick("board"); break;
       case "text": {
@@ -6278,6 +6306,7 @@ function buildBoardView(onFail, {
       case "inbox": void startFollow("inbox", boardUid); break;
       case "show": followCtl?.open?.(); break;
       case "tree": void session.setFollowTree?.(!state.tree); break;
+      case "columns": void session.setFollowColumns?.(!state.columns); break;
       case "stop":
         void Promise.resolve(session.stopFollowing?.()).then((ok) => { if (ok && !disposed) toast("Stopped following. The cards stay on the board."); });
         break;

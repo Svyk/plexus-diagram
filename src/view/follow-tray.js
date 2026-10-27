@@ -50,7 +50,7 @@ import {
 } from "../model/follow.js";
 import { headingsEmpty, headingsNote, movedCards } from "../model/follow-headings.js";
 import { itemLabel, plainText } from "../model/schema.js";
-import { followKind } from "../host/follow-sources.js";
+import { JOURNAL_DAY_CAP, followKind } from "../host/follow-sources.js";
 import { editState, watchEditing } from "../host/local-saves.js";
 import { SPREAD_CAP } from "../session-clip.js";
 
@@ -59,6 +59,7 @@ export const REASONS = {
   missingText: "The block in the board text does not exist.",
   unsupported: "Plexus cannot run this query. It reads page and block refs with and, or and not.",
   slow: "The query took too long to read.",
+  window: "This journal window is not one this version knows.",
   unknown: "This board follows a kind of source this version cannot read.",
   missingSection: "The followed section is gone.",
   cycle: "That board follows this one, so mirroring it would make a loop.",
@@ -88,6 +89,7 @@ export function createFollowTray({
   onSource,
   toast,
   now = () => globalThis.performance?.now?.() ?? Date.now(),
+  clock = null,
 } = {}) {
   const boardUid = session?.uid;
   const memory = createLeftMemory({ storage, graph });
@@ -194,6 +196,8 @@ export function createFollowTray({
     boardTitle: () => board()?.title || "",
     inBoard: () => session.followExclude?.() || new Set([boardUid]),
     tick: () => new Promise((resolve) => timers.idle(resolve)),
+    // PXD-15: the journal window's "today"; tests roll it.
+    ...(typeof clock === "function" ? { now: clock } : {}),
     followed: () => followIndex(board(), lane.key).followed.map((card) => card.target?.uid).filter(Boolean),
   });
 
@@ -447,7 +451,7 @@ export function createFollowTray({
     const nextKey = owner?.key || "";
     if (nextKey === lane.key && wasReadable === readable({ ...lane, pointer: next })) {
       // Same source, other options (the whole tree): a new name and a read, but the gone counts carry on.
-      const reshaped = (lane.pointer?.tree === true) !== (next?.tree === true);
+      const reshaped = (lane.pointer?.tree === true) !== (next?.tree === true) || (lane.pointer?.columns === true) !== (next?.columns === true);
       lane.pointer = next;
       if (reshaped) {
         lane.label = describe(lane);
@@ -529,6 +533,7 @@ export function createFollowTray({
     ...(row.title ? { title: row.title } : {}),
     // PXD-14: the heading a row sits under, so a placed card knows its section.
     ...(row.heading ? { heading: row.heading, ...(row.kind === "heading" ? { text: row.text } : { headingText: row.headingText }) } : {}),
+    ...(row.day ? { day: row.day } : {}),
   });
   // One place at a time: a second click while the first is still writing does nothing.
   function place(rows, lane) {
@@ -643,6 +648,10 @@ export function createFollowTray({
     const note = noteOf(lane);
     if (note) el("div", "pxd-follow__note", parent, note);
     if (!readable(lane)) return;
+    if (lane.read?.omitted?.length) {
+      const parts = lane.read.omitted.slice().reverse().map((o, i) => `${o.n} ${i ? "of" : "left out of"} ${o.title}`);
+      el("div", "pxd-follow__note", parent, `At most ${JOURNAL_DAY_CAP} blocks per day: ${parts.join(", ")}.`);
+    }
     if (lane.pointer.kind === "board" && lane.read?.relayed > 0) el("div", "pxd-follow__note", parent, RELAYED_NOTE);
     const heads = lane.pointer.kind === "headings";
     if (heads) {
@@ -857,6 +866,7 @@ export function createFollowTray({
     following: Boolean(lane?.pointer),
     kind: lane?.pointer?.kind || "",
     tree: lane?.pointer?.tree === true,
+    columns: lane?.pointer?.columns === true,
     label: lane?.label || "",
     waiting: lane?.pending.length || 0,
     ...extra,

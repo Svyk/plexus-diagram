@@ -90659,6 +90659,7 @@ init_query_backend();
 
 // src/host/local-saves.js
 var SAVE_LAG_MS = 1e3;
+var DOT_CHECK_MS = 1e3;
 var ICON2 = ".rm-sync__icon";
 var SAVING = /saving/;
 var hubs = /* @__PURE__ */ new WeakMap();
@@ -90674,6 +90675,7 @@ function fire(hub) {
 }
 function watchDot(doc, hub) {
   if (hub.mo && hub.box?.isConnected !== false) return;
+  hub.lost = hub.lost || Boolean(hub.mo);
   try {
     hub.mo?.disconnect?.();
   } catch {
@@ -90700,6 +90702,10 @@ function watchDot(doc, hub) {
   } catch {
     hub.mo = null;
   }
+  if (hub.lost && hub.mo) {
+    hub.lost = false;
+    fire(hub);
+  }
 }
 function start(doc, hub) {
   const win2 = doc.defaultView || globalThis;
@@ -90717,11 +90723,18 @@ function start(doc, hub) {
     if (event?.type === "change" && !inBlock(event.target)) return;
     fire(hub);
   };
+  const check = () => {
+    hub.check = win2.setTimeout(check, DOT_CHECK_MS);
+    watchDot(doc, hub);
+  };
   hub.stop = () => {
     doc.removeEventListener?.("input", hub.onInput, true);
     for (const type of ["focusout", "change", "drop"]) doc.removeEventListener?.(type, hub.onDone, true);
     if (hub.lag) win2.clearTimeout(hub.lag);
     hub.lag = null;
+    if (hub.check) win2.clearTimeout(hub.check);
+    hub.check = null;
+    hub.lost = false;
     try {
       hub.mo?.disconnect?.();
     } catch {
@@ -90732,13 +90745,14 @@ function start(doc, hub) {
   };
   doc.addEventListener?.("input", hub.onInput, true);
   for (const type of ["focusout", "change", "drop"]) doc.addEventListener?.(type, hub.onDone, true);
+  hub.check = win2.setTimeout(check, DOT_CHECK_MS);
 }
 function watchLocalSaves(doc, cb) {
   if (!doc || typeof cb !== "function") return () => {
   };
   let hub = hubs.get(doc);
   if (!hub) {
-    hub = { subs: /* @__PURE__ */ new Set(), mo: null, box: null, lag: null, stop: null };
+    hub = { subs: /* @__PURE__ */ new Set(), mo: null, box: null, lag: null, check: null, lost: false, stop: null };
     hubs.set(doc, hub);
   }
   const token = () => cb();

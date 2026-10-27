@@ -106,6 +106,18 @@
 
 .pxd-follow__row--left { cursor: default; }
 
+/* PXD-13: one group per owner (each section that follows a source, then the board). The groups scroll as one list. */
+.pxd-follow__owners { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+.pxd-follow__owner { padding: 6px 0 4px; border-top: 1px solid var(--pxd-border, #d0d7de); }
+.pxd-follow__owner:first-child { border-top: 0; }
+.pxd-follow__owner .pxd-follow__list { overflow: visible; flex: none; }
+.pxd-follow__owner .pxd-follow__list--left { max-height: none; }
+.pxd-follow__owner-head { display: flex; flex-direction: column; gap: 1px; padding-bottom: 2px; }
+.pxd-follow__owner-title { font-weight: 600; overflow-wrap: anywhere; }
+.pxd-follow__owner-source { color: var(--pxd-muted, #5f6b7c); overflow-wrap: anywhere; }
+/* An item an earlier owner already offers: shown, not placeable here. "Also in" sits on its own line so a long title cannot hide it. */
+.pxd-follow__row--hint { cursor: default; color: var(--pxd-muted, #5f6b7c); font-style: italic; }
+.pxd-follow__also { font-size: 11px; overflow-wrap: anywhere; }
 /* PXD-14: a heading's header in the tray, over its blocks. */
 .pxd-follow__group {
   display: flex;

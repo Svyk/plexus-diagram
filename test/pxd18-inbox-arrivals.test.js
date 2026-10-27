@@ -325,3 +325,13 @@ test("PXD-18 tray: undoing Place all gives the visit its room back", async () =>
   assert.match(f.root.querySelector(".pxd-follow__count").textContent, /^20 arrivals · 5 more wait · 0 on the board/);
   f.tray.dispose();
 });
+
+test("PXD-18 session: a section cannot follow the board's Inbox; the board still can", async () => {
+  const sec = { uid: "s1", string: "Reading", props: { plexus: { type: "section", x: 0, y: 300, w: 400, h: 300 } }, children: [] };
+  const f = mount({ plexus: { v: 2 }, children: [card("n1", "Note one", 0, 0), sec] });
+  assert.equal(await f.session.followSource({ kind: "inbox", uid: "b1", owner: "s1" }), false);
+  assert.equal(f.session.followRefusal().reason, "self");
+  assert.equal(await f.session.followSource({ kind: "inbox", uid: "s1", owner: "s1" }), false);
+  assert.equal(await f.session.followSource({ kind: "inbox", uid: "b1" }), true);
+  f.tray.dispose();
+});

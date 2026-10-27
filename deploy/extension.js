@@ -4934,7 +4934,7 @@ function inlinePdfCards(board2) {
   for (const item of board2?.items?.values?.() || []) if (isInlinePdfCard(item)) out.push(item);
   return out;
 }
-function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageExists, titleFor, aliasOf, refsOf, now: now5, newUid } = {}) {
+function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageExists, titleFor, aliasOf, refsOf: refsOf2, now: now5, newUid } = {}) {
   const plan = { graph, boardUid: board2?.uid || "", moves: [], edges: [], skipped: [] };
   if (!board2?.items) return plan;
   const call2 = (fn, ...args) => {
@@ -4963,7 +4963,7 @@ function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageE
     if (found?.uid && found.title) {
       page = { uid: found.uid, title: found.title, reuse: true, why: found.why || "url" };
     } else {
-      const title = uniquePageTitle(pdfPageBaseTitle({ display: shown, alias: call2(aliasOf, item) || "", refs: call2(refsOf, item) || [], fileName: pdfFileTitle(url), now: call2(now5) }), (t) => plannedTitles.has(t) || call2(pageExists, t) === true);
+      const title = uniquePageTitle(pdfPageBaseTitle({ display: shown, alias: call2(aliasOf, item) || "", refs: call2(refsOf2, item) || [], fileName: pdfFileTitle(url), now: call2(now5) }), (t) => plannedTitles.has(t) || call2(pageExists, t) === true);
       page = { uid: null, newUid: String(call2(newUid) || ""), title, reuse: false, why: "new" };
     }
     plannedTitles.add(page.title);
@@ -18519,6 +18519,157 @@ var init_parse_to_roam_md = __esm({
   }
 });
 
+// src/model/card-refs.js
+function cardRefsOn(board2) {
+  if (!board2?.items) return false;
+  if (board2.items.size > CARD_REFS_MAX) return false;
+  return board2.plexus?.refs !== false;
+}
+function refsOf(string) {
+  const text4 = String(string ?? "").replace(/`[^`\n]*`/g, " ");
+  const pages = /* @__PURE__ */ new Set();
+  PAGE_RE3.lastIndex = 0;
+  for (let m = PAGE_RE3.exec(text4); m; m = PAGE_RE3.exec(text4)) pages.add(m[1].trim());
+  TAG_RE.lastIndex = 0;
+  for (let m = TAG_RE.exec(text4); m; m = TAG_RE.exec(text4)) pages.add(m[1]);
+  pages.delete("");
+  return { pages, uids: refsIn(text4) };
+}
+function cardIndex(board2) {
+  const byKey = /* @__PURE__ */ new Map();
+  const add = (key, uid) => {
+    if (!byKey.has(key)) byKey.set(key, []);
+    const list = byKey.get(key);
+    if (!list.includes(uid)) list.push(uid);
+  };
+  for (const item of board2.items.values()) {
+    if (item.type !== "card" || !item.target) continue;
+    const t = item.target;
+    if (t.kind === "page") {
+      add(`p:${t.title ?? ""}`, item.uid);
+      if (t.uid) add(`u:${t.uid}`, item.uid);
+    } else if (t.kind === "self") add(`u:${item.uid}`, item.uid);
+    else if (t.uid) add(`u:${t.uid}`, item.uid);
+  }
+  return byKey;
+}
+function* descendants(content, budget) {
+  const stack = [];
+  for (let i = (Array.isArray(content) ? content.length : 0) - 1; i >= 0; i -= 1) stack.push([content[i], 1, null]);
+  while (stack.length && budget.n > 0) {
+    const [node2, depth, parent] = stack.pop();
+    const string = typeof node2?.[":block/string"] === "string" ? node2[":block/string"] : "";
+    budget.n -= 1;
+    yield { uid: node2?.[":block/uid"], string, parent };
+    const kids = node2?.[":block/children"];
+    if (depth >= MAX_DEPTH || !Array.isArray(kids)) continue;
+    for (let i = kids.length - 1; i >= 0; i -= 1) stack.push([kids[i], depth + 1, string]);
+  }
+}
+function cardRefLinks(board2) {
+  if (!board2?.items) return [];
+  const index = cardIndex(board2);
+  if (!index.size) return [];
+  const byKey = /* @__PURE__ */ new Map();
+  const note = (from, uid, string, parent) => {
+    const refs = refsOf(string);
+    if (!refs.pages.size && !refs.uids.length) return;
+    let label = attrNameOf(string);
+    if (label == null && isBareAttr2(parent)) label = attrNameOf(parent);
+    const isAttr = label != null;
+    if (!isAttr) label = "mentions";
+    const targets = /* @__PURE__ */ new Set();
+    for (const title of refs.pages) for (const uid2 of index.get(`p:${title}`) || []) targets.add(uid2);
+    for (const uid2 of refs.uids) for (const card2 of index.get(`u:${uid2}`) || []) targets.add(card2);
+    for (const to of targets) {
+      if (to === from) continue;
+      const key = `${from}->${to}`;
+      let link = byKey.get(key);
+      if (!link) {
+        link = { key, from, to, kind: "ref", labels: [], sources: [], color: "gray" };
+        byKey.set(key, link);
+      }
+      if (isAttr) link.kind = "attr";
+      if (!link.labels.includes(label)) link.labels.push(label);
+      if (link.sources.length < MAX_SOURCES2 && !link.sources.some((s) => s.uid === uid)) link.sources.push({ uid, string });
+    }
+  };
+  for (const item of board2.items.values()) {
+    if (item.type !== "card" || !item.target) continue;
+    if (item.target.kind === "self") note(item.uid, item.uid, item.string, null);
+    const budget = { n: MAX_STRINGS };
+    for (const { uid, string, parent } of descendants(item.content, budget)) note(item.uid, uid, string, parent);
+  }
+  const out = [];
+  for (const link of byKey.values()) {
+    link.labels = [...link.labels.filter((l) => l !== "mentions"), ...link.labels.filter((l) => l === "mentions")];
+    link.color = colorForLabel(link.labels[0]);
+    out.push(link);
+  }
+  return out;
+}
+function treeLinks(board2, parents, key) {
+  if (!board2?.items || !(parents instanceof Map) || !parents.size || !key) return [];
+  const byUid2 = /* @__PURE__ */ new Map();
+  for (const item of board2.items.values()) {
+    if (item.type !== "card" || item.target?.kind !== "block" || !item.target.uid) continue;
+    if (!byUid2.has(item.target.uid)) byUid2.set(item.target.uid, []);
+    byUid2.get(item.target.uid).push(item.uid);
+  }
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const item of board2.items.values()) {
+    if (item.type !== "card" || item.src !== key || item.target?.kind !== "block") continue;
+    const parent = parents.get(item.target.uid);
+    if (!parent) continue;
+    for (const from of byUid2.get(parent) || []) {
+      const k = `${from}->${item.uid}`;
+      if (from === item.uid || seen.has(k)) continue;
+      seen.add(k);
+      out.push({ key: k, from, to: item.uid, kind: "tree", labels: [], sources: [], color: "gray" });
+    }
+  }
+  return out;
+}
+function mergeLinks(a, b) {
+  const byKey = /* @__PURE__ */ new Map();
+  for (const link of [...a || [], ...b || []]) {
+    const have = byKey.get(link.key);
+    if (!have) {
+      byKey.set(link.key, { ...link, labels: [...link.labels || []], sources: [...link.sources || []] });
+      continue;
+    }
+    if (RANK2[link.kind] > RANK2[have.kind]) have.kind = link.kind;
+    for (const l of link.labels || []) if (!have.labels.includes(l)) have.labels.push(l);
+    for (const s of link.sources || []) {
+      if (have.sources.length >= MAX_SOURCES2) break;
+      if (!have.sources.some((x) => x.uid === s.uid && x.string === s.string)) have.sources.push(s);
+    }
+  }
+  const out = [];
+  for (const link of byKey.values()) {
+    link.labels = [...link.labels.filter((l) => l !== "mentions"), ...link.labels.filter((l) => l === "mentions")];
+    link.color = colorForLabel(link.labels[0]);
+    out.push(link);
+  }
+  return out;
+}
+var CARD_REFS_MAX, MAX_SOURCES2, MAX_DEPTH, RANK2, MAX_STRINGS, isBareAttr2, PAGE_RE3, TAG_RE;
+var init_card_refs = __esm({
+  "src/model/card-refs.js"() {
+    init_endpoints();
+    init_schema();
+    CARD_REFS_MAX = 400;
+    MAX_SOURCES2 = 20;
+    MAX_DEPTH = 8;
+    RANK2 = { tree: 0, ref: 1, attr: 2 };
+    MAX_STRINGS = 500;
+    isBareAttr2 = (s) => typeof s === "string" && /^\s*[^:\n]{1,60}::\s*$/.test(s);
+    PAGE_RE3 = /\[\[([^\[\]]+)\]\]/g;
+    TAG_RE = /(?:^|[\s(,;])#([^\s\[\]#,.!?;:()`]+)/g;
+  }
+});
+
 // src/discovery.js
 function isDiagramString2(value) {
   const text4 = String(value ?? "");
@@ -22035,6 +22186,7 @@ var init_tooltip_text = __esm({
       "ctx.notes": e("Notes", "Open the arrow's own block in the sidebar to add notes."),
       "ctx.write": e("Write to graph", "Write this link as a Name:: attribute on the source block."),
       "ctx.source": e(null, "Open the block that makes this link in the sidebar."),
+      "ctx.pin-refs": e("Pin ref arrows", "Turn the faint arrows from this card's refs into connections you can style. Up to 20 at a time."),
       "ctx.pin": e("Pin as connection", "Turn this graph link into an arrow you can style."),
       "ctx.align.left": e("Align left", "Line the selected cards up on their left edges."),
       "ctx.align.center": e("Align centers", "Line the selected cards up on their horizontal centers."),
@@ -33217,7 +33369,7 @@ function createItemRenderer({
     sectionsHost.prune();
     itemsHost.prune();
   };
-  const VIRTUAL_MIN = 400;
+  const VIRTUAL_MIN = CARD_REFS_MAX;
   const OPEN_NOW_MAX = 150;
   const OPEN_CHUNK = 30;
   const PUMP_MS = 12;
@@ -39601,6 +39753,7 @@ var init_cards = __esm({
     init_table_cells();
     init_editor_keys();
     init_quiet_textarea();
+    init_card_refs();
     init_card_children();
     SIDES3 = ["top", "right", "bottom", "left"];
     CHUNK_MS = 8;
@@ -42839,6 +42992,7 @@ function coveredBy(links, board2) {
 }
 
 // src/session.js
+init_card_refs();
 init_query();
 init_follow();
 init_discovery();
@@ -51244,6 +51398,8 @@ var HIGHLIGHT_WATCH_CAP = 60;
 var registry = /* @__PURE__ */ new Map();
 var extensions = [];
 var BULK_CARD_CAP = 45;
+var PIN_BATCH = 20;
+var LOCAL_EDIT_MS = 300;
 var BULK_CONFIRM_WRITES = 600;
 var BULK_REFUSE_WRITES = 3e3;
 function addPublicCard(opts = {}, createFn) {
@@ -52172,6 +52328,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const typed = editingUid ? typingFlush(prev, raw, editingUid) : null;
     if (typed) {
       if (typed.dirty) {
+        noteLocalEdit();
         emit2("change", { structural: false, dirty: /* @__PURE__ */ new Set([typed.dirty]) });
         if (!queue.pending) host.invalidateUndo?.();
       }
@@ -52215,6 +52372,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         writeItemString(item, string);
         const node2 = ix().get(itemUid)?.node;
         if (node2) node2[STR] = string;
+        noteLocalEdit();
         emit2("change", { structural: false, dirty: /* @__PURE__ */ new Set([itemUid]) });
       });
       if (typeof off === "function") editStringOff = off;
@@ -53016,9 +53174,53 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     parts.sort();
     return parts.join("\n");
   }
+  let followParents = null;
+  let localEpoch = 0;
+  let localEditTimer = null;
+  let localMemo = { board: null, parents: null, epoch: -1, links: [] };
+  let mergedMemo = { a: null, b: null, out: [] };
+  function followPointer() {
+    return (raw ? readFollow(readPlexus(raw[PROPS])) : null) || derivedFollow();
+  }
+  function localLinks() {
+    if (!board2 || !cardRefsOn(board2)) return [];
+    if (localMemo.board === board2 && localMemo.parents === followParents && localMemo.epoch === localEpoch) return localMemo.links;
+    const pointer = followPointer();
+    const tree = pointer?.tree && followParents ? treeLinks(board2, followParents, sourceKey(pointer)) : [];
+    let links = [];
+    try {
+      links = mergeLinks(cardRefLinks(board2), tree);
+    } catch (err) {
+      console.error("[plexus session] card refs", err);
+    }
+    localMemo = { board: board2, parents: followParents, epoch: localEpoch, links };
+    return links;
+  }
+  function settleLocalEdit() {
+    if (localEditTimer == null) return;
+    clearTimeout(localEditTimer);
+    localEditTimer = null;
+    if (!destroyed) recomputeLinks(false);
+  }
+  function noteLocalEdit() {
+    localEpoch += 1;
+    if (!board2 || !cardRefsOn(board2)) return;
+    if (localEditTimer != null) clearTimeout(localEditTimer);
+    localEditTimer = setTimeout(() => {
+      localEditTimer = null;
+      if (!destroyed) recomputeLinks(false);
+    }, LOCAL_EDIT_MS);
+    localEditTimer.unref?.();
+  }
+  function allWithLocal() {
+    const local = localLinks();
+    if (!local.length) return allLinks;
+    if (mergedMemo.a !== allLinks || mergedMemo.b !== local) mergedMemo = { a: allLinks, b: local, out: mergeLinks(allLinks, local) };
+    return mergedMemo.out;
+  }
   function recomputeLinks(force) {
     if (!board2) return;
-    const filtered = filterLinks(allLinks, linkMode);
+    const filtered = filterLinks(allWithLocal(), linkMode);
     const res = coveredBy(filtered, board2);
     const fp = `${linkMode}|${res.visible.map((l) => l.key).join(",")}|${[...res.coveredEdges].sort().join(",")}`;
     const changed2 = fp !== linkFingerprint;
@@ -53397,6 +53599,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         host.noteEditing?.(uid, editingUid);
       } catch {
       }
+      if (!editingUid) settleLocalEdit();
     },
     idle: () => queue.idle(),
     setLinkMode(mode) {
@@ -55195,10 +55398,55 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         return writeImageRegion(t, board2.items.get(on), frac, label, uid2, poly);
       });
     },
-    pinLink(link) {
+    // A pin reads the links as they are now: a drawn arrow (it has a key) the card's text no longer has is not written.
+    pinLink(given) {
+      settleLocalEdit();
+      const link = given?.key ? visibleLinks.find((l) => l.key === given.key) : given;
+      if (!link) return Promise.resolve(null);
       const first = link?.labels?.[0];
       const label = first && first !== "mentions" ? first : "";
       return session.addEdge({ from: link.from, to: link.to, label, dir: "one" });
+    },
+    // Up to PIN_BATCH faint links as connections in one undo step. Links a connection already covers are skipped.
+    pinLinks(given) {
+      settleLocalEdit();
+      const now6 = new Map(visibleLinks.map((l) => [l.key, l]));
+      const links = (Array.isArray(given) ? given : []).map((l) => l?.key ? now6.get(l.key) : l).filter(Boolean);
+      return txn((t) => {
+        const list = links;
+        const seen = /* @__PURE__ */ new Set();
+        const fresh = coveredBy(list.filter((l) => l?.from && l?.to && l.from !== l.to && !seen.has(l.key) && seen.add(l.key)), board2).visible;
+        const made = [];
+        let container = null;
+        for (const link of fresh.slice(0, PIN_BATCH)) {
+          if (!board2.items.has(link.from) || !board2.items.has(link.to)) continue;
+          const first = link.labels?.[0];
+          const label = first && first !== "mentions" ? first : "";
+          const props = serializeEdge({ from: link.from, to: link.to, dir: "one" });
+          container ?? (container = ensureContainer(t));
+          made.push(t.create({ parent: container, order: "last", string: edgeStringFor(link.from, link.to, "one", label, props.fromBlock, props.toBlock), plexus: props }));
+        }
+        return made;
+      });
+    },
+    get cardRefs() {
+      return { on: cardRefsOn(board2), big: (board2?.items?.size || 0) > CARD_REFS_MAX };
+    },
+    // The enhanced board's ref arrows. Under the size cap the default is on; past it the key does not matter.
+    setCardRefs(on) {
+      return txn((t) => {
+        if (!board2.enhanced) return false;
+        const base2 = rawPlexus(uid);
+        const next = { ...base2, refs: on !== false };
+        if (stable(next) !== stable(base2)) t.props(uid, next);
+        return true;
+      });
+    },
+    // The tray's child -> parent map of the followed outline. Only a tree pointer uses it.
+    setFollowParents(map) {
+      if (destroyed || !followPointer()?.tree) return;
+      followParents = map instanceof Map && map.size ? map : null;
+      recomputeLinks(false);
     },
     async writeToGraph(edgeUid) {
       const edge = board2?.edges.get(edgeUid);
@@ -55379,6 +55627,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       if (highlightHoldTimer != null) {
         clearTimeout(highlightHoldTimer);
         highlightHoldTimer = null;
+      }
+      if (localEditTimer != null) {
+        clearTimeout(localEditTimer);
+        localEditTimer = null;
       }
       disposeHighlightWatches();
       cancelScheduledLinks();
@@ -74190,7 +74442,7 @@ ${ctx}`;
 ${list[first].content}` };
   return list;
 }
-var TAG_RE = (tag) => new RegExp(`#\\[\\[${tag.replace("/", "\\/")}\\]\\]|#${tag.replace("/", "\\/")}\\b|\\[\\[${tag.replace("/", "\\/")}\\]\\]`, "gi");
+var TAG_RE2 = (tag) => new RegExp(`#\\[\\[${tag.replace("/", "\\/")}\\]\\]|#${tag.replace("/", "\\/")}\\b|\\[\\[${tag.replace("/", "\\/")}\\]\\]`, "gi");
 function flattenChildren(children, depth = 0) {
   const out = [];
   for (const c of children || []) {
@@ -74205,7 +74457,7 @@ function customItems(rows, tag) {
   const out = [];
   for (const r of rows || []) {
     if (!r?.uid) continue;
-    const bare = String(r.string ?? "").replace(TAG_RE(tag), "").replace(/\s+/g, " ").trim();
+    const bare = String(r.string ?? "").replace(TAG_RE2(tag), "").replace(/\s+/g, " ").trim();
     const name = bare.split(" ").slice(0, isStyle ? 4 : 6).join(" ") || (isStyle ? "Style" : "Prompt");
     const kids = flattenChildren(r.children);
     out.push({ id: `${isStyle ? "style" : "prompt"}:${r.uid}`, uid: r.uid, name, prompt: kids || bare, category: isStyle ? "STYLES" : "CUSTOM PROMPTS", custom: true });
@@ -88604,9 +88856,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     rec.to = link.to;
     const dim = dimmed(link);
     const dash = link.dash === "solid" || link.dash === "dashed" || link.dash === "dotted" ? ` pxd-link--${link.dash}` : "";
-    setClass(rec.g, `pxd-link pxd-c-${link.color || "gray"}${dash}${selected ? " pxd-link--selected" : ""}${dim ? " pxd-edge--dim" : ""}`);
+    const tree = link.kind === "tree" ? " pxd-link--tree" : "";
+    setClass(rec.g, `pxd-link pxd-c-${link.color || "gray"}${dash}${tree}${selected ? " pxd-link--selected" : ""}${dim ? " pxd-edge--dim" : ""}`);
     rec.label.className = `pxd-label pxd-label--link pxd-c-${link.color || "gray"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
-    rec.label.textContent = link.labels?.[0] || "mentions";
+    rec.label.textContent = link.labels?.[0] || (link.kind === "tree" ? "" : "mentions");
     if (!a || !b) {
       rec.g.setAttribute("display", "none");
       rec.label.style.display = "none";
@@ -90276,6 +90529,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
           opt("duplicate", "pxd-ctx__duplicate", "duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
           opt("saveViewSelection", "pxd-ctx__save-view", "camera", "Save view", "Save a view of the selection", () => on.saveViewSelection());
         }
+        if (kind === "card" && model?.refLinks > 0) opt("pinRefs", "pxd-ctx__pin-refs", "new-link", "Pin ref arrows", "Turn the faint ref arrows on this card into connections", () => on.pinRefs());
         btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       }
@@ -92606,7 +92860,7 @@ function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__
   let complete = true;
   let deeper = false;
   let cut = false;
-  const walk3 = (node2, level) => {
+  const walk3 = (node2, level, parent) => {
     const kids = sorted2(node2);
     if (kids.length > cap4) cut = true;
     for (const kid of kids) {
@@ -92619,7 +92873,7 @@ function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__
         complete = false;
         return;
       }
-      items.push({ uid, kind: "block", text: sourceText(string), time: timeOf2(kid), depth: level, ...string.trim() ? {} : { blank: true } });
+      items.push({ uid, kind: "block", text: sourceText(string), time: timeOf2(kid), depth: level, parent, ...string.trim() ? {} : { blank: true } });
       const more = Array.isArray(kid[KIDS7]) && kid[KIDS7].length > 0;
       if (!more) continue;
       if (level >= depth) {
@@ -92627,11 +92881,11 @@ function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__
         continue;
       }
       const inner = load ? load(uid) : kid;
-      if (inner) walk3(inner, level + 1);
+      if (inner) walk3(inner, level + 1, uid);
       else cut = true;
     }
   };
-  walk3(root, 1);
+  walk3(root, 1, root?.[UID10]);
   return { items, complete: complete && !cut, deeper };
 }
 var PARENTS_PULL = "[:block/uid {:block/parents [:block/uid]}]";
@@ -92818,6 +93072,7 @@ function createFollowTray({
   storage = globalThis.localStorage,
   graph = "",
   onLeft,
+  onParents,
   onMoved,
   onShowCard,
   onPlaced,
@@ -93054,6 +93309,14 @@ function createFollowTray({
     lane2.reads += 1;
     if (res?.ok) {
       lane2.read = res;
+      if (!lane2.section && lane2.pointer.tree && typeof onParents === "function") {
+        const parents = /* @__PURE__ */ new Map();
+        for (const item of res.items || []) if (item?.parent && item.uid) parents.set(item.uid, item.parent);
+        try {
+          onParents(parents);
+        } catch {
+        }
+      }
       lane2.absent = absentStep(lane2.absent, res, board2(), lane2.key);
       lane2.status = "ok";
       lane2.reason = "";
@@ -98841,6 +99104,11 @@ function followCardItems(f) {
   if (f.followed) out.push(make3("follow:remove", "Remove, don't bring back", { danger: true }));
   return out;
 }
+var refArrowsItem = (refs) => make3("ref-arrows", "Ref arrows", {
+  checked: Boolean(refs?.on),
+  disabled: Boolean(refs?.big),
+  hint: refs?.big ? "Board is too big (over 400 items)" : void 0
+});
 function laneItems(lane2) {
   if (!lane2) return [];
   const names = Array.isArray(lane2.fields) ? lane2.fields.slice() : [];
@@ -98975,6 +99243,7 @@ function buildMenu(kind, ctx = {}) {
         sep(),
         make3("background", "Background…"),
         make3("bg-image", "Lock copied image as background"),
+        refArrowsItem(c.refs),
         viewsMenu(),
         make3("print", "Print…"),
         make3("highlights", "Highlight marks"),
@@ -99241,6 +99510,7 @@ function buildMenu(kind, ctx = {}) {
         make3("add-week", "Add this week's journals"),
         sep(),
         make3("background", "Background…"),
+        refArrowsItem(c.refs),
         ...c.readOpen ? [
           make3("bar-table", "Table view"),
           make3("bar-kanban", "Kanban view"),
@@ -105719,7 +105989,8 @@ function buildBoardView(onFail, {
     badgeCache.set(key, { at: Date.now(), stats });
     return Number(stats.refs) || 0;
   };
-  const cardModel = (item) => item?.type === "card" ? { ...item, refs: refCountOf(item) } : item;
+  const faintLinksOf = (uid) => (session.links || []).filter((l) => l.from === uid || l.to === uid);
+  const cardModel = (item) => item?.type === "card" ? { ...item, refs: refCountOf(item), refLinks: faintLinksOf(item.uid).length } : item;
   const sectionModel = (item) => {
     const b = board2();
     const uids = b ? [item.uid, ...descendantsOf(b, item.uid)] : [item.uid];
@@ -105890,6 +106161,7 @@ function buildBoardView(onFail, {
     storage,
     graph,
     onLeft: (set) => itemsR.setFollowLeft?.(set),
+    onParents: (map) => session.setFollowParents?.(map),
     onMoved: (map) => itemsR.setFollowMoved?.(map),
     onShowCard: (uid) => {
       const r = rects().get(uid);
@@ -105937,6 +106209,19 @@ function buildBoardView(onFail, {
     ctl.flush?.();
     session.undo?.();
   } } : void 0 });
+  const toggleRefArrows = () => {
+    const refs = session.cardRefs;
+    if (!refs) return false;
+    if (refs.big) {
+      toast("Board is too big for ref arrows (over 400 items)");
+      return false;
+    }
+    Promise.resolve(session.setCardRefs?.(!refs.on)).then((ok) => {
+      if (ok === false && !disposed) toast("This board can't store that setting");
+    }).catch(() => {
+    });
+    return true;
+  };
   const pairKey2 = (a, b) => a < b ? `${a}|${b}` : `${b}|${a}`;
   const closeLinksMenu = () => {
     const menu2 = linksMenu;
@@ -106803,9 +107088,9 @@ function buildBoardView(onFail, {
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas":
-        return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting2("task-tool") === true };
+        return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting2("task-tool") === true, refs: session.cardRefs };
       case "board-menu":
-        return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null };
+        return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null, refs: session.cardRefs };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -107374,6 +107659,9 @@ function buildBoardView(onFail, {
         break;
       case "bar-present":
         startPresent();
+        break;
+      case "ref-arrows":
+        toggleRefArrows();
         break;
       case "dock":
         void session.setBoardBackground?.({ dock: arg === "default" ? null : arg });
@@ -108515,6 +108803,15 @@ function buildBoardView(onFail, {
         if (selection.edge) host?.openInSidebar?.(selection.edge, "block");
       },
       writeToGraph: () => writeEdgeToGraph(),
+      pinRefs: () => {
+        const links = faintLinksOf(selection.items[0]);
+        if (!links.length) return;
+        Promise.resolve(session.pinLinks?.(links)).then((made) => {
+          if (disposed || !Array.isArray(made)) return;
+          toast(made.length ? `Pinned ${made.length} ref arrow${made.length === 1 ? "" : "s"}${links.length > made.length ? `. ${links.length - made.length} left: pin again` : ""}` : "Those arrows are already connections", made.length > 0);
+        }).catch(() => {
+        });
+      },
       pinLink: () => {
         const link = (session.links || []).find((l) => l.key === selection.link);
         if (link) Promise.resolve(session.pinLink?.(link)).then((uid) => {
@@ -113507,6 +113804,9 @@ ${url}`;
     },
     foldSections(fold = true) {
       return foldSections(fold);
+    },
+    toggleRefArrows() {
+      return toggleRefArrows();
     },
     newDrawing(at = null) {
       const d = DEFAULT_SIZES.card;
@@ -121029,6 +121329,9 @@ async function installPlexusDiagram({
   function findRelatedCommand(context) {
     return targetView(context)?.findRelated?.();
   }
+  function toggleRefArrowsCommand(context) {
+    return targetView(context)?.toggleRefArrows?.();
+  }
   function newDrawingCommand(context) {
     return targetView(context)?.newDrawing?.();
   }
@@ -121058,7 +121361,8 @@ async function installPlexusDiagram({
     ["Plexus: Fold queries on this page", foldQueriesCommand],
     ["Plexus: Fold sections in the outline", foldSectionsCommand],
     ["Plexus: Unfold sections", unfoldSectionsCommand],
-    ["Plexus: Find related to the selected card", findRelatedCommand]
+    ["Plexus: Find related to the selected card", findRelatedCommand],
+    ["Plexus: Toggle ref arrows", toggleRefArrowsCommand]
   ];
   function runCommand(label, fn) {
     return (context) => {

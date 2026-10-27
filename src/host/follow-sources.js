@@ -11,7 +11,7 @@
 // transaction in the graph, about 8 ms for a page with 2,500 backlinks. Edits on other devices come with the tray's
 // poll and focus refresh.
 //
-// An item is { uid, kind: "block" | "page", text, time, title? (page), crumb?, depth?, blank? }. `time` is the later of
+// An item is { uid, kind: "block" | "page", text, time, title? (page), crumb?, depth?, parent? (block tree), blank? }. `time` is the later of
 // create and edit time, so the tray can say what is new since the last visit.
 
 import { FOLLOW_PARENT_CAP, FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH, queryBody, sourceText as textOf } from "../model/follow.js";
@@ -70,7 +70,7 @@ export function treeItems(root, { depth = 1, cap = FOLLOW_READ_CAP, skip = new S
   let complete = true;
   let deeper = false;
   let cut = false;
-  const walk = (node, level) => {
+  const walk = (node, level, parent) => {
     const kids = sorted(node);
     if (kids.length > cap) cut = true;
     for (const kid of kids) {
@@ -80,16 +80,16 @@ export function treeItems(root, { depth = 1, cap = FOLLOW_READ_CAP, skip = new S
       const string = typeof kid[STR] === "string" ? kid[STR] : "";
       if (META.test(string.trim())) continue;
       if (items.length >= cap) { complete = false; return; }
-      items.push({ uid, kind: "block", text: textOf(string), time: timeOf(kid), depth: level, ...(string.trim() ? {} : { blank: true }) });
+      items.push({ uid, kind: "block", text: textOf(string), time: timeOf(kid), depth: level, parent, ...(string.trim() ? {} : { blank: true }) });
       const more = Array.isArray(kid[KIDS]) && kid[KIDS].length > 0;
       if (!more) continue;
       if (level >= depth) { deeper = true; continue; }
       const inner = load ? load(uid) : kid;
-      if (inner) walk(inner, level + 1);
+      if (inner) walk(inner, level + 1, uid);
       else cut = true;
     }
   };
-  walk(root, 1);
+  walk(root, 1, root?.[UID]);
   return { items, complete: complete && !cut, deeper };
 }
 

@@ -45,6 +45,7 @@ import { createBucketHost } from "./buckets.js";
 import { findCell, forgetTableCells, measureCell, revealCell, watchTable } from "./table-cells.js";
 import { blockUidFromNode } from "./editor-keys.js";
 import { quietTextarea } from "./quiet-textarea.js";
+import { CARD_REFS_MAX } from "../model/card-refs.js";
 import { childIsOpen, findBlock, focusStep, PEEK_ANIM_MS, PEEK_HOVER_MS, PEEK_LEAVE_MS, peekAllowed } from "../model/card-children.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
@@ -2097,7 +2098,7 @@ export function createItemRenderer({
   // paid style and layout for all of them. On a board past VIRTUAL_MIN items a shell is in the DOM only near the
   // view (the content cull rect), or while it is a section, selected, hovered, mounted, edited or focused. Its record
   // and element stay alive detached, so class and state writes still reach it.
-  const VIRTUAL_MIN = 400;
+  const VIRTUAL_MIN = CARD_REFS_MAX;
   const OPEN_NOW_MAX = 150;
   // Map zoom used to build all 150 priority shells in the go-live frame (~245 ms). One chunk is
   // this many shells. A frozen clock never expires PUMP_MS, so the cap is what ends the chunk.

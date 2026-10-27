@@ -66,6 +66,7 @@ export function createFollowTray({
   storage = globalThis.localStorage,
   graph = "",
   onLeft,
+  onParents,
   onMoved,
   onShowCard,
   onPlaced,
@@ -307,6 +308,12 @@ export function createFollowTray({
     lane.reads += 1;
     if (res?.ok) {
       lane.read = res;
+      // PXD-16: the board's own whole-tree source gives the view its blocks' parents (one map: the board's lane only).
+      if (!lane.section && lane.pointer.tree && typeof onParents === "function") {
+        const parents = new Map();
+        for (const item of res.items || []) if (item?.parent && item.uid) parents.set(item.uid, item.parent);
+        try { onParents(parents); } catch { /* view */ }
+      }
       lane.absent = absentStep(lane.absent, res, board(), lane.key);
       lane.status = "ok";
       lane.reason = "";

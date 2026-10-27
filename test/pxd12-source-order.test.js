@@ -189,7 +189,7 @@ test("PXD-12 apply: a due child and plain siblings stay; a section applies its d
   assert.deepEqual(fake.writesLog().filter((w) => w[1] === "due" || w[1] === "n1"), [], "the due child and n1 get no write");
 });
 
-test("PXD-12 apply: 100 reversed children go in chunks of 45, one undo step each, and end in board order", async () => {
+test("PXD-12 apply: 100 reversed children go in chunks of 45 and end in board order; one Cmd+Z restores the original", async () => {
   const ks = Array.from({ length: 100 }, (_, i) => `k${String(i).padStart(3, "0")}`);
   const { fake, session } = setup({
     kids: ks.map((u) => kid(u)),
@@ -205,12 +205,35 @@ test("PXD-12 apply: 100 reversed children go in chunks of 45, one undo step each
   const moves = fake.writesLog().filter((w) => w[0] === "move").length;
   assert.equal(moves, 99);
   assert.deepEqual(fake.writesLog().filter((w) => w[0] !== "move"), []);
-  // One Cmd+Z undoes only the last chunk (9 moves).
+  // Roam's native undo holds 50 entries, fewer than the 99 moves: undo must not walk data.undo() back through them.
+  const nativeUndo = fake.api.data.undo;
+  let nativeSteps = 0;
+  fake.api.data.undo = (...args) => { nativeSteps += 1; return nativeUndo.apply(fake.api.data, args); };
   await session.undo();
   await fake.flush();
-  const plan = planSourceOrder(ks.map((u) => kid(u)), ks.slice().reverse());
-  const states = chunkStates(plan.current, chunkMoves(plan.moves));
-  assert.deepEqual(outline(fake), states[1]);
+  assert.deepEqual(outline(fake), ks, "back to the original order in one step");
+  assert.equal(nativeSteps, 0, "a custom step, not Roam's native stack");
+  await session.redo();
+  await fake.flush();
+  assert.deepEqual(outline(fake), ks.slice().reverse(), "redo applies it again");
+  await session.undo();
+  await fake.flush();
+  assert.deepEqual(outline(fake), ks);
+});
+
+test("PXD-12 apply: a one-chunk apply stays on Roam's native undo", async () => {
+  const ks = ["k1", "k2", "k3", "k4"];
+  const { fake, session } = setup({ kids: ks.map((u) => kid(u)), cards: column(ks.slice().reverse()), trackUndo: true });
+  await session.applySourceOrder(ks.map(cardOf));
+  await fake.flush();
+  assert.deepEqual(outline(fake), ks.slice().reverse());
+  const nativeUndo = fake.api.data.undo;
+  let nativeSteps = 0;
+  fake.api.data.undo = (...args) => { nativeSteps += 1; return nativeUndo.apply(fake.api.data, args); };
+  await session.undo();
+  await fake.flush();
+  assert.deepEqual(outline(fake), ks);
+  assert.ok(nativeSteps > 0);
 });
 
 // ---------------------------------------------------------------- keep outline order
@@ -369,4 +392,8 @@ test("PXD-12 apply: a sibling added between chunks stops the apply before the ne
   assert.ok(res.reason, "the caller hears why");
   assert.equal(calls, SOURCE_ORDER_CHUNK, "the second chunk never ran");
   assert.equal(outline(fake)[0], "NEWKID", "the added block is left where it was put");
+  // "Undo to go back": one Cmd+Z puts the original order back around the block someone else added.
+  await session.undo();
+  await fake.flush();
+  assert.deepEqual(outline(fake), ["NEWKID", ...ks]);
 });

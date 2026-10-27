@@ -180,7 +180,8 @@ extendSession((session, api) => {
       return { parentUid, parentLabel, moveCount, count, skippedCards };
     },
 
-    // Moves the real blocks, 45 per transaction (one undo step each). Resolves { moved, parentUid, skippedCards, chunks }.
+    // Moves the real blocks, 45 per transaction. One chunk is one native undo step; more go back in one custom step.
+    // Resolves { moved, parentUid, skippedCards, chunks }.
     async applySourceOrder(uids) {
       const res = compute(uids);
       if (res.reason) return { moved: 0, parentUid: res.parentUid ?? null, skippedCards: 0, chunks: 0, reason: res.reason };
@@ -190,11 +191,18 @@ extendSession((session, api) => {
       remember(parentUid, [plan.current, ...states, plan.desired]);
       let done = 0;
       let reason;
+      // Past one chunk Roam's own undo (50 entries) cannot walk back every move. Each chunk then carries a custom entry
+      // that plans from the live children back to the original order (and forward again on redo): one Cmd+Z undoes the
+      // whole apply, or what ran of it. The host clears its log after a custom undo, so the earlier chunks' entries go.
+      const walk = async (state) => {
+        for (const m of planSourceOrder(kidsOf(parentUid), state).moves) await host.moveBlock(m.uid, parentUid, m.order);
+      };
+      const customFor = (i) => (chunks.length > 1 ? { undo: () => walk(plan.current), redo: () => walk(states[i]) } : null);
       applying.add(parentUid);
       try {
         for (let i = 0; i < chunks.length; i++) {
           if (api.isGone()) break;
-          await api.txn((t) => { for (const m of chunks[i]) t.move(m.uid, parentUid, m.order); });
+          await api.txn((t) => { for (const m of chunks[i]) t.move(m.uid, parentUid, m.order); }, customFor(i));
           // A failed write (the txn resolves either way) or any edit under the parent meanwhile, an added or deleted
           // sibling too: the next chunk's indexes no longer hold.
           if (orderSignature(kidsOf(parentUid).map((k) => k.uid)) !== orderSignature(states[i])) {

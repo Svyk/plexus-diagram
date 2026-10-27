@@ -55808,7 +55808,8 @@ extendSession((session, api3) => {
       const { parentUid, parentLabel, moveCount, count, skippedCards } = res;
       return { parentUid, parentLabel, moveCount, count, skippedCards };
     },
-    // Moves the real blocks, 45 per transaction (one undo step each). Resolves { moved, parentUid, skippedCards, chunks }.
+    // Moves the real blocks, 45 per transaction. One chunk is one native undo step; more go back in one custom step.
+    // Resolves { moved, parentUid, skippedCards, chunks }.
     async applySourceOrder(uids) {
       const res = compute(uids);
       if (res.reason) return { moved: 0, parentUid: res.parentUid ?? null, skippedCards: 0, chunks: 0, reason: res.reason };
@@ -55818,13 +55819,17 @@ extendSession((session, api3) => {
       remember2(parentUid, [plan.current, ...states, plan.desired]);
       let done3 = 0;
       let reason;
+      const walk3 = async (state) => {
+        for (const m of planSourceOrder(kidsOf5(parentUid), state).moves) await host.moveBlock(m.uid, parentUid, m.order);
+      };
+      const customFor = (i) => chunks.length > 1 ? { undo: () => walk3(plan.current), redo: () => walk3(states[i]) } : null;
       applying.add(parentUid);
       try {
         for (let i = 0; i < chunks.length; i++) {
           if (api3.isGone()) break;
           await api3.txn((t) => {
             for (const m of chunks[i]) t.move(m.uid, parentUid, m.order);
-          });
+          }, customFor(i));
           if (orderSignature(kidsOf5(parentUid).map((k) => k.uid)) !== orderSignature(states[i])) {
             reason = "Stopped: the blocks did not land where expected. Undo to go back.";
             break;

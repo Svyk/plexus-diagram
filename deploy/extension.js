@@ -2311,6 +2311,15 @@ function bandOfRow(bands, row4, name) {
   const i = key ? bands.findIndex((b) => b.key === key) : -1;
   return i >= 0 ? i : bands.length - 1;
 }
+function bandRect(rect, axis2, count, i) {
+  const n3 = Math.max(1, count);
+  if (axisOf(axis2) === "vertical") {
+    const h = rect.h / n3;
+    return { x: rect.x, y: rect.y + h * i, w: rect.w, h };
+  }
+  const w = rect.w / n3;
+  return { x: rect.x + w * i, y: rect.y, w, h: rect.h };
+}
 function bandIndexAt(rect, axis2, count, point) {
   const n3 = Math.max(1, count);
   const vertical = axisOf(axis2) === "vertical";
@@ -2318,6 +2327,22 @@ function bandIndexAt(rect, axis2, count, point) {
   if (!(span > 0)) return 0;
   const off = vertical ? point.y - rect.y : point.x - rect.x;
   return Math.min(n3 - 1, Math.max(0, Math.floor(off / span * n3)));
+}
+function snapIntoBand(band, axis2, r, lane2 = null, pad2 = 0) {
+  const vertical = axisOf(axis2) === "vertical";
+  let start2 = vertical ? band.y : band.x;
+  let end = start2 + (vertical ? band.h : band.w);
+  if (lane2) {
+    const ls = vertical ? lane2.y : lane2.x;
+    start2 = Math.max(start2, ls + pad2);
+    end = Math.min(end, ls + (vertical ? lane2.h : lane2.w) - pad2);
+  }
+  const span = Math.max(0, end - start2);
+  const pos = vertical ? r.y : r.x;
+  const size = vertical ? r.h : r.w;
+  const want = size >= span ? start2 + (span - size) / 2 : Math.min(Math.max(pos, start2), start2 + span - size);
+  const d = want - pos;
+  return vertical ? { dx: 0, dy: d } : { dx: d, dy: 0 };
 }
 function rewriteTokens(value, tokens2, band) {
   const text4 = String(value ?? "");
@@ -51448,7 +51473,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
   }
   function planLaneDrops(top, plan, moved) {
-    const out = { writes: [], bands: /* @__PURE__ */ new Map() };
+    const out = { writes: [], bands: /* @__PURE__ */ new Map(), snap: /* @__PURE__ */ new Map() };
     const perLane = /* @__PURE__ */ new Map();
     for (const id of top) {
       const item = board2.items.get(id);
@@ -51466,6 +51491,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         if (JSON.stringify(ser) !== JSON.stringify(lane2.laneBands)) out.bands.set(lane2.uid, ser);
       }
       const at = bandIndexAt(laneRect, lane2.axis, ctx.bands.length, { x: r.x + r.w / 2, y: r.y + r.h / 2 });
+      const shift = snapIntoBand(bandRect(laneRect, lane2.axis, ctx.bands.length, at), lane2.axis, r, laneRect, FIT_PAD);
+      if (shift.dx || shift.dy) out.snap.set(id, shift);
       const step = planLaneDrop({ name: lane2.laneAttr, row: laneRow(board2, item, laneKids, laneResolve), band: ctx.bands[at] });
       if (step) out.writes.push({ ...step, ref: item.kind === "block" ? item.target?.uid ?? null : null });
     }
@@ -53206,17 +53233,19 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           moved.set(id, { ...r, x: r.x + dx, y: r.y + dy });
         }
         const plan = new Map(membershipPlan(board2, top, moved).map((p) => [p.uid, p]));
+        const drops = planLaneDrops(top, plan, moved);
         for (const id of top) {
           const item = board2.items.get(id);
           const p = plan.get(id);
+          const s = drops.snap.get(id);
+          const at = (v, d) => d ? round14(v + d) : v;
           if (p) {
             t.move(id, p.toParent, "last");
-            t.props(id, itemPlexus(id, { x: p.x, y: p.y }));
+            t.props(id, itemPlexus(id, { x: at(p.x, s?.dx), y: at(p.y, s?.dy) }));
           } else {
-            t.props(id, itemPlexus(id, { x: item.x + dx, y: item.y + dy }));
+            t.props(id, itemPlexus(id, { x: at(item.x + dx, s?.dx), y: at(item.y + dy, s?.dy) }));
           }
         }
-        const drops = planLaneDrops(top, plan, moved);
         for (const w of drops.writes) {
           if (w.op === "string") {
             if (!stringBefore.has(w.uid)) {
@@ -56024,8 +56053,9 @@ extendSession((session, api3) => {
 
 // src/session-lanes.js
 init_schema();
+init_table();
 init_attr_lanes();
-var ATTR_BLOCKS = "[:find ?pu ?s :in $ ?title :where [?p :node/title ?title] [?a :block/refs ?p] [?a :block/string ?s] [?a :block/parent ?par] [?par :block/uid ?pu] (not [?par :node/title _])]";
+var ATTR_BLOCKS = "[:find ?pu ?s ?o :in $ ?title :where [?p :node/title ?title] [?a :block/refs ?p] [?a :block/string ?s] [?a :block/order ?o] [?par :block/children ?a] [?par :block/uid ?pu] (not [?par :node/title _])]";
 var same2 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 extendSession((session, api3) => {
   const { host } = api3;
@@ -56036,6 +56066,12 @@ extendSession((session, api3) => {
   };
   const rowsOf2 = (id) => laneRows(api3.board(), id, api3.laneKids, api3.laneResolve);
   Object.assign(session, {
+    // Names the lane menu offers: attributes on the board's cards plus those on the lane's ref cards' blocks.
+    laneFieldsFor(id) {
+      const board2 = api3.board();
+      if (!board2) return [];
+      return laneFields([...tableRows(board2), ...laneOf(id) ? rowsOf2(id) : []]);
+    },
     // One transaction: the lane keeps `attr` and the band order, its cards are arranged into their bands, and the lane
     // grows to hold them. Text and sections inside it stay where they are.
     bindLane(id, name) {
@@ -56093,17 +56129,21 @@ extendSession((session, api3) => {
       const prefix = `${name}::`;
       const found = /* @__PURE__ */ new Map();
       for (const row4 of rows) {
-        const [parent, string] = Array.isArray(row4) ? row4 : [];
-        if (typeof parent !== "string" || typeof string !== "string" || found.has(parent)) continue;
+        const [parent, string, order] = Array.isArray(row4) ? row4 : [];
+        if (typeof parent !== "string" || typeof string !== "string") continue;
         const text4 = string.trim();
         if (!text4.startsWith(prefix)) continue;
         if (onBoard.has(parent) || inTree.has(parent)) continue;
-        found.set(parent, text4.slice(prefix.length).trim());
+        if (!found.has(parent)) found.set(parent, []);
+        found.get(parent).push({ order: Number(order) || 0, value: text4.slice(prefix.length).trim() });
       }
       const all = [...found.entries()].sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
       if (!all.length) return Promise.resolve(none);
       const batch = all.slice(0, SPREAD_CAP);
-      const fake = batch.map(([uid, value]) => ({ uid, attrs: [{ name, value, uid: null }] }));
+      const fake = batch.map(([uid, list]) => ({
+        uid,
+        attrs: list.sort((a, b) => a.order - b.order).map((v) => ({ name, value: v.value, uid: null }))
+      }));
       const existing = rowsOf2(id);
       const bands = laneBands([...existing, ...fake], name, lane2.laneBands);
       const rect = api3.rects().get(id);
@@ -105227,7 +105267,7 @@ function buildBoardView(onFail, {
           landmark: item?.landmark === true,
           landmarkSize: item?.size || "M",
           dateSource: dateMode,
-          ...item?.look === "lane" ? { lane: { bound: item.laneAttr || null, fields: laneFields(tableRows(b)) } } : {}
+          ...item?.look === "lane" ? { lane: { bound: item.laneAttr || null, fields: session.laneFieldsFor?.(item.uid) ?? laneFields(tableRows(b)) } } : {}
         };
       }
       case "text":

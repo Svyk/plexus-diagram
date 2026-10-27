@@ -80,6 +80,35 @@ export function planAttrCell({ name, value, blockUid = null, parentUid = null } 
   return { op: "create", parent: parentUid, string };
 }
 
+// One row for one card. `kids` overrides item.content (a block-ref card reads the referenced block's children).
+export function tableRow(board, item, resolve, kids = null) {
+  const items = board?.items;
+  const parent = items?.get?.(item.parentUid);
+  const section = parent?.type === "section" ? String(parent.title || "") : "";
+  const attrs = [];
+  for (const child of kids || item.content || []) {
+    const string = child?.[":block/string"] ?? child?.string ?? "";
+    const name = cleanName(attrNameOf(String(string)));
+    if (!name) continue;
+    const text = String(string);
+    const cut = text.indexOf("::");
+    attrs.push({
+      name,
+      value: cut >= 0 ? text.slice(cut + 2).trim() : "",
+      uid: child?.[":block/uid"] ?? child?.uid ?? null,
+    });
+  }
+  return {
+    uid: item.uid,
+    kind: item.kind,
+    title: itemLabel(item, resolve),
+    section,
+    type: item.kind || "",
+    edited: item.edited ?? null,
+    attrs,
+  };
+}
+
 // One row per card and nested board, in board order. Attribute children keep
 // their block uid so a cell can mount renderBlock. BT_attr* and the fixed
 // column names are not columns.
@@ -91,30 +120,7 @@ export function tableRows(board, resolve) {
   for (const uid of order) {
     const item = items.get(uid);
     if (!isTableRow(item)) continue;
-    const parent = items.get(item.parentUid);
-    const section = parent?.type === "section" ? String(parent.title || "") : "";
-    const attrs = [];
-    for (const child of item.content || []) {
-      const string = child?.[":block/string"] ?? child?.string ?? "";
-      const name = cleanName(attrNameOf(String(string)));
-      if (!name) continue;
-      const text = String(string);
-      const cut = text.indexOf("::");
-      attrs.push({
-        name,
-        value: cut >= 0 ? text.slice(cut + 2).trim() : "",
-        uid: child?.[":block/uid"] ?? child?.uid ?? null,
-      });
-    }
-    rows.push({
-      uid: item.uid,
-      kind: item.kind,
-      title: itemLabel(item, resolve),
-      section,
-      type: item.kind || "",
-      edited: item.edited ?? null,
-      attrs,
-    });
+    rows.push(tableRow(board, item, resolve));
   }
   return rows;
 }

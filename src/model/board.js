@@ -1,4 +1,5 @@
 import { inflate } from "./geometry.js";
+import { readLaneBind } from "./attr-lanes.js";
 import {
   BOARD_PATTERNS,
   BOARD_TONES,
@@ -316,6 +317,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         kids: type === "card" && layout.kids === true,
         look: type === "card" ? cardLook(kind, layout.look) : (type === "text" || type === "section" ? layout.look : undefined),
         ...(type === "section" && layout.look === "lane" ? { axis: layout.axis || "horizontal" } : {}),
+        ...(type === "section" && layout.look === "lane" && readLaneBind(cplexus) ? (() => { const b = readLaneBind(cplexus); return { laneAttr: b.name, laneBands: b.bands }; })() : {}),
         ...(type === "text" && layout.shape ? { shape: layout.shape } : {}),
         open: type === "card" ? child[":block/open"] !== false : undefined,
         autofit: !(type === "section" && layout.fit === false),

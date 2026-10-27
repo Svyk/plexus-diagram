@@ -42178,6 +42178,21 @@ function trayHeadline({ newCount = 0, leftCount = 0, baseline = false } = {}) {
   return parts.length ? `${parts.join(", ")} since your last visit` : "Nothing new since your last visit";
 }
 var followPill = (n3) => `Following (${n3})`;
+var INBOX_KIND = "inbox";
+var ARRIVALS_CAP = 20;
+function arrivalsView(pending, { allowance = ARRIVALS_CAP, placed = 0 } = {}) {
+  const list = Array.isArray(pending) ? pending : [];
+  const room = Math.max(0, Math.floor(Number(allowance) || 0) - Math.max(0, Math.floor(Number(placed) || 0)));
+  const rows = list.slice(0, room);
+  return { rows, waiting: list.length - rows.length };
+}
+function arrivalsLine({ rows = [], waiting = 0 } = {}) {
+  const n3 = rows.length;
+  if (!n3) return waiting > 0 ? `${waiting} wait for your next visit` : "No arrivals";
+  const head = `${n3} arrival${n3 === 1 ? "" : "s"}`;
+  return waiting > 0 ? `${head} · ${waiting} more wait` : head;
+}
+var arrivalsPill = (n3) => `Arrivals (${n3})`;
 function followCardString(item) {
   if (item?.kind === "page" && item.title) return `[[${item.title}]]`;
   return `((${item?.uid}))`;
@@ -55507,9 +55522,11 @@ extendSession((session, api3) => {
       out.add(boardUid);
       return out;
     },
-    // { kind, uid, tree }. The same source keeps its skip list. Resolves true when the pointer changed.
+    // { kind, uid, tree }. The same source keeps its skip list. Resolves true when the pointer changed. The Inbox kind
+    // takes the board's own uid.
     followSource({ kind, uid, tree } = {}) {
-      if (typeof kind !== "string" || typeof uid !== "string" || !uid || uid === boardUid) return Promise.resolve(false);
+      if (typeof kind !== "string" || typeof uid !== "string" || !uid) return Promise.resolve(false);
+      if (uid === boardUid !== (kind === INBOX_KIND)) return Promise.resolve(false);
       return writePointer((cur, base2) => followPointerFor(keptFollow(base2, `${kind}:${uid}`) || cur, kind, uid, { tree }));
     },
     setFollowTree(on) {
@@ -91264,19 +91281,21 @@ function inboxEntries(rows) {
 async function readInbox(q2, titles, { tick = () => Promise.resolve() } = {}) {
   const all = [];
   let full = false;
+  let failed = false;
   for (const step of inboxPlan(titles)) {
     let rows = [];
     try {
       rows = q2(step.query, ...step.inputs);
     } catch {
       rows = [];
+      failed = true;
     }
     const got = inboxEntries(rows);
     all.push(...got.entries);
     if (got.full) full = true;
     await tick();
   }
-  return { entries: all, full };
+  return { entries: all, full, failed };
 }
 function filterInbox(entries, { onBoard = /* @__PURE__ */ new Set(), skip = /* @__PURE__ */ new Set(), cap: cap4 = INBOX_CAP } = {}) {
   const seen = /* @__PURE__ */ new Set();
@@ -91305,7 +91324,7 @@ function inboxLabel(n3) {
 }
 
 // src/view/inbox.js
-function createInbox({ doc = globalThis.document, root, host, timers, titles, onBoard, skip, place: place3 } = {}) {
+function createInbox({ doc = globalThis.document, root, host, timers, titles, onBoard, skip, place: place3, hidden, follow } = {}) {
   let entries = [];
   let rows = [];
   let btn2 = null;
@@ -91330,6 +91349,16 @@ function createInbox({ doc = globalThis.document, root, host, timers, titles, on
     panel.replaceChildren?.();
     const head = el2("div", "pxd-inbox__head", panel);
     el2("span", "pxd-inbox__title", head, "Daily notes that mention this board");
+    if (follow) {
+      const live2 = el2("button", "pxd-inbox__follow", head, "Follow");
+      live2.type = "button";
+      live2.title = "New blocks arrive in the tray, ready to place";
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) live2.addEventListener(type, swallow);
+      live2.addEventListener("click", (event) => {
+        event.stopPropagation();
+        follow();
+      });
+    }
     const all = el2("button", "pxd-inbox__all", head, "Place all");
     all.type = "button";
     all.disabled = rows.length === 0;
@@ -91394,14 +91423,33 @@ function createInbox({ doc = globalThis.document, root, host, timers, titles, on
     btn2.setAttribute("aria-expanded", open ? "true" : "false");
     btn2.setAttribute("aria-label", `${rows.length} daily-note block${rows.length === 1 ? "" : "s"} mention this board`);
   };
+  const away = () => {
+    try {
+      return hidden?.() === true;
+    } catch {
+      return false;
+    }
+  };
   function sync() {
     if (disposed) return;
+    if (away()) {
+      open = false;
+      panel?.remove();
+      panel = null;
+      btn2?.remove();
+      btn2 = null;
+      return;
+    }
     compute();
     paintPill();
     paintList();
   }
   function refresh() {
     if (disposed || reading) return reading;
+    if (away()) {
+      sync();
+      return null;
+    }
     const names = titles?.() || [];
     if (!names.length || typeof host?.q !== "function") {
       loaded = true;
@@ -91847,6 +91895,37 @@ defineFollowKind({
     return { ok: true, complete: refs.length < REFS_LIMIT, items: items.slice(0, FOLLOW_READ_CAP) };
   }
 });
+defineFollowKind({
+  id: INBOX_KIND,
+  title: "This board's Inbox",
+  describe: () => "this board's Inbox",
+  watch: (p, host, cb, env) => watchSaves(env, cb),
+  async read(p, { host, boardUid, boardTitle: boardTitle3, inBoard, tick }) {
+    if (typeof host?.q !== "function") return { ok: false, reason: "error" };
+    let pageTitle = "";
+    try {
+      pageTitle = host.pageTitleOf?.(p.uid) || "";
+    } catch {
+      pageTitle = "";
+    }
+    const own2 = p.uid === boardUid && typeof boardTitle3 === "function" ? boardTitle3() : "";
+    const titles = inboxTitles({ pageTitle, boardTitle: own2 });
+    if (!titles.length) return { ok: true, complete: true, items: [] };
+    const got = await readInbox((query, ...inputs) => host.q(query, ...inputs), titles, { tick });
+    const skip = new Set(typeof inBoard === "function" ? inBoard() : []);
+    skip.add(p.uid);
+    const kept = filterInbox(got.entries, { skip, cap: FOLLOW_READ_CAP + 1 });
+    const items = kept.slice(0, FOLLOW_READ_CAP).map((e2) => ({
+      uid: e2.uid,
+      kind: "block",
+      text: sourceText(e2.string),
+      crumb: e2.page,
+      time: e2.time,
+      ...e2.string.trim() ? {} : { blank: true }
+    }));
+    return { ok: true, complete: !got.failed && !got.full && kept.length <= FOLLOW_READ_CAP, items };
+  }
+});
 
 // src/view/follow-tray.js
 var REASONS = {
@@ -91869,6 +91948,7 @@ function createFollowTray({
   onLeft,
   onShowCard,
   onPlaced,
+  onSource,
   toast,
   now: now5 = () => globalThis.performance?.now?.() ?? Date.now()
 } = {}) {
@@ -91898,6 +91978,8 @@ function createFollowTray({
   let inFlight = false;
   let again = false;
   let placing = false;
+  let allowance = ARRIVALS_CAP;
+  let arrived = 0;
   let lastMs = 0;
   let waitMs = 0;
   let queuedAt = 0;
@@ -91935,6 +92017,7 @@ function createFollowTray({
   const ctx = () => ({
     host,
     boardUid,
+    boardTitle: () => board2()?.title || "",
     inBoard: () => session.followExclude?.() || /* @__PURE__ */ new Set([boardUid]),
     tick: () => new Promise((resolve) => timers.idle(resolve)),
     followed: () => followIndex(board2(), key).followed.map((card2) => card2.target?.uid).filter(Boolean)
@@ -92140,9 +92223,12 @@ function createFollowTray({
     lastStart = -Infinity;
     known2 = false;
     unhold();
+    const was = pointer?.kind || "";
     pointer = next;
     key = nextKey;
     read2 = null;
+    allowance = ARRIVALS_CAP;
+    arrived = 0;
     absent = /* @__PURE__ */ new Map();
     status = pointer ? "reading" : "idle";
     reason = "";
@@ -92159,15 +92245,23 @@ function createFollowTray({
       schedule();
     } else if (open) close();
     armPoll();
+    try {
+      onSource?.(pointer?.kind || "", was);
+    } catch {
+    }
     return true;
   }
+  const isInbox = () => pointer?.kind === INBOX_KIND;
+  const strip = () => isInbox() ? arrivalsView(diff.pending, { allowance, placed: arrived }) : { rows: diff.pending, waiting: 0 };
   const entryOf = (row4) => ({ uid: row4.uid, kind: row4.kind, ...row4.title ? { title: row4.title } : {} });
   function place3(rows) {
     if (!rows.length || placing) return Promise.resolve(null);
     placing = true;
     paintPanel();
+    const inbox = isInbox();
     return Promise.resolve(session.placeFollowed?.(rows.map(entryOf))).then((res) => {
       if (disposed || !res) return res;
+      if (inbox && isInbox()) arrived += Number(res.placed) || 0;
       if (res.batches > 1) toast?.(`Placed ${res.placed} cards in ${res.batches} batches of up to ${SPREAD_CAP}. Each Cmd+Z takes back one batch.`);
       if (res.uids?.length) onPlaced?.(res.uids);
       return res;
@@ -92192,7 +92286,7 @@ function createFollowTray({
       });
     }
     const counts = sinceVisit(diff, { since, leftBefore });
-    btn2.textContent = followPill(diff.pending.length);
+    btn2.textContent = isInbox() ? arrivalsPill(diff.pending.length) : followPill(diff.pending.length);
     btn2.classList.toggle("pxd-follow--new", counts.newCount > 0 || counts.leftCount > 0);
     btn2.setAttribute("aria-expanded", open ? "true" : "false");
     const head = trayHeadline(counts);
@@ -92249,15 +92343,28 @@ function createFollowTray({
     else if (read2 && !read2.complete) note = "Only part of the source was read, so nothing is marked as left.";
     else if (read2?.deeper) note = `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
     if (note) el2("div", "pxd-follow__note", panel, note);
+    const shown = strip();
     const bar = el2("div", "pxd-follow__bar", panel);
-    el2("span", "pxd-follow__count", bar, `${diff.pending.length} waiting · ${diff.placed} on the board`);
-    const all = button3(bar, "pxd-follow__all", diff.pending.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => {
-      void place3(diff.pending.slice());
+    if (isInbox()) {
+      el2("span", "pxd-follow__arrivals", bar, "Arrivals");
+      el2("span", "pxd-follow__count", bar, `${arrivalsLine(shown)} · ${diff.placed} on the board`);
+    } else el2("span", "pxd-follow__count", bar, `${diff.pending.length} waiting · ${diff.placed} on the board`);
+    const all = button3(bar, "pxd-follow__all", shown.rows.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => {
+      void place3(shown.rows.slice());
     });
-    all.disabled = diff.pending.length === 0 || placing;
+    all.disabled = shown.rows.length === 0 || placing;
     const list = el2("div", "pxd-follow__list", panel);
-    if (!diff.pending.length) el2("div", "pxd-follow__empty", list, read2 ? "Everything in the source is on the board." : "");
-    for (const row4 of diff.pending) rowEl(list, row4);
+    if (!diff.pending.length) el2("div", "pxd-follow__empty", list, read2 ? isInbox() ? "No daily-note block waits." : "Everything in the source is on the board." : "");
+    for (const row4 of shown.rows) rowEl(list, row4);
+    if (shown.waiting > 0) {
+      const more = el2("div", "pxd-follow__more", list);
+      el2("span", "pxd-follow__count", more, `${shown.waiting} more wait`);
+      const n3 = Math.min(ARRIVALS_CAP, shown.waiting);
+      button3(more, "pxd-follow__show-more", `Show ${n3} more`, () => {
+        allowance += ARRIVALS_CAP;
+        paintPanel();
+      });
+    }
     if (diff.left.length) {
       el2("div", "pxd-follow__section", panel, `Left the source (${diff.left.length})`);
       const gone = el2("div", "pxd-follow__list pxd-follow__list--left", panel);
@@ -92337,6 +92444,11 @@ function createFollowTray({
     close,
     isOpen: () => open,
     rows: () => diff.pending.slice(),
+    // PXD-18: the Arrivals strip ({ rows, waiting }) while the board follows its Inbox, else every pending row.
+    arrivals: () => {
+      const v = strip();
+      return { rows: v.rows.slice(), waiting: v.waiting };
+    },
     left: () => diff.left.slice(),
     reads: () => reads,
     // The F10 probe: the source, reads so far, how long the last one took and waited, and the quiet period that sets.
@@ -97516,6 +97628,7 @@ function followMenu(f) {
         make3("follow:pick-block", "Switch to a block's children…"),
         make3("follow:pick-query", "Switch to a query…"),
         make3("follow:pick-refs", "Switch to linked references of…"),
+        ...f.kind === "inbox" ? [] : [make3("follow:inbox", "Switch to this board's Inbox")],
         make3("follow:stop", "Stop following")
       ]
     })];
@@ -97525,7 +97638,8 @@ function followMenu(f) {
       ...f.textUid ? [make3("follow:text", "The block in the board text")] : [],
       make3("follow:pick-block", "A block's children…"),
       make3("follow:pick-query", "A query…"),
-      make3("follow:pick-refs", "Linked references of…")
+      make3("follow:pick-refs", "Linked references of…"),
+      make3("follow:inbox", "This board's Inbox")
     ]
   })];
 }
@@ -104559,7 +104673,12 @@ function buildBoardView(onFail, {
       return uids;
     },
     skip: () => /* @__PURE__ */ new Set([boardUid]),
-    place: (strings) => addStringsBeside(strings)
+    place: (strings) => addStringsBeside(strings),
+    // PXD-18: while the board follows its Inbox, the arrivals come through the tray and this pill stays away.
+    hidden: () => followCtl?.menuState?.()?.kind === "inbox",
+    follow: () => {
+      void startFollow("inbox", boardUid);
+    }
   });
   followCtl = createFollowTray({
     doc,
@@ -104580,6 +104699,11 @@ function buildBoardView(onFail, {
       pulseItem(uid);
     },
     onPlaced: (uids) => ctl.select(uids),
+    // Leaving the Inbox source: the pill reads again (it skipped its reads meanwhile).
+    onSource: (kind, was) => {
+      if (was === "inbox" && kind !== "inbox") void inboxCtl?.refresh?.();
+      else inboxCtl?.sync?.();
+    },
     toast: (message) => toast(message)
   });
   let crumbList = Array.isArray(crumbs) ? crumbs.slice() : [];
@@ -105688,7 +105812,7 @@ function buildBoardView(onFail, {
     if (disposed) return false;
     if (ok) {
       followCtl?.open?.();
-      toast("Following. New items wait in the tray until you place them.");
+      toast(kind === "inbox" ? "Following this board's Inbox. New daily-note blocks wait under Arrivals until you place them." : "Following. New items wait in the tray until you place them.");
     } else if (session.followState?.()?.pointer?.uid === uid) followCtl?.open?.();
     else toast("Couldn't follow that source");
     return true;
@@ -105725,6 +105849,9 @@ function buildBoardView(onFail, {
         break;
       case "this-refs":
         void startFollow("refs", followTargetOf(item, "refs"));
+        break;
+      case "inbox":
+        void startFollow("inbox", boardUid);
         break;
       case "show":
         followCtl?.open?.();

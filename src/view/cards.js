@@ -1780,6 +1780,7 @@ export function createItemRenderer({
   const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash", "pxd-item--roam-table", "pxd-item--into", "pxd-item--pdf-bar"];
   // PXD-9: cards whose block left the board's followed source. A mark only; the card stays until the user acts.
   let followLeft = null;
+  let filterCardUid = null;
   const imageRegionString = (text) => {
     const region = parseRegion(text);
     return Boolean(region && region.kind === "img" && region.supported === true && region.owner === "plexus-diagram" && region.error == null);
@@ -1827,6 +1828,7 @@ export function createItemRenderer({
     }
     if (focusSet && !focusSet.has(item.uid)) cls.push(item.type === "section" ? "pxd-section--focus-dim" : "pxd-item--focus-dim");
     if (item.type !== "section" && followLeft?.has(item.uid)) cls.push("pxd-item--left");
+    if (item.type !== "section" && filterCardUid === item.uid) cls.push("pxd-item--filtering");
     if (item.type !== "section") {
       if (isKidsCard(item)) {
         cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
@@ -6591,6 +6593,14 @@ export function createItemRenderer({
       rec.el.classList?.toggle?.("pxd-item--left", Boolean(followLeft?.has(rec.uid)));
     }
   };
+  // PXD-17: the query card filtering the board wears a mark, so it is clear which card dims the rest.
+  const setFilterCard = (uid) => {
+    filterCardUid = uid || null;
+    for (const rec of shells.values()) {
+      if (rec.type === "section") continue;
+      rec.el.classList?.toggle?.("pxd-item--filtering", rec.uid === filterCardUid);
+    }
+  };
   const setChanged = (set) => {
     changedUids = set instanceof Set && set.size ? set : null;
     for (const rec of shells.values()) renderBadges(rec);
@@ -7786,6 +7796,7 @@ export function createItemRenderer({
     setBadges,
     setChanged,
     setFollowLeft,
+    setFilterCard,
     setShowBadges,
     setTrailBadges,
     setTaskChips,

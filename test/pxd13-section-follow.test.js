@@ -325,7 +325,8 @@ test("PXD-13 tray: an item in two sections waits once in the first and is a hint
     assert.equal(g.root.querySelector(".pxd-follow").textContent, "Following (4)", "hint rows do not count");
     g.tray.open();
     const hint = g.root.querySelector(".pxd-follow__row--hint");
-    assert.equal(hint.textContent, "k2 — also in “First”");
+    assert.equal(hint.querySelector(".pxd-follow__text").textContent, "k2");
+    assert.equal(hint.querySelector(".pxd-follow__also").textContent, "Also in “First”", "on its own line, not after a title that ellipsizes");
     assert.equal(hint.querySelector(".pxd-follow__place"), null, "a hint has no Place");
     const groups = g.root.querySelectorAll(".pxd-follow__group");
     assert.deepEqual(groups.map((n) => n.dataset.owner), ["S1", "S2"]);
@@ -338,6 +339,67 @@ test("PXD-13 tray: an item in two sections waits once in the first and is a hint
     assert.deepEqual(g.tray.rows("S2").map((r) => r.uid), ["k9"]);
     g.tray.dispose();
   } finally { off(); }
+});
+
+// The stub does no layout: the groups scroller sits 40 px down the panel, each group is 300 px tall.
+function layoutGroups(doc) {
+  const make = doc.createElement.bind(doc);
+  doc.createElement = (tag) => {
+    const node = make(tag);
+    Object.defineProperty(node, "offsetTop", {
+      get() {
+        if (node.classList.contains("pxd-follow__groups")) return 40;
+        if (!node.classList.contains("pxd-follow__group")) return 0;
+        return 40 + 300 * (node.parentElement?._kids || []).indexOf(node);
+      },
+    });
+    return node;
+  };
+}
+
+test("PXD-13 tray: reads and places paint again without moving the drawer; Show in tray stays on its section", async () => {
+  const off = defineFollowKind({ id: "probe13s", title: "Probe", describe: () => "the probe", read: async () => ({ ok: true, complete: true, items: [item("k9"), item("k8")] }) });
+  try {
+    const g = mount({
+      children: [
+        section("S1", "First", 0, 0, 500, 300, { follow: { kind: "block", uid: "SRC" } }),
+        section("S2", "Second", 600, 0, 500, 300, { follow: { kind: "probe13s", uid: "P" } }),
+      ],
+    });
+    layoutGroups(g.dom.document);
+    await g.timers.run();
+    const scroller = () => g.root.querySelector(".pxd-follow__groups");
+    // Show in tray on the second section: the drawer opens on it, and the read that open asks for keeps it there.
+    g.tray.open("S2");
+    assert.equal(scroller().scrollTop, 300, "Show in tray puts the section's group at the top");
+    const before = scroller();
+    await g.timers.run();
+    assert.notEqual(scroller(), before, "the read painted the drawer again");
+    assert.equal(before.isConnected, false);
+    assert.equal(scroller().scrollTop, 300, "still on the second section after the read");
+    // The user scrolls a little further; placing a card (a paint before and after the write) keeps that too.
+    scroller().scrollTop = 340;
+    await g.session.placeFollowed([{ uid: "k1", kind: "block" }], { owner: "S1" });
+    await flush();
+    assert.equal(scroller().scrollTop, 340, "a place keeps the scroll");
+    g.tray.close();
+    g.tray.open("S1");
+    assert.equal(scroller().scrollTop, 0, "Show in tray on the first section");
+    g.tray.dispose();
+  } finally { off(); }
+});
+
+test("PXD-13 tray: a board that follows one source keeps its list's scroll through a read", async () => {
+  const g = mount({ plexus: { v: 2, follow: { kind: "block", uid: "SRC" } } });
+  await g.timers.run();
+  g.tray.open();
+  const list = () => g.root.querySelector(".pxd-follow__list");
+  list().scrollTop = 120;
+  const before = list();
+  await g.timers.run();
+  assert.notEqual(list(), before);
+  assert.equal(list().scrollTop, 120);
+  g.tray.dispose();
 });
 
 test("PXD-13 tray: a section before the board; Don't bring back in the first owner does not promote the row into the next", async () => {

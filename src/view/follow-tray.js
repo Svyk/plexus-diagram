@@ -80,6 +80,10 @@ export function createFollowTray({
   let btn = null;
   let panel = null;
   let groupEls = new Map();
+  // The drawer's scrollers (the groups, or the one-source list) and the group Show in tray asked for.
+  let groupsEl = null;
+  let listEl = null;
+  let showAnchor = null;
   let poll = null;
   let placing = false;
   // The shared pass: one bgIdle job reads every due lane in turn (never two reads at once on the board).
@@ -552,7 +556,9 @@ export function createFollowTray({
   function hintEl(list, row) {
     const node = el("div", "pxd-follow__row pxd-follow__row--hint", list);
     node.dataset.uid = row.uid;
-    el("div", "pxd-follow__text", node, `${rowText(row)} — also in ${row.also}`);
+    el("div", "pxd-follow__text", node, rowText(row));
+    // On its own line: a long title ellipsizes and would hide it.
+    el("div", "pxd-follow__also", node, `Also in ${row.also}`);
     shield(node);
   }
 
@@ -600,24 +606,61 @@ export function createFollowTray({
   }
 
   // A board that follows only its own source looks as it did before sections could follow one.
+  // Every read and every place paints again, so the drawer keeps its place: the groups scroller stays on the group at
+  // its top (rows read or placed above it do not move the view), and the one-source list keeps its scrollTop. Show in
+  // tray sets that group as the anchor.
+  function scrollAnchor() {
+    if (listEl) return { top: Number(listEl.scrollTop) || 0 };
+    if (!groupsEl) return null;
+    const top = Number(groupsEl.scrollTop) || 0;
+    const base = Number(groupsEl.offsetTop) || 0;
+    let anchor = { top };
+    for (const [owner, group] of groupEls) {
+      const at = Number(group.offsetTop);
+      if (Number.isFinite(at) && at - base <= top) anchor = { top, owner, delta: top - (at - base) };
+    }
+    return anchor;
+  }
+
+  function restoreScroll(anchor) {
+    if (!anchor) return;
+    if (listEl) { listEl.scrollTop = anchor.top; return; }
+    if (!groupsEl) return;
+    const group = anchor.owner ? groupEls.get(anchor.owner) : null;
+    const at = Number(group?.offsetTop);
+    if (group && Number.isFinite(at)) groupsEl.scrollTop = Math.max(0, at - (Number(groupsEl.offsetTop) || 0) + (anchor.delta || 0));
+    else if (group && anchor.show) {
+      try { group.scrollIntoView?.({ block: "start" }); } catch { /* no scrolling here */ }
+    } else groupsEl.scrollTop = anchor.top || 0;
+  }
+
   function paintPanel() {
     if (!panel) return;
+    const anchor = showAnchor || scrollAnchor();
+    showAnchor = null;
     panel.replaceChildren?.();
     groupEls = new Map();
+    groupsEl = null;
+    listEl = null;
     const single = order.length === 1 && !order[0].section ? order[0] : null;
     const head = el("div", "pxd-follow__head", panel);
     el("div", "pxd-follow__title", head, single?.label ? `Following ${single.label}` : "Following");
     button(head, "pxd-follow__close", "×", () => close(), "Close");
     const line = trayHeadline(counts());
     if (line) el("div", "pxd-follow__since", panel, line);
-    if (single) { paintLane(panel, single, false); return; }
-    const groups = el("div", "pxd-follow__groups", panel);
-    for (const lane of order) {
-      const group = el("div", "pxd-follow__group", groups);
-      group.dataset.owner = lane.uid;
-      groupEls.set(lane.uid, group);
-      paintLane(group, lane, true);
+    if (single) {
+      paintLane(panel, single, false);
+      listEl = panel.querySelector?.(".pxd-follow__list") || null;
+    } else {
+      groupsEl = el("div", "pxd-follow__groups", panel);
+      for (const lane of order) {
+        const group = el("div", "pxd-follow__group", groupsEl);
+        group.dataset.owner = lane.uid;
+        groupEls.set(lane.uid, group);
+        paintLane(group, lane, true);
+      }
     }
+    restoreScroll(anchor);
   }
 
   // `owner`: scroll to that section's (or the board's) group.
@@ -630,11 +673,9 @@ export function createFollowTray({
       panel.setAttribute("aria-label", "Followed source");
       shield(panel, ["pointerdown", "mousedown", "dblclick", "wheel"]);
     }
+    if (typeof owner === "string" && owner && lanes.has(owner)) showAnchor = { top: 0, owner, delta: 0, show: true };
     for (const lane of order) markDue(lane);
     sync();
-    if (typeof owner === "string" && owner) {
-      try { groupEls.get(owner)?.scrollIntoView?.({ block: "start" }); } catch { /* no scrolling here */ }
-    }
   }
 
   function close() {
@@ -643,6 +684,8 @@ export function createFollowTray({
     panel?.remove();
     panel = null;
     groupEls = new Map();
+    groupsEl = null;
+    listEl = null;
     paintPill();
   }
 

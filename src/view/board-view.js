@@ -17,6 +17,7 @@ import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SI
 import { TABLE_SIZE, keyGate, ownershipOf, tablePointerTarget } from "../model/roam-table.js";
 import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../model/drawing-card.js";
 import { annotatePlan } from "../model/annotate.js";
+import { bindingLabel, parseBinding } from "../model/bucket.js";
 import { rewriteBgTag } from "../model/highlighter.js";
 import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, hitTest, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
 import { trailBadges, trailPoints } from "../model/trails.js";
@@ -5954,6 +5955,7 @@ function buildBoardView(onFail, {
           pinned: Boolean(item?.pinned),
           collapsed: Boolean(item?.collapsed),
           hasNote: Boolean(item && sectionNoteUid(b, item.uid)),
+          bucket: item ? bindingLabel(session.sectionBinding?.(item.uid)) : "",
           locked: members.length > 0 && members.every((u) => b.items.get(u)?.pinned),
           trails: trailRows(b),
           landmark: item?.landmark === true,
@@ -6636,6 +6638,22 @@ function buildBoardView(onFail, {
       case "unfold-all-in": if (item) void session.collapseAll?.(false, { within: item.uid }); break;
       case "collapse-section": if (item?.type === "section") void session.setCollapsed?.(item.uid, !item.collapsed); break;
       case "section-note": if (item?.type === "section") void session.toggleSectionNote?.(item.uid); break;
+      case "bucket-bind": {
+        if (item?.type !== "section") break;
+        askView({
+          caption: bindingLabel(session.sectionBinding?.(item.uid)),
+          showCopy: false,
+          dialogLabel: "Bind section",
+          onSave: ({ caption }) => {
+            const binding = parseBinding(caption);
+            if (!binding) { toast("Use #tag or Name:: value"); return; }
+            void session.bindSection?.(item.uid, binding);
+          },
+        });
+        break;
+      }
+      case "bucket-write": if (item?.type === "section") void session.writeSectionToGraph?.(item.uid); break;
+      case "bucket-unbind": if (item?.type === "section") void session.bindSection?.(item.uid, null); break;
       case "lock-contents": if (item?.type === "section") void session.lockSection?.(item.uid, true); break;
       case "unlock-contents": if (item?.type === "section") void session.lockSection?.(item.uid, false); break;
       case "present-section": if (item?.type === "section") startPresent(item.uid); break;

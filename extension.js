@@ -688,16 +688,16 @@ function distributeRects(list, axis2) {
   const h = axis2 === "h";
   const pos = h ? "x" : "y";
   const dim = h ? "w" : "h";
-  const sorted2 = [...list].sort((p, q2) => p[pos] - q2[pos]);
-  if (sorted2.length < 3) return sorted2.map((r) => ({ uid: r.uid, x: r.x, y: r.y }));
-  const first = sorted2[0];
-  const last = sorted2[sorted2.length - 1];
+  const sorted3 = [...list].sort((p, q2) => p[pos] - q2[pos]);
+  if (sorted3.length < 3) return sorted3.map((r) => ({ uid: r.uid, x: r.x, y: r.y }));
+  const first = sorted3[0];
+  const last = sorted3[sorted3.length - 1];
   const span = last[pos] + last[dim] - first[pos];
-  const total = sorted2.reduce((s, r) => s + r[dim], 0);
-  const gap = (span - total) / (sorted2.length - 1);
+  const total = sorted3.reduce((s, r) => s + r[dim], 0);
+  const gap = (span - total) / (sorted3.length - 1);
   let cursor = first[pos];
-  return sorted2.map((r, i) => {
-    const p = i === sorted2.length - 1 ? last[pos] : cursor;
+  return sorted3.map((r, i) => {
+    const p = i === sorted3.length - 1 ? last[pos] : cursor;
     cursor += r[dim] + gap;
     return h ? { uid: r.uid, x: p, y: r.y } : { uid: r.uid, x: r.x, y: p };
   });
@@ -4260,7 +4260,9 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         ...kind === "image" || kind === "pdf" ? { hitsKey: endpointHitsKey(cardKids) } : {},
         ...openKey ? { openKey } : {},
         // PXD-9: the source a placed card came from (its follow key). Only such cards can be marked "left the source".
-        ...typeof cplexus?.src === "string" && cplexus.src ? { src: cplexus.src } : {}
+        ...typeof cplexus?.src === "string" && cplexus.src ? { src: cplexus.src } : {},
+        // PXD-14: the heading a followed section stands for, or the heading a followed card was placed under.
+        ...typeof cplexus?.head === "string" && cplexus.head ? { head: cplexus.head } : {}
       };
       items.set(cuid, item);
       preorder.push(cuid);
@@ -4613,10 +4615,10 @@ function readingOrder(board2, rects) {
   });
   const groups2 = [];
   const visit = (parent, uids) => {
-    const sorted2 = byPos(uids);
-    if (!sorted2.length) return;
-    groups2.push({ parent, uids: sorted2 });
-    for (const uid of sorted2) {
+    const sorted3 = byPos(uids);
+    if (!sorted3.length) return;
+    groups2.push({ parent, uids: sorted3 });
+    for (const uid of sorted3) {
       const item = board2.items.get(uid);
       if (item?.type === "section") visit(uid, item.members);
     }
@@ -5387,9 +5389,9 @@ function sharesLine(row4, w) {
   return !stacked;
 }
 function relineWords(words) {
-  const sorted2 = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  const sorted3 = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const rows = [];
-  for (const w of sorted2) {
+  for (const w of sorted3) {
     const r = rows[rows.length - 1];
     if (r && sharesLine(r, w)) r.words.push(w);
     else rows.push({ base: w.base, size: w.size, words: [w] });
@@ -7004,21 +7006,21 @@ var init_headings = __esm({
 // src/model/parse/formulas.js
 function equationRowSignals(words, { column = null } = {}) {
   if (!words.length) return { number: null, lead: false, delimiters: false, math: false };
-  const sorted2 = [...words].sort((a, b) => a.x0 - b.x0);
-  const last = sorted2[sorted2.length - 1];
-  const base2 = sorted2.filter((w) => !w.sup && !w.sub);
-  const first = base2[0] || sorted2[0];
+  const sorted3 = [...words].sort((a, b) => a.x0 - b.x0);
+  const last = sorted3[sorted3.length - 1];
+  const base2 = sorted3.filter((w) => !w.sup && !w.sub);
+  const first = base2[0] || sorted3[0];
   const second = base2[1];
   const colW = column ? column.x1 - column.x0 : Infinity;
   const number = EQ_NUMBER_RE.test(last.text) && (!column || last.x1 >= column.x1 - 0.12 * colW) ? last.text : null;
   const NAME2 = /^[A-Za-z][⁰-⁹₀-₉0-9′*ʹ]*$/;
   const EQ = /^(=|¼|:=|≡|≈)$/;
   const lead = NAME2.test(first.text) && Boolean(second) && EQ.test(second.text) || /^[A-Za-z][⁰-⁹₀-₉0-9′*ʹ]*(=|¼)$/.test(first.text);
-  const rowSize = median2(sorted2.map((w) => w.size)) || 10;
-  const delimiters = sorted2.some((w) => w.size >= 1.6 * rowSize && /^[\[\]()|{}⎡⎤⎣⎦⎢⎥⎛⎞⎝⎠⎜⎟∣]+$/.test(w.text));
+  const rowSize = median2(sorted3.map((w) => w.size)) || 10;
+  const delimiters = sorted3.some((w) => w.size >= 1.6 * rowSize && /^[\[\]()|{}⎡⎤⎣⎦⎢⎥⎛⎞⎝⎠⎜⎟∣]+$/.test(w.text));
   let chars = 0;
   let math = 0;
-  for (const w of sorted2) {
+  for (const w of sorted3) {
     chars += w.text.length;
     math += (w.mathChars || 0) + (w.mathFontChars || 0);
   }
@@ -7412,11 +7414,11 @@ function joinSize(word, typical) {
 }
 function visualRows(words) {
   const typical = medianSize(words);
-  const sorted2 = [...words].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  const sorted3 = [...words].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
   const rows = [];
-  for (const w of sorted2) {
+  for (const w of sorted3) {
     const r = rows[rows.length - 1];
-    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w, sorted2, typical)) {
+    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w, sorted3, typical)) {
       r.words.push(w);
       r.y1 = Math.max(r.y1, w.y1);
       r.y0 = Math.min(r.y0, w.y0);
@@ -7478,9 +7480,9 @@ function bandRows(words) {
   return { rows: visualRows(keep), floating };
 }
 function baselineGroups(words) {
-  const sorted2 = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  const sorted3 = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const groups2 = [];
-  for (const w of sorted2) {
+  for (const w of sorted3) {
     const g = groups2[groups2.length - 1];
     if (g && Math.abs(g.base - w.base) <= 0.3 * Math.max(g.size, w.size)) {
       g.words.push(w);
@@ -8353,9 +8355,9 @@ function mergeWrappedLabelRows(rowsIn, headerRows = 0) {
   }
 }
 function baselineRows(lines, { loose = false } = {}) {
-  const sorted2 = [...lines].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  const sorted3 = [...lines].sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const rows = [];
-  for (const l of sorted2) {
+  for (const l of sorted3) {
     const r = rows[rows.length - 1];
     const rowText = r ? r.lines.map((x) => x.text || "").join(" ") : "";
     const digit = r && (/\d/.test(rowText) || /\d/.test(l.text || ""));
@@ -9648,9 +9650,9 @@ function median3(values) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 function mergeGutters(list) {
-  const sorted2 = [...list].sort((a, b) => a.x0 - b.x0 || a.x1 - b.x1);
+  const sorted3 = [...list].sort((a, b) => a.x0 - b.x0 || a.x1 - b.x1);
   const out = [];
-  for (const g of sorted2) {
+  for (const g of sorted3) {
     const last = out[out.length - 1];
     if (last && g.x0 <= last.x1 + 8) {
       last.x0 = Math.min(last.x0, g.x0);
@@ -9729,7 +9731,7 @@ function ruleCuts(rules, gutters, units) {
 function orderUnits(units, { gutters = [], cuts = [], lineHeight = 0 } = {}) {
   const active2 = gutters.filter((g) => units.some((u) => u.x1 <= g.x0 + 1) && units.some((u) => u.x0 >= g.x1 - 1));
   if (!active2.length) return { order: byPosition(units), columns: 1 };
-  const sorted2 = [...units].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  const sorted3 = [...units].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
   const wide = (u) => active2.some((g) => crossesGutter(u, g));
   const out = [];
   let slice = [];
@@ -9741,7 +9743,7 @@ function orderUnits(units, { gutters = [], cuts = [], lineHeight = 0 } = {}) {
   };
   const headingRow = () => lineHeight > 0 && splitColumns(slice, active2).every((c) => c.length === 1 && c[0].y1 - c[0].y0 <= 2 * lineHeight);
   const pending = [...cuts].sort((a, b) => a - b);
-  for (const u of sorted2) {
+  for (const u of sorted3) {
     while (pending.length && pending[0] <= u.y0 + 1) {
       pending.shift();
       if (!headingRow()) flush();
@@ -10020,9 +10022,9 @@ function alignedLineCount(lines) {
   return best;
 }
 function wordLines(words) {
-  const sorted2 = [...words].filter((w) => w && w.text).sort((a, b) => (a.base ?? a.y1 ?? 0) - (b.base ?? b.y1 ?? 0) || a.x0 - b.x0);
+  const sorted3 = [...words].filter((w) => w && w.text).sort((a, b) => (a.base ?? a.y1 ?? 0) - (b.base ?? b.y1 ?? 0) || a.x0 - b.x0);
   const lines = [];
-  for (const w of sorted2) {
+  for (const w of sorted3) {
     const y = w.base ?? w.y1 ?? 0;
     const size = w.size || 10;
     const last = lines[lines.length - 1];
@@ -10042,9 +10044,9 @@ function wordLines(words) {
   return lines;
 }
 function columnLines(words) {
-  const sorted2 = [...words].filter((w) => w && w.text).sort((a, b) => (a.base ?? a.y1 ?? 0) - (b.base ?? b.y1 ?? 0) || a.x0 - b.x0);
+  const sorted3 = [...words].filter((w) => w && w.text).sort((a, b) => (a.base ?? a.y1 ?? 0) - (b.base ?? b.y1 ?? 0) || a.x0 - b.x0);
   const lines = [];
-  for (const w of sorted2) {
+  for (const w of sorted3) {
     const y = w.base ?? w.y1 ?? 0;
     const size = w.size || 10;
     const y0 = w.y0 ?? y - size;
@@ -10485,27 +10487,27 @@ function splitAnchors(anchors, box2) {
   const dx = Math.max(...anchors.map((a) => a.x)) - Math.min(...anchors.map((a) => a.x));
   const dy = Math.max(...anchors.map((a) => a.y)) - Math.min(...anchors.map((a) => a.y));
   const vertical = dx >= dy;
-  const sorted2 = [...anchors].sort((a, b) => vertical ? a.x - b.x : a.y - b.y);
+  const sorted3 = [...anchors].sort((a, b) => vertical ? a.x - b.x : a.y - b.y);
   let best = 1;
   let gap = -1;
-  for (let i = 1; i < sorted2.length; i++) {
-    const g = vertical ? sorted2[i].x - sorted2[i - 1].x : sorted2[i].y - sorted2[i - 1].y;
+  for (let i = 1; i < sorted3.length; i++) {
+    const g = vertical ? sorted3[i].x - sorted3[i - 1].x : sorted3[i].y - sorted3[i - 1].y;
     if (g > gap) {
       gap = g;
       best = i;
     }
   }
   if (gap < ANCHOR_SEP) return [{ x0: box2.x0, y0: box2.y0, x1: box2.x1, y1: box2.y1 }];
-  const mid = vertical ? Math.min(sorted2[best - 1].x + 36, sorted2[best].x - 24) : Math.min(sorted2[best - 1].y + 36, sorted2[best].y - 24);
+  const mid = vertical ? Math.min(sorted3[best - 1].x + 36, sorted3[best].x - 24) : Math.min(sorted3[best - 1].y + 36, sorted3[best].y - 24);
   if (vertical) {
     return [
-      ...splitAnchors(sorted2.slice(0, best), { ...box2, x1: mid }),
-      ...splitAnchors(sorted2.slice(best), { ...box2, x0: mid })
+      ...splitAnchors(sorted3.slice(0, best), { ...box2, x1: mid }),
+      ...splitAnchors(sorted3.slice(best), { ...box2, x0: mid })
     ];
   }
   return [
-    ...splitAnchors(sorted2.slice(0, best), { ...box2, y1: mid }),
-    ...splitAnchors(sorted2.slice(best), { ...box2, y0: mid })
+    ...splitAnchors(sorted3.slice(0, best), { ...box2, y1: mid }),
+    ...splitAnchors(sorted3.slice(best), { ...box2, y0: mid })
   ];
 }
 function sheetRegions(lines, pageW, pageH) {
@@ -13208,8 +13210,8 @@ function sameSpelling(a, b) {
 }
 function median6(values) {
   if (!values.length) return 0;
-  const sorted2 = [...values].sort((a, b) => a - b);
-  return sorted2[sorted2.length >> 1];
+  const sorted3 = [...values].sort((a, b) => a - b);
+  return sorted3[sorted3.length >> 1];
 }
 function snapOnto(item, line) {
   const hosts = line.items.map((entry) => entry.item).filter((it) => it?.transform);
@@ -17474,9 +17476,9 @@ function readEnhancedUidCache(storage = globalThis.localStorage, key = graphCach
   }
 }
 function writeEnhancedUidCache(uids, storage = globalThis.localStorage, key = graphCacheKey()) {
-  const sorted2 = [...new Set([...uids].map(String).filter(Boolean))].sort();
-  storage?.setItem?.(key, JSON.stringify(sorted2));
-  return sorted2;
+  const sorted3 = [...new Set([...uids].map(String).filter(Boolean))].sort();
+  storage?.setItem?.(key, JSON.stringify(sorted3));
+  return sorted3;
 }
 function enhancedUidGuardCss(uids) {
   const selectors = [];
@@ -19151,8 +19153,8 @@ function perfNow() {
 function percentile(samples, p) {
   const n3 = samples.length;
   if (!n3) return null;
-  const sorted2 = samples.slice().sort((a, b) => a - b);
-  return sorted2[Math.floor((n3 - 1) * p)];
+  const sorted3 = samples.slice().sort((a, b) => a - b);
+  return sorted3[Math.floor((n3 - 1) * p)];
 }
 function ring(cap4) {
   const samples = [];
@@ -20606,8 +20608,8 @@ function placeHighlights(rows, { mode, origin, cap: cap4 } = {}) {
     const { col: col2, row: line } = slot(index, mode);
     return {
       string: `((${row4.uid}))`,
-      x: at.x + col2 * (CARD_W3 + GAP3),
-      y: at.y + line * (CARD_H3 + GAP3),
+      x: at.x + col2 * (CARD_W3 + GAP4),
+      y: at.y + line * (CARD_H3 + GAP4),
       w: CARD_W3,
       h: CARD_H3
     };
@@ -20623,7 +20625,7 @@ function expandDateHighlights(block) {
   }
   return uids.length ? uids : null;
 }
-var NAMES, GROUP_RE, COLOR_TOKEN2, TOKEN, CARD_W3, CARD_H3, GAP3, COLS, CAP;
+var NAMES, GROUP_RE, COLOR_TOKEN2, TOKEN, CARD_W3, CARD_H3, GAP4, COLS, CAP;
 var init_highlight_pick = __esm({
   "src/model/highlight-pick.js"() {
     init_highlight();
@@ -20634,7 +20636,7 @@ var init_highlight_pick = __esm({
     TOKEN = /#h\/[A-Za-z]+/g;
     CARD_W3 = 300;
     CARD_H3 = 140;
-    GAP3 = 24;
+    GAP4 = 24;
     COLS = 3;
     CAP = 45;
   }
@@ -21126,10 +21128,10 @@ function preferredSide(target, root) {
 }
 function placeTip({ target, tip, bounds, side: side2 }) {
   const at = (s) => {
-    if (s === "below") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top + target.height + GAP4 };
-    if (s === "above") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top - tip.height - GAP4 };
-    if (s === "left") return { left: target.left - tip.width - GAP4, top: target.top + target.height / 2 - tip.height / 2 };
-    return { left: target.left + target.width + GAP4, top: target.top + target.height / 2 - tip.height / 2 };
+    if (s === "below") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top + target.height + GAP5 };
+    if (s === "above") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top - tip.height - GAP5 };
+    if (s === "left") return { left: target.left - tip.width - GAP5, top: target.top + target.height / 2 - tip.height / 2 };
+    return { left: target.left + target.width + GAP5, top: target.top + target.height / 2 - tip.height / 2 };
   };
   let use = side2;
   let p = at(use);
@@ -21336,11 +21338,11 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
     }
   };
 }
-var GAP4, MARGIN, DELAYS, ID, OPPOSITE;
+var GAP5, MARGIN, DELAYS, ID, OPPOSITE;
 var init_tooltip = __esm({
   "src/view/tooltip.js"() {
     init_tooltip_text();
-    GAP4 = 8;
+    GAP5 = 8;
     MARGIN = 4;
     DELAYS = { instant: 0, "350 ms": 350, "800 ms": 800 };
     ID = "pxd-tooltip";
@@ -22681,7 +22683,7 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     const a = anchor?.getBoundingClientRect?.();
     if (a) {
       placeAgain = () => {
-        if (node2 && anchor.isConnected !== false) placeNearAnchor(node2, anchor.getBoundingClientRect(), root, { gap: GAP5 });
+        if (node2 && anchor.isConnected !== false) placeNearAnchor(node2, anchor.getBoundingClientRect(), root, { gap: GAP6 });
       };
       placeAgain();
     }
@@ -22868,14 +22870,14 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
   }
   return { close, el: pop };
 }
-var PRIORITIES, GAP5;
+var PRIORITIES, GAP6;
 var init_task_popover = __esm({
   "src/view/task-popover.js"() {
     init_status_tags();
     init_tasks();
     init_avoid();
     PRIORITIES = ["low", "medium", "high"];
-    GAP5 = 6;
+    GAP6 = 6;
   }
 });
 
@@ -30221,14 +30223,14 @@ function uidFromBlockInput(id) {
   const prefix = "block-input-";
   if (!id.startsWith(prefix)) return null;
   const rest = id.slice(prefix.length);
-  if (UID7.test(rest) || SHORT_UID.test(rest)) return rest;
+  if (UID8.test(rest) || SHORT_UID.test(rest)) return rest;
   const last = rest.slice(rest.lastIndexOf("-") + 1);
   const short = last.length < 9 && SHORT_UID.test(last) ? last : null;
   for (let i = rest.length - 1; i >= 0; i -= 1) {
     if (rest[i] !== "-") continue;
     const tail = rest.slice(i + 1);
     if (tail.length > 15) return short;
-    if (UID7.test(tail)) return tail;
+    if (UID8.test(tail)) return tail;
   }
   return short;
 }
@@ -30238,9 +30240,9 @@ function blockUidFromNode(node2) {
     const id = String(el2.id || el2.getAttribute?.("id") || "");
     const fromInput = uidFromBlockInput(id);
     if (fromInput) return fromInput;
-    if (UID7.test(id)) return id;
+    if (UID8.test(id)) return id;
     const data = el2.dataset?.uid || el2.getAttribute?.("data-uid") || "";
-    if (UID7.test(data) || SHORT_UID.test(data)) return data;
+    if (UID8.test(data) || SHORT_UID.test(data)) return data;
     el2 = el2.parentElement;
   }
   return null;
@@ -30281,10 +30283,10 @@ function editorKeyAction({
   }
   return { type: "roam" };
 }
-var UID7, SHORT_UID, inside4;
+var UID8, SHORT_UID, inside4;
 var init_editor_keys = __esm({
   "src/view/editor-keys.js"() {
-    UID7 = /^[A-Za-z0-9_-]{9,15}$/;
+    UID8 = /^[A-Za-z0-9_-]{9,15}$/;
     SHORT_UID = /^[A-Za-z0-9_]{5,15}$/;
     inside4 = (node2, ancestor) => {
       let el2 = node2;
@@ -32093,6 +32095,7 @@ function createItemRenderer({
   };
   const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash", "pxd-item--roam-table", "pxd-item--into", "pxd-item--pdf-bar"];
   let followLeft = null;
+  let followMoved = null;
   const imageRegionString2 = (text4) => {
     const region = parseRegion(text4);
     return Boolean(region && region.kind === "img" && region.supported === true && region.owner === "plexus-diagram" && region.error == null);
@@ -32173,6 +32176,7 @@ function createItemRenderer({
     }
     for (const keep of TRANSIENT_CLASSES) if (node2.classList?.contains(keep)) cls.push(keep);
     node2.className = cls.join(" ");
+    if (item.type !== "section") paintMoved(node2, item.uid);
     {
       const dueShort = item.type === "card" && cls.includes("pxd-item--task") ? taskMeta(item.string, item.content)?.due?.short : "";
       if (rec.header) {
@@ -37163,11 +37167,24 @@ function createItemRenderer({
     rec.badgeEl = row4;
     rec.badgeKey = key;
   };
+  const paintMoved = (el3, uid) => {
+    const on = Boolean(followMoved?.has(uid)) && !followLeft?.has(uid);
+    el3.classList?.toggle?.("pxd-item--moved", on);
+    if (on) el3.setAttribute?.("data-pxd-moved", `Moved to ${followMoved.get(uid) || "another heading"}`);
+    else el3.removeAttribute?.("data-pxd-moved");
+  };
   const setFollowLeft = (set) => {
     followLeft = set instanceof Set && set.size ? set : null;
     for (const rec of shells.values()) {
       if (rec.type === "section") continue;
       rec.el.classList?.toggle?.("pxd-item--left", Boolean(followLeft?.has(rec.uid)));
+      if (followMoved) paintMoved(rec.el, rec.uid);
+    }
+  };
+  const setFollowMoved = (map) => {
+    followMoved = map instanceof Map && map.size ? map : null;
+    for (const rec of shells.values()) {
+      if (rec.type !== "section") paintMoved(rec.el, rec.uid);
     }
   };
   const setChanged = (set) => {
@@ -38489,6 +38506,7 @@ function createItemRenderer({
     setBadges,
     setChanged,
     setFollowLeft,
+    setFollowMoved,
     setShowBadges,
     setTrailBadges,
     setTaskChips,
@@ -39523,9 +39541,9 @@ function createReadDrawer({
   listen(root, "pointerdown", onEdgeDown);
   listen(root, "input", onInput);
   const refresh = () => {
-    const sorted2 = sortRows2(readRows());
+    const sorted3 = sortRows2(readRows());
     const have = readPlaced();
-    const marked = sorted2.map((row5) => {
+    const marked = sorted3.map((row5) => {
       if (!row5 || typeof row5 !== "object" || row5.placed === true || !have.has(row5.uid)) return row5;
       return { ...row5, placed: true };
     });
@@ -39870,18 +39888,18 @@ function tidyRects(list, mode, { gap = 24, columns = null, order = null } = {}) 
   if (!rects.length) return [];
   const origin = unionOf(rects);
   if (mode === "row") {
-    const sorted2 = [...rects].sort((a, b) => a.x - b.x || a.y - b.y || a.i - b.i);
+    const sorted3 = [...rects].sort((a, b) => a.x - b.x || a.y - b.y || a.i - b.i);
     let x = origin.x;
-    return sorted2.map((r) => {
+    return sorted3.map((r) => {
       const out = { uid: r.uid, x: norm(x), y: norm(origin.y) };
       x += r.w + gap;
       return out;
     });
   }
   if (mode === "column") {
-    const sorted2 = [...rects].sort((a, b) => a.y - b.y || a.x - b.x || a.i - b.i);
+    const sorted3 = [...rects].sort((a, b) => a.y - b.y || a.x - b.x || a.i - b.i);
     let y = origin.y;
-    return sorted2.map((r) => {
+    return sorted3.map((r) => {
       const out = { uid: r.uid, x: norm(origin.x), y: norm(y) };
       y += r.h + gap;
       return out;
@@ -42097,6 +42115,7 @@ function cardIds(card2) {
   }
   if (t?.kind === "block" && t.uid) out.push(`u:${t.uid}`);
   if (card2.uid) out.push(`u:${card2.uid}`);
+  if (card2.type === "section" && typeof card2.head === "string" && card2.head) out.push(`u:${card2.head}`);
   return out;
 }
 function followIndex(board2, key = "") {
@@ -42141,7 +42160,7 @@ function followDiff(read2, board2, { key = "", skip = [], absent = /* @__PURE__ 
       placed += 1;
       continue;
     }
-    if (skipped.has(item.uid)) {
+    if (skipped.has(item.uid) || item.heading && item.heading !== item.uid && skipped.has(item.heading)) {
       dismissed += 1;
       continue;
     }
@@ -55286,6 +55305,148 @@ extendSession((session, api3) => {
 // src/session-follow.js
 init_board();
 init_schema();
+
+// src/model/follow-headings.js
+init_schema();
+var FOLLOW_HEAD = "head";
+var headingsNote = "Sections are the page's top-level H1–H3 headings. Each block directly under a heading becomes a card in its section.";
+var headingsEmpty = "This page has no top-level H1–H3 headings yet.";
+var UID5 = ":block/uid";
+var STR3 = ":block/string";
+var ORD2 = ":block/order";
+var KIDS5 = ":block/children";
+var HEAD = ":block/heading";
+var META = /^BT_attr[\w-]*::/;
+var PAD2 = 32;
+var GAP2 = 24;
+var STACK_GAP2 = 24;
+var SECTION_GAP3 = 64;
+var COLUMN_MAX = 8;
+var TITLE_MAX2 = 80;
+var timeOf = (node2) => Math.max(Number(node2?.[":create/time"]) || 0, Number(node2?.[":edit/time"]) || 0);
+var sorted = (node2) => Array.isArray(node2?.[KIDS5]) ? node2[KIDS5].slice().sort((a, b) => (a?.[ORD2] ?? 0) - (b?.[ORD2] ?? 0)) : [];
+function headingItems(page, { cap: cap4 = FOLLOW_READ_CAP, skip = /* @__PURE__ */ new Set() } = {}) {
+  const items = [];
+  let complete = true;
+  const top = sorted(page);
+  if (top.length > cap4) complete = false;
+  for (const head of top) {
+    const level = head?.[HEAD];
+    const uid = head?.[UID5];
+    if (typeof uid !== "string" || !(level >= 1 && level <= 3) || skip.has(uid)) continue;
+    if (items.length >= cap4) {
+      complete = false;
+      break;
+    }
+    const text4 = sourceText(typeof head[STR3] === "string" ? head[STR3] : "");
+    items.push({ uid, kind: "heading", text: text4, time: timeOf(head), heading: uid });
+    const kids = sorted(head);
+    if (kids.length > cap4) complete = false;
+    for (const kid of kids) {
+      const kidUid = kid?.[UID5];
+      if (typeof kidUid !== "string" || skip.has(kidUid)) continue;
+      const string = typeof kid[STR3] === "string" ? kid[STR3] : "";
+      if (META.test(string.trim())) continue;
+      if (items.length >= cap4) {
+        complete = false;
+        break;
+      }
+      items.push({ uid: kidUid, kind: "block", text: sourceText(string), time: timeOf(kid), heading: uid, headingText: text4, depth: 2, ...string.trim() ? {} : { blank: true } });
+    }
+    if (!complete && items.length >= cap4) break;
+  }
+  return { items, complete };
+}
+function movedCards(read2, board2, key) {
+  if (!read2?.ok) return [];
+  const now5 = /* @__PURE__ */ new Map();
+  for (const item of read2.items || []) if (item?.kind === "block" && item.uid) now5.set(item.uid, item);
+  const out = [];
+  for (const card2 of board2?.items?.values?.() || []) {
+    if (card2.src !== key || card2.type !== "card" || typeof card2.head !== "string") continue;
+    const seen = now5.get(card2.target?.kind === "block" && card2.target.uid ? card2.target.uid : card2.uid);
+    if (seen && typeof seen.heading === "string" && seen.heading !== card2.head) out.push({ uid: card2.uid, to: seen.heading, toText: seen.headingText || "" });
+  }
+  return out;
+}
+function headingPlan({ entries = [], order = [], board: board2, rects, key = "", size, gap = GAP2 } = {}) {
+  const w = size?.w > 0 ? size.w : 280;
+  const h = size?.h > 0 ? size.h : 160;
+  const rank = new Map((order || []).map((uid, i) => [uid, i]));
+  const byHead = /* @__PURE__ */ new Map();
+  const bucket = (head) => {
+    if (!byHead.has(head)) byHead.set(head, { head, title: "", blocks: [] });
+    return byHead.get(head);
+  };
+  for (const e2 of entries || []) {
+    const head = e2?.heading;
+    if (typeof head !== "string" || !rank.has(head)) continue;
+    const b = bucket(head);
+    if (e2.kind === "heading") b.title = e2.text;
+    else {
+      if (!b.title) b.title = e2.headingText || "";
+      b.blocks.push(e2);
+    }
+  }
+  const sections = /* @__PURE__ */ new Map();
+  for (const item of board2?.items?.values?.() || []) {
+    if (item.type === "section" && item.src === key && typeof item.head === "string" && !sections.has(item.head)) sections.set(item.head, item);
+  }
+  const heads = [...byHead.values()].sort((a, b) => rank.get(a.head) - rank.get(b.head));
+  const mine = [...sections.values()].map((s) => rects?.get(s.uid)).filter(Boolean);
+  const roots = (board2?.roots || []).map((uid) => rects?.get(uid)).filter(Boolean);
+  const row4 = mine.length ? mine : roots;
+  const x0 = row4.length ? Math.max(...row4.map((r) => r.x + r.w)) + SECTION_GAP3 : 0;
+  const y0 = row4.length ? Math.min(...row4.map((r) => r.y)) : 0;
+  const fresh = [];
+  let x = x0;
+  for (const b of heads) {
+    if (sections.has(b.head)) continue;
+    const n3 = b.blocks.length;
+    const cols = Math.max(1, Math.ceil(n3 / COLUMN_MAX));
+    const rows = Math.max(1, Math.min(n3, COLUMN_MAX));
+    const sw = PAD2 * 2 + cols * w + (cols - 1) * gap;
+    const sh = PAD2 * 2 + rows * h + (rows - 1) * STACK_GAP2;
+    fresh.push({ b, x, y: y0, w: sw, h: sh });
+    x += sw + SECTION_GAP3;
+  }
+  let dx = 0;
+  if (fresh.length) {
+    const left = fresh[0].x;
+    const box2 = { x: left, y: y0, w: x - SECTION_GAP3 - left, h: Math.max(...fresh.map((f) => f.h)) };
+    const avoid = [];
+    for (const item of board2?.items?.values?.() || []) {
+      const r = rects?.get(item.uid);
+      if (r) avoid.push(item.type === "section" ? withTitle(r) : r);
+    }
+    dx = clearRight(withTitle(box2), avoid);
+  }
+  const place3 = new Map(fresh.map((f) => [f.b.head, f]));
+  const ops = [];
+  for (const b of heads) {
+    const own2 = sections.get(b.head);
+    if (own2) {
+      const r = rects?.get(own2.uid);
+      if (!r) continue;
+      const bottoms = (own2.members || []).map((uid) => rects.get(uid)).filter(Boolean).map((m) => m.y + m.h);
+      let y = bottoms.length ? Math.max(...bottoms) + STACK_GAP2 : r.y + PAD2;
+      for (const e2 of b.blocks) {
+        ops.push(cardOp(e2, b.head, own2.uid, r.x + PAD2, y));
+        y += h + STACK_GAP2;
+      }
+      continue;
+    }
+    const f = place3.get(b.head);
+    ops.push({ op: "section", head: b.head, title: plainText(b.title, TITLE_MAX2) || "Untitled", x: f.x + dx, y: f.y, w: f.w, h: f.h });
+    b.blocks.forEach((e2, i) => {
+      ops.push(cardOp(e2, b.head, null, f.x + dx + PAD2 + Math.floor(i / COLUMN_MAX) * (w + gap), f.y + PAD2 + i % COLUMN_MAX * (h + STACK_GAP2)));
+    });
+  }
+  return ops;
+}
+var cardOp = (e2, head, into, x, y) => ({ op: "card", uid: e2.uid, kind: e2.kind, ...e2.title ? { title: e2.title } : {}, head, into, x, y });
+
+// src/session-follow.js
 var same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 extendSession((session, api3) => {
   const { host } = api3;
@@ -55313,19 +55474,22 @@ extendSession((session, api3) => {
     t.props(boardUid, plexus);
     return true;
   }).then((ok) => ok === true);
-  const placeNow = (entries, { at = null } = {}) => {
+  const placeNow = (entries, { at = null, order = null } = {}) => {
     const none = { placed: 0, batches: 0, total: 0, uids: [] };
     const board2 = api3.board();
     const pointer = readFollow(board2?.plexus);
     if (!board2 || !pointer) return Promise.resolve(none);
     const key = sourceKey(pointer);
     const skipped = new Set(pointer.skip);
+    const heads = pointer.kind === "headings";
     const { on } = followIndex(board2, key);
     const seen = /* @__PURE__ */ new Set();
     const list = (entries || []).filter((e2) => {
       if (typeof e2?.uid !== "string" || !e2.uid || seen.has(e2.uid)) return false;
       if (e2.src !== void 0 && e2.src !== key) return false;
+      if (e2.kind === "heading" && (!heads || at)) return false;
       seen.add(e2.uid);
+      if (heads && e2.heading && e2.heading !== e2.uid && skipped.has(e2.heading)) return false;
       return !skipped.has(e2.uid) && !itemIds(e2).some((id) => on.has(id));
     });
     if (!list.length) return Promise.resolve(none);
@@ -55333,6 +55497,7 @@ extendSession((session, api3) => {
       w: Number(api3.setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w,
       h: Number(api3.setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h
     };
+    if (heads && !at) return placeHeadings(list, size, key, order);
     const rects = api3.rects();
     const bounds = boundsOf(board2.roots.map((id) => rects.get(id)).filter(Boolean));
     const batches = followBatches(list, SPREAD_CAP);
@@ -55343,7 +55508,7 @@ extendSession((session, api3) => {
         if (api3.isGone()) return null;
         const spots = followColumn(bounds, batch.length, { ...size, column, at });
         return api3.txn((t) => {
-          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key));
+          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key, heads && typeof entry.heading === "string" ? entry.heading : ""));
           api3.applyFit(t, ids);
           return ids;
         }).then((ids) => {
@@ -55354,6 +55519,61 @@ extendSession((session, api3) => {
     return chain.then(() => ({ placed: made.length, batches: batches.length, total: list.length, uids: made }));
   };
   let placing = Promise.resolve(null);
+  function placeHeadings(list, size, key, order) {
+    const board2 = api3.board();
+    const heads = Array.isArray(order) ? order : [...new Set(list.map((e2) => e2.heading).filter(Boolean))];
+    const ops = headingPlan({ entries: list, order: heads, board: board2, rects: api3.rects(), key, size });
+    const batches = followBatches(ops, SPREAD_CAP);
+    const sized = size.w !== DEFAULT_SIZES.card.w || size.h !== DEFAULT_SIZES.card.h ? size : {};
+    const made = [];
+    const sectionAt = /* @__PURE__ */ new Map();
+    let cards = 0;
+    let sections = 0;
+    let failed = false;
+    let chain = Promise.resolve();
+    for (const batch of batches) {
+      chain = chain.then(() => {
+        if (failed || api3.isGone()) return null;
+        return api3.txn((t) => {
+          const now5 = api3.board();
+          const rects = api3.rects();
+          const ids = [];
+          const fresh = [];
+          let n3 = 0;
+          for (const op of batch) {
+            if (op.op === "section") {
+              const layout2 = { type: "section", x: op.x, y: op.y, w: op.w, h: op.h };
+              const uid = t.create({ parent: boardUid, string: op.title, plexus: { ...serializeItemLayout(layout2), [FOLLOW_SRC]: key, [FOLLOW_HEAD]: op.head } });
+              sectionAt.set(op.head, { uid, x: api3.round1(op.x), y: api3.round1(op.y) });
+              ids.push(uid);
+              fresh.push(uid);
+              continue;
+            }
+            const home = op.into ? { uid: op.into } : sectionAt.get(op.head);
+            if (!home) continue;
+            const rel = op.into ? toRelative(now5, op.into, op, rects) : { x: op.x - home.x, y: op.y - home.y };
+            const string = followCardString(op);
+            const layout = { x: api3.round1(rel.x), y: api3.round1(rel.y), ...sized };
+            const look = lookForNewString(string, api3.setting("default-card-look", "block"));
+            if (look) layout.look = look;
+            ids.push(t.create({ parent: home.uid, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key, [FOLLOW_HEAD]: op.head } }));
+            n3 += 1;
+          }
+          api3.applyFit(t, ids);
+          return { ids, cards: n3, sections: fresh.length };
+        }).then((res) => {
+          if (!res) {
+            failed = true;
+            return;
+          }
+          made.push(...res.ids);
+          cards += res.cards;
+          sections += res.sections;
+        });
+      });
+    }
+    return chain.then(() => ({ placed: cards, sections, batches: batches.length, total: list.length, uids: made }));
+  }
   api3.onDeleteItems?.((t, uids, opts) => {
     const board2 = api3.board();
     const base2 = api3.rawPlexus(boardUid);
@@ -55361,15 +55581,22 @@ extendSession((session, api3) => {
     if (!board2 || !pointer) return;
     const key = sourceKey(pointer);
     const add = [];
+    const gone = /* @__PURE__ */ new Set();
+    for (const id of uids) {
+      const item = board2.items.get(id);
+      if (item?.type === "section" && item.head && (item.src === key || opts?.followSkip === true)) gone.add(item.head);
+    }
+    add.push(...gone);
     for (const id of uids) {
       const item = board2.items.get(id);
       if (!item || item.src !== key && opts?.followSkip !== true) continue;
+      if (item.type === "section" ? item.head : gone.has(item.head)) continue;
       const skip = skipIdOf(item);
       if (skip) add.push(skip);
     }
     if (add.length) t.props(boardUid, withFollow(base2, { ...pointer, skip: addSkip(pointer.skip, add) }));
   });
-  function placeOne(t, string, spot, size, key) {
+  function placeOne(t, string, spot, size, key, head = "") {
     const board2 = api3.board();
     const rects = api3.rects();
     const parent = containerAt(board2, { x: spot.x + size.w / 2, y: spot.y + size.h / 2 }, { rects });
@@ -55377,7 +55604,7 @@ extendSession((session, api3) => {
     const layout = { x: api3.round1(rel.x), y: api3.round1(rel.y) };
     const look = lookForNewString(string, api3.setting("default-card-look", "block"));
     if (look) layout.look = look;
-    return t.create({ parent, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key } });
+    return t.create({ parent, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key, ...head ? { [FOLLOW_HEAD]: head } : {} } });
   }
   Object.assign(session, {
     followState() {
@@ -55425,7 +55652,8 @@ extendSession((session, api3) => {
     removeFollowed(cardUids) {
       return session.deleteItems(cardUids, { followSkip: true });
     },
-    // Drops the source mark from cards (a "left the source" card becomes a plain card). Everything else stays.
+    // Drops the source mark from cards (a "left the source" card becomes a plain card; a section also lets go of its
+    // heading). Everything else stays.
     dismissLeft(cardUids) {
       return api3.txn((t) => {
         let n3 = 0;
@@ -55434,7 +55662,23 @@ extendSession((session, api3) => {
           if (!api3.board()?.items.has(id) || !(FOLLOW_SRC in raw)) continue;
           const next = { ...raw };
           delete next[FOLLOW_SRC];
+          delete next[FOLLOW_HEAD];
           t.props(id, next);
+          n3 += 1;
+        }
+        return n3;
+      }).then((n3) => n3 ?? 0);
+    },
+    // PXD-14: `{ cardUid: headingUid }`. The card stays where it is and takes the heading its block moved to as its
+    // own, so the tray stops calling it moved. Resolves the number written.
+    dismissMoved(moved) {
+      const pairs = moved instanceof Map ? [...moved] : Object.entries(moved || {});
+      return api3.txn((t) => {
+        let n3 = 0;
+        for (const [id, to] of pairs) {
+          const item = api3.board()?.items.get(id);
+          if (!item || typeof item.head !== "string" || typeof to !== "string" || !to || item.head === to) continue;
+          t.props(id, { ...api3.rawPlexus(id), [FOLLOW_HEAD]: to });
           n3 += 1;
         }
         return n3;
@@ -55734,22 +55978,22 @@ function captionForView(sections, point, fallbackTitle) {
 }
 
 // src/views.js
-var UID5 = ":block/uid";
-var STR3 = ":block/string";
+var UID6 = ":block/uid";
+var STR4 = ":block/string";
 var CONTAINER = "{{[[plexus-regions]]}}";
 function regionsParent(api3, board2) {
   if (board2.regionsUid) return board2.regionsUid;
   const root = api3.rawNode(api3.uid);
   for (const child of api3.kidsOf(root)) {
-    const text4 = child[STR3] ?? child.string ?? "";
-    if (isContainerString(text4)) return child[UID5] || child.uid;
+    const text4 = child[STR4] ?? child.string ?? "";
+    if (isContainerString(text4)) return child[UID6] || child.uid;
   }
   return null;
 }
 function viewRegion(api3, uid) {
   const node2 = api3.rawNode(uid);
   if (!node2) return null;
-  const region = parseRegion(node2[STR3] ?? node2.string ?? "");
+  const region = parseRegion(node2[STR4] ?? node2.string ?? "");
   if (!region || region.kind !== "view" || region.supported !== true) return null;
   return region;
 }
@@ -55757,9 +56001,9 @@ function imageCardContainer(api3, cardUid) {
   const card2 = api3.rawNode(cardUid);
   if (!card2) return null;
   for (const child of api3.kidsOf(card2)) {
-    const id = child[UID5] || child.uid;
+    const id = child[UID6] || child.uid;
     if (!id) continue;
-    const text4 = child[STR3] ?? child.string ?? "";
+    const text4 = child[STR4] ?? child.string ?? "";
     if (isContainerString(text4) || api3.rawPlexus(id)?.type === "regions") return id;
   }
   return null;
@@ -56705,14 +56949,14 @@ init_drawing_card();
 
 // src/model/annotate.js
 init_schema();
-var GAP2 = 40;
+var GAP3 = 40;
 var LABEL = "annotates";
 function annotatePlan(image, boardUid) {
   const to = image.uid;
   return {
     create: { parentUid: boardUid, order: "last" },
     card: {
-      x: image.x + image.w + GAP2,
+      x: image.x + image.w + GAP3,
       y: image.y,
       w: image.w,
       h: image.h
@@ -57666,7 +57910,7 @@ function isBlankCanvas(canvas, { threshold = 235 } = {}) {
 
 // src/model/pdf-drag.js
 var PDF_MARK = ".TextHighlight__part, .AreaHighlight__part, .AreaHighlight";
-var UID6 = /^[A-Za-z0-9_-]{9}$/;
+var UID7 = /^[A-Za-z0-9_-]{9}$/;
 var FIBER_LIMIT = 10;
 var CHIP_LEN = 60;
 function fiberOf(node2) {
@@ -57694,7 +57938,7 @@ function highlightFromFiber(fiber) {
   return null;
 }
 function acceptId(id, exists) {
-  if (typeof id !== "string" || !UID6.test(id)) return null;
+  if (typeof id !== "string" || !UID7.test(id)) return null;
   if (typeof exists !== "function") return id;
   try {
     if (exists(id) !== true) return null;
@@ -59047,8 +59291,8 @@ function filterRows(rows, query) {
   return (rows || []).filter((row4) => `${row4.crumb || ""} ${row4.snippet || ""}`.toLowerCase().includes(q2));
 }
 function groupRefs(rows, cap4 = CONTEXT_CAP) {
-  const sorted2 = [...rows || []].filter((row4) => row4?.uid).sort((a, b) => (b.time || 0) - (a.time || 0) || String(a.uid).localeCompare(String(b.uid)));
-  const shown = sorted2.slice(0, cap4);
+  const sorted3 = [...rows || []].filter((row4) => row4?.uid).sort((a, b) => (b.time || 0) - (a.time || 0) || String(a.uid).localeCompare(String(b.uid)));
+  const shown = sorted3.slice(0, cap4);
   const groups2 = [];
   for (const row4 of shown) {
     const year = Number.isFinite(row4.time) ? new Date(row4.time).getFullYear() : 0;
@@ -59059,7 +59303,7 @@ function groupRefs(rows, cap4 = CONTEXT_CAP) {
     }
     group.rows.push(row4);
   }
-  return { groups: groups2, total: sorted2.length, hidden: Math.max(0, sorted2.length - shown.length) };
+  return { groups: groups2, total: sorted3.length, hidden: Math.max(0, sorted3.length - shown.length) };
 }
 function rowChunks(rows, size = CONTEXT_CHUNK) {
   const list = rows || [];
@@ -63181,9 +63425,9 @@ function bodySizeOf2(items) {
   const pool = (plain2.length ? plain2 : source).map((item) => item.transform[0]).sort((a, b) => a - b);
   const median8 = pool[pool.length >> 1] || items[0].transform[0];
   let body = median8;
-  const sorted2 = items.map((item) => item.transform[5]).sort((a, b) => a - b);
+  const sorted3 = items.map((item) => item.transform[5]).sort((a, b) => a - b);
   const bases = [];
-  for (const base2 of sorted2) {
+  for (const base2 of sorted3) {
     if (!bases.length || base2 - bases[bases.length - 1] > 0.35 * median8) bases.push(base2);
   }
   const gaps = [];
@@ -63198,10 +63442,10 @@ function bodySizeOf2(items) {
   }
   return { body, median: median8 };
 }
-function baselineRows2(sorted2) {
+function baselineRows2(sorted3) {
   const rows = [];
   let row4 = null;
-  for (const item of sorted2) {
+  for (const item of sorted3) {
     const base2 = item.transform[5];
     const size = item.transform[0] || 1;
     if (row4 && base2 - row4.last <= 0.3 * size && base2 - row4.first <= 0.45 * size) {
@@ -63366,8 +63610,8 @@ function absorbGapFragments(lines, items, squeezed = []) {
     return lines.find((host) => {
       if (host === exclude || host.idx.length < 3 || host.idx.length <= idx.length) return false;
       if (Math.abs(base2 - items[host.idx[0]].transform[5]) > 0.8 * host.size || Math.abs(size - host.size) > 0.3 * host.size) return false;
-      const sorted2 = [...host.idx].sort((a, b) => left(a) - left(b));
-      const inGap = sorted2.some((i, k) => k > 0 && right(sorted2[k - 1]) <= x0 + 0.5 && left(i) >= x1 - 0.5);
+      const sorted3 = [...host.idx].sort((a, b) => left(a) - left(b));
+      const inGap = sorted3.some((i, k) => k > 0 && right(sorted3[k - 1]) <= x0 + 0.5 && left(i) >= x1 - 0.5);
       if (!inGap) return false;
       const [hy0, hy1] = span(host.idx);
       return Math.min(hy1, fy1) - Math.max(hy0, fy0) > 0;
@@ -63712,9 +63956,9 @@ function rowKeys(words) {
   return all.filter((token) => /\d/.test(token));
 }
 function baselineRows3(words) {
-  const sorted2 = [...words || []].sort((a, b) => (a.base ?? 0) - (b.base ?? 0) || (a.x0 ?? 0) - (b.x0 ?? 0));
+  const sorted3 = [...words || []].sort((a, b) => (a.base ?? 0) - (b.base ?? 0) || (a.x0 ?? 0) - (b.x0 ?? 0));
   const rows = [];
-  for (const word of sorted2) {
+  for (const word of sorted3) {
     const size = word.size || 8;
     let host = null;
     for (let i = rows.length - 1; i >= 0 && rows[i].base >= (word.base ?? 0) - 2 * size; i -= 1) {
@@ -70956,8 +71200,8 @@ function verticalGap(fig, cand) {
 function assignCaptions(images, items) {
   const pairs = /* @__PURE__ */ new Map();
   const used = /* @__PURE__ */ new Set();
-  const sorted2 = images.slice().sort((a, b) => (llamaBox(a.bbox)?.bbox[1] || 0) - (llamaBox(b.bbox)?.bbox[1] || 0));
-  for (const image of sorted2) {
+  const sorted3 = images.slice().sort((a, b) => (llamaBox(a.bbox)?.bbox[1] || 0) - (llamaBox(b.bbox)?.bbox[1] || 0));
+  for (const image of sorted3) {
     const fig = llamaBox(image.bbox)?.bbox;
     if (!fig) continue;
     let best = null;
@@ -90913,12 +91157,12 @@ function editState(doc) {
 }
 
 // src/host/follow-sources.js
-var UID8 = ":block/uid";
-var STR4 = ":block/string";
-var ORD2 = ":block/order";
-var KIDS5 = ":block/children";
+var UID9 = ":block/uid";
+var STR5 = ":block/string";
+var ORD3 = ":block/order";
+var KIDS6 = ":block/children";
 var FIELDS2 = ":block/uid :block/string :block/order :create/time :edit/time";
-var META = /^BT_attr[\w-]*::/;
+var META2 = /^BT_attr[\w-]*::/;
 var REFS_LIMIT = FOLLOW_READ_CAP + 1;
 var CHILD_LIMIT = FOLLOW_READ_CAP + 1;
 var kinds = /* @__PURE__ */ new Map();
@@ -90932,8 +91176,8 @@ function defineFollowKind(kind) {
 }
 var followKind = (id) => kinds.get(id) || null;
 var quote = (text4) => `“${plainText(text4, 48) || "Untitled"}”`;
-var timeOf = (node2) => Math.max(Number(node2?.[":create/time"]) || 0, Number(node2?.[":edit/time"]) || 0);
-var sorted = (node2) => Array.isArray(node2?.[KIDS5]) ? node2[KIDS5].slice().sort((a, b) => (a?.[ORD2] ?? 0) - (b?.[ORD2] ?? 0)) : [];
+var timeOf2 = (node2) => Math.max(Number(node2?.[":create/time"]) || 0, Number(node2?.[":edit/time"]) || 0);
+var sorted2 = (node2) => Array.isArray(node2?.[KIDS6]) ? node2[KIDS6].slice().sort((a, b) => (a?.[ORD3] ?? 0) - (b?.[ORD3] ?? 0)) : [];
 function treePattern(depth) {
   let inner = `[${FIELDS2}]`;
   for (let d = 1; d < depth; d += 1) inner = `[${FIELDS2} {(limit :block/children ${CHILD_LIMIT}) ${inner}}]`;
@@ -90946,20 +91190,20 @@ function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__
   let deeper = false;
   let cut = false;
   const walk3 = (node2, level) => {
-    const kids = sorted(node2);
+    const kids = sorted2(node2);
     if (kids.length > cap4) cut = true;
     for (const kid of kids) {
       if (!complete) return;
-      const uid = kid?.[UID8];
+      const uid = kid?.[UID9];
       if (typeof uid !== "string" || skip.has(uid)) continue;
-      const string = typeof kid[STR4] === "string" ? kid[STR4] : "";
-      if (META.test(string.trim())) continue;
+      const string = typeof kid[STR5] === "string" ? kid[STR5] : "";
+      if (META2.test(string.trim())) continue;
       if (items.length >= cap4) {
         complete = false;
         return;
       }
-      items.push({ uid, kind: "block", text: sourceText(string), time: timeOf(kid), depth: level, ...string.trim() ? {} : { blank: true } });
-      const more = Array.isArray(kid[KIDS5]) && kid[KIDS5].length > 0;
+      items.push({ uid, kind: "block", text: sourceText(string), time: timeOf2(kid), depth: level, ...string.trim() ? {} : { blank: true } });
+      const more = Array.isArray(kid[KIDS6]) && kid[KIDS6].length > 0;
       if (!more) continue;
       if (level >= depth) {
         deeper = true;
@@ -90981,7 +91225,7 @@ function underSource(host, uid, sourceUid, boardUid) {
   } catch {
     return true;
   }
-  const parents = Array.isArray(node2?.[":block/parents"]) ? node2[":block/parents"].map((p) => p?.[UID8]) : [];
+  const parents = Array.isArray(node2?.[":block/parents"]) ? node2[":block/parents"].map((p) => p?.[UID9]) : [];
   return parents.includes(sourceUid) && !parents.includes(boardUid);
 }
 function nameOf(host, uid) {
@@ -90992,7 +91236,7 @@ function nameOf(host, uid) {
     node2 = null;
   }
   if (!node2) return "";
-  return typeof node2[":node/title"] === "string" ? node2[":node/title"] : sourceText(node2[STR4] || "");
+  return typeof node2[":node/title"] === "string" ? node2[":node/title"] : sourceText(node2[STR5] || "");
 }
 var watchBlock = (pointer, host, cb) => typeof host?.watchBlock === "function" ? host.watchBlock(pointer.uid, cb) : () => {
 };
@@ -91027,15 +91271,15 @@ defineFollowKind({
   }
 });
 function subtreeUids(node2, out = /* @__PURE__ */ new Set()) {
-  for (const kid of Array.isArray(node2?.[KIDS5]) ? node2[KIDS5] : []) {
-    if (typeof kid?.[UID8] === "string") out.add(kid[UID8]);
+  for (const kid of Array.isArray(node2?.[KIDS6]) ? node2[KIDS6] : []) {
+    if (typeof kid?.[UID9] === "string") out.add(kid[UID9]);
     subtreeUids(kid, out);
   }
   return out;
 }
 var queryString = (host, uid) => {
   try {
-    return host?.pullEntity?.("[:block/string]", uid)?.[STR4] ?? null;
+    return host?.pullEntity?.("[:block/string]", uid)?.[STR5] ?? null;
   } catch {
     return null;
   }
@@ -91106,10 +91350,34 @@ defineFollowKind({
       const page = pick2(ref, "block/page");
       const pageNode2 = Array.isArray(page) ? page[0] : page;
       const crumb = pick2(pageNode2, "node/title");
-      items.push({ uid, kind: "block", text: sourceText(string), time: timeOf(ref), ...typeof crumb === "string" ? { crumb } : {}, ...string.trim() ? {} : { blank: true } });
+      items.push({ uid, kind: "block", text: sourceText(string), time: timeOf2(ref), ...typeof crumb === "string" ? { crumb } : {}, ...string.trim() ? {} : { blank: true } });
     }
     items.sort((a, b) => b.time - a.time || (a.uid < b.uid ? -1 : 1));
     return { ok: true, complete: refs.length < REFS_LIMIT, items: items.slice(0, FOLLOW_READ_CAP) };
+  }
+});
+var HEADINGS_PULL = `[:node/title :block/uid {(limit :block/children ${CHILD_LIMIT}) [${FIELDS2} :block/heading {(limit :block/children ${CHILD_LIMIT}) [${FIELDS2}]}]}]`;
+defineFollowKind({
+  id: "headings",
+  title: "A page by headings",
+  describe: (p, host) => `Headings of ${quote(nameOf(host, p.uid))}`,
+  // The block watch covers the page's top level; edits below come with the saves in this window and the poll.
+  watch(p, host, cb, env) {
+    const offs = [watchBlock(p, host, cb), watchSaves(env, cb)];
+    return () => {
+      for (const off of offs) off();
+    };
+  },
+  async read(p, { host, boardUid }) {
+    let node2 = null;
+    try {
+      node2 = host?.pullEntity?.(HEADINGS_PULL, p.uid) || null;
+    } catch {
+      node2 = null;
+    }
+    if (!node2) return { ok: false, reason: "missing" };
+    const { items, complete } = headingItems(node2, { skip: /* @__PURE__ */ new Set([boardUid]) });
+    return { ok: true, complete, items, heads: items.filter((item) => item.kind === "heading").map((item) => item.uid) };
   }
 });
 
@@ -91132,6 +91400,7 @@ function createFollowTray({
   storage = globalThis.localStorage,
   graph = "",
   onLeft,
+  onMoved,
   onShowCard,
   onPlaced,
   toast,
@@ -91149,6 +91418,8 @@ function createFollowTray({
   let diff = { pending: [], left: [], placed: 0, dismissed: 0 };
   let label = "";
   let leftShown = "";
+  let moved = [];
+  let movedShown = "";
   let reads = 0;
   let open = false;
   let autoOpened = false;
@@ -91220,6 +91491,12 @@ function createFollowTray({
     if (next !== leftShown) {
       leftShown = next;
       onLeft?.(new Set(diff.left));
+    }
+    moved = pointer?.kind === "headings" ? movedCards(read2, board2(), key) : [];
+    const mark = moved.map((m) => `${m.uid}>${m.to}`).join("\n");
+    if (mark !== movedShown) {
+      movedShown = mark;
+      onMoved?.(new Map(moved.map((m) => [m.uid, m.toText])));
     }
   }
   function sync() {
@@ -91426,12 +91703,19 @@ function createFollowTray({
     armPoll();
     return true;
   }
-  const entryOf = (row4) => ({ uid: row4.uid, kind: row4.kind, ...row4.title ? { title: row4.title } : {} });
+  const entryOf = (row4) => ({
+    uid: row4.uid,
+    kind: row4.kind,
+    ...row4.title ? { title: row4.title } : {},
+    // PXD-14: the heading a row sits under, so a placed card knows its section.
+    ...row4.heading ? { heading: row4.heading, ...row4.kind === "heading" ? { text: row4.text } : { headingText: row4.headingText } } : {}
+  });
   function place3(rows) {
     if (!rows.length || placing) return Promise.resolve(null);
     placing = true;
     paintPanel();
-    return Promise.resolve(session.placeFollowed?.(rows.map(entryOf))).then((res) => {
+    const opts = pointer?.kind === "headings" ? { order: read2?.heads } : void 0;
+    return Promise.resolve(session.placeFollowed?.(rows.map(entryOf), opts)).then((res) => {
       if (disposed || !res) return res;
       if (res.batches > 1) toast?.(`Placed ${res.placed} cards in ${res.batches} batches of up to ${SPREAD_CAP}. Each Cmd+Z takes back one batch.`);
       if (res.uids?.length) onPlaced?.(res.uids);
@@ -91514,6 +91798,11 @@ function createFollowTray({
     else if (read2 && !read2.complete) note = "Only part of the source was read, so nothing is marked as left.";
     else if (read2?.deeper) note = `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
     if (note) el2("div", "pxd-follow__note", panel, note);
+    const heads = pointer?.kind === "headings";
+    if (heads) {
+      el2("div", "pxd-follow__note", panel, headingsNote);
+      if (read2?.ok && !read2.items.some((row4) => row4.kind === "heading")) el2("div", "pxd-follow__note", panel, headingsEmpty);
+    }
     const bar = el2("div", "pxd-follow__bar", panel);
     el2("span", "pxd-follow__count", bar, `${diff.pending.length} waiting · ${diff.placed} on the board`);
     const all = button3(bar, "pxd-follow__all", diff.pending.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => {
@@ -91522,7 +91811,8 @@ function createFollowTray({
     all.disabled = diff.pending.length === 0 || placing;
     const list = el2("div", "pxd-follow__list", panel);
     if (!diff.pending.length) el2("div", "pxd-follow__empty", list, read2 ? "Everything in the source is on the board." : "");
-    for (const row4 of diff.pending) rowEl(list, row4);
+    if (heads) groupRows(list);
+    else for (const row4 of diff.pending) rowEl(list, row4);
     if (diff.left.length) {
       el2("div", "pxd-follow__section", panel, `Left the source (${diff.left.length})`);
       const gone = el2("div", "pxd-follow__list pxd-follow__list--left", panel);
@@ -91540,6 +91830,51 @@ function createFollowTray({
         });
         shield(node2);
       }
+    }
+    if (moved.length) {
+      el2("div", "pxd-follow__section", panel, `Moved (${moved.length})`);
+      const moves = el2("div", "pxd-follow__list pxd-follow__list--left", panel);
+      for (const m of moved) {
+        const node2 = el2("div", "pxd-follow__row pxd-follow__row--left", moves);
+        node2.dataset.uid = m.uid;
+        el2("div", "pxd-follow__text", node2, cardTitle(m.uid));
+        el2("div", "pxd-follow__crumb", node2, `Moved to ${m.toText || "another heading"}`);
+        const acts = el2("div", "pxd-follow__acts", node2);
+        button3(acts, "pxd-follow__show", "Show", () => onShowCard?.(m.uid));
+        button3(acts, "pxd-follow__dismiss", "Dismiss", () => {
+          void session.dismissMoved?.({ [m.uid]: m.to });
+        });
+        shield(node2);
+      }
+    }
+  }
+  function groupRows(list) {
+    const groups2 = /* @__PURE__ */ new Map();
+    for (const row4 of diff.pending) {
+      const head = row4.kind === "heading" ? row4.uid : row4.heading;
+      if (!head) continue;
+      if (!groups2.has(head)) groups2.set(head, { head, text: "", row: null, blocks: [] });
+      const g = groups2.get(head);
+      if (row4.kind === "heading") {
+        g.row = row4;
+        g.text = row4.text;
+      } else {
+        g.blocks.push(row4);
+        if (!g.text) g.text = row4.headingText || "";
+      }
+    }
+    for (const g of groups2.values()) {
+      const bar = el2("div", "pxd-follow__group", list);
+      el2("span", "pxd-follow__text", bar, g.text || "(empty heading)");
+      const acts = el2("div", "pxd-follow__acts", bar);
+      button3(acts, "pxd-follow__place", "Place", () => {
+        void place3(g.row ? [g.row, ...g.blocks] : g.blocks);
+      });
+      if (g.row) button3(acts, "pxd-follow__skip", "Don't bring back", () => {
+        void session.dontBringBack?.([g.head]);
+      });
+      shield(bar);
+      for (const row4 of g.blocks) rowEl(list, row4);
     }
   }
   function openPanel() {
@@ -91603,9 +91938,10 @@ function createFollowTray({
     isOpen: () => open,
     rows: () => diff.pending.slice(),
     left: () => diff.left.slice(),
+    moved: () => moved.slice(),
     reads: () => reads,
     // The F10 probe: the source, reads so far, how long the last one took and waited, and the quiet period that sets.
-    stats: () => ({ key, reads, lastMs, waitMs, quietMs: followQuietMs(lastMs), stale, held, editing: editState(doc) }),
+    stats: () => ({ key, moved: moved.length, reads, lastMs, waitMs, quietMs: followQuietMs(lastMs), stale, held, editing: editState(doc) }),
     // The board menu: what Follow shows and offers.
     menuState() {
       const textUid = pointer ? null : textSourceUid(board2()?.string || "");
@@ -94649,9 +94985,9 @@ function dashFromShape(blob, em) {
 
 // src/model/ocr/fine-skew.js
 function rowsOf(items) {
-  const sorted2 = [...items].sort((a, b) => a.transform[4] - b.transform[4]);
+  const sorted3 = [...items].sort((a, b) => a.transform[4] - b.transform[4]);
   const rows = [];
-  for (const it of sorted2) {
+  for (const it of sorted3) {
     const size = it.transform[0];
     const base2 = it.transform[5];
     let best = null;
@@ -96781,6 +97117,7 @@ function followMenu(f) {
         make3("follow:pick-block", "Switch to a block's children…"),
         make3("follow:pick-query", "Switch to a query…"),
         make3("follow:pick-refs", "Switch to linked references of…"),
+        make3("follow:pick-headings", "Switch to a page by headings…"),
         make3("follow:stop", "Stop following")
       ]
     })];
@@ -96790,7 +97127,8 @@ function followMenu(f) {
       ...f.textUid ? [make3("follow:text", "The block in the board text")] : [],
       make3("follow:pick-block", "A block's children…"),
       make3("follow:pick-query", "A query…"),
-      make3("follow:pick-refs", "Linked references of…")
+      make3("follow:pick-refs", "Linked references of…"),
+      make3("follow:pick-headings", "A page by headings…")
     ]
   })];
 }
@@ -96801,6 +97139,7 @@ function followCardItems(f) {
   if (f.block) pick3.push(make3("follow:this", "Its children"));
   if (f.query) pick3.push(make3("follow:this-query", "This query"));
   if (f.refs) pick3.push(make3("follow:this-refs", "Its linked references"));
+  if (f.headings) pick3.push(make3("follow:this-headings", "Its page by headings"));
   if (pick3.length) out.push(make3("follow-card", "Follow", { children: pick3 }));
   if (f.left) out.push(make3("follow:dismiss", "Dismiss “left the source”"));
   if (f.followed) out.push(make3("follow:remove", "Remove, don't bring back", { danger: true }));
@@ -103787,6 +104126,7 @@ function buildBoardView(onFail, {
     storage,
     graph,
     onLeft: (set) => itemsR.setFollowLeft?.(set),
+    onMoved: (map) => itemsR.setFollowMoved?.(map),
     onShowCard: (uid) => {
       const r = rects().get(uid);
       if (!r) return;
@@ -104041,12 +104381,12 @@ function buildBoardView(onFail, {
     } catch {
       times = [];
     }
-    const timeOf2 = new Map(times.map((row4) => [row4[0], row4[1]]));
+    const timeOf3 = new Map(times.map((row4) => [row4[0], row4[1]]));
     memoryLane = mountMemoryLane({
       doc,
       parent: root,
-      items: uids.map((uid) => ({ uid, time: timeOf2.get(uid) })),
-      edges: [...b.edges.values()].map((edge) => ({ uid: edge.uid, from: edge.from, to: edge.to, time: timeOf2.get(edge.uid) })),
+      items: uids.map((uid) => ({ uid, time: timeOf3.get(uid) })),
+      edges: [...b.edges.values()].map((edge) => ({ uid: edge.uid, from: edge.from, to: edge.to, time: timeOf3.get(edge.uid) })),
       snapshots: b.snapshots || [],
       motion: setting("motion", "full"),
       onFrame(frame2) {
@@ -104730,6 +105070,7 @@ function buildBoardView(onFail, {
           block: !isQueryString(queryText) && (item.kind === "note" || item.kind === "block" || item.kind === "page"),
           query: isQueryString(queryText),
           refs: item.kind === "note" || item.kind === "block" || item.kind === "page",
+          headings: item.kind === "page",
           followed: Boolean(followKey) && item.src === followKey,
           left: Boolean(followCtl?.left?.().includes(item.uid))
         } : null;
@@ -104850,11 +105191,12 @@ function buildBoardView(onFail, {
     return typeof s === "string" ? { title: plainText(sourceText(s), 80) || "(empty block)", value: uid, meta } : null;
   };
   const followPick = (what) => {
-    const kind = what === "query" ? "query" : what === "refs" ? "refs" : "block";
+    const kind = what === "query" ? "query" : what === "refs" ? "refs" : what === "headings" ? "headings" : "block";
     const words = {
       block: { heading: "Follow a block's children", placeholder: "Search blocks and pages…", hint: "Type to search, or paste a ((block ref))" },
       query: { heading: "Follow a query", placeholder: "Search query blocks…", hint: "Type words from the query, or paste its ((block ref))" },
-      refs: { heading: "Follow linked references of", placeholder: "Search pages…", hint: "Type to search pages, or paste a ((block ref))" }
+      refs: { heading: "Follow linked references of", placeholder: "Search pages…", hint: "Type to search pages, or paste a ((block ref))" },
+      headings: { heading: "Follow a page by headings", placeholder: "Search pages…", hint: "Top-level H1–H3 headings become sections" }
     }[kind];
     pagePicker?.close();
     pagePicker = openPagePicker({
@@ -104864,19 +105206,19 @@ function buildBoardView(onFail, {
       search: (text4) => {
         const rows = [];
         const fits = (uid) => kind !== "query" || isQueryString(host?.blockString?.(uid) || "");
-        const pasted = refUidIn(text4);
+        const pasted = kind === "headings" ? null : refUidIn(text4);
         if (pasted) {
           const row4 = blockRow(pasted, "Block");
           if (row4 && fits(pasted)) rows.push(row4);
           return rows;
         }
         const word = String(text4 || "").trim();
-        const bare = /^[\w-]{9}$/.test(word) && fits(word) ? blockRow(word, "Block") : null;
+        const bare = kind !== "headings" && /^[\w-]{9}$/.test(word) && fits(word) ? blockRow(word, "Block") : null;
         if (bare) rows.push(bare);
         if (kind !== "query") {
-          for (const p of host?.searchPages?.(text4, kind === "refs" ? 30 : 10) || []) rows.push({ title: p.title, value: p.uid || p.title, meta: "Page" });
+          for (const p of host?.searchPages?.(text4, kind === "refs" || kind === "headings" ? 30 : 10) || []) rows.push({ title: p.title, value: p.uid || p.title, meta: "Page" });
         }
-        if (kind !== "refs") {
+        if (kind !== "refs" && kind !== "headings") {
           for (const r of host?.searchBlocks?.(text4, 40) || []) {
             if (r.uid === boardUid || bare && r.uid === word) continue;
             const isQ = isQueryString(r.string);
@@ -104888,7 +105230,7 @@ function buildBoardView(onFail, {
         return rows;
       },
       onPick: async (value) => {
-        const uid = /^[\w-]{1,64}$/.test(value) && host?.blockString?.(value) != null ? value : pageUidOf(value) || value;
+        const uid = kind === "headings" ? pageUidOf(value) || value : /^[\w-]{1,64}$/.test(value) && host?.blockString?.(value) != null ? value : pageUidOf(value) || value;
         return startFollow(kind, uid);
       }
     });
@@ -104923,6 +105265,9 @@ function buildBoardView(onFail, {
       case "pick-refs":
         followPick("refs");
         break;
+      case "pick-headings":
+        followPick("headings");
+        break;
       case "text": {
         const uid = textSourceUid(board2()?.string || "");
         if (uid) void startFollow(isQueryString(host?.blockString?.(uid) || "") ? "query" : "block", uid);
@@ -104936,6 +105281,9 @@ function buildBoardView(onFail, {
         break;
       case "this-refs":
         void startFollow("refs", followTargetOf(item, "refs"));
+        break;
+      case "this-headings":
+        void startFollow("headings", followTargetOf(item, "refs"));
         break;
       case "show":
         followCtl?.open?.();
@@ -111635,7 +111983,7 @@ var SKETCH_MAX_BYTES = 200 * 1024;
 var SKETCH_HOLD_MS = 2e3;
 var SKETCH_ROOT_BORDER = 1;
 var PAIR_OFFSET2 = 18;
-var TITLE_MAX2 = 200;
+var TITLE_MAX3 = 200;
 var SVG_NS9 = "http://www.w3.org/2000/svg";
 function sketchKey(graph, uid) {
   return `plexus-diagram:sketch:${graph}:${uid}`;
@@ -111655,7 +112003,7 @@ function cleanItem2(item) {
     y: item.y,
     w: item.w,
     h: item.h,
-    title: String(item.title || "").slice(0, TITLE_MAX2),
+    title: String(item.title || "").slice(0, TITLE_MAX3),
     color: typeof item.color === "string" ? item.color : "",
     fill: typeof item.fill === "string" ? item.fill : "",
     ...item.s ? { s: 1 } : {}
@@ -112520,7 +112868,7 @@ function snapEvent(event) {
 var THUMB_W = 320;
 var THUMB_MAX = 480;
 var ROW_H = 24;
-var PAD2 = 7;
+var PAD3 = 7;
 function tableThumbKey(item, sig) {
   return item?.uid && sig ? `t:${item.uid}:${sig}` : "";
 }
@@ -112590,7 +112938,7 @@ function renderTableThumb(doc, grid, { dark = false, width = THUMB_W, height: bo
     g.fillStyle = ink;
     let x2 = 0;
     widths.forEach((w, c) => {
-      g.fillText(fit2(g, row4[c], w - PAD2 * 2), x2 + PAD2, y + ROW_H / 2);
+      g.fillText(fit2(g, row4[c], w - PAD3 * 2), x2 + PAD3, y + ROW_H / 2);
       x2 += w;
     });
   });

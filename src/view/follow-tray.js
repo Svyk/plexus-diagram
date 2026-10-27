@@ -7,15 +7,22 @@
 // source get a mark (onLeft) after two complete reads without them; a partial or failed read never adds one.
 // PXD-20: a read that would start while the user types waits for editing to go idle when its source's last read was a
 // long task (or it has none yet); a slow one also waits out FOLLOW_POLL_MS since the last read while edits go on.
+// PXD-18: following the board's Inbox, the rows are an Arrivals strip of at most ARRIVALS_CAP per visit (this tray's
+// life); the rest say how many wait, and "Show more" makes room for another ARRIVALS_CAP.
 
 import { CARD_MIME } from "../model/drop.js";
 import {
+  ARRIVALS_CAP,
   FOLLOW_MIME,
   FOLLOW_POLL_MS,
   FOLLOW_SLOW_MS,
   FOLLOW_TREE_DEPTH,
   FOLLOW_TYPING_MS,
+  INBOX_KIND,
   absentStep,
+  arrivalsLine,
+  arrivalsPill,
+  arrivalsView,
   createLeftMemory,
   followCardString,
   followDiff,
@@ -55,6 +62,7 @@ export function createFollowTray({
   onLeft,
   onShowCard,
   onPlaced,
+  onSource,
   toast,
   now = () => globalThis.performance?.now?.() ?? Date.now(),
 } = {}) {
@@ -83,6 +91,9 @@ export function createFollowTray({
   let inFlight = false;
   let again = false;
   let placing = false;
+  // PXD-18: this visit's Arrivals room, and how many arrivals it placed.
+  let allowance = ARRIVALS_CAP;
+  let arrived = 0;
   // How long the last read took: the next quiet period is ten times that (at least FOLLOW_QUIET_MS).
   let lastMs = 0;
   // How long the last read waited for the shared background budget after its quiet period.
@@ -124,6 +135,7 @@ export function createFollowTray({
   const ctx = () => ({
     host,
     boardUid,
+    boardTitle: () => board()?.title || "",
     inBoard: () => session.followExclude?.() || new Set([boardUid]),
     tick: () => new Promise((resolve) => timers.idle(resolve)),
     followed: () => followIndex(board(), key).followed.map((card) => card.target?.uid).filter(Boolean),
@@ -324,9 +336,12 @@ export function createFollowTray({
     lastStart = -Infinity;
     known = false;
     unhold();
+    const was = pointer?.kind || "";
     pointer = next;
     key = nextKey;
     read = null;
+    allowance = ARRIVALS_CAP;
+    arrived = 0;
     absent = new Map();
     status = pointer ? "reading" : "idle";
     reason = "";
@@ -337,8 +352,13 @@ export function createFollowTray({
       schedule();
     } else if (open) close();
     armPoll();
+    try { onSource?.(pointer?.kind || "", was); } catch { /* the listener's own problem */ }
     return true;
   }
+
+  const isInbox = () => pointer?.kind === INBOX_KIND;
+  // The rows the tray offers: every pending row, or for the Inbox the Arrivals strip.
+  const strip = () => (isInbox() ? arrivalsView(diff.pending, { allowance, placed: arrived }) : { rows: diff.pending, waiting: 0 });
 
   // ---- placing ----
   const entryOf = (row) => ({ uid: row.uid, kind: row.kind, ...(row.title ? { title: row.title } : {}) });
@@ -347,8 +367,10 @@ export function createFollowTray({
     if (!rows.length || placing) return Promise.resolve(null);
     placing = true;
     paintPanel();
+    const inbox = isInbox();
     return Promise.resolve(session.placeFollowed?.(rows.map(entryOf))).then((res) => {
       if (disposed || !res) return res;
+      if (inbox && isInbox()) arrived += Number(res.placed) || 0;
       if (res.batches > 1) toast?.(`Placed ${res.placed} cards in ${res.batches} batches of up to ${SPREAD_CAP}. Each Cmd+Z takes back one batch.`);
       if (res.uids?.length) onPlaced?.(res.uids);
       return res;
@@ -368,7 +390,7 @@ export function createFollowTray({
       btn.addEventListener("click", (event) => { event.stopPropagation(); toggle(); });
     }
     const counts = sinceVisit(diff, { since, leftBefore });
-    btn.textContent = followPill(diff.pending.length);
+    btn.textContent = isInbox() ? arrivalsPill(diff.pending.length) : followPill(diff.pending.length);
     btn.classList.toggle("pxd-follow--new", counts.newCount > 0 || counts.leftCount > 0);
     btn.setAttribute("aria-expanded", open ? "true" : "false");
     const head = trayHeadline(counts);
@@ -425,13 +447,23 @@ export function createFollowTray({
     else if (read && !read.complete) note = "Only part of the source was read, so nothing is marked as left.";
     else if (read?.deeper) note = `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
     if (note) el("div", "pxd-follow__note", panel, note);
+    const shown = strip();
     const bar = el("div", "pxd-follow__bar", panel);
-    el("span", "pxd-follow__count", bar, `${diff.pending.length} waiting · ${diff.placed} on the board`);
-    const all = button(bar, "pxd-follow__all", diff.pending.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => { void place(diff.pending.slice()); });
-    all.disabled = diff.pending.length === 0 || placing;
+    if (isInbox()) {
+      el("span", "pxd-follow__arrivals", bar, "Arrivals");
+      el("span", "pxd-follow__count", bar, `${arrivalsLine(shown)} · ${diff.placed} on the board`);
+    } else el("span", "pxd-follow__count", bar, `${diff.pending.length} waiting · ${diff.placed} on the board`);
+    const all = button(bar, "pxd-follow__all", shown.rows.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => { void place(shown.rows.slice()); });
+    all.disabled = shown.rows.length === 0 || placing;
     const list = el("div", "pxd-follow__list", panel);
-    if (!diff.pending.length) el("div", "pxd-follow__empty", list, read ? "Everything in the source is on the board." : "");
-    for (const row of diff.pending) rowEl(list, row);
+    if (!diff.pending.length) el("div", "pxd-follow__empty", list, read ? (isInbox() ? "No daily-note block waits." : "Everything in the source is on the board.") : "");
+    for (const row of shown.rows) rowEl(list, row);
+    if (shown.waiting > 0) {
+      const more = el("div", "pxd-follow__more", list);
+      el("span", "pxd-follow__count", more, `${shown.waiting} more wait`);
+      const n = Math.min(ARRIVALS_CAP, shown.waiting);
+      button(more, "pxd-follow__show-more", `Show ${n} more`, () => { allowance += ARRIVALS_CAP; paintPanel(); });
+    }
     if (diff.left.length) {
       el("div", "pxd-follow__section", panel, `Left the source (${diff.left.length})`);
       const gone = el("div", "pxd-follow__list pxd-follow__list--left", panel);
@@ -506,6 +538,8 @@ export function createFollowTray({
     close,
     isOpen: () => open,
     rows: () => diff.pending.slice(),
+    // PXD-18: the Arrivals strip ({ rows, waiting }) while the board follows its Inbox, else every pending row.
+    arrivals: () => { const v = strip(); return { rows: v.rows.slice(), waiting: v.waiting }; },
     left: () => diff.left.slice(),
     reads: () => reads,
     // The F10 probe: the source, reads so far, how long the last one took and waited, and the quiet period that sets.

@@ -7,6 +7,7 @@ import { boundsOf, containerAt, toRelative } from "./model/board.js";
 import { DEFAULT_SIZES, lookForNewString, serializeItemLayout } from "./model/schema.js";
 import {
   FOLLOW_SRC,
+  INBOX_KIND,
   addSkip,
   followBatches,
   followCardString,
@@ -136,9 +137,12 @@ extendSession((session, api) => {
       return out;
     },
 
-    // { kind, uid, tree }. The same source keeps its skip list. Resolves true when the pointer changed.
+    // { kind, uid, tree }. The same source keeps its skip list. Resolves true when the pointer changed. The Inbox kind
+    // takes the board's own uid.
     followSource({ kind, uid, tree } = {}) {
-      if (typeof kind !== "string" || typeof uid !== "string" || !uid || uid === boardUid) return Promise.resolve(false);
+      if (typeof kind !== "string" || typeof uid !== "string" || !uid) return Promise.resolve(false);
+      // A board never follows itself, except its own Inbox (PXD-18), which is only ever its own.
+      if ((uid === boardUid) !== (kind === INBOX_KIND)) return Promise.resolve(false);
       // The kept skip list of this source, when the board stopped following it before.
       return writePointer((cur, base) => followPointerFor(keptFollow(base, `${kind}:${uid}`) || cur, kind, uid, { tree }));
     },

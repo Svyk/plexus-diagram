@@ -5110,6 +5110,9 @@ function buildBoardView(onFail, {
     },
     skip: () => new Set([boardUid]),
     place: (strings) => addStringsBeside(strings),
+    // PXD-18: while the board follows its Inbox, the arrivals come through the tray and this pill stays away.
+    hidden: () => followCtl?.menuState?.()?.kind === "inbox",
+    follow: () => { void startFollow("inbox", boardUid); },
   });
   // PXD-9: the followed source's place tray. It reads at idle and never writes on its own.
   followCtl = createFollowTray({
@@ -5131,6 +5134,8 @@ function buildBoardView(onFail, {
       pulseItem(uid);
     },
     onPlaced: (uids) => ctl.select(uids),
+    // Leaving the Inbox source: the pill reads again (it skipped its reads meanwhile).
+    onSource: (kind, was) => { if (was === "inbox" && kind !== "inbox") void inboxCtl?.refresh?.(); else inboxCtl?.sync?.(); },
     toast: (message) => toast(message),
   });
 
@@ -6094,7 +6099,7 @@ function buildBoardView(onFail, {
     if (disposed) return false;
     if (ok) {
       followCtl?.open?.();
-      toast("Following. New items wait in the tray until you place them.");
+      toast(kind === "inbox" ? "Following this board's Inbox. New daily-note blocks wait under Arrivals until you place them." : "Following. New items wait in the tray until you place them.");
     } else if (session.followState?.()?.pointer?.uid === uid) followCtl?.open?.();
     else toast("Couldn't follow that source");
     return true;
@@ -6120,6 +6125,7 @@ function buildBoardView(onFail, {
       case "this": void startFollow("block", followTargetOf(item, "block")); break;
       case "this-query": void startFollow("query", followTargetOf(item, "query")); break;
       case "this-refs": void startFollow("refs", followTargetOf(item, "refs")); break;
+      case "inbox": void startFollow("inbox", boardUid); break;
       case "show": followCtl?.open?.(); break;
       case "tree": void session.setFollowTree?.(!state.tree); break;
       case "stop":

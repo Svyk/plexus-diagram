@@ -67,6 +67,17 @@
   padding: 2px 0 4px;
 }
 
+/* PXD-18: the Inbox source's Arrivals strip. */
+.pxd-follow__arrivals { font-weight: 600; }
+.pxd-follow__more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 4px;
+  border-top: 1px solid var(--pxd-border, #d0d7de);
+}
+
 .pxd-follow__list { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
 .pxd-follow__list--left { flex: 0 1 auto; max-height: 30%; }
 
@@ -107,6 +118,7 @@
 .pxd-root button.pxd-follow__show,
 .pxd-root button.pxd-follow__dismiss,
 .pxd-root button.pxd-follow__delete,
+.pxd-root button.pxd-follow__show-more,
 .pxd-root button.pxd-follow__close {
   padding: 0 8px;
   border: 1px solid var(--pxd-border, #d0d7de);
@@ -120,6 +132,7 @@
 .pxd-root button.pxd-follow__place:hover,
 .pxd-root button.pxd-follow__all:hover:not(:disabled),
 .pxd-root button.pxd-follow__show:hover,
+.pxd-root button.pxd-follow__show-more:hover,
 .pxd-root button.pxd-follow__dismiss:hover { border-color: var(--pxd-accent, #0d9488); }
 .pxd-root button.pxd-follow__close { padding: 0 6px; border-color: transparent; font-size: 14px; line-height: 16px; }
 .pxd-root button.pxd-follow__all:disabled { opacity: 0.45; cursor: default; }

@@ -1,10 +1,11 @@
 // "Inbox (N)" pill and its list. Daily-note blocks that cite this board, newest first, not yet cards.
 // The read runs once when the board is idle and again when the list opens. Placing a row adds a ((uid)) card.
+// PXD-18: while the board follows its own Inbox (`hidden()`), the tray's Arrivals strip takes over: no pill, no read.
 
 import { CARD_MIME } from "../model/drop.js";
 import { filterInbox, inboxLabel, inboxRow, inboxTitles, readInbox } from "../model/inbox.js";
 
-export function createInbox({ doc = globalThis.document, root, host, timers, titles, onBoard, skip, place } = {}) {
+export function createInbox({ doc = globalThis.document, root, host, timers, titles, onBoard, skip, place, hidden, follow } = {}) {
   let entries = [];
   let rows = [];
   let btn = null;
@@ -32,6 +33,13 @@ export function createInbox({ doc = globalThis.document, root, host, timers, tit
     panel.replaceChildren?.();
     const head = el("div", "pxd-inbox__head", panel);
     el("span", "pxd-inbox__title", head, "Daily notes that mention this board");
+    if (follow) {
+      const live = el("button", "pxd-inbox__follow", head, "Follow");
+      live.type = "button";
+      live.title = "New blocks arrive in the tray, ready to place";
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) live.addEventListener(type, swallow);
+      live.addEventListener("click", (event) => { event.stopPropagation(); follow(); });
+    }
     const all = el("button", "pxd-inbox__all", head, "Place all");
     all.type = "button";
     all.disabled = rows.length === 0;
@@ -90,8 +98,18 @@ export function createInbox({ doc = globalThis.document, root, host, timers, tit
     btn.setAttribute("aria-label", `${rows.length} daily-note block${rows.length === 1 ? "" : "s"} mention this board`);
   };
 
+  const away = () => { try { return hidden?.() === true; } catch { return false; } };
+
   function sync() {
     if (disposed) return;
+    if (away()) {
+      open = false;
+      panel?.remove();
+      panel = null;
+      btn?.remove();
+      btn = null;
+      return;
+    }
     compute();
     paintPill();
     paintList();
@@ -99,6 +117,7 @@ export function createInbox({ doc = globalThis.document, root, host, timers, tit
 
   function refresh() {
     if (disposed || reading) return reading;
+    if (away()) { sync(); return null; }
     const names = titles?.() || [];
     if (!names.length || typeof host?.q !== "function") { loaded = true; sync(); return null; }
     reading = readInbox((query, ...inputs) => host.q(query, ...inputs), inboxTitles({ pageTitle: names[0], boardTitle: names[1] }), {

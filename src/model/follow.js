@@ -4,7 +4,7 @@
 // column. Source kinds and their reads live in src/host/follow-sources.js; the writes are session calls
 // (src/session-follow.js). Nothing here touches Roam.
 
-import { firstLine, parseBoardTitle, plainText } from "./schema.js";
+import { firstLine, parseBoardRef, plainText } from "./schema.js";
 
 // Board plexus key: { kind, uid, tree?, skip? }. Written only from the Follow menu and the tray's own buttons.
 export const FOLLOW_KEY = "follow";
@@ -126,14 +126,21 @@ export function addSkip(skip, uids, cap = FOLLOW_SKIP_CAP) {
   return cleanSkip([...(skip || []).filter((u) => !drop.has(u)), ...add], cap);
 }
 
-// `{{[[diagram]]: ((uid))}}`: the colon text is one block ref. Roam's native diagram still renders with it (checked
-// live 2026-10-23), but parseBoardTitle reads that text as the title, so it is offered in the Follow menu and never
-// followed by itself. Roam renders `{{diagram ((uid))}}` (no colon) as a plain button, not a diagram.
-// Roam's own uids are 9 characters; blocks made through the API may carry longer ones, and Roam renders those refs too.
-export function textSourceUid(boardString) {
-  const m = /^\(\(([\w-]{6,64})\)\)$/.exec(parseBoardTitle(boardString));
-  return m ? m[1] : null;
+// The block a board's own text points at: `{{diagram ((uid))}}` or `{{[[diagram]] ((uid))}}` (no colon, with or without
+// title text), or the colon form whose text is only the ref. Live facts (2026-10-26): Roam renders `{{[[diagram]] ((uid))}}`
+// and `{{[[diagram]]: ((uid))}}` as its native diagram, so Plexus mounts through the ordinary path; only the bare
+// `{{diagram ((uid))}}` is a plain `button.rm-xparser-default-diagram`, which Plexus mounts on itself. A colon form with
+// more text after the ref (`: ((uid)) Reading list`) is a title, not a source. Roam's own uids are 9 characters; blocks
+// made through the API may carry longer ones, and Roam renders those refs too.
+export function boardRefSource(boardString) {
+  const ref = parseBoardRef(boardString);
+  if (!ref) return null;
+  if (ref.colon && ref.title !== "") return null;
+  return ref.uid;
 }
+
+// The Follow menu's "The block in the board text" offer.
+export const textSourceUid = boardRefSource;
 
 const QUERY_BODY = /^\{\{\s*(?:\[\[query\]\]|query)\s*:([\s\S]*)\}\}$/;
 // The words of a {{query}} block (its clauses without braces), or null for any other block.

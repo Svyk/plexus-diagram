@@ -84,7 +84,7 @@ test("PXD-9 board text: a lone ((uid)) after the colon is offered as a source; a
   assert.equal(textSourceUid("{{[[diagram]]: ((pxd9fsSrc01))}}"), "pxd9fsSrc01", "an API-made uid is longer");
   assert.equal(textSourceUid("{{[[diagram]]: Plain title}}"), null);
   assert.equal(textSourceUid("{{[[diagram]]: ((abcdefghi)) and more}}"), null);
-  assert.equal(textSourceUid("{{diagram ((abcdefghi))}}"), null, "Roam draws no diagram without the colon");
+  assert.equal(textSourceUid("{{diagram ((abcdefghi))}}"), "abcdefghi", "PXD-22: Plexus mounts on the button Roam draws for the no-colon form");
 });
 
 function boardOf(children, plexus = { v: 2 }) {

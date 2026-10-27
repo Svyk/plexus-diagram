@@ -6,7 +6,7 @@
 import { countText } from "../model/card-face.js";
 import { placeNearAnchor } from "./avoid.js";
 import { createRowScheduler, isHeavyRow, mountFpsFromStamps, pushFrameStamp } from "./progressive.js";
-import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
+import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, boardLabel, parseBoardTitle, plainText } from "../model/schema.js";
 import { isQueryString } from "../model/query.js";
 import { createQueryCards } from "./query-card.js";
 import { dueChip, isTaskString, taskAttrId, taskMeta, taskNamesSig } from "../model/tasks.js";
@@ -1414,7 +1414,7 @@ export function createItemRenderer({
   };
   const mountBoardRow = (parent, cls, target) => {
     const node = el("div", `${cls} pxd-rs--board`, parent);
-    const title = parseBoardTitle(target.string) || "Untitled board";
+    const title = boardLabel(target.string, (id) => host?.blockString?.(id));
     const self = target.uid === lastBoard?.uid;
     const open = (event) => {
       stopEvent(event);
@@ -1799,7 +1799,7 @@ export function createItemRenderer({
           rec.refBoard = classifyString(refString).kind === "board";
           rec.regionImg = imageRegionString(refString);
         }
-        if (rec.refBoard) rec.refTitle = parseBoardTitle(rec.refString) || "Untitled board";
+        if (rec.refBoard) rec.refTitle = boardLabel(rec.refString, (id) => host?.blockString?.(id));
         else rec.refTitle = typeof refString === "string" ? firstLine(refString).slice(0, REF_TITLE_MAX) : "";
       } else rec.refTitle = "";
     }
@@ -5239,7 +5239,7 @@ export function createItemRenderer({
     if (refString == null || refString === rec.refString) return;
     rec.refString = refString;
     rec.refBoard = classifyString(refString).kind === "board";
-    rec.refTitle = rec.refBoard ? (parseBoardTitle(refString) || "Untitled board") : firstLine(refString).slice(0, REF_TITLE_MAX);
+    rec.refTitle = rec.refBoard ? (boardLabel(refString, (id) => host?.blockString?.(id))) : firstLine(refString).slice(0, REF_TITLE_MAX);
     if (!rec.renaming && rec.header) rec.header.textContent = String(rec.refTitle || live.title || "").slice(0, HEADER_TEXT_MAX);
     if (rec.el) rec.el.setAttribute("aria-label", `${rec.refTitle || live.title || "Untitled"}, ${live.type}`);
     if (rec.refBoard) return;
@@ -5505,7 +5505,7 @@ export function createItemRenderer({
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);
       const isBoardRef = typeof refString === "string" && classifyString(refString).kind === "board";
-      if (isBoardRef) rec.refTitle = parseBoardTitle(refString) || "Untitled board";
+      if (isBoardRef) rec.refTitle = boardLabel(refString, (id) => host?.blockString?.(id));
       else if (typeof refString === "string" && isQueryString(refString)) rec.refTitle = "Query";
       else rec.refTitle = typeof refString === "string" ? firstLine(refString).slice(0, REF_TITLE_MAX) : "";
       const blockPoster = posterTitleOf(item);

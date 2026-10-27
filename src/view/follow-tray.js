@@ -36,6 +36,7 @@ import { SPREAD_CAP } from "../session-clip.js";
 
 const REASONS = {
   missing: "The source block is gone.",
+  missingText: "The block in the board text does not exist.",
   unsupported: "Plexus cannot run this query. It reads page and block refs with and, or and not.",
   slow: "The query took too long to read.",
   unknown: "This board follows a kind of source this version cannot read.",
@@ -71,6 +72,7 @@ export function createFollowTray({
   let leftShown = "";
   let reads = 0;
   let open = false;
+  let autoOpened = false;
   let disposed = false;
   let btn = null;
   let panel = null;
@@ -127,8 +129,11 @@ export function createFollowTray({
     followed: () => followIndex(board(), key).followed.map((card) => card.target?.uid).filter(Boolean),
   });
 
+  // A pointer read from the board text (never stored) at a block that is not there.
+  const textMissing = () => reason === "missing" && pointer?.kind === "block" && board()?.followDerived === true;
   const describe = () => {
     const kind = pointer ? followKind(pointer.kind) : null;
+    if (textMissing()) return "a block that does not exist";
     try { return kind?.describe?.(pointer, host) || kind?.title || "a source"; } catch { return kind?.title || "a source"; }
   };
 
@@ -416,7 +421,7 @@ export function createFollowTray({
     if (line) el("div", "pxd-follow__since", panel, line);
     let note = "";
     if (status === "reading" && !read) note = "Reading the source…";
-    else if (status === "error") note = REASONS[reason] || "Could not read the source. The last list stays.";
+    else if (status === "error") note = textMissing() ? REASONS.missingText : REASONS[reason] || "Could not read the source. The last list stays.";
     else if (read && !read.complete) note = "Only part of the source was read, so nothing is marked as left.";
     else if (read?.deeper) note = `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
     if (note) el("div", "pxd-follow__note", panel, note);
@@ -475,14 +480,24 @@ export function createFollowTray({
   const offChange = session?.on?.("change", (change) => {
     if (disposed) return;
     const dirty = change?.dirty;
-    if (dirty?.has?.(boardUid) || change?.structural) adopt();
+    if (dirty?.has?.(boardUid) || change?.structural) { adopt(); autoOpen(); }
     if (!pointer) { paintPill(); return; }
     if (change?.structural || dirty?.has?.(boardUid) || diff.left.some((uid) => dirty?.has?.(uid))) sync();
     else if (dirty && [...dirty].some((uid) => board()?.items.get(uid)?.src === key)) sync();
   }) || (() => {});
 
+  // A pointer derived from the board text on an empty board opens the tray once, so the source's items show on open.
+  function autoOpen() {
+    if (autoOpened || disposed || !pointer || open) return;
+    const b = board();
+    if (b?.followDerived !== true || b.roots.length > 0) return;
+    autoOpened = true;
+    openPanel();
+  }
+
   adopt();
   sync();
+  autoOpen();
 
   return {
     sync,

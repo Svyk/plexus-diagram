@@ -283,8 +283,8 @@ test("PXD-9 block kind reads through the host: a gone block is a failed read, no
   const host = { pullEntity: (pattern, uid) => (uid === "SRC" ? node("SRC", "Source", [node("k1", "one"), node("k2", "two")]) : null) };
   const got = await kind.read({ kind: "block", uid: "SRC" }, { host, boardUid: "BRD" });
   assert.deepEqual(got, { ok: true, complete: true, items: [
-    { uid: "k1", kind: "block", text: "one", time: 1, depth: 1 },
-    { uid: "k2", kind: "block", text: "two", time: 1, depth: 1 },
+    { uid: "k1", kind: "block", text: "one", time: 1, depth: 1, parent: "SRC" },
+    { uid: "k2", kind: "block", text: "two", time: 1, depth: 1, parent: "SRC" },
   ] });
   assert.deepEqual(await kind.read({ kind: "block", uid: "GONE" }, { host, boardUid: "BRD" }), { ok: false, reason: "missing" });
 });

@@ -6601,8 +6601,9 @@ body.roam-body.dark .pxd-root {
 .pxd-follow__group-head { display: flex; flex-direction: column; gap: 1px; padding-bottom: 2px; }
 .pxd-follow__group-title { font-weight: 600; overflow-wrap: anywhere; }
 .pxd-follow__group-source { color: var(--pxd-muted, #5f6b7c); overflow-wrap: anywhere; }
-/* An item an earlier owner already offers: shown, not placeable here. */
+/* An item an earlier owner already offers: shown, not placeable here. "Also in" sits on its own line so a long title cannot hide it. */
 .pxd-follow__row--hint { cursor: default; color: var(--pxd-muted, #5f6b7c); font-style: italic; }
+.pxd-follow__also { font-size: 11px; overflow-wrap: anywhere; }
 .pxd-follow__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .pxd-follow__new {

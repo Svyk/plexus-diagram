@@ -92009,6 +92009,9 @@ function createFollowTray({
   let btn2 = null;
   let panel = null;
   let groupEls = /* @__PURE__ */ new Map();
+  let groupsEl = null;
+  let listEl = null;
+  let showAnchor = null;
   let poll = null;
   let placing = false;
   let job = null;
@@ -92509,7 +92512,8 @@ function createFollowTray({
   function hintEl(list, row4) {
     const node2 = el2("div", "pxd-follow__row pxd-follow__row--hint", list);
     node2.dataset.uid = row4.uid;
-    el2("div", "pxd-follow__text", node2, `${rowText(row4)} — also in ${row4.also}`);
+    el2("div", "pxd-follow__text", node2, rowText(row4));
+    el2("div", "pxd-follow__also", node2, `Also in ${row4.also}`);
     shield(node2);
   }
   function noteOf(lane2) {
@@ -92559,10 +92563,43 @@ function createFollowTray({
       }
     }
   }
+  function scrollAnchor() {
+    if (listEl) return { top: Number(listEl.scrollTop) || 0 };
+    if (!groupsEl) return null;
+    const top = Number(groupsEl.scrollTop) || 0;
+    const base2 = Number(groupsEl.offsetTop) || 0;
+    let anchor = { top };
+    for (const [owner, group] of groupEls) {
+      const at = Number(group.offsetTop);
+      if (Number.isFinite(at) && at - base2 <= top) anchor = { top, owner, delta: top - (at - base2) };
+    }
+    return anchor;
+  }
+  function restoreScroll(anchor) {
+    if (!anchor) return;
+    if (listEl) {
+      listEl.scrollTop = anchor.top;
+      return;
+    }
+    if (!groupsEl) return;
+    const group = anchor.owner ? groupEls.get(anchor.owner) : null;
+    const at = Number(group?.offsetTop);
+    if (group && Number.isFinite(at)) groupsEl.scrollTop = Math.max(0, at - (Number(groupsEl.offsetTop) || 0) + (anchor.delta || 0));
+    else if (group && anchor.show) {
+      try {
+        group.scrollIntoView?.({ block: "start" });
+      } catch {
+      }
+    } else groupsEl.scrollTop = anchor.top || 0;
+  }
   function paintPanel() {
     if (!panel) return;
+    const anchor = showAnchor || scrollAnchor();
+    showAnchor = null;
     panel.replaceChildren?.();
     groupEls = /* @__PURE__ */ new Map();
+    groupsEl = null;
+    listEl = null;
     const single = order.length === 1 && !order[0].section ? order[0] : null;
     const head = el2("div", "pxd-follow__head", panel);
     el2("div", "pxd-follow__title", head, single?.label ? `Following ${single.label}` : "Following");
@@ -92571,15 +92608,17 @@ function createFollowTray({
     if (line) el2("div", "pxd-follow__since", panel, line);
     if (single) {
       paintLane(panel, single, false);
-      return;
+      listEl = panel.querySelector?.(".pxd-follow__list") || null;
+    } else {
+      groupsEl = el2("div", "pxd-follow__groups", panel);
+      for (const lane2 of order) {
+        const group = el2("div", "pxd-follow__group", groupsEl);
+        group.dataset.owner = lane2.uid;
+        groupEls.set(lane2.uid, group);
+        paintLane(group, lane2, true);
+      }
     }
-    const groups2 = el2("div", "pxd-follow__groups", panel);
-    for (const lane2 of order) {
-      const group = el2("div", "pxd-follow__group", groups2);
-      group.dataset.owner = lane2.uid;
-      groupEls.set(lane2.uid, group);
-      paintLane(group, lane2, true);
-    }
+    restoreScroll(anchor);
   }
   function openPanel(owner) {
     if (disposed || !order.length) return;
@@ -92590,14 +92629,9 @@ function createFollowTray({
       panel.setAttribute("aria-label", "Followed source");
       shield(panel, ["pointerdown", "mousedown", "dblclick", "wheel"]);
     }
+    if (typeof owner === "string" && owner && lanes.has(owner)) showAnchor = { top: 0, owner, delta: 0, show: true };
     for (const lane2 of order) markDue(lane2);
     sync();
-    if (typeof owner === "string" && owner) {
-      try {
-        groupEls.get(owner)?.scrollIntoView?.({ block: "start" });
-      } catch {
-      }
-    }
   }
   function close() {
     if (!open) return;
@@ -92605,6 +92639,8 @@ function createFollowTray({
     panel?.remove();
     panel = null;
     groupEls = /* @__PURE__ */ new Map();
+    groupsEl = null;
+    listEl = null;
     paintPill();
   }
   function toggle() {

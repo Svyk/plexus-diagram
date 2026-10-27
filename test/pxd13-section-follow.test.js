@@ -552,7 +552,7 @@ test("PXD-13 tray: a section row's drag carries its owner; the card menu sees ev
   assert.equal(f.tray.menuState().following, false, "the board itself follows nothing");
   assert.equal(f.tray.sectionMenuState("S1").following, true);
   const ids = flattenMenu(buildMenu("section", { follow: f.tray.sectionMenuState("S1") })).map((m) => m.id).filter((id) => id.startsWith("follow-section"));
-  assert.deepEqual(ids, ["follow-section", "follow-section:label", "follow-section:show", "follow-section:tree", "follow-section:pick-block", "follow-section:pick-query", "follow-section:pick-refs", "follow-section:stop"]);
+  assert.deepEqual(ids, ["follow-section", "follow-section:label", "follow-section:show", "follow-section:tree", "follow-section:pick-block", "follow-section:pick-query", "follow-section:pick-refs", "follow-section:pick-board", "follow-section:stop"]);
   await f.session.stopFollowing("S1");
   assert.equal(f.root.querySelector(".pxd-follow"), null, "no owner left: no pill");
   f.tray.dispose();

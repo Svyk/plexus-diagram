@@ -5,7 +5,7 @@
 // arrows of cards already on the board are never written. PXD-14: a page followed by headings places one section per
 // heading (the heading's uid in `head`) with a ref card per block under it.
 import { boundsOf, containerAt, toRelative } from "./model/board.js";
-import { DEFAULT_SIZES, FIT_PAD, lookForNewString, serializeItemLayout } from "./model/schema.js";
+import { DEFAULT_SIZES, FIT_PAD, lookForNewString, readPlexus, serializeItemLayout } from "./model/schema.js";
 import { FOLLOW_HEAD, headingPlan } from "./model/follow-headings.js";
 import {
   BOARD_OWNER_NAME,
@@ -20,6 +20,8 @@ import {
   followPointerFor,
   itemIds,
   keptFollow,
+  mirrorRefusal,
+  mirroredBoards,
   readFollow,
   sectionGrid,
   sourceKey,
@@ -43,6 +45,20 @@ extendSession((session, api) => {
     }
     if (t?.kind === "block" && t.uid) return t.uid;
     return null;
+  };
+
+  // PXD-19: the boards board `uid` mirrors: its own pointer and those of its children and grandchildren (sections).
+  const FOLLOWS_PULL = "[:block/props {(limit :block/children nil) [:block/props {(limit :block/children nil) [:block/props]}]}]";
+  const followsOf = (uid) => {
+    const node = host.pullEntity?.(FOLLOWS_PULL, uid);
+    if (!node) return [];
+    const list = [];
+    const add = (n, depth) => {
+      list.push(readPlexus(n?.[":block/props"] ?? n?.props));
+      if (depth < 2) for (const kid of Array.isArray(n?.[":block/children"]) ? n[":block/children"] : []) add(kid, depth + 1);
+    };
+    add(node, 0);
+    return mirroredBoards(list);
   };
 
   // PXD-13: an owner is the board or one of its sections; each keeps its pointer in its own block's props.
@@ -256,11 +272,17 @@ extendSession((session, api) => {
       return out;
     },
 
-    // { kind, uid, tree, owner }. The same source keeps its skip list. Resolves true when the pointer changed; on false
+    // PXD-19: why this board cannot mirror { kind: "board", uid, section } ("self", "cycle"), or "".
+    mirrorRefusalOf({ kind, uid, section } = {}) {
+      if (kind !== "board") return "";
+      return mirrorRefusal({ boardUid, pointer: { kind, uid, section }, followsOf });
+    },
+
+    // { kind, uid, tree, section, owner }. The same source keeps its skip list. Resolves true when the pointer changed; on false
     // followRefusal() says why. A source key is followed by one owner per board, at most FOLLOW_SECTION_CAP sections
     // follow one, and a section cannot follow its own block or the board. PXD-18: the Inbox kind takes the board's own
     // uid, and only the board follows it.
-    followSource({ kind, uid, tree, owner: ownerArg } = {}) {
+    followSource({ kind, uid, tree, section, owner: ownerArg } = {}) {
       const owner = ownerOf(ownerArg);
       const refuse = (reason, by) => { refusal = by ? { reason, by } : { reason }; return Promise.resolve(false); };
       refusal = null;
@@ -271,13 +293,15 @@ extendSession((session, api) => {
       } else if (uid === boardUid || uid === owner) return refuse("self");
       // A headings source makes sections of its own: only the board follows one.
       if (kind === "headings" && owner !== boardUid) return refuse("kind");
-      const key = `${kind}:${uid}`;
+      const mirror = session.mirrorRefusalOf({ kind, uid, section });
+      if (mirror) return refuse(mirror);
+      const key = sourceKey({ kind, uid, section });
       const { owners, capped } = followOwnersOf(api.board());
       const other = owners.find((o) => o.key === key && o.uid !== owner);
       if (other) return refuse("taken", other.name === BOARD_OWNER_NAME ? "the board" : other.name);
       if (owner !== boardUid && capped && !owners.some((o) => o.uid === owner)) return refuse("cap");
       // The kept skip list of this source, when the owner stopped following it before.
-      return writePointer((cur, base) => followPointerFor(keptFollow(base, key) || cur, kind, uid, { tree }), owner)
+      return writePointer((cur, base) => followPointerFor(keptFollow(base, key) || cur, kind, uid, { tree, section }), owner)
         .then((ok) => { if (!ok) refusal = { reason: "unchanged" }; return ok; });
     },
 

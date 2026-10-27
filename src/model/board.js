@@ -220,7 +220,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
       const hasLayout = isNum(layout.x) && isNum(layout.y);
       let title;
       if (kind === "page") title = cls.title;
-      else if (kind === "board") title = parseBoardTitle(cstring) || "Untitled board";
+      else if (kind === "board") title = boardLabel(cstring, resolve);
       else if (isQueryString(cstring)) title = "Query";
       else if (isRoamTableString(cstring)) title = kids.length ? rowsCaption(kids.length) : "Table";
       else if (tableKid) title = firstLine(cstring) || rowsCaption(sortedChildren(tableKid).length);

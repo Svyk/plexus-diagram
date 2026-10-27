@@ -350,7 +350,7 @@ export function classifyString(s) {
   return { kind: "note" };
 }
 
-const BOARD_REF_RE = /^\s*\{\{\s*(?:\[\[diagram\]\]|diagram)\s*(:)?\s*\(\(([\w-]{1,64})\)\)([^}]*)\}\}/i;
+const BOARD_REF_RE = /^\s*\{\{\s*(?:\[\[diagram\]\]|diagram)\s*(:)?\s*\(\(([\w-]{1,64})\)\)((?:[^{}]|\{\{[^{}]*\}\})*)\}\}/i;
 
 // The leading `{{diagram ((uid))}}` token: `diagram` or `[[diagram]]`, an optional colon, one block ref and optional
 // title text. Anything after the closing `}}` is ignored. null for every other board string.
@@ -377,7 +377,7 @@ export function setBoardTitle(s, title) {
   const cur = String(s ?? "");
   const ref = parseBoardRef(cur);
   if (ref && !ref.colon) {
-    const r = /^(\s*\{\{\s*(?:\[\[diagram\]\]|diagram))\s*(\(\([\w-]{1,64}\)\))[^}]*\}\}/i.exec(cur);
+    const r = /^(\s*\{\{\s*(?:\[\[diagram\]\]|diagram))\s*(\(\([\w-]{1,64}\)\))(?:[^{}]|\{\{[^{}]*\}\})*\}\}/i.exec(cur);
     const clean = cleanBoardTitle(title);
     return `${r[1]} ${r[2]}${clean ? ` ${clean}` : ""}}}${cur.slice(r[0].length)}`;
   }

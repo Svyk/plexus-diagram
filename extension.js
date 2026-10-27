@@ -1332,7 +1332,7 @@ function setBoardTitle(s, title) {
   const cur = String(s ?? "");
   const ref = parseBoardRef(cur);
   if (ref && !ref.colon) {
-    const r = /^(\s*\{\{\s*(?:\[\[diagram\]\]|diagram))\s*(\(\([\w-]{1,64}\)\))[^}]*\}\}/i.exec(cur);
+    const r = /^(\s*\{\{\s*(?:\[\[diagram\]\]|diagram))\s*(\(\([\w-]{1,64}\)\))(?:[^{}]|\{\{[^{}]*\}\})*\}\}/i.exec(cur);
     const clean2 = cleanBoardTitle(title);
     return `${r[1]} ${r[2]}${clean2 ? ` ${clean2}` : ""}}}${cur.slice(r[0].length)}`;
   }
@@ -1529,7 +1529,7 @@ var init_schema = __esm({
     isNum = (v) => typeof v === "number" && Number.isFinite(v);
     round12 = (n3) => Math.round(n3 * 10) / 10;
     MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    BOARD_REF_RE = /^\s*\{\{\s*(?:\[\[diagram\]\]|diagram)\s*(:)?\s*\(\(([\w-]{1,64})\)\)([^}]*)\}\}/i;
+    BOARD_REF_RE = /^\s*\{\{\s*(?:\[\[diagram\]\]|diagram)\s*(:)?\s*\(\(([\w-]{1,64})\)\)((?:[^{}]|\{\{[^{}]*\}\})*)\}\}/i;
     cleanBoardTitle = (title) => String(title ?? "").replace(/\s*[\r\n]+\s*/g, " ").split("}}").join("").trim();
   }
 });
@@ -4143,7 +4143,7 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
       const hasLayout = isNum2(layout.x) && isNum2(layout.y);
       let title;
       if (kind === "page") title = cls.title;
-      else if (kind === "board") title = parseBoardTitle(cstring) || "Untitled board";
+      else if (kind === "board") title = boardLabel(cstring, resolve);
       else if (isQueryString(cstring)) title = "Query";
       else if (isRoamTableString(cstring)) title = kids.length ? rowsCaption(kids.length) : "Table";
       else if (tableKid) title = firstLine(cstring) || rowsCaption(sortedChildren2(tableKid).length);
@@ -31722,7 +31722,7 @@ function createItemRenderer({
   };
   const mountBoardRow = (parent, cls, target) => {
     const node2 = el2("div", `${cls} pxd-rs--board`, parent);
-    const title = parseBoardTitle(target.string) || "Untitled board";
+    const title = boardLabel(target.string, (id) => host?.blockString?.(id));
     const self = target.uid === lastBoard?.uid;
     const open = (event) => {
       stopEvent(event);
@@ -32110,7 +32110,7 @@ function createItemRenderer({
           rec.refBoard = classifyString(refString).kind === "board";
           rec.regionImg = imageRegionString2(refString);
         }
-        if (rec.refBoard) rec.refTitle = parseBoardTitle(rec.refString) || "Untitled board";
+        if (rec.refBoard) rec.refTitle = boardLabel(rec.refString, (id) => host?.blockString?.(id));
         else rec.refTitle = typeof refString === "string" ? firstLine(refString).slice(0, REF_TITLE_MAX) : "";
       } else rec.refTitle = "";
     }
@@ -35738,7 +35738,7 @@ function createItemRenderer({
     if (refString == null || refString === rec.refString) return;
     rec.refString = refString;
     rec.refBoard = classifyString(refString).kind === "board";
-    rec.refTitle = rec.refBoard ? parseBoardTitle(refString) || "Untitled board" : firstLine(refString).slice(0, REF_TITLE_MAX);
+    rec.refTitle = rec.refBoard ? boardLabel(refString, (id) => host?.blockString?.(id)) : firstLine(refString).slice(0, REF_TITLE_MAX);
     if (!rec.renaming && rec.header) rec.header.textContent = String(rec.refTitle || live2.title || "").slice(0, HEADER_TEXT_MAX);
     if (rec.el) rec.el.setAttribute("aria-label", `${rec.refTitle || live2.title || "Untitled"}, ${live2.type}`);
     if (rec.refBoard) return;
@@ -36024,7 +36024,7 @@ function createItemRenderer({
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);
       const isBoardRef = typeof refString === "string" && classifyString(refString).kind === "board";
-      if (isBoardRef) rec.refTitle = parseBoardTitle(refString) || "Untitled board";
+      if (isBoardRef) rec.refTitle = boardLabel(refString, (id) => host?.blockString?.(id));
       else if (typeof refString === "string" && isQueryString(refString)) rec.refTitle = "Query";
       else rec.refTitle = typeof refString === "string" ? firstLine(refString).slice(0, REF_TITLE_MAX) : "";
       const blockPoster = posterTitleOf(item);
@@ -50904,7 +50904,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       const src = boardRefSource(string);
       let pointer = null;
       let text4 = null;
-      if (src) {
+      if (src && src !== uid) {
         try {
           text4 = host.blockString?.(src);
         } catch {
@@ -50912,7 +50912,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         }
         pointer = isQueryString(text4) ? { kind: "query", uid: src } : { kind: "block", uid: src, tree: true };
       }
-      derivedMemo = { string: src && typeof text4 !== "string" ? null : string, pointer };
+      derivedMemo = { string: src && src !== uid && typeof text4 !== "string" ? null : string, pointer };
     }
     return derivedMemo.pointer;
   };
@@ -113748,7 +113748,7 @@ function parentCount(node2) {
   const parents = node2?.[":block/parents"] ?? node2?.parents;
   return Array.isArray(parents) ? parents.length : 0;
 }
-function boardPath(parents, self) {
+function boardPath(parents, self, resolve) {
   const selfUid = self?.uid || "";
   const chain = [];
   for (const node2 of parents || []) {
@@ -113757,7 +113757,7 @@ function boardPath(parents, self) {
     const string = blockString2(node2);
     if (!isDiagramString2(string)) continue;
     if (readPlexus(node2?.[":block/props"] ?? node2?.props)?.v !== 2) continue;
-    chain.push({ uid, title: parseBoardTitle(string) || UNTITLED_BOARD, depth: parentCount(node2) });
+    chain.push({ uid, title: boardLabel(string, resolve), depth: parentCount(node2) });
   }
   chain.sort((a, b) => a.depth - b.depth);
   const out = chain.map(({ uid, title }) => ({ uid, title }));
@@ -115335,7 +115335,7 @@ async function installPlexusDiagram({
     }
     const parents = res?.[":block/parents"];
     if (!res || res[":block/uid"] !== uid || parentsUnloaded(parents)) return [self];
-    const path = boardPath(parents, self);
+    const path = boardPath(parents, self, (id) => host.blockString?.(id));
     pathCache.set(uid, path);
     return path.slice();
   }

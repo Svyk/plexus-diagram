@@ -9,6 +9,10 @@ import "../src/session-follow.js";
 import { createFollowTray } from "../src/view/follow-tray.js";
 import { followKind } from "../src/host/follow-sources.js";
 import { DIAGRAM_SELECTOR, REF_BUTTON_SELECTOR, diagramsWithin, enhancedUidGuardCss } from "../src/discovery.js";
+import { buildBoard } from "../src/model/board.js";
+import { boardPath } from "../src/model/board-path.js";
+import { createLifecycle } from "../src/lifecycle.js";
+import { installPlexusDiagram } from "../src/feature.js";
 import { boardLabel, parseBoardRef, parseBoardTitle, setBoardTitle, UNTITLED_BOARD } from "../src/model/schema.js";
 import { boardRefSource, readFollow, textSourceUid } from "../src/model/follow.js";
 
@@ -301,4 +305,155 @@ test("PXD-22 discovery: diagramsWithin finds the ref button, and the guard hides
   assert.ok(DIAGRAM_SELECTOR.includes(".rm-diagram") && DIAGRAM_SELECTOR.includes(REF_BUTTON_SELECTOR));
   const css = enhancedUidGuardCss(["pxd22Src1"]);
   assert.ok(css.includes('[id$="pxd22Src1"] button.rm-xparser-default-diagram:not(.pxd-native-hidden):not(.pxd-outline-native)'));
+});
+
+// ---------------------------------------------------------------- round 2
+
+test("PXD-22 parseBoardRef: one level of nested {{macro}} stays in the title", () => {
+  assert.deepEqual(parseBoardRef("{{diagram ((abc)) {{x}}}}"), { uid: "abc", title: "{{x}}", colon: false });
+  assert.equal(setBoardTitle("{{diagram ((abc)) {{x}}}} tail", "New"), "{{diagram ((abc)) New}} tail");
+});
+
+test("PXD-22 buildBoard: nested ref board cards get the referenced block's first line as the title", () => {
+  const pulled = {
+    ":block/uid": "parent001",
+    ":block/string": "{{[[diagram]]:Parent}}",
+    ":block/props": { ":plexus": { ":v": 2 } },
+    ":block/children": [
+      { ":block/uid": "ca000001", ":block/string": "{{diagram ((SRC000001))}}", ":block/order": 0 },
+      { ":block/uid": "cb000001", ":block/string": "{{[[diagram]]: ((SRC000001))}}", ":block/order": 1 },
+    ],
+  };
+  const resolve = (id) => (id === "SRC000001" ? "Reading list" : null);
+  const board = buildBoard(pulled, { resolve });
+  const titles = ["ca000001", "cb000001"].map((id) => board.items.get(id)?.title);
+  assert.deepEqual(titles, ["Reading list", "Reading list"]);
+});
+
+test("PXD-22 boardPath: an ancestor ref board shows the referenced block's first line", () => {
+  const parents = [{
+    ":block/uid": "anc000001",
+    ":block/string": "{{[[diagram]]: ((SRC000001))}}",
+    ":block/props": { ":plexus": { ":v": 2 } },
+    ":block/parents": [{ ":db/id": 1 }],
+  }];
+  const resolve = (id) => (id === "SRC000001" ? "Reading list" : null);
+  const path = boardPath(parents, { uid: "leaf00001", title: "Leaf" }, resolve);
+  assert.deepEqual(path, [{ uid: "anc000001", title: "Reading list" }, { uid: "leaf00001", title: "Leaf" }]);
+  assert.equal(boardPath(parents, { uid: "leaf00001", title: "Leaf" })[0].title, UNTITLED_BOARD);
+});
+
+test("PXD-22 self-reference: a board whose string refs itself derives no pointer", async () => {
+  const { fake, session } = setup({ string: "{{diagram ((b1))}}" });
+  await flush();
+  await fake.flush();
+  assert.equal(session.followState(), null);
+  assert.deepEqual(fake.writesLog(), []);
+});
+
+// feature.consider, button branch: a DOM stub under the real installPlexusDiagram.
+class El {
+  constructor(doc, tag = "div") {
+    Object.assign(this, { doc, tag, children: [], parentElement: null, nodeType: 1, style: { display: "" }, dataset: {}, id: "", textContent: "", cls: new Set(), closestMap: {}, attrs: new Map() });
+    const cls = this.cls;
+    this.classList = { add: (...n) => n.forEach((x) => cls.add(x)), remove: (...n) => n.forEach((x) => cls.delete(x)), contains: (n) => cls.has(n) };
+  }
+  get tagName() { return this.tag.toUpperCase(); }
+  get previousElementSibling() { const sib = this.parentElement?.children; return sib ? sib[sib.indexOf(this) - 1] ?? null : null; }
+  addEventListener() {}
+  setAttribute(name, value) { this.attrs.set(name, String(value)); }
+  removeAttribute(name) { this.attrs.delete(name); }
+  hasAttribute(name) { return this.attrs.has(name); }
+  set className(value) { this.cls.clear(); String(value).split(/\s+/).filter(Boolean).forEach((n) => this.cls.add(n)); }
+  get className() { return [...this.cls].join(" "); }
+  get isConnected() { let n = this; while (n.parentElement) n = n.parentElement; return n === this.doc.root; }
+  append(child) { child.remove(); child.parentElement = this; this.children.push(child); }
+  appendChild(child) { this.append(child); return child; }
+  after(node) { node.remove(); const p = this.parentElement; p.children.splice(p.children.indexOf(this) + 1, 0, node); node.parentElement = p; }
+  remove() { const p = this.parentElement; if (!p) return; p.children.splice(p.children.indexOf(this), 1); this.parentElement = null; }
+  closest(selector) { return this.closestMap[selector] ?? null; }
+  matches(selector) {
+    if (selector === "*") return true;
+    if (selector === '[id^="block-input-"]') return this.id.startsWith("block-input-");
+    if (selector === REF_BUTTON_SELECTOR) return this.tag === "button" && this.cls.has("rm-xparser-default-diagram");
+    return selector.startsWith(".") && this.cls.has(selector.slice(1));
+  }
+  contains(node) { for (let c = node; c; c = c.parentElement) if (c === this) return true; return false; }
+  querySelectorAll(selector) {
+    const out = [];
+    for (const child of this.children) { if (child.matches(selector)) out.push(child); out.push(...child.querySelectorAll(selector)); }
+    return out;
+  }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
+}
+
+async function withButtonEnv(blockString, fn) {
+  const globals = ["document", "window", "location", "MutationObserver", "setInterval", "clearInterval"];
+  const saved = {};
+  for (const key of globals) saved[key] = Object.getOwnPropertyDescriptor(globalThis, key);
+  const define = (key, value) => Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+  const doc = {};
+  doc.root = new El(doc, "html"); doc.head = new El(doc, "head"); doc.body = new El(doc, "body"); doc.app = new El(doc, "div");
+  doc.app.cls.add("roam-app");
+  doc.root.append(doc.head); doc.root.append(doc.body); doc.body.append(doc.app);
+  doc.addEventListener = () => {}; doc.removeEventListener = () => {};
+  doc.createElement = (tag) => new El(doc, tag);
+  doc.getElementById = (id) => doc.root.querySelectorAll("*").find((n) => n.id === id) ?? null;
+  doc.querySelector = (sel) => doc.root.querySelector(sel);
+  doc.querySelectorAll = (sel) => doc.root.querySelectorAll(sel);
+  const intervals = new Map();
+  let nextId = 1;
+  define("document", doc);
+  define("window", { addEventListener() {}, removeEventListener() {} });
+  define("location", { hash: "" });
+  define("MutationObserver", class { observe() {} disconnect() {} });
+  define("setInterval", (cb) => { const id = nextId++; intervals.set(id, cb); return id; });
+  define("clearInterval", (id) => intervals.delete(id));
+  const uid = "refBtn001";
+  const host = {
+    api: { data: { pull: (pattern, ref) => (pattern === "[:block/props]" ? { ":block/props": { ":plexus": { ":v": 2 } } } : pattern.startsWith("[:block/open") ? null : null), }, ui: { getFocusedBlock: () => null } },
+    stats: { writes: 0, watches: 0, renders: 0 },
+    pullNative: () => null,
+    pageUid: () => null,
+    blockString: (id) => (id === uid ? blockString : null),
+    q: () => [],
+    generateUid: () => "newBoard01",
+    createBlock: async () => "x", openBlock: async () => {}, openPage: async () => {}, setOpen: async () => {},
+  };
+  const views = [];
+  const mountView = (args) => { const v = { args, dispose() {}, setFullscreen() {}, focusUid() {} }; views.push(v); return v; };
+  const acquireSession = (id) => ({ uid: id, board: { enhanced: true }, on: () => () => {}, release() {} });
+  const reg = { addCommand: async () => {}, removeCommand: async () => {} };
+  const extensionAPI = {
+    settings: { get: (id) => (id === "auto-enhance" ? false : null) },
+    ui: { commandPalette: reg, slashCommand: reg, blockContextMenu: reg },
+    platform: { isMobile: () => false },
+  };
+  const storageMap = new Map();
+  const storage = { getItem: (k) => storageMap.get(k) ?? null, setItem: (k, v) => { storageMap.set(k, String(v)); } };
+  const lifecycle = createLifecycle();
+  const button = doc.createElement("button");
+  button.className = "bp3-button rm-xparser-default-diagram";
+  button.closestMap['[id^="block-input-"]'] = { id: `block-input-w-body-outline-${uid}` };
+  doc.app.append(button);
+  try {
+    await installPlexusDiagram({ extensionAPI, lifecycle, version: "x", mountView, host, acquireSession, storage });
+    for (let i = 0; i < 2; i += 1) for (const cb of [...intervals.values()]) cb();
+    await fn({ views, button });
+  } finally {
+    await lifecycle.dispose().catch(() => {});
+    for (const key of globals) {
+      if (saved[key]) Object.defineProperty(globalThis, key, saved[key]);
+      else delete globalThis[key];
+    }
+  }
+}
+
+test("PXD-22 feature.consider: {{diagram ((uid))}} on Roam's default button mounts a view", async () => {
+  await withButtonEnv("{{diagram ((SRC000001))}}", ({ views }) => { assert.equal(views.length, 1); });
+});
+
+test("PXD-22 feature.consider: {{diagram foo}} and the colon ref form stay a plain button", async () => {
+  await withButtonEnv("{{diagram foo}}", ({ views }) => { assert.equal(views.length, 0); });
+  await withButtonEnv("{{[[diagram]]: ((SRC000001))}}", ({ views }) => { assert.equal(views.length, 0); });
 });

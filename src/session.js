@@ -512,12 +512,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       const src = boardRefSource(string);
       let pointer = null;
       let text = null;
-      if (src) {
+      if (src && src !== uid) {
         try { text = host.blockString?.(src); } catch { text = null; }
         pointer = isQueryString(text) ? { kind: "query", uid: src } : { kind: "block", uid: src, tree: true };
       }
       // A source that is not readable yet is read again on the next rebuild (it may be a query once it loads).
-      derivedMemo = { string: src && typeof text !== "string" ? null : string, pointer };
+      derivedMemo = { string: src && src !== uid && typeof text !== "string" ? null : string, pointer };
     }
     return derivedMemo.pointer;
   };

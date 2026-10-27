@@ -1,5 +1,5 @@
 import { isDiagramString } from "../discovery.js";
-import { parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./schema.js";
+import { boardLabel, readPlexus, UNTITLED_BOARD } from "./schema.js";
 
 function blockString(node) {
   return String(node?.[":block/string"] ?? node?.string ?? "");
@@ -16,7 +16,7 @@ function parentCount(node) {
 
 // Root-first board ancestors from one pull of :block/parents, then the board itself.
 // A native diagram (no plexus v:2) and a plain bullet are not part of the path.
-export function boardPath(parents, self) {
+export function boardPath(parents, self, resolve) {
   const selfUid = self?.uid || "";
   const chain = [];
   for (const node of parents || []) {
@@ -25,7 +25,7 @@ export function boardPath(parents, self) {
     const string = blockString(node);
     if (!isDiagramString(string)) continue;
     if (readPlexus(node?.[":block/props"] ?? node?.props)?.v !== 2) continue;
-    chain.push({ uid, title: parseBoardTitle(string) || UNTITLED_BOARD, depth: parentCount(node) });
+    chain.push({ uid, title: boardLabel(string, resolve), depth: parentCount(node) });
   }
   chain.sort((a, b) => a.depth - b.depth);
   const out = chain.map(({ uid, title }) => ({ uid, title }));

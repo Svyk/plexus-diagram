@@ -756,7 +756,7 @@ export async function installPlexusDiagram({
     try { res = pullVia(host, ANCESTORS_PATTERN, [":block/uid", uid]); } catch { res = null; }
     const parents = res?.[":block/parents"];
     if (!res || res[":block/uid"] !== uid || parentsUnloaded(parents)) return [self];
-    const path = boardPath(parents, self);
+    const path = boardPath(parents, self, (id) => host.blockString?.(id));
     pathCache.set(uid, path);
     return path.slice();
   }

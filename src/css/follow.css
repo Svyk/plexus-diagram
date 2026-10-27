@@ -86,6 +86,18 @@
 }
 
 .pxd-follow__row--left { cursor: default; }
+
+/* PXD-13: one group per owner (each section that follows a source, then the board). The groups scroll as one list. */
+.pxd-follow__groups { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+.pxd-follow__group { padding: 6px 0 4px; border-top: 1px solid var(--pxd-border, #d0d7de); }
+.pxd-follow__group:first-child { border-top: 0; }
+.pxd-follow__group .pxd-follow__list { overflow: visible; flex: none; }
+.pxd-follow__group .pxd-follow__list--left { max-height: none; }
+.pxd-follow__group-head { display: flex; flex-direction: column; gap: 1px; padding-bottom: 2px; }
+.pxd-follow__group-title { font-weight: 600; overflow-wrap: anywhere; }
+.pxd-follow__group-source { color: var(--pxd-muted, #5f6b7c); overflow-wrap: anywhere; }
+/* An item an earlier owner already offers: shown, not placeable here. */
+.pxd-follow__row--hint { cursor: default; color: var(--pxd-muted, #5f6b7c); font-style: italic; }
 .pxd-follow__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .pxd-follow__new {

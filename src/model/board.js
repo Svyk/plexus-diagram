@@ -18,6 +18,7 @@ import {
   semanticRef,
 } from "./schema.js";
 import { isQueryString } from "./query.js";
+import { readFollow } from "./follow.js";
 import { captionTableKid, isRoamTableString, rowsCaption } from "./roam-table.js";
 import { regionRefModel } from "./region-card.js";
 import { drawingRefModel, isDrawingString } from "./drawing-card.js";
@@ -333,6 +334,8 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         ...(openKey ? { openKey } : {}),
         // PXD-9: the source a placed card came from (its follow key). Only such cards can be marked "left the source".
         ...(typeof cplexus?.src === "string" && cplexus.src ? { src: cplexus.src } : {}),
+        // PXD-13: the source a section follows (its own plexus.follow), normalized.
+        ...(type === "section" && readFollow(cplexus) ? { follow: readFollow(cplexus) } : {}),
       };
       items.set(cuid, item);
       preorder.push(cuid);

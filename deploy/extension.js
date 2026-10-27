@@ -3868,9 +3868,9 @@ function regionCaption(label, existingCount) {
   const n3 = Number.isFinite(existingCount) ? existingCount : 0;
   return `Region ${n3 + 1}`;
 }
-function endpointChipText({ count, boardTitle: boardTitle3 } = {}) {
+function endpointChipText({ count, boardTitle: boardTitle4 } = {}) {
   const n3 = Math.max(0, Math.trunc(Number(count) || 0));
-  const board2 = clip(boardTitle3, 32) || "board";
+  const board2 = clip(boardTitle4, 32) || "board";
   return `⇢ ${n3} on ${board2}`;
 }
 function endpointIndex(rows) {
@@ -22286,9 +22286,9 @@ function uidFromElementId(id, uids) {
   }
   return null;
 }
-function chipText({ from, to, label, boardTitle: boardTitle3, fromBlockText, toBlockText, why } = {}) {
+function chipText({ from, to, label, boardTitle: boardTitle4, fromBlockText, toBlockText, why } = {}) {
   const arrow2 = label ? `—${clip3(label, 32)}→` : "→";
-  const board2 = clip3(boardTitle3, 32);
+  const board2 = clip3(boardTitle4, 32);
   return `↗ ${endName(from, fromBlockText)} ${arrow2} ${endName(to, toBlockText)}${board2 ? ` · on ${board2}` : ""}${becauseClause(why)}`;
 }
 function relationOf(board2, edgeUid, { blockText: blockText3 } = {}) {
@@ -42730,20 +42730,22 @@ function normalizePointer(raw) {
   const kind = typeof raw.kind === "string" && KIND_RE.test(raw.kind) ? raw.kind : null;
   const uid = typeof raw.uid === "string" && UID_RE5.test(raw.uid) ? raw.uid : null;
   if (!kind || !uid) return null;
-  return { kind, uid, ...raw.tree === true ? { tree: true } : {}, skip: cleanSkip(raw.skip) };
+  const section2 = typeof raw.section === "string" && UID_RE5.test(raw.section) ? raw.section : null;
+  return { kind, uid, ...raw.tree === true ? { tree: true } : {}, ...section2 ? { section: section2 } : {}, skip: cleanSkip(raw.skip) };
 }
 function serializePointer(pointer) {
   const p = normalizePointer(pointer);
   if (!p) return null;
   const out = { kind: p.kind, uid: p.uid };
   if (p.tree) out.tree = true;
+  if (p.section) out.section = p.section;
   if (p.skip.length) out.skip = p.skip;
   return out;
 }
 function readFollow(plexus) {
   return isObject3(plexus) ? normalizePointer(plexus[FOLLOW_KEY]) : null;
 }
-var sourceKey = (pointer) => pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}` : "";
+var sourceKey = (pointer) => pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}${typeof pointer.section === "string" && pointer.section ? `/${pointer.section}` : ""}` : "";
 function keptList(plexus) {
   const raw = isObject3(plexus) ? plexus[FOLLOW_KEPT_KEY] : null;
   return (Array.isArray(raw) ? raw : raw ? [raw] : []).map(normalizePointer).filter((p) => p && p.skip.length);
@@ -42758,7 +42760,7 @@ function withFollow(plexus, pointer) {
   const nextKey = sourceKey(next);
   const kept = keptList(base2).filter((p) => sourceKey(p) !== nextKey);
   if (prev && sourceKey(prev) !== nextKey && prev.skip.length) kept.push(prev);
-  let list = kept.slice(-FOLLOW_KEPT_SOURCES).map((p) => ({ kind: p.kind, uid: p.uid, skip: p.skip }));
+  let list = kept.slice(-FOLLOW_KEPT_SOURCES).map((p) => ({ kind: p.kind, uid: p.uid, ...p.section ? { section: p.section } : {}, skip: p.skip }));
   while (list.length > 1 && list.reduce((n3, p) => n3 + p.skip.length, 0) > FOLLOW_SKIP_CAP) list = list.slice(1);
   if (list.length) base2[FOLLOW_KEPT_KEY] = list;
   else delete base2[FOLLOW_KEPT_KEY];
@@ -42766,10 +42768,42 @@ function withFollow(plexus, pointer) {
   else delete base2[FOLLOW_KEY];
   return base2;
 }
-function followPointerFor(current3, kind, uid, { tree } = {}) {
-  const same4 = current3?.kind === kind && current3?.uid === uid;
+function followPointerFor(current3, kind, uid, { tree, section: section2 } = {}) {
+  const sec = typeof section2 === "string" && UID_RE5.test(section2) ? section2 : "";
+  const same4 = current3?.kind === kind && current3?.uid === uid && (current3.section || "") === sec;
   const deep = tree === void 0 ? same4 && current3.tree === true : tree === true;
-  return { kind, uid, ...deep ? { tree: true } : {}, skip: same4 ? current3.skip : [] };
+  return { kind, uid, ...deep ? { tree: true } : {}, ...sec ? { section: sec } : {}, skip: same4 ? current3.skip : [] };
+}
+var MIRROR_CHAIN_CAP = 8;
+function mirrorRefusal({ boardUid, pointer, followsOf } = {}) {
+  if (!pointer || pointer.kind !== "board" || !pointer.uid) return "";
+  if (pointer.uid === boardUid) return "self";
+  const seen = /* @__PURE__ */ new Set();
+  const queue = [pointer.uid];
+  while (queue.length && seen.size < MIRROR_CHAIN_CAP) {
+    const uid = queue.shift();
+    if (seen.has(uid)) continue;
+    seen.add(uid);
+    let next = [];
+    try {
+      next = typeof followsOf === "function" ? followsOf(uid) || [] : [];
+    } catch {
+      next = [];
+    }
+    for (const n3 of next) {
+      if (n3 === boardUid) return "cycle";
+      if (typeof n3 === "string" && n3 && !seen.has(n3)) queue.push(n3);
+    }
+  }
+  return "";
+}
+function mirroredBoards(plexusList) {
+  const out = [];
+  for (const plexus of plexusList || []) {
+    const p = readFollow(plexus);
+    if (p?.kind === "board" && !out.includes(p.uid)) out.push(p.uid);
+  }
+  return out;
 }
 function addSkip(skip, uids, cap4 = FOLLOW_SKIP_CAP) {
   const add = (uids || []).filter((u) => typeof u === "string" && UID_RE5.test(u));
@@ -56448,6 +56482,18 @@ extendSession((session, api3) => {
     if (t?.kind === "block" && t.uid) return t.uid;
     return null;
   };
+  const FOLLOWS_PULL = "[:block/props {(limit :block/children nil) [:block/props {(limit :block/children nil) [:block/props]}]}]";
+  const followsOf = (uid) => {
+    const node2 = host.pullEntity?.(FOLLOWS_PULL, uid);
+    if (!node2) return [];
+    const list = [];
+    const add = (n3, depth) => {
+      list.push(readPlexus(n3?.[":block/props"] ?? n3?.props));
+      if (depth < 2) for (const kid of Array.isArray(n3?.[":block/children"]) ? n3[":block/children"] : []) add(kid, depth + 1);
+    };
+    add(node2, 0);
+    return mirroredBoards(list);
+  };
   const writePointer = (next) => api3.txn((t) => {
     const board2 = api3.board();
     if (!board2?.enhanced) return false;
@@ -56601,10 +56647,16 @@ extendSession((session, api3) => {
       out.add(boardUid);
       return out;
     },
-    // { kind, uid, tree }. The same source keeps its skip list. Resolves true when the pointer changed.
-    followSource({ kind, uid, tree } = {}) {
+    // PXD-19: why this board cannot mirror { kind: "board", uid, section } ("self", "cycle"), or "".
+    followRefusal({ kind, uid, section: section2 } = {}) {
+      if (kind !== "board") return "";
+      return mirrorRefusal({ boardUid, pointer: { kind, uid, section: section2 }, followsOf });
+    },
+    // { kind, uid, tree, section }. The same source keeps its skip list. Resolves true when the pointer changed.
+    followSource({ kind, uid, tree, section: section2 } = {}) {
       if (typeof kind !== "string" || typeof uid !== "string" || !uid || uid === boardUid) return Promise.resolve(false);
-      return writePointer((cur, base2) => followPointerFor(keptFollow(base2, `${kind}:${uid}`) || cur, kind, uid, { tree }));
+      if (session.followRefusal({ kind, uid, section: section2 })) return Promise.resolve(false);
+      return writePointer((cur, base2) => followPointerFor(keptFollow(base2, sourceKey({ kind, uid, section: section2 })) || cur, kind, uid, { tree, section: section2 }));
     },
     setFollowTree(on) {
       return writePointer((cur) => cur?.kind === "block" ? { ...cur, tree: on === true } : cur);
@@ -61763,8 +61815,8 @@ function imageSrc2(string) {
   const m = /!\[[^\]]*\]\(([^)]*)\)/.exec(String(string ?? "").trim());
   return m ? m[1].trim() : "";
 }
-function pngFileName({ boardTitle: boardTitle3 = "", pageTitle = "", date = "" } = {}) {
-  const board2 = String(boardTitle3 ?? "").trim();
+function pngFileName({ boardTitle: boardTitle4 = "", pageTitle = "", date = "" } = {}) {
+  const board2 = String(boardTitle4 ?? "").trim();
   const page = String(pageTitle ?? "").trim();
   const named2 = board2 && board2.toLowerCase() !== UNTITLED_BOARD.toLowerCase();
   const raw = (named2 ? board2 : page) || board2 || "board";
@@ -92272,9 +92324,9 @@ init_resurface();
 var INBOX_CAP = 100;
 var INBOX_PULL_LIMIT = 1e3;
 var ROW_TEXT2 = 160;
-function inboxTitles({ pageTitle = "", boardTitle: boardTitle3 = "" } = {}) {
+function inboxTitles({ pageTitle = "", boardTitle: boardTitle4 = "" } = {}) {
   const out = [];
-  for (const raw of [pageTitle, boardTitle3]) {
+  for (const raw of [pageTitle, boardTitle4]) {
     const t = String(raw ?? "").trim();
     if (!t || /^untitled board$/i.test(t) || out.includes(t)) continue;
     out.push(t);
@@ -92509,6 +92561,42 @@ function createInbox({ doc = globalThis.document, root, host, timers, titles, on
 // src/view/follow-tray.js
 init_drop();
 init_schema();
+
+// src/model/board-rule.js
+var BOARD_MEMBER_NAME = "board-member";
+var CONTAINERS = ["edges", "snapshots", "regions", "trails"].map((t) => `"${t}"`).join(" ");
+var BOARD_MEMBER_RULE = [
+  "[",
+  `[(${BOARD_MEMBER_NAME} ?board ?b)`,
+  " [?board :block/children ?b]",
+  " (not-join [?b] [?b :block/props ?pr] [(get ?pr :plexus) ?x] [(get ?x :type) ?t]",
+  `  [(contains? #{${CONTAINERS}} ?t)])]`,
+  `[(${BOARD_MEMBER_NAME} ?board ?b)`,
+  " [?b :block/parents ?board] [?pa :block/children ?b] [?pa :block/parents ?board]",
+  ' [?pa :block/props ?pr] [(get ?pr :plexus) ?x] [(get ?x :type) ?t] [(= ?t "section")]]',
+  "]"
+].join(" ");
+function createBoardRules(win2 = globalThis) {
+  return {
+    boardMember: BOARD_MEMBER_RULE,
+    boardMemberName: BOARD_MEMBER_NAME,
+    // q("[:find ?s :in $ % :where [?board :block/uid \"X\"] (board-member ?board ?b) [?b :block/string ?s]]")
+    q(query, ...inputs) {
+      const api3 = win2?.roamAlphaAPI?.data;
+      if (typeof api3?.q !== "function") throw new Error("roamAlphaAPI.data.q is not available");
+      return api3.q(query, BOARD_MEMBER_RULE, ...inputs);
+    }
+  };
+}
+function installBoardRules(api3, win2 = globalThis) {
+  if (!api3 || typeof api3 !== "object") return () => {
+  };
+  const rules = createBoardRules(win2);
+  api3.rules = rules;
+  return () => {
+    if (api3.rules === rules) delete api3.rules;
+  };
+}
 
 // src/host/follow-sources.js
 init_schema();
@@ -92920,6 +93008,152 @@ defineFollowKind({
     return { ok: true, complete, items, heads: items.filter((item) => item.kind === "heading").map((item) => item.uid) };
   }
 });
+var BOARD_MEMBERS_QUERY = "[:find (pull ?b [:block/uid :block/string :block/props :block/order :create/time :edit/time]) ?pu ?po :in $ % ?bu :where [?board :block/uid ?bu] (board-member ?board ?b) [?pa :block/children ?b] [?pa :block/uid ?pu] [(get-else $ ?pa :block/order -1) ?po]]";
+var BOARD_PULL = "[:block/uid :block/string :block/props]";
+var pullOne = (host, pattern, uid) => {
+  try {
+    return host?.pullEntity?.(pattern, uid) || null;
+  } catch {
+    return null;
+  }
+};
+var plexusOf = (node2) => readPlexus(pick2(node2, "block/props")) || {};
+var boardTitle = (host, uid) => parseBoardTitle(String(pick2(pullOne(host, BOARD_PULL, uid), "block/string") ?? "")) || "Untitled board";
+var sectionTitle = (string) => firstLine(string) || "Section";
+var pointsAt = (plexus, boardUid) => {
+  const p = readFollow(plexus);
+  return p?.kind === "board" && p.uid === boardUid;
+};
+function boardMemberItems(rows, { root, host, boardUid = "", cap: cap4 = FOLLOW_READ_CAP } = {}) {
+  const kids = /* @__PURE__ */ new Map();
+  const nodes = /* @__PURE__ */ new Map();
+  for (const row4 of rows || []) {
+    const node2 = Array.isArray(row4) ? row4[0] : row4;
+    const uid = pick2(node2, "block/uid");
+    if (typeof uid !== "string" || nodes.has(uid)) continue;
+    const parent = Array.isArray(row4) ? row4[1] : null;
+    nodes.set(uid, { node: node2, parent, order: Number(pick2(node2, "block/order")) || 0, parentOrder: Array.isArray(row4) ? Number(row4[2]) || 0 : 0 });
+    if (!kids.has(parent)) kids.set(parent, []);
+    kids.get(parent).push(uid);
+  }
+  const byOrder2 = (a, b) => nodes.get(a).order - nodes.get(b).order;
+  const items = [];
+  const members = [];
+  let relayed = 0;
+  let cycle = false;
+  let complete = true;
+  const take = (uid, crumb) => {
+    const { node: node2 } = nodes.get(uid);
+    const plexus = plexusOf(node2);
+    members.push(uid);
+    const type = plexus.type;
+    if (type === "edge" || type === "edges") return;
+    const string = String(pick2(node2, "block/string") ?? "");
+    const time = timeOf2(node2);
+    const extra = crumb ? { crumb } : {};
+    const cls = classifyString(string);
+    let item;
+    if (cls.kind === "page") {
+      let pageUid2 = null;
+      try {
+        pageUid2 = host?.pageUid?.(cls.title) || null;
+      } catch {
+        pageUid2 = null;
+      }
+      if (!pageUid2) return;
+      item = { uid: pageUid2, kind: "page", title: cls.title, text: cls.title, time, ...extra };
+    } else if (cls.kind === "block") {
+      let shown = "";
+      try {
+        shown = String(host?.blockString?.(cls.refUid) ?? "");
+      } catch {
+        shown = "";
+      }
+      item = { uid: cls.refUid, kind: "block", text: sourceText(shown), time, ...extra, ...shown.trim() ? {} : { blank: true } };
+    } else {
+      item = { uid, kind: "block", text: sourceText(string), time, ...extra, ...string.trim() ? {} : { blank: true } };
+    }
+    members.push(item.uid);
+    if (typeof plexus[FOLLOW_SRC] === "string" && plexus[FOLLOW_SRC].startsWith("board:")) {
+      relayed += 1;
+      return;
+    }
+    if (item.uid === boardUid) return;
+    if (items.length >= cap4) {
+      complete = false;
+      return;
+    }
+    items.push(item);
+  };
+  const visited = /* @__PURE__ */ new Set();
+  const walk3 = (parent, crumb) => {
+    for (const uid of (kids.get(parent) || []).slice().sort(byOrder2)) {
+      if (visited.has(uid)) continue;
+      visited.add(uid);
+      const { node: node2 } = nodes.get(uid);
+      const plexus = plexusOf(node2);
+      if (plexus.type === "section") {
+        if (pointsAt(plexus, boardUid)) cycle = true;
+        walk3(uid, sectionTitle(String(pick2(node2, "block/string") ?? "")));
+      } else take(uid, crumb);
+    }
+  };
+  walk3(root, "");
+  const rest = [...nodes.keys()].filter((uid) => !visited.has(uid));
+  rest.sort((a, b) => nodes.get(a).parentOrder - nodes.get(b).parentOrder || byOrder2(a, b));
+  for (const uid of rest) {
+    visited.add(uid);
+    const plexus = plexusOf(nodes.get(uid).node);
+    if (plexus.type === "section") {
+      if (pointsAt(plexus, boardUid)) cycle = true;
+      continue;
+    }
+    take(uid, "");
+  }
+  return { items, members, relayed, cycle, complete };
+}
+defineFollowKind({
+  id: "board",
+  title: "Another board",
+  describe(p, host) {
+    const board2 = `“${plainText(boardTitle(host, p.uid), 48) || "Untitled board"}”`;
+    if (!p.section) return `Board ${board2}`;
+    return `Section ${quote(sectionTitle(String(pick2(pullOne(host, BOARD_PULL, p.section), "block/string") ?? "")))} of ${board2}`;
+  },
+  watch(p, host, cb, env) {
+    const offs = [watchSaves(env, cb)];
+    if (p.section) offs.push(watchBlock({ uid: p.section }, host, cb));
+    return () => {
+      for (const off of offs) off();
+    };
+  },
+  async read(p, { host, boardUid }) {
+    if (p.uid === boardUid) return { ok: false, reason: "self" };
+    const board2 = pullOne(host, BOARD_PULL, p.uid);
+    const plexus = board2 ? plexusOf(board2) : null;
+    if (!plexus || plexus.v !== 2) return { ok: false, reason: "missing" };
+    if (pointsAt(plexus, boardUid)) return { ok: false, reason: "cycle" };
+    let root = p.uid;
+    if (p.section) {
+      const section2 = pullOne(host, BOARD_PULL, p.section);
+      const parents = pullOne(host, PARENTS_PULL, p.section);
+      const under = Array.isArray(parents?.[":block/parents"]) && parents[":block/parents"].some((n3) => n3?.[UID10] === p.uid);
+      if (!section2 || plexusOf(section2).type !== "section" || !under) return { ok: false, reason: "missingSection" };
+      if (pointsAt(plexusOf(section2), boardUid)) return { ok: false, reason: "cycle" };
+      root = p.section;
+    }
+    let rows = null;
+    try {
+      rows = host?.q?.(BOARD_MEMBERS_QUERY, BOARD_MEMBER_RULE, root);
+    } catch {
+      rows = null;
+    }
+    if (!Array.isArray(rows)) return { ok: false, reason: "error" };
+    const res = boardMemberItems(rows, { root, host, boardUid });
+    if (res.cycle) return { ok: false, reason: "cycle" };
+    return { ok: true, complete: res.complete, items: res.items, members: res.members, relayed: res.relayed };
+  }
+});
 
 // src/view/follow-tray.js
 var REASONS = {
@@ -92927,8 +93161,12 @@ var REASONS = {
   missingText: "The block in the board text does not exist.",
   unsupported: "Plexus cannot run this query. It reads page and block refs with and, or and not.",
   slow: "The query took too long to read.",
-  unknown: "This board follows a kind of source this version cannot read."
+  unknown: "This board follows a kind of source this version cannot read.",
+  missingSection: "The followed section is gone.",
+  cycle: "That board follows this one, so mirroring it would make a loop.",
+  self: "A board cannot mirror itself."
 };
+var RELAYED_NOTE = "Cards this board got from mirroring another board are not passed on.";
 function createFollowTray({
   doc = globalThis.document,
   root,
@@ -93347,6 +93585,7 @@ function createFollowTray({
     else if (read2 && !read2.complete) note = "Only part of the source was read, so nothing is marked as left.";
     else if (read2?.deeper) note = `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
     if (note) el2("div", "pxd-follow__note", panel, note);
+    if (pointer?.kind === "board" && read2?.relayed > 0) el2("div", "pxd-follow__note", panel, RELAYED_NOTE);
     const heads = pointer?.kind === "headings";
     if (heads) {
       el2("div", "pxd-follow__note", panel, headingsNote);
@@ -98668,6 +98907,7 @@ function followMenu(f) {
         make3("follow:pick-query", "Switch to a query…"),
         make3("follow:pick-refs", "Switch to linked references of…"),
         make3("follow:pick-headings", "Switch to a page by headings…"),
+        make3("follow:pick-board", "Switch to another board or section…"),
         make3("follow:stop", "Stop following")
       ]
     })];
@@ -98678,7 +98918,8 @@ function followMenu(f) {
       make3("follow:pick-block", "A block's children…"),
       make3("follow:pick-query", "A query…"),
       make3("follow:pick-refs", "Linked references of…"),
-      make3("follow:pick-headings", "A page by headings…")
+      make3("follow:pick-headings", "A page by headings…"),
+      make3("follow:pick-board", "Another board or section…")
     ]
   })];
 }
@@ -98690,6 +98931,7 @@ function followCardItems(f) {
   if (f.query) pick3.push(make3("follow:this-query", "This query"));
   if (f.refs) pick3.push(make3("follow:this-refs", "Its linked references"));
   if (f.headings) pick3.push(make3("follow:this-headings", "Its page by headings"));
+  if (f.board) pick3.push(make3("follow:this-board", "This board"));
   if (pick3.length) out.push(make3("follow-card", "Follow", { children: pick3 }));
   if (f.left) out.push(make3("follow:dismiss", "Dismiss “left the source”"));
   if (f.followed) out.push(make3("follow:remove", "Remove, don't bring back", { danger: true }));
@@ -106710,6 +106952,7 @@ function buildBoardView(onFail, {
           query: isQueryString(queryText),
           refs: item.kind === "note" || item.kind === "block" || item.kind === "page",
           headings: item.kind === "page",
+          board: item.kind === "board" && item.uid !== boardUid,
           followed: Boolean(followKey) && item.src === followKey,
           left: Boolean(followCtl?.left?.().includes(item.uid))
         } : null;
@@ -106834,7 +107077,73 @@ function buildBoardView(onFail, {
     }
     return typeof s === "string" ? { title: plainText(sourceText(s), 80) || "(empty block)", value: uid, meta } : null;
   };
+  const SECTIONS_PULL = "[{(limit :block/children nil) [:block/uid :block/string :block/order :block/props {(limit :block/children nil) [:block/uid :block/string :block/order :block/props]}]}]";
+  const boardPick = () => {
+    let boards = null;
+    const sections = /* @__PURE__ */ new Map();
+    const sectionsOf = (uid) => {
+      if (sections.has(uid)) return sections.get(uid);
+      const out = [];
+      let node2 = null;
+      try {
+        node2 = host?.pullEntity?.(SECTIONS_PULL, uid) || null;
+      } catch {
+        node2 = null;
+      }
+      const walk3 = (n3, depth) => {
+        const kids = Array.isArray(n3?.[":block/children"]) ? n3[":block/children"].slice() : [];
+        kids.sort((x, y) => (Number(x?.[":block/order"]) || 0) - (Number(y?.[":block/order"]) || 0));
+        for (const kid of kids) {
+          if (readPlexus(kid?.[":block/props"])?.type !== "section") continue;
+          out.push({ uid: kid[":block/uid"], title: plainText(sourceText(kid[":block/string"] || ""), 60) || "Section" });
+          if (depth < 2) walk3(kid, depth + 1);
+        }
+      };
+      walk3(node2, 1);
+      sections.set(uid, out);
+      return out;
+    };
+    pagePicker?.close();
+    pagePicker = openPagePicker({
+      doc,
+      heading: "Mirror a board or section",
+      placeholder: "Search boards…",
+      hint: "A whole board, or one of its sections",
+      none: "Nothing matches",
+      search: (text4) => {
+        if (!boards) {
+          try {
+            boards = (host?.listBoards?.() || []).filter((b) => b.uid !== boardUid);
+          } catch {
+            boards = [];
+          }
+        }
+        const words = String(text4 || "").trim().toLowerCase();
+        const rows = [];
+        for (const b of boards) {
+          if (rows.length >= 40) break;
+          const title = b.title || "Untitled board";
+          if (!`${title}
+${b.pageTitle || ""}`.toLowerCase().includes(words)) continue;
+          rows.push({ title, value: b.uid, meta: b.pageTitle || "Board" });
+          for (const sec of sectionsOf(b.uid)) {
+            if (rows.length >= 40) break;
+            rows.push({ title: `${title} › ${sec.title}`, value: `${b.uid}/${sec.uid}`, meta: "Section" });
+          }
+        }
+        return rows;
+      },
+      onPick: async (value) => {
+        const [uid, section2] = String(value || "").split("/");
+        return startFollow("board", uid, section2 || void 0);
+      }
+    });
+  };
   const followPick = (what) => {
+    if (what === "board") {
+      boardPick();
+      return;
+    }
     const kind = what === "query" ? "query" : what === "refs" ? "refs" : what === "headings" ? "headings" : "block";
     const words = {
       block: { heading: "Follow a block's children", placeholder: "Search blocks and pages…", hint: "Type to search, or paste a ((block ref))" },
@@ -106879,9 +107188,14 @@ function buildBoardView(onFail, {
       }
     });
   };
-  const startFollow = async (kind, uid) => {
+  const startFollow = async (kind, uid, section2) => {
     if (!uid) return false;
-    const ok = await session.followSource?.({ kind, uid });
+    const refusal = session.followRefusal?.({ kind, uid, section: section2 }) || "";
+    if (refusal === "cycle" || refusal === "self") {
+      toast(REASONS[refusal]);
+      return true;
+    }
+    const ok = await session.followSource?.({ kind, uid, section: section2 });
     if (disposed) return false;
     if (ok) {
       followCtl?.open?.();
@@ -106912,6 +107226,9 @@ function buildBoardView(onFail, {
       case "pick-headings":
         followPick("headings");
         break;
+      case "pick-board":
+        followPick("board");
+        break;
       case "text": {
         const uid = textSourceUid(board2()?.string || "");
         if (uid) void startFollow(isQueryString(host?.blockString?.(uid) || "") ? "query" : "block", uid);
@@ -106928,6 +107245,9 @@ function buildBoardView(onFail, {
         break;
       case "this-headings":
         void startFollow("headings", followTargetOf(item, "refs"));
+        break;
+      case "this-board":
+        if (item?.kind === "board") void startFollow("board", item.uid);
         break;
       case "show":
         followCtl?.open?.();
@@ -112526,7 +112846,7 @@ ${url}`;
   let haloPop = null;
   let haloWait = null;
   let haloGen = 0;
-  const sectionTitle = (originUid) => {
+  const sectionTitle2 = (originUid) => {
     const b = board2();
     let uid = originUid;
     let guard = 0;
@@ -112604,7 +112924,7 @@ ${url}`;
           edited: read2.edited,
           userName: read2.userName,
           board: b?.title || "",
-          section: sectionTitle(origin),
+          section: sectionTitle2(origin),
           with: company(rows, uid).map((id) => ({ uid: id, label: cardLabel2(id) })),
           refTimes: refs.times,
           refTotal: refs.total,
@@ -115750,42 +116070,6 @@ function createZoomChip({ doc, readTarget, onOpen } = {}) {
   return { sync, drop };
 }
 
-// src/model/board-rule.js
-var BOARD_MEMBER_NAME = "board-member";
-var CONTAINERS = ["edges", "snapshots", "regions", "trails"].map((t) => `"${t}"`).join(" ");
-var BOARD_MEMBER_RULE = [
-  "[",
-  `[(${BOARD_MEMBER_NAME} ?board ?b)`,
-  " [?board :block/children ?b]",
-  " (not-join [?b] [?b :block/props ?pr] [(get ?pr :plexus) ?x] [(get ?x :type) ?t]",
-  `  [(contains? #{${CONTAINERS}} ?t)])]`,
-  `[(${BOARD_MEMBER_NAME} ?board ?b)`,
-  " [?b :block/parents ?board] [?pa :block/children ?b] [?pa :block/parents ?board]",
-  ' [?pa :block/props ?pr] [(get ?pr :plexus) ?x] [(get ?x :type) ?t] [(= ?t "section")]]',
-  "]"
-].join(" ");
-function createBoardRules(win2 = globalThis) {
-  return {
-    boardMember: BOARD_MEMBER_RULE,
-    boardMemberName: BOARD_MEMBER_NAME,
-    // q("[:find ?s :in $ % :where [?board :block/uid \"X\"] (board-member ?board ?b) [?b :block/string ?s]]")
-    q(query, ...inputs) {
-      const api3 = win2?.roamAlphaAPI?.data;
-      if (typeof api3?.q !== "function") throw new Error("roamAlphaAPI.data.q is not available");
-      return api3.q(query, BOARD_MEMBER_RULE, ...inputs);
-    }
-  };
-}
-function installBoardRules(api3, win2 = globalThis) {
-  if (!api3 || typeof api3 !== "object") return () => {
-  };
-  const rules = createBoardRules(win2);
-  api3.rules = rules;
-  return () => {
-    if (api3.rules === rules) delete api3.rules;
-  };
-}
-
 // src/view/resurface-panel.js
 init_resurface();
 init_minimap_svg();
@@ -116269,7 +116553,7 @@ function blockString3(pulled) {
   if (typeof pulled.string === "string") return pulled.string;
   return "";
 }
-function boardTitle(pulled) {
+function boardTitle2(pulled) {
   return parseBoardTitle(blockString3(pulled)) || "Untitled board";
 }
 function parseAddRef(raw) {
@@ -116311,7 +116595,7 @@ function boardsFromRefRows(rows, pull) {
     }
     if (boardVersion(pulled) !== 2) continue;
     if (card2 !== void 0) card2 = cardFor(pulled, card2);
-    const item = { uid: boardUid, title: boardTitle(pulled) };
+    const item = { uid: boardUid, title: boardTitle2(pulled) };
     if (card2 !== void 0) item.card = card2;
     out.push(item);
   }
@@ -116890,7 +117174,7 @@ var AUTO_PATTERN = "[:block/props {(limit :block/children nil) [:block/props]}]"
 var CONVERT_LABEL = "Open as Plexus board";
 var CONVERT_TITLE = "Imports this diagram's shapes and arrows into a Plexus board. Plexus: Restore native diagram gives it back.";
 var ANCESTORS_PATTERN = "[:block/uid :block/string {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]";
-var boardTitle2 = (s, resolve) => boardLabel(s, resolve);
+var boardTitle3 = (s, resolve) => boardLabel(s, resolve);
 var currentUid = (rec) => rec.crumbs[rec.crumbs.length - 1].uid;
 function crumbCopy(list) {
   return (list || []).map((c) => ({ uid: c.uid, title: c.title }));
@@ -117522,7 +117806,7 @@ async function installPlexusDiagram({
   function pathFor(uid) {
     const cached = pathCache.get(uid);
     if (cached) return cached.slice();
-    const self = { uid, title: boardTitle2(host.blockString?.(uid), (id) => host.blockString?.(id)) };
+    const self = { uid, title: boardTitle3(host.blockString?.(uid), (id) => host.blockString?.(id)) };
     let res = null;
     try {
       res = pullVia(host, ANCESTORS_PATTERN, [":block/uid", uid]);
@@ -118618,13 +118902,13 @@ async function installPlexusDiagram({
       autofocus,
       initialViewport: viewport2,
       onOpenBoard: (child, opts) => {
-        const trail = trailFor(child, [...owner.rec.crumbs, { uid: child, title: boardTitle2(host.blockString?.(child), (id) => host.blockString?.(id)) }]);
+        const trail = trailFor(child, [...owner.rec.crumbs, { uid: child, title: boardTitle3(host.blockString?.(child), (id) => host.blockString?.(id)) }]);
         if (opts?.focus) enterNested(owner.rec, trail, opts.focus);
         else visit(owner.rec, trail);
       },
       onSelectTab: (uid) => {
         if (!uid) return;
-        visit(owner.rec, trailFor(uid, [{ uid, title: boardTitle2(host.blockString?.(uid), (id) => host.blockString?.(id)) }]));
+        visit(owner.rec, trailFor(uid, [{ uid, title: boardTitle3(host.blockString?.(uid), (id) => host.blockString?.(id)) }]));
       },
       tabStore: host.tabs,
       boardsOf: (uid) => {

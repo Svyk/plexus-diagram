@@ -396,6 +396,7 @@ const OUTLINE_KIDS_PATTERN = "[:block/uid {(limit :block/children nil) [:block/u
 const PDF_PAGE_PATTERN = "[:block/uid :node/title {(limit :block/children nil) [:block/uid :block/string :block/order]}]";
 const PDF_HASH_PAGE_QUERY = `[:find ?u ?t :in $ ?h :where [?p :pdf/content-hash ?h] [?p :block/uid ?u] [?p :node/title ?t]]`;
 const PDF_TOP_BLOCK_QUERY = `[:find ?u ?t :in $ ?url :where [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/page ?p] [?p :block/children ?b] [?p :block/uid ?u] [?p :node/title ?t]]`;
+const CHILDREN_WATCH_PATTERN = "[:block/uid {(limit :block/children nil) [:block/uid :block/order]}]";
 const BLOCK_PROPS_PATTERN = "[:block/string :block/props {:block/page [:node/title]}]";
 // Children too, so a highlight card sees its note change. The string path ignores child-only fires.
 const BLOCK_WATCH_PATTERN = "[:block/string {(limit :block/children nil) [:block/string :block/order :block/props]}]";
@@ -1352,6 +1353,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const unwatchedAt = new Map();
   let pullSeq = 0;
   const watchedBlocks = new Map();
+  const watchedKids = new Map();
   const eidByUid = new Map();
   const eidByTitle = new Map();
   const statsCache = new Map();
@@ -2695,6 +2697,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       }
       registered.clear();
       watchedBlocks.clear();
+      watchedKids.clear();
     },
 
     splitStats(uid) {
@@ -2747,6 +2750,38 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         if (slot.subs.length > 0 || watchedBlocks.get(id) !== slot) return;
         watchedBlocks.delete(id);
         watchData.removePullWatch(BLOCK_WATCH_PATTERN, slot.entity, slot.wrapped);
+        stats.watches--;
+      };
+    },
+
+    // One shared pull watch per parent uid for its children and their order. cb gets no arguments worth reading:
+    // the caller reads the level again (outlineKids). Released with the last caller.
+    watchChildren(uid, cb) {
+      const id = String(uid ?? "");
+      if (!id || typeof cb !== "function") return () => {};
+      cb = guardCallback("watchChildren", cb, { stats });
+      let slot = watchedKids.get(id);
+      if (!slot) {
+        const entity = watchEntity(id);
+        const subs = [];
+        const wrapped = guardCallback("watchChildren", () => {
+          for (const token of subs.slice()) if (token.on) token.cb();
+        }, { stats });
+        slot = { entity, wrapped, subs };
+        watchData.addPullWatch(CHILDREN_WATCH_PATTERN, entity, wrapped);
+        watchedKids.set(id, slot);
+        stats.watches++;
+      }
+      const token = { cb, on: true };
+      slot.subs.push(token);
+      return () => {
+        if (!token.on) return;
+        token.on = false;
+        const i = slot.subs.indexOf(token);
+        if (i >= 0) slot.subs.splice(i, 1);
+        if (slot.subs.length > 0 || watchedKids.get(id) !== slot) return;
+        watchedKids.delete(id);
+        watchData.removePullWatch(CHILDREN_WATCH_PATTERN, slot.entity, slot.wrapped);
         stats.watches--;
       };
     },
@@ -3095,11 +3130,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     generateUid() { return api.util.generateUID(); },
 
-    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType } = {}) {
+    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType, heading, textAlign } = {}) {
       const id = uid ?? api.util.generateUID();
       const block = { uid: id, string };
       if (props !== undefined) block.props = plainKeys(props);
       if (open !== undefined) block.open = open;
+      if (heading) block.heading = heading;
+      if (textAlign) block["text-align"] = textAlign;
       if (viewType) block["children-view-type"] = viewType;
       stats.writes++;
       await mutate(() => data.block.create({ location: { "parent-uid": parentUid, order }, block }));
@@ -3182,6 +3219,21 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         max,
         hasLine: at > 0 && strOf(top[at - 1]).trim() === "---",
       };
+    },
+
+    // Date.now() of this host's last write, undo or redo (-Infinity before any).
+    lastWriteAt() {
+      return lastWriteAt;
+    },
+
+    // First line of a block's text, or a page's title. Empty when the uid is unknown.
+    blockLabel(uid) {
+      const id = String(uid ?? "");
+      if (!id) return "";
+      let res = null;
+      try { res = rawPull("[:block/string :node/title]", eidKey(id)); } catch { return ""; }
+      const text = typeof res?.[":node/title"] === "string" ? res[":node/title"] : typeof res?.[":block/string"] === "string" ? res[":block/string"] : "";
+      return text.split("\n")[0].trim();
     },
 
     // { parentUid, order } for a block, or null when Roam has no integer order.

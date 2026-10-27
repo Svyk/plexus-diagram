@@ -106,7 +106,8 @@ test("session links go through host.linkRows and publish the derived links", asy
     try { await session.refreshLinks(); } finally { clearInterval(keep); }
     assert.ok(calls.length >= 1);
     const keys = session.links.map((l) => l.key).sort();
-    assert.deepEqual(keys, ["c1->c2", "c1->c3", "c4->c3"]);
+    assert.deepEqual(keys, ["c1->c2", "c1->c3", "c4->c3", "c5->c2"]);
+    // c5 is a note card on the board: its own [[B]] is a local ref arrow, not a query row.
     // The parent string came with the rows: a source under a bare attribute names the link, no parentString read.
     assert.ok(session.links.find((l) => l.key === "c1->c3").labels.includes("Owner"));
     assert.equal(parentReads, 0);

@@ -17,6 +17,7 @@ import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SI
 import { TABLE_SIZE, keyGate, ownershipOf, tablePointerTarget } from "../model/roam-table.js";
 import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../model/drawing-card.js";
 import { annotatePlan } from "../model/annotate.js";
+import { bindingLabel, parseBinding } from "../model/bucket.js";
 import { rewriteBgTag } from "../model/highlighter.js";
 import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, hitTest, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
 import { trailBadges, trailPoints } from "../model/trails.js";
@@ -112,6 +113,8 @@ import { syncEmptyHint } from "./empty-hint.js";
 import { applyMotionClasses, motionProfile, resolveMotion } from "./motion.js";
 import { mountTable } from "./table-view.js";
 import { mountKanban } from "./kanban-view.js";
+import { laneFields } from "../model/attr-lanes.js";
+import { tableRows } from "../model/table.js";
 import { createPropsPanel } from "./props-panel.js";
 import { PANEL_WIDTH_DEFAULT, nextPanelWidth } from "../model/info.js";
 import { LONG_PRESS_CANCEL_PX, LONG_PRESS_MS, longPressAt } from "../model/touch.js";
@@ -119,7 +122,9 @@ import { closeTab, openTab, tabAt } from "../model/tabs.js";
 import { createPanel, parseDropPayload } from "./panel.js";
 import { createInbox } from "./inbox.js";
 import { createFollowTray } from "./follow-tray.js";
-import { FOLLOW_MIME, JOURNAL_DEFAULT_DAYS, JOURNAL_MAX_DAYS, journalUid, sourceText, textSourceUid } from "../model/follow.js";
+import { createQueryFilter } from "./query-filter.js";
+import { filterBright, filterLabel, filterQueryUid, intersectBright } from "../model/query-filter.js";
+import { FOLLOW_MIME, JOURNAL_DEFAULT_DAYS, JOURNAL_MAX_DAYS, followCapText, journalUid, sourceText, textSourceUid } from "../model/follow.js";
 import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
@@ -1343,6 +1348,12 @@ function buildBoardView(onFail, {
   let focusKey = null;
   let lensTag = null;
   let lensIndex = new Map();
+  // PXD-17: the query card filtering the board, and the last result uids it read (null while the first read runs).
+  let filterCard = null;
+  let filterResults = null;
+  let filterPartial = false;
+  let filterCtl = null;
+  let filterPill = null;
   let highlightDialog = null;
   let presentSet = null;
   let sendPending = null; // uids waiting for a target board picked in the Boards tab
@@ -4974,7 +4985,9 @@ function buildBoardView(onFail, {
     badgeCache.set(key, { at: Date.now(), stats });
     return Number(stats.refs) || 0;
   };
-  const cardModel = (item) => (item?.type === "card" ? { ...item, refs: refCountOf(item) } : item);
+  // The faint ref arrows touching a card: the links the board draws and no connection covers.
+  const faintLinksOf = (uid) => (session.links || []).filter((l) => l.from === uid || l.to === uid);
+  const cardModel = (item) => (item?.type === "card" ? { ...item, refs: refCountOf(item), refLinks: faintLinksOf(item.uid).length } : item);
   const sectionModel = (item) => {
     const b = board();
     const uids = b ? [item.uid, ...descendantsOf(b, item.uid)] : [item.uid];
@@ -4983,6 +4996,35 @@ function buildBoardView(onFail, {
       hasNote: Boolean(b && sectionNoteUid(b, item.uid)),
       locked: Boolean(b) && uids.every((u) => b.items.get(u)?.pinned),
     };
+  };
+  // Block ref cards among the items; a section stands for its direct members.
+  const refCardCount = (uids) => {
+    const b = board();
+    const seen = new Set();
+    const add = (id) => {
+      const it = b?.items.get(id);
+      if (!it) return;
+      if (it.type === "section") { for (const m of it.members) { const mi = b.items.get(m); if (mi?.type !== "section") add(m); } return; }
+      if (it.type === "card" && it.kind === "block" && it.target?.kind === "block") seen.add(id);
+    };
+    for (const id of uids) add(id);
+    return seen.size;
+  };
+  const applySourceOrder = (uids) => {
+    const plan = session.sourceOrderPlan?.(uids);
+    if (!plan) return;
+    if (plan.reason) { toast(plan.reason); return; }
+    const skipped = plan.skippedCards > 0 ? ` ${plan.skippedCards} ${plan.skippedCards === 1 ? "card" : "cards"} from other parents ${plan.skippedCards === 1 ? "is" : "are"} left alone.` : "";
+    const label = plan.parentLabel.length > 60 ? `${plan.parentLabel.slice(0, 57)}...` : plan.parentLabel;
+    const message = `Reorder ${plan.count} blocks under \u201c${label}\u201d to match the board? Cards stay where they are.${skipped}`;
+    let ok = false;
+    try { ok = typeof win?.confirm === "function" && win.confirm(message) === true; } catch { ok = false; }
+    if (!ok) return;
+    Promise.resolve(session.applySourceOrder?.(uids)).then((res) => {
+      if (disposed || !res) return;
+      if (res.reason || !res.moved) { toast(res.reason || "Nothing to reorder"); return; }
+      toast(`Moved ${res.moved} ${res.moved === 1 ? "block" : "blocks"} to match the board`, true);
+    }).catch(() => {});
   };
   const showCtx = () => {
     const b = board();
@@ -5080,6 +5122,9 @@ function buildBoardView(onFail, {
     },
     skip: () => new Set([boardUid]),
     place: (strings) => addStringsBeside(strings),
+    // PXD-18: while the board follows its Inbox, the arrivals come through the tray and this pill stays away.
+    hidden: () => followCtl?.menuState?.()?.kind === "inbox",
+    follow: () => { void startFollow("inbox", boardUid); },
   });
   // PXD-9: the followed source's place tray. It reads at idle and never writes on its own.
   followCtl = createFollowTray({
@@ -5093,6 +5138,8 @@ function buildBoardView(onFail, {
     storage,
     graph,
     onLeft: (set) => itemsR.setFollowLeft?.(set),
+    onParents: (map) => session.setFollowParents?.(map),
+    onMoved: (map) => itemsR.setFollowMoved?.(map),
     onShowCard: (uid) => {
       const r = rects().get(uid);
       if (!r) return;
@@ -5101,7 +5148,24 @@ function buildBoardView(onFail, {
       pulseItem(uid);
     },
     onPlaced: (uids) => ctl.select(uids),
+    // Leaving the Inbox source: the pill reads again (it skipped its reads meanwhile).
+    onSource: (kind, was) => { if (was === "inbox" && kind !== "inbox") void inboxCtl?.refresh?.(); else inboxCtl?.sync?.(); },
     toast: (message) => toast(message),
+  });
+
+  // PXD-17: "Use as filter" on a query card. Reads only; the dim is the focus/lens class path.
+  filterCtl = createQueryFilter({
+    host,
+    doc,
+    liveNode: (cardUid) => root.querySelector?.(`[data-uid="${cardUid}"] .pxd-item__query .pxd-rs__live`) || null,
+    onResults: (res) => {
+      if (disposed) return;
+      filterCard = res ? res.cardUid : null;
+      filterResults = res ? res.uids : null;
+      filterPartial = Boolean(res?.partial);
+      itemsR.setFilterCard?.(filterCard);
+      applyFocus();
+    },
   });
 
   // ------------------------------------------------------------ nested boards
@@ -5140,6 +5204,13 @@ function buildBoardView(onFail, {
 
   // ------------------------------------------------------------ 1.2 helpers
   const toast = (message, undo = false) => chrome.toast.show({ message, action: undo ? { label: "Undo", run: () => { ctl.flush?.(); session.undo?.(); } } : undefined });
+  const toggleRefArrows = () => {
+    const refs = session.cardRefs;
+    if (!refs) return false;
+    if (refs.big) { toast("Board is too big for ref arrows (over 400 items)"); return false; }
+    Promise.resolve(session.setCardRefs?.(!refs.on)).then((ok) => { if (ok === false && !disposed) toast("This board can't store that setting"); }).catch(() => {});
+    return true;
+  };
   const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
   const closeLinksMenu = () => {
     const menu = linksMenu;
@@ -5539,12 +5610,49 @@ function buildBoardView(onFail, {
     lensIndex = catalog.byUid;
     return catalog;
   };
+  const filterSetNow = () => {
+    if (!filterCard || !filterResults) return null;
+    return filterBright(board()?.items.values(), filterResults, filterCard, (title) => host?.pageUid?.(title));
+  };
+  const paintFilterPill = (bright) => {
+    if (!filterCard) { filterPill?.remove?.(); filterPill = null; return; }
+    if (!filterPill) {
+      filterPill = el("div", "pxd-qfilter pxd-chrome", root);
+      filterPill.setAttribute("role", "status");
+      const show = el("button", "pxd-qfilter__name", filterPill);
+      show.type = "button";
+      show.title = "Show the filtering card";
+      const stop = el("button", "pxd-qfilter__stop", filterPill);
+      stop.type = "button";
+      stop.textContent = "×";
+      stop.title = "Stop filtering";
+      stop.setAttribute("aria-label", "Stop filtering");
+      for (const node of [show, stop]) listen(node, "pointerdown", (event) => event.stopPropagation());
+      listen(show, "click", (event) => {
+        event.stopPropagation();
+        const r = filterCard ? rects().get(filterCard) : null;
+        if (!r) return;
+        ctl.select([filterCard]);
+        centerOn({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+        pulseItem(filterCard);
+      });
+      listen(stop, "click", (event) => { event.stopPropagation(); filterCtl?.stop(); });
+    }
+    const active = filterCtl?.active?.();
+    const count = bright ? Math.max(0, bright.size - (bright.has(filterCard) ? 1 : 0)) : 0;
+    const text = filterLabel(active?.title, count, { partial: filterPartial, waiting: !filterResults });
+    const name = filterPill.querySelector(".pxd-qfilter__name");
+    if (name && name.textContent !== text) name.textContent = text;
+  };
   const applyFocus = () => {
     if (disposed) return;
     const focus = focusSetNow();
-    const set = lensTag ? lensBright(lensIndex, lensTag, focus) : focus;
-    const key = `${lensTag || ""}|${set ? [...set].sort().join("|") : ""}`;
-    setRootFlag("focus", Boolean(set) || focusOn || Boolean(lensTag));
+    const lensSet = lensTag ? lensBright(lensIndex, lensTag, focus) : focus;
+    const filterSet = filterSetNow();
+    const set = filterSet ? intersectBright(lensSet, filterSet) : lensSet;
+    paintFilterPill(filterSet);
+    const key = `${lensTag || ""}|${filterCard || ""}|${set ? [...set].sort().join("|") : ""}`;
+    setRootFlag("focus", Boolean(set) || focusOn || Boolean(lensTag) || Boolean(filterCard));
     chrome.toolbar.setFocus(focusOn);
     chrome.toolbar.setLens?.(Boolean(lensTag));
     if (key === focusKey) return;
@@ -5884,8 +5992,8 @@ function buildBoardView(onFail, {
     const b = board();
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
-      case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true };
-      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null };
+      case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true, refs: session.cardRefs };
+      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, filtering: Boolean(filterCard), strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null, refs: session.cardRefs };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -5904,15 +6012,17 @@ function buildBoardView(onFail, {
           } catch { /* keep the card string */ }
         }
         const officeFile = officeTargetFromText(officeText);
-        const followKey = session.followState?.()?.key || "";
+        // PXD-13: a card from any owner's source (the board's or a section's) is a followed card.
+        const followKeys = new Set(followCtl?.keys?.() || [session.followState?.()?.key || ""].filter(Boolean));
         const follow = item?.type === "card" ? {
           block: !isQueryString(queryText) && (item.kind === "note" || item.kind === "block" || item.kind === "page"),
           query: isQueryString(queryText),
           refs: item.kind === "note" || item.kind === "block" || item.kind === "page",
-          followed: Boolean(followKey) && item.src === followKey,
+          headings: item.kind === "page",
+          followed: Boolean(item.src) && followKeys.has(item.src),
           left: Boolean(followCtl?.left?.().includes(item.uid)),
         } : null;
-        return { ...(task ? { statusTags, status: task.status || "" } : {}), follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        return { ...(task ? { statusTags, status: task.status || "" } : {}), follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), filtering: Boolean(item) && filterCard === item.uid, canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -5920,14 +6030,19 @@ function buildBoardView(onFail, {
           item,
           count: item?.members?.length ?? 0,
           fitOn: item?.autofit !== false,
+          keepOrder: item?.keepOrder === true,
+          refCards: item ? refCardCount([item.uid]) : 0,
           pinned: Boolean(item?.pinned),
           collapsed: Boolean(item?.collapsed),
           hasNote: Boolean(item && sectionNoteUid(b, item.uid)),
+          bucket: item ? bindingLabel(session.sectionBinding?.(item.uid)) : "",
           locked: members.length > 0 && members.every((u) => b.items.get(u)?.pinned),
           trails: trailRows(b),
           landmark: item?.landmark === true,
           landmarkSize: item?.size || "M",
           dateSource: dateMode,
+          follow: item && followCtl?.sectionMenuState ? followCtl.sectionMenuState(item.uid) : null,
+          ...(item?.look === "lane" ? { lane: { bound: item.laneAttr || null, fields: session.laneFieldsFor?.(item.uid) ?? laneFields(tableRows(b)), fresh: item.laneAttr ? (session.laneNewValues?.(item.uid) ?? []) : [] } } : {}),
         };
       }
       case "text": return { item, pinned: Boolean(item?.pinned), trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
@@ -5937,6 +6052,7 @@ function buildBoardView(onFail, {
         return {
           ...(items.some(isTaskItem) ? { statusTags, status: "" } : {}),
           count: items.length,
+          refCards: refCardCount(items.map((i) => i.uid)),
           allPinned: items.length > 0 && items.every((i) => i.pinned),
           anyCollapsed: items.some((i) => i.type === "card" && i.collapsed),
           sectionPair: sectionPair(items.map((i) => i.uid), (id) => b?.items.get(id)),
@@ -6008,12 +6124,14 @@ function buildBoardView(onFail, {
     try { s = host?.blockString?.(uid); } catch { s = null; }
     return typeof s === "string" ? { title: plainText(sourceText(s), 80) || "(empty block)", value: uid, meta } : null;
   };
-  const followPick = (what) => {
-    const kind = what === "query" ? "query" : what === "refs" ? "refs" : "block";
+  // `owner`: a section uid (PXD-13), or none for the board.
+  const followPick = (what, owner) => {
+    const kind = what === "query" ? "query" : what === "refs" ? "refs" : what === "headings" ? "headings" : "block";
     const words = {
       block: { heading: "Follow a block's children", placeholder: "Search blocks and pages…", hint: "Type to search, or paste a ((block ref))" },
       query: { heading: "Follow a query", placeholder: "Search query blocks…", hint: "Type words from the query, or paste its ((block ref))" },
       refs: { heading: "Follow linked references of", placeholder: "Search pages…", hint: "Type to search pages, or paste a ((block ref))" },
+      headings: { heading: "Follow a page by headings", placeholder: "Search pages…", hint: "Top-level H1–H3 headings become sections" },
     }[kind];
     pagePicker?.close();
     pagePicker = openPagePicker({
@@ -6023,7 +6141,7 @@ function buildBoardView(onFail, {
       search: (text) => {
         const rows = [];
         const fits = (uid) => kind !== "query" || isQueryString(host?.blockString?.(uid) || "");
-        const pasted = refUidIn(text);
+        const pasted = kind === "headings" ? null : refUidIn(text);
         if (pasted) {
           const row = blockRow(pasted, "Block");
           if (row && fits(pasted)) rows.push(row);
@@ -6032,14 +6150,14 @@ function buildBoardView(onFail, {
         // A bare 9-character word may be a block uid or just a word ("Inventory"): the block it names comes first, and
         // the search runs either way.
         const word = String(text || "").trim();
-        const bare = /^[\w-]{9}$/.test(word) && fits(word) ? blockRow(word, "Block") : null;
+        const bare = kind !== "headings" && /^[\w-]{9}$/.test(word) && fits(word) ? blockRow(word, "Block") : null;
         if (bare) rows.push(bare);
         if (kind !== "query") {
-          for (const p of host?.searchPages?.(text, kind === "refs" ? 30 : 10) || []) rows.push({ title: p.title, value: p.uid || p.title, meta: "Page" });
+          for (const p of host?.searchPages?.(text, kind === "refs" || kind === "headings" ? 30 : 10) || []) rows.push({ title: p.title, value: p.uid || p.title, meta: "Page" });
         }
-        if (kind !== "refs") {
+        if (kind !== "refs" && kind !== "headings") {
           for (const r of host?.searchBlocks?.(text, 40) || []) {
-            if (r.uid === boardUid || (bare && r.uid === word)) continue;
+            if (r.uid === boardUid || r.uid === owner || (bare && r.uid === word)) continue;
             const isQ = isQueryString(r.string);
             if (kind === "query" ? !isQ : isQ) continue;
             rows.push({ title: plainText(sourceText(r.string), 80) || "(empty block)", value: r.uid, meta: r.pageTitle });
@@ -6049,8 +6167,8 @@ function buildBoardView(onFail, {
         return rows;
       },
       onPick: async (value) => {
-        const uid = /^[\w-]{1,64}$/.test(value) && host?.blockString?.(value) != null ? value : pageUidOf(value) || value;
-        return startFollow(kind, uid);
+        const uid = kind === "headings" ? pageUidOf(value) || value : /^[\w-]{1,64}$/.test(value) && host?.blockString?.(value) != null ? value : pageUidOf(value) || value;
+        return startFollow(kind, uid, owner);
       },
     });
   };
@@ -6077,18 +6195,22 @@ function buildBoardView(onFail, {
       },
       onPick: async (value) => {
         const [uid, mode] = String(value).split("|");
-        return startFollow("journals", uid, { columns: mode === "columns" });
+        return startFollow("journals", uid, null, { columns: mode === "columns" });
       },
     });
   };
-  const startFollow = async (kind, uid, opts = {}) => {
+  const startFollow = async (kind, uid, owner, opts = {}) => {
     if (!uid) return false;
-    const ok = await session.followSource?.({ kind, uid, ...opts });
+    const ok = await (owner ? session.followSource?.({ kind, uid, owner, ...opts }) : session.followSource?.({ kind, uid, ...opts }));
     if (disposed) return false;
+    const why = ok ? null : session.followRefusal?.() || null;
     if (ok) {
-      followCtl?.open?.();
-      toast("Following. New items wait in the tray until you place them.");
-    } else if (session.followState?.()?.pointer?.uid === uid) followCtl?.open?.();
+      followCtl?.open?.(owner);
+      toast(kind === "inbox" ? "Following this board's Inbox. New daily-note blocks wait under Arrivals until you place them." : "Following. New items wait in the tray until you place them.");
+    } else if (why?.reason === "taken") toast(`Already followed by ${why.by}`);
+    else if (why?.reason === "cap") toast(followCapText());
+    else if (!owner && session.followState?.()?.pointer?.uid === uid) followCtl?.open?.();
+    else if (owner && why?.reason === "unchanged") followCtl?.open?.(owner);
     else toast("Couldn't follow that source");
     return true;
   };
@@ -6106,6 +6228,7 @@ function buildBoardView(onFail, {
       case "pick-query": followPick("query"); break;
       case "pick-refs": followPick("refs"); break;
       case "pick-journals": journalPick(); break;
+      case "pick-headings": followPick("headings"); break;
       case "text": {
         const uid = textSourceUid(board()?.string || "");
         if (uid) void startFollow(isQueryString(host?.blockString?.(uid) || "") ? "query" : "block", uid);
@@ -6114,6 +6237,8 @@ function buildBoardView(onFail, {
       case "this": void startFollow("block", followTargetOf(item, "block")); break;
       case "this-query": void startFollow("query", followTargetOf(item, "query")); break;
       case "this-refs": void startFollow("refs", followTargetOf(item, "refs")); break;
+      case "this-headings": void startFollow("headings", followTargetOf(item, "refs")); break;
+      case "inbox": void startFollow("inbox", boardUid); break;
       case "show": followCtl?.open?.(); break;
       case "tree": void session.setFollowTree?.(!state.tree); break;
       case "columns": void session.setFollowColumns?.(!state.columns); break;
@@ -6122,6 +6247,23 @@ function buildBoardView(onFail, {
         break;
       case "dismiss": if (item) void session.dismissLeft?.([item.uid]); break;
       case "remove": if (item) void session.removeFollowed?.([item.uid]); break;
+      default: break;
+    }
+  };
+  // PXD-13: a section's own source. The section is the owner; its cards land inside its frame.
+  const runFollowSection = (arg, item) => {
+    if (item?.type !== "section") return;
+    const owner = item.uid;
+    const state = followCtl?.sectionMenuState?.(owner) || {};
+    switch (arg) {
+      case "pick-block": followPick("block", owner); break;
+      case "pick-query": followPick("query", owner); break;
+      case "pick-refs": followPick("refs", owner); break;
+      case "show": followCtl?.open?.(owner); break;
+      case "tree": void session.setFollowTree?.(!state.tree, owner); break;
+      case "stop":
+        void Promise.resolve(session.stopFollowing?.(owner)).then((ok) => { if (ok && !disposed) toast("Stopped following. The cards stay in the section."); });
+        break;
       default: break;
     }
   };
@@ -6228,6 +6370,25 @@ function buildBoardView(onFail, {
         })).then((uid) => { if (uid && !disposed) ctl.select([uid]); }).catch(() => {});
         break;
       }
+      case "lane-attr":
+        if (item?.look === "lane" && arg) void session.bindLane?.(item.uid, arg);
+        break;
+      case "lane-stop":
+        if (item?.look === "lane") void session.unbindLane?.(item.uid);
+        break;
+      case "lane-add":
+        if (item?.look === "lane" && item.laneAttr) void session.addLaneValues?.(item.uid);
+        break;
+      case "lane-pull": {
+        if (item?.look !== "lane" || !item.laneAttr) break;
+        const name = item.laneAttr;
+        Promise.resolve(session.pullLaneSource?.(item.uid)).then((res) => {
+          if (disposed) return;
+          if (res?.placed > 0) toast(`Placed ${res.placed} of ${res.total} blocks with ${name}::`);
+          else toast(`No more blocks with ${name}::`);
+        }).catch(() => {});
+        break;
+      }
       case "new-board": {
         const d = DEFAULT_BOARD_CARD;
         Promise.resolve(session.createBoard?.({ rect: { x: world.x - d.w / 2, y: world.y - d.h / 2, w: d.w, h: d.h } })).then((uid) => { if (uid && !disposed) ctl.select([uid]); }).catch(() => {});
@@ -6288,6 +6449,7 @@ function buildBoardView(onFail, {
       case "bar-lens": toggleLens(); break;
       case "bar-focus": toggleFocus(); break;
       case "bar-present": startPresent(); break;
+      case "ref-arrows": toggleRefArrows(); break;
       case "dock": void session.setBoardBackground?.({ dock: arg === "default" ? null : arg }); break;
       case "bg-image": {
         void (async () => {
@@ -6574,6 +6736,15 @@ function buildBoardView(onFail, {
         }).catch(() => {});
         break;
       }
+      case "query-filter": {
+        if (!item) break;
+        if (filterCard === item.uid) { filterCtl?.stop(); break; }
+        const queryUid = filterQueryUid(item, (uid) => host?.blockString?.(uid));
+        if (!queryUid) { toast("This card holds no query"); break; }
+        filterCtl?.start({ queryUid, cardUid: item.uid });
+        break;
+      }
+      case "query-filter-stop": filterCtl?.stop(); break;
       case "query-results": {
         if (!item) break;
         const sourceUid = isQueryString(item.string) ? item.uid : (item.target?.kind === "block" ? item.target.uid : item.uid);
@@ -6624,13 +6795,32 @@ function buildBoardView(onFail, {
       case "toggle-fit": if (item) void session.setFit?.(item.uid, item.autofit === false); break;
       case "tidy": void session.tidyItems?.(mc.kind === "board-menu" ? b.roots : uids, arg); break;
       case "sort-outline": void session.sortOutline?.(); break;
+      case "apply-source-order": applySourceOrder(uids); break;
+      case "keep-order": if (item) void session.setKeepOrder?.(item.uid, item.keepOrder !== true); break;
       case "follow": runFollow(arg, item); break;
+      case "follow-section": runFollowSection(arg, item); break;
       case "pdf-pages": void movePdfsToPages(); break;
       case "table-captions": void foldTableCaptions(); break;
       case "fold-all-in": if (item) void session.collapseAll?.(true, { within: item.uid }); break;
       case "unfold-all-in": if (item) void session.collapseAll?.(false, { within: item.uid }); break;
       case "collapse-section": if (item?.type === "section") void session.setCollapsed?.(item.uid, !item.collapsed); break;
       case "section-note": if (item?.type === "section") void session.toggleSectionNote?.(item.uid); break;
+      case "bucket-bind": {
+        if (item?.type !== "section") break;
+        askView({
+          caption: bindingLabel(session.sectionBinding?.(item.uid)),
+          showCopy: false,
+          dialogLabel: "Bind section",
+          onSave: ({ caption }) => {
+            const binding = parseBinding(caption);
+            if (!binding) { toast("Use #tag or Name:: value"); return; }
+            void session.bindSection?.(item.uid, binding);
+          },
+        });
+        break;
+      }
+      case "bucket-write": if (item?.type === "section") void session.writeSectionToGraph?.(item.uid); break;
+      case "bucket-unbind": if (item?.type === "section") void session.bindSection?.(item.uid, null); break;
       case "lock-contents": if (item?.type === "section") void session.lockSection?.(item.uid, true); break;
       case "unlock-contents": if (item?.type === "section") void session.lockSection?.(item.uid, false); break;
       case "present-section": if (item?.type === "section") startPresent(item.uid); break;
@@ -7074,6 +7264,14 @@ function buildBoardView(onFail, {
       label: () => { if (selection.edge) openWhy(selection.edge, "label"); },
       notes: () => { if (selection.edge) host?.openInSidebar?.(selection.edge, "block"); },
       writeToGraph: () => writeEdgeToGraph(),
+      pinRefs: () => {
+        const links = faintLinksOf(selection.items[0]);
+        if (!links.length) return;
+        Promise.resolve(session.pinLinks?.(links)).then((made) => {
+          if (disposed || !Array.isArray(made)) return;
+          toast(made.length ? `Pinned ${made.length} ref arrow${made.length === 1 ? "" : "s"}${links.length > made.length ? `. ${links.length - made.length} left: pin again` : ""}` : "Those arrows are already connections", made.length > 0);
+        }).catch(() => {});
+      },
       pinLink: () => {
         const link = (session.links || []).find((l) => l.key === selection.link);
         if (link) Promise.resolve(session.pinLink?.(link)).then((uid) => { if (uid) ctl.selectEdge(uid); }).catch(() => {});
@@ -9831,9 +10029,13 @@ function buildBoardView(onFail, {
     // another board's tray (or from a source this board no longer follows) falls through to the plain ref card below.
     let followed = null;
     try { followed = JSON.parse(event.dataTransfer?.getData?.(FOLLOW_MIME) || "null"); } catch { followed = null; }
-    const followKey = session.followState?.()?.key || "";
+    // PXD-13: a section's row carries its owner; it is placed only while that section still follows the same source.
+    const owned = typeof followed?.owner === "string" && followed.owner ? followed.owner : null;
+    const followKey = owned
+      ? session.followOwners?.()?.owners?.find((o) => o.uid === owned && !o.over && !o.dup)?.key || ""
+      : session.followState?.()?.key || "";
     if (followed?.uid && followed.board === boardUid && followKey && followed.src === followKey) {
-      void Promise.resolve(session.placeFollowed?.([followed], { at: p })).then((res) => {
+      void Promise.resolve(session.placeFollowed?.([followed], owned ? { at: p, owner: owned } : { at: p })).then((res) => {
         if (!disposed && res?.uids?.length) ctl.select(res.uids);
       }).catch(() => {});
       return;
@@ -10609,11 +10811,14 @@ function buildBoardView(onFail, {
       scheduleLift();
       syncProps();
       if (lensTag && dirty.structural) rebuildLens();
-      if (focusOn || lensTag) applyFocus();
+      if (focusOn || lensTag || filterCard) applyFocus();
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLiftIdle();
+    // The filtering card left the board (deleted, moved out): its filter ends with it.
+    if (filterCard && itemsChanged && board() && !board().items.has(filterCard)) filterCtl?.stop();
+    else if (filterCard && (itemsChanged || (dirty.viewport && !gesturing))) filterCtl?.poke();
     // During a wheel pan or zoom the minimap and landmark dots repaint at most every MINIMAP_WHEEL_MS (they rebuilt
     // their marks every frame, and every DOM write inside Roam's block re-runs its :has() checks); the settle paints them.
     const wheelMinimap = (wheelLayer && !itemsChanged && !dirty.minimap) || (Boolean(dragRide) && !itemsChanged);
@@ -11383,6 +11588,7 @@ function buildBoardView(onFail, {
     foldPageQueries() { return foldPageQueries(); },
     queryNudge(entry) { return queryNudge(entry); },
     foldSections(fold = true) { return foldSections(fold); },
+    toggleRefArrows() { return toggleRefArrows(); },
     newDrawing(at = null) {
       const d = DEFAULT_SIZES.card;
       const world = at || { x: 80, y: 80 };
@@ -11504,6 +11710,7 @@ function buildBoardView(onFail, {
       step(() => { offBasketPill(); basketPill?.remove(); basketPill = null; });
       step(() => { inboxCtl?.dispose(); inboxCtl = null; });
       step(() => { followCtl?.dispose(); followCtl = null; });
+      step(() => { filterCtl?.dispose(); filterCtl = null; filterPill?.remove?.(); filterPill = null; });
       step(() => closeHalo());
       step(() => { regionMark?.destroy?.(); regionMark = null; });
       step(() => visitStore.set(boardUid, Date.now()));

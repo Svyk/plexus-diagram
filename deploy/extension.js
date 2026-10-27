@@ -111,8 +111,8 @@ function panToShow(vp, size, rect, { pad: pad2 = 24 } = {}) {
   const zoom0 = Number(vp?.zoom);
   const width = Number(size?.width);
   const height = Number(size?.height);
-  const same3 = { x: Number(vp?.x) || 0, y: Number(vp?.y) || 0, zoom: zoom0 > 0 ? zoom0 : 1, moved: false };
-  if (!vp || !(zoom0 > 0) || !(width > 0) || !(height > 0) || !rect || !(Number(rect.w) > 0) || !(Number(rect.h) > 0)) return same3;
+  const same4 = { x: Number(vp?.x) || 0, y: Number(vp?.y) || 0, zoom: zoom0 > 0 ? zoom0 : 1, moved: false };
+  if (!vp || !(zoom0 > 0) || !(width > 0) || !(height > 0) || !rect || !(Number(rect.w) > 0) || !(Number(rect.h) > 0)) return same4;
   const view = visibleWorldRect(vp, size, 0);
   const padW = pad2 / zoom0;
   const padH = pad2 / zoom0;
@@ -688,16 +688,16 @@ function distributeRects(list, axis2) {
   const h = axis2 === "h";
   const pos = h ? "x" : "y";
   const dim = h ? "w" : "h";
-  const sorted2 = [...list].sort((p, q2) => p[pos] - q2[pos]);
-  if (sorted2.length < 3) return sorted2.map((r) => ({ uid: r.uid, x: r.x, y: r.y }));
-  const first = sorted2[0];
-  const last = sorted2[sorted2.length - 1];
+  const sorted3 = [...list].sort((p, q2) => p[pos] - q2[pos]);
+  if (sorted3.length < 3) return sorted3.map((r) => ({ uid: r.uid, x: r.x, y: r.y }));
+  const first = sorted3[0];
+  const last = sorted3[sorted3.length - 1];
   const span = last[pos] + last[dim] - first[pos];
-  const total = sorted2.reduce((s, r) => s + r[dim], 0);
-  const gap = (span - total) / (sorted2.length - 1);
+  const total = sorted3.reduce((s, r) => s + r[dim], 0);
+  const gap = (span - total) / (sorted3.length - 1);
   let cursor = first[pos];
-  return sorted2.map((r, i) => {
-    const p = i === sorted2.length - 1 ? last[pos] : cursor;
+  return sorted3.map((r, i) => {
+    const p = i === sorted3.length - 1 ? last[pos] : cursor;
     cursor += r[dim] + gap;
     return h ? { uid: r.uid, x: p, y: r.y } : { uid: r.uid, x: r.x, y: p };
   });
@@ -1128,8 +1128,11 @@ function normalizeItemLayout(plexus) {
     min: type === "text" && p.look === "sticky" && p.min === true ? true : void 0,
     kids: type === "card" && p.kids === true ? true : void 0,
     fit: p.fit === false ? false : void 0,
+    keepOrder: section2 && p.keepOrder === true ? true : void 0,
     look: type === "text" ? TEXT_LOOKS.includes(p.look) ? p.look : void 0 : type === "section" ? SECTION_LOOKS.includes(p.look) ? p.look : void 0 : CARD_LOOKS.includes(p.look) ? p.look : void 0,
     axis: type === "section" && p.look === "lane" ? p.axis === "vertical" ? "vertical" : "horizontal" : void 0,
+    attr: type === "section" && p.look === "lane" && typeof p.attr === "string" && p.attr.trim() ? p.attr.trim() : void 0,
+    bands: type === "section" && p.look === "lane" && typeof p.attr === "string" && p.attr.trim() && Array.isArray(p.bands) ? p.bands.filter((v) => typeof v === "string" && v.trim()).slice(0, LANE_BANDS_MAX) : void 0,
     textColor: section2 ? void 0 : styleColor(p.textColor),
     align: section2 || !ALIGNS.includes(p.align) ? void 0 : p.align,
     fill: section2 ? void 0 : styleColor(p.fill),
@@ -1201,12 +1204,20 @@ function serializeItemLayout(layout) {
   if (type === "text" && l.look === "sticky" && l.min === true) out.min = true;
   if (type === "card" && l.kids === true) out.kids = true;
   if (l.type === "section" && l.fit === false) out.fit = false;
+  if (l.type === "section" && l.keepOrder === true) out.keepOrder = true;
   if (type === "text") {
     if (TEXT_LOOKS.includes(l.look)) out.look = l.look;
     if (SHAPES.includes(l.shape)) out.shape = l.shape;
   } else if (type === "section" && SECTION_LOOKS.includes(l.look)) {
     out.look = l.look;
-    if (l.look === "lane") out.axis = l.axis === "vertical" ? "vertical" : "horizontal";
+    if (l.look === "lane") {
+      out.axis = l.axis === "vertical" ? "vertical" : "horizontal";
+      if (typeof l.attr === "string" && l.attr.trim()) {
+        out.attr = l.attr.trim();
+        const bands = Array.isArray(l.bands) ? l.bands.filter((v) => typeof v === "string" && v.trim()).slice(0, LANE_BANDS_MAX) : [];
+        if (bands.length) out.bands = bands;
+      }
+    }
   } else if (CARD_LOOKS.includes(l.look)) out.look = l.look;
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
   const tone = boardColor(l.bgColor);
@@ -1464,7 +1475,7 @@ function attrNameOf(s) {
   const name = m[1].trim();
   return name ? name : null;
 }
-var PLEXUS_KEY, SCHEMA_VERSION, PALETTE, ITEM_TYPES, DEFAULT_SIZES, PAGE_CARD, MIN_SIZES, DEFAULT_BOARD_CARD, UNTITLED_BOARD, FONT_SIZES, CARD_LOOKS, TEXT_LOOKS, STICKY_SIZE, STICKY_COLOR, SECTION_LOOKS, LANE_SIZE, CARD_FONT_MIN, CARD_FONT_MAX, CARD_FONT_DEFAULT, SECTION_TITLE_MIN, SECTION_TITLE_MAX, SECTION_TITLE_DEFAULT, ALIGNS, EDGE_DEFAULTS, EDGE_WEIGHTS, SIDES2, ARROWS, DIRS, ROUTES, DASHES, BOARD_PATTERNS, DOCK_POSITIONS, BOARD_TONES, FIT_PAD, NATIVE_SWATCHES, ITEM_STYLE_KEYS, SECTION_STYLE_KEYS, ARROW_TOKENS, HEX_RE, BLOCK_UID_RE, blockUid, intIn, isObject, isNum, round12, MONTHS, BOARD_REF_RE, cleanBoardTitle;
+var PLEXUS_KEY, SCHEMA_VERSION, PALETTE, ITEM_TYPES, DEFAULT_SIZES, PAGE_CARD, MIN_SIZES, DEFAULT_BOARD_CARD, UNTITLED_BOARD, FONT_SIZES, CARD_LOOKS, TEXT_LOOKS, STICKY_SIZE, STICKY_COLOR, SECTION_LOOKS, LANE_BANDS_MAX, LANE_SIZE, CARD_FONT_MIN, CARD_FONT_MAX, CARD_FONT_DEFAULT, SECTION_TITLE_MIN, SECTION_TITLE_MAX, SECTION_TITLE_DEFAULT, ALIGNS, EDGE_DEFAULTS, EDGE_WEIGHTS, SIDES2, ARROWS, DIRS, ROUTES, DASHES, BOARD_PATTERNS, DOCK_POSITIONS, BOARD_TONES, FIT_PAD, NATIVE_SWATCHES, ITEM_STYLE_KEYS, SECTION_STYLE_KEYS, ARROW_TOKENS, HEX_RE, BLOCK_UID_RE, blockUid, intIn, isObject, isNum, round12, MONTHS, BOARD_REF_RE, cleanBoardTitle;
 var init_schema = __esm({
   "src/model/schema.js"() {
     init_shapes();
@@ -1484,6 +1495,7 @@ var init_schema = __esm({
     STICKY_SIZE = { w: 200, h: 200 };
     STICKY_COLOR = "yellow";
     SECTION_LOOKS = ["lane", "calendar", "timer"];
+    LANE_BANDS_MAX = 16;
     LANE_SIZE = { horizontal: { w: 960, h: 180 }, vertical: { w: 240, h: 640 } };
     CARD_FONT_MIN = 10;
     CARD_FONT_MAX = 48;
@@ -1531,6 +1543,919 @@ var init_schema = __esm({
     MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     BOARD_REF_RE = /^\s*\{\{\s*(?:\[\[diagram\]\]|diagram)\s*(:)?\s*\(\(([\w-]{1,64})\)\)((?:[^{}]|\{\{[^{}]*\}\})*)\}\}/i;
     cleanBoardTitle = (title) => String(title ?? "").replace(/\s*[\r\n]+\s*/g, " ").split("}}").join("").trim();
+  }
+});
+
+// src/model/highlight.js
+function isObject2(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function highlightRecord(props) {
+  if (!isObject2(props)) return null;
+  const keys = Object.keys(props);
+  const colon = keys.includes(":pdf-highlight");
+  const plain2 = keys.includes("pdf-highlight");
+  if (!colon && !plain2) return null;
+  const raw = colon ? props[":pdf-highlight"] : props["pdf-highlight"];
+  if (!isObject2(raw)) return {};
+  const flat3 = plainKeys(raw);
+  return isObject2(flat3) ? flat3 : {};
+}
+function pageNumberOf(record) {
+  const position = record.position;
+  if (!isObject2(position)) return null;
+  const rect = position.boundingRect;
+  if (!isObject2(rect)) return null;
+  const page = rect.pageNumber;
+  return typeof page === "number" && Number.isFinite(page) ? page : null;
+}
+function contentTextOf(record) {
+  const content = record.content;
+  if (!isObject2(content)) return "";
+  return typeof content.text === "string" ? content.text : "";
+}
+function highlightColor(string) {
+  if (typeof string !== "string") return "gray";
+  const match = COLOR_TOKEN.exec(string);
+  if (!match) return "gray";
+  const name = match[1].toLowerCase();
+  return PALETTE.includes(name) ? name : "gray";
+}
+function stripHighlightTokens(string) {
+  if (typeof string !== "string") return "";
+  return string.replace(/#h\/[A-Za-z]+/g, " ").replace(/[ \t]{2,}/g, " ").trim();
+}
+function footerOf(page, pageTitle) {
+  const title = typeof pageTitle === "string" ? pageTitle.trim() : "";
+  const parts = [];
+  if (page != null) parts.push(`p. ${page}`);
+  if (title) parts.push(title);
+  return parts.join(" · ");
+}
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+function fieldNumber(obj, name) {
+  const colon = finiteNumber(obj[`:${name}`]);
+  if (colon != null) return colon;
+  return finiteNumber(obj[name]);
+}
+function sizePair(obj) {
+  if (!isObject2(obj)) return null;
+  const w = fieldNumber(obj, "width");
+  const h = fieldNumber(obj, "height");
+  if (w == null || h == null) return null;
+  return { w, h };
+}
+function firstSize(value, seen) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = firstSize(item, seen);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!isObject2(value) || seen.has(value)) return null;
+  seen.add(value);
+  const pair2 = sizePair(value);
+  if (pair2) return pair2;
+  for (const key of Object.keys(value)) {
+    if (key === "url" || key === ":url") continue;
+    const found = firstSize(value[key], seen);
+    if (found) return found;
+  }
+  return null;
+}
+function rewriteHighlightTag(string, name) {
+  if (typeof string !== "string") return string;
+  if (typeof name !== "string" || !HIGHLIGHT_COLORS.includes(name)) return string;
+  const token = `#h/${name}`;
+  if (!TAG_TOKEN.test(string)) return `${string} ${token}`;
+  return string.replace(TAG_TOKEN, token);
+}
+function naturalSize(props) {
+  if (!isObject2(props)) return null;
+  const seen = /* @__PURE__ */ new Set();
+  if (Object.prototype.hasOwnProperty.call(props, ":image-size")) {
+    const found = firstSize(props[":image-size"], seen);
+    if (found) return found;
+  }
+  if (Object.prototype.hasOwnProperty.call(props, "image-size")) {
+    return firstSize(props["image-size"], seen);
+  }
+  return null;
+}
+function childFields(node2, index) {
+  if (!isObject2(node2)) return null;
+  const string = typeof node2.string === "string" ? node2.string : typeof node2[":block/string"] === "string" ? node2[":block/string"] : "";
+  const props = isObject2(node2.props) ? node2.props : isObject2(node2[":block/props"]) ? node2[":block/props"] : {};
+  const orderRaw = node2.order ?? node2[":block/order"];
+  const order = typeof orderRaw === "number" && Number.isFinite(orderRaw) ? orderRaw : index;
+  const uidRaw = typeof node2.uid === "string" && node2.uid ? node2.uid : typeof node2[":block/uid"] === "string" ? node2[":block/uid"] : "";
+  return { string, props, order, index, uid: uidRaw };
+}
+function orderedChildren(children) {
+  const list = Array.isArray(children) ? children : [];
+  const rows = [];
+  for (let i = 0; i < list.length; i += 1) {
+    const row4 = childFields(list[i], i);
+    if (row4) rows.push(row4);
+  }
+  rows.sort((a, b) => a.order - b.order || a.index - b.index);
+  return rows;
+}
+function highlightNote(children) {
+  for (const row4 of orderedChildren(children)) {
+    if (highlightRecord(row4.props)) continue;
+    return row4.string;
+  }
+  return "";
+}
+function noteActionPlan(children) {
+  for (const row4 of orderedChildren(children)) {
+    if (highlightRecord(row4.props)) continue;
+    return { kind: "focus", uid: row4.uid };
+  }
+  return { kind: "create" };
+}
+function highlightModel(input) {
+  const src = isObject2(input) ? input : {};
+  const record = highlightRecord(src.props);
+  if (!record) return null;
+  const block = typeof src.string === "string" ? src.string : "";
+  const rawType = typeof record.type === "string" ? record.type : "";
+  const area2 = rawType === "area" || block.includes("![");
+  const stored = contentTextOf(record);
+  const page = pageNumberOf(record);
+  return {
+    type: area2 ? "area" : rawType || "text",
+    text: area2 || stored === "" ? stripHighlightTokens(block) : stored,
+    image: area2,
+    natural: naturalSize(src.props),
+    page,
+    color: highlightColor(block),
+    footer: footerOf(page, src.pageTitle),
+    note: highlightNote(src.children)
+  };
+}
+var HIGHLIGHT_COLORS, COLOR_TOKEN, TAG_TOKEN;
+var init_highlight = __esm({
+  "src/model/highlight.js"() {
+    init_schema();
+    HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink", "purple", "orange", "red"];
+    COLOR_TOKEN = /#h\/([A-Za-z]+)/;
+    TAG_TOKEN = /#h\/[A-Za-z]+/;
+  }
+});
+
+// src/model/tasks.js
+function setTaskAttrNames(map) {
+  liveNames = map instanceof Map && map.size ? map : null;
+  namesSig = liveNames ? [...liveNames].map(([id, set]) => `${id}=${[...set].sort().join("|")}`).join(";") : "";
+}
+function taskAttrId(text4, names = liveNames) {
+  if (String(text4 ?? "").trim() === ACTIVITY_LOG) return "activity";
+  const name = attrNameOf(text4);
+  if (!name) return null;
+  const key = lower(name);
+  if (names) {
+    for (const [id, set] of names) if (set.has(key)) return id;
+  }
+  if (DEFAULT_IDS.has(key)) return DEFAULT_IDS.get(key);
+  return key.startsWith("bt_attr") ? "other" : null;
+}
+function isTaskAttr(child, names = liveNames) {
+  return taskAttrId(child?.[":block/string"] ?? child?.string ?? "", names) !== null;
+}
+function parseRoamDay(title) {
+  const m = DAILY_RE.exec(String(title ?? "").trim());
+  if (!m) return null;
+  const day = Number(m[2]);
+  const suffix = day >= 11 && day <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th";
+  if (m[3] !== suffix || day < 1 || day > 31) return null;
+  const month = MONTHS2.indexOf(m[1]);
+  if (month < 0) return null;
+  return { y: Number(m[4]), m: month + 1, d: day };
+}
+function childString2(child) {
+  return child?.[":block/string"] ?? child?.string ?? "";
+}
+function dayOf(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return { y: value.getFullYear(), m: value.getMonth() + 1, d: value.getDate() };
+  }
+  return parseRoamDay(value);
+}
+function stamp(part) {
+  return part.y * 1e4 + part.m * 100 + part.d;
+}
+function dueChip(content, today = /* @__PURE__ */ new Date()) {
+  let raw = null;
+  let title = "";
+  for (const child of content || []) {
+    const text4 = String(childString2(child));
+    if (taskAttrId(text4) !== "due") continue;
+    raw = text4;
+    const rest = text4.slice(text4.indexOf("::") + 2).trim();
+    const wiki = /^\[\[([\s\S]+)\]\]$/.exec(rest);
+    title = (wiki ? wiki[1] : rest).trim();
+    break;
+  }
+  if (raw == null || !title) return null;
+  const due = parseRoamDay(title);
+  const now5 = dayOf(today);
+  return { text: title, overdue: Boolean(due && now5 && stamp(due) < stamp(now5)), today: Boolean(due && now5 && stamp(due) === stamp(now5)), raw, day: due };
+}
+function shortDay(day, today = /* @__PURE__ */ new Date()) {
+  if (!day) return "";
+  const now5 = dayOf(today);
+  const base2 = `${SHORT_MONTHS[day.m - 1]} ${day.d}`;
+  return now5 && day.y !== now5.y ? `${base2}, ${day.y}` : base2;
+}
+function dayChoices(today = /* @__PURE__ */ new Date()) {
+  const at = (n3) => iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + n3));
+  const toMonday = (8 - today.getDay()) % 7 || 7;
+  return [
+    { label: "Today", value: at(0) },
+    { label: "Tomorrow", value: at(1) },
+    { label: "Next week", value: at(toMonday) }
+  ];
+}
+function attrValue(text4) {
+  const rest = String(text4).slice(String(text4).indexOf("::") + 2).trim();
+  const ref = /\[\[([^\]]+)\]\]/.exec(rest);
+  if (ref) return ref[1].trim();
+  return rest.replace(/\{\{[\s\S]*$/, "").trim();
+}
+function taskMeta(string, content, today = /* @__PURE__ */ new Date(), names = liveNames) {
+  const state = taskState(string);
+  if (!state) return null;
+  const meta = { done: state === "DONE", status: "", cancelled: false, due: null, project: "", priority: "", priorityGlyph: "", repeat: "", waitingFor: "", gtd: "", energy: "", context: "", notes: "" };
+  const tag = STATUS_TAG.exec(String(string));
+  if (tag) {
+    meta.status = tag[1].trim();
+    meta.cancelled = lower(meta.status) === "cancelled";
+  }
+  const seen = /* @__PURE__ */ new Set();
+  for (const child of content || []) {
+    const text4 = String(childString2(child));
+    const id = taskAttrId(text4, names);
+    if (!id || id === "other" || id === "activity" || seen.has(id)) continue;
+    seen.add(id);
+    const value = attrValue(text4);
+    if (!value) continue;
+    if (id === "due") {
+      const chip = dueChip([child], today);
+      if (chip) meta.due = { text: chip.text, short: shortDay(chip.day, today), overdue: chip.overdue && !meta.done, today: chip.today };
+    } else if (id === "priority") {
+      meta.priority = lower(value);
+      meta.priorityGlyph = PRIORITY_GLYPH[meta.priority] || "";
+    } else if (id in meta) meta[id] = value;
+  }
+  return meta;
+}
+var ACTIVITY_LOG, lower, DEFAULT_LABELS, DEFAULT_IDS, liveNames, namesSig, taskNamesSig, TASK_RE, taskState, isTaskString, isBareTask, MONTHS2, DAILY_RE, SHORT_MONTHS, iso, isoDay, PRIORITY_GLYPH, STATUS_TAG;
+var init_tasks = __esm({
+  "src/model/tasks.js"() {
+    init_schema();
+    ACTIVITY_LOG = "**Activity log**";
+    lower = (s) => String(s ?? "").trim().toLowerCase();
+    DEFAULT_LABELS = {
+      repeat: "BT_attrRepeat",
+      start: "BT_attrStart",
+      defer: "BT_attrDefer",
+      due: "BT_attrDue",
+      completed: "BT_attrCompleted",
+      project: "BT_attrProject",
+      gtd: "BT_attrGTD",
+      waitingFor: "BT_attrWaitingFor",
+      context: "BT_attrContext",
+      priority: "BT_attrPriority",
+      energy: "BT_attrEnergy",
+      depends: "BT_attrDepends",
+      parent: "BT_attrParent",
+      notes: "BT_attrNotes"
+    };
+    DEFAULT_IDS = new Map(Object.entries(DEFAULT_LABELS).map(([id, label]) => [lower(label), id]));
+    liveNames = null;
+    namesSig = "";
+    taskNamesSig = () => namesSig;
+    TASK_RE = /^\s*\{\{\[\[(TODO|DONE)\]\]\}\}/;
+    taskState = (string) => TASK_RE.exec(String(string ?? ""))?.[1] ?? "";
+    isTaskString = (string) => TASK_RE.test(String(string ?? ""));
+    isBareTask = (string) => isTaskString(string) && !String(string).replace(TASK_RE, "").replace(/#\[\[task-status\/[^\]]*\]\]/g, "").trim();
+    MONTHS2 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    DAILY_RE = new RegExp(`^(${MONTHS2.join("|")}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
+    SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    isoDay = iso;
+    PRIORITY_GLYPH = { low: "!", medium: "!!", high: "!!!" };
+    STATUS_TAG = /#\[\[task-status\/([^\]]+)\]\]/;
+  }
+});
+
+// src/model/status-tags.js
+function row(key, name, glyph, lightBase, lightText, darkBase, darkText) {
+  return Object.freeze({
+    key,
+    name,
+    tag: `task-status/${name}`,
+    glyph,
+    light: Object.freeze({ base: lightBase, text: lightText }),
+    dark: Object.freeze({ base: darkBase, text: darkText })
+  });
+}
+function side(value) {
+  if (!value || typeof value !== "object") return { base: "", text: "" };
+  return { base: String(value.base || ""), text: String(value.text || "") };
+}
+function statusKey(name) {
+  return String(name ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function statusApi(win2) {
+  const api3 = win2?.RoamTaskStatusTags;
+  if (!api3 || api3.apiVersion !== 1 || typeof api3.statuses !== "function") return null;
+  return api3;
+}
+function normalize(raw) {
+  const name = String(raw?.name || "").trim();
+  if (!name) return null;
+  const glyphRaw = String(raw?.glyph || "").trim();
+  const glyph = !glyphRaw || glyphRaw === "custom" ? "diamond" : glyphRaw;
+  const known2 = FALLBACK.find((entry) => entry.name.toLowerCase() === name.toLowerCase());
+  return {
+    key: raw?.key ? String(raw.key) : known2?.key || statusKey(name).toUpperCase().replace(/-/g, "_"),
+    name,
+    tag: raw?.tag ? String(raw.tag) : `task-status/${name}`,
+    glyph: glyph === "diamond" && known2 ? known2.glyph : glyph,
+    light: raw?.light ? side(raw.light) : known2 ? { ...known2.light } : { ...NEUTRAL.light },
+    dark: raw?.dark ? side(raw.dark) : known2 ? { ...known2.dark } : { ...NEUTRAL.dark }
+  };
+}
+function statusPalette(api3) {
+  let rows = null;
+  if (api3 && typeof api3.statuses === "function") {
+    try {
+      const got = api3.statuses();
+      if (Array.isArray(got) && got.length) rows = got;
+    } catch {
+      rows = null;
+    }
+  }
+  const map = /* @__PURE__ */ new Map();
+  for (const raw of rows || FALLBACK) {
+    const entry = rows ? normalize(raw) : raw;
+    if (!entry?.name) continue;
+    const id = entry.name.toLowerCase();
+    if (map.has(id)) continue;
+    map.set(id, entry);
+  }
+  return map;
+}
+function paletteEntries(palette) {
+  if (!palette) return [];
+  if (typeof palette.values === "function" && !Array.isArray(palette)) return [...palette.values()];
+  return [...palette];
+}
+function findEntry(palette, name) {
+  const id = String(name ?? "").trim().toLowerCase();
+  if (!id) return null;
+  if (palette && typeof palette.get === "function") {
+    const hit = palette.get(id);
+    if (hit) return hit;
+  }
+  for (const entry of paletteEntries(palette)) {
+    if (!entry?.name) continue;
+    if (entry.name.toLowerCase() === id || String(entry.key || "").toLowerCase() === id) return entry;
+  }
+  return null;
+}
+function paletteVars(entry, theme) {
+  const dark = theme === "dark" || theme === "bp3-dark";
+  const pair2 = (dark ? entry?.dark : entry?.light) || {};
+  return {
+    "--pxd-status-base": pair2.base || "",
+    "--pxd-status-text": pair2.text || ""
+  };
+}
+function taskStatusOf(string, palette) {
+  const text4 = String(string ?? "");
+  let raw = "";
+  const meta = taskMeta(text4, []);
+  if (meta?.status) raw = meta.status;
+  else {
+    const tag = STATUS_TAG2.exec(text4);
+    if (tag) raw = tag[1].trim();
+  }
+  if (!raw) return null;
+  const entry = findEntry(palette, raw);
+  return entry ? entry.name : null;
+}
+function statusLook(name, palette) {
+  const hit = findEntry(palette, name);
+  if (hit) return hit;
+  const label = String(name ?? "").trim();
+  return {
+    key: statusKey(label) || "unknown",
+    name: label,
+    tag: label ? `task-status/${label}` : "",
+    glyph: "diamond",
+    light: { base: NEUTRAL.light.base, text: NEUTRAL.light.text },
+    dark: { base: NEUTRAL.dark.base, text: NEUTRAL.dark.text }
+  };
+}
+var STATUS_TAG2, NEUTRAL, FALLBACK;
+var init_status_tags = __esm({
+  "src/model/status-tags.js"() {
+    init_tasks();
+    STATUS_TAG2 = /#\[\[task-status\/([^\]]+)\]\]/;
+    NEUTRAL = Object.freeze({
+      light: Object.freeze({ base: "rgba(100, 116, 139, 0.1)", text: "rgb(88, 102, 122)" }),
+      dark: Object.freeze({ base: "rgba(100, 116, 139, 0.2)", text: "rgb(158, 168, 183)" })
+    });
+    FALLBACK = Object.freeze([
+      row("ACTIVE", "Active", "active", "rgba(20, 184, 166, 0.1)", "rgb(13, 116, 104)", "rgba(20, 184, 166, 0.2)", "rgb(68, 198, 184)"),
+      row("WAITING", "Waiting", "waiting", "rgba(234, 179, 8, 0.1)", "rgb(131, 100, 4)", "rgba(234, 179, 8, 0.2)", "rgb(234, 179, 8)"),
+      row("IN_REVIEW", "In Review", "in-review", "rgba(14, 165, 233, 0.1)", "rgb(9, 109, 154)", "rgba(14, 165, 233, 0.2)", "rgb(76, 188, 239)"),
+      row("HOLDING", "Holding", "holding", "rgba(148, 163, 184, 0.1)", "rgb(95, 104, 118)", "rgba(148, 163, 184, 0.2)", "rgb(169, 181, 198)"),
+      row("INCUBATING", "Incubating", "incubating", "rgba(99, 102, 241, 0.1)", "rgb(84, 86, 203)", "rgba(99, 102, 241, 0.2)", "rgb(158, 160, 246)"),
+      row("ALERT", "Alert", "alert", "rgba(244, 63, 94, 0.1)", "rgb(184, 48, 71)", "rgba(244, 63, 94, 0.2)", "rgb(248, 130, 150)"),
+      row("CANCELLED", "Cancelled", "cancelled", "rgba(30, 41, 59, 0.1)", "rgb(30, 41, 59)", "rgba(30, 41, 59, 0.2)", "rgb(145, 150, 159)")
+    ]);
+  }
+});
+
+// src/model/table.js
+function cleanName(name) {
+  if (name == null) return "";
+  const attr = String(name).trim();
+  if (!attr || attr.startsWith("BT_attr") || FIXED.includes(attr)) return "";
+  return attr;
+}
+function columnNameOk(name) {
+  return Boolean(cleanName(name));
+}
+function isTableRow(item) {
+  if (!item) return false;
+  if (item.type === "section" || item.type === "text") return false;
+  if (item.type === "card") return true;
+  return item.kind === "card" || item.kind === "board";
+}
+function tableColumns(rows) {
+  const names = [];
+  for (const row4 of rows || []) {
+    for (const attr of row4.attrs || []) {
+      if (attr?.name && !names.includes(attr.name)) names.push(attr.name);
+    }
+  }
+  return FIXED.concat(names);
+}
+function cellText(row4, column) {
+  if (!row4) return "";
+  if (column === "Title") return String(row4.title ?? "");
+  if (column === "Section") return String(row4.section ?? "");
+  if (column === "Type") return String(row4.type ?? "");
+  if (column === "Edited") return row4.edited == null ? "" : String(row4.edited);
+  const hit = (row4.attrs || []).find((attr) => attr.name === column);
+  return hit ? String(hit.value ?? "") : "";
+}
+function filterRows(rows, text4) {
+  const needle = String(text4 ?? "").trim().toLowerCase();
+  if (!needle) return (rows || []).slice();
+  const cols = tableColumns(rows);
+  return (rows || []).filter((row4) => cols.some((column) => cellText(row4, column).toLowerCase().includes(needle)));
+}
+function sortRows(rows, column, dir = "asc") {
+  const sign = dir === "desc" ? -1 : 1;
+  const list = (rows || []).slice();
+  list.sort((a, b) => {
+    if (column === "Edited") {
+      const av = Number(a.edited) || 0;
+      const bv = Number(b.edited) || 0;
+      return (av - bv) * sign;
+    }
+    return cellText(a, column).localeCompare(cellText(b, column)) * sign;
+  });
+  return list;
+}
+function planAttrCell({ name, value, blockUid: blockUid3 = null, parentUid = null } = {}) {
+  const attr = cleanName(name);
+  if (!attr) return null;
+  const text4 = String(value ?? "").trim();
+  const string = text4 ? `${attr}:: ${text4}` : `${attr}::`;
+  if (blockUid3) return { op: "update", uid: blockUid3, string };
+  if (!text4 || !parentUid) return null;
+  return { op: "create", parent: parentUid, string };
+}
+function tableRow(board2, item, resolve, kids = null) {
+  const items = board2?.items;
+  const parent = items?.get?.(item.parentUid);
+  const section2 = parent?.type === "section" ? String(parent.title || "") : "";
+  const attrs = [];
+  for (const child of kids || item.content || []) {
+    const string = child?.[":block/string"] ?? child?.string ?? "";
+    const name = cleanName(attrNameOf(String(string)));
+    if (!name) continue;
+    const text4 = String(string);
+    const cut = text4.indexOf("::");
+    attrs.push({
+      name,
+      value: cut >= 0 ? text4.slice(cut + 2).trim() : "",
+      uid: child?.[":block/uid"] ?? child?.uid ?? null
+    });
+  }
+  return {
+    uid: item.uid,
+    kind: item.kind,
+    title: itemLabel(item, resolve),
+    section: section2,
+    type: item.kind || "",
+    edited: item.edited ?? null,
+    attrs
+  };
+}
+function tableRows(board2, resolve) {
+  const items = board2?.items;
+  if (!items || typeof items.get !== "function") return [];
+  const order = Array.isArray(board2.order) ? board2.order : [...items.keys()];
+  const rows = [];
+  for (const uid of order) {
+    const item = items.get(uid);
+    if (!isTableRow(item)) continue;
+    rows.push(tableRow(board2, item, resolve));
+  }
+  return rows;
+}
+var FIXED;
+var init_table = __esm({
+  "src/model/table.js"() {
+    init_schema();
+    FIXED = ["Title", "Section", "Type", "Edited"];
+  }
+});
+
+// src/model/kanban.js
+function todoState(string) {
+  const hit = MARK.exec(String(string || ""));
+  if (!hit) return "";
+  return hit[1] === "DONE" ? DONE_COLUMN : TODO_FIELD;
+}
+function kanbanRows(board2, resolve) {
+  const items = board2?.items;
+  return tableRows(board2, resolve).map((row4) => {
+    const item = items?.get?.(row4.uid);
+    const next = { ...row4, string: item?.string ?? row4.title ?? "" };
+    if (item?.kind !== "highlight") return next;
+    const targetUid = item.target?.uid;
+    let targetString;
+    if (typeof resolve === "function") {
+      try {
+        targetString = resolve(targetUid);
+      } catch {
+        targetString = void 0;
+      }
+    }
+    next.highlightColor = item.highlight?.color;
+    next.targetUid = targetUid;
+    next.targetString = targetString;
+    return next;
+  });
+}
+function kanbanFields(rows) {
+  const names = [];
+  let highlight = false;
+  for (const row4 of rows || []) {
+    if (typeof row4?.highlightColor === "string" && row4.highlightColor !== "") highlight = true;
+    for (const attr of row4.attrs || []) {
+      if (attr?.name && columnNameOk(attr.name) && !names.includes(attr.name)) names.push(attr.name);
+    }
+  }
+  return highlight ? [TODO_FIELD, HIGHLIGHT_FIELD, ...names] : [TODO_FIELD, ...names];
+}
+function columnOf(row4, field) {
+  if (field === TODO_FIELD) return todoState(row4?.string);
+  if (field === HIGHLIGHT_FIELD) {
+    const color = row4?.highlightColor;
+    return typeof color === "string" && color !== "" ? color : "";
+  }
+  const hit = (row4?.attrs || []).find((attr) => attr.name === field);
+  return hit ? String(hit.value ?? "") : "";
+}
+function kanbanColumns(rows, field) {
+  const list = rows || [];
+  if (field === TODO_FIELD) {
+    const columns2 = [
+      { name: TODO_FIELD, cards: [] },
+      { name: DONE_COLUMN, cards: [] }
+    ];
+    const extra = [];
+    for (const row4 of list) {
+      const name = columnOf(row4, field);
+      if (name === TODO_FIELD) columns2[0].cards.push(row4);
+      else if (name === DONE_COLUMN) columns2[1].cards.push(row4);
+      else extra.push(row4);
+    }
+    if (extra.length) columns2.push({ name: "", cards: extra });
+    return columns2;
+  }
+  if (!columnNameOk(field)) return [];
+  const columns = [];
+  const byName = /* @__PURE__ */ new Map();
+  for (const row4 of list) {
+    const name = columnOf(row4, field);
+    if (!byName.has(name)) {
+      const column = { name, cards: [] };
+      byName.set(name, column);
+      columns.push(column);
+    }
+    byName.get(name).cards.push(row4);
+  }
+  return columns;
+}
+function withMarker(string, column) {
+  const mark = column === DONE_COLUMN ? "{{[[DONE]]}}" : "{{[[TODO]]}}";
+  const current3 = String(string || "");
+  if (MARK.test(current3)) return current3.replace(MARK, mark);
+  return current3.trim() ? `${mark} ${current3}` : mark;
+}
+function planKanbanMove({ field, column, row: row4 } = {}) {
+  if (!row4?.uid || column == null || column === "") return null;
+  if (field === TODO_FIELD) {
+    if (column !== TODO_FIELD && column !== DONE_COLUMN) return null;
+    if (todoState(row4.string) === column) return null;
+    const string = withMarker(row4.string, column);
+    if (string === String(row4.string || "")) return null;
+    return { op: "string", uid: row4.uid, string, status: column === DONE_COLUMN ? "DONE" : "TODO" };
+  }
+  if (field === HIGHLIGHT_FIELD) {
+    if (row4.kind === "note") return null;
+    const targetUid = row4.targetUid;
+    const targetString = row4.targetString;
+    if (!targetUid || typeof targetString !== "string" || targetString === "") return null;
+    if (row4.highlightColor === column) return null;
+    if (!HIGHLIGHT_COLORS.includes(column)) return null;
+    return { op: "string", uid: targetUid, string: rewriteHighlightTag(targetString, column) };
+  }
+  if (field === STATUS_FIELD) return null;
+  if (!columnNameOk(field)) return null;
+  const attr = (row4.attrs || []).find((item) => item.name === field);
+  if (String(attr?.value ?? "") === column) return null;
+  const plan = planAttrCell({
+    name: field,
+    value: column,
+    blockUid: attr?.uid || null,
+    parentUid: row4.uid
+  });
+  if (!plan) return null;
+  if (plan.op === "update") return { op: "string", uid: plan.uid, string: plan.string };
+  return plan;
+}
+function isDoneItem(item) {
+  if (item?.done === true) return true;
+  return todoState(item?.string ?? "") === DONE_COLUMN;
+}
+function groupByStatus(items, palette) {
+  const columns = paletteEntries(palette).map((entry) => ({
+    name: entry.name,
+    key: entry.key,
+    glyph: entry.glyph,
+    cards: [],
+    count: 0
+  }));
+  const none = { name: NO_STATUS, key: "", glyph: "diamond", cards: [], count: 0 };
+  const done3 = { name: DONE_COLUMN, key: "done", glyph: "", cards: [], count: 0 };
+  const byName = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
+  for (const item of items || []) {
+    if (isDoneItem(item)) {
+      done3.cards.push(item);
+      continue;
+    }
+    const name = taskStatusOf(item?.string ?? "", palette);
+    const column = name ? byName.get(name.toLowerCase()) : null;
+    (column || none).cards.push(item);
+  }
+  for (const column of columns) column.count = column.cards.length;
+  none.count = none.cards.length;
+  done3.count = done3.cards.length;
+  return [...columns, none, done3];
+}
+var TODO_FIELD, DONE_COLUMN, HIGHLIGHT_FIELD, STATUS_FIELD, NO_STATUS, MARK;
+var init_kanban = __esm({
+  "src/model/kanban.js"() {
+    init_highlight();
+    init_status_tags();
+    init_table();
+    TODO_FIELD = "To do";
+    DONE_COLUMN = "Done";
+    HIGHLIGHT_FIELD = "Highlight colour";
+    STATUS_FIELD = "Lanes: Status";
+    NO_STATUS = "No status";
+    MARK = /\{\{\[\[(TODO|DONE)\]\]\}\}/;
+  }
+});
+
+// src/model/attr-lanes.js
+function laneFields(rows) {
+  return kanbanFields(rows).filter((name) => name !== TODO_FIELD && name !== HIGHLIGHT_FIELD && laneAttrOk(name));
+}
+function valueTokens(value) {
+  const text4 = String(value ?? "");
+  const trimmed = text4.trim();
+  if (!trimmed) return [];
+  const out = [];
+  let rest = text4;
+  TOKEN.lastIndex = 0;
+  let hit;
+  while (hit = TOKEN.exec(text4)) out.push({ raw: hit[0], at: hit.index });
+  if (out.length) {
+    for (const t of out) rest = rest.replace(t.raw, "");
+    if (/^[\s,]*$/.test(rest)) return out;
+  }
+  return [{ raw: trimmed, at: text4.indexOf(trimmed) }];
+}
+function valueKey(raw) {
+  const s = String(raw ?? "").trim();
+  const m = /^#?\[\[([^\]]+)\]\]$/.exec(s) || /^#([^\s,#\[\]]+)$/.exec(s);
+  return (m ? m[1] : s).trim();
+}
+function laneValueOf(row4, name) {
+  const attrs = (row4?.attrs || []).filter((a) => a?.name === name);
+  const attr = attrs[0] || null;
+  const tokens2 = valueTokens(attr?.value);
+  const raw = tokens2[0]?.raw ?? "";
+  return { key: valueKey(raw), raw, attr, tokens: tokens2, two: attrs.length > 1 || tokens2.length > 1 };
+}
+function readLaneBind(plexus) {
+  const name = typeof plexus?.[LANE_ATTR_KEY] === "string" ? plexus[LANE_ATTR_KEY].trim() : "";
+  if (!name || !laneAttrOk(name)) return null;
+  const bands = Array.isArray(plexus?.[LANE_BANDS_KEY]) ? plexus[LANE_BANDS_KEY].filter((v) => typeof v === "string" && valueKey(v)).slice(0, LANE_BAND_CAP) : [];
+  return { name, bands };
+}
+function laneBands(rows, name, stored = []) {
+  const bands = [];
+  const seen = /* @__PURE__ */ new Set();
+  const add = (raw) => {
+    const key = valueKey(raw);
+    if (!key || seen.has(key) || bands.length >= LANE_BAND_CAP) return;
+    seen.add(key);
+    bands.push({ key, raw: String(raw).trim(), label: key });
+  };
+  for (const raw of stored || []) add(raw);
+  for (const row4 of rows || []) {
+    const v = laneValueOf(row4, name);
+    if (v.key) add(v.raw);
+  }
+  bands.push({ key: "", raw: "", label: LANE_NONE_LABEL, none: true });
+  return bands;
+}
+function newLaneValues(rows, name, stored) {
+  const room = LANE_BAND_CAP - (stored || []).length;
+  if (room <= 0) return [];
+  const all = laneBands(rows, name, stored);
+  return all.filter((b) => !b.none).slice((stored || []).filter((v) => valueKey(v)).length).slice(0, room).map((b) => b.raw);
+}
+function growLane({ w, h, axis: axis2, count, added }) {
+  const n0 = Math.max(1, count);
+  const vertical = axisOf(axis2) === "vertical";
+  const band = (vertical ? h : w) / n0;
+  const shift = band * added;
+  return { band, shift, noneIndex: n0 - 1, count: n0 + added, ...vertical ? { w, h: h + shift } : { w: w + shift, h } };
+}
+function bandOfRow(bands, row4, name) {
+  const { key } = laneValueOf(row4, name);
+  const i = key ? bands.findIndex((b) => b.key === key) : -1;
+  return i >= 0 ? i : bands.length - 1;
+}
+function bandRect(rect, axis2, count, i) {
+  const n3 = Math.max(1, count);
+  if (axisOf(axis2) === "vertical") {
+    const h = rect.h / n3;
+    return { x: rect.x, y: rect.y + h * i, w: rect.w, h };
+  }
+  const w = rect.w / n3;
+  return { x: rect.x + w * i, y: rect.y, w, h: rect.h };
+}
+function bandIndexAt(rect, axis2, count, point) {
+  const n3 = Math.max(1, count);
+  const vertical = axisOf(axis2) === "vertical";
+  const span = vertical ? rect.h : rect.w;
+  if (!(span > 0)) return 0;
+  const off = vertical ? point.y - rect.y : point.x - rect.x;
+  return Math.min(n3 - 1, Math.max(0, Math.floor(off / span * n3)));
+}
+function snapIntoBand(band, axis2, r, lane2 = null, pad2 = 0) {
+  const vertical = axisOf(axis2) === "vertical";
+  let start2 = vertical ? band.y : band.x;
+  let end = start2 + (vertical ? band.h : band.w);
+  if (lane2) {
+    const ls = vertical ? lane2.y : lane2.x;
+    start2 = Math.max(start2, ls + pad2);
+    end = Math.min(end, ls + (vertical ? lane2.h : lane2.w) - pad2);
+  }
+  const span = Math.max(0, end - start2);
+  const pos = vertical ? r.y : r.x;
+  const size = vertical ? r.h : r.w;
+  const want = size >= span ? start2 + (span - size) / 2 : Math.min(Math.max(pos, start2), start2 + span - size);
+  const d = want - pos;
+  return vertical ? { dx: 0, dy: d } : { dx: d, dy: 0 };
+}
+function rewriteTokens(value, tokens2, band) {
+  const text4 = String(value ?? "");
+  const first = tokens2[0];
+  const same4 = tokens2.findIndex((t, i) => i > 0 && valueKey(t.raw) === band.key);
+  if (same4 > 0) {
+    const other = tokens2[same4];
+    return text4.slice(0, first.at) + other.raw + text4.slice(first.at + first.raw.length, other.at) + first.raw + text4.slice(other.at + other.raw.length);
+  }
+  return text4.slice(0, first.at) + band.raw + text4.slice(first.at + first.raw.length);
+}
+function planLaneDrop({ name, row: row4, band } = {}) {
+  if (!row4?.uid || !band || !laneAttrOk(name)) return null;
+  const v = laneValueOf(row4, name);
+  if (band.none) {
+    if (!v.key || v.two || !v.attr?.uid) return null;
+    return { op: "string", uid: v.attr.uid, string: `${name.trim()}::` };
+  }
+  if (v.key === band.key) return null;
+  if (v.tokens.length > 1 && v.attr?.uid) {
+    const value = rewriteTokens(v.attr.value, v.tokens, band).trim();
+    return { op: "string", uid: v.attr.uid, string: `${name.trim()}:: ${value}` };
+  }
+  const plan = planAttrCell({ name, value: band.raw, blockUid: v.attr?.uid || null, parentUid: row4.writeUid ?? row4.uid });
+  if (!plan) return null;
+  if (plan.op === "update") return { op: "string", uid: plan.uid, string: plan.string };
+  return plan;
+}
+function arrangeLane({ w, h, axis: axis2, bands, cards, pad: pad2 = LANE_PAD, gap = LANE_GAP } = {}) {
+  const n3 = Math.max(1, bands?.length || 1);
+  const vertical = axisOf(axis2) === "vertical";
+  const along = (c) => vertical ? c.h : c.w;
+  const across = (c) => vertical ? c.w : c.h;
+  const list = cards || [];
+  const bandSize = Math.max((vertical ? h : w) / n3, ...list.map((c) => along(c) + pad2 * 2));
+  const stacks = Array.from({ length: n3 }, () => pad2);
+  const out = [];
+  for (const c of list) {
+    const i = Math.min(n3 - 1, Math.max(0, c.band ?? n3 - 1));
+    const a = bandSize * i + (bandSize - along(c)) / 2;
+    const b = stacks[i];
+    stacks[i] += across(c) + gap;
+    out.push(vertical ? { uid: c.uid, x: b, y: a } : { uid: c.uid, x: a, y: b });
+  }
+  const cross = Math.max(vertical ? w : h, ...stacks.map((s) => s - gap + pad2));
+  const size = vertical ? { w: cross, h: bandSize * n3 } : { w: bandSize * n3, h: cross };
+  return { ...size, cards: out };
+}
+function laneRow(board2, item, readKids, resolve) {
+  if (item.kind === "block" && item.target?.uid) {
+    let kids = [];
+    try {
+      kids = readKids?.(item.target.uid) || [];
+    } catch {
+      kids = [];
+    }
+    return { ...tableRow(board2, item, resolve, kids), writeUid: item.target.uid };
+  }
+  return tableRow(board2, item, resolve);
+}
+function laneRows(board2, laneUid, readKids, resolve) {
+  const lane2 = board2?.items?.get(laneUid);
+  const rows = [];
+  for (const id of lane2?.members || []) {
+    const item = board2.items.get(id);
+    if (isTableRow(item)) rows.push(laneRow(board2, item, readKids, resolve));
+  }
+  return rows;
+}
+function laneView(bands, rows, name) {
+  const counts = bands.map(() => 0);
+  const marks = /* @__PURE__ */ new Map();
+  for (const row4 of rows) {
+    const i = bandOfRow(bands, row4, name);
+    counts[i] += 1;
+    const v = laneValueOf(row4, name);
+    const loose = Boolean(v.key) && !bands.some((b) => b.key === v.key);
+    if (loose) counts[i] -= 1;
+    marks.set(row4.uid, { label: v.key || LANE_NONE_LABEL, ...v.key ? {} : { none: true }, ...v.two ? { two: true } : {}, ...loose ? { loose: true } : {}, name });
+  }
+  return { bands: bands.map((b, i) => ({ key: b.key, label: b.label, n: counts[i], ...b.none ? { none: true } : {} })), marks };
+}
+var LANE_ATTR_KEY, LANE_BANDS_KEY, LANE_NONE_LABEL, LANE_BAND_CAP, LANE_PAD, LANE_GAP, laneAttrOk, TOKEN, shownBands, serializeBands, axisOf;
+var init_attr_lanes = __esm({
+  "src/model/attr-lanes.js"() {
+    init_kanban();
+    init_table();
+    LANE_ATTR_KEY = "attr";
+    LANE_BANDS_KEY = "bands";
+    LANE_NONE_LABEL = "none";
+    LANE_BAND_CAP = 16;
+    LANE_PAD = 16;
+    LANE_GAP = 12;
+    laneAttrOk = (name) => columnNameOk(name);
+    TOKEN = /#\[\[[^\]]+\]\]|\[\[[^\]]+\]\]|#[^\s,#\[\]]+/g;
+    shownBands = (stored) => laneBands([], "", stored);
+    serializeBands = (bands) => (bands || []).filter((b) => !b.none && b.key).map((b) => b.raw);
+    axisOf = (axis2) => axis2 === "vertical" ? "vertical" : "horizontal";
   }
 });
 
@@ -1590,6 +2515,378 @@ var init_query = __esm({
     CARD_W = 280;
     CARD_H = 160;
     UID_RE = /^[A-Za-z0-9_-]{9}$/;
+  }
+});
+
+// src/model/follow.js
+function cleanSkip(list, cap4 = FOLLOW_SKIP_CAP) {
+  if (!Array.isArray(list)) return [];
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const v of list) {
+    if (typeof v !== "string" || !UID_RE2.test(v) || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out.length > cap4 ? out.slice(out.length - cap4) : out;
+}
+function normalizePointer(raw) {
+  if (!isObject3(raw)) return null;
+  const kind = typeof raw.kind === "string" && KIND_RE.test(raw.kind) ? raw.kind : null;
+  const uid = typeof raw.uid === "string" && UID_RE2.test(raw.uid) ? raw.uid : null;
+  if (!kind || !uid) return null;
+  return { kind, uid, ...raw.tree === true ? { tree: true } : {}, ...raw.columns === true ? { columns: true } : {}, skip: cleanSkip(raw.skip) };
+}
+function serializePointer(pointer) {
+  const p = normalizePointer(pointer);
+  if (!p) return null;
+  const out = { kind: p.kind, uid: p.uid };
+  if (p.tree) out.tree = true;
+  if (p.columns) out.columns = true;
+  if (p.skip.length) out.skip = p.skip;
+  return out;
+}
+function readFollow(plexus) {
+  return isObject3(plexus) ? normalizePointer(plexus[FOLLOW_KEY]) : null;
+}
+function keptList(plexus) {
+  const raw = isObject3(plexus) ? plexus[FOLLOW_KEPT_KEY] : null;
+  return (Array.isArray(raw) ? raw : raw ? [raw] : []).map(normalizePointer).filter((p) => p && p.skip.length);
+}
+function keptFollow(plexus, key) {
+  return keptList(plexus).find((p) => sourceKey(p) === key) || null;
+}
+function withFollow(plexus, pointer) {
+  const base2 = isObject3(plexus) ? { ...plexus } : {};
+  const next = pointer ? serializePointer(pointer) : null;
+  const prev = readFollow(base2);
+  const nextKey = sourceKey(next);
+  const kept = keptList(base2).filter((p) => sourceKey(p) !== nextKey);
+  if (prev && sourceKey(prev) !== nextKey && prev.skip.length) kept.push(prev);
+  let list = kept.slice(-FOLLOW_KEPT_SOURCES).map((p) => ({ kind: p.kind, uid: p.uid, skip: p.skip }));
+  while (list.length > 1 && list.reduce((n3, p) => n3 + p.skip.length, 0) > FOLLOW_SKIP_CAP) list = list.slice(1);
+  if (list.length) base2[FOLLOW_KEPT_KEY] = list;
+  else delete base2[FOLLOW_KEPT_KEY];
+  if (next) base2[FOLLOW_KEY] = next;
+  else delete base2[FOLLOW_KEY];
+  return base2;
+}
+function followPointerFor(current3, kind, uid, { tree, columns } = {}) {
+  const same4 = current3?.kind === kind && current3?.uid === uid;
+  const deep = tree === void 0 ? same4 && current3.tree === true : tree === true;
+  const cols = columns === void 0 ? same4 && current3.columns === true : columns === true;
+  return { kind, uid, ...deep ? { tree: true } : {}, ...cols ? { columns: true } : {}, skip: same4 ? current3.skip : [] };
+}
+function journalSpec(uid) {
+  if (uid === "week") return { week: true };
+  const m = /^days-([1-9]\d?)$/.exec(String(uid ?? ""));
+  const days = m ? Number(m[1]) : 0;
+  return days >= 1 && days <= JOURNAL_MAX_DAYS ? { days } : null;
+}
+function journalUid(spec) {
+  if (spec?.week) return "week";
+  const days = Math.floor(Number(spec?.days));
+  return days >= 1 && days <= JOURNAL_MAX_DAYS ? `days-${days}` : "";
+}
+function addSkip(skip, uids, cap4 = FOLLOW_SKIP_CAP) {
+  const add = (uids || []).filter((u) => typeof u === "string" && UID_RE2.test(u));
+  const drop = new Set(add);
+  return cleanSkip([...(skip || []).filter((u) => !drop.has(u)), ...add], cap4);
+}
+function boardRefSource(boardString2) {
+  const ref = parseBoardRef(boardString2);
+  if (!ref) return null;
+  if (ref.colon && ref.title !== "") return null;
+  return ref.uid;
+}
+function queryBody(string) {
+  const m = QUERY_BODY.exec(String(string || "").trim());
+  return m ? plainText(m[1].replace(/[{}]/g, " "), 120) : null;
+}
+function sourceText(string) {
+  const body = queryBody(string);
+  return body === null ? firstLine(string) : `Query ${body}`.trim();
+}
+function itemIds(item) {
+  const out = [];
+  if (item?.uid) out.push(`u:${item.uid}`);
+  if (item?.kind === "page" && item.title) out.push(`p:${item.title}`);
+  return out;
+}
+function cardIds(card2) {
+  const out = [];
+  if (!card2) return out;
+  const t = card2.target;
+  if (t?.kind === "page") {
+    if (t.uid) out.push(`u:${t.uid}`);
+    if (t.title) out.push(`p:${t.title}`);
+    return out;
+  }
+  if (t?.kind === "block" && t.uid) out.push(`u:${t.uid}`);
+  if (card2.uid) out.push(`u:${card2.uid}`);
+  if (card2.type === "section" && typeof card2.head === "string" && card2.head) out.push(`u:${card2.head}`);
+  return out;
+}
+function followIndex(board2, key = "") {
+  const on = /* @__PURE__ */ new Map();
+  const followed = [];
+  for (const item of board2?.items?.values?.() || []) {
+    for (const id of cardIds(item)) if (!on.has(id)) on.set(id, item.uid);
+    if (key && item.src === key) followed.push(item);
+  }
+  return { on, followed };
+}
+function membership(read2) {
+  const set = /* @__PURE__ */ new Set();
+  for (const item of read2?.items || []) for (const id of itemIds(item)) set.add(id);
+  for (const uid of read2?.members || []) if (typeof uid === "string" && uid) set.add(`u:${uid}`);
+  return set;
+}
+function absentStep(prev, read2, board2, key) {
+  const before = prev instanceof Map ? prev : /* @__PURE__ */ new Map();
+  if (!read2?.ok) return new Map(before);
+  const members = membership(read2);
+  const next = /* @__PURE__ */ new Map();
+  for (const card2 of followIndex(board2, key).followed) {
+    if (cardIds(card2).some((id) => members.has(id))) continue;
+    const n3 = (before.get(card2.uid) || 0) + (read2.complete ? 1 : 0);
+    if (n3 > 0) next.set(card2.uid, n3);
+  }
+  return next;
+}
+function followDiff(read2, board2, { key = "", skip = [], absent = /* @__PURE__ */ new Map(), since = null } = {}) {
+  const { on, followed } = followIndex(board2, key);
+  const skipped = new Set(skip);
+  const pending = [];
+  let placed = 0;
+  let dismissed = 0;
+  const seen = /* @__PURE__ */ new Set();
+  for (const item of read2?.ok ? read2.items || [] : []) {
+    if (!item?.uid || seen.has(item.uid)) continue;
+    seen.add(item.uid);
+    if (itemIds(item).some((id) => on.has(id))) {
+      placed += 1;
+      continue;
+    }
+    if (skipped.has(item.uid) || item.heading && item.heading !== item.uid && skipped.has(item.heading)) {
+      dismissed += 1;
+      continue;
+    }
+    if (item.blank) continue;
+    pending.push({ ...item, fresh: Number.isFinite(since) && Number(item.time) > since });
+  }
+  const gone = absent instanceof Map ? absent : /* @__PURE__ */ new Map();
+  const left = followed.filter((card2) => (gone.get(card2.uid) || 0) >= LEFT_CONFIRM).map((card2) => card2.uid);
+  return { pending, left, placed, dismissed };
+}
+function sinceVisit(diff, { since = null, leftBefore = null } = {}) {
+  if (!Number.isFinite(since)) return { newCount: 0, leftCount: 0, baseline: false };
+  const before = leftBefore instanceof Set ? leftBefore : null;
+  return {
+    newCount: (diff?.pending || []).filter((row4) => row4.fresh).length,
+    leftCount: (diff?.left || []).filter((uid) => !before?.has(uid)).length,
+    baseline: true
+  };
+}
+function trayHeadline({ newCount = 0, leftCount = 0, baseline = false } = {}) {
+  if (!baseline) return "";
+  const parts = [];
+  if (newCount > 0) parts.push(`${newCount} new`);
+  if (leftCount > 0) parts.push(`${leftCount} left`);
+  return parts.length ? `${parts.join(", ")} since your last visit` : "Nothing new since your last visit";
+}
+function arrivalsView(pending, { allowance = ARRIVALS_CAP, placed = 0 } = {}) {
+  const list = Array.isArray(pending) ? pending : [];
+  const room = Math.max(0, Math.floor(Number(allowance) || 0) - Math.max(0, Math.floor(Number(placed) || 0)));
+  const rows = list.slice(0, room);
+  return { rows, waiting: list.length - rows.length };
+}
+function visitPlaced(board2, key, before) {
+  const had = before instanceof Set ? before : /* @__PURE__ */ new Set();
+  return followIndex(board2, key).followed.filter((card2) => !had.has(card2.uid)).length;
+}
+function arrivalsLine({ rows = [], waiting = 0 } = {}) {
+  const n3 = rows.length;
+  if (!n3) return waiting > 0 ? `${waiting} wait for your next visit` : "No arrivals";
+  const head = `${n3} arrival${n3 === 1 ? "" : "s"}`;
+  return waiting > 0 ? `${head} · ${waiting} more wait` : head;
+}
+function followCardString(item) {
+  if (item?.kind === "page" && item.title) return `[[${item.title}]]`;
+  return `((${item?.uid}))`;
+}
+function followBatches(list, cap4) {
+  const size = Math.max(1, Math.floor(Number(cap4) || 1));
+  const out = [];
+  for (let i = 0; i < (list || []).length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+function followColumn(bounds, count, { w, h, column = 0, at = null, gap = FOLLOW_COLUMN_GAP, stack = FOLLOW_STACK_GAP } = {}) {
+  const x0 = at ? at.x : bounds ? bounds.x + bounds.w + gap : 0;
+  const y0 = at ? at.y : bounds ? bounds.y : 0;
+  const x = x0 + column * (w + gap);
+  return Array.from({ length: Math.max(0, count) }, (_, i) => ({ x, y: y0 + i * (h + stack) }));
+}
+function journalColumnSpots(existing, entries, { bounds = null, w, h, gap = FOLLOW_COLUMN_GAP, stack = FOLLOW_STACK_GAP } = {}) {
+  const rects = (existing || []).filter((r) => r?.day);
+  const cols = /* @__PURE__ */ new Map();
+  let right = -Infinity;
+  let top = Infinity;
+  for (const r of rects) {
+    right = Math.max(right, r.x + r.w);
+    top = Math.min(top, r.y);
+    const shared5 = rects.some((o) => o.day !== r.day && o.x < r.x + r.w && o.x + o.w > r.x);
+    const col2 = cols.get(r.day);
+    if (!shared5 && (!col2 || r.y + r.h > col2.bottom)) cols.set(r.day, { x: r.x, bottom: r.y + r.h });
+  }
+  const x0 = Number.isFinite(right) ? right + gap : bounds ? bounds.x + bounds.w + gap : 0;
+  const y0 = Number.isFinite(top) ? top : bounds ? bounds.y : 0;
+  const fresh = [...new Set((entries || []).map((e2) => e2?.day ?? "").filter((d) => !cols.has(d)))].sort((a, b) => dayKey(a) < dayKey(b) ? -1 : dayKey(a) > dayKey(b) ? 1 : 0);
+  const made = new Map(fresh.map((d, i) => [d, { x: x0 + i * (w + gap), next: y0 }]));
+  const below = /* @__PURE__ */ new Map();
+  return (entries || []).map((e2) => {
+    const day = e2?.day ?? "";
+    const col2 = cols.get(day);
+    if (col2) {
+      const y2 = below.has(day) ? below.get(day) : col2.bottom + stack;
+      below.set(day, y2 + h + stack);
+      return { x: col2.x, y: y2 };
+    }
+    const c = made.get(day);
+    const y = c.next;
+    c.next += h + stack;
+    return { x: c.x, y };
+  });
+}
+function createLeftMemory({ storage = globalThis.localStorage, graph = "" } = {}) {
+  const key = (uid) => `plexus-diagram:follow-left:${graph}:${uid}`;
+  return {
+    get(uid) {
+      try {
+        const raw = storage?.getItem?.(key(uid));
+        const list = raw ? JSON.parse(raw) : null;
+        return Array.isArray(list) ? new Set(list.filter((u) => typeof u === "string")) : null;
+      } catch {
+        return null;
+      }
+    },
+    set(uid, uids) {
+      try {
+        storage?.setItem?.(key(uid), JSON.stringify([...uids || []].slice(0, FOLLOW_SKIP_CAP)));
+      } catch {
+      }
+    }
+  };
+}
+function sectionOwnerName(item) {
+  return `“${plainText(item?.title || item?.string || "", 48) || "Untitled section"}”`;
+}
+function followOwnersOf(board2) {
+  const out = [];
+  if (!board2?.items) return { owners: out, capped: false, sections: 0 };
+  const byOrder2 = (uids) => (uids || []).map((u, i) => ({ u, i, o: board2.items.get(u)?.order ?? i })).sort((a, b) => a.o - b.o || a.i - b.i).map(({ u }) => u);
+  const visit = (uids) => {
+    for (const uid of byOrder2(uids)) {
+      const item = board2.items.get(uid);
+      if (item?.type !== "section") continue;
+      if (item.follow) out.push({ uid, section: true, pointer: item.follow, key: sourceKey(item.follow), name: sectionOwnerName(item) });
+      visit(item.members);
+    }
+  };
+  visit(board2.roots);
+  let sections = 0;
+  for (const o of out) {
+    sections += 1;
+    o.over = sections > FOLLOW_SECTION_CAP;
+  }
+  const pointer = readFollow(board2.plexus);
+  if (pointer) out.push({ uid: board2.uid, section: false, pointer, key: sourceKey(pointer), name: BOARD_OWNER_NAME, over: false });
+  const first = /* @__PURE__ */ new Map();
+  for (const o of out) {
+    o.dup = !o.over && first.has(o.key) ? first.get(o.key) : null;
+    if (!o.over && !first.has(o.key)) first.set(o.key, o.name);
+  }
+  return { owners: out, capped: sections >= FOLLOW_SECTION_CAP, sections };
+}
+function dedupeFollow(lanes) {
+  const claimed2 = /* @__PURE__ */ new Map();
+  return (lanes || []).map((lane2) => {
+    const pending = [];
+    const hints = [];
+    for (const row4 of lane2?.diff?.pending || []) {
+      const ids = itemIds(row4);
+      const by2 = ids.map((id) => claimed2.get(id)).find(Boolean);
+      if (by2?.skip) continue;
+      if (by2) {
+        hints.push({ ...row4, also: by2.name });
+        continue;
+      }
+      for (const id of ids) claimed2.set(id, { name: lane2.name });
+      pending.push(row4);
+    }
+    const skipped = new Set(lane2?.skip || []);
+    for (const item of lane2?.read?.ok ? lane2.read.items || [] : []) {
+      if (!item?.uid || !skipped.has(item.uid)) continue;
+      for (const id of itemIds(item)) if (!claimed2.has(id)) claimed2.set(id, { name: lane2.name, skip: true });
+    }
+    return { pending, hints };
+  });
+}
+function sectionGrid(section2, members, count, { w, h, pad: pad2 = 24, gap = FOLLOW_STACK_GAP, start: start2 = 0 } = {}) {
+  const inner = Math.max(0, (section2?.w || 0) - 2 * pad2);
+  const cols = Math.max(1, Math.floor((inner + gap) / (w + gap)));
+  const x0 = (section2?.x || 0) + pad2;
+  const bottom = (members || []).reduce((m, r) => Math.max(m, r.y + r.h), -Infinity);
+  const y0 = Number.isFinite(bottom) ? bottom + gap : (section2?.y || 0) + pad2;
+  return Array.from({ length: Math.max(0, count) }, (_, k) => {
+    const i = start2 + k;
+    return { x: x0 + i % cols * (w + gap), y: y0 + Math.floor(i / cols) * (h + gap) };
+  });
+}
+var FOLLOW_KEY, FOLLOW_KEPT_KEY, FOLLOW_KEPT_SOURCES, FOLLOW_SRC, FOLLOW_DAY, JOURNAL_DEFAULT_DAYS, JOURNAL_MAX_DAYS, FOLLOW_MIME, FOLLOW_SKIP_CAP, FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH, FOLLOW_PARENT_CAP, FOLLOW_QUIET_MS, FOLLOW_POLL_MS, FOLLOW_BACKOFF, FOLLOW_TYPING_MS, FOLLOW_SLOW_MS, followQuietMs, LEFT_CONFIRM, FOLLOW_COLUMN_GAP, FOLLOW_STACK_GAP, KIND_RE, UID_RE2, isObject3, sourceKey, textSourceUid, QUERY_BODY, leftUnsettled, followPill, INBOX_KIND, ARRIVALS_CAP, followedUids, arrivalsPill, dayKey, FOLLOW_SECTION_CAP, followCapText, BOARD_OWNER_NAME;
+var init_follow = __esm({
+  "src/model/follow.js"() {
+    init_schema();
+    FOLLOW_KEY = "follow";
+    FOLLOW_KEPT_KEY = "followSkip";
+    FOLLOW_KEPT_SOURCES = 5;
+    FOLLOW_SRC = "src";
+    FOLLOW_DAY = "day";
+    JOURNAL_DEFAULT_DAYS = 7;
+    JOURNAL_MAX_DAYS = 31;
+    FOLLOW_MIME = "application/x-plexus-follow";
+    FOLLOW_SKIP_CAP = 300;
+    FOLLOW_READ_CAP = 300;
+    FOLLOW_TREE_DEPTH = 8;
+    FOLLOW_PARENT_CAP = 60;
+    FOLLOW_QUIET_MS = 1500;
+    FOLLOW_POLL_MS = 6e4;
+    FOLLOW_BACKOFF = 10;
+    FOLLOW_TYPING_MS = 50;
+    FOLLOW_SLOW_MS = 200;
+    followQuietMs = (lastMs) => Math.min(FOLLOW_POLL_MS, Math.max(FOLLOW_QUIET_MS, FOLLOW_BACKOFF * (Number(lastMs) || 0)));
+    LEFT_CONFIRM = 2;
+    FOLLOW_COLUMN_GAP = 48;
+    FOLLOW_STACK_GAP = 24;
+    KIND_RE = /^[a-z][a-z0-9-]{0,31}$/;
+    UID_RE2 = /^[\w-]{1,64}$/;
+    isObject3 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+    sourceKey = (pointer) => pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}` : "";
+    textSourceUid = boardRefSource;
+    QUERY_BODY = /^\{\{\s*(?:\[\[query\]\]|query)\s*:([\s\S]*)\}\}$/;
+    leftUnsettled = (absent) => [...absent instanceof Map ? absent.values() : []].some((n3) => n3 > 0 && n3 < LEFT_CONFIRM);
+    followPill = (n3) => `Following (${n3})`;
+    INBOX_KIND = "inbox";
+    ARRIVALS_CAP = 20;
+    followedUids = (board2, key) => new Set(followIndex(board2, key).followed.map((card2) => card2.uid));
+    arrivalsPill = (n3) => `Arrivals (${n3})`;
+    dayKey = (day) => {
+      const m = /^(\d\d)-(\d\d)-(\d{4})$/.exec(String(day ?? ""));
+      return m ? `${m[3]}${m[1]}${m[2]}` : String(day ?? "");
+    };
+    FOLLOW_SECTION_CAP = 8;
+    followCapText = () => `Up to ${FOLLOW_SECTION_CAP} sections follow a source on one board`;
+    BOARD_OWNER_NAME = "this board";
   }
 });
 
@@ -1905,7 +3202,7 @@ function isDrawingString(value) {
   return text4.startsWith(DRAWING_STRING) || text4.startsWith(ALT_DRAWING_STRING);
 }
 function drawingRefString(uid) {
-  return typeof uid === "string" && UID_RE2.test(uid) ? `((${uid}))` : null;
+  return typeof uid === "string" && UID_RE3.test(uid) ? `((${uid}))` : null;
 }
 function drawingRefModel(targetString) {
   if (!isDrawingString(targetString)) return null;
@@ -1929,12 +3226,12 @@ function droppedDrawingUids(strings, blockString4) {
   }
   return out;
 }
-var DRAWING_STRING, ALT_DRAWING_STRING, UID_RE2, regionMenuKinds, REF_ONLY, DRAWING_DROP_TOAST;
+var DRAWING_STRING, ALT_DRAWING_STRING, UID_RE3, regionMenuKinds, REF_ONLY, DRAWING_DROP_TOAST;
 var init_drawing_card = __esm({
   "src/model/drawing-card.js"() {
     DRAWING_STRING = "{{[[excalidraw]]}}";
     ALT_DRAWING_STRING = "{{excalidraw}}";
-    UID_RE2 = /^[A-Za-z0-9_-]{1,36}$/;
+    UID_RE3 = /^[A-Za-z0-9_-]{1,36}$/;
     regionMenuKinds = Object.freeze(["area", "rect", "frame"]);
     REF_ONLY = /^\(\(([^)]+)\)\)$/;
     DRAWING_DROP_TOAST = "Drawings stay where they are; this is a reference";
@@ -2026,15 +3323,15 @@ function planRestore(entries, board2) {
     if (unit.length) units.push(unit);
   }
   const chunks = [];
-  let chunk = [];
+  let chunk2 = [];
   for (const unit of units) {
-    if (chunk.length && chunk.length + unit.length > SNAPSHOT_CHUNK) {
-      chunks.push(chunk);
-      chunk = [];
+    if (chunk2.length && chunk2.length + unit.length > SNAPSHOT_CHUNK) {
+      chunks.push(chunk2);
+      chunk2 = [];
     }
-    chunk.push(...unit);
+    chunk2.push(...unit);
   }
-  if (chunk.length) chunks.push(chunk);
+  if (chunk2.length) chunks.push(chunk2);
   return chunks;
 }
 var SNAPSHOTS_TITLE, SNAPSHOT_KEEP, SNAPSHOT_CHUNK, pad;
@@ -2209,168 +3506,6 @@ var init_trails = __esm({
   "src/model/trails.js"() {
     TRAIL_RE = /^\{\{\[\[plexus-trail\]\]\}\}\s*([\s\S]*)$/;
     STOP_RE = /^\(\(([\w-]+)\)\)$/;
-  }
-});
-
-// src/model/highlight.js
-function isObject2(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-function highlightRecord(props) {
-  if (!isObject2(props)) return null;
-  const keys = Object.keys(props);
-  const colon = keys.includes(":pdf-highlight");
-  const plain2 = keys.includes("pdf-highlight");
-  if (!colon && !plain2) return null;
-  const raw = colon ? props[":pdf-highlight"] : props["pdf-highlight"];
-  if (!isObject2(raw)) return {};
-  const flat3 = plainKeys(raw);
-  return isObject2(flat3) ? flat3 : {};
-}
-function pageNumberOf(record) {
-  const position = record.position;
-  if (!isObject2(position)) return null;
-  const rect = position.boundingRect;
-  if (!isObject2(rect)) return null;
-  const page = rect.pageNumber;
-  return typeof page === "number" && Number.isFinite(page) ? page : null;
-}
-function contentTextOf(record) {
-  const content = record.content;
-  if (!isObject2(content)) return "";
-  return typeof content.text === "string" ? content.text : "";
-}
-function highlightColor(string) {
-  if (typeof string !== "string") return "gray";
-  const match = COLOR_TOKEN.exec(string);
-  if (!match) return "gray";
-  const name = match[1].toLowerCase();
-  return PALETTE.includes(name) ? name : "gray";
-}
-function stripHighlightTokens(string) {
-  if (typeof string !== "string") return "";
-  return string.replace(/#h\/[A-Za-z]+/g, " ").replace(/[ \t]{2,}/g, " ").trim();
-}
-function footerOf(page, pageTitle) {
-  const title = typeof pageTitle === "string" ? pageTitle.trim() : "";
-  const parts = [];
-  if (page != null) parts.push(`p. ${page}`);
-  if (title) parts.push(title);
-  return parts.join(" · ");
-}
-function finiteNumber(value) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-function fieldNumber(obj, name) {
-  const colon = finiteNumber(obj[`:${name}`]);
-  if (colon != null) return colon;
-  return finiteNumber(obj[name]);
-}
-function sizePair(obj) {
-  if (!isObject2(obj)) return null;
-  const w = fieldNumber(obj, "width");
-  const h = fieldNumber(obj, "height");
-  if (w == null || h == null) return null;
-  return { w, h };
-}
-function firstSize(value, seen) {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = firstSize(item, seen);
-      if (found) return found;
-    }
-    return null;
-  }
-  if (!isObject2(value) || seen.has(value)) return null;
-  seen.add(value);
-  const pair2 = sizePair(value);
-  if (pair2) return pair2;
-  for (const key of Object.keys(value)) {
-    if (key === "url" || key === ":url") continue;
-    const found = firstSize(value[key], seen);
-    if (found) return found;
-  }
-  return null;
-}
-function rewriteHighlightTag(string, name) {
-  if (typeof string !== "string") return string;
-  if (typeof name !== "string" || !HIGHLIGHT_COLORS.includes(name)) return string;
-  const token = `#h/${name}`;
-  if (!TAG_TOKEN.test(string)) return `${string} ${token}`;
-  return string.replace(TAG_TOKEN, token);
-}
-function naturalSize(props) {
-  if (!isObject2(props)) return null;
-  const seen = /* @__PURE__ */ new Set();
-  if (Object.prototype.hasOwnProperty.call(props, ":image-size")) {
-    const found = firstSize(props[":image-size"], seen);
-    if (found) return found;
-  }
-  if (Object.prototype.hasOwnProperty.call(props, "image-size")) {
-    return firstSize(props["image-size"], seen);
-  }
-  return null;
-}
-function childFields(node2, index) {
-  if (!isObject2(node2)) return null;
-  const string = typeof node2.string === "string" ? node2.string : typeof node2[":block/string"] === "string" ? node2[":block/string"] : "";
-  const props = isObject2(node2.props) ? node2.props : isObject2(node2[":block/props"]) ? node2[":block/props"] : {};
-  const orderRaw = node2.order ?? node2[":block/order"];
-  const order = typeof orderRaw === "number" && Number.isFinite(orderRaw) ? orderRaw : index;
-  const uidRaw = typeof node2.uid === "string" && node2.uid ? node2.uid : typeof node2[":block/uid"] === "string" ? node2[":block/uid"] : "";
-  return { string, props, order, index, uid: uidRaw };
-}
-function orderedChildren(children) {
-  const list = Array.isArray(children) ? children : [];
-  const rows = [];
-  for (let i = 0; i < list.length; i += 1) {
-    const row4 = childFields(list[i], i);
-    if (row4) rows.push(row4);
-  }
-  rows.sort((a, b) => a.order - b.order || a.index - b.index);
-  return rows;
-}
-function highlightNote(children) {
-  for (const row4 of orderedChildren(children)) {
-    if (highlightRecord(row4.props)) continue;
-    return row4.string;
-  }
-  return "";
-}
-function noteActionPlan(children) {
-  for (const row4 of orderedChildren(children)) {
-    if (highlightRecord(row4.props)) continue;
-    return { kind: "focus", uid: row4.uid };
-  }
-  return { kind: "create" };
-}
-function highlightModel(input) {
-  const src = isObject2(input) ? input : {};
-  const record = highlightRecord(src.props);
-  if (!record) return null;
-  const block = typeof src.string === "string" ? src.string : "";
-  const rawType = typeof record.type === "string" ? record.type : "";
-  const area2 = rawType === "area" || block.includes("![");
-  const stored = contentTextOf(record);
-  const page = pageNumberOf(record);
-  return {
-    type: area2 ? "area" : rawType || "text",
-    text: area2 || stored === "" ? stripHighlightTokens(block) : stored,
-    image: area2,
-    natural: naturalSize(src.props),
-    page,
-    color: highlightColor(block),
-    footer: footerOf(page, src.pageTitle),
-    note: highlightNote(src.children)
-  };
-}
-var HIGHLIGHT_COLORS, COLOR_TOKEN, TAG_TOKEN;
-var init_highlight = __esm({
-  "src/model/highlight.js"() {
-    init_schema();
-    HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink", "purple", "orange", "red"];
-    COLOR_TOKEN = /#h\/([A-Za-z]+)/;
-    TAG_TOKEN = /#h\/[A-Za-z]+/;
   }
 });
 
@@ -3349,7 +4484,7 @@ function isMetaBanner(metaTitle, { pageTitle = "", lines = [] } = {}) {
   }
   return false;
 }
-var TITLE_CAP, titleLexicon, SEG_MIN, SEG_MAX_WORDS, SEG_WORD_MIN, FUNCTION_WORDS, TITLE_REV, MONTHS2, JUNK_LINE_RES, ARTICLE_LABEL, CITATION_REST;
+var TITLE_CAP, titleLexicon, SEG_MIN, SEG_MAX_WORDS, SEG_WORD_MIN, FUNCTION_WORDS, TITLE_REV, MONTHS3, JUNK_LINE_RES, ARTICLE_LABEL, CITATION_REST;
 var init_title_cap = __esm({
   "src/model/title-cap.js"() {
     TITLE_CAP = 80;
@@ -3359,7 +4494,7 @@ var init_title_cap = __esm({
     SEG_WORD_MIN = 4;
     FUNCTION_WORDS = /* @__PURE__ */ new Set(["of", "the", "and", "in", "to", "for", "per", "on", "at", "by", "with", "from", "or", "an", "a"]);
     TITLE_REV = 3;
-    MONTHS2 = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+    MONTHS3 = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
     JUNK_LINE_RES = [
       /^(?:notes?|sources?)\s*(?:[:.\-–—]|$)/i,
       /^[*†‡§¶•]/,
@@ -3369,7 +4504,7 @@ var init_title_cap = __esm({
       /^\d{1,4}\s*\/\s*\d{1,4}$/,
       /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/,
       /^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/,
-      new RegExp(`^(?:\\d{1,2}\\s+)?(?:${MONTHS2})\\.?\\s+(?:\\d{1,2},?\\s+)?\\d{4}$`, "i"),
+      new RegExp(`^(?:\\d{1,2}\\s+)?(?:${MONTHS3})\\.?\\s+(?:\\d{1,2},?\\s+)?\\d{4}$`, "i"),
       /\bcontents lists? available at\b/i,
       /\bjournal homepage\b/i,
       /\b(?:https?:\/\/|www\.)\S+/i,
@@ -3870,7 +5005,7 @@ function inlinePdfCards(board2) {
   for (const item of board2?.items?.values?.() || []) if (isInlinePdfCard(item)) out.push(item);
   return out;
 }
-function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageExists, titleFor, aliasOf, refsOf, now: now5, newUid } = {}) {
+function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageExists, titleFor, aliasOf, refsOf: refsOf2, now: now5, newUid } = {}) {
   const plan = { graph, boardUid: board2?.uid || "", moves: [], edges: [], skipped: [] };
   if (!board2?.items) return plan;
   const call2 = (fn, ...args) => {
@@ -3899,7 +5034,7 @@ function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageE
     if (found?.uid && found.title) {
       page = { uid: found.uid, title: found.title, reuse: true, why: found.why || "url" };
     } else {
-      const title = uniquePageTitle(pdfPageBaseTitle({ display: shown, alias: call2(aliasOf, item) || "", refs: call2(refsOf, item) || [], fileName: pdfFileTitle(url), now: call2(now5) }), (t) => plannedTitles.has(t) || call2(pageExists, t) === true);
+      const title = uniquePageTitle(pdfPageBaseTitle({ display: shown, alias: call2(aliasOf, item) || "", refs: call2(refsOf2, item) || [], fileName: pdfFileTitle(url), now: call2(now5) }), (t) => plannedTitles.has(t) || call2(pageExists, t) === true);
       page = { uid: null, newUid: String(call2(newUid) || ""), title, reuse: false, why: "new" };
     }
     plannedTitles.add(page.title);
@@ -4244,9 +5379,14 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         kids: type === "card" && layout.kids === true,
         look: type === "card" ? cardLook(kind, layout.look) : type === "text" || type === "section" ? layout.look : void 0,
         ...type === "section" && layout.look === "lane" ? { axis: layout.axis || "horizontal" } : {},
+        ...type === "section" && layout.look === "lane" && readLaneBind(cplexus) ? (() => {
+          const b = readLaneBind(cplexus);
+          return { laneAttr: b.name, laneBands: b.bands };
+        })() : {},
         ...type === "text" && layout.shape ? { shape: layout.shape } : {},
         open: type === "card" ? child[":block/open"] !== false : void 0,
         autofit: !(type === "section" && layout.fit === false),
+        keepOrder: type === "section" && layout.keepOrder === true,
         title,
         target,
         ...tableKid ? { tableUid: tableKid[":block/uid"] } : {},
@@ -4261,6 +5401,10 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         ...openKey ? { openKey } : {},
         // PXD-9: the source a placed card came from (its follow key). Only such cards can be marked "left the source".
         ...typeof cplexus?.src === "string" && cplexus.src ? { src: cplexus.src } : {},
+        // PXD-13: the source a section follows (its own plexus.follow), normalized.
+        ...type === "section" && readFollow(cplexus) ? { follow: readFollow(cplexus) } : {},
+        // PXD-14: the heading a followed section stands for, or the heading a followed card was placed under.
+        ...typeof cplexus?.head === "string" && cplexus.head ? { head: cplexus.head } : {},
         ...typeof cplexus?.day === "string" && cplexus.day && typeof cplexus?.src === "string" && cplexus.src ? { day: cplexus.day } : {}
       };
       items.set(cuid, item);
@@ -4564,7 +5708,7 @@ function sectionFitPlan(board2, rects, touchedUids, {
   parentOf = (u) => board2.items.get(u)?.parentUid
 } = {}) {
   const work = /* @__PURE__ */ new Map();
-  const same3 = (a, b) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01 && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01;
+  const same4 = (a, b) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01 && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01;
   for (const touched of touchedUids) {
     let cur = touched;
     for (let guard = 0; guard < 256; guard++) {
@@ -4576,7 +5720,7 @@ function sectionFitPlan(board2, rects, touchedUids, {
       const childRect = work.get(cur) ?? rects.get(cur);
       if (!secRect || !childRect) break;
       const need2 = unionRect2(secRect, inflate(childRect, pad2));
-      if (same3(need2, secRect)) break;
+      if (same4(need2, secRect)) break;
       work.set(pid, need2);
       cur = pid;
     }
@@ -4600,24 +5744,27 @@ function sidebarOutlineUids(board2) {
   if (board2.containerUid) uids.push(board2.containerUid);
   return uids;
 }
-function readingOrder(board2, rects) {
-  if (!board2) return [];
+function byReadingPosition(uids, board2, rects) {
   const key = (uid) => {
     const r = rects?.get?.(uid);
-    const item = board2.items.get(uid);
+    const item = board2?.items?.get(uid);
     return { y: r?.y ?? item?.y ?? 0, x: r?.x ?? item?.x ?? 0 };
   };
-  const byPos = (uids) => [...uids || []].sort((a, b) => {
+  return [...uids || []].sort((a, b) => {
     const pa = key(a);
     const pb = key(b);
     return pa.y - pb.y || pa.x - pb.x || (a < b ? -1 : a > b ? 1 : 0);
   });
+}
+function readingOrder(board2, rects) {
+  if (!board2) return [];
+  const byPos = (uids) => byReadingPosition(uids, board2, rects);
   const groups2 = [];
   const visit = (parent, uids) => {
-    const sorted2 = byPos(uids);
-    if (!sorted2.length) return;
-    groups2.push({ parent, uids: sorted2 });
-    for (const uid of sorted2) {
+    const sorted3 = byPos(uids);
+    if (!sorted3.length) return;
+    groups2.push({ parent, uids: sorted3 });
+    for (const uid of sorted3) {
       const item = board2.items.get(uid);
       if (item?.type === "section") visit(uid, item.members);
     }
@@ -4783,14 +5930,14 @@ function diffBoards(prev, next) {
     }
     return { structural: true, dirty: dirty2 };
   }
-  const same3 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const same4 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const body = (item) => {
     const { content, ...rest } = item;
     return rest;
   };
-  let structural = prev.containerUid !== next.containerUid || prev.items.size !== next.items.size || prev.edges.size !== next.edges.size || !same3(prev.roots, next.roots) || !same3(prev.order, next.order) || !same3(prev.views, next.views) || !same3(prev.trails || [], next.trails || []);
+  let structural = prev.containerUid !== next.containerUid || prev.items.size !== next.items.size || prev.edges.size !== next.edges.size || !same4(prev.roots, next.roots) || !same4(prev.order, next.order) || !same4(prev.views, next.views) || !same4(prev.trails || [], next.trails || []);
   const dirty = /* @__PURE__ */ new Set();
-  if (prev.string !== next.string || !same3(prev.plexus, next.plexus)) dirty.add(next.uid);
+  if (prev.string !== next.string || !same4(prev.plexus, next.plexus)) dirty.add(next.uid);
   for (const [uid, item] of next.items) {
     const old = prev.items.get(uid);
     if (!old) {
@@ -4798,8 +5945,8 @@ function diffBoards(prev, next) {
       dirty.add(uid);
       continue;
     }
-    if (old.parentUid !== item.parentUid || !same3(old.members, item.members)) structural = true;
-    if (old.string !== item.string || old.kind !== item.kind || old.parentUid !== item.parentUid || old.order !== item.order || !same3(body(old), body(item))) dirty.add(uid);
+    if (old.parentUid !== item.parentUid || !same4(old.members, item.members)) structural = true;
+    if (old.string !== item.string || old.kind !== item.kind || old.parentUid !== item.parentUid || old.order !== item.order || !same4(body(old), body(item))) dirty.add(uid);
   }
   for (const [uid, edge] of next.edges) {
     const old = prev.edges.get(uid);
@@ -4808,7 +5955,7 @@ function diffBoards(prev, next) {
       dirty.add(uid);
       continue;
     }
-    if (!same3(old, edge)) dirty.add(uid);
+    if (!same4(old, edge)) dirty.add(uid);
   }
   return { structural, dirty };
 }
@@ -4816,8 +5963,10 @@ var AUTO_GAP, AUTO_OFFSET, AUTO_ROWS, TITLE_BAND, BORDER_BAND, isNum2, OPEN_KEY_
 var init_board = __esm({
   "src/model/board.js"() {
     init_geometry();
+    init_attr_lanes();
     init_schema();
     init_query();
+    init_follow();
     init_roam_table();
     init_region_card();
     init_drawing_card();
@@ -4871,7 +6020,7 @@ function cardDeepLink({ graph, pageUid: pageUid2, cardUid } = {}) {
   const g = String(graph ?? "").trim();
   const page = String(pageUid2 ?? "").trim();
   const card2 = String(cardUid ?? "").trim();
-  if (!g || !UID_RE3.test(page) || !UID_RE3.test(card2)) return "";
+  if (!g || !UID_RE4.test(page) || !UID_RE4.test(card2)) return "";
   return `#/app/${encodeURIComponent(g)}/page/${encodeURIComponent(page)}?pxd=${encodeURIComponent(card2)}`;
 }
 function hashFromUrl(url) {
@@ -4889,7 +6038,7 @@ function pxdTarget(hash) {
   } catch {
     return null;
   }
-  if (!UID_RE3.test(card2)) return null;
+  if (!UID_RE4.test(card2)) return null;
   return { cardUid: card2, pageUid: pageUidFromHash(text4), graph: graphFromDeepLink(text4) };
 }
 function copyLinkText(item, { graph, pageUid: pageUid2, cardUid } = {}) {
@@ -4932,11 +6081,11 @@ function assignDeepLink(loc, { graph, pageUid: pageUid2, cardUid } = {}, onSame)
   loc.hash = link;
   return link;
 }
-var UID_RE3;
+var UID_RE4;
 var init_deeplink = __esm({
   "src/model/deeplink.js"() {
     init_schema();
-    UID_RE3 = /^[\w-]{1,32}$/;
+    UID_RE4 = /^[\w-]{1,32}$/;
   }
 });
 
@@ -5388,9 +6537,9 @@ function sharesLine(row4, w) {
   return !stacked;
 }
 function relineWords(words) {
-  const sorted2 = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  const sorted3 = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const rows = [];
-  for (const w of sorted2) {
+  for (const w of sorted3) {
     const r = rows[rows.length - 1];
     if (r && sharesLine(r, w)) r.words.push(w);
     else rows.push({ base: w.base, size: w.size, words: [w] });
@@ -7005,21 +8154,21 @@ var init_headings = __esm({
 // src/model/parse/formulas.js
 function equationRowSignals(words, { column = null } = {}) {
   if (!words.length) return { number: null, lead: false, delimiters: false, math: false };
-  const sorted2 = [...words].sort((a, b) => a.x0 - b.x0);
-  const last = sorted2[sorted2.length - 1];
-  const base2 = sorted2.filter((w) => !w.sup && !w.sub);
-  const first = base2[0] || sorted2[0];
+  const sorted3 = [...words].sort((a, b) => a.x0 - b.x0);
+  const last = sorted3[sorted3.length - 1];
+  const base2 = sorted3.filter((w) => !w.sup && !w.sub);
+  const first = base2[0] || sorted3[0];
   const second = base2[1];
   const colW = column ? column.x1 - column.x0 : Infinity;
   const number = EQ_NUMBER_RE.test(last.text) && (!column || last.x1 >= column.x1 - 0.12 * colW) ? last.text : null;
   const NAME2 = /^[A-Za-z][⁰-⁹₀-₉0-9′*ʹ]*$/;
   const EQ = /^(=|¼|:=|≡|≈)$/;
   const lead = NAME2.test(first.text) && Boolean(second) && EQ.test(second.text) || /^[A-Za-z][⁰-⁹₀-₉0-9′*ʹ]*(=|¼)$/.test(first.text);
-  const rowSize = median2(sorted2.map((w) => w.size)) || 10;
-  const delimiters = sorted2.some((w) => w.size >= 1.6 * rowSize && /^[\[\]()|{}⎡⎤⎣⎦⎢⎥⎛⎞⎝⎠⎜⎟∣]+$/.test(w.text));
+  const rowSize = median2(sorted3.map((w) => w.size)) || 10;
+  const delimiters = sorted3.some((w) => w.size >= 1.6 * rowSize && /^[\[\]()|{}⎡⎤⎣⎦⎢⎥⎛⎞⎝⎠⎜⎟∣]+$/.test(w.text));
   let chars = 0;
   let math = 0;
-  for (const w of sorted2) {
+  for (const w of sorted3) {
     chars += w.text.length;
     math += (w.mathChars || 0) + (w.mathFontChars || 0);
   }
@@ -7308,8 +8457,8 @@ function splitColumn(rowsIn, col2, size) {
       if (r) right.push(r);
     }
     if (left.length < 3 || right.length < 3) continue;
-    const same3 = (ws) => new Set(ws.map((w) => w.text.toLowerCase())).size === 1;
-    if (same3(right) || same3(left)) continue;
+    const same4 = (ws) => new Set(ws.map((w) => w.text.toLowerCase())).size === 1;
+    if (same4(right) || same4(left)) continue;
     const spread = (v) => Math.max(...v) - Math.min(...v);
     const tol = Math.max(1.5, 0.2 * size);
     const tightL = spread(left.map((w) => w.x1)) <= tol;
@@ -7413,11 +8562,11 @@ function joinSize(word, typical) {
 }
 function visualRows(words) {
   const typical = medianSize(words);
-  const sorted2 = [...words].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  const sorted3 = [...words].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
   const rows = [];
-  for (const w of sorted2) {
+  for (const w of sorted3) {
     const r = rows[rows.length - 1];
-    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w, sorted2, typical)) {
+    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w, sorted3, typical)) {
       r.words.push(w);
       r.y1 = Math.max(r.y1, w.y1);
       r.y0 = Math.min(r.y0, w.y0);
@@ -7479,9 +8628,9 @@ function bandRows(words) {
   return { rows: visualRows(keep), floating };
 }
 function baselineGroups(words) {
-  const sorted2 = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  const sorted3 = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const groups2 = [];
-  for (const w of sorted2) {
+  for (const w of sorted3) {
     const g = groups2[groups2.length - 1];
     if (g && Math.abs(g.base - w.base) <= 0.3 * Math.max(g.size, w.size)) {
       g.words.push(w);
@@ -8354,9 +9503,9 @@ function mergeWrappedLabelRows(rowsIn, headerRows = 0) {
   }
 }
 function baselineRows(lines, { loose = false } = {}) {
-  const sorted2 = [...lines].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  const sorted3 = [...lines].sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const rows = [];
-  for (const l of sorted2) {
+  for (const l of sorted3) {
     const r = rows[rows.length - 1];
     const rowText = r ? r.lines.map((x) => x.text || "").join(" ") : "";
     const digit = r && (/\d/.test(rowText) || /\d/.test(l.text || ""));
@@ -8838,22 +9987,22 @@ function tickGrid(table) {
 function normCell(s) {
   return String(s || "").replace(/[^\w.]/g, "").toLowerCase();
 }
-function valueTokens(tokens2) {
+function valueTokens2(tokens2) {
   return (tokens2 || []).slice(1).map((t) => normCell(t.text)).filter((s) => s && s.length <= 12);
 }
 function headerOf(run) {
-  const multi = run.filter((r) => valueTokens(r.tokens).length >= 2);
+  const multi = run.filter((r) => valueTokens2(r.tokens).length >= 2);
   return multi.length ? multi[0].tokens : null;
 }
 function repeatsHeader(tokens2, header) {
   if (!header || !tokens2) return false;
-  const a = valueTokens(header);
-  const b = valueTokens(tokens2);
+  const a = valueTokens2(header);
+  const b = valueTokens2(tokens2);
   if (a.length < 2 || b.length < 2) return false;
-  let same3 = 0;
+  let same4 = 0;
   const n3 = Math.min(a.length, b.length);
-  for (let i = 0; i < n3; i++) if (a[i] === b[i]) same3++;
-  if (same3 >= 2 && same3 / n3 >= 0.6) return true;
+  for (let i = 0; i < n3; i++) if (a[i] === b[i]) same4++;
+  if (same4 >= 2 && same4 / n3 >= 0.6) return true;
   const tail = b.slice(-a.length);
   return tail.length === a.length && tail.every((s, i) => s === a[i]);
 }
@@ -9649,9 +10798,9 @@ function median3(values) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 function mergeGutters(list) {
-  const sorted2 = [...list].sort((a, b) => a.x0 - b.x0 || a.x1 - b.x1);
+  const sorted3 = [...list].sort((a, b) => a.x0 - b.x0 || a.x1 - b.x1);
   const out = [];
-  for (const g of sorted2) {
+  for (const g of sorted3) {
     const last = out[out.length - 1];
     if (last && g.x0 <= last.x1 + 8) {
       last.x0 = Math.min(last.x0, g.x0);
@@ -9730,7 +10879,7 @@ function ruleCuts(rules, gutters, units) {
 function orderUnits(units, { gutters = [], cuts = [], lineHeight = 0 } = {}) {
   const active2 = gutters.filter((g) => units.some((u) => u.x1 <= g.x0 + 1) && units.some((u) => u.x0 >= g.x1 - 1));
   if (!active2.length) return { order: byPosition(units), columns: 1 };
-  const sorted2 = [...units].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  const sorted3 = [...units].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
   const wide = (u) => active2.some((g) => crossesGutter(u, g));
   const out = [];
   let slice = [];
@@ -9742,7 +10891,7 @@ function orderUnits(units, { gutters = [], cuts = [], lineHeight = 0 } = {}) {
   };
   const headingRow = () => lineHeight > 0 && splitColumns(slice, active2).every((c) => c.length === 1 && c[0].y1 - c[0].y0 <= 2 * lineHeight);
   const pending = [...cuts].sort((a, b) => a - b);
-  for (const u of sorted2) {
+  for (const u of sorted3) {
     while (pending.length && pending[0] <= u.y0 + 1) {
       pending.shift();
       if (!headingRow()) flush();
@@ -10021,9 +11170,9 @@ function alignedLineCount(lines) {
   return best;
 }
 function wordLines(words) {
-  const sorted2 = [...words].filter((w) => w && w.text).sort((a, b) => (a.base ?? a.y1 ?? 0) - (b.base ?? b.y1 ?? 0) || a.x0 - b.x0);
+  const sorted3 = [...words].filter((w) => w && w.text).sort((a, b) => (a.base ?? a.y1 ?? 0) - (b.base ?? b.y1 ?? 0) || a.x0 - b.x0);
   const lines = [];
-  for (const w of sorted2) {
+  for (const w of sorted3) {
     const y = w.base ?? w.y1 ?? 0;
     const size = w.size || 10;
     const last = lines[lines.length - 1];
@@ -10043,9 +11192,9 @@ function wordLines(words) {
   return lines;
 }
 function columnLines(words) {
-  const sorted2 = [...words].filter((w) => w && w.text).sort((a, b) => (a.base ?? a.y1 ?? 0) - (b.base ?? b.y1 ?? 0) || a.x0 - b.x0);
+  const sorted3 = [...words].filter((w) => w && w.text).sort((a, b) => (a.base ?? a.y1 ?? 0) - (b.base ?? b.y1 ?? 0) || a.x0 - b.x0);
   const lines = [];
-  for (const w of sorted2) {
+  for (const w of sorted3) {
     const y = w.base ?? w.y1 ?? 0;
     const size = w.size || 10;
     const y0 = w.y0 ?? y - size;
@@ -10458,8 +11607,8 @@ function peelFigLabels(lines) {
     }
     if (cursor < words.length) pieces2.push(words.slice(cursor));
     const rewritten = words.some((w, i) => w !== line.words[i]);
-    const same3 = !rewritten && pieces2.length === 1 && pieces2[0].length === words.length && pieces2[0].every((w, i) => w === words[i]);
-    if (same3) {
+    const same4 = !rewritten && pieces2.length === 1 && pieces2[0].length === words.length && pieces2[0].every((w, i) => w === words[i]);
+    if (same4) {
       out.push(line);
       continue;
     }
@@ -10486,27 +11635,27 @@ function splitAnchors(anchors, box2) {
   const dx = Math.max(...anchors.map((a) => a.x)) - Math.min(...anchors.map((a) => a.x));
   const dy = Math.max(...anchors.map((a) => a.y)) - Math.min(...anchors.map((a) => a.y));
   const vertical = dx >= dy;
-  const sorted2 = [...anchors].sort((a, b) => vertical ? a.x - b.x : a.y - b.y);
+  const sorted3 = [...anchors].sort((a, b) => vertical ? a.x - b.x : a.y - b.y);
   let best = 1;
   let gap = -1;
-  for (let i = 1; i < sorted2.length; i++) {
-    const g = vertical ? sorted2[i].x - sorted2[i - 1].x : sorted2[i].y - sorted2[i - 1].y;
+  for (let i = 1; i < sorted3.length; i++) {
+    const g = vertical ? sorted3[i].x - sorted3[i - 1].x : sorted3[i].y - sorted3[i - 1].y;
     if (g > gap) {
       gap = g;
       best = i;
     }
   }
   if (gap < ANCHOR_SEP) return [{ x0: box2.x0, y0: box2.y0, x1: box2.x1, y1: box2.y1 }];
-  const mid = vertical ? Math.min(sorted2[best - 1].x + 36, sorted2[best].x - 24) : Math.min(sorted2[best - 1].y + 36, sorted2[best].y - 24);
+  const mid = vertical ? Math.min(sorted3[best - 1].x + 36, sorted3[best].x - 24) : Math.min(sorted3[best - 1].y + 36, sorted3[best].y - 24);
   if (vertical) {
     return [
-      ...splitAnchors(sorted2.slice(0, best), { ...box2, x1: mid }),
-      ...splitAnchors(sorted2.slice(best), { ...box2, x0: mid })
+      ...splitAnchors(sorted3.slice(0, best), { ...box2, x1: mid }),
+      ...splitAnchors(sorted3.slice(best), { ...box2, x0: mid })
     ];
   }
   return [
-    ...splitAnchors(sorted2.slice(0, best), { ...box2, y1: mid }),
-    ...splitAnchors(sorted2.slice(best), { ...box2, y0: mid })
+    ...splitAnchors(sorted3.slice(0, best), { ...box2, y1: mid }),
+    ...splitAnchors(sorted3.slice(best), { ...box2, y0: mid })
   ];
 }
 function sheetRegions(lines, pageW, pageH) {
@@ -12381,9 +13530,9 @@ function blankRepeatedFill(table) {
       if (c1 - c < 3) continue;
       let r12 = r + 1;
       while (r12 < table.rows) {
-        let same3 = true;
-        for (let k = c; k < c1; k++) if (fillOf(r12, k) !== text4) same3 = false;
-        if (!same3) break;
+        let same4 = true;
+        for (let k = c; k < c1; k++) if (fillOf(r12, k) !== text4) same4 = false;
+        if (!same4) break;
         r12++;
       }
       if (r12 - r < 3 || !otherIn(c, c1, text4)) continue;
@@ -13209,8 +14358,8 @@ function sameSpelling(a, b) {
 }
 function median6(values) {
   if (!values.length) return 0;
-  const sorted2 = [...values].sort((a, b) => a - b);
-  return sorted2[sorted2.length >> 1];
+  const sorted3 = [...values].sort((a, b) => a - b);
+  return sorted3[sorted3.length >> 1];
 }
 function snapOnto(item, line) {
   const hosts = line.items.map((entry) => entry.item).filter((it) => it?.transform);
@@ -14290,8 +15439,8 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
         }
         let j = i + 1;
         while (j < lines.length && !levelAt(j)) j++;
-        const chunk = lines.slice(i, j);
-        for (const group of groupParagraphs(chunk, { bodySize })) {
+        const chunk2 = lines.slice(i, j);
+        for (const group of groupParagraphs(chunk2, { bodySize })) {
           const peeled = pg.ocr ? peelCaptionColumn(group) : { keep: group, rest: [] };
           const pieces2 = pg.ocr ? splitOcrCaptionGroup(peeled.keep) : [peeled.keep];
           for (const part of pieces2) emitTextGroup(part);
@@ -14387,9 +15536,9 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
   applyNumbering(headings);
   for (const entry of refs) {
     if (!entry.ref) continue;
-    const same3 = footnotes.filter((f) => f.mark === entry.ref.mark);
-    const after = same3.filter((f) => f.page >= entry.page).sort((a, b) => a.page - b.page);
-    const pick3 = after[0] || same3[same3.length - 1];
+    const same4 = footnotes.filter((f) => f.mark === entry.ref.mark);
+    const after = same4.filter((f) => f.page >= entry.page).sort((a, b) => a.page - b.page);
+    const pick3 = after[0] || same4[same4.length - 1];
     if (pick3) entry.ref.to = pick3.id;
   }
   for (const id of order) if (blocks[id]?.footnoteRefs) inlineUnlinkedRefs(blocks[id]);
@@ -14551,9 +15700,9 @@ function stitchTables(tables, textBlocks, bodySize) {
     const ox = Math.min(a.bbox[2], b.bbox[2]) - Math.max(a.bbox[0], b.bbox[0]);
     if (ox < 0.8 * Math.min(a.bbox[2] - a.bbox[0], b.bbox[2] - b.bbox[0])) continue;
     const colW = (a.bbox[2] - a.bbox[0]) / a.cols;
-    let same3 = true;
-    for (let c = 1; c < a.cols; c++) if (Math.abs(a.grid.xs[c] - b.grid.xs[c]) > 0.35 * colW) same3 = false;
-    if (!same3) continue;
+    let same4 = true;
+    for (let c = 1; c < a.cols; c++) if (Math.abs(a.grid.xs[c] - b.grid.xs[c]) > 0.35 * colW) same4 = false;
+    if (!same4) continue;
     const between = textBlocks.filter((tb) => tb.bbox.y0 >= a.bbox[3] - 1 && tb.bbox.y1 <= b.bbox[1] + 1 && Math.min(tb.bbox.x1, a.bbox[2]) - Math.max(tb.bbox.x0, a.bbox[0]) > 0);
     const banner = between.length === 1 ? sectionLineBetween(between[0], a, b, bodySize) : null;
     if (between.length && !banner) continue;
@@ -15275,14 +16424,14 @@ function pinSpecFromBlock(block, doc, pdfUid) {
 function answerSource({ doc, blockId = "", pdfUid = "", wholeDoc = false } = {}) {
   const uid = typeof pdfUid === "string" ? pdfUid.trim() : "";
   if (!uid) return {};
-  if (wholeDoc) return UID_RE4.test(uid) ? { sourceUid: uid } : {};
+  if (wholeDoc) return UID_RE5.test(uid) ? { sourceUid: uid } : {};
   const block = blockId ? doc?.blocks?.[blockId] : null;
   const pin2 = block ? pinSpecFromBlock(block, doc, uid) : null;
   return pin2 ? { pin: pin2 } : {};
 }
 function sourceAttrString(uid) {
   const id = String(uid ?? "").trim();
-  if (!UID_RE4.test(id)) return "";
+  if (!UID_RE5.test(id)) return "";
   return `Source:: ((${id}))`;
 }
 function blankBullet(line) {
@@ -15320,7 +16469,7 @@ function oneBulletTree(text4) {
 }
 function planCopiedSource({ markdown = "", source = "" } = {}) {
   let pin2 = String(source ?? "").trim();
-  if (!UID_RE4.test(pin2)) pin2 = "";
+  if (!UID_RE5.test(pin2)) pin2 = "";
   let found = Boolean(pin2);
   const body = [];
   for (const line of String(markdown ?? "").replace(/\r\n/g, "\n").split("\n")) {
@@ -15512,7 +16661,7 @@ function copiedPartPlan({ block = null, doc = null, markdown = "", source = "", 
   const split = splitMarks(markdown);
   let sourceUid = split.sourceUid;
   const given = String(source ?? "").trim();
-  if (!sourceUid && UID_RE4.test(given)) sourceUid = given;
+  if (!sourceUid && UID_RE5.test(given)) sourceUid = given;
   const sourced = Boolean(sourceUid) || withSource === true;
   const fromBlock = block?.type === "table" ? cellsFromBlock(block) : null;
   const fromText = fromBlock ? null : tableFromMarkdown(split.body);
@@ -15572,7 +16721,7 @@ function copyMenuPlan({ id, block = null, doc = null, markdown = "", source = ""
   if (plan.image && plan.size && plan.size.w > 0 && plan.size.h > 0) {
     lines.push(`pxd-size:: ${Math.round(plan.size.w)} ${Math.round(plan.size.h)}`);
   }
-  const pin2 = id === "source" ? UID_RE4.test(String(source ?? "").trim()) ? String(source).trim() : plan.sourceUid : "";
+  const pin2 = id === "source" ? UID_RE5.test(String(source ?? "").trim()) ? String(source).trim() : plan.sourceUid : "";
   const cite = sourceAttrString(pin2);
   if (cite) lines.push(cite);
   return { ...plan, sourceUid: pin2 || plan.sourceUid, text: lines.join("\n") };
@@ -15670,7 +16819,7 @@ function cardJsonPayload({ markdown = "", size = null, kind = "card", source = "
     kind: String(kind || "card")
   };
   const pin2 = String(source ?? "").trim();
-  if (UID_RE4.test(pin2)) body.source = pin2;
+  if (UID_RE5.test(pin2)) body.source = pin2;
   if (body.kind === "table") {
     const snap = tableSnapshot(table);
     if (snap) body.table = snap;
@@ -15714,7 +16863,7 @@ function pinDeepLink({ graph, pageUid: pageUid2, pinUid } = {}) {
   const g = String(graph ?? "").trim();
   const page = String(pageUid2 ?? "").trim();
   const pin2 = String(pinUid ?? "").trim();
-  if (!g || !UID_RE4.test(page) || !UID_RE4.test(pin2)) return "";
+  if (!g || !UID_RE5.test(page) || !UID_RE5.test(pin2)) return "";
   return `#/app/${encodeURIComponent(g)}/page/${encodeURIComponent(page)}?pxd-pin=${encodeURIComponent(pin2)}`;
 }
 function pxdPinTarget(hash) {
@@ -15727,7 +16876,7 @@ function pxdPinTarget(hash) {
   } catch {
     return null;
   }
-  if (!UID_RE4.test(pin2)) return null;
+  if (!UID_RE5.test(pin2)) return null;
   return { pinUid: pin2, pageUid: pageUidFromHash(text4), graph: graphFromDeepLink(text4) };
 }
 function pinClickMode({ shiftKey = false, metaKey: metaKey2 = false, ctrlKey = false } = {}) {
@@ -15766,7 +16915,7 @@ function pinOpenPlan(region) {
 function pinOpenFallback({ opened = false, plan = null, pageUid: pageUid2 = "", now: now5 = 0 } = {}) {
   if (opened || !plan?.pinUid) return null;
   const page = String(pageUid2 || "").trim();
-  if (!UID_RE4.test(page)) return null;
+  if (!UID_RE5.test(page)) return null;
   return { openPage: page, pending: { pinUid: plan.pinUid, until: Number(now5) + PIN_PENDING_MS } };
 }
 function pinnedToast(page) {
@@ -15835,7 +16984,7 @@ function planPinWrites(spec) {
   creates.push({ role: "pin", parentUid: containerUid, uid: pinUid, string });
   return { uid: pinUid, reused: false, creates, containerUid: spec?.containerUid || "" };
 }
-var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE4, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash, COVER_AREA_SLACK, FIGURE_COPY_W, FIGURE_COPY_PAD, FIGURE_COPY_FONT, FIGURE_COPY_LINE_RATIO, FIGURE_COPY_LINE, FIGURE_COPY_CHARS, FIGURE_COPY_CHIP, FIGURE_COPY_IMAGE_CAP, FIGURE_COPY_IMAGE_MIN, FIGURE_COPY_IMAGE_SLOT, FIGURE_COPY_MAX, SOURCE_LINE_RE, SIZE_LINE_RE, notedPin, KEPT_PARSE_WAIT_MS, PIN_PENDING_MS;
+var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE5, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash, COVER_AREA_SLACK, FIGURE_COPY_W, FIGURE_COPY_PAD, FIGURE_COPY_FONT, FIGURE_COPY_LINE_RATIO, FIGURE_COPY_LINE, FIGURE_COPY_CHARS, FIGURE_COPY_CHIP, FIGURE_COPY_IMAGE_CAP, FIGURE_COPY_IMAGE_MIN, FIGURE_COPY_IMAGE_SLOT, FIGURE_COPY_MAX, SOURCE_LINE_RE, SIZE_LINE_RE, notedPin, KEPT_PARSE_WAIT_MS, PIN_PENDING_MS;
 var init_pdf_pin = __esm({
   "src/model/pdf-pin.js"() {
     init_deeplink();
@@ -15847,7 +16996,7 @@ var init_pdf_pin = __esm({
     WITH_SOURCE_KEY = "plexus-diagram:with-source";
     CARD_JSON_MIME = "application/x-plexus-card+json";
     PIN_BOARDS_QUERY = "[:find ?b ?s :in $ ?pin :where [?c :block/refs ?pin] [?card :block/children ?c] [?b :block/children ?card] [?b :block/string ?s]]";
-    UID_RE4 = /^[\w-]{1,32}$/;
+    UID_RE5 = /^[\w-]{1,32}$/;
     SOURCE_RE = /^Source::\s*\(\(([\w-]{1,32})\)\)\s*$/;
     DIAGRAM_RE = /\{\{(?:\[\[)?diagram(?:\]\])?/;
     COPY_MENU = Object.freeze([
@@ -16322,9 +17471,9 @@ function galleryGrid(items, { cols = 4, cell = 160, gap = 12 } = {}) {
 }
 function parseCardDate(item) {
   const title = String(item?.title ?? "").trim();
-  const daily = new RegExp(`^(${MONTHS3.join("|")})\\s+${DAY.source},\\s+(\\d{4})$`).exec(title);
+  const daily = new RegExp(`^(${MONTHS4.join("|")})\\s+${DAY.source},\\s+(\\d{4})$`).exec(title);
   if (daily) {
-    const month2 = MONTHS3.indexOf(daily[1]);
+    const month2 = MONTHS4.indexOf(daily[1]);
     const day2 = Number(daily[2]);
     const year2 = Number(daily[3]);
     if (month2 >= 0 && day2 >= 1 && day2 <= 31) return Date.UTC(year2, month2, day2);
@@ -16543,11 +17692,11 @@ function versionPeekRequest(api3) {
   if (typeof api3.ui?.blockHistory === "function") return "ui.blockHistory";
   return null;
 }
-var MONTHS3, DAY, ATTRIBUTE_TEMPLATE, FOCUS_MS, THUMBNAIL_CAP, VIA_CAP;
+var MONTHS4, DAY, ATTRIBUTE_TEMPLATE, FOCUS_MS, THUMBNAIL_CAP, VIA_CAP;
 var init_section6 = __esm({
   "src/model/section6.js"() {
     init_schema();
-    MONTHS3 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    MONTHS4 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     DAY = /(\d{1,2})(?:st|nd|rd|th)?/;
     ATTRIBUTE_TEMPLATE = [
       { string: "Owner:: " },
@@ -16564,7 +17713,7 @@ var init_section6 = __esm({
 function pageTitleToDate(title) {
   const match = String(title ?? "").trim().match(/^([A-Z][a-z]+) (\d{1,2})(?:st|nd|rd|th), (\d{4})$/);
   if (!match) return null;
-  const month = MONTHS4.indexOf(match[1]);
+  const month = MONTHS5.indexOf(match[1]);
   const day = Number(match[2]);
   const year = Number(match[3]);
   if (month < 0) return null;
@@ -16603,13 +17752,13 @@ function matchResurface(rows, pageDate, intervals, { slack = DAY2, cap: cap4 = R
   }
   return tabs;
 }
-var DEFAULT_INTERVALS, RESURFACE_CAP, DAY2, MONTHS4;
+var DEFAULT_INTERVALS, RESURFACE_CAP, DAY2, MONTHS5;
 var init_resurface = __esm({
   "src/model/resurface.js"() {
     DEFAULT_INTERVALS = Object.freeze([7, 30, 90, 365]);
     RESURFACE_CAP = 6;
     DAY2 = 864e5;
-    MONTHS4 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    MONTHS5 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   }
 });
 
@@ -17442,286 +18591,154 @@ var init_parse_to_roam_md = __esm({
   }
 });
 
-// src/model/follow.js
-function cleanSkip(list, cap4 = FOLLOW_SKIP_CAP) {
-  if (!Array.isArray(list)) return [];
-  const seen = /* @__PURE__ */ new Set();
-  const out = [];
-  for (const v of list) {
-    if (typeof v !== "string" || !UID_RE5.test(v) || seen.has(v)) continue;
-    seen.add(v);
-    out.push(v);
-  }
-  return out.length > cap4 ? out.slice(out.length - cap4) : out;
+// src/model/card-refs.js
+function cardRefsOn(board2) {
+  if (!board2?.items) return false;
+  if (board2.items.size > CARD_REFS_MAX) return false;
+  return board2.plexus?.refs !== false;
 }
-function normalizePointer(raw) {
-  if (!isObject3(raw)) return null;
-  const kind = typeof raw.kind === "string" && KIND_RE.test(raw.kind) ? raw.kind : null;
-  const uid = typeof raw.uid === "string" && UID_RE5.test(raw.uid) ? raw.uid : null;
-  if (!kind || !uid) return null;
-  return { kind, uid, ...raw.tree === true ? { tree: true } : {}, ...raw.columns === true ? { columns: true } : {}, skip: cleanSkip(raw.skip) };
+function refsOf(string) {
+  const text4 = String(string ?? "").replace(/`[^`\n]*`/g, " ");
+  const pages = /* @__PURE__ */ new Set();
+  PAGE_RE3.lastIndex = 0;
+  for (let m = PAGE_RE3.exec(text4); m; m = PAGE_RE3.exec(text4)) pages.add(m[1].trim());
+  TAG_RE.lastIndex = 0;
+  for (let m = TAG_RE.exec(text4); m; m = TAG_RE.exec(text4)) pages.add(m[1]);
+  pages.delete("");
+  return { pages, uids: refsIn(text4) };
 }
-function serializePointer(pointer) {
-  const p = normalizePointer(pointer);
-  if (!p) return null;
-  const out = { kind: p.kind, uid: p.uid };
-  if (p.tree) out.tree = true;
-  if (p.columns) out.columns = true;
-  if (p.skip.length) out.skip = p.skip;
-  return out;
-}
-function readFollow(plexus) {
-  return isObject3(plexus) ? normalizePointer(plexus[FOLLOW_KEY]) : null;
-}
-function keptList(plexus) {
-  const raw = isObject3(plexus) ? plexus[FOLLOW_KEPT_KEY] : null;
-  return (Array.isArray(raw) ? raw : raw ? [raw] : []).map(normalizePointer).filter((p) => p && p.skip.length);
-}
-function keptFollow(plexus, key) {
-  return keptList(plexus).find((p) => sourceKey(p) === key) || null;
-}
-function withFollow(plexus, pointer) {
-  const base2 = isObject3(plexus) ? { ...plexus } : {};
-  const next = pointer ? serializePointer(pointer) : null;
-  const prev = readFollow(base2);
-  const nextKey = sourceKey(next);
-  const kept = keptList(base2).filter((p) => sourceKey(p) !== nextKey);
-  if (prev && sourceKey(prev) !== nextKey && prev.skip.length) kept.push(prev);
-  let list = kept.slice(-FOLLOW_KEPT_SOURCES).map((p) => ({ kind: p.kind, uid: p.uid, skip: p.skip }));
-  while (list.length > 1 && list.reduce((n3, p) => n3 + p.skip.length, 0) > FOLLOW_SKIP_CAP) list = list.slice(1);
-  if (list.length) base2[FOLLOW_KEPT_KEY] = list;
-  else delete base2[FOLLOW_KEPT_KEY];
-  if (next) base2[FOLLOW_KEY] = next;
-  else delete base2[FOLLOW_KEY];
-  return base2;
-}
-function followPointerFor(current3, kind, uid, { tree, columns } = {}) {
-  const same3 = current3?.kind === kind && current3?.uid === uid;
-  const deep = tree === void 0 ? same3 && current3.tree === true : tree === true;
-  const cols = columns === void 0 ? same3 && current3.columns === true : columns === true;
-  return { kind, uid, ...deep ? { tree: true } : {}, ...cols ? { columns: true } : {}, skip: same3 ? current3.skip : [] };
-}
-function journalSpec(uid) {
-  if (uid === "week") return { week: true };
-  const m = /^days-([1-9]\d?)$/.exec(String(uid ?? ""));
-  const days = m ? Number(m[1]) : 0;
-  return days >= 1 && days <= JOURNAL_MAX_DAYS ? { days } : null;
-}
-function journalUid(spec) {
-  if (spec?.week) return "week";
-  const days = Math.floor(Number(spec?.days));
-  return days >= 1 && days <= JOURNAL_MAX_DAYS ? `days-${days}` : "";
-}
-function addSkip(skip, uids, cap4 = FOLLOW_SKIP_CAP) {
-  const add = (uids || []).filter((u) => typeof u === "string" && UID_RE5.test(u));
-  const drop = new Set(add);
-  return cleanSkip([...(skip || []).filter((u) => !drop.has(u)), ...add], cap4);
-}
-function boardRefSource(boardString2) {
-  const ref = parseBoardRef(boardString2);
-  if (!ref) return null;
-  if (ref.colon && ref.title !== "") return null;
-  return ref.uid;
-}
-function queryBody(string) {
-  const m = QUERY_BODY.exec(String(string || "").trim());
-  return m ? plainText(m[1].replace(/[{}]/g, " "), 120) : null;
-}
-function sourceText(string) {
-  const body = queryBody(string);
-  return body === null ? firstLine(string) : `Query ${body}`.trim();
-}
-function itemIds(item) {
-  const out = [];
-  if (item?.uid) out.push(`u:${item.uid}`);
-  if (item?.kind === "page" && item.title) out.push(`p:${item.title}`);
-  return out;
-}
-function cardIds(card2) {
-  const out = [];
-  if (!card2) return out;
-  const t = card2.target;
-  if (t?.kind === "page") {
-    if (t.uid) out.push(`u:${t.uid}`);
-    if (t.title) out.push(`p:${t.title}`);
-    return out;
-  }
-  if (t?.kind === "block" && t.uid) out.push(`u:${t.uid}`);
-  if (card2.uid) out.push(`u:${card2.uid}`);
-  return out;
-}
-function followIndex(board2, key = "") {
-  const on = /* @__PURE__ */ new Map();
-  const followed = [];
-  for (const item of board2?.items?.values?.() || []) {
-    for (const id of cardIds(item)) if (!on.has(id)) on.set(id, item.uid);
-    if (key && item.src === key) followed.push(item);
-  }
-  return { on, followed };
-}
-function membership(read2) {
-  const set = /* @__PURE__ */ new Set();
-  for (const item of read2?.items || []) for (const id of itemIds(item)) set.add(id);
-  for (const uid of read2?.members || []) if (typeof uid === "string" && uid) set.add(`u:${uid}`);
-  return set;
-}
-function absentStep(prev, read2, board2, key) {
-  const before = prev instanceof Map ? prev : /* @__PURE__ */ new Map();
-  if (!read2?.ok) return new Map(before);
-  const members = membership(read2);
-  const next = /* @__PURE__ */ new Map();
-  for (const card2 of followIndex(board2, key).followed) {
-    if (cardIds(card2).some((id) => members.has(id))) continue;
-    const n3 = (before.get(card2.uid) || 0) + (read2.complete ? 1 : 0);
-    if (n3 > 0) next.set(card2.uid, n3);
-  }
-  return next;
-}
-function followDiff(read2, board2, { key = "", skip = [], absent = /* @__PURE__ */ new Map(), since = null } = {}) {
-  const { on, followed } = followIndex(board2, key);
-  const skipped = new Set(skip);
-  const pending = [];
-  let placed = 0;
-  let dismissed = 0;
-  const seen = /* @__PURE__ */ new Set();
-  for (const item of read2?.ok ? read2.items || [] : []) {
-    if (!item?.uid || seen.has(item.uid)) continue;
-    seen.add(item.uid);
-    if (itemIds(item).some((id) => on.has(id))) {
-      placed += 1;
-      continue;
-    }
-    if (skipped.has(item.uid)) {
-      dismissed += 1;
-      continue;
-    }
-    if (item.blank) continue;
-    pending.push({ ...item, fresh: Number.isFinite(since) && Number(item.time) > since });
-  }
-  const gone = absent instanceof Map ? absent : /* @__PURE__ */ new Map();
-  const left = followed.filter((card2) => (gone.get(card2.uid) || 0) >= LEFT_CONFIRM).map((card2) => card2.uid);
-  return { pending, left, placed, dismissed };
-}
-function sinceVisit(diff, { since = null, leftBefore = null } = {}) {
-  if (!Number.isFinite(since)) return { newCount: 0, leftCount: 0, baseline: false };
-  const before = leftBefore instanceof Set ? leftBefore : null;
-  return {
-    newCount: (diff?.pending || []).filter((row4) => row4.fresh).length,
-    leftCount: (diff?.left || []).filter((uid) => !before?.has(uid)).length,
-    baseline: true
+function cardIndex(board2) {
+  const byKey = /* @__PURE__ */ new Map();
+  const add = (key, uid) => {
+    if (!byKey.has(key)) byKey.set(key, []);
+    const list = byKey.get(key);
+    if (!list.includes(uid)) list.push(uid);
   };
-}
-function trayHeadline({ newCount = 0, leftCount = 0, baseline = false } = {}) {
-  if (!baseline) return "";
-  const parts = [];
-  if (newCount > 0) parts.push(`${newCount} new`);
-  if (leftCount > 0) parts.push(`${leftCount} left`);
-  return parts.length ? `${parts.join(", ")} since your last visit` : "Nothing new since your last visit";
-}
-function followCardString(item) {
-  if (item?.kind === "page" && item.title) return `[[${item.title}]]`;
-  return `((${item?.uid}))`;
-}
-function followBatches(list, cap4) {
-  const size = Math.max(1, Math.floor(Number(cap4) || 1));
-  const out = [];
-  for (let i = 0; i < (list || []).length; i += size) out.push(list.slice(i, i + size));
-  return out;
-}
-function followColumn(bounds, count, { w, h, column = 0, at = null, gap = FOLLOW_COLUMN_GAP, stack = FOLLOW_STACK_GAP } = {}) {
-  const x0 = at ? at.x : bounds ? bounds.x + bounds.w + gap : 0;
-  const y0 = at ? at.y : bounds ? bounds.y : 0;
-  const x = x0 + column * (w + gap);
-  return Array.from({ length: Math.max(0, count) }, (_, i) => ({ x, y: y0 + i * (h + stack) }));
-}
-function journalColumnSpots(existing, entries, { bounds = null, w, h, gap = FOLLOW_COLUMN_GAP, stack = FOLLOW_STACK_GAP } = {}) {
-  const rects = (existing || []).filter((r) => r?.day);
-  const cols = /* @__PURE__ */ new Map();
-  let right = -Infinity;
-  let top = Infinity;
-  for (const r of rects) {
-    right = Math.max(right, r.x + r.w);
-    top = Math.min(top, r.y);
-    const shared5 = rects.some((o) => o.day !== r.day && o.x < r.x + r.w && o.x + o.w > r.x);
-    const col2 = cols.get(r.day);
-    if (!shared5 && (!col2 || r.y + r.h > col2.bottom)) cols.set(r.day, { x: r.x, bottom: r.y + r.h });
+  for (const item of board2.items.values()) {
+    if (item.type !== "card" || !item.target) continue;
+    const t = item.target;
+    if (t.kind === "page") {
+      add(`p:${t.title ?? ""}`, item.uid);
+      if (t.uid) add(`u:${t.uid}`, item.uid);
+    } else if (t.kind === "self") add(`u:${item.uid}`, item.uid);
+    else if (t.uid) add(`u:${t.uid}`, item.uid);
   }
-  const x0 = Number.isFinite(right) ? right + gap : bounds ? bounds.x + bounds.w + gap : 0;
-  const y0 = Number.isFinite(top) ? top : bounds ? bounds.y : 0;
-  const fresh = [...new Set((entries || []).map((e2) => e2?.day ?? "").filter((d) => !cols.has(d)))].sort((a, b) => dayKey(a) < dayKey(b) ? -1 : dayKey(a) > dayKey(b) ? 1 : 0);
-  const made = new Map(fresh.map((d, i) => [d, { x: x0 + i * (w + gap), next: y0 }]));
-  const below = /* @__PURE__ */ new Map();
-  return (entries || []).map((e2) => {
-    const day = e2?.day ?? "";
-    const col2 = cols.get(day);
-    if (col2) {
-      const y2 = below.has(day) ? below.get(day) : col2.bottom + stack;
-      below.set(day, y2 + h + stack);
-      return { x: col2.x, y: y2 };
-    }
-    const c = made.get(day);
-    const y = c.next;
-    c.next += h + stack;
-    return { x: c.x, y };
-  });
+  return byKey;
 }
-function createLeftMemory({ storage = globalThis.localStorage, graph = "" } = {}) {
-  const key = (uid) => `plexus-diagram:follow-left:${graph}:${uid}`;
-  return {
-    get(uid) {
-      try {
-        const raw = storage?.getItem?.(key(uid));
-        const list = raw ? JSON.parse(raw) : null;
-        return Array.isArray(list) ? new Set(list.filter((u) => typeof u === "string")) : null;
-      } catch {
-        return null;
+function* descendants(content, budget) {
+  const stack = [];
+  for (let i = (Array.isArray(content) ? content.length : 0) - 1; i >= 0; i -= 1) stack.push([content[i], 1, null]);
+  while (stack.length && budget.n > 0) {
+    const [node2, depth, parent] = stack.pop();
+    const string = typeof node2?.[":block/string"] === "string" ? node2[":block/string"] : "";
+    budget.n -= 1;
+    yield { uid: node2?.[":block/uid"], string, parent };
+    const kids = node2?.[":block/children"];
+    if (depth >= MAX_DEPTH || !Array.isArray(kids)) continue;
+    for (let i = kids.length - 1; i >= 0; i -= 1) stack.push([kids[i], depth + 1, string]);
+  }
+}
+function cardRefLinks(board2) {
+  if (!board2?.items) return [];
+  const index = cardIndex(board2);
+  if (!index.size) return [];
+  const byKey = /* @__PURE__ */ new Map();
+  const note = (from, uid, string, parent) => {
+    const refs = refsOf(string);
+    if (!refs.pages.size && !refs.uids.length) return;
+    let label = attrNameOf(string);
+    if (label == null && isBareAttr2(parent)) label = attrNameOf(parent);
+    const isAttr = label != null;
+    if (!isAttr) label = "mentions";
+    const targets = /* @__PURE__ */ new Set();
+    for (const title of refs.pages) for (const uid2 of index.get(`p:${title}`) || []) targets.add(uid2);
+    for (const uid2 of refs.uids) for (const card2 of index.get(`u:${uid2}`) || []) targets.add(card2);
+    for (const to of targets) {
+      if (to === from) continue;
+      const key = `${from}->${to}`;
+      let link = byKey.get(key);
+      if (!link) {
+        link = { key, from, to, kind: "ref", labels: [], sources: [], color: "gray" };
+        byKey.set(key, link);
       }
-    },
-    set(uid, uids) {
-      try {
-        storage?.setItem?.(key(uid), JSON.stringify([...uids || []].slice(0, FOLLOW_SKIP_CAP)));
-      } catch {
-      }
+      if (isAttr) link.kind = "attr";
+      if (!link.labels.includes(label)) link.labels.push(label);
+      if (link.sources.length < MAX_SOURCES2 && !link.sources.some((s) => s.uid === uid)) link.sources.push({ uid, string });
     }
   };
+  for (const item of board2.items.values()) {
+    if (item.type !== "card" || !item.target) continue;
+    if (item.target.kind === "self") note(item.uid, item.uid, item.string, null);
+    const budget = { n: MAX_STRINGS };
+    for (const { uid, string, parent } of descendants(item.content, budget)) note(item.uid, uid, string, parent);
+  }
+  const out = [];
+  for (const link of byKey.values()) {
+    link.labels = [...link.labels.filter((l) => l !== "mentions"), ...link.labels.filter((l) => l === "mentions")];
+    link.color = colorForLabel(link.labels[0]);
+    out.push(link);
+  }
+  return out;
 }
-var FOLLOW_KEY, FOLLOW_KEPT_KEY, FOLLOW_KEPT_SOURCES, FOLLOW_SRC, FOLLOW_DAY, JOURNAL_DEFAULT_DAYS, JOURNAL_MAX_DAYS, FOLLOW_MIME, FOLLOW_SKIP_CAP, FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH, FOLLOW_PARENT_CAP, FOLLOW_QUIET_MS, FOLLOW_POLL_MS, FOLLOW_BACKOFF, FOLLOW_TYPING_MS, FOLLOW_SLOW_MS, followQuietMs, LEFT_CONFIRM, FOLLOW_COLUMN_GAP, FOLLOW_STACK_GAP, KIND_RE, UID_RE5, isObject3, sourceKey, textSourceUid, QUERY_BODY, leftUnsettled, followPill, dayKey;
-var init_follow = __esm({
-  "src/model/follow.js"() {
+function treeLinks(board2, parents, key) {
+  if (!board2?.items || !(parents instanceof Map) || !parents.size || !key) return [];
+  const byUid2 = /* @__PURE__ */ new Map();
+  for (const item of board2.items.values()) {
+    if (item.type !== "card" || item.target?.kind !== "block" || !item.target.uid) continue;
+    if (!byUid2.has(item.target.uid)) byUid2.set(item.target.uid, []);
+    byUid2.get(item.target.uid).push(item.uid);
+  }
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const item of board2.items.values()) {
+    if (item.type !== "card" || item.src !== key || item.target?.kind !== "block") continue;
+    const parent = parents.get(item.target.uid);
+    if (!parent) continue;
+    for (const from of byUid2.get(parent) || []) {
+      const k = `${from}->${item.uid}`;
+      if (from === item.uid || seen.has(k)) continue;
+      seen.add(k);
+      out.push({ key: k, from, to: item.uid, kind: "tree", labels: [], sources: [], color: "gray" });
+    }
+  }
+  return out;
+}
+function mergeLinks(a, b) {
+  const byKey = /* @__PURE__ */ new Map();
+  for (const link of [...a || [], ...b || []]) {
+    const have = byKey.get(link.key);
+    if (!have) {
+      byKey.set(link.key, { ...link, labels: [...link.labels || []], sources: [...link.sources || []] });
+      continue;
+    }
+    if (RANK2[link.kind] > RANK2[have.kind]) have.kind = link.kind;
+    for (const l of link.labels || []) if (!have.labels.includes(l)) have.labels.push(l);
+    for (const s of link.sources || []) {
+      if (have.sources.length >= MAX_SOURCES2) break;
+      if (!have.sources.some((x) => x.uid === s.uid && x.string === s.string)) have.sources.push(s);
+    }
+  }
+  const out = [];
+  for (const link of byKey.values()) {
+    link.labels = [...link.labels.filter((l) => l !== "mentions"), ...link.labels.filter((l) => l === "mentions")];
+    link.color = colorForLabel(link.labels[0]);
+    out.push(link);
+  }
+  return out;
+}
+var CARD_REFS_MAX, MAX_SOURCES2, MAX_DEPTH, RANK2, MAX_STRINGS, isBareAttr2, PAGE_RE3, TAG_RE;
+var init_card_refs = __esm({
+  "src/model/card-refs.js"() {
+    init_endpoints();
     init_schema();
-    FOLLOW_KEY = "follow";
-    FOLLOW_KEPT_KEY = "followSkip";
-    FOLLOW_KEPT_SOURCES = 5;
-    FOLLOW_SRC = "src";
-    FOLLOW_DAY = "day";
-    JOURNAL_DEFAULT_DAYS = 7;
-    JOURNAL_MAX_DAYS = 31;
-    FOLLOW_MIME = "application/x-plexus-follow";
-    FOLLOW_SKIP_CAP = 300;
-    FOLLOW_READ_CAP = 300;
-    FOLLOW_TREE_DEPTH = 8;
-    FOLLOW_PARENT_CAP = 60;
-    FOLLOW_QUIET_MS = 1500;
-    FOLLOW_POLL_MS = 6e4;
-    FOLLOW_BACKOFF = 10;
-    FOLLOW_TYPING_MS = 50;
-    FOLLOW_SLOW_MS = 200;
-    followQuietMs = (lastMs) => Math.min(FOLLOW_POLL_MS, Math.max(FOLLOW_QUIET_MS, FOLLOW_BACKOFF * (Number(lastMs) || 0)));
-    LEFT_CONFIRM = 2;
-    FOLLOW_COLUMN_GAP = 48;
-    FOLLOW_STACK_GAP = 24;
-    KIND_RE = /^[a-z][a-z0-9-]{0,31}$/;
-    UID_RE5 = /^[\w-]{1,64}$/;
-    isObject3 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-    sourceKey = (pointer) => pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}` : "";
-    textSourceUid = boardRefSource;
-    QUERY_BODY = /^\{\{\s*(?:\[\[query\]\]|query)\s*:([\s\S]*)\}\}$/;
-    leftUnsettled = (absent) => [...absent instanceof Map ? absent.values() : []].some((n3) => n3 > 0 && n3 < LEFT_CONFIRM);
-    followPill = (n3) => `Following (${n3})`;
-    dayKey = (day) => {
-      const m = /^(\d\d)-(\d\d)-(\d{4})$/.exec(String(day ?? ""));
-      return m ? `${m[3]}${m[1]}${m[2]}` : String(day ?? "");
-    };
+    CARD_REFS_MAX = 400;
+    MAX_SOURCES2 = 20;
+    MAX_DEPTH = 8;
+    RANK2 = { tree: 0, ref: 1, attr: 2 };
+    MAX_STRINGS = 500;
+    isBareAttr2 = (s) => typeof s === "string" && /^\s*[^:\n]{1,60}::\s*$/.test(s);
+    PAGE_RE3 = /\[\[([^\[\]]+)\]\]/g;
+    TAG_RE = /(?:^|[\s(,;])#([^\s\[\]#,.!?;:()`]+)/g;
   }
 });
 
@@ -17758,9 +18775,9 @@ function readEnhancedUidCache(storage = globalThis.localStorage, key = graphCach
   }
 }
 function writeEnhancedUidCache(uids, storage = globalThis.localStorage, key = graphCacheKey()) {
-  const sorted2 = [...new Set([...uids].map(String).filter(Boolean))].sort();
-  storage?.setItem?.(key, JSON.stringify(sorted2));
-  return sorted2;
+  const sorted3 = [...new Set([...uids].map(String).filter(Boolean))].sort();
+  storage?.setItem?.(key, JSON.stringify(sorted3));
+  return sorted3;
 }
 function enhancedUidGuardCss(uids) {
   const selectors = [];
@@ -18254,7 +19271,7 @@ var init_info = __esm({
 
 // src/model/library.js
 function isDailyTitle(title) {
-  const m = DAILY_RE.exec(String(title ?? ""));
+  const m = DAILY_RE2.exec(String(title ?? ""));
   if (!m) return false;
   const day = Number(m[2]);
   if (day < 1 || day > 31) return false;
@@ -18448,7 +19465,7 @@ function recentDailyTitles(days = 14, now5 = /* @__PURE__ */ new Date()) {
 function libraryCap() {
   return LIBRARY_CAP;
 }
-var LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, LIBRARY_TYPES, PARSE_PART_TYPES, BOUNDED_TYPES, TYPE_SET2, LIBRARY_CAP, DAY_MS, MONTHS5, DAILY_RE, PDF_BLOCK_RE, IMAGE_RE, WEB_RE, PDF_URL_RE, IMAGE_PARTS_RE;
+var LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, LIBRARY_TYPES, PARSE_PART_TYPES, BOUNDED_TYPES, TYPE_SET2, LIBRARY_CAP, DAY_MS, MONTHS6, DAILY_RE2, PDF_BLOCK_RE, IMAGE_RE, WEB_RE, PDF_URL_RE, IMAGE_PARTS_RE;
 var init_library = __esm({
   "src/model/library.js"() {
     init_schema();
@@ -18462,8 +19479,8 @@ var init_library = __esm({
     TYPE_SET2 = new Set(LIBRARY_TYPES.filter((t) => t !== "all"));
     LIBRARY_CAP = 80;
     DAY_MS = 864e5;
-    MONTHS5 = "January|February|March|April|May|June|July|August|September|October|November|December";
-    DAILY_RE = new RegExp(`^(${MONTHS5}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
+    MONTHS6 = "January|February|March|April|May|June|July|August|September|October|November|December";
+    DAILY_RE2 = new RegExp(`^(${MONTHS6}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
     PDF_BLOCK_RE = /\{\{(?:\[\[)?pdf(?:\]\])?:/i;
     IMAGE_RE = /!\[[^\]]*\]\([^)\s]+[^)]*\)/;
     WEB_RE = /^(?:\[[^\]]*\]\(\s*https?:\/\/[^\s)]+\s*\)|https?:\/\/\S+)$/i;
@@ -18473,7 +19490,7 @@ var init_library = __esm({
 });
 
 // src/model/search-sort.js
-function sortRows(rows, sort) {
+function sortRows2(rows, sort) {
   const list = Array.isArray(rows) ? rows.slice() : [];
   const cmp = COMPARE[normalizeSort(sort)];
   if (!cmp) return list;
@@ -18492,7 +19509,7 @@ function ago(time, now5) {
 function dateText(time, now5) {
   const d = new Date(time);
   const nowY = new Date(now5).getFullYear();
-  return `${MONTHS6[d.getMonth()]} ${d.getDate()}${d.getFullYear() === nowY ? "" : `, ${d.getFullYear()}`}`;
+  return `${MONTHS7[d.getMonth()]} ${d.getDate()}${d.getFullYear() === nowY ? "" : `, ${d.getFullYear()}`}`;
 }
 function metaLine(row4, sort, now5 = Date.now()) {
   const meta = row4?.meta;
@@ -18598,10 +19615,10 @@ function assembleMeta(uids, { pullMany, q: q2 }) {
   const out = /* @__PURE__ */ new Map();
   const list = (uids || []).filter(Boolean);
   for (let i = 0; i < list.length; i += META_CHUNK) {
-    const chunk = list.slice(i, i + META_CHUNK);
+    const chunk2 = list.slice(i, i + META_CHUNK);
     let nodes = [];
     try {
-      nodes = pullMany(META_PULL, chunk.map((u) => [":block/uid", u])) || [];
+      nodes = pullMany(META_PULL, chunk2.map((u) => [":block/uid", u])) || [];
     } catch {
       nodes = [];
     }
@@ -18637,7 +19654,7 @@ function assembleMeta(uids, { pullMany, q: q2 }) {
   }
   return out;
 }
-var SORTS, DEFAULT_SORT, SORT_IDS, normalizeSort, sortLabel, num4, titleOf, lengthOf, byNumber, COMPARE, sortNeedsMeta, MONTHS6, by, plural, DAY_MS2, USER_PULL, META_PULL, META_REFS, USER_NAME_QUERIES, META_CHUNK, META_TTL_MS, META_MAX, userName;
+var SORTS, DEFAULT_SORT, SORT_IDS, normalizeSort, sortLabel, num4, titleOf, lengthOf, byNumber, COMPARE, sortNeedsMeta, MONTHS7, by, plural, DAY_MS2, USER_PULL, META_PULL, META_REFS, USER_NAME_QUERIES, META_CHUNK, META_TTL_MS, META_MAX, userName;
 var init_search_sort = __esm({
   "src/model/search-sort.js"() {
     SORTS = Object.freeze([
@@ -18675,7 +19692,7 @@ var init_search_sort = __esm({
       title: (a, b) => titleOf(a).localeCompare(titleOf(b), void 0, { sensitivity: "base", numeric: true })
     };
     sortNeedsMeta = (sort) => normalizeSort(sort) !== DEFAULT_SORT && normalizeSort(sort) !== "title";
-    MONTHS6 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    MONTHS7 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     by = (name) => name && String(name).length <= 20 ? ` by ${name}` : "";
     plural = (n3, one, many) => `${n3.toLocaleString("en-US")} ${n3 === 1 ? one : many}`;
     DAY_MS2 = 864e5;
@@ -19295,11 +20312,11 @@ function apiVersionText(api3) {
   const text4 = plainVersion(api3.apiVersion);
   return text4 ? `apiVersion ${text4}` : "";
 }
-function row(id, label, state, version) {
+function row2(id, label, state, version) {
   return { id, label, state, version: version || "" };
 }
 function missing(id, label) {
-  return row(id, label, MISSING, "");
+  return row2(id, label, MISSING, "");
 }
 function betterTasks(win2) {
   let entry = null;
@@ -19313,24 +20330,24 @@ function betterTasks(win2) {
   const btOn = bt != null && typeof bt === "object";
   if (!entryOn && !btOn) return missing("better-tasks", "Better Tasks");
   const version = plainVersion(entry?.version) || plainVersion(bt?.version) || plainVersion(bt?.v1?.version) || plainVersion(bt?.v2?.version);
-  return row("better-tasks", "Better Tasks", FOUND, version);
+  return row2("better-tasks", "Better Tasks", FOUND, version);
 }
 function taskStatusTags(win2) {
   const api3 = read(win2, "RoamTaskStatusTags");
   if (!api3 || typeof api3 !== "object") return missing("task-status-tags", "Task Status Tags");
-  return row("task-status-tags", "Task Status Tags", FOUND, apiVersionText(api3));
+  return row2("task-status-tags", "Task Status Tags", FOUND, apiVersionText(api3));
 }
 function roamPlexus(win2) {
   const api3 = read(win2, "RoamPlexus");
   if (!api3 || typeof api3 !== "object") return missing("roam-plexus", "Roam Plexus");
-  return row("roam-plexus", "Roam Plexus", FOUND, apiVersionText(api3));
+  return row2("roam-plexus", "Roam Plexus", FOUND, apiVersionText(api3));
 }
 function compass(win2) {
   const api3 = read(win2, "RoamCompass");
   const flag = plainVersion(read(win2, "__ROAM_COMPASS_VERSION"));
   const apiOn = api3 != null && typeof api3 === "object";
   if (!apiOn && !flag) return missing("compass", "Compass");
-  return row("compass", "Compass", FOUND, flag || apiVersionText(api3));
+  return row2("compass", "Compass", FOUND, flag || apiVersionText(api3));
 }
 function styleText(doc) {
   let text4 = "";
@@ -19402,7 +20419,7 @@ function highlighter(win2) {
     marked = false;
   }
   if (!global && !marked) return missing("highlighter", "Colour highlighter");
-  return row("highlighter", "Colour highlighter", FOUND, plainVersion(global?.version));
+  return row2("highlighter", "Colour highlighter", FOUND, plainVersion(global?.version));
 }
 function integrations(win2) {
   return [betterTasks(win2), taskStatusTags(win2), roamPlexus(win2), compass(win2), highlighter(win2)];
@@ -19449,8 +20466,8 @@ function perfNow() {
 function percentile(samples, p) {
   const n3 = samples.length;
   if (!n3) return null;
-  const sorted2 = samples.slice().sort((a, b) => a - b);
-  return sorted2[Math.floor((n3 - 1) * p)];
+  const sorted3 = samples.slice().sort((a, b) => a - b);
+  return sorted3[Math.floor((n3 - 1) * p)];
 }
 function ring(cap4) {
   const samples = [];
@@ -20721,7 +21738,7 @@ function fillFromTags(tags, probe) {
   const parsed = typeof tags === "string" || tags == null ? highlighterTags(tags) : tags;
   const name = typeof parsed?.bg === "string" ? parsed.bg : "";
   if (!name) return "";
-  return fromProbe(probe, name) || FALLBACK[name.toLowerCase()] || "";
+  return fromProbe(probe, name) || FALLBACK2[name.toLowerCase()] || "";
 }
 function bgSpans(string) {
   const out = [];
@@ -20762,7 +21779,7 @@ function rewriteBgTag(string, name) {
   }
   return next.slice(0, spans[0][0]) + token + next.slice(spans[0][1]);
 }
-var NAME, BG_SRC, TAG_SRC, GRAY, FALLBACK;
+var NAME, BG_SRC, TAG_SRC, GRAY, FALLBACK2;
 var init_highlighter = __esm({
   "src/model/highlighter.js"() {
     NAME = "[A-Za-z0-9_]+";
@@ -20785,7 +21802,7 @@ var init_highlighter = __esm({
       `\\[\\[bg-(${NAME})\\]\\]`
     ].join("|");
     GRAY = "#dddddd";
-    FALLBACK = {
+    FALLBACK2 = {
       red: "#fcb8b8",
       orange: "#ffecd0",
       yellow: "#fff6b9",
@@ -20831,7 +21848,7 @@ function colorOf2(string) {
 }
 function snippetOf(string) {
   if (typeof string !== "string") return "";
-  return string.replace(TOKEN, " ").replace(/[ \t]{2,}/g, " ").trim().slice(0, 80);
+  return string.replace(TOKEN2, " ").replace(/[ \t]{2,}/g, " ").trim().slice(0, 80);
 }
 function groupOf(ancestors) {
   for (let i = ancestors.length - 1; i >= 0; i -= 1) {
@@ -20904,8 +21921,8 @@ function placeHighlights(rows, { mode, origin, cap: cap4 } = {}) {
     const { col: col2, row: line } = slot(index, mode);
     return {
       string: `((${row4.uid}))`,
-      x: at.x + col2 * (CARD_W3 + GAP3),
-      y: at.y + line * (CARD_H3 + GAP3),
+      x: at.x + col2 * (CARD_W3 + GAP4),
+      y: at.y + line * (CARD_H3 + GAP4),
       w: CARD_W3,
       h: CARD_H3
     };
@@ -20921,7 +21938,7 @@ function expandDateHighlights(block) {
   }
   return uids.length ? uids : null;
 }
-var NAMES, GROUP_RE, COLOR_TOKEN2, TOKEN, CARD_W3, CARD_H3, GAP3, COLS, CAP;
+var NAMES, GROUP_RE, COLOR_TOKEN2, TOKEN2, CARD_W3, CARD_H3, GAP4, COLS, CAP;
 var init_highlight_pick = __esm({
   "src/model/highlight-pick.js"() {
     init_highlight();
@@ -20929,10 +21946,10 @@ var init_highlight_pick = __esm({
     NAMES = /* @__PURE__ */ new Set(["red", "orange", "yellow", "green", "blue", "purple", "pink"]);
     GROUP_RE = /^\[\[[^\[\]]+\]\]$/;
     COLOR_TOKEN2 = /#h\/([A-Za-z]+)/;
-    TOKEN = /#h\/[A-Za-z]+/g;
+    TOKEN2 = /#h\/[A-Za-z]+/g;
     CARD_W3 = 300;
     CARD_H3 = 140;
-    GAP3 = 24;
+    GAP4 = 24;
     COLS = 3;
     CAP = 45;
   }
@@ -21238,6 +22255,9 @@ var init_tooltip_text = __esm({
       "ctx.collapse-section": e("Collapse", "Fold the section down to its title."),
       "ctx.collapse-section:on": e("Expand", "Show the section's cards again."),
       "ctx.section-note": e("Description", "Add a one-line description under the section's title."),
+      "ctx.bucket-bind": e("Bind to tag or attribute", "Cards dropped in this section get the tag or Name:: value; dragged out, it comes off."),
+      "ctx.bucket-write": e("Write section to graph", "Tag every card in this section now."),
+      "ctx.bucket-unbind": e("Unbind", "Stop writing a tag or attribute to cards. Cards keep what they have."),
       "ctx.section-note:on": e("Remove note", "Delete the section's description line."),
       "ctx.lock": e("Lock", "Pin the section and everything inside it."),
       "ctx.lock:on": e("Unlock", "Unpin the section and everything inside it."),
@@ -21252,6 +22272,7 @@ var init_tooltip_text = __esm({
       "ctx.notes": e("Notes", "Open the arrow's own block in the sidebar to add notes."),
       "ctx.write": e("Write to graph", "Write this link as a Name:: attribute on the source block."),
       "ctx.source": e(null, "Open the block that makes this link in the sidebar."),
+      "ctx.pin-refs": e("Pin ref arrows", "Turn the faint arrows from this card's refs into connections you can style. Up to 20 at a time."),
       "ctx.pin": e("Pin as connection", "Turn this graph link into an arrow you can style."),
       "ctx.align.left": e("Align left", "Line the selected cards up on their left edges."),
       "ctx.align.center": e("Align centers", "Line the selected cards up on their horizontal centers."),
@@ -21424,10 +22445,10 @@ function preferredSide(target, root) {
 }
 function placeTip({ target, tip, bounds, side: side2 }) {
   const at = (s) => {
-    if (s === "below") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top + target.height + GAP4 };
-    if (s === "above") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top - tip.height - GAP4 };
-    if (s === "left") return { left: target.left - tip.width - GAP4, top: target.top + target.height / 2 - tip.height / 2 };
-    return { left: target.left + target.width + GAP4, top: target.top + target.height / 2 - tip.height / 2 };
+    if (s === "below") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top + target.height + GAP5 };
+    if (s === "above") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top - tip.height - GAP5 };
+    if (s === "left") return { left: target.left - tip.width - GAP5, top: target.top + target.height / 2 - tip.height / 2 };
+    return { left: target.left + target.width + GAP5, top: target.top + target.height / 2 - tip.height / 2 };
   };
   let use = side2;
   let p = at(use);
@@ -21634,11 +22655,11 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
     }
   };
 }
-var GAP4, MARGIN, DELAYS, ID, OPPOSITE;
+var GAP5, MARGIN, DELAYS, ID, OPPOSITE;
 var init_tooltip = __esm({
   "src/view/tooltip.js"() {
     init_tooltip_text();
-    GAP4 = 8;
+    GAP5 = 8;
     MARGIN = 4;
     DELAYS = { instant: 0, "350 ms": 350, "800 ms": 800 };
     ID = "pxd-tooltip";
@@ -22516,283 +23537,6 @@ var init_relchips = __esm({
   }
 });
 
-// src/model/tasks.js
-function setTaskAttrNames(map) {
-  liveNames = map instanceof Map && map.size ? map : null;
-  namesSig = liveNames ? [...liveNames].map(([id, set]) => `${id}=${[...set].sort().join("|")}`).join(";") : "";
-}
-function taskAttrId(text4, names = liveNames) {
-  if (String(text4 ?? "").trim() === ACTIVITY_LOG) return "activity";
-  const name = attrNameOf(text4);
-  if (!name) return null;
-  const key = lower(name);
-  if (names) {
-    for (const [id, set] of names) if (set.has(key)) return id;
-  }
-  if (DEFAULT_IDS.has(key)) return DEFAULT_IDS.get(key);
-  return key.startsWith("bt_attr") ? "other" : null;
-}
-function isTaskAttr(child, names = liveNames) {
-  return taskAttrId(child?.[":block/string"] ?? child?.string ?? "", names) !== null;
-}
-function parseRoamDay(title) {
-  const m = DAILY_RE3.exec(String(title ?? "").trim());
-  if (!m) return null;
-  const day = Number(m[2]);
-  const suffix = day >= 11 && day <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th";
-  if (m[3] !== suffix || day < 1 || day > 31) return null;
-  const month = MONTHS9.indexOf(m[1]);
-  if (month < 0) return null;
-  return { y: Number(m[4]), m: month + 1, d: day };
-}
-function childString3(child) {
-  return child?.[":block/string"] ?? child?.string ?? "";
-}
-function dayOf(value) {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return { y: value.getFullYear(), m: value.getMonth() + 1, d: value.getDate() };
-  }
-  return parseRoamDay(value);
-}
-function stamp(part) {
-  return part.y * 1e4 + part.m * 100 + part.d;
-}
-function dueChip(content, today = /* @__PURE__ */ new Date()) {
-  let raw = null;
-  let title = "";
-  for (const child of content || []) {
-    const text4 = String(childString3(child));
-    if (taskAttrId(text4) !== "due") continue;
-    raw = text4;
-    const rest = text4.slice(text4.indexOf("::") + 2).trim();
-    const wiki = /^\[\[([\s\S]+)\]\]$/.exec(rest);
-    title = (wiki ? wiki[1] : rest).trim();
-    break;
-  }
-  if (raw == null || !title) return null;
-  const due = parseRoamDay(title);
-  const now5 = dayOf(today);
-  return { text: title, overdue: Boolean(due && now5 && stamp(due) < stamp(now5)), today: Boolean(due && now5 && stamp(due) === stamp(now5)), raw, day: due };
-}
-function shortDay(day, today = /* @__PURE__ */ new Date()) {
-  if (!day) return "";
-  const now5 = dayOf(today);
-  const base2 = `${SHORT_MONTHS[day.m - 1]} ${day.d}`;
-  return now5 && day.y !== now5.y ? `${base2}, ${day.y}` : base2;
-}
-function dayChoices(today = /* @__PURE__ */ new Date()) {
-  const at = (n3) => iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + n3));
-  const toMonday = (8 - today.getDay()) % 7 || 7;
-  return [
-    { label: "Today", value: at(0) },
-    { label: "Tomorrow", value: at(1) },
-    { label: "Next week", value: at(toMonday) }
-  ];
-}
-function attrValue(text4) {
-  const rest = String(text4).slice(String(text4).indexOf("::") + 2).trim();
-  const ref = /\[\[([^\]]+)\]\]/.exec(rest);
-  if (ref) return ref[1].trim();
-  return rest.replace(/\{\{[\s\S]*$/, "").trim();
-}
-function taskMeta(string, content, today = /* @__PURE__ */ new Date(), names = liveNames) {
-  const state = taskState(string);
-  if (!state) return null;
-  const meta = { done: state === "DONE", status: "", cancelled: false, due: null, project: "", priority: "", priorityGlyph: "", repeat: "", waitingFor: "", gtd: "", energy: "", context: "", notes: "" };
-  const tag = STATUS_TAG.exec(String(string));
-  if (tag) {
-    meta.status = tag[1].trim();
-    meta.cancelled = lower(meta.status) === "cancelled";
-  }
-  const seen = /* @__PURE__ */ new Set();
-  for (const child of content || []) {
-    const text4 = String(childString3(child));
-    const id = taskAttrId(text4, names);
-    if (!id || id === "other" || id === "activity" || seen.has(id)) continue;
-    seen.add(id);
-    const value = attrValue(text4);
-    if (!value) continue;
-    if (id === "due") {
-      const chip = dueChip([child], today);
-      if (chip) meta.due = { text: chip.text, short: shortDay(chip.day, today), overdue: chip.overdue && !meta.done, today: chip.today };
-    } else if (id === "priority") {
-      meta.priority = lower(value);
-      meta.priorityGlyph = PRIORITY_GLYPH[meta.priority] || "";
-    } else if (id in meta) meta[id] = value;
-  }
-  return meta;
-}
-var ACTIVITY_LOG, lower, DEFAULT_LABELS, DEFAULT_IDS, liveNames, namesSig, taskNamesSig, TASK_RE, taskState, isTaskString, isBareTask, MONTHS9, DAILY_RE3, SHORT_MONTHS, iso, isoDay, PRIORITY_GLYPH, STATUS_TAG;
-var init_tasks = __esm({
-  "src/model/tasks.js"() {
-    init_schema();
-    ACTIVITY_LOG = "**Activity log**";
-    lower = (s) => String(s ?? "").trim().toLowerCase();
-    DEFAULT_LABELS = {
-      repeat: "BT_attrRepeat",
-      start: "BT_attrStart",
-      defer: "BT_attrDefer",
-      due: "BT_attrDue",
-      completed: "BT_attrCompleted",
-      project: "BT_attrProject",
-      gtd: "BT_attrGTD",
-      waitingFor: "BT_attrWaitingFor",
-      context: "BT_attrContext",
-      priority: "BT_attrPriority",
-      energy: "BT_attrEnergy",
-      depends: "BT_attrDepends",
-      parent: "BT_attrParent",
-      notes: "BT_attrNotes"
-    };
-    DEFAULT_IDS = new Map(Object.entries(DEFAULT_LABELS).map(([id, label]) => [lower(label), id]));
-    liveNames = null;
-    namesSig = "";
-    taskNamesSig = () => namesSig;
-    TASK_RE = /^\s*\{\{\[\[(TODO|DONE)\]\]\}\}/;
-    taskState = (string) => TASK_RE.exec(String(string ?? ""))?.[1] ?? "";
-    isTaskString = (string) => TASK_RE.test(String(string ?? ""));
-    isBareTask = (string) => isTaskString(string) && !String(string).replace(TASK_RE, "").replace(/#\[\[task-status\/[^\]]*\]\]/g, "").trim();
-    MONTHS9 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    DAILY_RE3 = new RegExp(`^(${MONTHS9.join("|")}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
-    SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    isoDay = iso;
-    PRIORITY_GLYPH = { low: "!", medium: "!!", high: "!!!" };
-    STATUS_TAG = /#\[\[task-status\/([^\]]+)\]\]/;
-  }
-});
-
-// src/model/status-tags.js
-function row3(key, name, glyph, lightBase, lightText, darkBase, darkText) {
-  return Object.freeze({
-    key,
-    name,
-    tag: `task-status/${name}`,
-    glyph,
-    light: Object.freeze({ base: lightBase, text: lightText }),
-    dark: Object.freeze({ base: darkBase, text: darkText })
-  });
-}
-function side(value) {
-  if (!value || typeof value !== "object") return { base: "", text: "" };
-  return { base: String(value.base || ""), text: String(value.text || "") };
-}
-function statusKey(name) {
-  return String(name ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-function statusApi(win2) {
-  const api3 = win2?.RoamTaskStatusTags;
-  if (!api3 || api3.apiVersion !== 1 || typeof api3.statuses !== "function") return null;
-  return api3;
-}
-function normalize(raw) {
-  const name = String(raw?.name || "").trim();
-  if (!name) return null;
-  const glyphRaw = String(raw?.glyph || "").trim();
-  const glyph = !glyphRaw || glyphRaw === "custom" ? "diamond" : glyphRaw;
-  const known2 = FALLBACK2.find((entry) => entry.name.toLowerCase() === name.toLowerCase());
-  return {
-    key: raw?.key ? String(raw.key) : known2?.key || statusKey(name).toUpperCase().replace(/-/g, "_"),
-    name,
-    tag: raw?.tag ? String(raw.tag) : `task-status/${name}`,
-    glyph: glyph === "diamond" && known2 ? known2.glyph : glyph,
-    light: raw?.light ? side(raw.light) : known2 ? { ...known2.light } : { ...NEUTRAL.light },
-    dark: raw?.dark ? side(raw.dark) : known2 ? { ...known2.dark } : { ...NEUTRAL.dark }
-  };
-}
-function statusPalette(api3) {
-  let rows = null;
-  if (api3 && typeof api3.statuses === "function") {
-    try {
-      const got = api3.statuses();
-      if (Array.isArray(got) && got.length) rows = got;
-    } catch {
-      rows = null;
-    }
-  }
-  const map = /* @__PURE__ */ new Map();
-  for (const raw of rows || FALLBACK2) {
-    const entry = rows ? normalize(raw) : raw;
-    if (!entry?.name) continue;
-    const id = entry.name.toLowerCase();
-    if (map.has(id)) continue;
-    map.set(id, entry);
-  }
-  return map;
-}
-function paletteEntries(palette) {
-  if (!palette) return [];
-  if (typeof palette.values === "function" && !Array.isArray(palette)) return [...palette.values()];
-  return [...palette];
-}
-function findEntry(palette, name) {
-  const id = String(name ?? "").trim().toLowerCase();
-  if (!id) return null;
-  if (palette && typeof palette.get === "function") {
-    const hit = palette.get(id);
-    if (hit) return hit;
-  }
-  for (const entry of paletteEntries(palette)) {
-    if (!entry?.name) continue;
-    if (entry.name.toLowerCase() === id || String(entry.key || "").toLowerCase() === id) return entry;
-  }
-  return null;
-}
-function paletteVars(entry, theme) {
-  const dark = theme === "dark" || theme === "bp3-dark";
-  const pair2 = (dark ? entry?.dark : entry?.light) || {};
-  return {
-    "--pxd-status-base": pair2.base || "",
-    "--pxd-status-text": pair2.text || ""
-  };
-}
-function taskStatusOf(string, palette) {
-  const text4 = String(string ?? "");
-  let raw = "";
-  const meta = taskMeta(text4, []);
-  if (meta?.status) raw = meta.status;
-  else {
-    const tag = STATUS_TAG2.exec(text4);
-    if (tag) raw = tag[1].trim();
-  }
-  if (!raw) return null;
-  const entry = findEntry(palette, raw);
-  return entry ? entry.name : null;
-}
-function statusLook(name, palette) {
-  const hit = findEntry(palette, name);
-  if (hit) return hit;
-  const label = String(name ?? "").trim();
-  return {
-    key: statusKey(label) || "unknown",
-    name: label,
-    tag: label ? `task-status/${label}` : "",
-    glyph: "diamond",
-    light: { base: NEUTRAL.light.base, text: NEUTRAL.light.text },
-    dark: { base: NEUTRAL.dark.base, text: NEUTRAL.dark.text }
-  };
-}
-var STATUS_TAG2, NEUTRAL, FALLBACK2;
-var init_status_tags = __esm({
-  "src/model/status-tags.js"() {
-    init_tasks();
-    STATUS_TAG2 = /#\[\[task-status\/([^\]]+)\]\]/;
-    NEUTRAL = Object.freeze({
-      light: Object.freeze({ base: "rgba(100, 116, 139, 0.1)", text: "rgb(88, 102, 122)" }),
-      dark: Object.freeze({ base: "rgba(100, 116, 139, 0.2)", text: "rgb(158, 168, 183)" })
-    });
-    FALLBACK2 = Object.freeze([
-      row3("ACTIVE", "Active", "active", "rgba(20, 184, 166, 0.1)", "rgb(13, 116, 104)", "rgba(20, 184, 166, 0.2)", "rgb(68, 198, 184)"),
-      row3("WAITING", "Waiting", "waiting", "rgba(234, 179, 8, 0.1)", "rgb(131, 100, 4)", "rgba(234, 179, 8, 0.2)", "rgb(234, 179, 8)"),
-      row3("IN_REVIEW", "In Review", "in-review", "rgba(14, 165, 233, 0.1)", "rgb(9, 109, 154)", "rgba(14, 165, 233, 0.2)", "rgb(76, 188, 239)"),
-      row3("HOLDING", "Holding", "holding", "rgba(148, 163, 184, 0.1)", "rgb(95, 104, 118)", "rgba(148, 163, 184, 0.2)", "rgb(169, 181, 198)"),
-      row3("INCUBATING", "Incubating", "incubating", "rgba(99, 102, 241, 0.1)", "rgb(84, 86, 203)", "rgba(99, 102, 241, 0.2)", "rgb(158, 160, 246)"),
-      row3("ALERT", "Alert", "alert", "rgba(244, 63, 94, 0.1)", "rgb(184, 48, 71)", "rgba(244, 63, 94, 0.2)", "rgb(248, 130, 150)"),
-      row3("CANCELLED", "Cancelled", "cancelled", "rgba(30, 41, 59, 0.1)", "rgb(30, 41, 59)", "rgba(30, 41, 59, 0.2)", "rgb(145, 150, 159)")
-    ]);
-  }
-});
-
 // src/view/avoid.js
 function chromeObstacles(root, { win: win2 = root?.ownerDocument?.defaultView, skip = null } = {}) {
   const out = [];
@@ -22979,7 +23723,7 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     const a = anchor?.getBoundingClientRect?.();
     if (a) {
       placeAgain = () => {
-        if (node2 && anchor.isConnected !== false) placeNearAnchor(node2, anchor.getBoundingClientRect(), root, { gap: GAP5 });
+        if (node2 && anchor.isConnected !== false) placeNearAnchor(node2, anchor.getBoundingClientRect(), root, { gap: GAP6 });
       };
       placeAgain();
     }
@@ -23166,14 +23910,14 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
   }
   return { close, el: pop };
 }
-var PRIORITIES, GAP5;
+var PRIORITIES, GAP6;
 var init_task_popover = __esm({
   "src/view/task-popover.js"() {
     init_status_tags();
     init_tasks();
     init_avoid();
     PRIORITIES = ["low", "medium", "high"];
-    GAP5 = 6;
+    GAP6 = 6;
   }
 });
 
@@ -24700,16 +25444,16 @@ function createQueryBackend(host) {
     details(uids) {
       const by2 = /* @__PURE__ */ new Map();
       for (let i = 0; i < uids.length; i += DETAIL_CHUNK) {
-        const chunk = uids.slice(i, i + DETAIL_CHUNK);
+        const chunk2 = uids.slice(i, i + DETAIL_CHUNK);
         for (const [u, s, title, t] of q2(
           '[:find ?u ?s ?title ?t :in $ [?u ...] :where [?b :block/uid ?u] [(get-else $ ?b :block/string "") ?s] [(get-else $ ?b :node/title "") ?title] [(get-else $ ?b :edit/time 0) ?t]]',
-          chunk
+          chunk2
         )) by2.set(u, { uid: u, string: s, title, time: Number(t) || 0 });
-        for (const [u, page] of q2("[:find ?u ?pt :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt]]", chunk)) {
+        for (const [u, page] of q2("[:find ?u ?pt :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt]]", chunk2)) {
           const d = by2.get(u);
           if (d) d.page = page;
         }
-        for (const [u, parent] of q2("[:find ?u ?ps :in $ [?u ...] :where [?b :block/uid ?u] [?pa :block/children ?b] [?pa :block/string ?ps]]", chunk)) {
+        for (const [u, parent] of q2("[:find ?u ?ps :in $ [?u ...] :where [?b :block/uid ?u] [?pa :block/children ?b] [?pa :block/string ?ps]]", chunk2)) {
           const d = by2.get(u);
           if (d) d.parent = parent;
         }
@@ -30519,14 +31263,14 @@ function uidFromBlockInput(id) {
   const prefix = "block-input-";
   if (!id.startsWith(prefix)) return null;
   const rest = id.slice(prefix.length);
-  if (UID7.test(rest) || SHORT_UID.test(rest)) return rest;
+  if (UID9.test(rest) || SHORT_UID.test(rest)) return rest;
   const last = rest.slice(rest.lastIndexOf("-") + 1);
   const short = last.length < 9 && SHORT_UID.test(last) ? last : null;
   for (let i = rest.length - 1; i >= 0; i -= 1) {
     if (rest[i] !== "-") continue;
     const tail = rest.slice(i + 1);
     if (tail.length > 15) return short;
-    if (UID7.test(tail)) return tail;
+    if (UID9.test(tail)) return tail;
   }
   return short;
 }
@@ -30536,9 +31280,9 @@ function blockUidFromNode(node2) {
     const id = String(el2.id || el2.getAttribute?.("id") || "");
     const fromInput = uidFromBlockInput(id);
     if (fromInput) return fromInput;
-    if (UID7.test(id)) return id;
+    if (UID9.test(id)) return id;
     const data = el2.dataset?.uid || el2.getAttribute?.("data-uid") || "";
-    if (UID7.test(data) || SHORT_UID.test(data)) return data;
+    if (UID9.test(data) || SHORT_UID.test(data)) return data;
     el2 = el2.parentElement;
   }
   return null;
@@ -30579,10 +31323,10 @@ function editorKeyAction({
   }
   return { type: "roam" };
 }
-var UID7, SHORT_UID, inside4;
+var UID9, SHORT_UID, inside4;
 var init_editor_keys = __esm({
   "src/view/editor-keys.js"() {
-    UID7 = /^[A-Za-z0-9_-]{9,15}$/;
+    UID9 = /^[A-Za-z0-9_-]{9,15}$/;
     SHORT_UID = /^[A-Za-z0-9_]{5,15}$/;
     inside4 = (node2, ancestor) => {
       let el2 = node2;
@@ -32391,6 +33135,8 @@ function createItemRenderer({
   };
   const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash", "pxd-item--roam-table", "pxd-item--into", "pxd-item--pdf-bar"];
   let followLeft = null;
+  let filterCardUid = null;
+  let followMoved = null;
   const imageRegionString2 = (text4) => {
     const region = parseRegion(text4);
     return Boolean(region && region.kind === "img" && region.supported === true && region.owner === "plexus-diagram" && region.error == null);
@@ -32436,6 +33182,7 @@ function createItemRenderer({
     }
     if (focusSet && !focusSet.has(item.uid)) cls.push(item.type === "section" ? "pxd-section--focus-dim" : "pxd-item--focus-dim");
     if (item.type !== "section" && followLeft?.has(item.uid)) cls.push("pxd-item--left");
+    if (item.type !== "section" && filterCardUid === item.uid) cls.push("pxd-item--filtering");
     if (item.type !== "section") {
       if (isKidsCard(item)) {
         cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
@@ -32471,6 +33218,7 @@ function createItemRenderer({
     }
     for (const keep of TRANSIENT_CLASSES) if (node2.classList?.contains(keep)) cls.push(keep);
     node2.className = cls.join(" ");
+    if (item.type !== "section") paintMoved(node2, item.uid);
     {
       const dueShort = item.type === "card" && cls.includes("pxd-item--task") ? taskMeta(item.string, item.content)?.due?.short : "";
       if (rec.header) {
@@ -32521,7 +33269,47 @@ function createItemRenderer({
     if (item.landmark || rec.landmarkEl) paintLandmarkMark(rec, item);
     if (trailBadgeMap.size || rec.trailBadge) paintTrailBadge(rec, item.uid);
     if (item.type !== "section") paintOutside(rec, item.uid);
+    if (item.type === "section" ? item.laneView || rec.laneEl : item.laneMark || rec.laneMarkEl) paintLane(rec, item);
     if (item.type === "card" && (item.kind === "block" || item.kind === "page")) armLinkHover(rec, item);
+  };
+  const paintLane = (rec, item) => {
+    if (item.type === "section") {
+      const bands = Array.isArray(item.laneView) && item.laneView.length ? item.laneView : null;
+      if (!bands) {
+        if (rec.laneEl) {
+          rec.laneEl.remove();
+          rec.laneEl = null;
+          rec.laneKey = null;
+        }
+        return;
+      }
+      const key = JSON.stringify(bands);
+      if (rec.laneKey === key && rec.laneEl) return;
+      if (!rec.laneEl) rec.laneEl = rec.el.querySelector?.(":scope > .pxd-lane-bands") || el2("div", "pxd-lane-bands", rec.el);
+      rec.laneEl.textContent = "";
+      for (const band of bands) {
+        const cell = el2("div", band.none ? "pxd-lane-band pxd-lane-band--none" : "pxd-lane-band", rec.laneEl);
+        const label = el2("span", "pxd-lane-band__label", cell);
+        label.textContent = `${band.label} ${band.n}`;
+      }
+      rec.laneKey = key;
+      return;
+    }
+    const mark = item.laneMark;
+    if (!mark) {
+      if (rec.laneMarkEl) {
+        rec.laneMarkEl.remove();
+        rec.laneMarkEl = null;
+      }
+      return;
+    }
+    if (!rec.laneMarkEl) rec.laneMarkEl = el2("span", "pxd-lane-mark", rec.el);
+    const chip = rec.laneMarkEl;
+    chip.className = `pxd-lane-mark${mark.none ? " pxd-lane-mark--none" : ""}${mark.two ? " pxd-lane-mark--two" : ""}${mark.loose ? " pxd-lane-mark--loose" : ""}`;
+    const text4 = mark.two ? `${mark.label} +1` : mark.label;
+    if (chip.textContent !== text4) chip.textContent = text4;
+    const tip = mark.loose ? `${mark.name}: ${mark.label} (no sub-lane for this value yet; Add sub-lanes in the lane menu)` : mark.two ? `${mark.name}: ${mark.label} (2 values; the first one sets the sub-lane)` : `${mark.name}: ${mark.label}`;
+    if (chip.title !== tip) chip.title = tip;
   };
   const paintLandmarkMark = (rec, item) => {
     if (!item.landmark) {
@@ -32669,7 +33457,7 @@ function createItemRenderer({
     sectionsHost.prune();
     itemsHost.prune();
   };
-  const VIRTUAL_MIN = 400;
+  const VIRTUAL_MIN = CARD_REFS_MAX;
   const OPEN_NOW_MAX = 150;
   const OPEN_CHUNK = 30;
   const PUMP_MS = 12;
@@ -33117,7 +33905,7 @@ function createItemRenderer({
       priorityLeft = pri;
     }
     const holdQueue = shells.size > 0 && shellQueue.length > 0;
-    let orderChanged = structural;
+    let orderChanged2 = structural;
     let defer = null;
     if (!shells.size && board2.order.length > 80 && typeof timers?.frame === "function" && canvasCards()) {
       const now5 = [];
@@ -33219,7 +34007,7 @@ function createItemRenderer({
       const fresh = !rec;
       if (!rec) {
         rec = buildShell2(item);
-        orderChanged = true;
+        orderChanged2 = true;
       }
       const rect = rects.get(uid);
       rec.el.style.display = rect ? "" : "none";
@@ -33260,7 +34048,7 @@ function createItemRenderer({
         position(rec, rect);
       }
     }
-    if (orderChanged) {
+    if (orderChanged2) {
       if (attachView || view) cullRect = attachView || view;
       if (!shellsHeld) {
         if (virtual()) placeVirtual();
@@ -37461,11 +38249,31 @@ function createItemRenderer({
     rec.badgeEl = row4;
     rec.badgeKey = key;
   };
+  const paintMoved = (el3, uid) => {
+    const on = Boolean(followMoved?.has(uid)) && !followLeft?.has(uid);
+    el3.classList?.toggle?.("pxd-item--moved", on);
+    if (on) el3.setAttribute?.("data-pxd-moved", `Moved to ${followMoved.get(uid) || "another heading"}`);
+    else el3.removeAttribute?.("data-pxd-moved");
+  };
   const setFollowLeft = (set) => {
     followLeft = set instanceof Set && set.size ? set : null;
     for (const rec of shells.values()) {
       if (rec.type === "section") continue;
       rec.el.classList?.toggle?.("pxd-item--left", Boolean(followLeft?.has(rec.uid)));
+      if (followMoved) paintMoved(rec.el, rec.uid);
+    }
+  };
+  const setFollowMoved = (map) => {
+    followMoved = map instanceof Map && map.size ? map : null;
+    for (const rec of shells.values()) {
+      if (rec.type !== "section") paintMoved(rec.el, rec.uid);
+    }
+  };
+  const setFilterCard = (uid) => {
+    filterCardUid = uid || null;
+    for (const rec of shells.values()) {
+      if (rec.type === "section") continue;
+      rec.el.classList?.toggle?.("pxd-item--filtering", rec.uid === filterCardUid);
     }
   };
   const setChanged = (set) => {
@@ -38604,7 +39412,7 @@ function createItemRenderer({
       if (eventUid && drawing !== eventUid && ref !== eventUid) continue;
       const nextKind = model ? "region-ref" : "block";
       const nextTitle = model ? model.caption ?? "" : firstLine(item.string);
-      const same3 = item.kind === nextKind && (item.title || "") === nextTitle && (item.regionDrawing || "") === (model?.drawingUid || "");
+      const same4 = item.kind === nextKind && (item.title || "") === nextTitle && (item.regionDrawing || "") === (model?.drawingUid || "");
       if (!model && item.kind !== "region-ref") continue;
       if (model) {
         item.kind = "region-ref";
@@ -38617,7 +39425,7 @@ function createItemRenderer({
       }
       const rec = shells.get(item.uid);
       if (rec && editing?.uid !== item.uid) paintShell(rec, item);
-      if (!same3 || eventUid) {
+      if (!same4 || eventUid) {
         changed2 = true;
         if (rec && mounted.has(item.uid) && editing?.uid !== item.uid) unmountContent(item.uid);
       }
@@ -38787,6 +39595,8 @@ function createItemRenderer({
     setBadges,
     setChanged,
     setFollowLeft,
+    setFilterCard,
+    setFollowMoved,
     setShowBadges,
     setTrailBadges,
     setTaskChips,
@@ -39039,6 +39849,7 @@ var init_cards = __esm({
     init_table_cells();
     init_editor_keys();
     init_quiet_textarea();
+    init_card_refs();
     init_card_children();
     SIDES3 = ["top", "right", "bottom", "left"];
     CHUNK_MS = 8;
@@ -39111,7 +39922,7 @@ var init_cards = __esm({
 function listOf2(rows) {
   return Array.isArray(rows) ? rows : [];
 }
-function sortRows2(rows) {
+function sortRows3(rows) {
   return listOf2(rows).map((row4, index) => ({ row: row4, index })).sort((a, b) => {
     const ap = typeof a.row?.page === "number" ? a.row.page : Infinity;
     const bp = typeof b.row?.page === "number" ? b.row.page : Infinity;
@@ -39119,7 +39930,7 @@ function sortRows2(rows) {
     return a.index - b.index;
   }).map((entry) => entry.row);
 }
-function filterRows2(rows, { colors, page, needle } = {}) {
+function filterRows3(rows, { colors, page, needle } = {}) {
   const set = colors instanceof Set && colors.size > 0 ? colors : null;
   const pageWant = typeof page === "number" && Number.isFinite(page) ? page : null;
   const q2 = typeof needle === "string" ? needle.trim().toLowerCase() : "";
@@ -39227,7 +40038,7 @@ __export(read_drawer_exports, {
   createReadDrawer: () => createReadDrawer
 });
 function clampFraction(n3) {
-  if (typeof n3 !== "number" || !Number.isFinite(n3)) return OPEN2;
+  if (typeof n3 !== "number" || !Number.isFinite(n3)) return OPEN3;
   return Math.min(MAX_F, Math.max(MIN_F, n3));
 }
 function countLabel2(n3) {
@@ -39325,7 +40136,7 @@ function createReadDrawer({
   let pinnedCount = null;
   let pillRow = null;
   let pillTimer = null;
-  let fraction = OPEN2;
+  let fraction = OPEN3;
   const colors = /* @__PURE__ */ new Set();
   let page = null;
   let needle = "";
@@ -39541,7 +40352,7 @@ function createReadDrawer({
     return node2;
   };
   const paintRows = () => {
-    shown = filterRows2(catalog, { colors, page, needle });
+    shown = filterRows3(catalog, { colors, page, needle });
     list.replaceChildren?.();
     for (const row4 of shown) list.append(renderRow(row4));
     paintSelected();
@@ -39821,9 +40632,9 @@ function createReadDrawer({
   listen(root, "pointerdown", onEdgeDown);
   listen(root, "input", onInput);
   const refresh = () => {
-    const sorted2 = sortRows2(readRows());
+    const sorted3 = sortRows3(readRows());
     const have = readPlaced();
-    const marked = sorted2.map((row5) => {
+    const marked = sorted3.map((row5) => {
       if (!row5 || typeof row5 !== "object" || row5.placed === true || !have.has(row5.uid)) return row5;
       return { ...row5, placed: true };
     });
@@ -39892,13 +40703,13 @@ function createReadDrawer({
     }
   };
 }
-var OPEN2, MIN_F, MAX_F, PULSE_MS, PILL_MS, SVG, LINES;
+var OPEN3, MIN_F, MAX_F, PULSE_MS, PILL_MS, SVG, LINES;
 var init_read_drawer = __esm({
   "src/view/read-drawer.js"() {
     init_ask_icon();
     init_cards();
     init_read_drawer_model();
-    OPEN2 = 0.4;
+    OPEN3 = 0.4;
     MIN_F = 0.2;
     MAX_F = 0.72;
     PULSE_MS = 600;
@@ -40048,14 +40859,14 @@ function editorPastePlan({
 }
 function inlineAtCaret(value, selectionStart, selectionEnd, insert) {
   const v = String(value ?? "");
-  const chunk = String(insert ?? "");
+  const chunk2 = String(insert ?? "");
   let a = Number(selectionStart);
   let b = Number(selectionEnd);
   if (!Number.isFinite(a)) a = v.length;
   if (!Number.isFinite(b)) b = a;
   const start2 = Math.max(0, Math.min(Math.min(a, b), v.length));
   const end = Math.max(start2, Math.min(Math.max(a, b), v.length));
-  return { string: v.slice(0, start2) + chunk + v.slice(end), caret: start2 + chunk.length };
+  return { string: v.slice(0, start2) + chunk2 + v.slice(end), caret: start2 + chunk2.length };
 }
 function imageMarkdown(urls2) {
   return [...urls2 ?? []].filter((u) => typeof u === "string" && u).map((u) => `![](${u})`).join("");
@@ -40168,18 +40979,18 @@ function tidyRects(list, mode, { gap = 24, columns = null, order = null } = {}) 
   if (!rects.length) return [];
   const origin = unionOf(rects);
   if (mode === "row") {
-    const sorted2 = [...rects].sort((a, b) => a.x - b.x || a.y - b.y || a.i - b.i);
+    const sorted3 = [...rects].sort((a, b) => a.x - b.x || a.y - b.y || a.i - b.i);
     let x = origin.x;
-    return sorted2.map((r) => {
+    return sorted3.map((r) => {
       const out = { uid: r.uid, x: norm(x), y: norm(origin.y) };
       x += r.w + gap;
       return out;
     });
   }
   if (mode === "column") {
-    const sorted2 = [...rects].sort((a, b) => a.y - b.y || a.x - b.x || a.i - b.i);
+    const sorted3 = [...rects].sort((a, b) => a.y - b.y || a.x - b.x || a.i - b.i);
     let y = origin.y;
-    return sorted2.map((r) => {
+    return sorted3.map((r) => {
       const out = { uid: r.uid, x: norm(origin.x), y: norm(y) };
       y += r.h + gap;
       return out;
@@ -41992,6 +42803,8 @@ init_pdf_pin();
 init_section6();
 init_timeline();
 init_board();
+init_table();
+init_attr_lanes();
 init_why();
 init_pdf_page();
 
@@ -42121,14 +42934,14 @@ function gridCellText(text4, { linkSafe = true } = {}) {
   const line = flattenLine(text4);
   return linkSafe ? linkSafeText(line) : line;
 }
-function cellText(slot2, repeatAnchor) {
+function cellText2(slot2, repeatAnchor) {
   if (!slot2 || slot2.cell == null) return "";
   if (slot2.covered && !repeatAnchor) return "";
   return gridCellText(slot2.text ?? "");
 }
 function toGridSpec(table) {
   const grid = tableGrid(table);
-  const rows = grid.map((row4) => row4.map((slot2) => cellText(slot2, false)));
+  const rows = grid.map((row4) => row4.map((slot2) => cellText2(slot2, false)));
   const merges = [];
   for (const cell of table?.cells || []) {
     const rowSpan = cell.rowSpan ?? 1;
@@ -42157,7 +42970,7 @@ function toGridSpec(table) {
   return { rows, merges, headerRows, alignments, widths: null, enhance: true };
 }
 function flatRows(table) {
-  return tableGrid(table).map((row4) => row4.map((slot2) => cellText(slot2, true)));
+  return tableGrid(table).map((row4) => row4.map((slot2) => cellText2(slot2, true)));
 }
 var PX_PER_PT2 = 96 / 72;
 function toGridModelSpec(table) {
@@ -42275,6 +43088,7 @@ function coveredBy(links, board2) {
 }
 
 // src/session.js
+init_card_refs();
 init_query();
 init_follow();
 init_discovery();
@@ -42874,7 +43688,7 @@ function soleStringChange(prev, next) {
   }
   return hit;
 }
-function childString2(node2, id) {
+function childString3(node2, id) {
   for (const kid of kidsOf2(node2)) if (kid?.[UID] === id) return kid[":block/string"] ?? "";
   return null;
 }
@@ -43004,7 +43818,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, onEditSt
     const sole = before && editingUid ? soleStringChange(before, after) : null;
     nodes.set(id, after);
     if (sole && sole === editingUid && editQuietOn()) {
-      const text4 = childString2(after, sole);
+      const text4 = childString3(after, sole);
       if (text4 != null) {
         patchTreeString(lastTree, sole, text4);
         try {
@@ -45515,6 +46329,7 @@ var OUTLINE_KIDS_PATTERN = "[:block/uid {(limit :block/children nil) [:block/uid
 var PDF_PAGE_PATTERN = "[:block/uid :node/title {(limit :block/children nil) [:block/uid :block/string :block/order]}]";
 var PDF_HASH_PAGE_QUERY = `[:find ?u ?t :in $ ?h :where [?p :pdf/content-hash ?h] [?p :block/uid ?u] [?p :node/title ?t]]`;
 var PDF_TOP_BLOCK_QUERY = `[:find ?u ?t :in $ ?url :where [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/page ?p] [?p :block/children ?b] [?p :block/uid ?u] [?p :node/title ?t]]`;
+var CHILDREN_WATCH_PATTERN = "[:block/uid {(limit :block/children nil) [:block/uid :block/order]}]";
 var BLOCK_PROPS_PATTERN = "[:block/string :block/props {:block/page [:node/title]}]";
 var BLOCK_WATCH_PATTERN = "[:block/string {(limit :block/children nil) [:block/string :block/order :block/props]}]";
 var HIGHLIGHT_TREE_PATTERN = `[:block/uid
@@ -46049,12 +46864,12 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   let lastWriteAt = -Infinity;
   let dropBurst = () => {
   };
-  const closeChunk = (chunk) => {
-    if (!(chunk.n || chunk.created?.length)) return;
-    undoLog.push(chunk);
+  const closeChunk = (chunk2) => {
+    if (!(chunk2.n || chunk2.created?.length)) return;
+    undoLog.push(chunk2);
     if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
-    const named2 = typeof chunk.label === "string" && chunk.label ? chunk.label : (chunk.kinds || []).join("+");
-    stats.lastAction = { label: named2, writes: chunk.n || 0 };
+    const named2 = typeof chunk2.label === "string" && chunk2.label ? chunk2.label : (chunk2.kinds || []).join("+");
+    stats.lastAction = { label: named2, writes: chunk2.n || 0 };
   };
   let structureEpoch = 0;
   const noteWrite = (kind) => {
@@ -46539,6 +47354,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const unwatchedAt = /* @__PURE__ */ new Map();
   let pullSeq = 0;
   const watchedBlocks = /* @__PURE__ */ new Map();
+  const watchedKids = /* @__PURE__ */ new Map();
   const eidByUid = /* @__PURE__ */ new Map();
   const eidByTitle = /* @__PURE__ */ new Map();
   const statsCache = /* @__PURE__ */ new Map();
@@ -47411,15 +48227,15 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         }
         dropStats(uid);
         if (!found.stats.length) return;
-        const chunk = statsInParts(node2, found.stats) ? STATS_CHUNK : found.stats.length;
+        const chunk2 = statsInParts(node2, found.stats) ? STATS_CHUNK : found.stats.length;
         try {
-          host.cardStats(found.stats.slice(0, chunk), { boardUid: uid });
+          host.cardStats(found.stats.slice(0, chunk2), { boardUid: uid });
         } catch {
         }
         const idle = globalThis.requestIdleCallback;
         const later = (fn) => idleLater(idle, fn);
         const pulledAt = pullSeq;
-        let si = chunk;
+        let si = chunk2;
         const clock = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
         const step = (deadline) => {
           if (si >= found.stats.length || unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt) return;
@@ -47929,6 +48745,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       }
       registered.clear();
       watchedBlocks.clear();
+      watchedKids.clear();
     },
     splitStats(uid) {
       return splitWatches.get(uid)?.stats() ?? null;
@@ -47979,6 +48796,38 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         if (slot2.subs.length > 0 || watchedBlocks.get(id) !== slot2) return;
         watchedBlocks.delete(id);
         watchData.removePullWatch(BLOCK_WATCH_PATTERN, slot2.entity, slot2.wrapped);
+        stats.watches--;
+      };
+    },
+    // One shared pull watch per parent uid for its children and their order. cb gets no arguments worth reading:
+    // the caller reads the level again (outlineKids). Released with the last caller.
+    watchChildren(uid, cb) {
+      const id = String(uid ?? "");
+      if (!id || typeof cb !== "function") return () => {
+      };
+      cb = guardCallback("watchChildren", cb, { stats });
+      let slot2 = watchedKids.get(id);
+      if (!slot2) {
+        const entity = watchEntity(id);
+        const subs = [];
+        const wrapped = guardCallback("watchChildren", () => {
+          for (const token2 of subs.slice()) if (token2.on) token2.cb();
+        }, { stats });
+        slot2 = { entity, wrapped, subs };
+        watchData.addPullWatch(CHILDREN_WATCH_PATTERN, entity, wrapped);
+        watchedKids.set(id, slot2);
+        stats.watches++;
+      }
+      const token = { cb, on: true };
+      slot2.subs.push(token);
+      return () => {
+        if (!token.on) return;
+        token.on = false;
+        const i = slot2.subs.indexOf(token);
+        if (i >= 0) slot2.subs.splice(i, 1);
+        if (slot2.subs.length > 0 || watchedKids.get(id) !== slot2) return;
+        watchedKids.delete(id);
+        watchData.removePullWatch(CHILDREN_WATCH_PATTERN, slot2.entity, slot2.wrapped);
         stats.watches--;
       };
     },
@@ -48337,11 +49186,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     generateUid() {
       return api3.util.generateUID();
     },
-    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType } = {}) {
+    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType, heading, textAlign } = {}) {
       const id = uid ?? api3.util.generateUID();
       const block = { uid: id, string };
       if (props !== void 0) block.props = plainKeys(props);
       if (open !== void 0) block.open = open;
+      if (heading) block.heading = heading;
+      if (textAlign) block["text-align"] = textAlign;
       if (viewType) block["children-view-type"] = viewType;
       stats.writes++;
       await mutate(() => data.block.create({ location: { "parent-uid": parentUid, order }, block }));
@@ -48426,6 +49277,23 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         max,
         hasLine: at > 0 && strOf2(top[at - 1]).trim() === "---"
       };
+    },
+    // Date.now() of this host's last write, undo or redo (-Infinity before any).
+    lastWriteAt() {
+      return lastWriteAt;
+    },
+    // First line of a block's text, or a page's title. Empty when the uid is unknown.
+    blockLabel(uid) {
+      const id = String(uid ?? "");
+      if (!id) return "";
+      let res = null;
+      try {
+        res = rawPull("[:block/string :node/title]", eidKey(id));
+      } catch {
+        return "";
+      }
+      const text4 = typeof res?.[":node/title"] === "string" ? res[":node/title"] : typeof res?.[":block/string"] === "string" ? res[":block/string"] : "";
+      return text4.split("\n")[0].trim();
     },
     // { parentUid, order } for a block, or null when Roam has no integer order.
     blockLocation(uid) {
@@ -49556,7 +50424,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         });
         kept = narrowByMeta(kept, filter, { days: f.days, now: nowMs2 });
       }
-      const rows = sortRows(kept, sort).slice(0, lim).map(libraryCard);
+      const rows = sortRows2(kept, sort).slice(0, lim).map(libraryCard);
       return { rows, queries, total: kept.length, more: kept.length > lim || candidates2.length >= cap4 };
     },
     // Rows with no search text: the pages a sort puts first (recently edited / created, oldest, title), with their numbers.
@@ -49574,7 +50442,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         browsePages = { at: now6, pages };
       }
       const rows = browsePages.pages.map((p) => ({ kind: "page", title: p.title, uid: p.uid, meta: { created: p.created, edited: p.edited, createdBy: "", editedBy: "", refs: null, children: null, length: null }, onBoard: false, tags: [] }));
-      const top = sortRows(rows, id).slice(0, Math.max(1, Math.floor(Number(limit) || 40)));
+      const top = sortRows2(rows, id).slice(0, Math.max(1, Math.floor(Number(limit) || 40)));
       attachMeta(top);
       return { rows: top.map(libraryCard), queries: [] };
     },
@@ -49654,13 +50522,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         const pullMany2 = (eids) => typeof data.pull_many === "function" ? data.pull_many(BROWSE_PULL, eids) : eids.map((e2) => rawPull(BROWSE_PULL, e2));
         const keepMax = Math.max(BROWSE_ROWS, lim);
         for (let i = 0; i < order.length && i < BROWSE_SCAN && kept.length < keepMax; i += BROWSE_CHUNK) {
-          const chunk = order.slice(i, Math.min(i + BROWSE_CHUNK, BROWSE_SCAN));
-          const nodes = timed("browse-pull", () => pullMany2(chunk.map((o) => o.eid)) || []);
+          const chunk2 = order.slice(i, Math.min(i + BROWSE_CHUNK, BROWSE_SCAN));
+          const nodes = timed("browse-pull", () => pullMany2(chunk2.map((o) => o.eid)) || []);
           const rows2 = [];
           nodes.forEach((node2, j) => {
             const uid = node2?.[":block/uid"];
             if (typeof uid !== "string" || !uid) return;
-            const o = chunk[j];
+            const o = chunk2[j];
             const title = node2[":node/title"];
             const base2 = { uid, edited: edited ? o.time : null, tags: [], onBoard: false };
             if (typeof title === "string") {
@@ -49696,7 +50564,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           attachMeta(kept);
           return [];
         });
-        top = sortRows(kept, pdfOnly && sort === "best" ? "edited" : sort).slice(0, lim);
+        top = sortRows2(kept, pdfOnly && sort === "best" ? "edited" : sort).slice(0, lim);
       }
       const rows = top.map((r) => libraryCard(r));
       if (key) {
@@ -49804,7 +50672,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         kept = narrowByMeta(kept, filter, { days: f.days });
       }
       if (filter?.parsed === true || filter?.highlights === true) kept = pdfKeep(kept, { parsed: filter.parsed === true, highlights: filter.highlights === true, parsedUrls }, timed);
-      if (sort !== "best") kept = sortRows(kept, sort);
+      if (sort !== "best") kept = sortRows2(kept, sort);
       return { rows: kept.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map((row4) => ({ ...libraryCard(row4), semantic: true })), queries };
     },
     // A card's text for "Find related": the page title or block string and its first children.
@@ -50619,7 +51487,7 @@ var KIDS3 = ":block/children";
 var PROPS = ":block/props";
 var OPEN = ":block/open";
 var LINK_MODES = ["off", "attributes", "all"];
-var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
+var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "keepOrder", "look", "axis", "attr", "bands", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
 var EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 var MAX_PARENT_STRINGS = 200;
 var RESUME_RETRY_MS = 1e3;
@@ -50632,6 +51500,8 @@ var HIGHLIGHT_WATCH_CAP = 60;
 var registry = /* @__PURE__ */ new Map();
 var extensions = [];
 var BULK_CARD_CAP = 45;
+var PIN_BATCH = 20;
+var LOCAL_EDIT_MS = 300;
 var BULK_CONFIRM_WRITES = 600;
 var BULK_REFUSE_WRITES = 3e3;
 function addPublicCard(opts = {}, createFn) {
@@ -50892,6 +51762,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   });
   const listeners3 = /* @__PURE__ */ new Map();
   const deleteHooks = [];
+  const destroyHooks = [];
+  const moveHooks = [];
+  const runMoveHooks = (t, moves, track2) => {
+    if (!moves.length) return;
+    for (const fn of moveHooks) {
+      try {
+        fn(t, moves, track2);
+      } catch (err) {
+        console.error("[plexus session] move hook", err);
+      }
+    }
+  };
   const emit2 = (name, payload) => {
     for (const fn of [...listeners3.get(name) ?? []]) {
       try {
@@ -50994,6 +51876,70 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
     return derivedMemo.pointer;
   };
+  const laneWrites = /* @__PURE__ */ new Map();
+  const LANE_WRITE_MS = 1e4;
+  function laneKids(targetUid) {
+    let kids = [];
+    try {
+      kids = host.pullTree?.(targetUid, 1, 40) || [];
+    } catch {
+      kids = [];
+    }
+    const w = laneWrites.get(targetUid);
+    if (!w) return kids;
+    const hit = kids.find((k) => k.uid === w.uid);
+    if (hit && hit.string === w.string || Date.now() - w.at > LANE_WRITE_MS) {
+      laneWrites.delete(targetUid);
+      return kids;
+    }
+    return hit ? kids.map((k) => k.uid === w.uid ? { ...k, string: w.string } : k) : [...kids, { uid: w.uid, string: w.string }];
+  }
+  const laneResolve = (id) => {
+    try {
+      const text4 = host.blockString?.(id);
+      return typeof text4 === "string" ? text4 : null;
+    } catch {
+      return null;
+    }
+  };
+  function annotateLanes(b) {
+    if (!b) return;
+    for (const item of b.items.values()) {
+      if (item.type !== "section" || item.look !== "lane" || !item.laneAttr) continue;
+      const rows = laneRows(b, item.uid, laneKids, laneResolve);
+      const view = laneView(shownBands(item.laneBands), rows, item.laneAttr);
+      item.laneView = view.bands;
+      for (const [id, mark] of view.marks) {
+        const card2 = b.items.get(id);
+        if (card2) card2.laneMark = mark;
+      }
+    }
+  }
+  function planLaneDrops(top, plan, moved) {
+    const out = { writes: [], snap: /* @__PURE__ */ new Map() };
+    for (const id of top) {
+      const item = board2.items.get(id);
+      if (!item || !isTableRow(item)) continue;
+      const lane2 = board2.items.get(plan.get(id)?.toParent ?? item.parentUid);
+      if (!lane2 || lane2.type !== "section" || lane2.look !== "lane" || !lane2.laneAttr) continue;
+      const laneRect = rects.get(lane2.uid);
+      const r = moved.get(id);
+      if (!laneRect || !r) continue;
+      const bands = shownBands(lane2.laneBands);
+      const center2 = (q2) => ({ x: q2.x + q2.w / 2, y: q2.y + q2.h / 2 });
+      const at = bandIndexAt(laneRect, lane2.axis, bands.length, center2(r));
+      const shift = snapIntoBand(bandRect(laneRect, lane2.axis, bands.length, at), lane2.axis, r, laneRect, FIT_PAD);
+      if (shift.dx || shift.dy) out.snap.set(id, shift);
+      const was = rects.get(id);
+      if (item.parentUid === lane2.uid && was && bandIndexAt(laneRect, lane2.axis, bands.length, center2(was)) === at) continue;
+      const row4 = laneRow(board2, item, laneKids, laneResolve);
+      const key = laneValueOf(row4, lane2.laneAttr).key;
+      if (bands[at].none && key && !bands.some((b) => b.key === key)) continue;
+      const step = planLaneDrop({ name: lane2.laneAttr, row: row4, band: bands[at] });
+      if (step) out.writes.push({ ...step, ref: item.kind === "block" ? item.target?.uid ?? null : null });
+    }
+    return out;
+  }
   const rebuild = () => {
     rix = null;
     const plexusApi = globalThis.window?.RoamPlexus ?? globalThis.RoamPlexus ?? null;
@@ -51034,6 +51980,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         return pending;
       }
     }) : null;
+    annotateLanes(board2);
     if (board2 && outlineRev.size) {
       for (const [id, rev] of outlineRev) {
         const item = board2.items.get(id);
@@ -51483,6 +52430,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const typed = editingUid ? typingFlush(prev, raw, editingUid) : null;
     if (typed) {
       if (typed.dirty) {
+        noteLocalEdit();
         emit2("change", { structural: false, dirty: /* @__PURE__ */ new Set([typed.dirty]) });
         if (!queue.pending) host.invalidateUndo?.();
       }
@@ -51526,6 +52474,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         writeItemString(item, string);
         const node2 = ix().get(itemUid)?.node;
         if (node2) node2[STR] = string;
+        noteLocalEdit();
         emit2("change", { structural: false, dirty: /* @__PURE__ */ new Set([itemUid]) });
       });
       if (typeof off === "function") editStringOff = off;
@@ -51710,7 +52659,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   async function runOp(op) {
     switch (op.op) {
       case "create":
-        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open });
+        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open, heading: op.heading, textAlign: op.textAlign });
         break;
       case "move":
         await host.moveBlock(op.uid, op.parent, op.order);
@@ -51918,6 +52867,53 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       handleFailure(err);
       return result;
     });
+  }
+  function dragUndo() {
+    const before = /* @__PURE__ */ new Map();
+    const remember2 = (id) => {
+      if (before.has(id)) return;
+      const node2 = rawNode(id);
+      if (!node2) return;
+      const hit = ix().get(id);
+      before.set(id, { parent: hit?.parent?.[UID3] || uid, order: node2[ORD], plexus: clone(rawPlexus(id)) });
+    };
+    const track2 = { undo: [] };
+    const custom = {
+      when: "over-native-limit",
+      async undo() {
+        const moves = [];
+        const propsOps = [];
+        const wroteMove = /* @__PURE__ */ new Set();
+        const wroteProps = /* @__PURE__ */ new Set();
+        for (const op of custom.forward || []) {
+          if (op.op === "move") wroteMove.add(op.uid);
+          else if (op.op === "props") wroteProps.add(op.uid);
+        }
+        for (const [id, prev] of before) {
+          const parentNow = ix().get(id)?.parent?.[UID3] || uid;
+          if (wroteMove.has(id) || prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
+          if (wroteProps.has(id) || stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
+        }
+        moves.sort((a, b) => a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0));
+        await execute([...moves, ...propsOps, ...[...track2.undo].reverse()]);
+      },
+      async redo() {
+        await execute(custom.forward);
+      }
+    };
+    const wrap = (t) => {
+      const move = t.move.bind(t);
+      const props = t.props.bind(t);
+      t.move = (id, parent, order) => {
+        remember2(id);
+        move(id, parent, order);
+      };
+      t.props = (id, plexus) => {
+        remember2(id);
+        props(id, plexus);
+      };
+    };
+    return { remember: remember2, track: track2, custom, wrap };
   }
   function txn(fn, custom = null) {
     if (!board2 || destroyed || gone) return Promise.resolve(void 0);
@@ -52280,9 +53276,53 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     parts.sort();
     return parts.join("\n");
   }
+  let followParents = null;
+  let localEpoch = 0;
+  let localEditTimer = null;
+  let localMemo = { board: null, parents: null, epoch: -1, links: [] };
+  let mergedMemo = { a: null, b: null, out: [] };
+  function followPointer() {
+    return (raw ? readFollow(readPlexus(raw[PROPS])) : null) || derivedFollow();
+  }
+  function localLinks() {
+    if (!board2 || !cardRefsOn(board2)) return [];
+    if (localMemo.board === board2 && localMemo.parents === followParents && localMemo.epoch === localEpoch) return localMemo.links;
+    const pointer = followPointer();
+    const tree = pointer?.tree && followParents ? treeLinks(board2, followParents, sourceKey(pointer)) : [];
+    let links = [];
+    try {
+      links = mergeLinks(cardRefLinks(board2), tree);
+    } catch (err) {
+      console.error("[plexus session] card refs", err);
+    }
+    localMemo = { board: board2, parents: followParents, epoch: localEpoch, links };
+    return links;
+  }
+  function settleLocalEdit() {
+    if (localEditTimer == null) return;
+    clearTimeout(localEditTimer);
+    localEditTimer = null;
+    if (!destroyed) recomputeLinks(false);
+  }
+  function noteLocalEdit() {
+    localEpoch += 1;
+    if (!board2 || !cardRefsOn(board2)) return;
+    if (localEditTimer != null) clearTimeout(localEditTimer);
+    localEditTimer = setTimeout(() => {
+      localEditTimer = null;
+      if (!destroyed) recomputeLinks(false);
+    }, LOCAL_EDIT_MS);
+    localEditTimer.unref?.();
+  }
+  function allWithLocal() {
+    const local = localLinks();
+    if (!local.length) return allLinks;
+    if (mergedMemo.a !== allLinks || mergedMemo.b !== local) mergedMemo = { a: allLinks, b: local, out: mergeLinks(allLinks, local) };
+    return mergedMemo.out;
+  }
   function recomputeLinks(force) {
     if (!board2) return;
-    const filtered = filterLinks(allLinks, linkMode);
+    const filtered = filterLinks(allWithLocal(), linkMode);
     const res = coveredBy(filtered, board2);
     const fp = `${linkMode}|${res.visible.map((l) => l.key).join(",")}|${[...res.coveredEdges].sort().join(",")}`;
     const changed2 = fp !== linkFingerprint;
@@ -52661,6 +53701,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         host.noteEditing?.(uid, editingUid);
       } catch {
       }
+      if (!editingUid) settleLocalEdit();
     },
     idle: () => queue.idle(),
     setLinkMode(mode) {
@@ -52672,48 +53713,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     refreshLinks,
     commitMove(uids, dx, dy) {
       if (!board2 || !dx && !dy) return Promise.resolve();
-      const before = /* @__PURE__ */ new Map();
-      const remember2 = (id) => {
-        if (before.has(id)) return;
-        const node2 = rawNode(id);
-        if (!node2) return;
-        const hit = ix().get(id);
-        before.set(id, { parent: hit?.parent?.[UID3] || uid, order: node2[ORD], plexus: clone(rawPlexus(id)) });
-      };
-      const custom = {
-        when: "over-native-limit",
-        async undo() {
-          const moves = [];
-          const propsOps = [];
-          const wroteMove = /* @__PURE__ */ new Set();
-          const wroteProps = /* @__PURE__ */ new Set();
-          for (const op of custom.forward || []) {
-            if (op.op === "move") wroteMove.add(op.uid);
-            else if (op.op === "props") wroteProps.add(op.uid);
-          }
-          for (const [id, prev] of before) {
-            const parentNow = ix().get(id)?.parent?.[UID3] || uid;
-            if (wroteMove.has(id) || prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
-            if (wroteProps.has(id) || stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
-          }
-          moves.sort((a, b) => a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0));
-          await execute([...moves, ...propsOps]);
-        },
-        async redo() {
-          await execute(custom.forward);
-        }
-      };
+      const { remember: remember2, track: track2, custom, wrap } = dragUndo();
       return txn((t) => {
-        const move = t.move.bind(t);
-        const props = t.props.bind(t);
-        t.move = (id, parent, order) => {
-          remember2(id);
-          move(id, parent, order);
-        };
-        t.props = (id, plexus) => {
-          remember2(id);
-          props(id, plexus);
-        };
+        wrap(t);
         const top = topLevelOf(board2, uids).filter((id) => !board2.items.get(id).pinned);
         if (!top.length) return;
         for (const id of top) remember2(id);
@@ -52723,23 +53725,44 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           moved.set(id, { ...r, x: r.x + dx, y: r.y + dy });
         }
         const plan = new Map(membershipPlan(board2, top, moved).map((p) => [p.uid, p]));
+        const drops = planLaneDrops(top, plan, moved);
+        const parents = [];
         for (const id of top) {
           const item = board2.items.get(id);
           const p = plan.get(id);
+          const s = drops.snap.get(id);
+          const at = (v, d) => d ? round14(v + d) : v;
           if (p) {
+            if (p.toParent !== item.parentUid) parents.push({ uid: id, from: item.parentUid, to: p.toParent });
             t.move(id, p.toParent, "last");
-            t.props(id, itemPlexus(id, { x: p.x, y: p.y }));
+            t.props(id, itemPlexus(id, { x: at(p.x, s?.dx), y: at(p.y, s?.dy) }));
           } else {
-            t.props(id, itemPlexus(id, { x: item.x + dx, y: item.y + dy }));
+            t.props(id, itemPlexus(id, { x: at(item.x + dx, s?.dx), y: at(item.y + dy, s?.dy) }));
           }
         }
+        for (const w of drops.writes) {
+          if (w.op === "string") {
+            let prev = rawNode(w.uid)?.[STR];
+            if (typeof prev !== "string") prev = laneResolve(w.uid);
+            t.string(w.uid, w.string);
+            if (typeof prev === "string") track2.undo.push({ op: "string", uid: w.uid, string: prev });
+            if (w.ref) laneWrites.set(w.ref, { uid: w.uid, string: w.string, at: Date.now() });
+          } else if (w.op === "create") {
+            const made = t.create({ parent: w.parent, string: w.string, order: "last" });
+            track2.undo.push({ op: "delete", uid: made });
+            if (w.ref) laneWrites.set(w.ref, { uid: made, string: w.string, at: Date.now() });
+          }
+        }
+        runMoveHooks(t, parents, track2);
         applyFit(t, top);
         if (flag("space-out", false)) spaceOutAfter(t, top);
       }, custom);
     },
     commitRects(list) {
       if (!board2 || !list?.length) return Promise.resolve();
+      const { track: track2, custom, wrap } = dragUndo();
       return txn((t) => {
+        wrap(t);
         const changedSections = [];
         const fitTouched = [];
         for (const r of list) {
@@ -52760,15 +53783,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           t.sync();
           for (const sid of changedSections) {
             const plan = sectionAdoptPlan(board2, sid, rects);
+            const parents = plan.filter((p) => p.toParent !== board2.items.get(p.uid)?.parentUid).map((p) => ({ uid: p.uid, from: board2.items.get(p.uid).parentUid, to: p.toParent }));
             for (const p of plan) {
               t.move(p.uid, p.toParent, "last");
               t.props(p.uid, itemPlexus(p.uid, { x: p.x, y: p.y }));
             }
+            runMoveHooks(t, parents, track2);
             if (plan.length) t.sync();
           }
         }
         applyFit(t, fitTouched, { skip: changedSections });
-      });
+      }, custom);
     },
     addPublicCard({ string, x, y } = {}) {
       return txn((t) => addPublicCard({
@@ -52866,8 +53891,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           const again = chunkParsedMarkdown(fn.apply(markdown));
           if (again.ok) chunks = again.chunks;
         }
-        for (const chunk of chunks) {
-          const roots = await host.fromMarkdown({ parentUid: loc.parentUid, order, markdown: chunk });
+        for (const chunk2 of chunks) {
+          const roots = await host.fromMarkdown({ parentUid: loc.parentUid, order, markdown: chunk2 });
           uids.push(...roots);
           order = advanceOrder(order, roots.length);
         }
@@ -53958,6 +54983,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         return true;
       });
     },
+    setKeepOrder(id, on) {
+      return txn((t) => {
+        const item = board2.items.get(id);
+        if (!item || item.type !== "section" || item.keepOrder === true === (on === true)) return;
+        t.props(id, itemPlexus(id, { keepOrder: on === true ? true : void 0 }));
+      });
+    },
     setFit(id, on) {
       return txn((t) => {
         const item = board2.items.get(id);
@@ -54137,7 +55169,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     },
     // Modes: row, column, grid, outline. A lone selected section tidies its members; otherwise each parent's
     // selected items are tidied among themselves. Writes only x and y. Resolves the number of items moved.
-    tidyItems(uids, mode = "grid", { gap } = {}) {
+    // An explicit `order` (item uids) replaces the outline order for mode "outline"; unlisted items follow in reading order.
+    tidyItems(uids, mode = "grid", { gap, order } = {}) {
       return txn((t) => {
         const top = topLevelOf(board2, uids ?? []);
         const groups2 = /* @__PURE__ */ new Map();
@@ -54152,7 +55185,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           }
         }
         const opts = gap !== void 0 ? { gap } : {};
-        if (mode === "outline") opts.order = outlineOrder(board2);
+        if (mode === "outline") opts.order = Array.isArray(order) ? order : outlineOrder(board2);
         const moved = [];
         for (const ids of groups2.values()) {
           if (ids.length < 2) continue;
@@ -54467,10 +55500,55 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         return writeImageRegion(t, board2.items.get(on), frac, label, uid2, poly);
       });
     },
-    pinLink(link) {
+    // A pin reads the links as they are now: a drawn arrow (it has a key) the card's text no longer has is not written.
+    pinLink(given) {
+      settleLocalEdit();
+      const link = given?.key ? visibleLinks.find((l) => l.key === given.key) : given;
+      if (!link) return Promise.resolve(null);
       const first = link?.labels?.[0];
       const label = first && first !== "mentions" ? first : "";
       return session.addEdge({ from: link.from, to: link.to, label, dir: "one" });
+    },
+    // Up to PIN_BATCH faint links as connections in one undo step. Links a connection already covers are skipped.
+    pinLinks(given) {
+      settleLocalEdit();
+      const now6 = new Map(visibleLinks.map((l) => [l.key, l]));
+      const links = (Array.isArray(given) ? given : []).map((l) => l?.key ? now6.get(l.key) : l).filter(Boolean);
+      return txn((t) => {
+        const list = links;
+        const seen = /* @__PURE__ */ new Set();
+        const fresh = coveredBy(list.filter((l) => l?.from && l?.to && l.from !== l.to && !seen.has(l.key) && seen.add(l.key)), board2).visible;
+        const made = [];
+        let container = null;
+        for (const link of fresh.slice(0, PIN_BATCH)) {
+          if (!board2.items.has(link.from) || !board2.items.has(link.to)) continue;
+          const first = link.labels?.[0];
+          const label = first && first !== "mentions" ? first : "";
+          const props = serializeEdge({ from: link.from, to: link.to, dir: "one" });
+          container ?? (container = ensureContainer(t));
+          made.push(t.create({ parent: container, order: "last", string: edgeStringFor(link.from, link.to, "one", label, props.fromBlock, props.toBlock), plexus: props }));
+        }
+        return made;
+      });
+    },
+    get cardRefs() {
+      return { on: cardRefsOn(board2), big: (board2?.items?.size || 0) > CARD_REFS_MAX };
+    },
+    // The enhanced board's ref arrows. Under the size cap the default is on; past it the key does not matter.
+    setCardRefs(on) {
+      return txn((t) => {
+        if (!board2.enhanced) return false;
+        const base2 = rawPlexus(uid);
+        const next = { ...base2, refs: on !== false };
+        if (stable(next) !== stable(base2)) t.props(uid, next);
+        return true;
+      });
+    },
+    // The tray's child -> parent map of the followed outline. Only a tree pointer uses it.
+    setFollowParents(map) {
+      if (destroyed || !followPointer()?.tree) return;
+      followParents = map instanceof Map && map.size ? map : null;
+      recomputeLinks(false);
     },
     async writeToGraph(edgeUid) {
       const edge = board2?.edges.get(edgeUid);
@@ -54652,6 +55730,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         clearTimeout(highlightHoldTimer);
         highlightHoldTimer = null;
       }
+      if (localEditTimer != null) {
+        clearTimeout(localEditTimer);
+        localEditTimer = null;
+      }
       disposeHighlightWatches();
       cancelScheduledLinks();
       linkResolve?.();
@@ -54659,6 +55741,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       linkResolve = null;
       listeners3.clear();
       ledger.clear();
+      for (const fn of destroyHooks.splice(0)) {
+        try {
+          fn();
+        } catch (err) {
+          console.error("[plexus session]", err);
+        }
+      }
     }
   };
   function makeBoard(t, rect, title, exclude, centerOf5 = rect) {
@@ -54751,6 +55840,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     rawPlexus,
     itemPlexus,
     edgePlexus,
+    laneKids,
+    laneResolve,
+    laneWrites,
     insertOrder,
     ensureContainer,
     edgeStringFor,
@@ -54764,6 +55856,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     clone,
     round1: round14,
     emit: emit2,
+    onDestroy(fn) {
+      if (typeof fn === "function") destroyHooks.push(fn);
+    },
+    onMoveItems(fn) {
+      if (typeof fn !== "function") return () => {
+      };
+      moveHooks.push(fn);
+      return () => {
+        const at = moveHooks.indexOf(fn);
+        if (at >= 0) moveHooks.splice(at, 1);
+      };
+    },
     onDeleteItems(fn) {
       if (typeof fn !== "function") return () => {
       };
@@ -55362,6 +56466,149 @@ extendSession((session, api3) => {
 // src/session-follow.js
 init_board();
 init_schema();
+
+// src/model/follow-headings.js
+init_follow();
+init_schema();
+var FOLLOW_HEAD = "head";
+var headingsNote = "Sections are the page's top-level H1–H3 headings. Each block directly under a heading becomes a card in its section.";
+var headingsEmpty = "This page has no top-level H1–H3 headings yet.";
+var UID5 = ":block/uid";
+var STR3 = ":block/string";
+var ORD2 = ":block/order";
+var KIDS5 = ":block/children";
+var HEAD = ":block/heading";
+var META = /^BT_attr[\w-]*::/;
+var PAD2 = 32;
+var GAP2 = 24;
+var STACK_GAP2 = 24;
+var SECTION_GAP3 = 64;
+var COLUMN_MAX = 8;
+var TITLE_MAX2 = 80;
+var timeOf = (node2) => Math.max(Number(node2?.[":create/time"]) || 0, Number(node2?.[":edit/time"]) || 0);
+var sorted = (node2) => Array.isArray(node2?.[KIDS5]) ? node2[KIDS5].slice().sort((a, b) => (a?.[ORD2] ?? 0) - (b?.[ORD2] ?? 0)) : [];
+function headingItems(page, { cap: cap4 = FOLLOW_READ_CAP, skip = /* @__PURE__ */ new Set() } = {}) {
+  const items = [];
+  let complete = true;
+  const top = sorted(page);
+  if (top.length > cap4) complete = false;
+  for (const head of top) {
+    const level = head?.[HEAD];
+    const uid = head?.[UID5];
+    if (typeof uid !== "string" || !(level >= 1 && level <= 3) || skip.has(uid)) continue;
+    if (items.length >= cap4) {
+      complete = false;
+      break;
+    }
+    const text4 = sourceText(typeof head[STR3] === "string" ? head[STR3] : "");
+    items.push({ uid, kind: "heading", text: text4, time: timeOf(head), heading: uid });
+    const kids = sorted(head);
+    if (kids.length > cap4) complete = false;
+    for (const kid of kids) {
+      const kidUid = kid?.[UID5];
+      if (typeof kidUid !== "string" || skip.has(kidUid)) continue;
+      const string = typeof kid[STR3] === "string" ? kid[STR3] : "";
+      if (META.test(string.trim())) continue;
+      if (items.length >= cap4) {
+        complete = false;
+        break;
+      }
+      items.push({ uid: kidUid, kind: "block", text: sourceText(string), time: timeOf(kid), heading: uid, headingText: text4, depth: 2, ...string.trim() ? {} : { blank: true } });
+    }
+    if (!complete && items.length >= cap4) break;
+  }
+  return { items, complete };
+}
+function movedCards(read2, board2, key) {
+  if (!read2?.ok) return [];
+  const now5 = /* @__PURE__ */ new Map();
+  for (const item of read2.items || []) if (item?.kind === "block" && item.uid) now5.set(item.uid, item);
+  const out = [];
+  for (const card2 of board2?.items?.values?.() || []) {
+    if (card2.src !== key || card2.type !== "card" || typeof card2.head !== "string") continue;
+    const seen = now5.get(card2.target?.kind === "block" && card2.target.uid ? card2.target.uid : card2.uid);
+    if (seen && typeof seen.heading === "string" && seen.heading !== card2.head) out.push({ uid: card2.uid, to: seen.heading, toText: seen.headingText || "" });
+  }
+  return out;
+}
+function headingPlan({ entries = [], order = [], board: board2, rects, key = "", size, gap = GAP2 } = {}) {
+  const w = size?.w > 0 ? size.w : 280;
+  const h = size?.h > 0 ? size.h : 160;
+  const rank = new Map((order || []).map((uid, i) => [uid, i]));
+  const byHead = /* @__PURE__ */ new Map();
+  const bucket = (head) => {
+    if (!byHead.has(head)) byHead.set(head, { head, title: "", blocks: [] });
+    return byHead.get(head);
+  };
+  for (const e2 of entries || []) {
+    const head = e2?.heading;
+    if (typeof head !== "string" || !rank.has(head)) continue;
+    const b = bucket(head);
+    if (e2.kind === "heading") b.title = e2.text;
+    else {
+      if (!b.title) b.title = e2.headingText || "";
+      b.blocks.push(e2);
+    }
+  }
+  const sections = /* @__PURE__ */ new Map();
+  for (const item of board2?.items?.values?.() || []) {
+    if (item.type === "section" && item.src === key && typeof item.head === "string" && !sections.has(item.head)) sections.set(item.head, item);
+  }
+  const heads = [...byHead.values()].sort((a, b) => rank.get(a.head) - rank.get(b.head));
+  const mine = [...sections.values()].map((s) => rects?.get(s.uid)).filter(Boolean);
+  const roots = (board2?.roots || []).map((uid) => rects?.get(uid)).filter(Boolean);
+  const row4 = mine.length ? mine : roots;
+  const x0 = row4.length ? Math.max(...row4.map((r) => r.x + r.w)) + SECTION_GAP3 : 0;
+  const y0 = row4.length ? Math.min(...row4.map((r) => r.y)) : 0;
+  const fresh = [];
+  let x = x0;
+  for (const b of heads) {
+    if (sections.has(b.head)) continue;
+    const n3 = b.blocks.length;
+    const cols = Math.max(1, Math.ceil(n3 / COLUMN_MAX));
+    const rows = Math.max(1, Math.min(n3, COLUMN_MAX));
+    const sw = PAD2 * 2 + cols * w + (cols - 1) * gap;
+    const sh = PAD2 * 2 + rows * h + (rows - 1) * STACK_GAP2;
+    fresh.push({ b, x, y: y0, w: sw, h: sh });
+    x += sw + SECTION_GAP3;
+  }
+  let dx = 0;
+  if (fresh.length) {
+    const left = fresh[0].x;
+    const box2 = { x: left, y: y0, w: x - SECTION_GAP3 - left, h: Math.max(...fresh.map((f) => f.h)) };
+    const avoid = [];
+    for (const item of board2?.items?.values?.() || []) {
+      const r = rects?.get(item.uid);
+      if (r) avoid.push(item.type === "section" ? withTitle(r) : r);
+    }
+    dx = clearRight(withTitle(box2), avoid);
+  }
+  const place3 = new Map(fresh.map((f) => [f.b.head, f]));
+  const ops = [];
+  for (const b of heads) {
+    const own2 = sections.get(b.head);
+    if (own2) {
+      const r = rects?.get(own2.uid);
+      if (!r) continue;
+      const bottoms = (own2.members || []).map((uid) => rects.get(uid)).filter(Boolean).map((m) => m.y + m.h);
+      let y = bottoms.length ? Math.max(...bottoms) + STACK_GAP2 : r.y + PAD2;
+      for (const e2 of b.blocks) {
+        ops.push(cardOp(e2, b.head, own2.uid, r.x + PAD2, y));
+        y += h + STACK_GAP2;
+      }
+      continue;
+    }
+    const f = place3.get(b.head);
+    ops.push({ op: "section", head: b.head, title: plainText(b.title, TITLE_MAX2) || "Untitled", x: f.x + dx, y: f.y, w: f.w, h: f.h });
+    b.blocks.forEach((e2, i) => {
+      ops.push(cardOp(e2, b.head, null, f.x + dx + PAD2 + Math.floor(i / COLUMN_MAX) * (w + gap), f.y + PAD2 + i % COLUMN_MAX * (h + STACK_GAP2)));
+    });
+  }
+  return ops;
+}
+var cardOp = (e2, head, into, x, y) => ({ op: "card", uid: e2.uid, kind: e2.kind, ...e2.title ? { title: e2.title } : {}, head, into, x, y });
+
+// src/session-follow.js
 init_follow();
 var same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 extendSession((session, api3) => {
@@ -55380,29 +56627,38 @@ extendSession((session, api3) => {
     if (t?.kind === "block" && t.uid) return t.uid;
     return null;
   };
-  const writePointer = (next) => api3.txn((t) => {
+  const ownerOf = (owner) => owner === void 0 || owner === null || owner === "" ? boardUid : owner;
+  const isSection = (owner) => api3.board()?.items.get(owner)?.type === "section";
+  let refusal = null;
+  const writePointer = (next, owner = boardUid) => api3.txn((t) => {
     const board2 = api3.board();
     if (!board2?.enhanced) return false;
-    const base2 = api3.rawPlexus(boardUid);
+    if (owner !== boardUid && !isSection(owner)) return false;
+    const base2 = api3.rawPlexus(owner);
     const pointer = next(readFollow(base2), base2);
     const plexus = withFollow(base2, pointer);
     if (same(plexus, base2)) return false;
-    t.props(boardUid, plexus);
+    t.props(owner, plexus);
     return true;
   }).then((ok) => ok === true);
-  const placeNow = (entries, { at = null } = {}) => {
+  const placeNow = (entries, { at = null, owner: ownerArg, order = null } = {}) => {
     const none = { placed: 0, batches: 0, total: 0, uids: [] };
     const board2 = api3.board();
-    const pointer = readFollow(board2?.plexus);
+    const owner = ownerOf(ownerArg);
+    if (owner !== boardUid && !isSection(owner)) return Promise.resolve(none);
+    const pointer = owner === boardUid ? readFollow(board2?.plexus) : board2?.items.get(owner)?.follow || null;
     if (!board2 || !pointer) return Promise.resolve(none);
     const key = sourceKey(pointer);
     const skipped = new Set(pointer.skip);
+    const heads = owner === boardUid && pointer.kind === "headings";
     const { on } = followIndex(board2, key);
     const seen = /* @__PURE__ */ new Set();
     const list = (entries || []).filter((e2) => {
       if (typeof e2?.uid !== "string" || !e2.uid || seen.has(e2.uid)) return false;
       if (e2.src !== void 0 && e2.src !== key) return false;
+      if (e2.kind === "heading" && (!heads || at)) return false;
       seen.add(e2.uid);
+      if (heads && e2.heading && e2.heading !== e2.uid && skipped.has(e2.heading)) return false;
       return !skipped.has(e2.uid) && !itemIds(e2).some((id) => on.has(id));
     });
     if (!list.length) return Promise.resolve(none);
@@ -55410,11 +56666,14 @@ extendSession((session, api3) => {
       w: Number(api3.setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w,
       h: Number(api3.setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h
     };
+    if (heads && !at) return placeHeadings(list, size, key, order);
     const rects = api3.rects();
     const bounds = boundsOf(board2.roots.map((id) => rects.get(id)).filter(Boolean));
+    const inSection = owner !== boardUid && !at;
+    const grid = inSection ? sectionGrid(rects.get(owner), board2.items.get(owner).members.map((id) => rects.get(id)).filter(Boolean), list.length, { ...size, pad: FIT_PAD }) : null;
     const batches = followBatches(list, SPREAD_CAP);
     const made = [];
-    const byDay = pointer.kind === "journals" && pointer.columns === true && !at;
+    const byDay = owner === boardUid && pointer.kind === "journals" && pointer.columns === true && !at;
     const dayRects = [];
     if (byDay) {
       for (const item of board2.items.values()) {
@@ -55427,9 +56686,10 @@ extendSession((session, api3) => {
     batches.forEach((batch, column) => {
       chain = chain.then(() => {
         if (api3.isGone()) return null;
-        const spots = planned ? planned.slice(column * SPREAD_CAP, column * SPREAD_CAP + batch.length) : followColumn(bounds, batch.length, { ...size, column, at });
+        if (inSection && !api3.board()?.items.has(owner)) return null;
+        const spots = inSection ? grid.slice(column * SPREAD_CAP, column * SPREAD_CAP + batch.length) : planned ? planned.slice(column * SPREAD_CAP, column * SPREAD_CAP + batch.length) : followColumn(bounds, batch.length, { ...size, column, at });
         return api3.txn((t) => {
-          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key, pointer.kind === "journals" && /^\d\d-\d\d-\d{4}$/.test(entry.day || "") ? entry.day : null));
+          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key, heads && typeof entry.heading === "string" ? entry.heading : "", inSection ? owner : null, pointer.kind === "journals" && /^\d\d-\d\d-\d{4}$/.test(entry.day || "") ? entry.day : null));
           api3.applyFit(t, ids);
           return ids;
         }).then((ids) => {
@@ -55440,35 +56700,117 @@ extendSession((session, api3) => {
     return chain.then(() => ({ placed: made.length, batches: batches.length, total: list.length, uids: made }));
   };
   let placing = Promise.resolve(null);
+  function placeHeadings(list, size, key, order) {
+    const board2 = api3.board();
+    const heads = Array.isArray(order) ? order : [...new Set(list.map((e2) => e2.heading).filter(Boolean))];
+    const ops = headingPlan({ entries: list, order: heads, board: board2, rects: api3.rects(), key, size });
+    const batches = followBatches(ops, SPREAD_CAP);
+    const sized = size.w !== DEFAULT_SIZES.card.w || size.h !== DEFAULT_SIZES.card.h ? size : {};
+    const made = [];
+    const sectionAt = /* @__PURE__ */ new Map();
+    let cards = 0;
+    let sections = 0;
+    let failed = false;
+    let chain = Promise.resolve();
+    for (const batch of batches) {
+      chain = chain.then(() => {
+        if (failed || api3.isGone()) return null;
+        return api3.txn((t) => {
+          const now5 = api3.board();
+          const rects = api3.rects();
+          const ids = [];
+          const fresh = [];
+          let n3 = 0;
+          for (const op of batch) {
+            if (op.op === "section") {
+              const layout2 = { type: "section", x: op.x, y: op.y, w: op.w, h: op.h };
+              const uid = t.create({ parent: boardUid, string: op.title, plexus: { ...serializeItemLayout(layout2), [FOLLOW_SRC]: key, [FOLLOW_HEAD]: op.head } });
+              sectionAt.set(op.head, { uid, x: api3.round1(op.x), y: api3.round1(op.y) });
+              ids.push(uid);
+              fresh.push(uid);
+              continue;
+            }
+            const home = op.into ? { uid: op.into } : sectionAt.get(op.head);
+            if (!home) continue;
+            const rel = op.into ? toRelative(now5, op.into, op, rects) : { x: op.x - home.x, y: op.y - home.y };
+            const string = followCardString(op);
+            const layout = { x: api3.round1(rel.x), y: api3.round1(rel.y), ...sized };
+            const look = lookForNewString(string, api3.setting("default-card-look", "block"));
+            if (look) layout.look = look;
+            ids.push(t.create({ parent: home.uid, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key, [FOLLOW_HEAD]: op.head } }));
+            n3 += 1;
+          }
+          api3.applyFit(t, ids);
+          return { ids, cards: n3, sections: fresh.length };
+        }).then((res) => {
+          if (!res) {
+            failed = true;
+            return;
+          }
+          made.push(...res.ids);
+          cards += res.cards;
+          sections += res.sections;
+        });
+      });
+    }
+    return chain.then(() => ({ placed: cards, sections, batches: batches.length, total: list.length, uids: made }));
+  }
   api3.onDeleteItems?.((t, uids, opts) => {
     const board2 = api3.board();
-    const base2 = api3.rawPlexus(boardUid);
-    const pointer = readFollow(base2);
-    if (!board2 || !pointer) return;
-    const key = sourceKey(pointer);
-    const add = [];
+    if (!board2) return;
+    const gone = new Set(uids);
+    const byKey = /* @__PURE__ */ new Map();
+    for (const o of followOwnersOf(board2).owners) if (!byKey.has(o.key)) byKey.set(o.key, o.uid);
+    const boardKey2 = sourceKey(readFollow(api3.rawPlexus(boardUid)));
+    const adds = /* @__PURE__ */ new Map();
+    const add = (owner, uid) => {
+      if (!adds.has(owner)) adds.set(owner, []);
+      adds.get(owner).push(uid);
+    };
+    const heads = /* @__PURE__ */ new Set();
     for (const id of uids) {
       const item = board2.items.get(id);
-      if (!item || item.src !== key && opts?.followSkip !== true) continue;
-      const skip = skipIdOf(item);
-      if (skip) add.push(skip);
+      if (boardKey2 && item?.type === "section" && item.head && (item.src === boardKey2 || opts?.followSkip === true)) heads.add(item.head);
     }
-    if (add.length) t.props(boardUid, withFollow(base2, { ...pointer, skip: addSkip(pointer.skip, add) }));
+    for (const head of heads) add(boardUid, head);
+    for (const id of uids) {
+      const item = board2.items.get(id);
+      if (!item) continue;
+      const owner = byKey.get(item.src) ?? (opts?.followSkip === true && boardKey2 ? boardUid : null);
+      if (!owner || gone.has(owner)) continue;
+      if (owner === boardUid && (item.type === "section" ? item.head : heads.has(item.head))) continue;
+      const skip = skipIdOf(item);
+      if (skip) add(owner, skip);
+    }
+    for (const [owner, list] of adds) {
+      const base2 = api3.rawPlexus(owner);
+      const pointer = readFollow(base2);
+      if (pointer) t.props(owner, withFollow(base2, { ...pointer, skip: addSkip(pointer.skip, list) }));
+    }
   });
-  function placeOne(t, string, spot, size, key, day = null) {
+  function placeOne(t, string, spot, size, key, head = "", into = null, day = null) {
     const board2 = api3.board();
     const rects = api3.rects();
-    const parent = containerAt(board2, { x: spot.x + size.w / 2, y: spot.y + size.h / 2 }, { rects });
+    const parent = into || containerAt(board2, { x: spot.x + size.w / 2, y: spot.y + size.h / 2 }, { rects });
     const rel = toRelative(board2, parent, spot, rects);
     const layout = { x: api3.round1(rel.x), y: api3.round1(rel.y) };
     const look = lookForNewString(string, api3.setting("default-card-look", "block"));
     if (look) layout.look = look;
-    return t.create({ parent, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key, ...day ? { [FOLLOW_DAY]: day } : {} } });
+    return t.create({ parent, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key, ...head ? { [FOLLOW_HEAD]: head } : {}, ...day ? { [FOLLOW_DAY]: day } : {} } });
   }
   Object.assign(session, {
     followState() {
       const pointer = readFollow(api3.board()?.plexus);
       return pointer ? { pointer, key: sourceKey(pointer), followDerived: api3.board()?.followDerived === true } : null;
+    },
+    // PXD-13: every owner that follows a source, sections in outline order then the board ({ owners, capped }).
+    followOwners() {
+      return followOwnersOf(api3.board());
+    },
+    // Why the last followSource was refused: { reason: "invalid" | "not-section" | "self" | "taken" | "cap" | "kind" |
+    // "unchanged", by? (the owner that follows it) }, or null.
+    followRefusal() {
+      return refusal;
     },
     // Every block of the board's own tree: never a query or linked-reference result.
     followExclude() {
@@ -55476,37 +56818,62 @@ extendSession((session, api3) => {
       out.add(boardUid);
       return out;
     },
-    // { kind, uid, tree }. The same source keeps its skip list. Resolves true when the pointer changed.
-    followSource({ kind, uid, tree, columns } = {}) {
-      if (typeof kind !== "string" || typeof uid !== "string" || !uid || uid === boardUid) return Promise.resolve(false);
-      return writePointer((cur, base2) => followPointerFor(keptFollow(base2, `${kind}:${uid}`) || cur, kind, uid, { tree, columns }));
+    // { kind, uid, tree, columns, owner }. The same source keeps its skip list. Resolves true when the pointer changed; on false
+    // followRefusal() says why. A source key is followed by one owner per board, at most FOLLOW_SECTION_CAP sections
+    // follow one, and a section cannot follow its own block or the board. PXD-18: the Inbox kind takes the board's own
+    // uid, and only the board follows it.
+    followSource({ kind, uid, tree, columns, owner: ownerArg } = {}) {
+      const owner = ownerOf(ownerArg);
+      const refuse = (reason, by2) => {
+        refusal = by2 ? { reason, by: by2 } : { reason };
+        return Promise.resolve(false);
+      };
+      refusal = null;
+      if (typeof kind !== "string" || typeof uid !== "string" || !uid) return refuse("invalid");
+      if (owner !== boardUid && !isSection(owner)) return refuse("not-section");
+      if (kind === INBOX_KIND) {
+        if (uid !== boardUid || owner !== boardUid) return refuse("self");
+      } else if (uid === boardUid || uid === owner) return refuse("self");
+      if (kind === "headings" && owner !== boardUid) return refuse("kind");
+      const key = `${kind}:${uid}`;
+      const { owners, capped } = followOwnersOf(api3.board());
+      const other = owners.find((o) => o.key === key && o.uid !== owner);
+      if (other) return refuse("taken", other.name === BOARD_OWNER_NAME ? "the board" : other.name);
+      if (owner !== boardUid && capped && !owners.some((o) => o.uid === owner)) return refuse("cap");
+      return writePointer((cur, base2) => followPointerFor(keptFollow(base2, key) || cur, kind, uid, { tree, columns }), owner).then((ok) => {
+        if (!ok) refusal = { reason: "unchanged" };
+        return ok;
+      });
     },
-    setFollowTree(on) {
-      return writePointer((cur) => cur?.kind === "block" ? { ...cur, tree: on === true } : cur);
+    setFollowTree(on, owner) {
+      return writePointer((cur) => cur?.kind === "block" ? { ...cur, tree: on === true } : cur, ownerOf(owner));
     },
     setFollowColumns(on) {
       return writePointer((cur) => cur?.kind === "journals" ? { ...cur, columns: on === true } : cur);
     },
     // The cards stay; only the pointer (and its skip list) goes.
-    stopFollowing() {
-      return writePointer(() => null);
+    stopFollowing(owner) {
+      return writePointer(() => null, ownerOf(owner));
     },
     // Calls run one after another, and each filters against the board the previous one left, so a second Place all
     // (or a drag) while the first is still writing never places a card twice. A skipped uid is never placed.
+    // opts: { at, owner }.
     placeFollowed(entries, opts = {}) {
       const run = () => placeNow(entries, opts);
       placing = placing.then(run, run);
       return placing;
     },
-    // Source uids the tray should stop offering. Resolves the number added.
-    dontBringBack(uids) {
+    // Source uids the tray should stop offering, on the owner's list. Resolves the number added.
+    dontBringBack(uids, ownerArg) {
+      const owner = ownerOf(ownerArg);
       return api3.txn((t) => {
-        const base2 = api3.rawPlexus(boardUid);
+        if (owner !== boardUid && !isSection(owner)) return 0;
+        const base2 = api3.rawPlexus(owner);
         const pointer = readFollow(base2);
         if (!pointer) return 0;
         const skip = addSkip(pointer.skip, uids);
         if (same(skip, pointer.skip)) return 0;
-        t.props(boardUid, withFollow(base2, { ...pointer, skip }));
+        t.props(owner, withFollow(base2, { ...pointer, skip }));
         return skip.length - pointer.skip.length;
       }).then((n3) => n3 ?? 0);
     },
@@ -55514,7 +56881,8 @@ extendSession((session, api3) => {
     removeFollowed(cardUids) {
       return session.deleteItems(cardUids, { followSkip: true });
     },
-    // Drops the source mark from cards (a "left the source" card becomes a plain card). Everything else stays.
+    // Drops the source mark from cards (a "left the source" card becomes a plain card; a section also lets go of its
+    // heading). Everything else stays.
     dismissLeft(cardUids) {
       return api3.txn((t) => {
         let n3 = 0;
@@ -55523,13 +56891,833 @@ extendSession((session, api3) => {
           if (!api3.board()?.items.has(id) || !(FOLLOW_SRC in raw)) continue;
           const next = { ...raw };
           delete next[FOLLOW_SRC];
+          delete next[FOLLOW_HEAD];
           t.props(id, next);
+          n3 += 1;
+        }
+        return n3;
+      }).then((n3) => n3 ?? 0);
+    },
+    // PXD-14: `{ cardUid: headingUid }`. The card stays where it is and takes the heading its block moved to as its
+    // own, so the tray stops calling it moved. Resolves the number written.
+    dismissMoved(moved) {
+      const pairs = moved instanceof Map ? [...moved] : Object.entries(moved || {});
+      return api3.txn((t) => {
+        let n3 = 0;
+        for (const [id, to] of pairs) {
+          const item = api3.board()?.items.get(id);
+          if (!item || typeof item.head !== "string" || typeof to !== "string" || !to || item.head === to) continue;
+          t.props(id, { ...api3.rawPlexus(id), [FOLLOW_HEAD]: to });
           n3 += 1;
         }
         return n3;
       }).then((n3) => n3 ?? 0);
     }
   });
+});
+
+// src/session-lanes.js
+init_schema();
+init_table();
+
+// src/model/bucket.js
+init_schema();
+init_query();
+init_table();
+init_kanban();
+var WRITE_CHUNK = 45;
+var PLAIN_TAG = /^[\w\-/.]+$/u;
+var escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&");
+function parseTag(text4) {
+  let m = /^#\[\[([^\]\n]+)\]\]$/.exec(text4) || /^\[\[([^\]\n]+)\]\]$/.exec(text4);
+  let tag = m ? m[1].trim() : null;
+  if (tag == null) {
+    const bare = text4.startsWith("#") ? text4.slice(1) : text4;
+    if (!PLAIN_TAG.test(bare)) return null;
+    tag = bare;
+  }
+  return tag ? { kind: "tag", tag } : null;
+}
+function parseAttr(text4) {
+  const name = attrNameOf(text4);
+  if (!name || !columnNameOk(name)) return null;
+  const value = text4.slice(text4.indexOf("::") + 2).trim();
+  return value ? { kind: "attr", name, value } : null;
+}
+function parseBinding(text4) {
+  if (typeof text4 !== "string") return null;
+  const s = text4.trim();
+  if (!s) return null;
+  if (s.includes("::")) return parseAttr(s);
+  return parseTag(s);
+}
+function readBinding(plexus) {
+  const b = plexus?.bucket;
+  if (!b || typeof b !== "object") return null;
+  if (b.kind === "tag" && typeof b.tag === "string" && b.tag.trim()) return { kind: "tag", tag: b.tag.trim() };
+  if (b.kind === "attr" && typeof b.name === "string" && typeof b.value === "string") return parseAttr(`${b.name}:: ${b.value}`);
+  return null;
+}
+function tagToken(tag) {
+  return PLAIN_TAG.test(tag) ? `#${tag}` : `#[[${tag}]]`;
+}
+function bindingLabel(b) {
+  if (!b) return "";
+  return b.kind === "tag" ? tagToken(b.tag) : `${b.name}:: ${b.value}`;
+}
+function bindingKey(b) {
+  return b.kind === "tag" ? `tag:${b.tag}` : `attr:${b.name}:${b.value}`;
+}
+var tagTail = "(?![\\w/.-])";
+var plainRe = (tag, flags) => new RegExp(`(?<![\\w/.-])#${escapeRe(tag)}${tagTail}`, flags);
+function hasTag(string, tag) {
+  const s = String(string ?? "");
+  return plainRe(tag, "u").test(s) || s.includes(`#[[${tag}]]`) || s.includes(`[[${tag}]]`);
+}
+function addTag(string, tag) {
+  const s = String(string ?? "");
+  if (hasTag(s, tag)) return s;
+  return s ? `${s} ${tagToken(tag)}` : tagToken(tag);
+}
+function removeTag(string, tag) {
+  const s = String(string ?? "");
+  const gone = new RegExp(`(?<![\\w/.-])#(?:\\[\\[${escapeRe(tag)}\\]\\]|${escapeRe(tag)}${tagTail}) ?`, "gu");
+  return s.replace(gone, "").trimEnd();
+}
+function attrsOfKids(kids) {
+  const out = [];
+  for (const child of kids || []) {
+    const string = String(child?.[":block/string"] ?? child?.string ?? "");
+    const name = attrNameOf(string);
+    if (!name || !columnNameOk(name)) continue;
+    out.push({ name, value: string.slice(string.indexOf("::") + 2).trim(), uid: child?.[":block/uid"] ?? child?.uid ?? null });
+  }
+  return out;
+}
+function tagBlocked(binding, string) {
+  if (binding?.kind !== "tag" || hasTag(string, binding.tag)) return false;
+  const before = String(string ?? "");
+  const after = addTag(before, binding.tag);
+  return classifyString(before).kind !== classifyString(after).kind || isQueryString(before) !== isQueryString(after);
+}
+function planBucketAdd(binding, row4) {
+  if (!binding || !row4?.uid) return null;
+  if (binding.kind === "tag") {
+    if (tagBlocked(binding, row4.string)) return null;
+    const string = addTag(row4.string, binding.tag);
+    return string === String(row4.string ?? "") ? null : { op: "string", uid: row4.uid, string };
+  }
+  return planKanbanMove({ field: binding.name, column: binding.value, row: row4 });
+}
+function planBucketRemove(binding, row4) {
+  if (!binding || !row4?.uid) return null;
+  if (binding.kind === "tag") {
+    const string = removeTag(row4.string, binding.tag);
+    return string === String(row4.string ?? "") ? null : { op: "string", uid: row4.uid, string };
+  }
+  const attr = (row4.attrs || []).find((a) => a.name === binding.name);
+  if (!attr?.uid || attr.value !== binding.value) return null;
+  return { op: "delete", uid: attr.uid };
+}
+function applyPlan(row4, plan) {
+  if (plan.op === "string" && plan.uid === row4.uid) return { ...row4, string: plan.string };
+  if (plan.op === "string") return { ...row4, attrs: row4.attrs.map((a) => a.uid === plan.uid ? { ...a, value: plan.string.slice(plan.string.indexOf("::") + 2).trim() } : a) };
+  if (plan.op === "delete") return { ...row4, attrs: row4.attrs.filter((a) => a.uid !== plan.uid) };
+  if (plan.op === "create") {
+    const name = attrNameOf(plan.string);
+    return { ...row4, attrs: [...row4.attrs, { name, value: plan.string.slice(plan.string.indexOf("::") + 2).trim(), uid: null, pending: true }] };
+  }
+  return row4;
+}
+function planChainChange(before, after, row4) {
+  const had = new Map((before || []).map((b) => [bindingKey(b), b]));
+  const has = new Map((after || []).map((b) => [bindingKey(b), b]));
+  const adds = [...has].filter(([k]) => !had.has(k)).map(([, b]) => b);
+  const removes = [...had].filter(([k]) => !has.has(k)).map(([, b]) => b).filter((b) => b.kind !== "attr" || !adds.some((a) => a.kind === "attr" && a.name === b.name));
+  const plans = [];
+  let work = { uid: row4.uid, string: row4.string ?? "", attrs: (row4.attrs || []).map((a) => ({ ...a })) };
+  const push = (plan) => {
+    if (!plan) return;
+    const last = plans.at(-1);
+    if (plan.op === "string" && plan.uid === work.uid && last?.op === "string" && last.uid === plan.uid) last.string = plan.string;
+    else plans.push(plan);
+    work = applyPlan(work, plan);
+  };
+  for (const b of removes) push(planBucketRemove(b, work));
+  for (const b of adds) push(planBucketAdd(b, work));
+  return plans.filter((p) => !(p.op === "string" && p.uid === row4.uid && p.string === String(row4.string ?? "")));
+}
+function chunk(list, n3 = WRITE_CHUNK) {
+  const out = [];
+  for (let i = 0; i < list.length; i += n3) out.push(list.slice(i, i + n3));
+  return out;
+}
+
+// src/session-lanes.js
+init_follow();
+init_attr_lanes();
+var ATTR_BLOCKS = "[:find ?pu ?s ?o :in $ ?title :where [?p :node/title ?title] [?a :block/refs ?p] [?a :block/string ?s] [?a :block/order ?o] [?par :block/children ?a] [?par :block/uid ?pu] (not [?par :node/title _])]";
+var same2 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+extendSession((session, api3) => {
+  const { host } = api3;
+  const boardUid = session.uid;
+  const laneOf = (id) => {
+    const lane2 = api3.board()?.items.get(id);
+    return lane2 && lane2.type === "section" && lane2.look === "lane" ? lane2 : null;
+  };
+  const rowsOf2 = (id) => laneRows(api3.board(), id, api3.laneKids, api3.laneResolve);
+  function growWith(lane2, rect, bands) {
+    const n0 = shownBands(lane2.laneBands).length;
+    const added = Math.max(0, bands.length - n0);
+    const grown = growLane({ w: rect.w, h: rect.h, axis: lane2.axis, count: n0, added });
+    const vertical = lane2.axis === "vertical";
+    const old = { x: 0, y: 0, w: rect.w, h: rect.h };
+    const local = { x: 0, y: 0, w: grown.w, h: grown.h };
+    const moves = [];
+    const ends = bands.map(() => LANE_PAD);
+    for (const row4 of rowsOf2(lane2.uid)) {
+      const r = api3.rects().get(row4.uid);
+      if (!r) continue;
+      let q2 = { x: r.x - rect.x, y: r.y - rect.y, w: r.w, h: r.h };
+      const was = bandIndexAt(old, lane2.axis, n0, { x: q2.x + q2.w / 2, y: q2.y + q2.h / 2 });
+      if (added && was === grown.noneIndex) {
+        q2 = vertical ? { ...q2, y: q2.y + grown.shift } : { ...q2, x: q2.x + grown.shift };
+        moves.push({ uid: row4.uid, x: q2.x, y: q2.y });
+      }
+      const at = bandIndexAt(local, lane2.axis, bands.length, { x: q2.x + q2.w / 2, y: q2.y + q2.h / 2 });
+      ends[at] = Math.max(ends[at], vertical ? q2.x + q2.w + LANE_GAP : q2.y + q2.h + LANE_GAP);
+    }
+    return { ...grown, bands, moves, ends };
+  }
+  function writeGrow(t, id, lane2, g, extra = {}) {
+    for (const m of g.moves) t.props(m.uid, api3.itemPlexus(m.uid, { x: api3.round1(m.x), y: api3.round1(m.y) }));
+    const patch = { w: api3.round1(Math.max(g.w, extra.w ?? 0)), h: api3.round1(Math.max(g.h, extra.h ?? 0)) };
+    const next = serializeBands(g.bands);
+    if (!same2(next, lane2.laneBands)) patch.bands = next;
+    t.props(id, api3.itemPlexus(id, patch));
+  }
+  Object.assign(session, {
+    // Values on the lane's cards that have no band yet (a value typed in Roam), up to the band cap.
+    laneNewValues(id) {
+      const lane2 = laneOf(id);
+      if (!lane2?.laneAttr) return [];
+      return newLaneValues(rowsOf2(id), lane2.laneAttr, lane2.laneBands).map(valueKey);
+    },
+    // One band per new value, appended before none. Old band edges stay; cards in none move with it; no value is written.
+    addLaneValues(id) {
+      const lane2 = laneOf(id);
+      if (!lane2?.laneAttr) return Promise.resolve(0);
+      const rect = api3.rects().get(id);
+      const add = newLaneValues(rowsOf2(id), lane2.laneAttr, lane2.laneBands);
+      if (!rect || !add.length) return Promise.resolve(0);
+      const g = growWith(lane2, rect, laneBands([], lane2.laneAttr, [...lane2.laneBands || [], ...add]));
+      return api3.txn((t) => {
+        writeGrow(t, id, lane2, g);
+        return add.length;
+      }).then((n3) => n3 ?? 0);
+    },
+    // Names the lane menu offers: attributes on the board's cards plus those on the lane's ref cards' blocks.
+    laneFieldsFor(id) {
+      const board2 = api3.board();
+      if (!board2) return [];
+      return laneFields([...tableRows(board2), ...laneOf(id) ? rowsOf2(id) : []]);
+    },
+    // One transaction: the lane keeps `attr` and the band order, its cards are arranged into their bands, and the lane
+    // grows to hold them. Text and sections inside it stay where they are.
+    bindLane(id, name) {
+      const lane2 = laneOf(id);
+      const attr = typeof name === "string" ? name.trim() : "";
+      if (!lane2 || !attr || !laneAttrOk(attr)) return Promise.resolve(false);
+      if (readBinding(api3.rawPlexus(id))) return Promise.resolve(false);
+      const board2 = api3.board();
+      const rect = api3.rects().get(id);
+      if (!rect) return Promise.resolve(false);
+      const rows = rowsOf2(id);
+      const bands = laneBands(rows, attr, lane2.laneAttr === attr ? lane2.laneBands : []);
+      const cards = rows.map((row4) => {
+        const r = api3.rects().get(row4.uid);
+        return { uid: row4.uid, w: r?.w ?? DEFAULT_SIZES.card.w, h: r?.h ?? DEFAULT_SIZES.card.h, band: bandOfRow(bands, row4, attr) };
+      });
+      const arranged = arrangeLane({ w: rect.w, h: rect.h, axis: lane2.axis, bands, cards });
+      return api3.txn((t) => {
+        for (const c of arranged.cards) {
+          if (!board2.items.has(c.uid)) continue;
+          t.props(c.uid, api3.itemPlexus(c.uid, { x: api3.round1(c.x), y: api3.round1(c.y) }));
+        }
+        t.props(id, api3.itemPlexus(id, { attr, bands: serializeBands(bands), w: api3.round1(arranged.w), h: api3.round1(arranged.h) }));
+        return true;
+      }).then((ok) => ok === true);
+    },
+    // Only the binding goes. Cards, values and everything else on the lane stay.
+    unbindLane(id) {
+      const lane2 = laneOf(id);
+      if (!lane2 || !lane2.laneAttr) return Promise.resolve(false);
+      return api3.txn((t) => {
+        t.props(id, api3.itemPlexus(id, { attr: void 0, bands: void 0 }));
+        return true;
+      }).then((ok) => ok === true);
+    },
+    // Blocks in the graph that have a `Name::` child and are not on this board yet, as block-ref cards in the lane,
+    // each in the band of its value. SPREAD_CAP per call (one undo). Resolves { placed, total }.
+    pullLaneSource(id) {
+      const none = { placed: 0, total: 0 };
+      const lane2 = laneOf(id);
+      const name = lane2?.laneAttr;
+      if (!lane2 || !name) return Promise.resolve(none);
+      const board2 = api3.board();
+      const onBoard = /* @__PURE__ */ new Set([boardUid]);
+      for (const item of board2.items.values()) {
+        onBoard.add(item.uid);
+        if (item.target?.uid) onBoard.add(item.target.uid);
+      }
+      const inTree = api3.ix();
+      let rows = [];
+      try {
+        rows = host.q?.(ATTR_BLOCKS, name) || [];
+      } catch {
+        rows = [];
+      }
+      const prefix = `${name}::`;
+      const found = /* @__PURE__ */ new Map();
+      for (const row4 of rows) {
+        const [parent, string, order] = Array.isArray(row4) ? row4 : [];
+        if (typeof parent !== "string" || typeof string !== "string") continue;
+        const text4 = string.trim();
+        if (!text4.startsWith(prefix)) continue;
+        if (onBoard.has(parent) || inTree.has(parent)) continue;
+        if (!found.has(parent)) found.set(parent, []);
+        found.get(parent).push({ order: Number(order) || 0, value: text4.slice(prefix.length).trim() });
+      }
+      const all = [...found.entries()].sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+      if (!all.length) return Promise.resolve(none);
+      const batch = all.slice(0, SPREAD_CAP);
+      const fake = batch.map(([uid, list]) => ({
+        uid,
+        attrs: list.sort((a, b) => a.order - b.order).map((v) => ({ name, value: v.value, uid: null }))
+      }));
+      const rect = api3.rects().get(id);
+      if (!rect) return Promise.resolve(none);
+      const size = {
+        w: Number(api3.setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w,
+        h: Number(api3.setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h
+      };
+      const g = growWith(lane2, rect, laneBands(fake, name, lane2.laneBands));
+      const vertical = lane2.axis === "vertical";
+      const local = { x: 0, y: 0, w: g.w, h: g.h };
+      let needW = g.w;
+      let needH = g.h;
+      const spots = fake.map((row4) => {
+        const at = bandOfRow(g.bands, row4, name);
+        const band = bandRect(local, lane2.axis, g.bands.length, at);
+        const box2 = { x: band.x + (band.w - size.w) / 2, y: band.y + (band.h - size.h) / 2, w: size.w, h: size.h };
+        const snap = snapIntoBand(band, lane2.axis, box2, local, FIT_PAD);
+        const cross = g.ends[at];
+        g.ends[at] = cross + (vertical ? size.w : size.h) + LANE_GAP;
+        const spot = vertical ? { uid: row4.uid, x: cross, y: box2.y + snap.dy } : { uid: row4.uid, x: box2.x + snap.dx, y: cross };
+        needW = Math.max(needW, spot.x + size.w + LANE_PAD);
+        needH = Math.max(needH, spot.y + size.h + LANE_PAD);
+        return spot;
+      });
+      return api3.txn((t) => {
+        writeGrow(t, id, lane2, g, vertical ? { w: needW } : { h: needH });
+        const ids = spots.map((spot) => {
+          const string = followCardString({ kind: "block", uid: spot.uid });
+          const layout = { x: api3.round1(spot.x), y: api3.round1(spot.y) };
+          const look = lookForNewString(string, api3.setting("default-card-look", "block"));
+          if (look) layout.look = look;
+          return t.create({ parent: id, string, plexus: serializeItemLayout(layout) });
+        });
+        api3.applyFit(t, ids);
+        return ids.length;
+      }).then((placed) => ({ placed: placed ?? 0, total: all.length }));
+    }
+  });
+});
+
+// src/session-source-order.js
+init_board();
+
+// src/model/source-order.js
+var SOURCE_ORDER_CHUNK = 45;
+var isDueChild = (string) => /^\s*BT_attrDue::/.test(String(string ?? ""));
+function pickSourceParent(cards) {
+  const seen = /* @__PURE__ */ new Set();
+  const list = [];
+  for (const c of cards || []) {
+    if (!c?.target || seen.has(c.target)) continue;
+    seen.add(c.target);
+    list.push(c);
+  }
+  const counts = /* @__PURE__ */ new Map();
+  for (const c of list) if (c.parent) counts.set(c.parent, (counts.get(c.parent) || 0) + 1);
+  let parentUid = "";
+  let best = 0;
+  for (const c of list) {
+    const n3 = c.parent ? counts.get(c.parent) : 0;
+    if (n3 > best) {
+      best = n3;
+      parentUid = c.parent;
+    }
+  }
+  return { parentUid, skipped: parentUid ? list.filter((c) => c.parent !== parentUid).length : list.length };
+}
+function planSourceOrder(kids, targets) {
+  const current3 = (kids || []).map((k) => k.uid);
+  const movable = new Set((kids || []).filter((k) => !isDueChild(k.string)).map((k) => k.uid));
+  const wanted = [];
+  const taken = /* @__PURE__ */ new Set();
+  for (const uid of targets || []) {
+    if (!movable.has(uid) || taken.has(uid)) continue;
+    taken.add(uid);
+    wanted.push(uid);
+  }
+  const desired = [];
+  let next = 0;
+  for (const uid of current3) desired.push(taken.has(uid) ? wanted[next++] : uid);
+  const moves = [];
+  const sim = current3.slice();
+  for (let i = 0; i < desired.length; ) {
+    if (sim[i] === desired[i]) {
+      i++;
+      continue;
+    }
+    const uid = taken.has(desired[i]) ? desired[i] : sim[i];
+    const order = uid === desired[i] ? i : "last";
+    applyMove(sim, { uid, order });
+    moves.push({ uid, order });
+  }
+  return { current: current3, desired, moves, targets: wanted };
+}
+function applyMove(list, { uid, order }) {
+  list.splice(list.indexOf(uid), 1);
+  if (order === "last") list.push(uid);
+  else list.splice(order, 0, uid);
+}
+function chunkMoves(moves, size = SOURCE_ORDER_CHUNK) {
+  const out = [];
+  for (let i = 0; i < moves.length; i += size) out.push(moves.slice(i, i + size));
+  return out;
+}
+function chunkStates(current3, chunks) {
+  const sim = current3.slice();
+  const out = [];
+  for (const chunk2 of chunks) {
+    for (const m of chunk2) applyMove(sim, m);
+    out.push(sim.slice());
+  }
+  return out;
+}
+function orderChanged(prev, next) {
+  const a = prev || [];
+  const b = next || [];
+  const inB = new Set(b);
+  const inA = new Set(a);
+  const x = a.filter((u) => inB.has(u));
+  const y = b.filter((u) => inA.has(u));
+  return x.length !== y.length || x.some((u, i) => u !== y[i]);
+}
+var orderSignature = (uids) => (uids || []).join("\0");
+function outlineOrderByTarget(childUids, cards) {
+  const index = new Map((childUids || []).map((u, i) => [u, i]));
+  return (cards || []).filter((c) => index.has(c.target)).map((c, i) => ({ card: c.card, at: index.get(c.target), i })).sort((a, b) => a.at - b.at || a.i - b.i).map((c) => c.card);
+}
+
+// src/session-source-order.js
+var SETTLE_MS = 150;
+var SIGNATURE_CAP = 400;
+var OWN_ECHO_MS = 3e3;
+var isRefCard = (item) => item?.type === "card" && item.kind === "block" && item.target?.kind === "block" && typeof item.target.uid === "string" && item.target.uid;
+extendSession((session, api3) => {
+  const { host } = api3;
+  const sorted3 = (kids) => (kids || []).slice().sort((a, b) => a.order - b.order);
+  const kidsOf5 = (parentUid) => sorted3(host.outlineKids?.([parentUid])?.get(parentUid));
+  const refCardsOf = (uids) => {
+    const board2 = api3.board();
+    if (!board2) return [];
+    const seen = /* @__PURE__ */ new Set();
+    const cards = [];
+    const add = (id) => {
+      const item = board2.items.get(id);
+      if (!item || seen.has(id)) return;
+      seen.add(id);
+      if (item.type === "section") return;
+      if (isRefCard(item)) cards.push({ card: id, target: item.target.uid });
+    };
+    for (const id of uids ?? []) {
+      const item = board2.items.get(id);
+      if (item?.type === "section") {
+        seen.add(id);
+        for (const m of item.members) add(m);
+      } else add(id);
+    }
+    const byCard = new Map(cards.map((c) => [c.card, c]));
+    return byReadingPosition(cards.map((c) => c.card), board2, api3.rects()).map((id) => byCard.get(id));
+  };
+  const parentOf = (target) => {
+    try {
+      return host.blockLocation?.(target)?.parentUid || "";
+    } catch {
+      return "";
+    }
+  };
+  function compute(uids) {
+    const cards = refCardsOf(uids);
+    const distinct = new Set(cards.map((c) => c.target));
+    if (distinct.size < 2) return { reason: "Select at least two block cards to apply their order" };
+    const rows = cards.map((c) => ({ target: c.target, parent: parentOf(c.target) }));
+    const { parentUid } = pickSourceParent(rows);
+    if (!parentUid) return { reason: "Those blocks have no parent to reorder" };
+    const kids = kidsOf5(parentUid);
+    const plan = planSourceOrder(kids, rows.filter((r) => r.parent === parentUid).map((r) => r.target));
+    const skippedCards = distinct.size - plan.targets.length;
+    if (plan.targets.length < 2) return { reason: "Fewer than two of those blocks can be reordered here" };
+    if (!plan.moves.length) return { reason: "The blocks are already in the board's order" };
+    let parentLabel = "";
+    try {
+      parentLabel = host.blockLabel?.(parentUid) || "";
+    } catch {
+      parentLabel = "";
+    }
+    return { parentUid, parentLabel: parentLabel || "the parent block", plan, skippedCards, moveCount: plan.moves.length, count: plan.targets.length };
+  }
+  const own2 = /* @__PURE__ */ new Map();
+  const applying = /* @__PURE__ */ new Set();
+  const remember2 = (parentUid, orders) => {
+    let set = own2.get(parentUid);
+    if (!set || set.size > SIGNATURE_CAP) own2.set(parentUid, set = /* @__PURE__ */ new Set());
+    for (const o of orders) set.add(orderSignature(o));
+  };
+  const watches = /* @__PURE__ */ new Map();
+  let marked = /* @__PURE__ */ new Map();
+  let markKey = "";
+  const markedSections = () => {
+    const board2 = api3.board();
+    const out = [];
+    if (!board2?.enhanced) return out;
+    for (const item of board2.items.values()) if (item.type === "section" && item.keepOrder === true) out.push(item);
+    return out;
+  };
+  const retidy = (parentUid, next) => {
+    for (const [sectionUid, p] of marked) {
+      if (p !== parentUid) continue;
+      const board2 = api3.board();
+      const section2 = board2?.items.get(sectionUid);
+      if (!section2 || section2.keepOrder !== true) continue;
+      const cards = section2.members.map((m) => board2.items.get(m)).filter(isRefCard).map((item) => ({ card: item.uid, target: item.target.uid }));
+      if (cards.length < 2) continue;
+      const order = outlineOrderByTarget(next, cards);
+      void session.tidyItems([sectionUid], "outline", { order });
+    }
+  };
+  const settle3 = (parentUid) => {
+    const slot2 = watches.get(parentUid);
+    if (!slot2 || api3.isGone()) return;
+    slot2.timer = null;
+    if (applying.has(parentUid)) return;
+    const next = kidsOf5(parentUid).map((k) => k.uid);
+    const prev = slot2.baseline;
+    slot2.baseline = next;
+    if (!prev || !orderChanged(prev, next)) return;
+    const ownWrite = Date.now() - (host.lastWriteAt?.() ?? -Infinity) < OWN_ECHO_MS;
+    if (ownWrite && own2.get(parentUid)?.has(orderSignature(next))) return;
+    retidy(parentUid, next);
+  };
+  const watchParent = (parentUid) => {
+    if (watches.has(parentUid)) return;
+    const slot2 = { off: () => {
+    }, baseline: kidsOf5(parentUid).map((k) => k.uid), timer: null };
+    slot2.off = host.watchChildren?.(parentUid, () => {
+      if (slot2.timer != null) clearTimeout(slot2.timer);
+      slot2.timer = setTimeout(() => settle3(parentUid), SETTLE_MS);
+    }) ?? (() => {
+    });
+    watches.set(parentUid, slot2);
+  };
+  const dropParent = (parentUid) => {
+    const slot2 = watches.get(parentUid);
+    if (!slot2) return;
+    if (slot2.timer != null) clearTimeout(slot2.timer);
+    try {
+      slot2.off();
+    } catch {
+    }
+    watches.delete(parentUid);
+  };
+  const resync = () => {
+    if (api3.isGone()) return;
+    const board2 = api3.board();
+    const sections = markedSections();
+    const key = sections.map((s) => `${s.uid}:${s.members.map((m) => isRefCard(board2.items.get(m)) ? board2.items.get(m).target.uid : "").join(",")}`).join("|");
+    if (key === markKey) return;
+    markKey = key;
+    const next = /* @__PURE__ */ new Map();
+    for (const section2 of sections) {
+      const cards = refCardsOf([section2.uid]);
+      const { parentUid } = pickSourceParent(cards.map((c) => ({ target: c.target, parent: parentOf(c.target) })));
+      if (parentUid) next.set(section2.uid, parentUid);
+    }
+    marked = next;
+    const want = new Set(next.values());
+    for (const parentUid of [...watches.keys()]) if (!want.has(parentUid)) dropParent(parentUid);
+    for (const parentUid of want) watchParent(parentUid);
+  };
+  const offChange = session.on?.("change", (diff) => {
+    const board2 = api3.board();
+    if (diff && !diff.structural && ![...diff.dirty ?? []].some((id) => board2?.items.get(id)?.type === "section")) return;
+    resync();
+  });
+  api3.onDestroy?.(() => {
+    try {
+      offChange?.();
+    } catch {
+    }
+    for (const parentUid of [...watches.keys()]) dropParent(parentUid);
+  });
+  if (api3.board()) resync();
+  Object.assign(session, {
+    // Read-only. { parentUid, parentLabel, moveCount, count, skippedCards } or { reason } when there is nothing to do.
+    sourceOrderPlan(uids) {
+      const res = compute(uids);
+      if (res.reason) return { reason: res.reason };
+      const { parentUid, parentLabel, moveCount, count, skippedCards } = res;
+      return { parentUid, parentLabel, moveCount, count, skippedCards };
+    },
+    // Moves the real blocks, 45 per transaction. One chunk is one native undo step; more go back in one custom step.
+    // Resolves { moved, parentUid, skippedCards, chunks }.
+    async applySourceOrder(uids) {
+      const res = compute(uids);
+      if (res.reason) return { moved: 0, parentUid: res.parentUid ?? null, skippedCards: 0, chunks: 0, reason: res.reason };
+      const { parentUid, plan, skippedCards } = res;
+      const chunks = chunkMoves(plan.moves, SOURCE_ORDER_CHUNK);
+      const states = chunkStates(plan.current, chunks);
+      remember2(parentUid, [plan.current, ...states, plan.desired]);
+      let done3 = 0;
+      let reason;
+      const walk3 = async (state) => {
+        for (const m of planSourceOrder(kidsOf5(parentUid), state).moves) await host.moveBlock(m.uid, parentUid, m.order);
+      };
+      const customFor = (i) => chunks.length > 1 ? { undo: () => walk3(plan.current), redo: () => walk3(states[i]) } : null;
+      applying.add(parentUid);
+      try {
+        for (let i = 0; i < chunks.length; i++) {
+          if (api3.isGone()) break;
+          await api3.txn((t) => {
+            for (const m of chunks[i]) t.move(m.uid, parentUid, m.order);
+          }, customFor(i));
+          if (orderSignature(kidsOf5(parentUid).map((k) => k.uid)) !== orderSignature(states[i])) {
+            reason = "Stopped: the blocks did not land where expected. Undo to go back.";
+            break;
+          }
+          done3 += chunks[i].length;
+        }
+      } finally {
+        applying.delete(parentUid);
+      }
+      const slot2 = watches.get(parentUid);
+      if (slot2) slot2.baseline = kidsOf5(parentUid).map((k) => k.uid);
+      return { moved: done3, parentUid, skippedCards, chunks: chunks.length, ...reason ? { reason } : {} };
+    }
+  });
+});
+
+// src/session-bucket.js
+init_board();
+var STR4 = ":block/string";
+var KIDS6 = ":block/children";
+var UID6 = ":block/uid";
+var OPEN2 = ":block/open";
+var ORDER2 = ":block/order";
+var HEADING = ":block/heading";
+var ALIGN = ":block/text-align";
+var PROPS3 = ":block/props";
+var SUBTREE = "[:block/uid :block/string :block/order :block/open :block/heading :block/text-align :block/props {(limit :block/children nil) ...}]";
+extendSession((session, api3) => {
+  const { host } = api3;
+  const boardUid = session.uid;
+  const chainOf = (parentUid) => {
+    const board2 = api3.board();
+    const out = [];
+    let at = parentUid;
+    for (let n3 = 0; at && at !== boardUid && n3 < 64; n3++) {
+      const item = board2?.items.get(at);
+      if (!item) break;
+      if (item.type === "section") {
+        const b = readBinding(api3.rawPlexus(at));
+        if (b) out.push(b);
+      }
+      at = item.parentUid;
+    }
+    return out;
+  };
+  const targetOf2 = (id) => {
+    const item = api3.board()?.items.get(id);
+    if (!item || item.type !== "card") return null;
+    const target = item.target;
+    if (target?.kind === "self") {
+      const node2 = api3.rawNode(item.uid);
+      if (!node2) return null;
+      const kids = api3.kidsOf(node2);
+      return { uid: item.uid, string: String(node2[STR4] ?? node2.string ?? ""), kids, self: true };
+    }
+    if (target?.kind === "block" && target.uid && !target.page) {
+      let string = null;
+      try {
+        string = host.blockString?.(target.uid);
+      } catch {
+        string = null;
+      }
+      if (typeof string !== "string") return null;
+      let kids = [];
+      try {
+        const node2 = host.pullTree?.(target.uid, 1, 500);
+        kids = Array.isArray(node2) ? node2 : Array.isArray(node2?.[KIDS6]) ? node2[KIDS6] : [];
+      } catch {
+        kids = [];
+      }
+      return { uid: target.uid, string, kids };
+    }
+    return null;
+  };
+  const rowOf = (target) => ({ uid: target.uid, string: target.string, attrs: attrsOfKids(target.kids) });
+  const kidString = (target, uid) => {
+    const kid = target.kids.find((k) => (k[UID6] ?? k.uid) === uid);
+    return String(kid?.[STR4] ?? kid?.string ?? "");
+  };
+  const subtreeCreates = (target, attrUid, order) => {
+    const out = [];
+    const kidsIn = (node2) => {
+      const list = Array.isArray(node2?.[KIDS6]) ? node2[KIDS6] : Array.isArray(node2?.children) ? node2.children : [];
+      return [...list].sort((a, b) => (a?.[ORDER2] ?? 0) - (b?.[ORDER2] ?? 0));
+    };
+    const walk3 = (node2, parent, ord) => {
+      const op = { op: "create", uid: node2[UID6] ?? node2.uid, parent, order: ord, string: String(node2[STR4] ?? node2.string ?? "") };
+      const open = node2[OPEN2] ?? node2.open;
+      if (open !== void 0) op.open = open;
+      const heading = node2[HEADING] ?? node2.heading;
+      if (Number.isInteger(heading) && heading > 0) op.heading = heading;
+      const align = node2[ALIGN] ?? node2.textAlign;
+      if (typeof align === "string" && align) op.textAlign = align;
+      const props = node2[PROPS3];
+      if (props && typeof props === "object" && Object.keys(props).length) op.props = props;
+      out.push(op);
+      kidsIn(node2).forEach((k, i) => walk3(k, op.uid, i));
+    };
+    const attr = target.kids.find((k) => (k[UID6] ?? k.uid) === attrUid) ?? { [UID6]: attrUid };
+    let full = null;
+    try {
+      full = host.pullEntity?.(SUBTREE, attrUid) ?? null;
+    } catch {
+      full = null;
+    }
+    if (!full && target.self) full = api3.rawNode(attrUid);
+    if (!full) {
+      let kids = [];
+      try {
+        const got = host.pullTree?.(attrUid, 20, 2e3);
+        kids = Array.isArray(got) ? got : Array.isArray(got?.[KIDS6]) ? got[KIDS6] : [];
+      } catch {
+        kids = [];
+      }
+      full = { ...attr, [KIDS6]: kids };
+    }
+    walk3(full, target.uid, order);
+    return out;
+  };
+  const emitPlan = (t, plan, target, undo) => {
+    if (plan.op === "string") {
+      const prev = plan.uid === target.uid ? target.string : kidString(target, plan.uid);
+      t.string(plan.uid, plan.string);
+      undo.push({ op: "string", uid: plan.uid, string: prev });
+    } else if (plan.op === "create") {
+      const id = t.create({ parent: plan.parent, string: plan.string, order: "last" });
+      undo.push({ op: "delete", uid: id });
+    } else if (plan.op === "delete") {
+      const at = target.kids.findIndex((k) => (k[UID6] ?? k.uid) === plan.uid);
+      const creates = subtreeCreates(target, plan.uid, at >= 0 ? at : "last");
+      t.del(plan.uid);
+      for (const op of creates.reverse()) undo.push(op);
+    }
+  };
+  const cardsUnder = (id) => {
+    const board2 = api3.board();
+    const item = board2?.items.get(id);
+    if (!item) return [];
+    if (item.type === "section") return [...descendantsOf(board2, id)].filter((d) => board2.items.get(d)?.type === "card");
+    return item.type === "card" ? [id] : [];
+  };
+  const countBlocked = (before, after, target) => {
+    const had = new Set(before.map(bindingKey));
+    return after.some((b) => !had.has(bindingKey(b)) && tagBlocked(b, target.string)) ? 1 : 0;
+  };
+  const skipToast = (n3) => {
+    if (n3) api3.emit("toast", { message: `Left ${n3} card${n3 === 1 ? "" : "s"} untagged: a tag would change what ${n3 === 1 ? "it shows" : "they show"}` });
+  };
+  api3.onMoveItems((t, moves, track2) => {
+    const seen = /* @__PURE__ */ new Set();
+    let skipped = 0;
+    for (const m of moves) {
+      const before = chainOf(m.from);
+      const after = chainOf(m.to);
+      if (!before.length && !after.length) continue;
+      for (const id of cardsUnder(m.uid)) {
+        const target = targetOf2(id);
+        if (!target || seen.has(target.uid)) continue;
+        seen.add(target.uid);
+        skipped += countBlocked(before, after, target);
+        for (const plan of planChainChange(before, after, rowOf(target))) emitPlan(t, plan, target, track2.undo);
+      }
+    }
+    skipToast(skipped);
+  });
+  session.sectionBinding = (id) => {
+    if (api3.board()?.items.get(id)?.type !== "section") return null;
+    return readBinding(api3.rawPlexus(id));
+  };
+  session.bindSection = (id, binding) => {
+    const item = api3.board()?.items.get(id);
+    if (item?.type !== "section") return Promise.resolve(false);
+    if (binding && item.laneAttr) return Promise.resolve(false);
+    const base2 = api3.itemPlexus(id, {});
+    const current3 = readBinding(base2);
+    if (binding ? current3 && bindingKey(current3) === bindingKey(binding) : !base2.bucket) return Promise.resolve(false);
+    const { bucket: _gone, ...rest } = base2;
+    const next = binding ? { ...rest, bucket: binding.kind === "tag" ? { kind: "tag", tag: binding.tag } : { kind: "attr", name: binding.name, value: binding.value } } : rest;
+    return api3.txn((t) => {
+      t.props(id, next);
+      return true;
+    }).then((ok) => ok === true);
+  };
+  session.writeSectionToGraph = async (id) => {
+    const binding = session.sectionBinding(id);
+    if (!binding) return 0;
+    const jobs = [];
+    const seen = /* @__PURE__ */ new Set();
+    let skipped = 0;
+    for (const cid of cardsUnder(id)) {
+      const target = targetOf2(cid);
+      if (!target || seen.has(target.uid)) continue;
+      seen.add(target.uid);
+      const plan = planBucketAdd(binding, rowOf(target));
+      if (plan) jobs.push({ plan, target });
+      else if (tagBlocked(binding, target.string)) skipped++;
+    }
+    const label = bindingLabel(binding);
+    if (!jobs.length) {
+      skipToast(skipped);
+      if (!skipped) api3.emit("toast", { message: seen.size ? `Every card already has ${label}` : "No cards to tag" });
+      return 0;
+    }
+    let written = 0;
+    for (const part of chunk(jobs)) {
+      await api3.txn((t) => {
+        for (const { plan, target } of part) emitPlan(t, plan, target, []);
+      });
+      written += part.length;
+    }
+    api3.emit("toast", { message: `Tagged ${written} card${written === 1 ? "" : "s"} with ${label}` });
+    skipToast(skipped);
+    return written;
+  };
 });
 
 // src/templates.js
@@ -55588,7 +57776,7 @@ function flow() {
   ];
   return [...lanes, node("edges", "Connections", { type: "edges" }, edges, false)];
 }
-var row2 = (labels, y = 40, w = 300, h = 360, gap = 24) => labels.map((title, i) => section(
+var row3 = (labels, y = 40, w = 300, h = 360, gap = 24) => labels.map((title, i) => section(
   `c${i}`,
   title,
   40 + i * (w + gap),
@@ -55598,14 +57786,14 @@ var row2 = (labels, y = 40, w = 300, h = 360, gap = 24) => labels.map((title, i)
 ));
 var STARTERS = [
   { id: "five-why", title: "5-Why", tree: board("root", "5-Why", [1, 2, 3, 4, 5].map((n3) => card(`w${n3}`, `Why ${n3}`, 40, 40 + (n3 - 1) * 160))) },
-  { id: "fishbone", title: "Fishbone (6M)", tree: board("root", "Fishbone (6M)", row2(["Man", "Machine", "Method", "Material", "Measurement", "Environment"], 40, 240, 280, 16)) },
-  { id: "8d", title: "8D", tree: board("root", "8D", row2(["D1 Team", "D2 Problem", "D3 Containment", "D4 Root cause", "D5 Action", "D6 Implement", "D7 Prevent", "D8 Congratulate"], 40, 220, 240, 16)) },
-  { id: "swot", title: "SWOT", tree: board("root", "SWOT", row2(["Strengths", "Weaknesses", "Opportunities", "Threats"])) },
-  { id: "kanban", title: "Kanban", tree: board("root", "Kanban", row2(["To do", "Doing", "Done"])) },
+  { id: "fishbone", title: "Fishbone (6M)", tree: board("root", "Fishbone (6M)", row3(["Man", "Machine", "Method", "Material", "Measurement", "Environment"], 40, 240, 280, 16)) },
+  { id: "8d", title: "8D", tree: board("root", "8D", row3(["D1 Team", "D2 Problem", "D3 Containment", "D4 Root cause", "D5 Action", "D6 Implement", "D7 Prevent", "D8 Congratulate"], 40, 220, 240, 16)) },
+  { id: "swot", title: "SWOT", tree: board("root", "SWOT", row3(["Strengths", "Weaknesses", "Opportunities", "Threats"])) },
+  { id: "kanban", title: "Kanban", tree: board("root", "Kanban", row3(["To do", "Doing", "Done"])) },
   { id: "timeline", title: "Timeline", tree: board("root", "Timeline", ["Start", "Middle", "Next", "End"].map((title, i) => card(`t${i}`, title, 40 + i * 300, 80, 240, 120))) },
   { id: "process", title: "Process flow", tree: board("root", "Process flow", flow()) },
-  { id: "meeting", title: "Meeting notes", tree: board("root", "Meeting notes", row2(["Agenda", "Notes", "Actions"])) },
-  { id: "retro", title: "Retro", tree: board("root", "Retro", row2(["Went well", "To improve", "Actions"])) }
+  { id: "meeting", title: "Meeting notes", tree: board("root", "Meeting notes", row3(["Agenda", "Notes", "Actions"])) },
+  { id: "retro", title: "Retro", tree: board("root", "Retro", row3(["Went well", "To improve", "Actions"])) }
 ];
 function starterById(id) {
   return STARTERS.find((s) => s.id === id) ?? null;
@@ -55661,8 +57849,8 @@ extendSession((session, api3) => {
     });
     if (!plan?.creates.length) return Promise.resolve(null);
     const rootUid = plan.rootUid;
-    return writeChunks(plan.chunks, (chunk) => api3.txn((t) => {
-      for (const op of chunk) {
+    return writeChunks(plan.chunks, (chunk2) => api3.txn((t) => {
+      for (const op of chunk2) {
         t.create({
           uid: op.uid,
           parent: op.parent,
@@ -55692,9 +57880,9 @@ extendSession((session, api3) => {
     if (!plan.creates.length) return null;
     if (api3.bulkAllowed && !api3.bulkAllowed(plan.creates.length)) return null;
     const rootUid = plan.rootUid;
-    await writeChunks(plan.chunks, async (chunk) => {
+    await writeChunks(plan.chunks, async (chunk2) => {
       await host.group(async () => {
-        for (const op of chunk) {
+        for (const op of chunk2) {
           await host.createBlock({
             parentUid: op.parent,
             order: op.order,
@@ -55745,9 +57933,9 @@ extendSession((session, api3) => {
     const snap = board2?.snapshots?.find((item) => item.uid === snapUid);
     if (!snap) return false;
     const chunks = planRestore(snap.items, board2);
-    for (const chunk of chunks) {
+    for (const chunk2 of chunks) {
       await api3.txn((t) => {
-        for (const op of chunk) {
+        for (const op of chunk2) {
           if (op.op === "move") t.move(op.uid, op.parent);
           else {
             t.props(op.uid, api3.itemPlexus(op.uid, {
@@ -55823,22 +58011,22 @@ function captionForView(sections, point, fallbackTitle) {
 }
 
 // src/views.js
-var UID5 = ":block/uid";
-var STR3 = ":block/string";
+var UID7 = ":block/uid";
+var STR5 = ":block/string";
 var CONTAINER = "{{[[plexus-regions]]}}";
 function regionsParent(api3, board2) {
   if (board2.regionsUid) return board2.regionsUid;
   const root = api3.rawNode(api3.uid);
   for (const child of api3.kidsOf(root)) {
-    const text4 = child[STR3] ?? child.string ?? "";
-    if (isContainerString(text4)) return child[UID5] || child.uid;
+    const text4 = child[STR5] ?? child.string ?? "";
+    if (isContainerString(text4)) return child[UID7] || child.uid;
   }
   return null;
 }
 function viewRegion(api3, uid) {
   const node2 = api3.rawNode(uid);
   if (!node2) return null;
-  const region = parseRegion(node2[STR3] ?? node2.string ?? "");
+  const region = parseRegion(node2[STR5] ?? node2.string ?? "");
   if (!region || region.kind !== "view" || region.supported !== true) return null;
   return region;
 }
@@ -55846,9 +58034,9 @@ function imageCardContainer(api3, cardUid) {
   const card2 = api3.rawNode(cardUid);
   if (!card2) return null;
   for (const child of api3.kidsOf(card2)) {
-    const id = child[UID5] || child.uid;
+    const id = child[UID7] || child.uid;
     if (!id) continue;
-    const text4 = child[STR3] ?? child.string ?? "";
+    const text4 = child[STR5] ?? child.string ?? "";
     if (isContainerString(text4) || api3.rawPlexus(id)?.type === "regions") return id;
   }
   return null;
@@ -56794,14 +58982,14 @@ init_drawing_card();
 
 // src/model/annotate.js
 init_schema();
-var GAP2 = 40;
+var GAP3 = 40;
 var LABEL = "annotates";
 function annotatePlan(image, boardUid) {
   const to = image.uid;
   return {
     create: { parentUid: boardUid, order: "last" },
     card: {
-      x: image.x + image.w + GAP2,
+      x: image.x + image.w + GAP3,
       y: image.y,
       w: image.w,
       h: image.h
@@ -57755,7 +59943,7 @@ function isBlankCanvas(canvas, { threshold = 235 } = {}) {
 
 // src/model/pdf-drag.js
 var PDF_MARK = ".TextHighlight__part, .AreaHighlight__part, .AreaHighlight";
-var UID6 = /^[A-Za-z0-9_-]{9}$/;
+var UID8 = /^[A-Za-z0-9_-]{9}$/;
 var FIBER_LIMIT = 10;
 var CHIP_LEN = 60;
 function fiberOf(node2) {
@@ -57783,7 +59971,7 @@ function highlightFromFiber(fiber) {
   return null;
 }
 function acceptId(id, exists) {
-  if (typeof id !== "string" || !UID6.test(id)) return null;
+  if (typeof id !== "string" || !UID8.test(id)) return null;
   if (typeof exists !== "function") return id;
   try {
     if (exists(id) !== true) return null;
@@ -58318,7 +60506,7 @@ function highlightLensTag(color) {
 
 // src/model/halo.js
 var DAY_MS4 = 864e5;
-var MONTHS7 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+var MONTHS8 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 var HALO_PULL_LIGHT = "[:create/time :edit/time {:create/user [:user/display-name]}]";
 var HALO_REF_CAP = 200;
 var HALO_REFS_SPAN_QUERY = "[:find (count ?r) (min ?t) (max ?t) :in $ ?u :where [?e :block/uid ?u] [?r :block/refs ?e] [?r :create/time ?t]]";
@@ -58374,7 +60562,7 @@ function formatMade(ms) {
   const n3 = finite5(ms);
   if (n3 == null) return "";
   const date = new Date(n3);
-  return `${MONTHS7[date.getMonth()]} ${ordinal(date.getDate())}, ${date.getFullYear()}`;
+  return `${MONTHS8[date.getMonth()]} ${ordinal(date.getDate())}, ${date.getFullYear()}`;
 }
 function headerText({ created, board: board2, section: section2, userName: userName3 } = {}) {
   const when = formatMade(created);
@@ -59130,14 +61318,14 @@ function breadcrumb(page, parent) {
 function snippetOf2(text4, max = 200) {
   return clip4(text4, max);
 }
-function filterRows(rows, query) {
+function filterRows2(rows, query) {
   const q2 = String(query ?? "").trim().toLowerCase();
   if (!q2) return rows || [];
   return (rows || []).filter((row4) => `${row4.crumb || ""} ${row4.snippet || ""}`.toLowerCase().includes(q2));
 }
 function groupRefs(rows, cap4 = CONTEXT_CAP) {
-  const sorted2 = [...rows || []].filter((row4) => row4?.uid).sort((a, b) => (b.time || 0) - (a.time || 0) || String(a.uid).localeCompare(String(b.uid)));
-  const shown = sorted2.slice(0, cap4);
+  const sorted3 = [...rows || []].filter((row4) => row4?.uid).sort((a, b) => (b.time || 0) - (a.time || 0) || String(a.uid).localeCompare(String(b.uid)));
+  const shown = sorted3.slice(0, cap4);
   const groups2 = [];
   for (const row4 of shown) {
     const year = Number.isFinite(row4.time) ? new Date(row4.time).getFullYear() : 0;
@@ -59148,7 +61336,7 @@ function groupRefs(rows, cap4 = CONTEXT_CAP) {
     }
     group.rows.push(row4);
   }
-  return { groups: groups2, total: sorted2.length, hidden: Math.max(0, sorted2.length - shown.length) };
+  return { groups: groups2, total: sorted3.length, hidden: Math.max(0, sorted3.length - shown.length) };
 }
 function rowChunks(rows, size = CONTEXT_CHUNK) {
   const list = rows || [];
@@ -59181,7 +61369,7 @@ function mountContextsDrawer({
     filter.type = "search";
     filter.setAttribute("aria-label", "Filter references");
     filter.addEventListener("input", () => {
-      const shown = new Set(filterRows(flat3, filter.value).map((row4) => row4.uid));
+      const shown = new Set(filterRows2(flat3, filter.value).map((row4) => row4.uid));
       for (const node2 of list.querySelectorAll(".pxd-contexts__row")) {
         node2.hidden = !shown.has(node2.getAttribute("data-uid"));
       }
@@ -59195,8 +61383,8 @@ function mountContextsDrawer({
     el2.append(note);
   }
   let year;
-  const paint2 = (chunk) => {
-    for (const row4 of chunk) {
+  const paint2 = (chunk2) => {
+    for (const row4 of chunk2) {
       if (row4.year !== year) {
         year = row4.year;
         const head = doc.createElement("div");
@@ -59359,11 +61547,11 @@ function mountMemoryLane({
 // src/model/suggest.js
 var SUGGEST_CAP = 60;
 var SUGGEST_LIMIT = 300;
-var MONTHS8 = "January|February|March|April|May|June|July|August|September|October|November|December";
-var DAILY_RE2 = new RegExp(`^(${MONTHS8}) \\d{1,2}(?:st|nd|rd|th), \\d{4}$`);
+var MONTHS9 = "January|February|March|April|May|June|July|August|September|October|November|December";
+var DAILY_RE3 = new RegExp(`^(${MONTHS9}) \\d{1,2}(?:st|nd|rd|th), \\d{4}$`);
 var escapeReg = (text4) => String(text4).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function isDailyTitle2(title) {
-  return DAILY_RE2.test(String(title ?? "").trim());
+  return DAILY_RE3.test(String(title ?? "").trim());
 }
 function boundary(title) {
   return new RegExp(`(^|[^A-Za-z0-9])(${escapeReg(title)})(?=$|[^A-Za-z0-9])`, "gi");
@@ -61413,8 +63601,8 @@ function createInteractions({ actions, settings } = {}) {
           call2("commitMove", uids, dx, dy);
           return true;
         }
-        const same3 = state.nudge && state.nudge.uids.length === uids.length && state.nudge.uids.every((u, i) => u === uids[i]);
-        if (!same3) flushNudge();
+        const same4 = state.nudge && state.nudge.uids.length === uids.length && state.nudge.uids.every((u, i) => u === uids[i]);
+        if (!same4) flushNudge();
         if (!state.nudge) state.nudge = { uids, dx: 0, dy: 0, timer: null };
         state.nudge.dx += dx;
         state.nudge.dy += dy;
@@ -63272,9 +65460,9 @@ function bodySizeOf2(items) {
   const pool = (plain2.length ? plain2 : source).map((item) => item.transform[0]).sort((a, b) => a - b);
   const median8 = pool[pool.length >> 1] || items[0].transform[0];
   let body = median8;
-  const sorted2 = items.map((item) => item.transform[5]).sort((a, b) => a - b);
+  const sorted3 = items.map((item) => item.transform[5]).sort((a, b) => a - b);
   const bases = [];
-  for (const base2 of sorted2) {
+  for (const base2 of sorted3) {
     if (!bases.length || base2 - bases[bases.length - 1] > 0.35 * median8) bases.push(base2);
   }
   const gaps = [];
@@ -63289,10 +65477,10 @@ function bodySizeOf2(items) {
   }
   return { body, median: median8 };
 }
-function baselineRows2(sorted2) {
+function baselineRows2(sorted3) {
   const rows = [];
   let row4 = null;
-  for (const item of sorted2) {
+  for (const item of sorted3) {
     const base2 = item.transform[5];
     const size = item.transform[0] || 1;
     if (row4 && base2 - row4.last <= 0.3 * size && base2 - row4.first <= 0.45 * size) {
@@ -63457,8 +65645,8 @@ function absorbGapFragments(lines, items, squeezed = []) {
     return lines.find((host) => {
       if (host === exclude || host.idx.length < 3 || host.idx.length <= idx.length) return false;
       if (Math.abs(base2 - items[host.idx[0]].transform[5]) > 0.8 * host.size || Math.abs(size - host.size) > 0.3 * host.size) return false;
-      const sorted2 = [...host.idx].sort((a, b) => left(a) - left(b));
-      const inGap = sorted2.some((i, k) => k > 0 && right(sorted2[k - 1]) <= x0 + 0.5 && left(i) >= x1 - 0.5);
+      const sorted3 = [...host.idx].sort((a, b) => left(a) - left(b));
+      const inGap = sorted3.some((i, k) => k > 0 && right(sorted3[k - 1]) <= x0 + 0.5 && left(i) >= x1 - 0.5);
       if (!inGap) return false;
       const [hy0, hy1] = span(host.idx);
       return Math.min(hy1, fy1) - Math.max(hy0, fy0) > 0;
@@ -63522,14 +65710,14 @@ function allWords(pages, doc) {
   return words;
 }
 var NON_LETTER = /^[^A-Za-z]+$/;
-var MARK = /[^\x20-\x7e]/g;
+var MARK2 = /[^\x20-\x7e]/g;
 function coreOf(t) {
   return String(t).replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "").toLowerCase();
 }
 function lineScore(tokens2, oldTokens, opts) {
   let n3 = tokens2.reduce((k, w) => k + (suspiciousWord(w, opts) ? 1 : 0), 0);
   for (const t of oldTokens) if (NON_LETTER.test(t) && !tokens2.some((w) => w === t || t.length >= 2 && w.includes(t))) n3++;
-  const marks = (list) => list.join(" ").match(MARK) || [];
+  const marks = (list) => list.join(" ").match(MARK2) || [];
   const have = marks(tokens2);
   for (const m of marks(oldTokens)) {
     const at = have.indexOf(m);
@@ -63803,9 +65991,9 @@ function rowKeys(words) {
   return all.filter((token) => /\d/.test(token));
 }
 function baselineRows3(words) {
-  const sorted2 = [...words || []].sort((a, b) => (a.base ?? 0) - (b.base ?? 0) || (a.x0 ?? 0) - (b.x0 ?? 0));
+  const sorted3 = [...words || []].sort((a, b) => (a.base ?? 0) - (b.base ?? 0) || (a.x0 ?? 0) - (b.x0 ?? 0));
   const rows = [];
-  for (const word of sorted2) {
+  for (const word of sorted3) {
     const size = word.size || 8;
     let host = null;
     for (let i = rows.length - 1; i >= 0 && rows[i].base >= (word.base ?? 0) - 2 * size; i -= 1) {
@@ -64931,7 +67119,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
       }
     }
     if (arbitrate && !host && !gridReading(built) && !verifiedPages.includes(structure.page)) continue;
-    const same3 = host && (setJaccard(host, built) >= minJaccard || tokenJaccard(host, built) >= minJaccard);
+    const same4 = host && (setJaccard(host, built) >= minJaccard || tokenJaccard(host, built) >= minJaccard);
     if (arbitrate && host) {
       const page = (evidence || []).find((item) => item.page === structure.page) || { words: [], rules: [] };
       const decision = chooseTableReading(host, built, page);
@@ -64979,7 +67167,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
       applied.push({ id: host.id, page: structure.page, rows: chosen.rows, cols: chosen.cols, choice: decision.choice });
       continue;
     }
-    if (host && !same3 && !trust) continue;
+    if (host && !same4 && !trust) continue;
     if (trust) {
       for (const id of [...order]) {
         const block = blocks[id];
@@ -71047,8 +73235,8 @@ function verticalGap(fig, cand) {
 function assignCaptions(images, items) {
   const pairs = /* @__PURE__ */ new Map();
   const used = /* @__PURE__ */ new Set();
-  const sorted2 = images.slice().sort((a, b) => (llamaBox(a.bbox)?.bbox[1] || 0) - (llamaBox(b.bbox)?.bbox[1] || 0));
-  for (const image of sorted2) {
+  const sorted3 = images.slice().sort((a, b) => (llamaBox(a.bbox)?.bbox[1] || 0) - (llamaBox(b.bbox)?.bbox[1] || 0));
+  for (const image of sorted3) {
     const fig = llamaBox(image.bbox)?.bbox;
     if (!fig) continue;
     let best = null;
@@ -72373,7 +74561,7 @@ ${ctx}`;
 ${list[first].content}` };
   return list;
 }
-var TAG_RE = (tag) => new RegExp(`#\\[\\[${tag.replace("/", "\\/")}\\]\\]|#${tag.replace("/", "\\/")}\\b|\\[\\[${tag.replace("/", "\\/")}\\]\\]`, "gi");
+var TAG_RE2 = (tag) => new RegExp(`#\\[\\[${tag.replace("/", "\\/")}\\]\\]|#${tag.replace("/", "\\/")}\\b|\\[\\[${tag.replace("/", "\\/")}\\]\\]`, "gi");
 function flattenChildren(children, depth = 0) {
   const out = [];
   for (const c of children || []) {
@@ -72388,7 +74576,7 @@ function customItems(rows, tag) {
   const out = [];
   for (const r of rows || []) {
     if (!r?.uid) continue;
-    const bare = String(r.string ?? "").replace(TAG_RE(tag), "").replace(/\s+/g, " ").trim();
+    const bare = String(r.string ?? "").replace(TAG_RE2(tag), "").replace(/\s+/g, " ").trim();
     const name = bare.split(" ").slice(0, isStyle ? 4 : 6).join(" ") || (isStyle ? "Style" : "Prompt");
     const kids = flattenChildren(r.children);
     out.push({ id: `${isStyle ? "style" : "prompt"}:${r.uid}`, uid: r.uid, name, prompt: kids || bare, category: isStyle ? "STYLES" : "CUSTOM PROMPTS", custom: true });
@@ -72538,9 +74726,9 @@ async function ask({ context = "", roamContext = null, prompt = "", messages = n
   if (effort) options.effort = String(effort);
   if (signal) options.signal = signal;
   if (json) options.responseFormat = "json_object";
-  if (typeof onChunk === "function") options.onChunk = (chunk) => {
+  if (typeof onChunk === "function") options.onChunk = (chunk2) => {
     try {
-      onChunk(chunk);
+      onChunk(chunk2);
     } catch {
     }
   };
@@ -73122,9 +75310,9 @@ function createPopover(doc, host) {
     }
   };
   function open(spec2, anchorEl) {
-    const same3 = el2 && anchor === anchorEl;
+    const same4 = el2 && anchor === anchorEl;
     close({ refocus: false });
-    if (same3) return false;
+    if (same4) return false;
     spec = spec2;
     anchor = anchorEl || null;
     at = 0;
@@ -74634,11 +76822,11 @@ ${lines.join("\n")}` : "";
     lastPaint = now3();
     if (stick) toBottom();
   };
-  const appendChunk = (turn, chunk) => {
+  const appendChunk = (turn, chunk2) => {
     let n3 = turn.bubble.lastChild;
     while (n3 && n3.nodeType === 1 && /^(UL|OL)$/.test(n3.tagName) && n3.lastChild) n3 = n3.lastChild;
     const into = n3 && n3.nodeType === 1 && /^(P|LI)$/.test(n3.tagName) ? n3 : turn.bubble;
-    into.append(dom.createTextNode(chunk));
+    into.append(dom.createTextNode(chunk2));
   };
   const userBubble = (text4) => {
     const msg = make2(dom, "div", "pxd-ask__msg pxd-ask__msg--user", null);
@@ -74798,15 +76986,15 @@ ${lines.join("\n")}` : "";
       ...effortOptions(effort, curModel()),
       signal: ctl.signal,
       window: win2,
-      onChunk: (chunk) => {
+      onChunk: (chunk2) => {
         if (dead || mine !== token) return;
-        turn.answer += chunk;
+        turn.answer += chunk2;
         s.status.textContent = "";
         if (now3() - lastPaint >= PAINT_MS) {
           paintTurn(turn);
           return;
         }
-        appendChunk(turn, chunk);
+        appendChunk(turn, chunk2);
         if (!paintTimer) paintTimer = setTimeout(() => {
           paintTimer = null;
           if (!dead && mine === token) paintTurn(turn);
@@ -75359,7 +77547,7 @@ function toNumber(value) {
   return Number.isFinite(n3) ? n3 : NaN;
 }
 var text3 = (value, max = 120) => typeof value === "string" || typeof value === "number" ? clip6(squash5(value), max) : "";
-function axisOf(value) {
+function axisOf2(value) {
   if (typeof value === "string") return { label: text3(value), unit: "" };
   const a = value && typeof value === "object" ? value : {};
   return { label: text3(a.label ?? a.name ?? a.title), unit: text3(a.unit ?? a.units, 40) };
@@ -75423,7 +77611,7 @@ function normalizeChart(raw) {
   if (dropped) warnings.push(`Dropped ${dropped} unreadable or repeated ${dropped === 1 ? "point" : "points"}.`);
   return {
     ok: true,
-    chart: { title: text3(obj.title, 200), x: axisOf(obj.x), y: axisOf(obj.y), series, notes: text3(obj.notes, 400) },
+    chart: { title: text3(obj.title, 200), x: axisOf2(obj.x), y: axisOf2(obj.y), series, notes: text3(obj.notes, 400) },
     warnings
   };
 }
@@ -80091,8 +82279,8 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
     }
     el2.removeAttribute("hidden");
     el2.setAttribute("data-kind", model.kind);
-    const same3 = current3 && current3.kind === model.kind && current3.text === model.text && current3.progress === model.progress && current3.buttons.map((b) => b.id).join() === model.buttons.map((b) => b.id).join();
-    if (!same3) paint2(model);
+    const same4 = current3 && current3.kind === model.kind && current3.text === model.text && current3.progress === model.progress && current3.buttons.map((b) => b.id).join() === model.buttons.map((b) => b.id).join();
+    if (!same4) paint2(model);
     if (model.autoHideMs && (!current3 || current3.kind !== model.kind)) {
       clearTimer();
       if (typeof later === "function") {
@@ -80750,7 +82938,7 @@ function indexNodes(nodes, map) {
     if (Array.isArray(node2.children)) indexNodes(node2.children, map);
   }
 }
-function sortRows3(rows) {
+function sortRows4(rows) {
   return rows.map((row4, index) => ({ row: row4, index })).sort((a, b) => {
     const ap = typeof a.row.page === "number" ? a.row.page : Infinity;
     const bp = typeof b.row.page === "number" ? b.row.page : Infinity;
@@ -81257,7 +83445,7 @@ function createReadPane({
     } catch {
       rows = [];
     }
-    catalog = sortRows3(rows);
+    catalog = sortRows4(rows);
     return catalog;
   };
   const legacyDrawer = () => {
@@ -81627,7 +83815,7 @@ function createReadPane({
     }
     moveFrame = 0;
   };
-  const applyMove = () => {
+  const applyMove2 = () => {
     const move = lastMove;
     lastMove = null;
     if (!move || dragging) return;
@@ -81671,13 +83859,13 @@ function createReadPane({
     const raf2 = clock().requestAnimationFrame || globalThis.requestAnimationFrame;
     if (typeof raf2 !== "function") {
       moveScheduled = false;
-      applyMove();
+      applyMove2();
       return;
     }
     moveFrame = raf2(() => {
       moveFrame = 0;
       moveScheduled = false;
-      applyMove();
+      applyMove2();
     });
   };
   const DRAG_START_PX = 6;
@@ -85789,12 +87977,13 @@ function openViewDialog(doc, { caption = "", showCopy = true, dialogLabel = "", 
   const glyph = dialogLabel === "Landmark glyph";
   const label = doc.createElement("label");
   const comment = dialogLabel === "Comment";
-  label.textContent = glyph ? "Glyph" : comment ? "Comment" : "Name";
+  const bind = dialogLabel === "Bind section";
+  label.textContent = glyph ? "Glyph" : comment ? "Comment" : bind ? "Tag or attribute" : "Name";
   const input = doc.createElement("input");
   input.className = "pxd-input";
   input.type = "text";
   input.value = caption;
-  input.setAttribute("aria-label", glyph ? "Landmark glyph" : comment ? "Comment" : "View name");
+  input.setAttribute("aria-label", glyph ? "Landmark glyph" : comment ? "Comment" : bind ? "Tag or attribute" : "View name");
   label.append(input);
   card2.append(label);
   let copyBox = null;
@@ -86786,9 +88975,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     rec.to = link.to;
     const dim = dimmed(link);
     const dash = link.dash === "solid" || link.dash === "dashed" || link.dash === "dotted" ? ` pxd-link--${link.dash}` : "";
-    setClass(rec.g, `pxd-link pxd-c-${link.color || "gray"}${dash}${selected ? " pxd-link--selected" : ""}${dim ? " pxd-edge--dim" : ""}`);
+    const tree = link.kind === "tree" ? " pxd-link--tree" : "";
+    setClass(rec.g, `pxd-link pxd-c-${link.color || "gray"}${dash}${tree}${selected ? " pxd-link--selected" : ""}${dim ? " pxd-edge--dim" : ""}`);
     rec.label.className = `pxd-label pxd-label--link pxd-c-${link.color || "gray"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
-    rec.label.textContent = link.labels?.[0] || "mentions";
+    rec.label.textContent = link.labels?.[0] || (link.kind === "tree" ? "" : "mentions");
     if (!a || !b) {
       rec.g.setAttribute("display", "none");
       rec.label.style.display = "none";
@@ -88458,6 +90648,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
           opt("duplicate", "pxd-ctx__duplicate", "duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
           opt("saveViewSelection", "pxd-ctx__save-view", "camera", "Save view", "Save a view of the selection", () => on.saveViewSelection());
         }
+        if (kind === "card" && model?.refLinks > 0) opt("pinRefs", "pxd-ctx__pin-refs", "new-link", "Pin ref arrows", "Turn the faint ref arrows on this card into connections", () => on.pinRefs());
         btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       }
@@ -89363,107 +91554,8 @@ function syncEmptyHint(node2, board2) {
   return show;
 }
 
-// src/model/table.js
-init_schema();
-var FIXED = ["Title", "Section", "Type", "Edited"];
-function cleanName(name) {
-  if (name == null) return "";
-  const attr = String(name).trim();
-  if (!attr || attr.startsWith("BT_attr") || FIXED.includes(attr)) return "";
-  return attr;
-}
-function columnNameOk(name) {
-  return Boolean(cleanName(name));
-}
-function isTableRow(item) {
-  if (!item) return false;
-  if (item.type === "section" || item.type === "text") return false;
-  if (item.type === "card") return true;
-  return item.kind === "card" || item.kind === "board";
-}
-function tableColumns(rows) {
-  const names = [];
-  for (const row4 of rows || []) {
-    for (const attr of row4.attrs || []) {
-      if (attr?.name && !names.includes(attr.name)) names.push(attr.name);
-    }
-  }
-  return FIXED.concat(names);
-}
-function cellText2(row4, column) {
-  if (!row4) return "";
-  if (column === "Title") return String(row4.title ?? "");
-  if (column === "Section") return String(row4.section ?? "");
-  if (column === "Type") return String(row4.type ?? "");
-  if (column === "Edited") return row4.edited == null ? "" : String(row4.edited);
-  const hit = (row4.attrs || []).find((attr) => attr.name === column);
-  return hit ? String(hit.value ?? "") : "";
-}
-function filterRows3(rows, text4) {
-  const needle = String(text4 ?? "").trim().toLowerCase();
-  if (!needle) return (rows || []).slice();
-  const cols = tableColumns(rows);
-  return (rows || []).filter((row4) => cols.some((column) => cellText2(row4, column).toLowerCase().includes(needle)));
-}
-function sortRows4(rows, column, dir = "asc") {
-  const sign = dir === "desc" ? -1 : 1;
-  const list = (rows || []).slice();
-  list.sort((a, b) => {
-    if (column === "Edited") {
-      const av = Number(a.edited) || 0;
-      const bv = Number(b.edited) || 0;
-      return (av - bv) * sign;
-    }
-    return cellText2(a, column).localeCompare(cellText2(b, column)) * sign;
-  });
-  return list;
-}
-function planAttrCell({ name, value, blockUid: blockUid3 = null, parentUid = null } = {}) {
-  const attr = cleanName(name);
-  if (!attr) return null;
-  const text4 = String(value ?? "").trim();
-  const string = text4 ? `${attr}:: ${text4}` : `${attr}::`;
-  if (blockUid3) return { op: "update", uid: blockUid3, string };
-  if (!text4 || !parentUid) return null;
-  return { op: "create", parent: parentUid, string };
-}
-function tableRows(board2, resolve) {
-  const items = board2?.items;
-  if (!items || typeof items.get !== "function") return [];
-  const order = Array.isArray(board2.order) ? board2.order : [...items.keys()];
-  const rows = [];
-  for (const uid of order) {
-    const item = items.get(uid);
-    if (!isTableRow(item)) continue;
-    const parent = items.get(item.parentUid);
-    const section2 = parent?.type === "section" ? String(parent.title || "") : "";
-    const attrs = [];
-    for (const child of item.content || []) {
-      const string = child?.[":block/string"] ?? child?.string ?? "";
-      const name = cleanName(attrNameOf(String(string)));
-      if (!name) continue;
-      const text4 = String(string);
-      const cut = text4.indexOf("::");
-      attrs.push({
-        name,
-        value: cut >= 0 ? text4.slice(cut + 2).trim() : "",
-        uid: child?.[":block/uid"] ?? child?.uid ?? null
-      });
-    }
-    rows.push({
-      uid: item.uid,
-      kind: item.kind,
-      title: itemLabel(item, resolve),
-      section: section2,
-      type: item.kind || "",
-      edited: item.edited ?? null,
-      attrs
-    });
-  }
-  return rows;
-}
-
 // src/view/table-view.js
+init_table();
 var EDITED_QUERY = "[:find ?u ?e :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/time ?e]]";
 function editedLabel(value) {
   const n3 = Number(value);
@@ -89567,8 +91659,8 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
     return cols;
   };
   const shownRows = (rows) => {
-    const filtered = filterRows3(rows, filterText);
-    return sortColumn ? sortRows4(filtered, sortColumn, sortDir) : filtered;
+    const filtered = filterRows(rows, filterText);
+    return sortColumn ? sortRows(filtered, sortColumn, sortDir) : filtered;
   };
   const commitFill = async (row4, column, raw) => {
     const key = `${row4.uid}\0${column}`;
@@ -89647,7 +91739,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
           const button3 = doc.createElement("button");
           button3.type = "button";
           button3.className = "pxd-btn pxd-table__value";
-          button3.textContent = cellText2(row4, column);
+          button3.textContent = cellText(row4, column);
           button3.setAttribute("aria-label", `${column} for ${row4.title || row4.uid}`);
           listen(button3, "click", () => openEditor(td, attr.uid), paintOffs);
           td.append(button3);
@@ -89674,7 +91766,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
         } else {
           const span = doc.createElement("span");
           span.className = "pxd-table__text";
-          span.textContent = column === "Edited" ? editedLabel(row4.edited) : cellText2(row4, column);
+          span.textContent = column === "Edited" ? editedLabel(row4.edited) : cellText(row4, column);
           td.append(span);
         }
         tr.append(td);
@@ -89771,162 +91863,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
 
 // src/view/kanban-view.js
 init_schema();
-
-// src/model/kanban.js
-init_highlight();
-init_status_tags();
-var TODO_FIELD = "To do";
-var DONE_COLUMN = "Done";
-var HIGHLIGHT_FIELD = "Highlight colour";
-var STATUS_FIELD = "Lanes: Status";
-var NO_STATUS = "No status";
-var MARK2 = /\{\{\[\[(TODO|DONE)\]\]\}\}/;
-function todoState(string) {
-  const hit = MARK2.exec(String(string || ""));
-  if (!hit) return "";
-  return hit[1] === "DONE" ? DONE_COLUMN : TODO_FIELD;
-}
-function kanbanRows(board2, resolve) {
-  const items = board2?.items;
-  return tableRows(board2, resolve).map((row4) => {
-    const item = items?.get?.(row4.uid);
-    const next = { ...row4, string: item?.string ?? row4.title ?? "" };
-    if (item?.kind !== "highlight") return next;
-    const targetUid = item.target?.uid;
-    let targetString;
-    if (typeof resolve === "function") {
-      try {
-        targetString = resolve(targetUid);
-      } catch {
-        targetString = void 0;
-      }
-    }
-    next.highlightColor = item.highlight?.color;
-    next.targetUid = targetUid;
-    next.targetString = targetString;
-    return next;
-  });
-}
-function kanbanFields(rows) {
-  const names = [];
-  let highlight = false;
-  for (const row4 of rows || []) {
-    if (typeof row4?.highlightColor === "string" && row4.highlightColor !== "") highlight = true;
-    for (const attr of row4.attrs || []) {
-      if (attr?.name && columnNameOk(attr.name) && !names.includes(attr.name)) names.push(attr.name);
-    }
-  }
-  return highlight ? [TODO_FIELD, HIGHLIGHT_FIELD, ...names] : [TODO_FIELD, ...names];
-}
-function columnOf(row4, field) {
-  if (field === TODO_FIELD) return todoState(row4?.string);
-  if (field === HIGHLIGHT_FIELD) {
-    const color = row4?.highlightColor;
-    return typeof color === "string" && color !== "" ? color : "";
-  }
-  const hit = (row4?.attrs || []).find((attr) => attr.name === field);
-  return hit ? String(hit.value ?? "") : "";
-}
-function kanbanColumns(rows, field) {
-  const list = rows || [];
-  if (field === TODO_FIELD) {
-    const columns2 = [
-      { name: TODO_FIELD, cards: [] },
-      { name: DONE_COLUMN, cards: [] }
-    ];
-    const extra = [];
-    for (const row4 of list) {
-      const name = columnOf(row4, field);
-      if (name === TODO_FIELD) columns2[0].cards.push(row4);
-      else if (name === DONE_COLUMN) columns2[1].cards.push(row4);
-      else extra.push(row4);
-    }
-    if (extra.length) columns2.push({ name: "", cards: extra });
-    return columns2;
-  }
-  if (!columnNameOk(field)) return [];
-  const columns = [];
-  const byName = /* @__PURE__ */ new Map();
-  for (const row4 of list) {
-    const name = columnOf(row4, field);
-    if (!byName.has(name)) {
-      const column = { name, cards: [] };
-      byName.set(name, column);
-      columns.push(column);
-    }
-    byName.get(name).cards.push(row4);
-  }
-  return columns;
-}
-function withMarker(string, column) {
-  const mark = column === DONE_COLUMN ? "{{[[DONE]]}}" : "{{[[TODO]]}}";
-  const current3 = String(string || "");
-  if (MARK2.test(current3)) return current3.replace(MARK2, mark);
-  return current3.trim() ? `${mark} ${current3}` : mark;
-}
-function planKanbanMove({ field, column, row: row4 } = {}) {
-  if (!row4?.uid || column == null || column === "") return null;
-  if (field === TODO_FIELD) {
-    if (column !== TODO_FIELD && column !== DONE_COLUMN) return null;
-    if (todoState(row4.string) === column) return null;
-    const string = withMarker(row4.string, column);
-    if (string === String(row4.string || "")) return null;
-    return { op: "string", uid: row4.uid, string, status: column === DONE_COLUMN ? "DONE" : "TODO" };
-  }
-  if (field === HIGHLIGHT_FIELD) {
-    if (row4.kind === "note") return null;
-    const targetUid = row4.targetUid;
-    const targetString = row4.targetString;
-    if (!targetUid || typeof targetString !== "string" || targetString === "") return null;
-    if (row4.highlightColor === column) return null;
-    if (!HIGHLIGHT_COLORS.includes(column)) return null;
-    return { op: "string", uid: targetUid, string: rewriteHighlightTag(targetString, column) };
-  }
-  if (field === STATUS_FIELD) return null;
-  if (!columnNameOk(field)) return null;
-  const attr = (row4.attrs || []).find((item) => item.name === field);
-  if (String(attr?.value ?? "") === column) return null;
-  const plan = planAttrCell({
-    name: field,
-    value: column,
-    blockUid: attr?.uid || null,
-    parentUid: row4.uid
-  });
-  if (!plan) return null;
-  if (plan.op === "update") return { op: "string", uid: plan.uid, string: plan.string };
-  return plan;
-}
-function isDoneItem(item) {
-  if (item?.done === true) return true;
-  return todoState(item?.string ?? "") === DONE_COLUMN;
-}
-function groupByStatus(items, palette) {
-  const columns = paletteEntries(palette).map((entry) => ({
-    name: entry.name,
-    key: entry.key,
-    glyph: entry.glyph,
-    cards: [],
-    count: 0
-  }));
-  const none = { name: NO_STATUS, key: "", glyph: "diamond", cards: [], count: 0 };
-  const done3 = { name: DONE_COLUMN, key: "done", glyph: "", cards: [], count: 0 };
-  const byName = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
-  for (const item of items || []) {
-    if (isDoneItem(item)) {
-      done3.cards.push(item);
-      continue;
-    }
-    const name = taskStatusOf(item?.string ?? "", palette);
-    const column = name ? byName.get(name.toLowerCase()) : null;
-    (column || none).cards.push(item);
-  }
-  for (const column of columns) column.count = column.cards.length;
-  none.count = none.cards.length;
-  done3.count = done3.cards.length;
-  return [...columns, none, done3];
-}
-
-// src/view/kanban-view.js
+init_kanban();
 init_status_tags();
 var BAD_STATUS = /* @__PURE__ */ new Set(["rejected", "unknown", "conflict", "not-updated"]);
 function kanbanTitle(card2) {
@@ -90293,6 +92230,10 @@ function mountKanban({
   };
 }
 
+// src/view/board-view.js
+init_attr_lanes();
+init_table();
+
 // src/view/props-panel.js
 init_schema();
 var STORAGE_KEY = "pxd-props-collapsed";
@@ -90445,22 +92386,22 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     const text4 = items.filter((it) => it.type === "text");
     const sample = cards[0] || text4[0];
     const fallback = sample?.type === "text" ? 24 : CARD_FONT_DEFAULT;
-    const same3 = items.every((it) => (it.fontSize ?? fallback) === (sample.fontSize ?? fallback));
+    const same4 = items.every((it) => (it.fontSize ?? fallback) === (sample.fontSize ?? fallback));
     el2("span", "pxd-props__label", g, "Text size");
     stepper(g, {
-      value: same3 ? sample.fontSize : void 0,
+      value: same4 ? sample.fontSize : void 0,
       fallback,
       min: CARD_FONT_MIN,
       max: CARD_FONT_MAX,
       aria: "Text size",
       onCommit: (v) => on.setItemStyle?.({ fontSize: v })
     });
-    colorField(g, "Text color", same3 ? sample.textColor : void 0, (c) => on.setItemStyle?.({ textColor: c }));
+    colorField(g, "Text color", same4 ? sample.textColor : void 0, (c) => on.setItemStyle?.({ textColor: c }));
     el2("span", "pxd-props__label", g, "Align");
-    const align = same3 ? sample.align || "" : "";
+    const align = same4 ? sample.align || "" : "";
     choice(g, [["", "Default"], ...ALIGNS.map((a) => [a, a[0].toUpperCase() + a.slice(1)])], align, (v) => on.setItemStyle?.({ align: v || null }), "align");
-    colorField(g, "Fill", same3 ? sample.fill : void 0, (c) => on.setItemStyle?.({ fill: c }));
-    colorField(g, "Border", same3 ? sample.border : void 0, (c) => on.setItemStyle?.({ border: c }));
+    colorField(g, "Fill", same4 ? sample.fill : void 0, (c) => on.setItemStyle?.({ fill: c }));
+    colorField(g, "Border", same4 ? sample.border : void 0, (c) => on.setItemStyle?.({ border: c }));
     button3(g, "pxd-props__reset", "Reset selected", "Remove text size, color, align, fill, and border", () => on.resetItems?.(), "props.reset");
   };
   const edgeGroup = (edge) => {
@@ -90620,19 +92561,21 @@ function inboxEntries(rows) {
 async function readInbox(q2, titles, { tick = () => Promise.resolve() } = {}) {
   const all = [];
   let full = false;
+  let failed = false;
   for (const step of inboxPlan(titles)) {
     let rows = [];
     try {
       rows = q2(step.query, ...step.inputs);
     } catch {
       rows = [];
+      failed = true;
     }
     const got = inboxEntries(rows);
     all.push(...got.entries);
     if (got.full) full = true;
     await tick();
   }
-  return { entries: all, full };
+  return { entries: all, full, failed };
 }
 function filterInbox(entries, { onBoard = /* @__PURE__ */ new Set(), skip = /* @__PURE__ */ new Set(), cap: cap4 = INBOX_CAP } = {}) {
   const seen = /* @__PURE__ */ new Set();
@@ -90661,7 +92604,7 @@ function inboxLabel(n3) {
 }
 
 // src/view/inbox.js
-function createInbox({ doc = globalThis.document, root, host, timers, titles, onBoard, skip, place: place3 } = {}) {
+function createInbox({ doc = globalThis.document, root, host, timers, titles, onBoard, skip, place: place3, hidden, follow } = {}) {
   let entries = [];
   let rows = [];
   let btn2 = null;
@@ -90686,6 +92629,16 @@ function createInbox({ doc = globalThis.document, root, host, timers, titles, on
     panel.replaceChildren?.();
     const head = el2("div", "pxd-inbox__head", panel);
     el2("span", "pxd-inbox__title", head, "Daily notes that mention this board");
+    if (follow) {
+      const live2 = el2("button", "pxd-inbox__follow", head, "Follow");
+      live2.type = "button";
+      live2.title = "New blocks arrive in the tray, ready to place";
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) live2.addEventListener(type, swallow);
+      live2.addEventListener("click", (event) => {
+        event.stopPropagation();
+        follow();
+      });
+    }
     const all = el2("button", "pxd-inbox__all", head, "Place all");
     all.type = "button";
     all.disabled = rows.length === 0;
@@ -90750,14 +92703,33 @@ function createInbox({ doc = globalThis.document, root, host, timers, titles, on
     btn2.setAttribute("aria-expanded", open ? "true" : "false");
     btn2.setAttribute("aria-label", `${rows.length} daily-note block${rows.length === 1 ? "" : "s"} mention this board`);
   };
+  const away = () => {
+    try {
+      return hidden?.() === true;
+    } catch {
+      return false;
+    }
+  };
   function sync() {
     if (disposed) return;
+    if (away()) {
+      open = false;
+      panel?.remove();
+      panel = null;
+      btn2?.remove();
+      btn2 = null;
+      return;
+    }
     compute();
     paintPill();
     paintList();
   }
   function refresh() {
     if (disposed || reading) return reading;
+    if (away()) {
+      sync();
+      return null;
+    }
     const names = titles?.() || [];
     if (!names.length || typeof host?.q !== "function") {
       loaded = true;
@@ -91007,12 +92979,12 @@ function editState(doc) {
 }
 
 // src/host/follow-sources.js
-var UID8 = ":block/uid";
-var STR4 = ":block/string";
-var ORD2 = ":block/order";
-var KIDS5 = ":block/children";
+var UID10 = ":block/uid";
+var STR6 = ":block/string";
+var ORD3 = ":block/order";
+var KIDS7 = ":block/children";
 var FIELDS2 = ":block/uid :block/string :block/order :create/time :edit/time";
-var META = /^BT_attr[\w-]*::/;
+var META2 = /^BT_attr[\w-]*::/;
 var REFS_LIMIT = FOLLOW_READ_CAP + 1;
 var CHILD_LIMIT = FOLLOW_READ_CAP + 1;
 var kinds = /* @__PURE__ */ new Map();
@@ -91026,8 +92998,8 @@ function defineFollowKind(kind) {
 }
 var followKind = (id) => kinds.get(id) || null;
 var quote = (text4) => `“${plainText(text4, 48) || "Untitled"}”`;
-var timeOf = (node2) => Math.max(Number(node2?.[":create/time"]) || 0, Number(node2?.[":edit/time"]) || 0);
-var sorted = (node2) => Array.isArray(node2?.[KIDS5]) ? node2[KIDS5].slice().sort((a, b) => (a?.[ORD2] ?? 0) - (b?.[ORD2] ?? 0)) : [];
+var timeOf2 = (node2) => Math.max(Number(node2?.[":create/time"]) || 0, Number(node2?.[":edit/time"]) || 0);
+var sorted2 = (node2) => Array.isArray(node2?.[KIDS7]) ? node2[KIDS7].slice().sort((a, b) => (a?.[ORD3] ?? 0) - (b?.[ORD3] ?? 0)) : [];
 function treePattern(depth) {
   let inner = `[${FIELDS2}]`;
   for (let d = 1; d < depth; d += 1) inner = `[${FIELDS2} {(limit :block/children ${CHILD_LIMIT}) ${inner}}]`;
@@ -91039,32 +93011,32 @@ function treeItems(root, { depth = 1, cap: cap4 = FOLLOW_READ_CAP, skip = /* @__
   let complete = true;
   let deeper = false;
   let cut = false;
-  const walk3 = (node2, level) => {
-    const kids = sorted(node2);
+  const walk3 = (node2, level, parent) => {
+    const kids = sorted2(node2);
     if (kids.length > cap4) cut = true;
     for (const kid of kids) {
       if (!complete) return;
-      const uid = kid?.[UID8];
+      const uid = kid?.[UID10];
       if (typeof uid !== "string" || skip.has(uid)) continue;
-      const string = typeof kid[STR4] === "string" ? kid[STR4] : "";
-      if (META.test(string.trim())) continue;
+      const string = typeof kid[STR6] === "string" ? kid[STR6] : "";
+      if (META2.test(string.trim())) continue;
       if (items.length >= cap4) {
         complete = false;
         return;
       }
-      items.push({ uid, kind: "block", text: sourceText(string), time: timeOf(kid), depth: level, ...string.trim() ? {} : { blank: true } });
-      const more = Array.isArray(kid[KIDS5]) && kid[KIDS5].length > 0;
+      items.push({ uid, kind: "block", text: sourceText(string), time: timeOf2(kid), depth: level, parent, ...string.trim() ? {} : { blank: true } });
+      const more = Array.isArray(kid[KIDS7]) && kid[KIDS7].length > 0;
       if (!more) continue;
       if (level >= depth) {
         deeper = true;
         continue;
       }
       const inner = load ? load(uid) : kid;
-      if (inner) walk3(inner, level + 1);
+      if (inner) walk3(inner, level + 1, uid);
       else cut = true;
     }
   };
-  walk3(root, 1);
+  walk3(root, 1, root?.[UID10]);
   return { items, complete: complete && !cut, deeper };
 }
 var PARENTS_PULL = "[:block/uid {:block/parents [:block/uid]}]";
@@ -91075,7 +93047,7 @@ function underSource(host, uid, sourceUid, boardUid) {
   } catch {
     return true;
   }
-  const parents = Array.isArray(node2?.[":block/parents"]) ? node2[":block/parents"].map((p) => p?.[UID8]) : [];
+  const parents = Array.isArray(node2?.[":block/parents"]) ? node2[":block/parents"].map((p) => p?.[UID10]) : [];
   return parents.includes(sourceUid) && !parents.includes(boardUid);
 }
 function nameOf(host, uid) {
@@ -91086,7 +93058,7 @@ function nameOf(host, uid) {
     node2 = null;
   }
   if (!node2) return "";
-  return typeof node2[":node/title"] === "string" ? node2[":node/title"] : sourceText(node2[STR4] || "");
+  return typeof node2[":node/title"] === "string" ? node2[":node/title"] : sourceText(node2[STR6] || "");
 }
 var watchBlock = (pointer, host, cb) => typeof host?.watchBlock === "function" ? host.watchBlock(pointer.uid, cb) : () => {
 };
@@ -91121,15 +93093,15 @@ defineFollowKind({
   }
 });
 function subtreeUids(node2, out = /* @__PURE__ */ new Set()) {
-  for (const kid of Array.isArray(node2?.[KIDS5]) ? node2[KIDS5] : []) {
-    if (typeof kid?.[UID8] === "string") out.add(kid[UID8]);
+  for (const kid of Array.isArray(node2?.[KIDS7]) ? node2[KIDS7] : []) {
+    if (typeof kid?.[UID10] === "string") out.add(kid[UID10]);
     subtreeUids(kid, out);
   }
   return out;
 }
 var queryString = (host, uid) => {
   try {
-    return host?.pullEntity?.("[:block/string]", uid)?.[STR4] ?? null;
+    return host?.pullEntity?.("[:block/string]", uid)?.[STR6] ?? null;
   } catch {
     return null;
   }
@@ -91200,10 +93172,65 @@ defineFollowKind({
       const page = pick2(ref, "block/page");
       const pageNode2 = Array.isArray(page) ? page[0] : page;
       const crumb = pick2(pageNode2, "node/title");
-      items.push({ uid, kind: "block", text: sourceText(string), time: timeOf(ref), ...typeof crumb === "string" ? { crumb } : {}, ...string.trim() ? {} : { blank: true } });
+      items.push({ uid, kind: "block", text: sourceText(string), time: timeOf2(ref), ...typeof crumb === "string" ? { crumb } : {}, ...string.trim() ? {} : { blank: true } });
     }
     items.sort((a, b) => b.time - a.time || (a.uid < b.uid ? -1 : 1));
     return { ok: true, complete: refs.length < REFS_LIMIT, items: items.slice(0, FOLLOW_READ_CAP) };
+  }
+});
+var HEADINGS_PULL = `[:node/title :block/uid {(limit :block/children ${CHILD_LIMIT}) [${FIELDS2} :block/heading {(limit :block/children ${CHILD_LIMIT}) [${FIELDS2}]}]}]`;
+defineFollowKind({
+  id: "headings",
+  title: "A page by headings",
+  describe: (p, host) => `Headings of ${quote(nameOf(host, p.uid))}`,
+  // The block watch covers the page's top level; edits below come with the saves in this window and the poll.
+  watch(p, host, cb, env) {
+    const offs = [watchBlock(p, host, cb), watchSaves(env, cb)];
+    return () => {
+      for (const off of offs) off();
+    };
+  },
+  async read(p, { host, boardUid }) {
+    let node2 = null;
+    try {
+      node2 = host?.pullEntity?.(HEADINGS_PULL, p.uid) || null;
+    } catch {
+      node2 = null;
+    }
+    if (!node2) return { ok: false, reason: "missing" };
+    const { items, complete } = headingItems(node2, { skip: /* @__PURE__ */ new Set([boardUid]) });
+    return { ok: true, complete, items, heads: items.filter((item) => item.kind === "heading").map((item) => item.uid) };
+  }
+});
+defineFollowKind({
+  id: INBOX_KIND,
+  title: "This board's Inbox",
+  describe: () => "this board's Inbox",
+  watch: (p, host, cb, env) => watchSaves(env, cb),
+  async read(p, { host, boardUid, boardTitle: boardTitle3, inBoard, tick }) {
+    if (typeof host?.q !== "function") return { ok: false, reason: "error" };
+    let pageTitle = "";
+    try {
+      pageTitle = host.pageTitleOf?.(p.uid) || "";
+    } catch {
+      pageTitle = "";
+    }
+    const own2 = p.uid === boardUid && typeof boardTitle3 === "function" ? boardTitle3() : "";
+    const titles = inboxTitles({ pageTitle, boardTitle: own2 });
+    if (!titles.length) return { ok: true, complete: true, items: [] };
+    const got = await readInbox((query, ...inputs) => host.q(query, ...inputs), titles, { tick });
+    const skip = new Set(typeof inBoard === "function" ? inBoard() : []);
+    skip.add(p.uid);
+    const kept = filterInbox(got.entries, { skip, cap: FOLLOW_READ_CAP + 1 });
+    const items = kept.slice(0, FOLLOW_READ_CAP).map((e2) => ({
+      uid: e2.uid,
+      kind: "block",
+      text: sourceText(e2.string),
+      crumb: e2.page,
+      time: e2.time,
+      ...e2.string.trim() ? {} : { blank: true }
+    }));
+    return { ok: true, complete: !got.failed && !got.full && kept.length <= FOLLOW_READ_CAP, items };
   }
 });
 var JOURNAL_PULL_LIMIT = FOLLOW_READ_CAP + 1;
@@ -91235,29 +93262,29 @@ defineFollowKind({
         complete = false;
         continue;
       }
-      if (!node2 || titleToTime(node2[":node/title"]) !== day || typeof node2[UID8] !== "string") continue;
-      const kids = sorted(node2).filter((kid) => typeof kid?.[UID8] === "string");
+      if (!node2 || titleToTime(node2[":node/title"]) !== day || typeof node2[UID10] !== "string") continue;
+      const kids = sorted2(node2).filter((kid) => typeof kid?.[UID10] === "string");
       if (kids.length >= JOURNAL_PULL_LIMIT) complete = false;
-      const blank = (kid) => !(typeof kid[STR4] === "string" && kid[STR4].trim());
+      const blank = (kid) => !(typeof kid[STR6] === "string" && kid[STR6].trim());
       if (kids.every(blank)) continue;
       const duid = dailyUid(day);
-      items.push({ uid: node2[UID8], kind: "page", title, text: title, time: day, day: duid });
+      items.push({ uid: node2[UID10], kind: "page", title, text: title, time: day, day: duid });
       if (p.columns !== true) continue;
       let n3 = 0;
       let left = 0;
       for (const kid of kids) {
-        const string = typeof kid[STR4] === "string" ? kid[STR4] : "";
+        const string = typeof kid[STR6] === "string" ? kid[STR6] : "";
         if (blank(kid)) {
-          items.push({ uid: kid[UID8], kind: "block", text: "", time: timeOf(kid), crumb: title, day: duid, blank: true });
+          items.push({ uid: kid[UID10], kind: "block", text: "", time: timeOf2(kid), crumb: title, day: duid, blank: true });
           continue;
         }
         if (n3 >= JOURNAL_DAY_CAP) {
-          members.push(kid[UID8]);
+          members.push(kid[UID10]);
           left += 1;
           continue;
         }
         n3 += 1;
-        items.push({ uid: kid[UID8], kind: "block", text: sourceText(string), time: timeOf(kid), crumb: title, day: duid });
+        items.push({ uid: kid[UID10], kind: "block", text: sourceText(string), time: timeOf2(kid), crumb: title, day: duid });
       }
       if (left) omitted.push({ day: duid, title, n: left });
     }
@@ -91275,6 +93302,7 @@ var REASONS = {
   window: "This journal window is not one this version knows.",
   unknown: "This board follows a kind of source this version cannot read."
 };
+var EMPTY_DIFF = { pending: [], left: [], placed: 0, dismissed: 0 };
 function createFollowTray({
   doc = globalThis.document,
   root,
@@ -91286,50 +93314,89 @@ function createFollowTray({
   storage = globalThis.localStorage,
   graph = "",
   onLeft,
+  onParents,
+  onMoved,
   onShowCard,
   onPlaced,
+  onSource,
   toast,
   now: now5 = () => globalThis.performance?.now?.() ?? Date.now(),
   clock = null
 } = {}) {
   const boardUid = session?.uid;
   const memory = createLeftMemory({ storage, graph });
-  const leftBefore = boardUid ? memory.get(boardUid) : null;
-  let pointer = null;
-  let key = "";
-  let read2 = null;
-  let status = "idle";
-  let reason = "";
-  let absent = /* @__PURE__ */ new Map();
-  let diff = { pending: [], left: [], placed: 0, dismissed: 0 };
-  let label = "";
+  let lanes = /* @__PURE__ */ new Map();
+  let order = [];
   let leftShown = "";
-  let reads = 0;
+  let moved = [];
+  let movedShown = "";
   let open = false;
   let autoOpened = false;
   let disposed = false;
   let btn2 = null;
   let panel = null;
-  let unwatch = () => {
-  };
-  let quiet = null;
-  let job = null;
+  let groupEls = /* @__PURE__ */ new Map();
+  let groupsEl = null;
+  let listEl = null;
+  let showAnchor = null;
   let poll = null;
-  let inFlight = false;
-  let again = false;
   let placing = false;
-  let lastMs = 0;
-  let waitMs = 0;
-  let queuedAt = 0;
-  let held = false;
-  let floorWait = null;
+  let job = null;
+  let passing = false;
+  let passAgain = false;
+  let passes = 0;
+  let paints = 0;
+  let readsNow = 0;
+  let maxReads = 0;
   let offEditing = () => {
   };
-  let lastStart = -Infinity;
-  let known2 = false;
-  let stale = false;
   let seen = null;
   let io = null;
+  const newLane = (uid) => ({
+    uid,
+    section: uid !== boardUid,
+    name: "",
+    over: false,
+    dup: null,
+    pointer: null,
+    key: "",
+    read: null,
+    status: "idle",
+    reason: "",
+    absent: /* @__PURE__ */ new Map(),
+    diff: EMPTY_DIFF,
+    pending: [],
+    hints: [],
+    label: "",
+    reads: 0,
+    unwatch: () => {
+    },
+    quiet: null,
+    // Its quiet period ended (or the tray opened): the next pass reads it.
+    due: false,
+    inFlight: false,
+    again: false,
+    // How long the last read took: the next quiet period is ten times that (at least FOLLOW_QUIET_MS).
+    lastMs: 0,
+    // How long the last read waited for the shared background budget after its quiet period.
+    waitMs: 0,
+    queuedAt: 0,
+    // PXD-20: a read is owed but waits for editing to go idle (held), or for the slow-read floor (floorWait).
+    held: false,
+    floorWait: null,
+    // When this source's last read started, and whether it has one (an unknown cost counts as slow).
+    lastStart: -Infinity,
+    known: false,
+    // A trigger came while the board was off screen or the tab hidden: read when it shows again.
+    stale: false,
+    // The cards that had left when the board last closed (per owner, per device).
+    leftBefore: uid ? memory.get(uid) : null,
+    // PXD-18: this visit's Arrivals room, and the source's cards already on the board when the visit (or the source)
+    // began: every other card of the source counts as placed this visit, however it was made.
+    allowance: ARRIVALS_CAP,
+    before: /* @__PURE__ */ new Set()
+  });
+  const readable = (lane2) => Boolean(lane2?.pointer) && !lane2.over && !lane2.dup;
   const el2 = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     if (cls) node2.className = cls;
@@ -91352,150 +93419,229 @@ function createFollowTray({
     });
     return b;
   };
-  const ctx = () => ({
+  const ctx = (lane2) => ({
     host,
     boardUid,
+    boardTitle: () => board2()?.title || "",
     inBoard: () => session.followExclude?.() || /* @__PURE__ */ new Set([boardUid]),
     tick: () => new Promise((resolve) => timers.idle(resolve)),
     // PXD-15: the journal window's "today"; tests roll it.
     ...typeof clock === "function" ? { now: clock } : {},
-    followed: () => followIndex(board2(), key).followed.map((card2) => card2.target?.uid).filter(Boolean)
+    followed: () => followIndex(board2(), lane2.key).followed.map((card2) => card2.target?.uid).filter(Boolean)
   });
-  const textMissing = () => reason === "missing" && pointer?.kind === "block" && board2()?.followDerived === true;
-  const describe = () => {
-    const kind = pointer ? followKind(pointer.kind) : null;
-    if (textMissing()) return "a block that does not exist";
+  const textMissing = (lane2) => !lane2.section && lane2.reason === "missing" && lane2.pointer?.kind === "block" && board2()?.followDerived === true;
+  const describe = (lane2) => {
+    const kind = lane2.pointer ? followKind(lane2.pointer.kind) : null;
+    if (textMissing(lane2)) return "a block that does not exist";
     try {
-      return kind?.describe?.(pointer, host) || kind?.title || "a source";
+      return kind?.describe?.(lane2.pointer, host) || kind?.title || "a source";
     } catch {
       return kind?.title || "a source";
     }
   };
+  const allLeft = () => {
+    const out = [];
+    for (const lane2 of order) out.push(...lane2.diff.left);
+    return out;
+  };
+  const waiting = () => order.reduce((n3, lane2) => n3 + lane2.pending.length, 0);
   function recompute() {
-    diff = pointer ? followDiff(read2, board2(), { key, skip: pointer.skip, absent, since }) : { pending: [], left: [], placed: 0, dismissed: 0 };
-    const next = diff.left.slice().sort().join("\n");
+    const b = board2();
+    for (const lane2 of order) {
+      lane2.diff = readable(lane2) ? followDiff(lane2.read, b, { key: lane2.key, skip: lane2.pointer.skip, absent: lane2.absent, since }) : EMPTY_DIFF;
+    }
+    const live2 = order.filter(readable);
+    const sorted3 = dedupeFollow(live2.map((lane2) => ({ name: lane2.name, read: lane2.read, skip: lane2.pointer.skip, diff: lane2.diff })));
+    for (const lane2 of order) {
+      lane2.pending = [];
+      lane2.hints = [];
+    }
+    live2.forEach((lane2, i) => {
+      lane2.pending = sorted3[i].pending;
+      lane2.hints = sorted3[i].hints;
+    });
+    const left = allLeft();
+    const next = left.slice().sort().join("\n");
     if (next !== leftShown) {
       leftShown = next;
-      onLeft?.(new Set(diff.left));
+      onLeft?.(new Set(left));
+    }
+    const own2 = lanes.get(boardUid);
+    moved = readable(own2) && own2.pointer.kind === "headings" ? movedCards(own2.read, b, own2.key) : [];
+    const mark = moved.map((m) => `${m.uid}>${m.to}`).join("\n");
+    if (mark !== movedShown) {
+      movedShown = mark;
+      onMoved?.(new Map(moved.map((m) => [m.uid, m.toText])));
     }
   }
   function sync() {
     if (disposed) return;
+    paints += 1;
     recompute();
     paintPill();
     paintPanel();
   }
   const showing = () => doc?.visibilityState !== "hidden" && seen !== false;
-  function gate() {
+  function gate(lane2) {
     const edit = editState(doc);
-    const cost = known2 ? lastMs : Infinity;
+    const cost = lane2.known ? lane2.lastMs : Infinity;
     if (edit.typing && cost >= FOLLOW_TYPING_MS) return "typing";
-    if (edit.busy && cost > FOLLOW_SLOW_MS && now5() - lastStart < FOLLOW_POLL_MS) return "floor";
+    if (edit.busy && cost > FOLLOW_SLOW_MS && now5() - lane2.lastStart < FOLLOW_POLL_MS) return "floor";
     return "";
   }
-  function hold(why) {
-    held = true;
-    if (why !== "floor" || floorWait) return;
-    floorWait = timers.later(() => {
-      floorWait = null;
-      if (held) readSoon();
-    }, Math.max(0, lastStart + FOLLOW_POLL_MS - now5()));
+  function hold(lane2, why) {
+    lane2.held = true;
+    if (why !== "floor" || lane2.floorWait) return;
+    lane2.floorWait = timers.later(() => {
+      lane2.floorWait = null;
+      if (lane2.held) markDue(lane2);
+    }, Math.max(0, lane2.lastStart + FOLLOW_POLL_MS - now5()));
   }
-  function unhold() {
-    held = false;
-    floorWait?.();
-    floorWait = null;
+  function unhold(lane2) {
+    lane2.held = false;
+    lane2.floorWait?.();
+    lane2.floorWait = null;
   }
   const onEditing = (why) => {
     if (disposed) return;
-    const cut = why === "typing" && Boolean(quiet) && !job;
-    if (cut) {
-      quiet();
-      quiet = null;
+    for (const lane2 of order) {
+      const cut = why === "typing" && Boolean(lane2.quiet) && !lane2.due;
+      if (cut) {
+        lane2.quiet();
+        lane2.quiet = null;
+      }
+      if (cut || lane2.held && !gate(lane2)) markDue(lane2);
     }
-    if (cut || held && !gate()) readSoon();
   };
-  function runRead() {
-    job = null;
-    if (disposed || !pointer) return;
-    if (!showing()) {
-      stale = true;
-      unhold();
+  function requestPass() {
+    if (disposed) return;
+    if (passing) {
+      passAgain = true;
       return;
     }
-    if (inFlight) {
-      again = true;
+    if (job) return;
+    job = timers.bgIdle(() => {
+      void runPass();
+    }, "follow");
+  }
+  function markDue(lane2) {
+    if (disposed || !readable(lane2) || lane2.due) return;
+    if (lane2.inFlight) {
+      lane2.again = true;
       return;
     }
-    const kind = followKind(pointer.kind);
-    if (!kind) {
-      status = "error";
-      reason = "unknown";
-      sync();
-      return;
-    }
-    const why = gate();
-    if (why) {
-      hold(why);
-      return;
-    }
-    unhold();
-    const mine = key;
-    inFlight = true;
-    stale = false;
-    waitMs = Math.max(0, now5() - queuedAt);
-    status = read2 ? status : "reading";
-    if (!read2) paintPanel();
+    lane2.due = true;
+    lane2.queuedAt = now5();
+    requestPass();
+  }
+  async function readLane(lane2, kind) {
+    const mine = lane2.key;
+    lane2.inFlight = true;
+    lane2.stale = false;
+    lane2.waitMs = Math.max(0, now5() - lane2.queuedAt);
+    if (!lane2.read) paintPanel();
     const started = now5();
-    Promise.resolve().then(() => kind.read(pointer, ctx())).catch(() => ({ ok: false, reason: "error" })).then((res) => {
-      inFlight = false;
-      if (disposed) return;
-      if (mine !== key) {
-        if (again) {
-          again = false;
-          schedule();
+    readsNow += 1;
+    maxReads = Math.max(maxReads, readsNow);
+    const res = await Promise.resolve().then(() => kind.read(lane2.pointer, ctx(lane2))).catch(() => ({ ok: false, reason: "error" }));
+    readsNow -= 1;
+    lane2.inFlight = false;
+    if (disposed) return false;
+    if (mine !== lane2.key || lanes.get(lane2.uid) !== lane2) {
+      if (lane2.again) {
+        lane2.again = false;
+        schedule(lane2);
+      }
+      return false;
+    }
+    lane2.lastMs = Math.max(0, now5() - started);
+    lane2.lastStart = started;
+    lane2.known = true;
+    lane2.reads += 1;
+    if (res?.ok) {
+      lane2.read = res;
+      if (!lane2.section && lane2.pointer.tree && typeof onParents === "function") {
+        const parents = /* @__PURE__ */ new Map();
+        for (const item of res.items || []) if (item?.parent && item.uid) parents.set(item.uid, item.parent);
+        try {
+          onParents(parents);
+        } catch {
         }
-        return;
       }
-      lastMs = Math.max(0, now5() - started);
-      lastStart = started;
-      known2 = true;
-      reads += 1;
-      if (res?.ok) {
-        read2 = res;
-        absent = absentStep(absent, res, board2(), key);
-        status = "ok";
-        reason = "";
-      } else {
-        status = "error";
-        reason = res?.reason || "error";
-      }
-      label = describe();
-      sync();
-      if (again) {
-        again = false;
-        schedule();
-      } else if (res?.ok && res.complete && leftUnsettled(absent)) schedule();
-    });
+      lane2.absent = absentStep(lane2.absent, res, board2(), lane2.key);
+      lane2.status = "ok";
+      lane2.reason = "";
+    } else {
+      lane2.status = "error";
+      lane2.reason = res?.reason || "error";
+    }
+    lane2.label = describe(lane2);
+    lane2.ok = res?.ok === true && res.complete === true;
+    return true;
   }
-  function schedule() {
-    if (disposed || !pointer) return;
+  async function runPass() {
+    job = null;
+    if (disposed) return;
+    passing = true;
+    passes += 1;
+    const read2 = [];
+    let paint2 = false;
+    for (const lane2 of order.filter((l) => l.due)) {
+      if (disposed) break;
+      lane2.due = false;
+      if (lanes.get(lane2.uid) !== lane2 || !readable(lane2)) continue;
+      if (!showing()) {
+        lane2.stale = true;
+        unhold(lane2);
+        continue;
+      }
+      const kind = followKind(lane2.pointer.kind);
+      if (!kind) {
+        lane2.status = "error";
+        lane2.reason = "unknown";
+        paint2 = true;
+        continue;
+      }
+      const why = gate(lane2);
+      if (why) {
+        hold(lane2, why);
+        continue;
+      }
+      unhold(lane2);
+      if (await readLane(lane2, kind)) {
+        read2.push(lane2);
+        paint2 = true;
+      }
+    }
+    passing = false;
+    if (disposed) return;
+    if (paint2) sync();
+    for (const lane2 of read2) {
+      if (lane2.again) {
+        lane2.again = false;
+        schedule(lane2);
+      } else if (lane2.ok && leftUnsettled(lane2.absent)) schedule(lane2);
+    }
+    if (passAgain || order.some((l) => l.due)) {
+      passAgain = false;
+      if (order.some((l) => l.due)) requestPass();
+    }
+  }
+  function schedule(lane2) {
+    if (disposed || !readable(lane2)) return;
     if (!showing()) {
-      stale = true;
+      lane2.stale = true;
       return;
     }
-    if (quiet || held) return;
-    quiet = timers.later(() => {
-      quiet = null;
-      if (disposed || job) return;
-      queuedAt = now5();
-      job = timers.bgIdle(runRead, "follow");
-    }, followQuietMs(lastMs));
+    if (lane2.quiet || lane2.held) return;
+    lane2.quiet = timers.later(() => {
+      lane2.quiet = null;
+      if (disposed || lane2.due) return;
+      markDue(lane2);
+    }, followQuietMs(lane2.lastMs));
   }
-  const readSoon = () => {
-    if (disposed || !pointer || job) return;
-    queuedAt = now5();
-    job = timers.bgIdle(runRead, "follow");
+  const scheduleAll = () => {
+    for (const lane2 of order) schedule(lane2);
   };
   let listening = false;
   function listen(on) {
@@ -91520,7 +93666,9 @@ function createFollowTray({
         const entry = entries[entries.length - 1];
         if (!entry || disposed) return;
         seen = Boolean(entry.isIntersecting);
-        if (seen && stale) schedule();
+        if (seen) {
+          for (const lane2 of order) if (lane2.stale) schedule(lane2);
+        }
       });
       io.observe(root);
     } catch {
@@ -91530,65 +93678,126 @@ function createFollowTray({
   function armPoll() {
     poll?.();
     poll = null;
-    listen(Boolean(pointer) && !disposed);
-    if (!pointer || disposed) return;
+    const on = order.some(readable) && !disposed;
+    listen(on);
+    if (!on) return;
     poll = timers.later(() => {
       poll = null;
-      schedule();
+      scheduleAll();
       armPoll();
     }, FOLLOW_POLL_MS);
   }
-  function adopt() {
-    const next = readFollow(board2()?.plexus);
-    const nextKey = sourceKey(next);
-    if (nextKey === key) {
-      const reshaped = pointer?.tree === true !== (next?.tree === true) || pointer?.columns === true !== (next?.columns === true);
-      pointer = next;
+  function adoptLane(lane2, owner) {
+    const wasReadable = readable(lane2);
+    lane2.name = owner?.name || "";
+    lane2.over = owner?.over === true;
+    lane2.dup = owner?.dup || null;
+    const next = owner?.pointer || null;
+    const nextKey = owner?.key || "";
+    if (nextKey === lane2.key && wasReadable === readable({ ...lane2, pointer: next })) {
+      const reshaped = lane2.pointer?.tree === true !== (next?.tree === true) || lane2.pointer?.columns === true !== (next?.columns === true);
+      lane2.pointer = next;
       if (reshaped) {
-        label = describe();
-        schedule();
+        lane2.label = describe(lane2);
+        schedule(lane2);
       }
-      return reshaped;
+      return false;
     }
     try {
-      unwatch();
+      lane2.unwatch();
     } catch {
     }
-    unwatch = () => {
+    lane2.unwatch = () => {
     };
-    quiet?.();
-    quiet = null;
-    lastMs = 0;
-    lastStart = -Infinity;
-    known2 = false;
-    unhold();
-    pointer = next;
-    key = nextKey;
-    read2 = null;
-    absent = /* @__PURE__ */ new Map();
-    status = pointer ? "reading" : "idle";
-    reason = "";
-    label = pointer ? describe() : "";
-    if (pointer) {
-      const kind = followKind(pointer.kind);
+    lane2.quiet?.();
+    lane2.quiet = null;
+    lane2.lastMs = 0;
+    lane2.lastStart = -Infinity;
+    lane2.known = false;
+    unhold(lane2);
+    lane2.pointer = next;
+    lane2.key = nextKey;
+    lane2.read = null;
+    lane2.allowance = ARRIVALS_CAP;
+    lane2.before = followedUids(board2(), nextKey);
+    lane2.absent = /* @__PURE__ */ new Map();
+    lane2.status = next ? "reading" : "idle";
+    lane2.reason = "";
+    lane2.label = next ? describe(lane2) : "";
+    if (readable(lane2)) {
+      const kind = followKind(next.kind);
       try {
-        unwatch = kind?.watch?.(pointer, host, () => schedule(), { doc }) || (() => {
+        lane2.unwatch = kind?.watch?.(next, host, () => schedule(lane2), { doc }) || (() => {
         });
       } catch {
-        unwatch = () => {
+        lane2.unwatch = () => {
         };
       }
-      schedule();
-    } else if (open) close();
-    armPoll();
+      schedule(lane2);
+    }
     return true;
   }
-  const entryOf = (row4) => ({ uid: row4.uid, kind: row4.kind, ...row4.title ? { title: row4.title } : {}, ...row4.day ? { day: row4.day } : {} });
-  function place3(rows) {
+  function dropLane(lane2) {
+    try {
+      lane2.unwatch();
+    } catch {
+    }
+    lane2.unwatch = () => {
+    };
+    lane2.quiet?.();
+    lane2.quiet = null;
+    lane2.due = false;
+    unhold(lane2);
+  }
+  function adopt() {
+    const was = lanes.get(boardUid)?.pointer?.kind || "";
+    const { owners } = followOwnersOf(board2());
+    const next = /* @__PURE__ */ new Map();
+    let changed2 = false;
+    for (const owner of owners) {
+      let lane2 = lanes.get(owner.uid);
+      if (!lane2) {
+        lane2 = newLane(owner.uid);
+        changed2 = true;
+      }
+      next.set(owner.uid, lane2);
+    }
+    for (const [uid, lane2] of lanes) if (!next.has(uid)) {
+      dropLane(lane2);
+      changed2 = true;
+    }
+    lanes = next;
+    order = owners.map((owner) => lanes.get(owner.uid));
+    for (const owner of owners) if (adoptLane(lanes.get(owner.uid), owner)) changed2 = true;
+    if (!changed2) return false;
+    if (!order.length && open) close();
+    armPoll();
+    const kind = lanes.get(boardUid)?.pointer?.kind || "";
+    if (kind !== was) {
+      try {
+        onSource?.(kind, was);
+      } catch {
+      }
+    }
+    return true;
+  }
+  const isInbox = (lane2) => !lane2?.section && lane2?.pointer?.kind === INBOX_KIND;
+  const strip = (lane2) => isInbox(lane2) ? arrivalsView(lane2.pending, { allowance: lane2.allowance, placed: visitPlaced(board2(), lane2.key, lane2.before) }) : { rows: lane2?.pending || [], waiting: 0 };
+  const entryOf = (row4) => ({
+    uid: row4.uid,
+    kind: row4.kind,
+    ...row4.title ? { title: row4.title } : {},
+    // PXD-14: the heading a row sits under, so a placed card knows its section.
+    ...row4.heading ? { heading: row4.heading, ...row4.kind === "heading" ? { text: row4.text } : { headingText: row4.headingText } } : {},
+    ...row4.day ? { day: row4.day } : {}
+  });
+  function place3(rows, lane2) {
     if (!rows.length || placing) return Promise.resolve(null);
     placing = true;
     paintPanel();
-    return Promise.resolve(session.placeFollowed?.(rows.map(entryOf))).then((res) => {
+    const entries = rows.map(entryOf);
+    const opts = lane2?.section ? { owner: lane2.uid } : lane2?.pointer?.kind === "headings" ? { order: lane2.read?.heads } : void 0;
+    return Promise.resolve(session.placeFollowed?.(entries, opts)).then((res) => {
       if (disposed || !res) return res;
       if (res.batches > 1) toast?.(`Placed ${res.placed} cards in ${res.batches} batches of up to ${SPREAD_CAP}. Each Cmd+Z takes back one batch.`);
       if (res.uids?.length) onPlaced?.(res.uids);
@@ -91598,8 +93807,18 @@ function createFollowTray({
       if (!disposed) paintPanel();
     });
   }
+  function counts() {
+    const out = { newCount: 0, leftCount: 0, baseline: false };
+    for (const lane2 of order) {
+      const c = sinceVisit({ pending: lane2.pending, left: lane2.diff.left }, { since, leftBefore: lane2.leftBefore });
+      out.newCount += c.newCount;
+      out.leftCount += c.leftCount;
+      out.baseline = out.baseline || c.baseline;
+    }
+    return out;
+  }
   function paintPill() {
-    if (!pointer) {
+    if (!order.length) {
       btn2?.remove();
       btn2 = null;
       return;
@@ -91613,20 +93832,23 @@ function createFollowTray({
         toggle();
       });
     }
-    const counts = sinceVisit(diff, { since, leftBefore });
-    btn2.textContent = followPill(diff.pending.length);
-    btn2.classList.toggle("pxd-follow--new", counts.newCount > 0 || counts.leftCount > 0);
+    const c = counts();
+    const n3 = waiting();
+    btn2.textContent = order.length === 1 && isInbox(order[0]) ? arrivalsPill(n3) : followPill(n3);
+    btn2.classList.toggle("pxd-follow--new", c.newCount > 0 || c.leftCount > 0);
     btn2.setAttribute("aria-expanded", open ? "true" : "false");
-    const head = trayHeadline(counts);
-    btn2.setAttribute("aria-label", `${diff.pending.length} waiting from ${label || "the source"}${head ? `. ${head}` : ""}`);
+    const head = trayHeadline(c);
+    const from = order.length === 1 ? order[0].label || "the source" : `${order.length} sources`;
+    btn2.setAttribute("aria-label", `${n3} waiting from ${from}${head ? `. ${head}` : ""}`);
   }
   const cardTitle = (uid) => {
     const item = board2()?.items.get(uid);
     if (!item) return "Card";
-    const label2 = itemLabel(item, (id) => host?.blockString?.(id));
-    return plainText(label2 || item.string || "", 80) || "Card";
+    const label = itemLabel(item, (id) => host?.blockString?.(id));
+    return plainText(label || item.string || "", 80) || "Card";
   };
-  function rowEl(list, row4) {
+  const rowText = (row4) => row4.kind === "page" ? row4.title : row4.text || "(empty block)";
+  function rowEl(list, row4, lane2) {
     const node2 = el2("div", "pxd-follow__row", list);
     node2.draggable = true;
     node2.setAttribute("draggable", "true");
@@ -91634,21 +93856,21 @@ function createFollowTray({
     if (row4.depth > 1) node2.style.paddingLeft = `${6 + (row4.depth - 1) * 12}px`;
     const text4 = el2("div", "pxd-follow__text", node2);
     if (row4.fresh) el2("span", "pxd-follow__new", text4, "new");
-    el2("span", "", text4, row4.kind === "page" ? row4.title : row4.text || "(empty block)");
+    el2("span", "", text4, rowText(row4));
     if (row4.crumb) el2("div", "pxd-follow__crumb", node2, row4.crumb);
     const acts = el2("div", "pxd-follow__acts", node2);
     button3(acts, "pxd-follow__place", "Place", () => {
-      void place3([row4]);
+      void place3([row4], lane2);
     });
     button3(acts, "pxd-follow__skip", "Don't bring back", () => {
-      void session.dontBringBack?.([row4.uid]);
+      void (lane2.section ? session.dontBringBack?.([row4.uid], lane2.uid) : session.dontBringBack?.([row4.uid]));
     });
     shield(node2);
     node2.addEventListener("dragstart", (event) => {
       event.stopPropagation();
       const string = followCardString(row4);
       try {
-        event.dataTransfer?.setData?.(FOLLOW_MIME, JSON.stringify({ ...entryOf(row4), board: boardUid, src: key }));
+        event.dataTransfer?.setData?.(FOLLOW_MIME, JSON.stringify({ ...entryOf(row4), board: boardUid, src: lane2.key, ...lane2.section ? { owner: lane2.uid } : {} }));
         event.dataTransfer?.setData?.(CARD_MIME, string);
         event.dataTransfer?.setData?.("text/plain", string);
         if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
@@ -91656,38 +93878,69 @@ function createFollowTray({
       }
     });
   }
-  function paintPanel() {
-    if (!panel) return;
-    panel.replaceChildren?.();
-    const head = el2("div", "pxd-follow__head", panel);
-    el2("div", "pxd-follow__title", head, label ? `Following ${label}` : "Following");
-    button3(head, "pxd-follow__close", "×", () => close(), "Close");
-    const counts = sinceVisit(diff, { since, leftBefore });
-    const line = trayHeadline(counts);
-    if (line) el2("div", "pxd-follow__since", panel, line);
-    let note = "";
-    if (status === "reading" && !read2) note = "Reading the source…";
-    else if (status === "error") note = textMissing() ? REASONS.missingText : REASONS[reason] || "Could not read the source. The last list stays.";
-    else if (read2 && !read2.complete) note = "Only part of the source was read, so nothing is marked as left.";
-    else if (read2?.deeper) note = `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
-    if (note) el2("div", "pxd-follow__note", panel, note);
-    if (read2?.omitted?.length) {
-      const parts = read2.omitted.slice().reverse().map((o, i) => `${o.n} ${i ? "of" : "left out of"} ${o.title}`);
-      el2("div", "pxd-follow__note", panel, `At most ${JOURNAL_DAY_CAP} blocks per day: ${parts.join(", ")}.`);
+  function hintEl(list, row4) {
+    const node2 = el2("div", "pxd-follow__row pxd-follow__row--hint", list);
+    node2.dataset.uid = row4.uid;
+    el2("div", "pxd-follow__text", node2, rowText(row4));
+    el2("div", "pxd-follow__also", node2, `Also in ${row4.also}`);
+    shield(node2);
+  }
+  function noteOf(lane2) {
+    if (lane2.over) return `Not read: over the limit of ${FOLLOW_SECTION_CAP}.`;
+    if (lane2.dup) return `Not read: ${lane2.dup === BOARD_OWNER_NAME ? "the board" : lane2.dup} follows this source already.`;
+    if (lane2.status === "reading" && !lane2.read) return "Reading the source…";
+    if (lane2.status === "error") return textMissing(lane2) ? REASONS.missingText : REASONS[lane2.reason] || "Could not read the source. The last list stays.";
+    if (lane2.read && !lane2.read.complete) return "Only part of the source was read, so nothing is marked as left.";
+    if (lane2.read?.deeper) return `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
+    return "";
+  }
+  function paintLane(parent, lane2, grouped) {
+    if (grouped) {
+      const head = el2("div", "pxd-follow__owner-head", parent);
+      el2("div", "pxd-follow__owner-title", head, lane2.section ? lane2.name : "This board");
+      if (lane2.label) el2("div", "pxd-follow__owner-source", head, lane2.label);
     }
-    const bar = el2("div", "pxd-follow__bar", panel);
-    el2("span", "pxd-follow__count", bar, `${diff.pending.length} waiting · ${diff.placed} on the board`);
-    const all = button3(bar, "pxd-follow__all", diff.pending.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => {
-      void place3(diff.pending.slice());
+    const note = noteOf(lane2);
+    if (note) el2("div", "pxd-follow__note", parent, note);
+    if (!readable(lane2)) return;
+    if (lane2.read?.omitted?.length) {
+      const parts = lane2.read.omitted.slice().reverse().map((o, i) => `${o.n} ${i ? "of" : "left out of"} ${o.title}`);
+      el2("div", "pxd-follow__note", parent, `At most ${JOURNAL_DAY_CAP} blocks per day: ${parts.join(", ")}.`);
+    }
+    const heads = lane2.pointer.kind === "headings";
+    if (heads) {
+      el2("div", "pxd-follow__note", parent, headingsNote);
+      if (lane2.read?.ok && !lane2.read.items.some((row4) => row4.kind === "heading")) el2("div", "pxd-follow__note", parent, headingsEmpty);
+    }
+    const inbox = isInbox(lane2);
+    const shown = strip(lane2);
+    const bar = el2("div", "pxd-follow__bar", parent);
+    if (inbox) {
+      el2("span", "pxd-follow__arrivals", bar, "Arrivals");
+      el2("span", "pxd-follow__count", bar, `${arrivalsLine(shown)} · ${lane2.diff.placed} on the board`);
+    } else el2("span", "pxd-follow__count", bar, `${lane2.pending.length} waiting · ${lane2.diff.placed} on the board`);
+    const all = button3(bar, "pxd-follow__all", shown.rows.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => {
+      void place3(shown.rows.slice(), lane2);
     });
-    all.disabled = diff.pending.length === 0 || placing;
-    const list = el2("div", "pxd-follow__list", panel);
-    if (!diff.pending.length) el2("div", "pxd-follow__empty", list, read2 ? "Everything in the source is on the board." : "");
-    for (const row4 of diff.pending) rowEl(list, row4);
-    if (diff.left.length) {
-      el2("div", "pxd-follow__section", panel, `Left the source (${diff.left.length})`);
-      const gone = el2("div", "pxd-follow__list pxd-follow__list--left", panel);
-      for (const uid of diff.left) {
+    all.disabled = shown.rows.length === 0 || placing;
+    const list = el2("div", "pxd-follow__list", parent);
+    if (!lane2.pending.length && !lane2.hints.length) el2("div", "pxd-follow__empty", list, lane2.read ? inbox ? "No daily-note block waits." : "Everything in the source is on the board." : "");
+    if (heads) groupRows(list, lane2);
+    else for (const row4 of shown.rows) rowEl(list, row4, lane2);
+    if (shown.waiting > 0) {
+      const more = el2("div", "pxd-follow__more", list);
+      el2("span", "pxd-follow__count", more, `${shown.waiting} more wait`);
+      const n3 = Math.min(ARRIVALS_CAP, shown.waiting);
+      button3(more, "pxd-follow__show-more", `Show ${n3} more`, () => {
+        lane2.allowance += ARRIVALS_CAP;
+        paintPanel();
+      });
+    }
+    for (const row4 of lane2.hints) hintEl(list, row4);
+    if (lane2.diff.left.length) {
+      el2("div", "pxd-follow__section", parent, `Left the source (${lane2.diff.left.length})`);
+      const gone = el2("div", "pxd-follow__list pxd-follow__list--left", parent);
+      for (const uid of lane2.diff.left) {
         const node2 = el2("div", "pxd-follow__row pxd-follow__row--left", gone);
         node2.dataset.uid = uid;
         el2("div", "pxd-follow__text", node2, cardTitle(uid));
@@ -91702,9 +93955,111 @@ function createFollowTray({
         shield(node2);
       }
     }
+    if (!lane2.section && moved.length) {
+      el2("div", "pxd-follow__section", parent, `Moved (${moved.length})`);
+      const moves = el2("div", "pxd-follow__list pxd-follow__list--left", parent);
+      for (const m of moved) {
+        const node2 = el2("div", "pxd-follow__row pxd-follow__row--left", moves);
+        node2.dataset.uid = m.uid;
+        el2("div", "pxd-follow__text", node2, cardTitle(m.uid));
+        el2("div", "pxd-follow__crumb", node2, `Moved to ${m.toText || "another heading"}`);
+        const acts = el2("div", "pxd-follow__acts", node2);
+        button3(acts, "pxd-follow__show", "Show", () => onShowCard?.(m.uid));
+        button3(acts, "pxd-follow__dismiss", "Dismiss", () => {
+          void session.dismissMoved?.({ [m.uid]: m.to });
+        });
+        shield(node2);
+      }
+    }
   }
-  function openPanel() {
-    if (disposed || !pointer) return;
+  function groupRows(list, lane2) {
+    const groups2 = /* @__PURE__ */ new Map();
+    for (const row4 of lane2.pending) {
+      const head = row4.kind === "heading" ? row4.uid : row4.heading;
+      if (!head) continue;
+      if (!groups2.has(head)) groups2.set(head, { head, text: "", row: null, blocks: [] });
+      const g = groups2.get(head);
+      if (row4.kind === "heading") {
+        g.row = row4;
+        g.text = row4.text;
+      } else {
+        g.blocks.push(row4);
+        if (!g.text) g.text = row4.headingText || "";
+      }
+    }
+    for (const g of groups2.values()) {
+      const bar = el2("div", "pxd-follow__group", list);
+      el2("span", "pxd-follow__text", bar, g.text || "(empty heading)");
+      const acts = el2("div", "pxd-follow__acts", bar);
+      button3(acts, "pxd-follow__place", "Place", () => {
+        void place3(g.row ? [g.row, ...g.blocks] : g.blocks, lane2);
+      });
+      if (g.row) button3(acts, "pxd-follow__skip", "Don't bring back", () => {
+        void session.dontBringBack?.([g.head]);
+      });
+      shield(bar);
+      for (const row4 of g.blocks) rowEl(list, row4, lane2);
+    }
+  }
+  function scrollAnchor() {
+    if (listEl) return { top: Number(listEl.scrollTop) || 0 };
+    if (!groupsEl) return null;
+    const top = Number(groupsEl.scrollTop) || 0;
+    const base2 = Number(groupsEl.offsetTop) || 0;
+    let anchor = { top };
+    for (const [owner, group] of groupEls) {
+      const at = Number(group.offsetTop);
+      if (Number.isFinite(at) && at - base2 <= top) anchor = { top, owner, delta: top - (at - base2) };
+    }
+    return anchor;
+  }
+  function restoreScroll(anchor) {
+    if (!anchor) return;
+    if (listEl) {
+      listEl.scrollTop = anchor.top;
+      return;
+    }
+    if (!groupsEl) return;
+    const group = anchor.owner ? groupEls.get(anchor.owner) : null;
+    const at = Number(group?.offsetTop);
+    if (group && Number.isFinite(at)) groupsEl.scrollTop = Math.max(0, at - (Number(groupsEl.offsetTop) || 0) + (anchor.delta || 0));
+    else if (group && anchor.show) {
+      try {
+        group.scrollIntoView?.({ block: "start" });
+      } catch {
+      }
+    } else groupsEl.scrollTop = anchor.top || 0;
+  }
+  function paintPanel() {
+    if (!panel) return;
+    const anchor = showAnchor || scrollAnchor();
+    showAnchor = null;
+    panel.replaceChildren?.();
+    groupEls = /* @__PURE__ */ new Map();
+    groupsEl = null;
+    listEl = null;
+    const single = order.length === 1 && !order[0].section ? order[0] : null;
+    const head = el2("div", "pxd-follow__head", panel);
+    el2("div", "pxd-follow__title", head, single?.label ? `Following ${single.label}` : "Following");
+    button3(head, "pxd-follow__close", "×", () => close(), "Close");
+    const line = trayHeadline(counts());
+    if (line) el2("div", "pxd-follow__since", panel, line);
+    if (single) {
+      paintLane(panel, single, false);
+      listEl = panel.querySelector?.(".pxd-follow__list") || null;
+    } else {
+      groupsEl = el2("div", "pxd-follow__owners", panel);
+      for (const lane2 of order) {
+        const group = el2("div", "pxd-follow__owner", groupsEl);
+        group.dataset.owner = lane2.uid;
+        groupEls.set(lane2.uid, group);
+        paintLane(group, lane2, true);
+      }
+    }
+    restoreScroll(anchor);
+  }
+  function openPanel(owner) {
+    if (disposed || !order.length) return;
     if (!open) {
       open = true;
       panel = el2("div", "pxd-follow__panel pxd-chrome", root);
@@ -91712,7 +94067,8 @@ function createFollowTray({
       panel.setAttribute("aria-label", "Followed source");
       shield(panel, ["pointerdown", "mousedown", "dblclick", "wheel"]);
     }
-    readSoon();
+    if (typeof owner === "string" && owner && lanes.has(owner)) showAnchor = { top: 0, owner, delta: 0, show: true };
+    for (const lane2 of order) markDue(lane2);
     sync();
   }
   function close() {
@@ -91720,34 +94076,41 @@ function createFollowTray({
     open = false;
     panel?.remove();
     panel = null;
+    groupEls = /* @__PURE__ */ new Map();
+    groupsEl = null;
+    listEl = null;
     paintPill();
   }
   function toggle() {
     if (open) close();
     else openPanel();
   }
-  const onFocus = () => schedule();
+  const onFocus = () => scheduleAll();
   const onVisible = () => {
-    if (doc?.visibilityState !== "hidden") schedule();
+    if (doc?.visibilityState !== "hidden") scheduleAll();
   };
   const win2 = doc?.defaultView || null;
   const offChange = session?.on?.("change", (change) => {
     if (disposed) return;
     const dirty = change?.dirty;
-    if (dirty?.has?.(boardUid) || change?.structural) {
+    const b = board2();
+    const owners = Boolean(change?.structural) || Boolean(dirty?.has?.(boardUid)) || [...dirty || []].some((uid) => lanes.has(uid) || b?.items.get(uid)?.type === "section");
+    if (owners) {
       adopt();
       autoOpen();
     }
-    if (!pointer) {
+    if (!order.length) {
+      recompute();
       paintPill();
       return;
     }
-    if (change?.structural || dirty?.has?.(boardUid) || diff.left.some((uid) => dirty?.has?.(uid))) sync();
-    else if (dirty && [...dirty].some((uid) => board2()?.items.get(uid)?.src === key)) sync();
+    const keys = new Set(order.map((lane2) => lane2.key));
+    if (owners || allLeft().some((uid) => dirty?.has?.(uid))) sync();
+    else if (dirty && [...dirty].some((uid) => keys.has(b?.items.get(uid)?.src))) sync();
   }) || (() => {
   });
   function autoOpen() {
-    if (autoOpened || disposed || !pointer || open) return;
+    if (autoOpened || disposed || !lanes.has(boardUid) || open) return;
     const b = board2();
     if (b?.followDerived !== true || b.roots.length > 0) return;
     autoOpened = true;
@@ -91756,46 +94119,76 @@ function createFollowTray({
   adopt();
   sync();
   autoOpen();
+  const laneStats = (lane2) => ({
+    key: lane2?.key || "",
+    reads: lane2?.reads || 0,
+    lastMs: lane2?.lastMs || 0,
+    waitMs: lane2?.waitMs || 0,
+    quietMs: followQuietMs(lane2?.lastMs || 0),
+    stale: lane2?.stale === true,
+    held: lane2?.held === true
+  });
+  const menuOf = (lane2, extra = {}) => ({
+    following: Boolean(lane2?.pointer),
+    kind: lane2?.pointer?.kind || "",
+    tree: lane2?.pointer?.tree === true,
+    columns: lane2?.pointer?.columns === true,
+    label: lane2?.label || "",
+    waiting: lane2?.pending.length || 0,
+    ...extra
+  });
   return {
     sync,
-    refresh: () => schedule(),
+    refresh: () => scheduleAll(),
     open: openPanel,
     close,
     isOpen: () => open,
-    rows: () => diff.pending.slice(),
-    left: () => diff.left.slice(),
-    reads: () => reads,
-    // The F10 probe: the source, reads so far, how long the last one took and waited, and the quiet period that sets.
-    stats: () => ({ key, reads, lastMs, waitMs, quietMs: followQuietMs(lastMs), stale, held, editing: editState(doc) }),
+    // Placeable rows over every owner, or one owner's.
+    rows: (owner) => owner ? lanes.get(owner)?.pending.slice() || [] : order.flatMap((lane2) => lane2.pending),
+    hints: (owner) => owner ? lanes.get(owner)?.hints.slice() || [] : order.flatMap((lane2) => lane2.hints),
+    left: (owner) => owner ? lanes.get(owner)?.diff.left.slice() || [] : allLeft(),
+    // PXD-18: the board's Arrivals strip ({ rows, waiting }) while it follows its Inbox, else its pending rows.
+    arrivals: () => {
+      const v = strip(lanes.get(boardUid));
+      return { rows: v.rows.slice(), waiting: v.waiting };
+    },
+    moved: () => moved.slice(),
+    reads: () => order.reduce((n3, lane2) => n3 + lane2.reads, 0),
+    // Source keys of every owner that is read (a card from any of them is a followed card).
+    keys: () => order.filter(readable).map((lane2) => lane2.key),
+    // The F10 probe: the board's source, reads so far, how long the last one took and waited, and the quiet period that
+    // sets; PXD-13: the same per owner (lanes), shared passes, sorts painted, and the most reads that ever ran at once.
+    stats: () => ({
+      ...laneStats(lanes.get(boardUid)),
+      moved: moved.length,
+      editing: editState(doc),
+      lanes: order.map((lane2) => ({ owner: lane2.uid, ...laneStats(lane2), over: lane2.over, dup: lane2.dup })),
+      passes,
+      paints,
+      maxReads
+    }),
     // The board menu: what Follow shows and offers.
     menuState() {
-      const textUid = pointer ? null : textSourceUid(board2()?.string || "");
-      return {
-        following: Boolean(pointer),
-        kind: pointer?.kind || "",
-        tree: pointer?.tree === true,
-        columns: pointer?.columns === true,
-        label,
-        waiting: diff.pending.length,
-        textUid
-      };
+      const lane2 = lanes.get(boardUid);
+      const textUid = lane2 ? null : textSourceUid(board2()?.string || "");
+      return menuOf(lane2, { textUid });
+    },
+    // PXD-13: a section's Follow menu. `capped`: no more sections can follow a source on this board.
+    sectionMenuState(uid) {
+      const lane2 = lanes.get(uid);
+      return menuOf(lane2, { over: lane2?.over === true, capped: !lane2 && followOwnersOf(board2()).capped });
     },
     dispose() {
       if (disposed) return;
-      if (pointer && boardUid && read2) memory.set(boardUid, diff.left);
+      for (const lane2 of order) if (lane2.pointer && lane2.read) memory.set(lane2.uid, lane2.diff.left);
       disposed = true;
-      try {
-        unwatch();
-      } catch {
-      }
       try {
         offChange();
       } catch {
       }
-      quiet?.();
+      for (const lane2 of order) dropLane(lane2);
       job?.();
       poll?.();
-      unhold();
       listen(false);
       btn2?.remove();
       panel?.remove();
@@ -91803,6 +94196,252 @@ function createFollowTray({
       panel = null;
     }
   };
+}
+
+// src/view/query-filter.js
+init_query_run();
+init_query();
+init_query_backend();
+var FILTER_QUIET_MS = 800;
+var FILTER_RETRY_MS = 1200;
+var FILTER_SLOW_RETRY_MS = 4e3;
+var FILTER_POLL_MS = 2e4;
+var FALLBACK_TRIES = 8;
+function createQueryFilter({ host, doc = globalThis.document, liveNode = () => null, onResults = () => {
+}, backend, later, cancel } = {}) {
+  const win2 = doc?.defaultView || globalThis;
+  const wait2 = later || ((fn, ms) => win2.setTimeout(fn, ms));
+  const unwait = cancel || ((id) => win2.clearTimeout(id));
+  let cur = null;
+  const excludeOf = (uid) => {
+    const out = /* @__PURE__ */ new Set([uid]);
+    const walk3 = (nodes) => {
+      for (const node2 of Array.isArray(nodes) ? nodes : []) {
+        const id = node2?.uid || node2?.[":block/uid"];
+        if (typeof id === "string") out.add(id);
+        walk3(node2?.children || node2?.[":block/children"]);
+      }
+    };
+    try {
+      walk3(host?.pullTree?.(uid, 6, 400));
+    } catch {
+    }
+    return out;
+  };
+  const sameSet = (a, b) => a === b || a instanceof Set && b instanceof Set && a.size === b.size && [...a].every((u) => b.has(u));
+  const emit2 = (f, uids, partial, status) => {
+    if (cur !== f) return;
+    const last = f.last;
+    if (last && f.mode === last.mode && f.title === last.title && partial === last.partial && status === last.status && sameSet(uids, f.uids)) return;
+    f.last = { mode: f.mode, title: f.title, partial, status };
+    f.uids = uids;
+    onResults({ queryUid: f.queryUid, cardUid: f.cardUid, uids, partial, mode: f.mode, status });
+  };
+  const schedule = (f, ms = FILTER_QUIET_MS) => {
+    if (cur !== f) return;
+    if (f.timer != null) unwait(f.timer);
+    f.timer = wait2(() => {
+      f.timer = null;
+      if (cur !== f) return;
+      if (editState(doc).typing) {
+        schedule(f);
+        return;
+      }
+      void read2(f);
+    }, ms);
+  };
+  const runOnce = async (f, parsed) => {
+    f.title = parsed.title || f.title;
+    const gen = ++f.gen;
+    const exclude = excludeOf(f.queryUid);
+    const src = backend || createQueryBackend(host);
+    const res = await runQuery(parsed.ast, src, { tick: () => new Promise((r) => wait2(r, 0)), isCancelled: () => cur !== f || gen !== f.gen });
+    if (cur !== f || gen !== f.gen) return;
+    if (res.status !== "ok") {
+      if (res.status !== "cancelled") emit2(f, f.uids, true, res.status);
+      return;
+    }
+    emit2(f, new Set(res.uids.filter((u) => !exclude.has(u))), res.partial, "ok");
+    if (f.timer == null) schedule(f, FILTER_POLL_MS);
+  };
+  const watchDom = (f, node2) => {
+    if (f.observed === node2) return;
+    f.mo?.disconnect?.();
+    f.mo = null;
+    f.observed = node2;
+    const MO = win2.MutationObserver;
+    if (typeof MO !== "function") return;
+    f.mo = new MO(() => schedule(f, 300));
+    try {
+      f.mo.observe(node2, { childList: true, subtree: true });
+    } catch {
+      f.mo = null;
+    }
+  };
+  function readDom(f) {
+    const node2 = liveNode(f.cardUid);
+    if (!node2) {
+      f.tries += 1;
+      schedule(f, f.tries <= FALLBACK_TRIES ? FILTER_RETRY_MS : FILTER_SLOW_RETRY_MS);
+      if (!f.uids && !f.waited) {
+        f.waited = true;
+        emit2(f, null, true, "waiting");
+      }
+      return;
+    }
+    f.tries = 0;
+    watchDom(f, node2);
+    const uids = queryResultUids(node2, f.queryUid);
+    const failed = Boolean(node2.querySelector?.(".rm-render-failed, .rm-api-render--failed"));
+    emit2(f, new Set(uids), failed, failed ? "error" : "ok");
+  }
+  async function read2(f) {
+    const parsed = parseQuery(host?.blockString?.(f.queryUid));
+    const mode = parsed.ok && parsed.ast ? "run" : "dom";
+    if (mode !== f.mode) {
+      f.mode = mode;
+      f.tries = 0;
+      f.mo?.disconnect?.();
+      f.mo = null;
+      f.observed = null;
+    }
+    if (mode === "dom") {
+      readDom(f);
+      return;
+    }
+    try {
+      await runOnce(f, parsed);
+    } catch {
+      emit2(f, f.uids, true, "error");
+    }
+  }
+  const stop3 = () => {
+    const f = cur;
+    if (!f) return false;
+    cur = null;
+    if (f.timer != null) unwait(f.timer);
+    f.mo?.disconnect?.();
+    for (const off of f.offs) {
+      try {
+        off();
+      } catch {
+      }
+    }
+    onResults(null);
+    return true;
+  };
+  const start2 = ({ queryUid, cardUid }) => {
+    if (!queryUid || !cardUid) return false;
+    stop3();
+    const parsed = parseQuery(host?.blockString?.(queryUid));
+    const f = {
+      queryUid,
+      cardUid,
+      mode: parsed.ok && parsed.ast ? "run" : "dom",
+      title: parsed.ok ? parsed.title : "",
+      uids: null,
+      gen: 0,
+      tries: 0,
+      waited: false,
+      last: null,
+      timer: null,
+      mo: null,
+      observed: null,
+      offs: []
+    };
+    cur = f;
+    f.offs.push(watchLocalSaves(doc, () => schedule(f)));
+    f.offs.push(watchEditing(doc, () => {
+    }));
+    if (typeof host?.watchBlock === "function") {
+      try {
+        f.offs.push(host.watchBlock(queryUid, () => schedule(f)));
+      } catch {
+      }
+    }
+    void read2(f);
+    return true;
+  };
+  const poke = () => {
+    const f = cur;
+    if (!f || f.mode !== "dom") return;
+    const node2 = liveNode(f.cardUid);
+    if (node2 && node2 !== f.observed) {
+      f.tries = 0;
+      schedule(f, 300);
+    }
+  };
+  return {
+    start: start2,
+    stop: stop3,
+    poke,
+    refresh: () => {
+      if (cur) void read2(cur);
+    },
+    active: () => cur ? { queryUid: cur.queryUid, cardUid: cur.cardUid, title: cur.title, mode: cur.mode } : null,
+    dispose: stop3
+  };
+}
+
+// src/model/query-filter.js
+init_query();
+function filterQueryUid(item, blockString4) {
+  if (!item || item.type === "section") return null;
+  if (isQueryString(item.string)) return item.uid;
+  if (item.target?.kind === "block" && item.target.uid) {
+    let s = null;
+    try {
+      s = blockString4?.(item.target.uid);
+    } catch {
+      s = null;
+    }
+    if (isQueryString(s)) return item.target.uid;
+  }
+  return null;
+}
+function filterTargets(item, pageUid2) {
+  const out = [];
+  if (!item?.uid || item.type === "section") return out;
+  out.push(item.uid);
+  const t = item.target;
+  if (t?.kind === "block" && t.uid) out.push(t.uid);
+  if (t?.kind === "page") {
+    if (t.uid) out.push(t.uid);
+    else if (t.title && typeof pageUid2 === "function") {
+      let uid = null;
+      try {
+        uid = pageUid2(t.title);
+      } catch {
+        uid = null;
+      }
+      if (uid) out.push(uid);
+    }
+  }
+  if (item.highlight?.uid) out.push(item.highlight.uid);
+  return out;
+}
+function filterBright(items, results, filterCardUid, pageUid2) {
+  const hits = results instanceof Set ? results : new Set(results || []);
+  const bright = /* @__PURE__ */ new Set();
+  if (filterCardUid) bright.add(filterCardUid);
+  for (const item of items || []) {
+    if (!item?.uid || item.type === "section") continue;
+    if (filterTargets(item, pageUid2).some((u) => hits.has(u))) bright.add(item.uid);
+  }
+  return bright;
+}
+function intersectBright(a, b) {
+  if (!a) return b ? new Set(b) : null;
+  if (!b) return new Set(a);
+  const out = /* @__PURE__ */ new Set();
+  for (const uid of a) if (b.has(uid)) out.add(uid);
+  return out;
+}
+function filterLabel(title, count, { partial = false, waiting = false } = {}) {
+  const name = String(title || "Query").trim() || "Query";
+  if (waiting) return `Filter: ${name} · running…`;
+  const n3 = Number(count) || 0;
+  return `Filter: ${name} · ${n3} ${n3 === 1 ? "match" : "matches"}${partial ? " · partial" : ""}`;
 }
 
 // src/view/board-view.js
@@ -94375,17 +97014,17 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
 function rowMerged(parts, w, h, tol = 2) {
   const out = [];
   for (const part of [...parts].sort((a, b) => a.x0 - b.x0)) {
-    const same3 = out.find((o) => Math.abs(o.y0 - part.y0) <= tol && Math.abs(o.y1 - part.y1) <= tol);
-    if (!same3) {
+    const same4 = out.find((o) => Math.abs(o.y0 - part.y0) <= tol && Math.abs(o.y1 - part.y1) <= tol);
+    if (!same4) {
       out.push(part);
       continue;
     }
-    for (let i = 0; i < w * h; i++) if (part.mask[i]) same3.mask[i] = 1;
-    same3.x0 = Math.min(same3.x0, part.x0);
-    same3.x1 = Math.max(same3.x1, part.x1);
-    same3.y0 = Math.min(same3.y0, part.y0);
-    same3.y1 = Math.max(same3.y1, part.y1);
-    same3.area += part.area;
+    for (let i = 0; i < w * h; i++) if (part.mask[i]) same4.mask[i] = 1;
+    same4.x0 = Math.min(same4.x0, part.x0);
+    same4.x1 = Math.max(same4.x1, part.x1);
+    same4.y0 = Math.min(same4.y0, part.y0);
+    same4.y1 = Math.max(same4.y1, part.y1);
+    same4.area += part.area;
   }
   return out;
 }
@@ -94812,9 +97451,9 @@ function dashFromShape(blob, em) {
 
 // src/model/ocr/fine-skew.js
 function rowsOf(items) {
-  const sorted2 = [...items].sort((a, b) => a.transform[4] - b.transform[4]);
+  const sorted3 = [...items].sort((a, b) => a.transform[4] - b.transform[4]);
   const rows = [];
-  for (const it of sorted2) {
+  for (const it of sorted3) {
     const size = it.transform[0];
     const base2 = it.transform[5];
     let best = null;
@@ -94978,17 +97617,17 @@ async function readCrops(crops, scaleX, scaleY, runRec, dict, signal) {
   const items = [];
   for (let i = 0; i < crops.length; i += BATCH) {
     throwIfAborted(signal);
-    const chunk = crops.slice(i, i + BATCH);
-    const maxW = Math.max(...chunk.map((c) => c.resized.w));
+    const chunk2 = crops.slice(i, i + BATCH);
+    const maxW = Math.max(...chunk2.map((c) => c.resized.w));
     const height = REC_H;
-    const data = new Float32Array(chunk.length * 3 * height * maxW);
-    const normals = chunk.map((c) => nchwNormalize(c.resized.rgb, c.resized.w, c.resized.h));
-    chunk.forEach((c, b) => blitLeft(data, b, maxW, normals[b], c.resized.w, height));
-    const out = await runRec(data, [chunk.length, 3, height, maxW]);
+    const data = new Float32Array(chunk2.length * 3 * height * maxW);
+    const normals = chunk2.map((c) => nchwNormalize(c.resized.rgb, c.resized.w, c.resized.h));
+    chunk2.forEach((c, b) => blitLeft(data, b, maxW, normals[b], c.resized.w, height));
+    const out = await runRec(data, [chunk2.length, 3, height, maxW]);
     const time = out.time;
     const classes = out.classes;
     const logits = out.logits;
-    chunk.forEach((c, b) => {
+    chunk2.forEach((c, b) => {
       const contentT = Math.max(1, Math.min(time, Math.round(time * (c.resized.contentW || c.resized.w) / maxW)));
       const start2 = b * time * classes;
       const slice = logits.subarray(start2, start2 + contentT * classes);
@@ -96866,6 +99505,7 @@ function createTypeAhead({ doc, isTarget, later, armMs = ARM_MS } = {}) {
 init_tooltip();
 
 // src/view/menu-model.js
+init_follow();
 init_schema();
 init_shapes();
 init_snapshots();
@@ -96945,6 +99585,8 @@ function followMenu(f) {
         make3("follow:pick-block", "Switch to a block's children…"),
         make3("follow:pick-query", "Switch to a query…"),
         make3("follow:pick-refs", "Switch to linked references of…"),
+        make3("follow:pick-headings", "Switch to a page by headings…"),
+        ...f.kind === "inbox" ? [] : [make3("follow:inbox", "Switch to this board's Inbox")],
         make3("follow:pick-journals", "Switch to journals…"),
         make3("follow:stop", "Stop following")
       ]
@@ -96956,7 +99598,35 @@ function followMenu(f) {
       make3("follow:pick-block", "A block's children…"),
       make3("follow:pick-query", "A query…"),
       make3("follow:pick-refs", "Linked references of…"),
-      make3("follow:pick-journals", "Journals…")
+      make3("follow:pick-headings", "A page by headings…"),
+      make3("follow:pick-journals", "Journals…"),
+      make3("follow:inbox", "This board's Inbox")
+    ]
+  })];
+}
+function followSectionMenu(f) {
+  if (!f) return [];
+  if (f.following) {
+    return [make3("follow-section", "Following", {
+      children: [
+        ...f.label ? [make3("follow-section:label", f.label, { disabled: true })] : [],
+        ...f.over ? [make3("follow-section:over", `Not read: over the limit of ${FOLLOW_SECTION_CAP}`, { disabled: true })] : [],
+        make3("follow-section:show", `Show in tray (${Number(f.waiting) || 0} waiting)`),
+        ...f.kind === "block" ? [make3("follow-section:tree", "Include the whole tree", { checked: f.tree === true })] : [],
+        make3("follow-section:pick-block", "Switch to a block's children…"),
+        make3("follow-section:pick-query", "Switch to a query…"),
+        make3("follow-section:pick-refs", "Switch to linked references of…"),
+        make3("follow-section:stop", "Stop following")
+      ]
+    })];
+  }
+  const capped = f.capped === true;
+  return [make3("follow-section", "Follow…", {
+    children: [
+      ...capped ? [make3("follow-section:cap", followCapText(), { disabled: true })] : [],
+      make3("follow-section:pick-block", "A block's children…", { disabled: capped }),
+      make3("follow-section:pick-query", "A query…", { disabled: capped }),
+      make3("follow-section:pick-refs", "Linked references of…", { disabled: capped })
     ]
   })];
 }
@@ -96967,9 +99637,30 @@ function followCardItems(f) {
   if (f.block) pick3.push(make3("follow:this", "Its children"));
   if (f.query) pick3.push(make3("follow:this-query", "This query"));
   if (f.refs) pick3.push(make3("follow:this-refs", "Its linked references"));
+  if (f.headings) pick3.push(make3("follow:this-headings", "Its page by headings"));
   if (pick3.length) out.push(make3("follow-card", "Follow", { children: pick3 }));
   if (f.left) out.push(make3("follow:dismiss", "Dismiss “left the source”"));
   if (f.followed) out.push(make3("follow:remove", "Remove, don't bring back", { danger: true }));
+  return out;
+}
+var refArrowsItem = (refs) => make3("ref-arrows", "Ref arrows", {
+  checked: Boolean(refs?.on),
+  disabled: Boolean(refs?.big),
+  hint: refs?.big ? "Board is too big (over 400 items)" : void 0
+});
+function laneItems(lane2) {
+  if (!lane2) return [];
+  const names = Array.isArray(lane2.fields) ? lane2.fields.slice() : [];
+  if (lane2.bound && !names.includes(lane2.bound)) names.push(lane2.bound);
+  const out = [make3("lane-attr", "Sub-lanes by attribute ▸", {
+    children: names.length ? names.map((name) => make3(`lane-attr:${name}`, name, { checked: name === lane2.bound })) : [make3("lane-hint", "No Name:: attributes on this board", { disabled: true })]
+  })];
+  if (lane2.bound) {
+    out.push(make3("lane-stop", `Stop sub-lanes (${lane2.bound})`));
+    out.push(make3("lane-pull", `Pull blocks with ${lane2.bound}::`));
+    const fresh = Array.isArray(lane2.fresh) ? lane2.fresh : [];
+    if (fresh.length) out.push(make3("lane-add", `Add sub-lanes for ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? ` +${fresh.length - 3}` : ""}`));
+  }
   return out;
 }
 var make3 = (id, label, extra = {}) => {
@@ -97091,6 +99782,7 @@ function buildMenu(kind, ctx = {}) {
         sep(),
         make3("background", "Background…"),
         make3("bg-image", "Lock copied image as background"),
+        refArrowsItem(c.refs),
         viewsMenu(),
         make3("print", "Print…"),
         make3("highlights", "Highlight marks"),
@@ -97148,7 +99840,10 @@ function buildMenu(kind, ctx = {}) {
         out.push(mindPresetMenu());
       }
       if (c.canSpread) out.push(make3("spread-children", "Spread children as cards"));
-      if (c.isQuery) out.push(make3("query-results", "Add results as cards"));
+      if (c.isQuery) {
+        out.push(make3("query-results", "Add results as cards"));
+        out.push(make3("query-filter", c.filtering ? "Stop filtering" : "Use as filter", { checked: Boolean(c.filtering) }));
+      }
       if (c.canExpand) {
         out.push(make3("neighbors:out", "Add pages it links to"));
         out.push(make3("neighbors:in", "Add pages that link here"));
@@ -97183,6 +99878,9 @@ function buildMenu(kind, ctx = {}) {
         make3("select-connected", "Select connected"),
         make3("collapse-section", c.collapsed ? "Expand" : "Collapse"),
         make3("section-note", c.hasNote ? "Remove description" : "Add description"),
+        // A lane with sub-lanes (PXD-11) writes values itself, so it offers no section binding, and the other way round.
+        ...c.lane?.bound ? [] : [make3("bucket-bind", c.bucket ? `Bound to ${c.bucket}…` : "Bind to tag or attribute…")],
+        ...c.bucket ? [make3("bucket-write", "Write section to graph", { disabled: empty }), make3("bucket-unbind", "Unbind")] : [],
         c.locked ? make3("unlock-contents", "Unlock") : make3("lock-contents", "Lock"),
         make3("present-section", "Present this section"),
         make3("layout-dates", "Lay out by date"),
@@ -97194,10 +99892,14 @@ function buildMenu(kind, ctx = {}) {
           ]
         }),
         make3("focus-timer", "Focus timer"),
+        ...followSectionMenu(c.follow),
+        ...c.bucket ? [] : laneItems(c.lane),
         sep(),
         make3("fit-section", "Fit to contents", { disabled: empty }),
         make3("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),
         tidyMenu(empty),
+        make3("apply-source-order", "Apply order to source", { disabled: !(c.refCards >= 2) }),
+        make3("keep-order", "Keep outline order", { checked: Boolean(c.keepOrder) }),
         make3("fold-all-in", "Fold all inside", { disabled: empty }),
         make3("unfold-all-in", "Unfold all inside", { disabled: empty }),
         sep(),
@@ -97288,6 +99990,7 @@ function buildMenu(kind, ctx = {}) {
           children: [make3("distribute:h", "Horizontally"), make3("distribute:v", "Vertically")]
         }),
         tidyMenu(false),
+        make3("apply-source-order", "Apply order to source", { disabled: !(c.refCards >= 2) }),
         make3("same-size", "Same size", {
           disabled: few,
           children: [make3("same-size:width", "Width"), make3("same-size:height", "Height"), make3("same-size:both", "Width and height")]
@@ -97313,6 +100016,7 @@ function buildMenu(kind, ctx = {}) {
         make3("save-view", "Save view…"),
         make3("memory-lane", "Memory lane", { hint: "Shift T" }),
         ...c.changes ? [make3("changed-since", "Changed since last visit", { checked: c.changed === true })] : [],
+        ...c.filtering ? [make3("query-filter-stop", "Stop filtering")] : [],
         ...c.lens ? [
           make3("lens-strength", "Strength", { checked: c.strength === true }),
           make3("lens-dust", "Dust", {
@@ -97349,6 +100053,7 @@ function buildMenu(kind, ctx = {}) {
         make3("add-week", "Add this week's journals"),
         sep(),
         make3("background", "Background…"),
+        refArrowsItem(c.refs),
         ...c.readOpen ? [
           make3("bar-table", "Table view"),
           make3("bar-kanban", "Kanban view"),
@@ -99570,6 +102275,11 @@ function buildBoardView(onFail, {
   let focusKey = null;
   let lensTag = null;
   let lensIndex = /* @__PURE__ */ new Map();
+  let filterCard = null;
+  let filterResults = null;
+  let filterPartial = false;
+  let filterCtl = null;
+  let filterPill = null;
   let highlightDialog = null;
   let presentSet = null;
   let sendPending = null;
@@ -103020,16 +105730,16 @@ function buildBoardView(onFail, {
     }
     const runChunk = (list) => {
       if (disposed) return;
-      const chunk = list.slice(0, BADGE_CHUNK);
+      const chunk2 = list.slice(0, BADGE_CHUNK);
       const rest = list.slice(BADGE_CHUNK);
       let res;
       try {
-        res = host.cardStats(chunk.map((m) => m.target), { boardUid });
+        res = host.cardStats(chunk2.map((m) => m.target), { boardUid });
       } catch {
         res = void 0;
       }
       const at = Date.now();
-      for (const m of chunk) {
+      for (const m of chunk2) {
         badgePending.delete(m.key);
         if (res === void 0) continue;
         const stats = res instanceof Map ? res.get(m.key) : res?.[m.key];
@@ -103827,7 +106537,8 @@ function buildBoardView(onFail, {
     badgeCache.set(key, { at: Date.now(), stats });
     return Number(stats.refs) || 0;
   };
-  const cardModel = (item) => item?.type === "card" ? { ...item, refs: refCountOf(item) } : item;
+  const faintLinksOf = (uid) => (session.links || []).filter((l) => l.from === uid || l.to === uid);
+  const cardModel = (item) => item?.type === "card" ? { ...item, refs: refCountOf(item), refLinks: faintLinksOf(item.uid).length } : item;
   const sectionModel = (item) => {
     const b = board2();
     const uids = b ? [item.uid, ...descendantsOf(b, item.uid)] : [item.uid];
@@ -103836,6 +106547,51 @@ function buildBoardView(onFail, {
       hasNote: Boolean(b && sectionNoteUid(b, item.uid)),
       locked: Boolean(b) && uids.every((u) => b.items.get(u)?.pinned)
     };
+  };
+  const refCardCount = (uids) => {
+    const b = board2();
+    const seen = /* @__PURE__ */ new Set();
+    const add = (id) => {
+      const it = b?.items.get(id);
+      if (!it) return;
+      if (it.type === "section") {
+        for (const m of it.members) {
+          const mi = b.items.get(m);
+          if (mi?.type !== "section") add(m);
+        }
+        return;
+      }
+      if (it.type === "card" && it.kind === "block" && it.target?.kind === "block") seen.add(id);
+    };
+    for (const id of uids) add(id);
+    return seen.size;
+  };
+  const applySourceOrder = (uids) => {
+    const plan = session.sourceOrderPlan?.(uids);
+    if (!plan) return;
+    if (plan.reason) {
+      toast(plan.reason);
+      return;
+    }
+    const skipped = plan.skippedCards > 0 ? ` ${plan.skippedCards} ${plan.skippedCards === 1 ? "card" : "cards"} from other parents ${plan.skippedCards === 1 ? "is" : "are"} left alone.` : "";
+    const label = plan.parentLabel.length > 60 ? `${plan.parentLabel.slice(0, 57)}...` : plan.parentLabel;
+    const message = `Reorder ${plan.count} blocks under “${label}” to match the board? Cards stay where they are.${skipped}`;
+    let ok = false;
+    try {
+      ok = typeof win2?.confirm === "function" && win2.confirm(message) === true;
+    } catch {
+      ok = false;
+    }
+    if (!ok) return;
+    Promise.resolve(session.applySourceOrder?.(uids)).then((res) => {
+      if (disposed || !res) return;
+      if (res.reason || !res.moved) {
+        toast(res.reason || "Nothing to reorder");
+        return;
+      }
+      toast(`Moved ${res.moved} ${res.moved === 1 ? "block" : "blocks"} to match the board`, true);
+    }).catch(() => {
+    });
   };
   const showCtx = () => {
     const b = board2();
@@ -103940,7 +106696,12 @@ function buildBoardView(onFail, {
       return uids;
     },
     skip: () => /* @__PURE__ */ new Set([boardUid]),
-    place: (strings) => addStringsBeside(strings)
+    place: (strings) => addStringsBeside(strings),
+    // PXD-18: while the board follows its Inbox, the arrivals come through the tray and this pill stays away.
+    hidden: () => followCtl?.menuState?.()?.kind === "inbox",
+    follow: () => {
+      void startFollow("inbox", boardUid);
+    }
   });
   followCtl = createFollowTray({
     doc,
@@ -103953,6 +106714,8 @@ function buildBoardView(onFail, {
     storage,
     graph,
     onLeft: (set) => itemsR.setFollowLeft?.(set),
+    onParents: (map) => session.setFollowParents?.(map),
+    onMoved: (map) => itemsR.setFollowMoved?.(map),
     onShowCard: (uid) => {
       const r = rects().get(uid);
       if (!r) return;
@@ -103961,7 +106724,25 @@ function buildBoardView(onFail, {
       pulseItem(uid);
     },
     onPlaced: (uids) => ctl.select(uids),
+    // Leaving the Inbox source: the pill reads again (it skipped its reads meanwhile).
+    onSource: (kind, was) => {
+      if (was === "inbox" && kind !== "inbox") void inboxCtl?.refresh?.();
+      else inboxCtl?.sync?.();
+    },
     toast: (message) => toast(message)
+  });
+  filterCtl = createQueryFilter({
+    host,
+    doc,
+    liveNode: (cardUid) => root.querySelector?.(`[data-uid="${cardUid}"] .pxd-item__query .pxd-rs__live`) || null,
+    onResults: (res) => {
+      if (disposed) return;
+      filterCard = res ? res.cardUid : null;
+      filterResults = res ? res.uids : null;
+      filterPartial = Boolean(res?.partial);
+      itemsR.setFilterCard?.(filterCard);
+      applyFocus();
+    }
   });
   let crumbList = Array.isArray(crumbs) ? crumbs.slice() : [];
   const boardTargetOf = (uid) => {
@@ -103999,6 +106780,19 @@ function buildBoardView(onFail, {
     ctl.flush?.();
     session.undo?.();
   } } : void 0 });
+  const toggleRefArrows = () => {
+    const refs = session.cardRefs;
+    if (!refs) return false;
+    if (refs.big) {
+      toast("Board is too big for ref arrows (over 400 items)");
+      return false;
+    }
+    Promise.resolve(session.setCardRefs?.(!refs.on)).then((ok) => {
+      if (ok === false && !disposed) toast("This board can't store that setting");
+    }).catch(() => {
+    });
+    return true;
+  };
   const pairKey2 = (a, b) => a < b ? `${a}|${b}` : `${b}|${a}`;
   const closeLinksMenu = () => {
     const menu2 = linksMenu;
@@ -104207,12 +107001,12 @@ function buildBoardView(onFail, {
     } catch {
       times = [];
     }
-    const timeOf2 = new Map(times.map((row4) => [row4[0], row4[1]]));
+    const timeOf3 = new Map(times.map((row4) => [row4[0], row4[1]]));
     memoryLane = mountMemoryLane({
       doc,
       parent: root,
-      items: uids.map((uid) => ({ uid, time: timeOf2.get(uid) })),
-      edges: [...b.edges.values()].map((edge) => ({ uid: edge.uid, from: edge.from, to: edge.to, time: timeOf2.get(edge.uid) })),
+      items: uids.map((uid) => ({ uid, time: timeOf3.get(uid) })),
+      edges: [...b.edges.values()].map((edge) => ({ uid: edge.uid, from: edge.from, to: edge.to, time: timeOf3.get(edge.uid) })),
       snapshots: b.snapshots || [],
       motion: setting("motion", "full"),
       onFrame(frame2) {
@@ -104445,12 +107239,56 @@ function buildBoardView(onFail, {
     lensIndex = catalog.byUid;
     return catalog;
   };
+  const filterSetNow = () => {
+    if (!filterCard || !filterResults) return null;
+    return filterBright(board2()?.items.values(), filterResults, filterCard, (title) => host?.pageUid?.(title));
+  };
+  const paintFilterPill = (bright) => {
+    if (!filterCard) {
+      filterPill?.remove?.();
+      filterPill = null;
+      return;
+    }
+    if (!filterPill) {
+      filterPill = el2("div", "pxd-qfilter pxd-chrome", root);
+      filterPill.setAttribute("role", "status");
+      const show = el2("button", "pxd-qfilter__name", filterPill);
+      show.type = "button";
+      show.title = "Show the filtering card";
+      const stop3 = el2("button", "pxd-qfilter__stop", filterPill);
+      stop3.type = "button";
+      stop3.textContent = "×";
+      stop3.title = "Stop filtering";
+      stop3.setAttribute("aria-label", "Stop filtering");
+      for (const node2 of [show, stop3]) listen(node2, "pointerdown", (event) => event.stopPropagation());
+      listen(show, "click", (event) => {
+        event.stopPropagation();
+        const r = filterCard ? rects().get(filterCard) : null;
+        if (!r) return;
+        ctl.select([filterCard]);
+        centerOn({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+        pulseItem(filterCard);
+      });
+      listen(stop3, "click", (event) => {
+        event.stopPropagation();
+        filterCtl?.stop();
+      });
+    }
+    const active2 = filterCtl?.active?.();
+    const count = bright ? Math.max(0, bright.size - (bright.has(filterCard) ? 1 : 0)) : 0;
+    const text4 = filterLabel(active2?.title, count, { partial: filterPartial, waiting: !filterResults });
+    const name = filterPill.querySelector(".pxd-qfilter__name");
+    if (name && name.textContent !== text4) name.textContent = text4;
+  };
   const applyFocus = () => {
     if (disposed) return;
     const focus = focusSetNow();
-    const set = lensTag ? lensBright(lensIndex, lensTag, focus) : focus;
-    const key = `${lensTag || ""}|${set ? [...set].sort().join("|") : ""}`;
-    setRootFlag("focus", Boolean(set) || focusOn || Boolean(lensTag));
+    const lensSet = lensTag ? lensBright(lensIndex, lensTag, focus) : focus;
+    const filterSet = filterSetNow();
+    const set = filterSet ? intersectBright(lensSet, filterSet) : lensSet;
+    paintFilterPill(filterSet);
+    const key = `${lensTag || ""}|${filterCard || ""}|${set ? [...set].sort().join("|") : ""}`;
+    setRootFlag("focus", Boolean(set) || focusOn || Boolean(lensTag) || Boolean(filterCard));
     chrome.toolbar.setFocus(focusOn);
     chrome.toolbar.setLens?.(Boolean(lensTag));
     if (key === focusKey) return;
@@ -104865,9 +107703,9 @@ function buildBoardView(onFail, {
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas":
-        return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting2("task-tool") === true };
+        return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting2("task-tool") === true, refs: session.cardRefs };
       case "board-menu":
-        return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null };
+        return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, filtering: Boolean(filterCard), strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null, refs: session.cardRefs };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -104891,15 +107729,16 @@ function buildBoardView(onFail, {
           }
         }
         const officeFile = officeTargetFromText(officeText);
-        const followKey = session.followState?.()?.key || "";
+        const followKeys = new Set(followCtl?.keys?.() || [session.followState?.()?.key || ""].filter(Boolean));
         const follow = item?.type === "card" ? {
           block: !isQueryString(queryText) && (item.kind === "note" || item.kind === "block" || item.kind === "page"),
           query: isQueryString(queryText),
           refs: item.kind === "note" || item.kind === "block" || item.kind === "page",
-          followed: Boolean(followKey) && item.src === followKey,
+          headings: item.kind === "page",
+          followed: Boolean(item.src) && followKeys.has(item.src),
           left: Boolean(followCtl?.left?.().includes(item.uid))
         } : null;
-        return { ...task ? { statusTags, status: task.status || "" } : {}, follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        return { ...task ? { statusTags, status: task.status || "" } : {}, follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), filtering: Boolean(item) && filterCard === item.uid, canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -104907,14 +107746,19 @@ function buildBoardView(onFail, {
           item,
           count: item?.members?.length ?? 0,
           fitOn: item?.autofit !== false,
+          keepOrder: item?.keepOrder === true,
+          refCards: item ? refCardCount([item.uid]) : 0,
           pinned: Boolean(item?.pinned),
           collapsed: Boolean(item?.collapsed),
           hasNote: Boolean(item && sectionNoteUid(b, item.uid)),
+          bucket: item ? bindingLabel(session.sectionBinding?.(item.uid)) : "",
           locked: members.length > 0 && members.every((u) => b.items.get(u)?.pinned),
           trails: trailRows(b),
           landmark: item?.landmark === true,
           landmarkSize: item?.size || "M",
-          dateSource: dateMode
+          dateSource: dateMode,
+          follow: item && followCtl?.sectionMenuState ? followCtl.sectionMenuState(item.uid) : null,
+          ...item?.look === "lane" ? { lane: { bound: item.laneAttr || null, fields: session.laneFieldsFor?.(item.uid) ?? laneFields(tableRows(b)), fresh: item.laneAttr ? session.laneNewValues?.(item.uid) ?? [] : [] } } : {}
         };
       }
       case "text":
@@ -104928,6 +107772,7 @@ function buildBoardView(onFail, {
         return {
           ...items.some(isTaskItem) ? { statusTags, status: "" } : {},
           count: items.length,
+          refCards: refCardCount(items.map((i) => i.uid)),
           allPinned: items.length > 0 && items.every((i) => i.pinned),
           anyCollapsed: items.some((i) => i.type === "card" && i.collapsed),
           sectionPair: sectionPair(items.map((i) => i.uid), (id) => b?.items.get(id)),
@@ -105015,12 +107860,13 @@ function buildBoardView(onFail, {
     }
     return typeof s === "string" ? { title: plainText(sourceText(s), 80) || "(empty block)", value: uid, meta } : null;
   };
-  const followPick = (what) => {
-    const kind = what === "query" ? "query" : what === "refs" ? "refs" : "block";
+  const followPick = (what, owner) => {
+    const kind = what === "query" ? "query" : what === "refs" ? "refs" : what === "headings" ? "headings" : "block";
     const words = {
       block: { heading: "Follow a block's children", placeholder: "Search blocks and pages…", hint: "Type to search, or paste a ((block ref))" },
       query: { heading: "Follow a query", placeholder: "Search query blocks…", hint: "Type words from the query, or paste its ((block ref))" },
-      refs: { heading: "Follow linked references of", placeholder: "Search pages…", hint: "Type to search pages, or paste a ((block ref))" }
+      refs: { heading: "Follow linked references of", placeholder: "Search pages…", hint: "Type to search pages, or paste a ((block ref))" },
+      headings: { heading: "Follow a page by headings", placeholder: "Search pages…", hint: "Top-level H1–H3 headings become sections" }
     }[kind];
     pagePicker?.close();
     pagePicker = openPagePicker({
@@ -105030,21 +107876,21 @@ function buildBoardView(onFail, {
       search: (text4) => {
         const rows = [];
         const fits = (uid) => kind !== "query" || isQueryString(host?.blockString?.(uid) || "");
-        const pasted = refUidIn(text4);
+        const pasted = kind === "headings" ? null : refUidIn(text4);
         if (pasted) {
           const row4 = blockRow(pasted, "Block");
           if (row4 && fits(pasted)) rows.push(row4);
           return rows;
         }
         const word = String(text4 || "").trim();
-        const bare = /^[\w-]{9}$/.test(word) && fits(word) ? blockRow(word, "Block") : null;
+        const bare = kind !== "headings" && /^[\w-]{9}$/.test(word) && fits(word) ? blockRow(word, "Block") : null;
         if (bare) rows.push(bare);
         if (kind !== "query") {
-          for (const p of host?.searchPages?.(text4, kind === "refs" ? 30 : 10) || []) rows.push({ title: p.title, value: p.uid || p.title, meta: "Page" });
+          for (const p of host?.searchPages?.(text4, kind === "refs" || kind === "headings" ? 30 : 10) || []) rows.push({ title: p.title, value: p.uid || p.title, meta: "Page" });
         }
-        if (kind !== "refs") {
+        if (kind !== "refs" && kind !== "headings") {
           for (const r of host?.searchBlocks?.(text4, 40) || []) {
-            if (r.uid === boardUid || bare && r.uid === word) continue;
+            if (r.uid === boardUid || r.uid === owner || bare && r.uid === word) continue;
             const isQ = isQueryString(r.string);
             if (kind === "query" ? !isQ : isQ) continue;
             rows.push({ title: plainText(sourceText(r.string), 80) || "(empty block)", value: r.uid, meta: r.pageTitle });
@@ -105054,8 +107900,8 @@ function buildBoardView(onFail, {
         return rows;
       },
       onPick: async (value) => {
-        const uid = /^[\w-]{1,64}$/.test(value) && host?.blockString?.(value) != null ? value : pageUidOf(value) || value;
-        return startFollow(kind, uid);
+        const uid = kind === "headings" ? pageUidOf(value) || value : /^[\w-]{1,64}$/.test(value) && host?.blockString?.(value) != null ? value : pageUidOf(value) || value;
+        return startFollow(kind, uid, owner);
       }
     });
   };
@@ -105081,18 +107927,22 @@ function buildBoardView(onFail, {
       },
       onPick: async (value) => {
         const [uid, mode] = String(value).split("|");
-        return startFollow("journals", uid, { columns: mode === "columns" });
+        return startFollow("journals", uid, null, { columns: mode === "columns" });
       }
     });
   };
-  const startFollow = async (kind, uid, opts = {}) => {
+  const startFollow = async (kind, uid, owner, opts = {}) => {
     if (!uid) return false;
-    const ok = await session.followSource?.({ kind, uid, ...opts });
+    const ok = await (owner ? session.followSource?.({ kind, uid, owner, ...opts }) : session.followSource?.({ kind, uid, ...opts }));
     if (disposed) return false;
+    const why = ok ? null : session.followRefusal?.() || null;
     if (ok) {
-      followCtl?.open?.();
-      toast("Following. New items wait in the tray until you place them.");
-    } else if (session.followState?.()?.pointer?.uid === uid) followCtl?.open?.();
+      followCtl?.open?.(owner);
+      toast(kind === "inbox" ? "Following this board's Inbox. New daily-note blocks wait under Arrivals until you place them." : "Following. New items wait in the tray until you place them.");
+    } else if (why?.reason === "taken") toast(`Already followed by ${why.by}`);
+    else if (why?.reason === "cap") toast(followCapText());
+    else if (!owner && session.followState?.()?.pointer?.uid === uid) followCtl?.open?.();
+    else if (owner && why?.reason === "unchanged") followCtl?.open?.(owner);
     else toast("Couldn't follow that source");
     return true;
   };
@@ -105118,6 +107968,9 @@ function buildBoardView(onFail, {
       case "pick-journals":
         journalPick();
         break;
+      case "pick-headings":
+        followPick("headings");
+        break;
       case "text": {
         const uid = textSourceUid(board2()?.string || "");
         if (uid) void startFollow(isQueryString(host?.blockString?.(uid) || "") ? "query" : "block", uid);
@@ -105131,6 +107984,12 @@ function buildBoardView(onFail, {
         break;
       case "this-refs":
         void startFollow("refs", followTargetOf(item, "refs"));
+        break;
+      case "this-headings":
+        void startFollow("headings", followTargetOf(item, "refs"));
+        break;
+      case "inbox":
+        void startFollow("inbox", boardUid);
         break;
       case "show":
         followCtl?.open?.();
@@ -105151,6 +108010,35 @@ function buildBoardView(onFail, {
         break;
       case "remove":
         if (item) void session.removeFollowed?.([item.uid]);
+        break;
+      default:
+        break;
+    }
+  };
+  const runFollowSection = (arg, item) => {
+    if (item?.type !== "section") return;
+    const owner = item.uid;
+    const state = followCtl?.sectionMenuState?.(owner) || {};
+    switch (arg) {
+      case "pick-block":
+        followPick("block", owner);
+        break;
+      case "pick-query":
+        followPick("query", owner);
+        break;
+      case "pick-refs":
+        followPick("refs", owner);
+        break;
+      case "show":
+        followCtl?.open?.(owner);
+        break;
+      case "tree":
+        void session.setFollowTree?.(!state.tree, owner);
+        break;
+      case "stop":
+        void Promise.resolve(session.stopFollowing?.(owner)).then((ok) => {
+          if (ok && !disposed) toast("Stopped following. The cards stay in the section.");
+        });
         break;
       default:
         break;
@@ -105292,6 +108180,26 @@ function buildBoardView(onFail, {
         });
         break;
       }
+      case "lane-attr":
+        if (item?.look === "lane" && arg) void session.bindLane?.(item.uid, arg);
+        break;
+      case "lane-stop":
+        if (item?.look === "lane") void session.unbindLane?.(item.uid);
+        break;
+      case "lane-add":
+        if (item?.look === "lane" && item.laneAttr) void session.addLaneValues?.(item.uid);
+        break;
+      case "lane-pull": {
+        if (item?.look !== "lane" || !item.laneAttr) break;
+        const name = item.laneAttr;
+        Promise.resolve(session.pullLaneSource?.(item.uid)).then((res) => {
+          if (disposed) return;
+          if (res?.placed > 0) toast(`Placed ${res.placed} of ${res.total} blocks with ${name}::`);
+          else toast(`No more blocks with ${name}::`);
+        }).catch(() => {
+        });
+        break;
+      }
       case "new-board": {
         const d = DEFAULT_BOARD_CARD;
         Promise.resolve(session.createBoard?.({ rect: { x: world2.x - d.w / 2, y: world2.y - d.h / 2, w: d.w, h: d.h } })).then((uid) => {
@@ -105401,6 +108309,9 @@ function buildBoardView(onFail, {
         break;
       case "bar-present":
         startPresent();
+        break;
+      case "ref-arrows":
+        toggleRefArrows();
         break;
       case "dock":
         void session.setBoardBackground?.({ dock: arg === "default" ? null : arg });
@@ -105811,6 +108722,23 @@ function buildBoardView(onFail, {
         });
         break;
       }
+      case "query-filter": {
+        if (!item) break;
+        if (filterCard === item.uid) {
+          filterCtl?.stop();
+          break;
+        }
+        const queryUid = filterQueryUid(item, (uid) => host?.blockString?.(uid));
+        if (!queryUid) {
+          toast("This card holds no query");
+          break;
+        }
+        filterCtl?.start({ queryUid, cardUid: item.uid });
+        break;
+      }
+      case "query-filter-stop":
+        filterCtl?.stop();
+        break;
       case "query-results": {
         if (!item) break;
         const sourceUid = isQueryString(item.string) ? item.uid : item.target?.kind === "block" ? item.target.uid : item.uid;
@@ -105877,8 +108805,8 @@ function buildBoardView(onFail, {
         break;
       }
       case "select-same-color": {
-        const same3 = item ? sameColorUids(b, item.uid) : [];
-        if (same3.length) ctl.select(same3);
+        const same4 = item ? sameColorUids(b, item.uid) : [];
+        if (same4.length) ctl.select(same4);
         break;
       }
       case "select-connected": {
@@ -105898,8 +108826,17 @@ function buildBoardView(onFail, {
       case "sort-outline":
         void session.sortOutline?.();
         break;
+      case "apply-source-order":
+        applySourceOrder(uids);
+        break;
+      case "keep-order":
+        if (item) void session.setKeepOrder?.(item.uid, item.keepOrder !== true);
+        break;
       case "follow":
         runFollow(arg, item);
+        break;
+      case "follow-section":
+        runFollowSection(arg, item);
         break;
       case "pdf-pages":
         void movePdfsToPages();
@@ -105918,6 +108855,29 @@ function buildBoardView(onFail, {
         break;
       case "section-note":
         if (item?.type === "section") void session.toggleSectionNote?.(item.uid);
+        break;
+      case "bucket-bind": {
+        if (item?.type !== "section") break;
+        askView({
+          caption: bindingLabel(session.sectionBinding?.(item.uid)),
+          showCopy: false,
+          dialogLabel: "Bind section",
+          onSave: ({ caption }) => {
+            const binding = parseBinding(caption);
+            if (!binding) {
+              toast("Use #tag or Name:: value");
+              return;
+            }
+            void session.bindSection?.(item.uid, binding);
+          }
+        });
+        break;
+      }
+      case "bucket-write":
+        if (item?.type === "section") void session.writeSectionToGraph?.(item.uid);
+        break;
+      case "bucket-unbind":
+        if (item?.type === "section") void session.bindSection?.(item.uid, null);
         break;
       case "lock-contents":
         if (item?.type === "section") void session.lockSection?.(item.uid, true);
@@ -106473,8 +109433,8 @@ function buildBoardView(onFail, {
       },
       selectSameColor: () => {
         const it = singleItem();
-        const same3 = it ? sameColorUids(board2(), it.uid) : [];
-        if (same3.length) ctl.select(same3);
+        const same4 = it ? sameColorUids(board2(), it.uid) : [];
+        if (same4.length) ctl.select(same4);
       },
       selectConnected: () => {
         const it = singleItem();
@@ -106510,6 +109470,15 @@ function buildBoardView(onFail, {
         if (selection.edge) host?.openInSidebar?.(selection.edge, "block");
       },
       writeToGraph: () => writeEdgeToGraph(),
+      pinRefs: () => {
+        const links = faintLinksOf(selection.items[0]);
+        if (!links.length) return;
+        Promise.resolve(session.pinLinks?.(links)).then((made) => {
+          if (disposed || !Array.isArray(made)) return;
+          toast(made.length ? `Pinned ${made.length} ref arrow${made.length === 1 ? "" : "s"}${links.length > made.length ? `. ${links.length - made.length} left: pin again` : ""}` : "Those arrows are already connections", made.length > 0);
+        }).catch(() => {
+        });
+      },
       pinLink: () => {
         const link = (session.links || []).find((l) => l.key === selection.link);
         if (link) Promise.resolve(session.pinLink?.(link)).then((uid) => {
@@ -109775,9 +112744,10 @@ ${url}`;
     } catch {
       followed = null;
     }
-    const followKey = session.followState?.()?.key || "";
+    const owned = typeof followed?.owner === "string" && followed.owner ? followed.owner : null;
+    const followKey = owned ? session.followOwners?.()?.owners?.find((o) => o.uid === owned && !o.over && !o.dup)?.key || "" : session.followState?.()?.key || "";
     if (followed?.uid && followed.board === boardUid && followKey && followed.src === followKey) {
-      void Promise.resolve(session.placeFollowed?.([followed], { at: p })).then((res) => {
+      void Promise.resolve(session.placeFollowed?.([followed], owned ? { at: p, owner: owned } : { at: p })).then((res) => {
         if (!disposed && res?.uids?.length) ctl.select(res.uids);
       }).catch(() => {
       });
@@ -109836,8 +112806,8 @@ ${url}`;
     if (droppedDrawingUids(planned.map((x) => x.string), (id) => host?.blockString?.(id)).length) toast(DRAWING_DROP_TOAST);
     const fromReader = Boolean(doc.activeElement?.closest?.(".pxd-read"));
     const made = session.addRefCards?.(planned);
-    const same3 = planned.length === list.length && planned.every((row4, i) => row4.string === list[i].string);
-    const offer = same3 ? dropNamespace(list.map((x) => x.string)) : null;
+    const same4 = planned.length === list.length && planned.every((row4, i) => row4.string === list[i].string);
+    const offer = same4 ? dropNamespace(list.map((x) => x.string)) : null;
     Promise.resolve(made).then((uids) => {
       if (Array.isArray(uids) && uids.length) {
         ctl.select(uids);
@@ -110562,11 +113532,13 @@ ${url}`;
       scheduleLift();
       syncProps();
       if (lensTag && dirty.structural) rebuildLens();
-      if (focusOn || lensTag) applyFocus();
+      if (focusOn || lensTag || filterCard) applyFocus();
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLiftIdle();
+    if (filterCard && itemsChanged && board2() && !board2().items.has(filterCard)) filterCtl?.stop();
+    else if (filterCard && (itemsChanged || dirty.viewport && !gesturing)) filterCtl?.poke();
     const wheelMinimap = wheelLayer && !itemsChanged && !dirty.minimap || Boolean(dragRide) && !itemsChanged;
     if ((itemsChanged || dirty.minimap || dirty.viewport && !gesturing) && !(wheelMinimap && perfNow3() - minimapAt < MINIMAP_WHEEL_MS)) {
       minimapAt = perfNow3();
@@ -111502,6 +114474,9 @@ ${url}`;
     foldSections(fold = true) {
       return foldSections(fold);
     },
+    toggleRefArrows() {
+      return toggleRefArrows();
+    },
     newDrawing(at = null) {
       const d = DEFAULT_SIZES.card;
       const world2 = at || { x: 80, y: 80 };
@@ -111661,6 +114636,12 @@ ${url}`;
       step(() => {
         followCtl?.dispose();
         followCtl = null;
+      });
+      step(() => {
+        filterCtl?.dispose();
+        filterCtl = null;
+        filterPill?.remove?.();
+        filterPill = null;
       });
       step(() => closeHalo());
       step(() => {
@@ -111833,7 +114814,7 @@ var SKETCH_MAX_BYTES = 200 * 1024;
 var SKETCH_HOLD_MS = 2e3;
 var SKETCH_ROOT_BORDER = 1;
 var PAIR_OFFSET2 = 18;
-var TITLE_MAX2 = 200;
+var TITLE_MAX3 = 200;
 var SVG_NS9 = "http://www.w3.org/2000/svg";
 function sketchKey(graph, uid) {
   return `plexus-diagram:sketch:${graph}:${uid}`;
@@ -111853,7 +114834,7 @@ function cleanItem2(item) {
     y: item.y,
     w: item.w,
     h: item.h,
-    title: String(item.title || "").slice(0, TITLE_MAX2),
+    title: String(item.title || "").slice(0, TITLE_MAX3),
     color: typeof item.color === "string" ? item.color : "",
     fill: typeof item.fill === "string" ? item.fill : "",
     ...item.s ? { s: 1 } : {}
@@ -112718,7 +115699,7 @@ function snapEvent(event) {
 var THUMB_W = 320;
 var THUMB_MAX = 480;
 var ROW_H = 24;
-var PAD2 = 7;
+var PAD3 = 7;
 function tableThumbKey(item, sig) {
   return item?.uid && sig ? `t:${item.uid}:${sig}` : "";
 }
@@ -112788,7 +115769,7 @@ function renderTableThumb(doc, grid, { dark = false, width = THUMB_W, height: bo
     g.fillStyle = ink;
     let x2 = 0;
     widths.forEach((w, c) => {
-      g.fillText(fit2(g, row4[c], w - PAD2 * 2), x2 + PAD2, y + ROW_H / 2);
+      g.fillText(fit2(g, row4[c], w - PAD3 * 2), x2 + PAD3, y + ROW_H / 2);
       x2 += w;
     });
   });
@@ -113159,7 +116140,7 @@ function dedupe(list) {
   }
   return out;
 }
-function same2(a, b) {
+function same3(a, b) {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
   return true;
@@ -113284,7 +116265,7 @@ function createPrefetch({
     if (enabled() === false) return;
     const list = dedupe(Array.isArray(uids) ? uids : [uids]);
     if (!list.length) return;
-    if (timer && same2(pending, list)) {
+    if (timer && same3(pending, list)) {
       if (el2) pendingEl = el2;
       return;
     }
@@ -115953,13 +118934,13 @@ async function installPlexusDiagram({
     if (fresh && fresh.key === key && fresh.dark === dark) {
       const prev = snapStore.get(key);
       const vp = src.vp;
-      let same3 = false;
+      let same4 = false;
       try {
-        same3 = Boolean(prev && prev === fresh.snap && vp && prev.vp && prev.vp.x === vp.x && prev.vp.y === vp.y && prev.vp.zoom === vp.zoom && prev.stamp === boardStamp(src.board, src.rects));
+        same4 = Boolean(prev && prev === fresh.snap && vp && prev.vp && prev.vp.x === vp.x && prev.vp.y === vp.y && prev.vp.zoom === vp.zoom && prev.stamp === boardStamp(src.board, src.rects));
       } catch {
-        same3 = false;
+        same4 = false;
       }
-      if (same3) {
+      if (same4) {
         rec.snapDirty = false;
         if (host.stats && typeof host.stats === "object") host.stats.snapSkips = (host.stats.snapSkips || 0) + 1;
         return true;
@@ -115996,13 +118977,13 @@ async function installPlexusDiagram({
         if (!now5 || now5.gesturing || now5.board !== src.board || now5.vp?.x !== src.vp?.x || now5.vp?.y !== src.vp?.y || now5.vp?.zoom !== src.vp?.zoom || currentUid(rec) !== uid || isDarkTheme(rec) !== dark) return null;
         const out = capture.result();
         if (!out) return false;
-        let same3 = false;
+        let same4 = false;
         try {
-          same3 = out.stamp === boardStamp(now5.board, now5.rects);
+          same4 = out.stamp === boardStamp(now5.board, now5.rects);
         } catch {
-          same3 = false;
+          same4 = false;
         }
-        if (!same3) return null;
+        if (!same4) return null;
         rec.snapDirty = false;
         return snapStore.set(key, out, thumbs);
       };
@@ -119023,6 +122004,9 @@ async function installPlexusDiagram({
   function findRelatedCommand(context) {
     return targetView(context)?.findRelated?.();
   }
+  function toggleRefArrowsCommand(context) {
+    return targetView(context)?.toggleRefArrows?.();
+  }
   function newDrawingCommand(context) {
     return targetView(context)?.newDrawing?.();
   }
@@ -119052,7 +122036,8 @@ async function installPlexusDiagram({
     ["Plexus: Fold queries on this page", foldQueriesCommand],
     ["Plexus: Fold sections in the outline", foldSectionsCommand],
     ["Plexus: Unfold sections", unfoldSectionsCommand],
-    ["Plexus: Find related to the selected card", findRelatedCommand]
+    ["Plexus: Find related to the selected card", findRelatedCommand],
+    ["Plexus: Toggle ref arrows", toggleRefArrowsCommand]
   ];
   function runCommand(label, fn) {
     return (context) => {

@@ -27,6 +27,8 @@ import {
   topLevelOf,
   worldRects,
 } from "./model/board.js";
+import { isTableRow } from "./model/table.js";
+import { bandIndexAt, bandRect, laneRow, laneRows, laneValueOf, laneView, planLaneDrop, shownBands, snapIntoBand } from "./model/attr-lanes.js";
 import { whyPlan } from "./model/why.js";
 import { isInlinePdfCard, pageCardString } from "./model/pdf-page.js";
 import { isOldTableCard } from "./model/table-captions.js";
@@ -76,8 +78,9 @@ import { inflate, rectsIntersect, unionRect } from "./model/geometry.js";
 import { SHAPES } from "./model/shapes.js";
 import { sameSize as sameSizeRects, spaceOut as spaceOutRects, tidyRects } from "./model/layout.js";
 import { coveredBy, filterLinks, linksQuery, reduceLinks } from "./model/links.js";
+import { CARD_REFS_MAX, cardRefLinks, cardRefsOn, mergeLinks, treeLinks } from "./model/card-refs.js";
 import { isQueryString } from "./model/query.js";
-import { boardRefSource, readFollow, withFollow } from "./model/follow.js";
+import { boardRefSource, readFollow, sourceKey, withFollow } from "./model/follow.js";
 import { autoEligibility, storedLayoutIn } from "./discovery.js";
 import { HOME_PULL, resolveArrowHomes, resolveOutsideArrows } from "./model/arrow-home.js";
 import { MAX_GROUP_WRITES, createEchoLedger, createWriteQueue } from "./host/roam.js";
@@ -94,7 +97,7 @@ const PROPS = ":block/props";
 const OPEN = ":block/open";
 
 const LINK_MODES = ["off", "attributes", "all"];
-const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
+const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "keepOrder", "look", "axis", "attr", "bands", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
 const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 const MAX_PARENT_STRINGS = 200;
 // A held big board whose resume Roam refused (rate limit while rebuilding an expired hold) tries again after this.
@@ -116,6 +119,10 @@ const extensions = [];
 
 // Roam's undo stack holds 50 changes, so one bulk add stays under it: past 45 cards only the first 45 are made.
 export const BULK_CARD_CAP = 45;
+// One pin batch: the Connections container (1 write) and a create per edge stay inside the 45-write undo step.
+export const PIN_BATCH = 20;
+// After an in-place edit (typing) the board's ref arrows are read again after this pause.
+export const LOCAL_EDIT_MS = 300;
 // F12. Roam's sync queue confirms one write at a time, slower the longer the queue (18k queued writes wedged a
 // graph for ~30 hours on 2026-10-12). One transaction that plans this many writes asks first; past the second
 // line it is refused (duplicating one big section of the PhD main board was ~18.5k creates).
@@ -418,6 +425,16 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   const listeners = new Map();
   // fn(t, uids, opts) inside deleteItems' own transaction: uids are every item that goes (contents included).
   const deleteHooks = [];
+  const destroyHooks = [];
+  // fn(t, moves, track) inside commitMove / commitRects: moves are [{ uid, from, to }] parent uids before and after;
+  // the hook pushes inverse ops into track.undo for the custom undo of a big drag.
+  const moveHooks = [];
+  const runMoveHooks = (t, moves, track) => {
+    if (!moves.length) return;
+    for (const fn of moveHooks) {
+      try { fn(t, moves, track); } catch (err) { console.error("[plexus session] move hook", err); }
+    }
+  };
   const emit = (name, payload) => {
     for (const fn of [...(listeners.get(name) ?? [])]) {
       try { fn(payload); } catch (err) { console.error("[plexus session]", err); }
@@ -522,6 +539,76 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return derivedMemo.pointer;
   };
 
+  // ---- PXD-11 attribute lanes ----
+  // A drop into a ref card's referenced block is shown at once from here (the board watch does not see that block).
+  // Dropped when the host read agrees, or after LANE_WRITE_MS.
+  const laneWrites = new Map(); // block uid -> { uid, string, at }
+  const LANE_WRITE_MS = 10000;
+  function laneKids(targetUid) {
+    let kids = [];
+    try { kids = host.pullTree?.(targetUid, 1, 40) || []; } catch { kids = []; }
+    const w = laneWrites.get(targetUid);
+    if (!w) return kids;
+    const hit = kids.find((k) => k.uid === w.uid);
+    if ((hit && hit.string === w.string) || Date.now() - w.at > LANE_WRITE_MS) {
+      laneWrites.delete(targetUid);
+      return kids;
+    }
+    return hit ? kids.map((k) => (k.uid === w.uid ? { ...k, string: w.string } : k)) : [...kids, { uid: w.uid, string: w.string }];
+  }
+  const laneResolve = (id) => {
+    try {
+      const text = host.blockString?.(id);
+      return typeof text === "string" ? text : null;
+    } catch { return null; }
+  };
+  // Bound lanes only: the bands with their counts on the lane, the value mark on each member card. No work when no
+  // lane is bound.
+  function annotateLanes(b) {
+    if (!b) return;
+    for (const item of b.items.values()) {
+      if (item.type !== "section" || item.look !== "lane" || !item.laneAttr) continue;
+      const rows = laneRows(b, item.uid, laneKids, laneResolve);
+      const view = laneView(shownBands(item.laneBands), rows, item.laneAttr);
+      item.laneView = view.bands;
+      for (const [id, mark] of view.marks) {
+        const card = b.items.get(id);
+        if (card) card.laneMark = mark;
+      }
+    }
+  }
+
+  // Lane drops for a drag: for each moved card that ends up in a bound lane, the band under its center and the one write
+  // that puts its value there. Bands are the lane's shown bands (stored values, then none), read before any write. A
+  // card that stays in the band it was picked up from writes nothing, so a small drag never turns where a card happens
+  // to sit into its value.
+  function planLaneDrops(top, plan, moved) {
+    const out = { writes: [], snap: new Map() };
+    for (const id of top) {
+      const item = board.items.get(id);
+      if (!item || !isTableRow(item)) continue;
+      const lane = board.items.get(plan.get(id)?.toParent ?? item.parentUid);
+      if (!lane || lane.type !== "section" || lane.look !== "lane" || !lane.laneAttr) continue;
+      const laneRect = rects.get(lane.uid);
+      const r = moved.get(id);
+      if (!laneRect || !r) continue;
+      const bands = shownBands(lane.laneBands);
+      const center = (q) => ({ x: q.x + q.w / 2, y: q.y + q.h / 2 });
+      const at = bandIndexAt(laneRect, lane.axis, bands.length, center(r));
+      const shift = snapIntoBand(bandRect(laneRect, lane.axis, bands.length, at), lane.axis, r, laneRect, FIT_PAD);
+      if (shift.dx || shift.dy) out.snap.set(id, shift);
+      const was = rects.get(id);
+      if (item.parentUid === lane.uid && was && bandIndexAt(laneRect, lane.axis, bands.length, center(was)) === at) continue;
+      const row = laneRow(board, item, laneKids, laneResolve);
+      // None clears a value the lane shows; a value with no band (typed in Roam, past the cap) is never cleared by it.
+      const key = laneValueOf(row, lane.laneAttr).key;
+      if (bands[at].none && key && !bands.some((b) => b.key === key)) continue;
+      const step = planLaneDrop({ name: lane.laneAttr, row, band: bands[at] });
+      if (step) out.writes.push({ ...step, ref: item.kind === "block" ? item.target?.uid ?? null : null });
+    }
+    return out;
+  }
+
   const rebuild = () => {
     rix = null;
     const plexusApi = globalThis.window?.RoamPlexus ?? globalThis.RoamPlexus ?? null;
@@ -554,6 +641,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         return pending;
       },
     }) : null;
+    annotateLanes(board);
     if (board && outlineRev.size) {
       for (const [id, rev] of outlineRev) {
         const item = board.items.get(id);
@@ -989,6 +1077,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     const typed = editingUid ? typingFlush(prev, raw, editingUid) : null;
     if (typed) {
       if (typed.dirty) {
+        noteLocalEdit();
         emit("change", { structural: false, dirty: new Set([typed.dirty]) });
         if (!queue.pending) host.invalidateUndo?.();
       }
@@ -1031,6 +1120,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         writeItemString(item, string);
         const node = ix().get(itemUid)?.node;
         if (node) node[STR] = string;
+        noteLocalEdit();
         emit("change", { structural: false, dirty: new Set([itemUid]) });
       });
       if (typeof off === "function") editStringOff = off;
@@ -1186,7 +1276,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   async function runOp(op) {
     switch (op.op) {
       case "create":
-        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open });
+        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open, heading: op.heading, textAlign: op.textAlign });
         break;
       case "move": await host.moveBlock(op.uid, op.parent, op.order); break;
       case "delete": await host.deleteBlock(op.uid); break;
@@ -1376,6 +1466,54 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         throw err;
       }
     })).then(() => result, (err) => { handleFailure(err); return result; });
+  }
+
+  // Custom undo for a drag or resize that may pass the native chunk size (see commit()). wrap(t) records the pre-write
+  // state of every block the transaction moves or rewrites; track.undo takes the hooks' inverse ops.
+  function dragUndo() {
+    // Pre-drag parent, sibling order, and plexus for every block this drag writes, including a section fit
+    // and the members it rebases. Captured on the first write, before that write changes the block.
+    const before = new Map();
+    const remember = (id) => {
+      if (before.has(id)) return;
+      const node = rawNode(id);
+      if (!node) return;
+      const hit = ix().get(id);
+      before.set(id, { parent: hit?.parent?.[UID] || uid, order: node[ORD], plexus: clone(rawPlexus(id)) });
+    };
+    const track = { undo: [] };
+    const custom = {
+      when: "over-native-limit",
+      async undo() {
+        const moves = [];
+        const propsOps = [];
+        // R4: the inverse of what this drag wrote, not a diff against the model now. A late echo can put a
+        // card back at its old parent in the model while Roam still has it in the new one (QA5 CSrDqKK2R).
+        const wroteMove = new Set();
+        const wroteProps = new Set();
+        for (const op of custom.forward || []) {
+          if (op.op === "move") wroteMove.add(op.uid);
+          else if (op.op === "props") wroteProps.add(op.uid);
+        }
+        for (const [id, prev] of before) {
+          const parentNow = ix().get(id)?.parent?.[UID] || uid;
+          if (wroteMove.has(id) || prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
+          if (wroteProps.has(id) || stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
+        }
+        // Low original order first, per parent, so each card lands in the hole it left. Props come after the
+        // move: stored x/y are relative to the parent the card is going back to.
+        moves.sort((a, b) => (a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0)));
+        await execute([...moves, ...propsOps, ...[...track.undo].reverse()]);
+      },
+      async redo() { await execute(custom.forward); },
+    };
+    const wrap = (t) => {
+      const move = t.move.bind(t);
+      const props = t.props.bind(t);
+      t.move = (id, parent, order) => { remember(id); move(id, parent, order); };
+      t.props = (id, plexus) => { remember(id); props(id, plexus); };
+    };
+    return { remember, track, custom, wrap };
   }
 
   function txn(fn, custom = null) {
@@ -1757,9 +1895,51 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return parts.join("\n");
   }
 
+  // Refs written on the board itself (a note card's text, a card's child rows) and the outline of a followed block.
+  // Read from the board already built, once per board object and edit epoch; never a query and never a write.
+  // Typing patches a card's string and rows in place on the same board object: that bumps the epoch, and the
+  // arrows follow a short pause later (at once when editing ends, and before any pin).
+  let followParents = null;
+  let localEpoch = 0;
+  let localEditTimer = null;
+  let localMemo = { board: null, parents: null, epoch: -1, links: [] };
+  let mergedMemo = { a: null, b: null, out: [] };
+  function followPointer() {
+    return (raw ? readFollow(readPlexus(raw[PROPS])) : null) || derivedFollow();
+  }
+  function localLinks() {
+    if (!board || !cardRefsOn(board)) return [];
+    if (localMemo.board === board && localMemo.parents === followParents && localMemo.epoch === localEpoch) return localMemo.links;
+    const pointer = followPointer();
+    const tree = pointer?.tree && followParents ? treeLinks(board, followParents, sourceKey(pointer)) : [];
+    let links = [];
+    try { links = mergeLinks(cardRefLinks(board), tree); } catch (err) { console.error("[plexus session] card refs", err); }
+    localMemo = { board, parents: followParents, epoch: localEpoch, links };
+    return links;
+  }
+  function settleLocalEdit() {
+    if (localEditTimer == null) return;
+    clearTimeout(localEditTimer);
+    localEditTimer = null;
+    if (!destroyed) recomputeLinks(false);
+  }
+  function noteLocalEdit() {
+    localEpoch += 1;
+    if (!board || !cardRefsOn(board)) return;
+    if (localEditTimer != null) clearTimeout(localEditTimer);
+    localEditTimer = setTimeout(() => { localEditTimer = null; if (!destroyed) recomputeLinks(false); }, LOCAL_EDIT_MS);
+    localEditTimer.unref?.();
+  }
+  function allWithLocal() {
+    const local = localLinks();
+    if (!local.length) return allLinks;
+    if (mergedMemo.a !== allLinks || mergedMemo.b !== local) mergedMemo = { a: allLinks, b: local, out: mergeLinks(allLinks, local) };
+    return mergedMemo.out;
+  }
+
   function recomputeLinks(force) {
     if (!board) return;
-    const filtered = filterLinks(allLinks, linkMode);
+    const filtered = filterLinks(allWithLocal(), linkMode);
     const res = coveredBy(filtered, board);
     const fp = `${linkMode}|${res.visible.map((l) => l.key).join(",")}|${[...res.coveredEdges].sort().join(",")}`;
     const changed = fp !== linkFingerprint;
@@ -2110,6 +2290,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     setEditing(id) {
       editingUid = typeof id === "string" && id ? id : null;
       try { host.noteEditing?.(uid, editingUid); } catch { /* host */ }
+      if (!editingUid) settleLocalEdit();
     },
 
     idle: () => queue.idle(),
@@ -2124,46 +2305,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
     commitMove(uids, dx, dy) {
       if (!board || (!dx && !dy)) return Promise.resolve();
-      // Pre-drag parent, sibling order, and plexus for every block this drag writes, including a section fit
-      // and the members it rebases. Captured on the first write, before that write changes the block.
-      const before = new Map();
-      const remember = (id) => {
-        if (before.has(id)) return;
-        const node = rawNode(id);
-        if (!node) return;
-        const hit = ix().get(id);
-        before.set(id, { parent: hit?.parent?.[UID] || uid, order: node[ORD], plexus: clone(rawPlexus(id)) });
-      };
-      const custom = {
-        when: "over-native-limit",
-        async undo() {
-          const moves = [];
-          const propsOps = [];
-          // R4: the inverse of what this drag wrote, not a diff against the model now. A late echo can put a
-          // card back at its old parent in the model while Roam still has it in the new one (QA5 CSrDqKK2R).
-          const wroteMove = new Set();
-          const wroteProps = new Set();
-          for (const op of custom.forward || []) {
-            if (op.op === "move") wroteMove.add(op.uid);
-            else if (op.op === "props") wroteProps.add(op.uid);
-          }
-          for (const [id, prev] of before) {
-            const parentNow = ix().get(id)?.parent?.[UID] || uid;
-            if (wroteMove.has(id) || prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
-            if (wroteProps.has(id) || stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
-          }
-          // Low original order first, per parent, so each card lands in the hole it left. Props come after the
-          // move: stored x/y are relative to the parent the card is going back to.
-          moves.sort((a, b) => (a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0)));
-          await execute([...moves, ...propsOps]);
-        },
-        async redo() { await execute(custom.forward); },
-      };
+      const { remember, track, custom, wrap } = dragUndo();
       return txn((t) => {
-        const move = t.move.bind(t);
-        const props = t.props.bind(t);
-        t.move = (id, parent, order) => { remember(id); move(id, parent, order); };
-        t.props = (id, plexus) => { remember(id); props(id, plexus); };
+        wrap(t);
         const top = topLevelOf(board, uids).filter((id) => !board.items.get(id).pinned);
         if (!top.length) return;
         for (const id of top) remember(id);
@@ -2173,16 +2317,37 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           moved.set(id, { ...r, x: r.x + dx, y: r.y + dy });
         }
         const plan = new Map(membershipPlan(board, top, moved).map((p) => [p.uid, p]));
+        // PXD-11: bands as the user saw them, before any write; a card in a bound lane is kept inside its band.
+        const drops = planLaneDrops(top, plan, moved);
+        const parents = [];
         for (const id of top) {
           const item = board.items.get(id);
           const p = plan.get(id);
+          const s = drops.snap.get(id);
+          const at = (v, d) => (d ? round1(v + d) : v);
           if (p) {
+            if (p.toParent !== item.parentUid) parents.push({ uid: id, from: item.parentUid, to: p.toParent });
             t.move(id, p.toParent, "last");
-            t.props(id, itemPlexus(id, { x: p.x, y: p.y }));
+            t.props(id, itemPlexus(id, { x: at(p.x, s?.dx), y: at(p.y, s?.dy) }));
           } else {
-            t.props(id, itemPlexus(id, { x: item.x + dx, y: item.y + dy }));
+            t.props(id, itemPlexus(id, { x: at(item.x + dx, s?.dx), y: at(item.y + dy, s?.dy) }));
           }
         }
+        // PXD-11 value writes; their inverses go to track.undo for the custom undo of a big drag.
+        for (const w of drops.writes) {
+          if (w.op === "string") {
+            let prev = rawNode(w.uid)?.[STR];
+            if (typeof prev !== "string") prev = laneResolve(w.uid);
+            t.string(w.uid, w.string);
+            if (typeof prev === "string") track.undo.push({ op: "string", uid: w.uid, string: prev });
+            if (w.ref) laneWrites.set(w.ref, { uid: w.uid, string: w.string, at: Date.now() });
+          } else if (w.op === "create") {
+            const made = t.create({ parent: w.parent, string: w.string, order: "last" });
+            track.undo.push({ op: "delete", uid: made });
+            if (w.ref) laneWrites.set(w.ref, { uid: made, string: w.string, at: Date.now() });
+          }
+        }
+        runMoveHooks(t, parents, track);
         applyFit(t, top);
         if (flag("space-out", false)) spaceOutAfter(t, top);
       }, custom);
@@ -2190,7 +2355,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
     commitRects(list) {
       if (!board || !list?.length) return Promise.resolve();
+      const { track, custom, wrap } = dragUndo();
       return txn((t) => {
+        wrap(t);
         const changedSections = [];
         const fitTouched = [];
         for (const r of list) {
@@ -2211,15 +2378,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           t.sync();
           for (const sid of changedSections) {
             const plan = sectionAdoptPlan(board, sid, rects);
+            const parents = plan.filter((p) => p.toParent !== board.items.get(p.uid)?.parentUid).map((p) => ({ uid: p.uid, from: board.items.get(p.uid).parentUid, to: p.toParent }));
             for (const p of plan) {
               t.move(p.uid, p.toParent, "last");
               t.props(p.uid, itemPlexus(p.uid, { x: p.x, y: p.y }));
             }
+            runMoveHooks(t, parents, track);
             if (plan.length) t.sync();
           }
         }
         applyFit(t, fitTouched, { skip: changedSections });
-      });
+      }, custom);
     },
 
     addPublicCard({ string, x, y } = {}) {
@@ -3390,6 +3559,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       });
     },
 
+    setKeepOrder(id, on) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type !== "section" || (item.keepOrder === true) === (on === true)) return;
+        t.props(id, itemPlexus(id, { keepOrder: on === true ? true : undefined }));
+      });
+    },
+
     setFit(id, on) {
       return txn((t) => {
         const item = board.items.get(id);
@@ -3582,7 +3759,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
     // Modes: row, column, grid, outline. A lone selected section tidies its members; otherwise each parent's
     // selected items are tidied among themselves. Writes only x and y. Resolves the number of items moved.
-    tidyItems(uids, mode = "grid", { gap } = {}) {
+    // An explicit `order` (item uids) replaces the outline order for mode "outline"; unlisted items follow in reading order.
+    tidyItems(uids, mode = "grid", { gap, order } = {}) {
       return txn((t) => {
         const top = topLevelOf(board, uids ?? []);
         const groups = new Map();
@@ -3597,7 +3775,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           }
         }
         const opts = gap !== undefined ? { gap } : {};
-        if (mode === "outline") opts.order = outlineOrder(board);
+        if (mode === "outline") opts.order = Array.isArray(order) ? order : outlineOrder(board);
         const moved = [];
         for (const ids of groups.values()) {
           if (ids.length < 2) continue;
@@ -3928,10 +4106,59 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       });
     },
 
-    pinLink(link) {
+    // A pin reads the links as they are now: a drawn arrow (it has a key) the card's text no longer has is not written.
+    pinLink(given) {
+      settleLocalEdit();
+      const link = given?.key ? visibleLinks.find((l) => l.key === given.key) : given;
+      if (!link) return Promise.resolve(null);
       const first = link?.labels?.[0];
       const label = first && first !== "mentions" ? first : "";
       return session.addEdge({ from: link.from, to: link.to, label, dir: "one" });
+    },
+
+    // Up to PIN_BATCH faint links as connections in one undo step. Links a connection already covers are skipped.
+    pinLinks(given) {
+      settleLocalEdit();
+      const now = new Map(visibleLinks.map((l) => [l.key, l]));
+      const links = (Array.isArray(given) ? given : []).map((l) => (l?.key ? now.get(l.key) : l)).filter(Boolean);
+      return txn((t) => {
+        const list = links;
+        const seen = new Set();
+        const fresh = coveredBy(list.filter((l) => l?.from && l?.to && l.from !== l.to && !seen.has(l.key) && seen.add(l.key)), board).visible;
+        const made = [];
+        let container = null;
+        for (const link of fresh.slice(0, PIN_BATCH)) {
+          if (!board.items.has(link.from) || !board.items.has(link.to)) continue;
+          const first = link.labels?.[0];
+          const label = first && first !== "mentions" ? first : "";
+          const props = serializeEdge({ from: link.from, to: link.to, dir: "one" });
+          container ??= ensureContainer(t);
+          made.push(t.create({ parent: container, order: "last", string: edgeStringFor(link.from, link.to, "one", label, props.fromBlock, props.toBlock), plexus: props }));
+        }
+        return made;
+      });
+    },
+
+    get cardRefs() {
+      return { on: cardRefsOn(board), big: (board?.items?.size || 0) > CARD_REFS_MAX };
+    },
+
+    // The enhanced board's ref arrows. Under the size cap the default is on; past it the key does not matter.
+    setCardRefs(on) {
+      return txn((t) => {
+        if (!board.enhanced) return false;
+        const base = rawPlexus(uid);
+        const next = { ...base, refs: on !== false };
+        if (stable(next) !== stable(base)) t.props(uid, next);
+        return true;
+      });
+    },
+
+    // The tray's child -> parent map of the followed outline. Only a tree pointer uses it.
+    setFollowParents(map) {
+      if (destroyed || !followPointer()?.tree) return;
+      followParents = map instanceof Map && map.size ? map : null;
+      recomputeLinks(false);
     },
 
     async writeToGraph(edgeUid) {
@@ -4092,6 +4319,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       boardWatch = () => {};
       if (resumeRetry != null) { clearTimeout(resumeRetry); resumeRetry = null; }
       if (highlightHoldTimer != null) { clearTimeout(highlightHoldTimer); highlightHoldTimer = null; }
+      if (localEditTimer != null) { clearTimeout(localEditTimer); localEditTimer = null; }
       disposeHighlightWatches();
       cancelScheduledLinks();
       linkResolve?.();
@@ -4099,6 +4327,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       linkResolve = null;
       listeners.clear();
       ledger.clear();
+      for (const fn of destroyHooks.splice(0)) {
+        try { fn(); } catch (err) { console.error("[plexus session]", err); }
+      }
     },
   };
 
@@ -4199,6 +4430,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     rawPlexus,
     itemPlexus,
     edgePlexus,
+    laneKids,
+    laneResolve,
+    laneWrites,
     insertOrder,
     ensureContainer,
     edgeStringFor,
@@ -4212,6 +4446,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     clone,
     round1,
     emit,
+    onDestroy(fn) {
+      if (typeof fn === "function") destroyHooks.push(fn);
+    },
+    onMoveItems(fn) {
+      if (typeof fn !== "function") return () => {};
+      moveHooks.push(fn);
+      return () => {
+        const at = moveHooks.indexOf(fn);
+        if (at >= 0) moveHooks.splice(at, 1);
+      };
+    },
     onDeleteItems(fn) {
       if (typeof fn !== "function") return () => {};
       deleteHooks.push(fn);

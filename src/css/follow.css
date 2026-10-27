@@ -44,6 +44,14 @@
 
 .pxd-root button.pxd-follow { color: var(--pxd-text, inherit); }
 
+/* Only the lists shrink: a long list must not squeeze the head and bar under each other (PXD-18, live). */
+.pxd-follow__head,
+.pxd-follow__since,
+.pxd-follow__note,
+.pxd-follow__bar,
+.pxd-follow__section { flex-shrink: 0; }
+.pxd-follow__bar .pxd-follow__count { flex: 1 1 auto; min-width: 0; }
+
 .pxd-follow__head {
   display: flex;
   align-items: flex-start;
@@ -67,6 +75,17 @@
   padding: 2px 0 4px;
 }
 
+/* PXD-18: the Inbox source's Arrivals strip. */
+.pxd-follow__arrivals { flex-shrink: 0; font-weight: 600; white-space: nowrap; overflow-wrap: normal; }
+.pxd-follow__more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 4px;
+  border-top: 1px solid var(--pxd-border, #d0d7de);
+}
+
 .pxd-follow__list { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
 .pxd-follow__list--left { flex: 0 1 auto; max-height: 30%; }
 
@@ -86,6 +105,32 @@
 }
 
 .pxd-follow__row--left { cursor: default; }
+
+/* PXD-13: one group per owner (each section that follows a source, then the board). The groups scroll as one list. */
+.pxd-follow__owners { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+.pxd-follow__owner { padding: 6px 0 4px; border-top: 1px solid var(--pxd-border, #d0d7de); }
+.pxd-follow__owner:first-child { border-top: 0; }
+.pxd-follow__owner .pxd-follow__list { overflow: visible; flex: none; }
+.pxd-follow__owner .pxd-follow__list--left { max-height: none; }
+.pxd-follow__owner-head { display: flex; flex-direction: column; gap: 1px; padding-bottom: 2px; }
+.pxd-follow__owner-title { font-weight: 600; overflow-wrap: anywhere; }
+.pxd-follow__owner-source { color: var(--pxd-muted, #5f6b7c); overflow-wrap: anywhere; }
+/* An item an earlier owner already offers: shown, not placeable here. "Also in" sits on its own line so a long title cannot hide it. */
+.pxd-follow__row--hint { cursor: default; color: var(--pxd-muted, #5f6b7c); font-style: italic; }
+.pxd-follow__also { font-size: 11px; overflow-wrap: anywhere; }
+/* PXD-14: a heading's header in the tray, over its blocks. */
+.pxd-follow__group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 4px 2px;
+  border-top: 1px solid var(--pxd-border, #d0d7de);
+  font-weight: 600;
+}
+.pxd-follow__group > .pxd-follow__text { flex: 1 1 auto; min-width: 0; }
+.pxd-follow__group > .pxd-follow__acts { flex: 0 0 auto; white-space: nowrap; }
 .pxd-follow__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .pxd-follow__new {
@@ -107,6 +152,7 @@
 .pxd-root button.pxd-follow__show,
 .pxd-root button.pxd-follow__dismiss,
 .pxd-root button.pxd-follow__delete,
+.pxd-root button.pxd-follow__show-more,
 .pxd-root button.pxd-follow__close {
   padding: 0 8px;
   border: 1px solid var(--pxd-border, #d0d7de);
@@ -120,16 +166,19 @@
 .pxd-root button.pxd-follow__place:hover,
 .pxd-root button.pxd-follow__all:hover:not(:disabled),
 .pxd-root button.pxd-follow__show:hover,
+.pxd-root button.pxd-follow__show-more:hover,
 .pxd-root button.pxd-follow__dismiss:hover { border-color: var(--pxd-accent, #0d9488); }
 .pxd-root button.pxd-follow__close { padding: 0 6px; border-color: transparent; font-size: 14px; line-height: 16px; }
 .pxd-root button.pxd-follow__all:disabled { opacity: 0.45; cursor: default; }
 
-.pxd-root .pxd-item.pxd-item--left {
+.pxd-root .pxd-item.pxd-item--left,
+.pxd-root .pxd-item.pxd-item--moved {
   outline: 2px dashed var(--pxd-muted, #5f6b7c);
   outline-offset: 2px;
 }
 
-.pxd-root .pxd-item.pxd-item--left::after {
+.pxd-root .pxd-item.pxd-item--left::after,
+.pxd-root .pxd-item.pxd-item--moved::after {
   content: "Left the source";
   position: absolute;
   top: 4px;
@@ -144,3 +193,5 @@
   line-height: 16px;
   pointer-events: none;
 }
+
+.pxd-root .pxd-item.pxd-item--moved::after { content: attr(data-pxd-moved); }

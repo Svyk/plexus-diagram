@@ -48392,6 +48392,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         hasLine: at > 0 && strOf2(top[at - 1]).trim() === "---"
       };
     },
+    // Date.now() of this host's last write, undo or redo (-Infinity before any).
+    lastWriteAt() {
+      return lastWriteAt;
+    },
     // First line of a block's text, or a page's title. Empty when the uid is unknown.
     blockLabel(uid) {
       const id = String(uid ?? "");
@@ -55607,6 +55611,7 @@ function outlineOrderByTarget(childUids, cards) {
 // src/session-source-order.js
 var SETTLE_MS = 150;
 var SIGNATURE_CAP = 400;
+var OWN_ECHO_MS = 3e3;
 var isRefCard = (item) => item?.type === "card" && item.kind === "block" && item.target?.kind === "block" && typeof item.target.uid === "string" && item.target.uid;
 extendSession((session, api3) => {
   const { host } = api3;
@@ -55621,10 +55626,7 @@ extendSession((session, api3) => {
       const item = board2.items.get(id);
       if (!item || seen.has(id)) return;
       seen.add(id);
-      if (item.type === "section") {
-        for (const m of item.members) add(m);
-        return;
-      }
+      if (item.type === "section") return;
       if (isRefCard(item)) cards.push({ card: id, target: item.target.uid });
     };
     for (const id of uids ?? []) {
@@ -55702,7 +55704,8 @@ extendSession((session, api3) => {
     const prev = slot2.baseline;
     slot2.baseline = next;
     if (!prev || !orderChanged(prev, next)) return;
-    if (own2.get(parentUid)?.has(orderSignature(next))) return;
+    const ownWrite = Date.now() - (host.lastWriteAt?.() ?? -Infinity) < OWN_ECHO_MS;
+    if (ownWrite && own2.get(parentUid)?.has(orderSignature(next))) return;
     retidy(parentUid, next);
   };
   const watchParent = (parentUid) => {
@@ -55771,23 +55774,29 @@ extendSession((session, api3) => {
       if (res.reason) return { moved: 0, parentUid: res.parentUid ?? null, skippedCards: 0, chunks: 0, reason: res.reason };
       const { parentUid, plan, skippedCards } = res;
       const chunks = chunkMoves(plan.moves, SOURCE_ORDER_CHUNK);
-      remember2(parentUid, [plan.current, ...chunkStates(plan.current, chunks), plan.desired]);
+      const states = chunkStates(plan.current, chunks);
+      remember2(parentUid, [plan.current, ...states, plan.desired]);
       let done3 = 0;
+      let reason;
       applying.add(parentUid);
       try {
-        for (const chunk of chunks) {
+        for (let i = 0; i < chunks.length; i++) {
           if (api3.isGone()) break;
           await api3.txn((t) => {
-            for (const m of chunk) t.move(m.uid, parentUid, m.order);
+            for (const m of chunks[i]) t.move(m.uid, parentUid, m.order);
           });
-          done3 += chunk.length;
+          if (orderChanged(states[i], kidsOf5(parentUid).map((k) => k.uid))) {
+            reason = "Stopped: the blocks did not land where expected. Undo to go back.";
+            break;
+          }
+          done3 += chunks[i].length;
         }
       } finally {
         applying.delete(parentUid);
       }
       const slot2 = watches.get(parentUid);
       if (slot2) slot2.baseline = kidsOf5(parentUid).map((k) => k.uid);
-      return { moved: done3, parentUid, skippedCards, chunks: chunks.length };
+      return { moved: done3, parentUid, skippedCards, chunks: chunks.length, ...reason ? { reason } : {} };
     }
   });
 });
@@ -104060,7 +104069,7 @@ function buildBoardView(onFail, {
     if (!ok) return;
     Promise.resolve(session.applySourceOrder?.(uids)).then((res) => {
       if (disposed || !res) return;
-      if (!res.moved) {
+      if (res.reason || !res.moved) {
         toast(res.reason || "Nothing to reorder");
         return;
       }

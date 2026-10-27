@@ -17,6 +17,9 @@ import { extendSession } from "./session.js";
 
 const SETTLE_MS = 150;
 const SIGNATURE_CAP = 400;
+// An order Plexus wrote counts as its own only this long after its last write (or Cmd+Z): the same order made later
+// in Roam is an outside change.
+const OWN_ECHO_MS = 3000;
 
 const isRefCard = (item) => item?.type === "card" && item.kind === "block" && item.target?.kind === "block" && typeof item.target.uid === "string" && item.target.uid;
 
@@ -35,7 +38,8 @@ extendSession((session, api) => {
       const item = board.items.get(id);
       if (!item || seen.has(id)) return;
       seen.add(id);
-      if (item.type === "section") { for (const m of item.members) add(m); return; }
+      // A nested section's cards belong to that section, not to this one.
+      if (item.type === "section") return;
       if (isRefCard(item)) cards.push({ card: id, target: item.target.uid });
     };
     for (const id of uids ?? []) {
@@ -112,7 +116,8 @@ extendSession((session, api) => {
     const prev = slot.baseline;
     slot.baseline = next;
     if (!prev || !orderChanged(prev, next)) return;
-    if (own.get(parentUid)?.has(orderSignature(next))) return;
+    const ownWrite = Date.now() - (host.lastWriteAt?.() ?? -Infinity) < OWN_ECHO_MS;
+    if (ownWrite && own.get(parentUid)?.has(orderSignature(next))) return;
     retidy(parentUid, next);
   };
 
@@ -181,21 +186,28 @@ extendSession((session, api) => {
       if (res.reason) return { moved: 0, parentUid: res.parentUid ?? null, skippedCards: 0, chunks: 0, reason: res.reason };
       const { parentUid, plan, skippedCards } = res;
       const chunks = chunkMoves(plan.moves, SOURCE_ORDER_CHUNK);
-      remember(parentUid, [plan.current, ...chunkStates(plan.current, chunks), plan.desired]);
+      const states = chunkStates(plan.current, chunks);
+      remember(parentUid, [plan.current, ...states, plan.desired]);
       let done = 0;
+      let reason;
       applying.add(parentUid);
       try {
-        for (const chunk of chunks) {
+        for (let i = 0; i < chunks.length; i++) {
           if (api.isGone()) break;
-          await api.txn((t) => { for (const m of chunk) t.move(m.uid, parentUid, m.order); });
-          done += chunk.length;
+          await api.txn((t) => { for (const m of chunks[i]) t.move(m.uid, parentUid, m.order); });
+          // A failed write (the txn resolves either way) or an edit meanwhile: the next chunk's indexes no longer hold.
+          if (orderChanged(states[i], kidsOf(parentUid).map((k) => k.uid))) {
+            reason = "Stopped: the blocks did not land where expected. Undo to go back.";
+            break;
+          }
+          done += chunks[i].length;
         }
       } finally {
         applying.delete(parentUid);
       }
       const slot = watches.get(parentUid);
       if (slot) slot.baseline = kidsOf(parentUid).map((k) => k.uid);
-      return { moved: done, parentUid, skippedCards, chunks: chunks.length };
+      return { moved: done, parentUid, skippedCards, chunks: chunks.length, ...(reason ? { reason } : {}) };
     },
   });
 });

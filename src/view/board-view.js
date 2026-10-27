@@ -5009,7 +5009,7 @@ function buildBoardView(onFail, {
     if (!ok) return;
     Promise.resolve(session.applySourceOrder?.(uids)).then((res) => {
       if (disposed || !res) return;
-      if (!res.moved) { toast(res.reason || "Nothing to reorder"); return; }
+      if (res.reason || !res.moved) { toast(res.reason || "Nothing to reorder"); return; }
       toast(`Moved ${res.moved} ${res.moved === 1 ? "block" : "blocks"} to match the board`, true);
     }).catch(() => {});
   };

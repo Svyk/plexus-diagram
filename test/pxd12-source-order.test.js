@@ -297,3 +297,58 @@ test("PXD-12 keep order: Plexus's own apply, its undo and an add or delete do no
   await fake.flush();
   assert.deepEqual(membersInReading(session), ["k2", "k3", "k1"]);
 });
+
+test("PXD-12 apply: a nested section's cards are not the outer section's; the parent comes from direct members", async () => {
+  const { fake, session } = setup({
+    kids: [kid("a1"), kid("a2")],
+    extraPages: [{ title: "Other", uid: "OTHERPG", children: [{ uid: "OTH", string: "Other source", children: [kid("o1"), kid("o2"), kid("o3")] }] }],
+    cards: [
+      { uid: "S", string: "Outer", props: { plexus: { type: "section", x: 0, y: 0, w: 900, h: 900 } }, children: [
+        card("c2", ref("a2"), 20, 40), card("c1", ref("a1"), 20, 200),
+        { uid: "N", string: "Inner", props: { plexus: { type: "section", x: 300, y: 40, w: 500, h: 700 } }, children: [card("n3", ref("o3"), 20, 40), card("n2", ref("o2"), 20, 200), card("n1", ref("o1"), 20, 360)] },
+      ] },
+    ],
+  });
+  const plan = session.sourceOrderPlan(["S"]);
+  assert.deepEqual([plan.parentUid, plan.count, plan.skippedCards], ["SRC", 2, 0]);
+  await session.applySourceOrder(["S"]);
+  await fake.flush();
+  assert.deepEqual(outline(fake), ["a2", "a1"]);
+  assert.deepEqual(outline(fake, "OTH"), ["o1", "o2", "o3"], "the inner section's source is untouched");
+});
+
+test("PXD-12 apply: a chunk whose writes fail stops the rest and says so", async () => {
+  const ks = Array.from({ length: 100 }, (_, i) => `k${String(i).padStart(3, "0")}`);
+  const { fake, session } = setup({ kids: ks.map((u) => kid(u)), cards: column(ks.slice().reverse()) });
+  const move = fake.api.data.block.move;
+  let calls = 0;
+  fake.api.data.block.move = (arg) => {
+    calls += 1;
+    if (calls === SOURCE_ORDER_CHUNK + 1) fake.failNext = 50;
+    return move.call(fake.api.data.block, arg);
+  };
+  const res = await session.applySourceOrder(ks.map(cardOf));
+  await fake.flush();
+  fake.failNext = 0;
+  assert.equal(res.moved, SOURCE_ORDER_CHUNK, "only the first chunk counts");
+  assert.ok(res.reason, "the caller hears why");
+  const landed = fake.writesLog().filter((w) => w[0] === "move").length;
+  assert.ok(landed < 2 * SOURCE_ORDER_CHUNK, `the third chunk never runs (${landed} moves landed)`);
+});
+
+test("PXD-12 keep order: an own order seen again long after Plexus wrote is an outside change", async () => {
+  const { fake, host, session } = keepSetup(true);
+  await wait(20);
+  await session.tidyItems(["S"], "outline", { order: ["m2", "m3", "m1"] });
+  await session.applySourceOrder(["S"]);
+  await wait(500);
+  await fake.flush();
+  assert.deepEqual(outline(fake), ["k2", "k3", "k1"]);
+  // Much later, someone puts the old order back in Roam. It matches a remembered state but Plexus wrote nothing lately.
+  host.lastWriteAt = () => -Infinity;
+  await fake.api.data.block.move({ location: { "parent-uid": "SRC", order: 0 }, block: { uid: "k1" } });
+  await wait(500);
+  await fake.flush();
+  assert.deepEqual(outline(fake), ["k1", "k2", "k3"]);
+  assert.deepEqual(membersInReading(session), ["k1", "k2", "k3"], "re-tidied");
+});

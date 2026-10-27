@@ -3212,6 +3212,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       };
     },
 
+    // Date.now() of this host's last write, undo or redo (-Infinity before any).
+    lastWriteAt() {
+      return lastWriteAt;
+    },
+
     // First line of a block's text, or a page's title. Empty when the uid is unknown.
     blockLabel(uid) {
       const id = String(uid ?? "");

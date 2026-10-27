@@ -10,8 +10,16 @@
 // DOT_CHECK_MS the hub asks whether its box is still in the page (no observer on the topbar or the document) and, if
 // not, finds the dot again and fires once for any save made while it was deaf. Before the topbar is drawn there is
 // no dot: the same check looks again.
+// PXD-20: the same listeners also say whether the user is editing (watchEditing, editState), so a slow read can wait.
+// Typing: an editor key in the last EDIT_IDLE_MS while a block editor has focus. Busy: any save signal but the lag
+// one in the last BUSY_IDLE_MS (longer: writes every 2 s, from a menu or another extension, are edits that go on).
+// Leaving an editor with no editor focused BLUR_IDLE_MS later ends both at once (Enter moves the caret to a new block
+// through a blur, and that is still typing).
 export const SAVE_LAG_MS = 1000;
 export const DOT_CHECK_MS = 1000;
+export const EDIT_IDLE_MS = 2000;
+export const BUSY_IDLE_MS = 5000;
+export const BLUR_IDLE_MS = 400;
 const ICON = ".rm-sync__icon";
 const SAVING = /saving/;
 const hubs = new WeakMap();
@@ -19,10 +27,35 @@ const hubs = new WeakMap();
 const isEditor = (node) => node?.tagName === "TEXTAREA" && Boolean(node.classList?.contains?.("rm-block-input"));
 const inBlock = (node) => Boolean(node?.closest?.(".roam-block, .rm-block"));
 
-function fire(hub) {
-  for (const cb of [...hub.subs]) {
-    try { cb(); } catch { /* one listener cannot stop the rest */ }
+function call(set, why) {
+  for (const cb of [...set]) {
+    try { cb(why); } catch { /* one listener cannot stop the rest */ }
   }
+}
+
+// Edit state is kept only while someone watches it: a board that follows a block source adds no timers per key.
+function clearEdit(hub, win) {
+  for (const k of ["keys", "quiet", "blur"]) {
+    if (hub[k]) win.clearTimeout(hub[k]);
+    hub[k] = null;
+  }
+}
+
+function settle(hub, win) {
+  const why = hub.keys ? "typing" : hub.quiet ? "busy" : "";
+  clearEdit(hub, win);
+  if (why) call(hub.edits, why);
+}
+
+function arm(hub, win, k, ms) {
+  if (!hub.edits.size) return;
+  if (hub[k]) win.clearTimeout(hub[k]);
+  hub[k] = win.setTimeout(() => { hub[k] = null; call(hub.edits, k === "keys" ? "typing" : "busy"); }, ms);
+}
+
+function fire(hub, win, lag = false) {
+  if (!lag) arm(hub, win, "quiet", BUSY_IDLE_MS);
+  call(hub.subs);
 }
 
 function watchDot(doc, hub) {
@@ -43,7 +76,7 @@ function watchDot(doc, hub) {
       // A save that starts and ends within one batch leaves the dot synced; its old value still says saving.
       const hit = records.some((r) => r?.target?.classList?.contains?.("rm-sync__icon")
         && (SAVING.test(String(r.oldValue || "")) || SAVING.test(String(r.target.className || ""))));
-      if (hit) fire(hub);
+      if (hit) fire(hub, hub.win);
     });
     mo.observe(box, { attributes: true, attributeFilter: ["class"], attributeOldValue: true, subtree: true });
     hub.mo = mo;
@@ -53,26 +86,37 @@ function watchDot(doc, hub) {
   }
   if (hub.lost && hub.mo) {
     hub.lost = false;
-    fire(hub);
+    fire(hub, hub.win);
   }
 }
 
 function start(doc, hub) {
   const win = doc.defaultView || globalThis;
+  hub.win = win;
   hub.onInput = (event) => {
     if (!isEditor(event?.target)) return;
-    fire(hub);
+    if (hub.blur) win.clearTimeout(hub.blur);
+    hub.blur = null;
+    arm(hub, win, "keys", EDIT_IDLE_MS);
+    fire(hub, win);
     if (hub.lag) win.clearTimeout(hub.lag);
-    hub.lag = win.setTimeout(() => { hub.lag = null; fire(hub); }, SAVE_LAG_MS);
+    hub.lag = win.setTimeout(() => { hub.lag = null; fire(hub, win, true); }, SAVE_LAG_MS);
   };
   hub.onDone = (event) => {
     if (event?.type === "focusout" && !isEditor(event.target)) return;
     if (event?.type === "change" && !inBlock(event.target)) return;
-    fire(hub);
+    fire(hub, win);
+    if (event?.type !== "focusout" || !hub.edits.size) return;
+    if (hub.blur) win.clearTimeout(hub.blur);
+    hub.blur = win.setTimeout(() => {
+      hub.blur = null;
+      if (!isEditor(doc.activeElement)) settle(hub, win);
+    }, BLUR_IDLE_MS);
   };
   const check = () => {
     hub.check = win.setTimeout(check, DOT_CHECK_MS);
-    watchDot(doc, hub);
+    // Editing alone has no use for the dot.
+    if (hub.subs.size) watchDot(doc, hub);
   };
   hub.stop = () => {
     doc.removeEventListener?.("input", hub.onInput, true);
@@ -92,19 +136,55 @@ function start(doc, hub) {
   hub.check = win.setTimeout(check, DOT_CHECK_MS);
 }
 
-export function watchLocalSaves(doc, cb) {
-  if (!doc || typeof cb !== "function") return () => {};
+function hubOf(doc) {
   let hub = hubs.get(doc);
   if (!hub) {
-    hub = { subs: new Set(), mo: null, box: null, lag: null, check: null, lost: false, stop: null };
+    hub = { subs: new Set(), edits: new Set(), mo: null, box: null, lag: null, check: null, lost: false, keys: null, quiet: null, blur: null, stop: null };
     hubs.set(doc, hub);
   }
+  if (!hub.stop) start(doc, hub);
+  return hub;
+}
+
+function release(hub, set, token) {
+  if (!set.delete(token)) return;
+  if (!hub.edits.size && hub.win) clearEdit(hub, hub.win);
+  if (hub.subs.size || hub.edits.size) {
+    if (!hub.subs.size) {
+      try { hub.mo?.disconnect?.(); } catch { /* gone */ }
+      hub.mo = null;
+      hub.box = null;
+      hub.lost = false;
+    }
+    return;
+  }
+  hub.stop?.();
+}
+
+export function watchLocalSaves(doc, cb) {
+  if (!doc || typeof cb !== "function") return () => {};
+  const hub = hubOf(doc);
   const token = () => cb();
   hub.subs.add(token);
-  if (!hub.stop) start(doc, hub);
   watchDot(doc, hub);
-  return () => {
-    if (!hub.subs.delete(token) || hub.subs.size) return;
-    hub.stop?.();
-  };
+  return () => release(hub, hub.subs, token);
+}
+
+// cb(why) runs when the edit state may have gone idle: "typing" when the user's keys stopped or they left the editors,
+// "busy" when the save signals stopped.
+// The document listeners only, not the sync dot: a block source has no other use for it.
+export function watchEditing(doc, cb) {
+  if (!doc || typeof cb !== "function") return () => {};
+  const hub = hubOf(doc);
+  const token = (why) => cb(why);
+  hub.edits.add(token);
+  return () => release(hub, hub.edits, token);
+}
+
+export function editState(doc) {
+  const hub = doc ? hubs.get(doc) : null;
+  if (!hub?.edits.size) return { typing: false, busy: false };
+  let focused = false;
+  try { focused = isEditor(doc.activeElement); } catch { focused = false; }
+  return { typing: Boolean(hub.keys) && focused, busy: Boolean(hub.keys || hub.quiet) };
 }

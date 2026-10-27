@@ -3873,7 +3873,7 @@ function inlinePdfCards(board2) {
 function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageExists, titleFor, aliasOf, refsOf, now: now5, newUid } = {}) {
   const plan = { graph, boardUid: board2?.uid || "", moves: [], edges: [], skipped: [] };
   if (!board2?.items) return plan;
-  const call = (fn, ...args) => {
+  const call2 = (fn, ...args) => {
     try {
       return typeof fn === "function" ? fn(...args) : null;
     } catch {
@@ -3884,13 +3884,13 @@ function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageE
   const byUrl = /* @__PURE__ */ new Map();
   const moved = /* @__PURE__ */ new Map();
   for (const item of inlinePdfCards(board2)) {
-    const url = String(call(urlOf, item) || "");
-    const shown = cleanPageTitle(call(titleFor, item) || "", TITLE_MAX) || "PDF";
+    const url = String(call2(urlOf, item) || "");
+    const shown = cleanPageTitle(call2(titleFor, item) || "", TITLE_MAX) || "PDF";
     if (url && byUrl.has(url)) {
       plan.skipped.push({ pdfUid: item.uid, title: shown, reason: "same-file" });
       continue;
     }
-    const found = call(findPage, { url, uid: item.uid });
+    const found = call2(findPage, { url, uid: item.uid });
     if (found?.pdfUid && found.pdfUid !== item.uid) {
       plan.skipped.push({ pdfUid: item.uid, title: found.title || shown, reason: "page-has-pdf" });
       continue;
@@ -3899,18 +3899,18 @@ function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageE
     if (found?.uid && found.title) {
       page = { uid: found.uid, title: found.title, reuse: true, why: found.why || "url" };
     } else {
-      const title = uniquePageTitle(pdfPageBaseTitle({ display: shown, alias: call(aliasOf, item) || "", refs: call(refsOf, item) || [], fileName: pdfFileTitle(url), now: call(now5) }), (t) => plannedTitles.has(t) || call(pageExists, t) === true);
-      page = { uid: null, newUid: String(call(newUid) || ""), title, reuse: false, why: "new" };
+      const title = uniquePageTitle(pdfPageBaseTitle({ display: shown, alias: call2(aliasOf, item) || "", refs: call2(refsOf, item) || [], fileName: pdfFileTitle(url), now: call2(now5) }), (t) => plannedTitles.has(t) || call2(pageExists, t) === true);
+      page = { uid: null, newUid: String(call2(newUid) || ""), title, reuse: false, why: "new" };
     }
     plannedTitles.add(page.title);
     if (url) byUrl.set(url, page.title);
-    const layout = call(layoutOf, item.uid);
+    const layout = call2(layoutOf, item.uid);
     const move = {
       pdfUid: item.uid,
       url,
       parentUid: item.parentUid,
       order: Number.isInteger(item.order) ? item.order : 0,
-      cardUid: String(call(newUid) || ""),
+      cardUid: String(call2(newUid) || ""),
       cardString: pageCardString(page.title),
       layout: layout && typeof layout === "object" ? { ...layout } : { type: "card", x: item.x, y: item.y, w: item.w, h: item.h },
       page
@@ -38966,7 +38966,7 @@ function createReadDrawer({
     if (on) node2.setAttribute("hidden", "");
     else node2.removeAttribute("hidden");
   };
-  const call = (fn, ...args) => {
+  const call2 = (fn, ...args) => {
     if (typeof fn !== "function") return;
     try {
       fn(...args);
@@ -39328,7 +39328,7 @@ function createReadDrawer({
       const row4 = pillRow;
       if (!row4) return;
       hidePill();
-      call(onPlace, row4);
+      call2(onPlace, row4);
       return;
     }
     const rowEl = closest(".pxd-read-drawer__row");
@@ -39339,18 +39339,18 @@ function createReadDrawer({
       selectedUid = row4.uid;
       paintSelected();
       if (closest(".pxd-read-drawer__note")) {
-        call(onNote, row4);
+        call2(onNote, row4);
         return;
       }
       if (closest(".pxd-read-drawer__place")) {
-        call(onPlace, row4);
+        call2(onPlace, row4);
         return;
       }
       if (closest(".pxd-read-drawer__ask")) {
-        call(onAsk, row4, { basket: event.shiftKey === true });
+        call2(onAsk, row4, { basket: event.shiftKey === true });
         return;
       }
-      if (closest(".pxd-read-drawer__locate") || !closest("button")) call(onLocate, row4);
+      if (closest(".pxd-read-drawer__locate") || !closest("button")) call2(onLocate, row4);
       return;
     }
     const dot = closest(".pxd-read-drawer__dot");
@@ -39425,19 +39425,19 @@ function createReadDrawer({
     if (keyName === "Enter") {
       event.preventDefault?.();
       event.stopPropagation?.();
-      call(onLocate, row4);
+      call2(onLocate, row4);
       return;
     }
     if (keyName === "a" && typeof onAsk === "function") {
       event.preventDefault?.();
       event.stopPropagation?.();
-      call(onAsk, row4, { basket: true });
+      call2(onAsk, row4, { basket: true });
       return;
     }
     if (keyName === "n" || keyName === "p") {
       event.preventDefault?.();
       event.stopPropagation?.();
-      call(keyName === "n" ? onNote : onPlace, row4);
+      call2(keyName === "n" ? onNote : onPlace, row4);
     }
   };
   const onOver = (event) => {
@@ -39448,8 +39448,8 @@ function createReadDrawer({
     const prevUid = hoverUid;
     hoverUid = uid;
     syncHot();
-    if (prevUid) call(onHover, prevUid, false);
-    call(onHover, uid, true);
+    if (prevUid) call2(onHover, prevUid, false);
+    call2(onHover, uid, true);
   };
   const onOut = (event) => {
     const rowEl = event.target?.closest?.(".pxd-read-drawer__row");
@@ -39460,7 +39460,7 @@ function createReadDrawer({
     if (next && rowEl.contains?.(next)) return;
     hoverUid = "";
     syncHot();
-    if (uid) call(onHover, uid, false);
+    if (uid) call2(onHover, uid, false);
   };
   const onFocusIn = (event) => {
     const rowEl = event.target?.closest?.(".pxd-read-drawer__row");
@@ -39499,14 +39499,14 @@ function createReadDrawer({
       endDrag();
       writeFraction();
     };
-    const arm4 = (type, fn) => {
+    const arm5 = (type, fn) => {
       win2.addEventListener?.(type, fn);
       dragOff.push(() => win2.removeEventListener?.(type, fn));
     };
     endDrag();
-    arm4("pointermove", move);
-    arm4("pointerup", up);
-    arm4("pointercancel", up);
+    arm5("pointermove", move);
+    arm5("pointerup", up);
+    arm5("pointercancel", up);
   };
   const onInput = (event) => {
     if (event.target !== find) return;
@@ -39579,7 +39579,7 @@ function createReadDrawer({
       for (const id of pulseTimers.values()) cancel(id);
       pulseTimers.clear();
       pulsing.clear();
-      if (hoverUid) call(onHover, hoverUid, false);
+      if (hoverUid) call2(onHover, hoverUid, false);
       hoverUid = "";
       while (offs.length) {
         try {
@@ -40167,7 +40167,7 @@ function oldTableCards(board2) {
 function planTableCaptions(board2, { graph = "", layoutOf, newUid, captionOf: captionOf2 } = {}) {
   const plan = { graph, boardUid: board2?.uid || "", folds: [], edges: [] };
   if (!board2?.items) return plan;
-  const call = (fn, ...args) => {
+  const call2 = (fn, ...args) => {
     try {
       return typeof fn === "function" ? fn(...args) : null;
     } catch {
@@ -40176,15 +40176,15 @@ function planTableCaptions(board2, { graph = "", layoutOf, newUid, captionOf: ca
   };
   const folded = /* @__PURE__ */ new Map();
   for (const item of oldTableCards(board2)) {
-    const captionUid = String(call(newUid) || "");
+    const captionUid = String(call2(newUid) || "");
     if (!captionUid) continue;
-    const layout = call(layoutOf, item.uid);
+    const layout = call2(layoutOf, item.uid);
     const fold = {
       tableUid: item.uid,
       captionUid,
       parentUid: item.parentUid,
       order: Number.isInteger(item.order) ? item.order : 0,
-      caption: String(call(captionOf2, item) || "").replace(/\s+/g, " ").trim() || rowsCaption((item.content || []).length),
+      caption: String(call2(captionOf2, item) || "").replace(/\s+/g, " ").trim() || rowsCaption((item.content || []).length),
       layout: layout && typeof layout === "object" ? { ...layout } : { type: "card", x: item.x, y: item.y, w: item.w, h: item.h }
     };
     plan.folds.push(fold);
@@ -41646,7 +41646,7 @@ function createSyncHold({
     } catch {
     }
   };
-  const release = () => {
+  const release2 = () => {
     const w = guarded;
     guarded = null;
     try {
@@ -41678,11 +41678,11 @@ function createSyncHold({
         state = saving();
       }
     } finally {
-      if (!keepGuard) release();
+      if (!keepGuard) release2();
     }
     return { waited: now5() - start2, capped, held: true };
   };
-  return { saving, wait: wait2, release };
+  return { saving, wait: wait2, release: release2 };
 }
 
 // src/session.js
@@ -41993,6 +41993,8 @@ var FOLLOW_PARENT_CAP = 60;
 var FOLLOW_QUIET_MS = 1500;
 var FOLLOW_POLL_MS = 6e4;
 var FOLLOW_BACKOFF = 10;
+var FOLLOW_TYPING_MS = 50;
+var FOLLOW_SLOW_MS = 200;
 var followQuietMs = (lastMs) => Math.min(FOLLOW_POLL_MS, Math.max(FOLLOW_QUIET_MS, FOLLOW_BACKOFF * (Number(lastMs) || 0)));
 var LEFT_CONFIRM = 2;
 var FOLLOW_COLUMN_GAP = 48;
@@ -44999,7 +45001,7 @@ function createBgBudget({
     let idleId = null;
     let timerId = null;
     let cancelled = false;
-    const arm4 = () => {
+    const arm5 = () => {
       if (cancelled) return;
       idleId = ric(run2, { timeout });
     };
@@ -45010,7 +45012,7 @@ function createBgBudget({
       if (wait2 > 0) {
         timerId = setTimer(() => {
           timerId = null;
-          arm4();
+          arm5();
         }, Math.ceil(wait2));
         try {
           timerId?.unref?.();
@@ -45043,13 +45045,13 @@ function createBgBudget({
     if (delay2 > 0) {
       timerId = setTimer(() => {
         timerId = null;
-        arm4();
+        arm5();
       }, Math.ceil(delay2));
       try {
         timerId?.unref?.();
       } catch {
       }
-    } else arm4();
+    } else arm5();
     return () => {
       cancelled = true;
       if (idleId != null) cic(idleId);
@@ -56630,7 +56632,7 @@ function createInputProfile({ win: win2 = globalThis, spans = () => [] } = {}) {
     }
     observers = [];
   };
-  const arm4 = () => {
+  const arm5 = () => {
     disarm2();
     events = [];
     frames = [];
@@ -56689,7 +56691,7 @@ function createInputProfile({ win: win2 = globalThis, spans = () => [] } = {}) {
   };
   return {
     read({ reset = false } = {}) {
-      if (!observers.length || reset) return arm4();
+      if (!observers.length || reset) return arm5();
       return summary();
     },
     dispose: disarm2
@@ -59419,7 +59421,7 @@ function createBt(options = {}) {
     const t = tools().get(name);
     return t && typeof t.execute === "function" ? t : null;
   };
-  const call = async (name, args) => {
+  const call2 = async (name, args) => {
     const t = tool(name);
     if (!t) return { ok: false, reason: "unavailable" };
     try {
@@ -59452,7 +59454,7 @@ function createBt(options = {}) {
       if (names) return Promise.resolve(names);
       if (priming) return priming;
       if (!tool("bt_get_attributes")) return Promise.resolve(null);
-      priming = call("bt_get_attributes", {}).then((res) => {
+      priming = call2("bt_get_attributes", {}).then((res) => {
         priming = null;
         if (res.ok) names = readNames(res.result);
         return names;
@@ -59465,18 +59467,18 @@ function createBt(options = {}) {
       if (status) args.status = status;
       if (attributes && Object.keys(attributes).length) args.attributes = attributes;
       if (typeof text4 === "string") args.text = text4;
-      return call("bt_modify", args);
+      return call2("bt_modify", args);
     },
     create(args) {
-      return call("bt_create", args);
+      return call2("bt_create", args);
     },
     // Tasks matching a text, as Better Tasks lists them. Empty when Better Tasks does not answer.
     async search(args) {
-      const res = await call("bt_search", args);
+      const res = await call2("bt_search", args);
       return res.ok && Array.isArray(res.result?.tasks) ? res.result.tasks : [];
     },
     async projects() {
-      const res = await call("bt_get_projects", { status: "active", max_results: 60 });
+      const res = await call2("bt_get_projects", { status: "active", max_results: 60 });
       const rows = res.ok ? res.result?.projects : null;
       return Array.isArray(rows) ? rows.map((r) => String(r?.name || "")).filter(Boolean) : [];
     }
@@ -60122,7 +60124,7 @@ function normRect(a, b) {
 var WHEEL_ZOOM_IDLE_MS = 160;
 function createInteractions({ actions, settings } = {}) {
   const a = actions || {};
-  const call = (name, ...args) => typeof a[name] === "function" ? a[name](...args) : void 0;
+  const call2 = (name, ...args) => typeof a[name] === "function" ? a[name](...args) : void 0;
   const setting = (key, def) => {
     const v = typeof settings?.get === "function" ? settings.get(key) : settings?.[key];
     return v === void 0 || v === null ? def : v;
@@ -60140,13 +60142,13 @@ function createInteractions({ actions, settings } = {}) {
     hover: null
   };
   const fingers = /* @__PURE__ */ new Map();
-  const board2 = () => call("board");
-  const rects = () => call("rects");
-  const hitRects = () => call("hitRects") || rects();
-  const vp = () => call("viewport") || { x: 0, y: 0, zoom: 1 };
+  const board2 = () => call2("board");
+  const rects = () => call2("rects");
+  const hitRects = () => call2("hitRects") || rects();
+  const vp = () => call2("viewport") || { x: 0, y: 0, zoom: 1 };
   const zoom = () => vp().zoom || 1;
   const emitSelection = () => {
-    call("onSelection", { items: [...state.selection], edge: state.edge, link: state.link, region: state.region || null });
+    call2("onSelection", { items: [...state.selection], edge: state.edge, link: state.link, region: state.region || null });
   };
   const selectItems = (uids) => {
     state.selection = new Set(uids);
@@ -60182,7 +60184,7 @@ function createInteractions({ actions, settings } = {}) {
     return true;
   };
   const regionMode = () => {
-    const custom = call("regionDrawMode");
+    const custom = call2("regionDrawMode");
     if (custom === "pen" || custom === "box") return custom;
     return regionDrawMode();
   };
@@ -60190,14 +60192,14 @@ function createInteractions({ actions, settings } = {}) {
   const regionDrawing = () => state.gesture?.kind === "region-start" || state.gesture?.kind === "region-end";
   const toggleRegionDraw = () => {
     const next = setRegionDrawMode(regionMode() === "pen" ? "box" : "pen");
-    call("setRegionDrawMode", next);
+    call2("setRegionDrawMode", next);
     const g = state.gesture;
     if (g && regionDrawing()) {
       g.points = null;
       g.moved = false;
-      call("showRegionPen", null);
-      call("showMarquee", null);
-      call("connectHint", next === "pen" ? REGION_PEN_HINT : REGION_BOX_HINT, g.hintAt || null);
+      call2("showRegionPen", null);
+      call2("showMarquee", null);
+      call2("connectHint", next === "pen" ? REGION_PEN_HINT : REGION_BOX_HINT, g.hintAt || null);
     }
     return next;
   };
@@ -60205,7 +60207,7 @@ function createInteractions({ actions, settings } = {}) {
     if (!TOOLS.includes(tool)) return;
     state.tool = tool;
     state.locked = Boolean(lock) && !STICKY_TOOLS.has(tool);
-    call("onTool", state.tool, state.locked);
+    call2("onTool", state.tool, state.locked);
   };
   const afterToolUse = () => {
     if (!state.locked && !STICKY_TOOLS.has(state.tool)) setTool("select");
@@ -60223,46 +60225,46 @@ function createInteractions({ actions, settings } = {}) {
   const beginPinch = (pair2) => {
     const prev = state.gesture;
     if (prev && prev.kind !== "pinch") {
-      if (prev.kind === "move" && !prev.dup && prev.uids?.length) call("previewMove", prev.uids, 0, 0);
-      if (prev.kind === "resize") call("previewRects", []);
+      if (prev.kind === "move" && !prev.dup && prev.uids?.length) call2("previewMove", prev.uids, 0, 0);
+      if (prev.kind === "resize") call2("previewRects", []);
       end();
     }
     if (state.gesture?.kind !== "pinch") {
       const v = vp();
       state.gesture = { kind: "pinch", moved: true, vp0: { x: v.x, y: v.y, zoom: v.zoom }, dist0: pair2.dist, mid0: pair2.mid };
-      call("setGesturing", true);
+      call2("setGesturing", true);
     }
     const g = state.gesture;
-    call("setViewport", pinchViewport(g.vp0, { dist0: g.dist0, mid0: g.mid0, dist: pair2.dist, mid: pair2.mid }));
+    call2("setViewport", pinchViewport(g.vp0, { dist0: g.dist0, mid0: g.mid0, dist: pair2.dist, mid: pair2.mid }));
   };
   function flushNudge() {
     const pending = state.nudge;
     if (!pending) return;
     state.nudge = null;
     if (pending.timer != null) clearTimeout(pending.timer);
-    if (pending.dx || pending.dy) call("commitMove", pending.uids, pending.dx, pending.dy);
-    call("cancelPreview");
+    if (pending.dx || pending.dy) call2("commitMove", pending.uids, pending.dx, pending.dy);
+    call2("cancelPreview");
   }
   const begin = (g) => {
     state.gesture = { moved: false, ...g };
-    call("setGesturing", true);
+    call2("setGesturing", true);
   };
   const end = () => {
     const moved = Boolean(state.gesture?.moved);
     const ghosted = Boolean(state.gesture?.rowDrop);
     state.gesture = null;
-    if (ghosted) call("rowDropGhost", null);
-    call("showMarquee", null);
-    call("showLasso", null);
-    call("showRegionPen", null);
-    call("showGuides", []);
-    call("showTempWire", null);
-    call("connectHint", null);
-    call("onHover", null);
-    call("clearBlockTarget");
-    call("showGhosts", null);
-    call("cancelPreview");
-    call("setGesturing", false, { moved });
+    if (ghosted) call2("rowDropGhost", null);
+    call2("showMarquee", null);
+    call2("showLasso", null);
+    call2("showRegionPen", null);
+    call2("showGuides", []);
+    call2("showTempWire", null);
+    call2("connectHint", null);
+    call2("onHover", null);
+    call2("clearBlockTarget");
+    call2("showGhosts", null);
+    call2("cancelPreview");
+    call2("setGesturing", false, { moved });
   };
   const isPinned = (uid) => Boolean(board2()?.items.get(uid)?.pinned);
   const movingSet = (dup = false) => {
@@ -60284,12 +60286,12 @@ function createInteractions({ actions, settings } = {}) {
     for (const uid of b.items.keys()) if (!skip.has(uid) && r.get(uid)) out.push(r.get(uid));
     return out;
   };
-  const editingUid = () => call("editingUid") ?? null;
-  const isEditing = () => Boolean(call("isEditing"));
+  const editingUid = () => call2("editingUid") ?? null;
+  const isEditing = () => Boolean(call2("isEditing"));
   const blockTargetFor = (ev, uid) => {
     const item = uid ? board2()?.items.get(uid) : null;
     if (!item) {
-      call("clearBlockTarget");
+      call2("clearBlockTarget");
       return null;
     }
     const text4 = String(item.string ?? "").trim();
@@ -60297,10 +60299,10 @@ function createInteractions({ actions, settings } = {}) {
     const noteKids = item.kind === "note" && Array.isArray(item.content) && item.content.length > 0;
     const marked = item.kind === "page" || item.kind === "image" || item.kind === "pdf" || item.kind === "block" || refCard || noteKids || Boolean(tableUidOf(item));
     if (!marked) {
-      call("clearBlockTarget");
+      call2("clearBlockTarget");
       return null;
     }
-    const bt = call("blockTarget", ev.client || null);
+    const bt = call2("blockTarget", ev.client || null);
     return bt && bt.uid === uid ? bt : null;
   };
   const sameEdge = (b, from, to, fromBlock, toBlock) => {
@@ -60313,7 +60315,7 @@ function createInteractions({ actions, settings } = {}) {
     begin({ kind: "connect", from: uid, fromSide: side2, start: world, fromBlock: fromBlock || void 0, ...extra });
     const spec = { from: uid, fromSide: side2, point: world };
     if (fromBlock) spec.fromBlock = fromBlock;
-    call("showTempWire", spec);
+    call2("showTempWire", spec);
   };
   let openTimer = null;
   const cancelOpen = () => {
@@ -60339,7 +60341,7 @@ function createInteractions({ actions, settings } = {}) {
     }
     g.phase = "box";
     g.boxStart = clampToBox(ev.world, g.imageRect);
-    call("connectHint", null);
+    call2("connectHint", null);
   };
   const onPointerDown = (ev) => {
     endWheelZoom();
@@ -60362,7 +60364,7 @@ function createInteractions({ actions, settings } = {}) {
     const editing = editingUid();
     if (editing) {
       if (t.kind === "item" && t.uid === editing && t.part !== "header") return;
-      if (!(t.kind === "item" && t.uid === editing)) call("exitEdit");
+      if (!(t.kind === "item" && t.uid === editing)) call2("exitEdit");
     }
     const movableKind = t.kind === "item" || t.kind === "section-title" || t.kind === "section-border";
     const handPrimary = state.tool === "hand" && !state.space && ev.button === 0;
@@ -60393,25 +60395,25 @@ function createInteractions({ actions, settings } = {}) {
       case "edge-marker":
         if (t.uid) {
           selectEdge(t.uid);
-          call("revealBlockEnd", t.uid, t.end);
+          call2("revealBlockEnd", t.uid, t.end);
         }
         return;
       case "out-arrow":
-        if (t.uid) call("openOutside", t.uid);
+        if (t.uid) call2("openOutside", t.uid);
         return;
       case "edge-end": {
         const edge = t.uid ? b?.edges.get(t.uid) : null;
         if (!edge || t.end !== "from" && t.end !== "to") return;
         const other = t.end === "from" ? edge.to : edge.from;
         begin({ kind: "edge-end", edge: t.uid, end: t.end, other, start: ev.world });
-        call("showTempWire", { from: other, fromSide: "auto", point: ev.world });
+        call2("showTempWire", { from: other, fromSide: "auto", point: ev.world });
         return;
       }
       case "edge":
         if (t.uid) selectEdge(t.uid);
         if (t.uid && ev.alt) {
-          const end2 = call("childEndOf", t.uid);
-          if (end2) call("revealBlockEnd", t.uid, end2);
+          const end2 = call2("childEndOf", t.uid);
+          if (end2) call2("revealBlockEnd", t.uid, end2);
         }
         return;
       case "label":
@@ -60428,7 +60430,7 @@ function createInteractions({ actions, settings } = {}) {
       case "section-border": {
         if (!t.uid || !b?.items.has(t.uid)) return;
         if (state.tool === "connect") {
-          const pic = ev.alt && !t.row ? call("regionDrop", { from: null, client: ev.client }) : null;
+          const pic = ev.alt && !t.row ? call2("regionDrop", { from: null, client: ev.client }) : null;
           if (pic?.image && pic.to === t.uid && pic.imageRect && pointInside(ev.world, pic.imageRect)) {
             begin({ kind: "region-start", uid: t.uid, imageRect: pic.imageRect, start: clampToBox(ev.world, pic.imageRect) });
             return;
@@ -60441,7 +60443,7 @@ function createInteractions({ actions, settings } = {}) {
           return;
         }
         if (state.tool === "select" && t.region && t.row && !ev.alt) {
-          if ((ev.detail || 0) >= 2) call("editRegionCaption", { card: t.uid, region: t.row });
+          if ((ev.detail || 0) >= 2) call2("editRegionCaption", { card: t.uid, region: t.row });
           else selectRegion(t.uid, t.row);
           return;
         }
@@ -60521,7 +60523,7 @@ function createInteractions({ actions, settings } = {}) {
       const pair2 = pairNow();
       if (pair2) {
         const g2 = state.gesture;
-        call("setViewport", pinchViewport(g2.vp0, { dist0: g2.dist0, mid0: g2.mid0, dist: pair2.dist, mid: pair2.mid }));
+        call2("setViewport", pinchViewport(g2.vp0, { dist0: g2.dist0, mid0: g2.mid0, dist: pair2.dist, mid: pair2.mid }));
       }
       return;
     }
@@ -60537,13 +60539,13 @@ function createInteractions({ actions, settings } = {}) {
         const last = g.points[g.points.length - 1];
         if (!last || Math.hypot(to.x - last.x, to.y - last.y) >= 1) g.points.push(to);
         if (g.points.length > 2) g.moved = true;
-        call("showRegionPen", g.points);
-        call("showMarquee", null);
+        call2("showRegionPen", g.points);
+        call2("showMarquee", null);
         return;
       }
       if (!g.moved && Math.hypot(to.x - from.x, to.y - from.y) * zoom() >= DRAG_THRESHOLD_PX) g.moved = true;
-      call("showMarquee", normRect(from, to), "region");
-      call("showRegionPen", null);
+      call2("showMarquee", normRect(from, to), "region");
+      call2("showRegionPen", null);
       return;
     }
     if (g.kind === "connect") {
@@ -60551,28 +60553,28 @@ function createInteractions({ actions, settings } = {}) {
       const r = hitRects();
       const spec = { from: g.from, fromSide: g.fromSide, point: ev.world };
       if (g.fromBlock) spec.fromBlock = g.fromBlock;
-      call("showTempWire", spec);
+      call2("showTempWire", spec);
       const hit = b && r ? hitTest(b, ev.world, r, { sectionInterior: true }) : null;
       const hover = hit && hit.uid !== g.from ? hit.uid : null;
       if (hover !== state.hover) {
         state.hover = hover;
-        call("onHover", hover);
+        call2("onHover", hover);
       }
       if (!g.moved && Math.hypot(ev.world.x - g.start.x, ev.world.y - g.start.y) * zoom() >= DRAG_THRESHOLD_PX) g.moved = true;
       const bt = blockTargetFor(ev, hover);
-      const over = hover && !bt?.row ? call("regionDrop", { from: g.from, client: ev.client }) : null;
-      call("connectHint", over?.image ? REGION_HINT : null, ev.screen);
+      const over = hover && !bt?.row ? call2("regionDrop", { from: g.from, client: ev.client }) : null;
+      call2("connectHint", over?.image ? REGION_HINT : null, ev.screen);
       return;
     }
     if (g.kind === "edge-end") {
       const b = board2();
       const r = hitRects();
-      call("showTempWire", { from: g.other, fromSide: "auto", point: ev.world });
+      call2("showTempWire", { from: g.other, fromSide: "auto", point: ev.world });
       const hit = b && r ? hitTest(b, ev.world, r, { sectionInterior: true }) : null;
       const hover = hit && hit.uid !== g.other ? hit.uid : null;
       if (hover !== state.hover) {
         state.hover = hover;
-        call("onHover", hover);
+        call2("onHover", hover);
       }
       if (!g.moved && Math.hypot(ev.world.x - g.start.x, ev.world.y - g.start.y) * zoom() >= DRAG_THRESHOLD_PX) g.moved = true;
       blockTargetFor(ev, hover);
@@ -60587,7 +60589,7 @@ function createInteractions({ actions, settings } = {}) {
     if (g.kind === "pan") {
       if (!g.moved && Math.hypot(sdx, sdy) < DRAG_THRESHOLD_PX) return;
       g.moved = true;
-      call("setViewport", { x: g.vp0.x + sdx, y: g.vp0.y + sdy, zoom: g.vp0.zoom });
+      call2("setViewport", { x: g.vp0.x + sdx, y: g.vp0.y + sdy, zoom: g.vp0.zoom });
       return;
     }
     if (g.kind === "move") {
@@ -60617,11 +60619,11 @@ function createInteractions({ actions, settings } = {}) {
       g.dy = dy;
       if (g.dup) {
         const r0 = rects();
-        call("showGhosts", g.uids.map((u) => r0?.get(u)).filter(Boolean).map((q2) => ({ x: q2.x + dx, y: q2.y + dy, w: q2.w, h: q2.h })));
+        call2("showGhosts", g.uids.map((u) => r0?.get(u)).filter(Boolean).map((q2) => ({ x: q2.x + dx, y: q2.y + dy, w: q2.w, h: q2.h })));
       } else if (g.uids.length) {
-        call("previewMove", g.uids, dx, dy);
+        call2("previewMove", g.uids, dx, dy);
       }
-      call("showGuides", guides);
+      call2("showGuides", guides);
       const b = board2();
       const r = hitRects();
       if (b && r && !g.dup && g.uids.length) {
@@ -60629,7 +60631,7 @@ function createInteractions({ actions, settings } = {}) {
           g.exclude = new Set(g.uids);
           for (const u of g.uids) for (const d of descendantsOf(b, u)) g.exclude.add(d);
         }
-        const open = call("revealedRects", r);
+        const open = call2("revealedRects", r);
         const hr = open?.size ? { get: (u) => open.get(u) || r.get(u) } : r;
         const hit = hitTest(b, ev.world, hr, { exclude: g.exclude });
         const drop = hit?.part === "body" && (b.items.get(hit.uid)?.kind === "board" && b.items.get(hit.uid)?.enhanced) ? hit.uid : null;
@@ -60638,11 +60640,11 @@ function createInteractions({ actions, settings } = {}) {
         if (dayKey !== (g.dayKey ?? null)) {
           g.dayKey = dayKey;
           g.day = day;
-          if (!drop) call("onHover", day ? day.uid : null);
+          if (!drop) call2("onHover", day ? day.uid : null);
         }
         if (drop !== (g.drop ?? null)) {
           g.drop = drop;
-          call("onHover", drop);
+          call2("onHover", drop);
         }
         if (g.refs === void 0) {
           g.refs = g.uids.some((u) => rowDroppable(b.items.get(u)));
@@ -60652,16 +60654,16 @@ function createInteractions({ actions, settings } = {}) {
           });
         }
         const rowCard = g.refs && !drop && !ev.shift && !(day && g.tasks) && showsRows(b.items.get(hit?.uid)) ? hit.uid : null;
-        call("dropReveal", rowCard);
+        call2("dropReveal", rowCard);
         let row4 = null;
         if (rowCard) {
-          const bt = call("blockTarget", ev.client || null, { rowsOnly: true, exclude: g.exclude });
+          const bt = call2("blockTarget", ev.client || null, { rowsOnly: true, exclude: g.exclude });
           row4 = bt && bt.uid === rowCard && bt.row ? bt.row : null;
-          if (!row4 && bt) call("clearBlockTarget");
-        } else call("clearBlockTarget");
-        if (Boolean(row4) !== Boolean(g.rowDrop)) call("rowDropGhost", row4 ? g.uids : null);
+          if (!row4 && bt) call2("clearBlockTarget");
+        } else call2("clearBlockTarget");
+        if (Boolean(row4) !== Boolean(g.rowDrop)) call2("rowDropGhost", row4 ? g.uids : null);
         g.rowDrop = row4 ? { card: rowCard, row: row4 } : null;
-        if (row4 || g.hinted) call("connectHint", row4 ? ROW_DROP_HINT : null, ev.screen);
+        if (row4 || g.hinted) call2("connectHint", row4 ? ROW_DROP_HINT : null, ev.screen);
         g.hinted = Boolean(row4);
       }
       return;
@@ -60675,7 +60677,7 @@ function createInteractions({ actions, settings } = {}) {
       const dx = ev.world.x - last.x;
       const dy = ev.world.y - last.y;
       if (dx * dx + dy * dy >= 0.25) g.points.push({ x: ev.world.x, y: ev.world.y });
-      call("showLasso", g.points);
+      call2("showLasso", g.points);
       const b = board2();
       const r = hitRects();
       if (b && r) {
@@ -60692,7 +60694,7 @@ function createInteractions({ actions, settings } = {}) {
     if (g.kind === "marquee") {
       const rect = normRect(g.start, ev.world);
       g.rect = rect;
-      call("showMarquee", rect, "select");
+      call2("showMarquee", rect, "select");
       const b = board2();
       const r = hitRects();
       if (b && r) {
@@ -60708,7 +60710,7 @@ function createInteractions({ actions, settings } = {}) {
     }
     if (g.kind === "section-draw" || g.kind === "board-draw") {
       g.rect = normRect(g.start, ev.world);
-      call("showMarquee", g.rect, g.kind === "board-draw" ? "board" : "section");
+      call2("showMarquee", g.rect, g.kind === "board-draw" ? "board" : "section");
       return;
     }
     if (g.kind === "resize") {
@@ -60726,7 +60728,7 @@ function createInteractions({ actions, settings } = {}) {
         if (g.part === "corner" || g.part === "bottom") next.h = Math.max(min.h, capped.h);
       }
       g.rect = next;
-      call("previewRects", [next]);
+      call2("previewRects", [next]);
     }
   };
   const onPointerUp = (ev) => {
@@ -60748,7 +60750,7 @@ function createInteractions({ actions, settings } = {}) {
         if (!g.moved && g.edge) {
           const edge = b?.edges.get(g.edge);
           const end2 = edge && edge.homeFrom?.cardUid && !b.items.has(edge.from) ? "from" : edge && edge.homeTo?.cardUid && !b.items.has(edge.to) ? "to" : null;
-          if (end2) call("revealBlockEnd", g.edge, end2);
+          if (end2) call2("revealBlockEnd", g.edge, end2);
         }
         break;
       }
@@ -60761,7 +60763,7 @@ function createInteractions({ actions, settings } = {}) {
         const d = DEFAULT_SIZES.section;
         const rect = g.moved && g.rect && g.rect.w >= MIN_SIZES.section.w && g.rect.h >= MIN_SIZES.section.h ? g.rect : { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2, w: d.w, h: d.h };
         end();
-        Promise.resolve(call("createSection", { rect })).then((uid) => {
+        Promise.resolve(call2("createSection", { rect })).then((uid) => {
           if (uid) selectItems([uid]);
         }).catch(() => {
         });
@@ -60772,7 +60774,7 @@ function createInteractions({ actions, settings } = {}) {
         const d = DEFAULT_BOARD_CARD;
         const rect = g.moved && g.rect && g.rect.w >= MIN_SIZES.card.w && g.rect.h >= MIN_SIZES.card.h ? g.rect : { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2, w: d.w, h: d.h };
         end();
-        Promise.resolve(call("createBoard", { rect })).then((uid) => {
+        Promise.resolve(call2("createBoard", { rect })).then((uid) => {
           if (uid) selectItems([uid]);
         }).catch(() => {
         });
@@ -60783,23 +60785,23 @@ function createInteractions({ actions, settings } = {}) {
         if (!g.moved) {
           let p;
           if (g.tool === "sticky") {
-            p = call("createText", { x: g.start.x - STICKY_SIZE.w / 2, y: g.start.y - STICKY_SIZE.h / 2, w: STICKY_SIZE.w, h: STICKY_SIZE.h, look: "sticky" });
+            p = call2("createText", { x: g.start.x - STICKY_SIZE.w / 2, y: g.start.y - STICKY_SIZE.h / 2, w: STICKY_SIZE.w, h: STICKY_SIZE.h, look: "sticky" });
           } else if (g.tool === "shape") {
-            p = call("createText", { x: g.start.x - SHAPE_PLACE.w / 2, y: g.start.y - SHAPE_PLACE.h / 2, w: SHAPE_PLACE.w, h: SHAPE_PLACE.h, shape: "rectangle" });
+            p = call2("createText", { x: g.start.x - SHAPE_PLACE.w / 2, y: g.start.y - SHAPE_PLACE.h / 2, w: SHAPE_PLACE.w, h: SHAPE_PLACE.h, shape: "rectangle" });
           } else if (g.tool === "table") {
             const d = TABLE_SIZE;
-            p = call("createTable", { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2, w: d.w, h: d.h });
+            p = call2("createTable", { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2, w: d.w, h: d.h });
           } else {
             const d = DEFAULT_SIZES[g.tool === "task" ? "card" : g.tool];
             const at = { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2 };
-            p = g.tool === "text" ? call("createText", at) : g.tool === "task" ? call("createTask", at) : call("createCard", at);
+            p = g.tool === "text" ? call2("createText", at) : g.tool === "task" ? call2("createTask", at) : call2("createCard", at);
           }
           const placed = g.tool;
           end();
           Promise.resolve(p).then((uid) => {
             if (uid) {
               selectItems([uid]);
-              if (placed !== "table") call("enterEdit", uid);
+              if (placed !== "table") call2("enterEdit", uid);
             }
           }).catch(() => {
           });
@@ -60810,17 +60812,17 @@ function createInteractions({ actions, settings } = {}) {
       }
       case "move":
         if (g.moved && g.dup) {
-          call("duplicateItems", g.uids, { dx: g.dx || 0, dy: g.dy || 0, asRef: Boolean(g.asRef) });
+          call2("duplicateItems", g.uids, { dx: g.dx || 0, dy: g.dy || 0, asRef: Boolean(g.asRef) });
         } else if (g.moved && g.drop) {
-          call("moveIntoBoard", g.uids, g.drop, g.dx || 0, g.dy || 0);
+          call2("moveIntoBoard", g.uids, g.drop, g.dx || 0, g.dy || 0);
         } else if (g.moved && g.rowDrop && !ev.shift) {
-          call("previewMove", g.uids, 0, 0);
-          call("refIntoRow", g.uids, g.rowDrop.card, g.rowDrop.row);
+          call2("previewMove", g.uids, 0, 0);
+          call2("refIntoRow", g.uids, g.rowDrop.card, g.rowDrop.row);
         } else if (g.moved && g.day && !ev.shift) {
-          call("rescheduleTasks", g.uids, g.day);
-          if (g.uids.length) call("commitMove", g.uids, g.dx || 0, g.dy || 0);
+          call2("rescheduleTasks", g.uids, g.day);
+          if (g.uids.length) call2("commitMove", g.uids, g.dx || 0, g.dy || 0);
         } else if (g.moved) {
-          if (g.uids.length) call("commitMove", g.uids, g.dx || 0, g.dy || 0);
+          if (g.uids.length) call2("commitMove", g.uids, g.dx || 0, g.dy || 0);
         } else if (g.deferred) {
           selectItems([g.target]);
         }
@@ -60830,14 +60832,14 @@ function createInteractions({ actions, settings } = {}) {
           cancelOpen();
           openTimer = setTimeout(() => {
             openTimer = null;
-            call("openPage", target, { sidebar });
+            call2("openPage", target, { sidebar });
           }, OPEN_DELAY_MS);
         } else if (!g.moved && !g.dup && g.pageRow && !ev.shift && !ev.alt && !ev.meta && !ev.ctrl && editingUid() !== g.target) {
-          call("enterEdit", g.target, { row: g.pageRow });
+          call2("enterEdit", g.target, { row: g.pageRow });
         }
         break;
       case "resize":
-        if (g.moved && g.rect) call("commitRects", [g.rect]);
+        if (g.moved && g.rect) call2("commitRects", [g.rect]);
         break;
       case "edge-end": {
         const hr = hitRects();
@@ -60851,7 +60853,7 @@ function createInteractions({ actions, settings } = {}) {
         if (g.moved && edge && aimedOk) {
           const key = g.end === "from" ? "from" : "to";
           const blockKey = g.end === "from" ? "fromBlock" : "toBlock";
-          call("updateEdge", g.edge, { [key]: aimed.uid, [blockKey]: void 0 });
+          call2("updateEdge", g.edge, { [key]: aimed.uid, [blockKey]: void 0 });
           afterToolUse();
           return;
         }
@@ -60868,7 +60870,7 @@ function createInteractions({ actions, settings } = {}) {
                 patch[key] = hit.uid;
                 patch[key === "from" ? "fromSide" : "toSide"] = nearestSide(hr.get(hit.uid), ev.world);
               }
-              call("updateEdge", g.edge, patch);
+              call2("updateEdge", g.edge, patch);
             }
           }
         }
@@ -60878,7 +60880,7 @@ function createInteractions({ actions, settings } = {}) {
       case "region-start": {
         const made = g.moved ? regionMode() === "pen" ? regionPolyFrac(g.imageRect, g.points || []) : boxRegion(g.imageRect, g.start, ev.world) : null;
         end();
-        const regionUid = made ? call("addRegionOn", { uid: g.uid, frac: made.frac, poly: made.poly }) : null;
+        const regionUid = made ? call2("addRegionOn", { uid: g.uid, frac: made.frac, poly: made.poly }) : null;
         if (!regionUid) return;
         beginConnect(g.uid, nearestSide(r.get(g.uid), ev.world), ev.world, regionUid, { sticky: true, moved: true });
         return;
@@ -60892,14 +60894,14 @@ function createInteractions({ actions, settings } = {}) {
         if (!made) {
           g.phase = "wait";
           g.points = null;
-          call("showMarquee", null);
-          call("showRegionPen", null);
-          call("connectHint", regionHint(), ev.screen);
+          call2("showMarquee", null);
+          call2("showRegionPen", null);
+          call2("connectHint", regionHint(), ev.screen);
           return;
         }
         end();
         const spec = { from: g.from, to: g.to, frac: made.frac, poly: made.poly, fromSide: g.fromSide, toSide: g.toSide };
-        Promise.resolve(call("addRegionEndpoint", g.fromBlock ? { ...spec, fromBlock: g.fromBlock } : spec)).then((uid) => {
+        Promise.resolve(call2("addRegionEndpoint", g.fromBlock ? { ...spec, fromBlock: g.fromBlock } : spec)).then((uid) => {
           if (uid) selectEdge(uid);
         }).catch(() => {
         });
@@ -60917,7 +60919,7 @@ function createInteractions({ actions, settings } = {}) {
         const aimed = (dom.kind === "label" || dom.kind === "edge") && dom.uid && dom.uid !== g.from ? b?.edges.get(dom.uid) : null;
         const aimedOk = Boolean(aimed && edgeMayTarget(aimed, b.edges));
         const bt = !aimedOk && hit && hit.uid !== g.from ? blockTargetFor(ev, hit.uid) : null;
-        const drop = !aimedOk && !bt?.row ? call("regionDrop", { from: g.from, client: ev.client }) : null;
+        const drop = !aimedOk && !bt?.row ? call2("regionDrop", { from: g.from, client: ev.client }) : null;
         const fromBlock = g.fromBlock || void 0;
         const withFrom = (payload) => fromBlock ? { ...payload, fromBlock } : payload;
         if (drop?.image && ev.alt && drop.imageRect && ev.world) {
@@ -60934,11 +60936,11 @@ function createInteractions({ actions, settings } = {}) {
             imageRect: drop.imageRect,
             pin: pin2
           };
-          call("clearBlockTarget");
-          call("connectHint", regionHint(), ev.screen);
+          call2("clearBlockTarget");
+          call2("connectHint", regionHint(), ev.screen);
           const spec = { from: g.from, fromSide: g.fromSide, point: pin2 };
           if (fromBlock) spec.fromBlock = fromBlock;
-          call("showTempWire", spec);
+          call2("showTempWire", spec);
           return;
         }
         end();
@@ -60946,7 +60948,7 @@ function createInteractions({ actions, settings } = {}) {
           const existing = sameEdge(b, g.from, aimed.uid, fromBlock, void 0);
           if (existing) selectEdge(existing.uid);
           else {
-            Promise.resolve(call("addEdge", withFrom({ from: g.from, to: aimed.uid, fromSide: g.fromSide, toSide: "auto" }))).then((uid) => {
+            Promise.resolve(call2("addEdge", withFrom({ from: g.from, to: aimed.uid, fromSide: g.fromSide, toSide: "auto" }))).then((uid) => {
               if (uid) selectEdge(uid);
             }).catch(() => {
             });
@@ -60966,7 +60968,7 @@ function createInteractions({ actions, settings } = {}) {
             const toSide = nearestSide(hr.get(toUid), ev.world);
             const payload = withFrom({ from: g.from, to: toUid, fromSide: g.fromSide, toSide });
             if (toBlock) payload.toBlock = toBlock;
-            Promise.resolve(call("addEdge", payload)).then((uid) => {
+            Promise.resolve(call2("addEdge", payload)).then((uid) => {
               if (uid) selectEdge(uid);
             }).catch(() => {
             });
@@ -60974,11 +60976,11 @@ function createInteractions({ actions, settings } = {}) {
         } else if (g.moved) {
           const d = DEFAULT_SIZES.card;
           const at = { x: ev.world.x, y: ev.world.y - d.h / 2 };
-          Promise.resolve(call("createCard", at)).then(async (uid) => {
+          Promise.resolve(call2("createCard", at)).then(async (uid) => {
             if (!uid) return;
-            await call("addEdge", withFrom({ from: g.from, to: uid, fromSide: g.fromSide, toSide: "auto" }));
+            await call2("addEdge", withFrom({ from: g.from, to: uid, fromSide: g.fromSide, toSide: "auto" }));
             selectItems([uid]);
-            call("enterEdit", uid);
+            call2("enterEdit", uid);
           }).catch(() => {
           });
         }
@@ -60996,8 +60998,8 @@ function createInteractions({ actions, settings } = {}) {
     if (state.gesture?.kind === "pinch" && fingers.size >= 2) return;
     if (!state.gesture) return;
     const g = state.gesture;
-    if (g.kind === "move" && !g.dup && g.uids.length) call("previewMove", g.uids, 0, 0);
-    if (g.kind === "resize") call("previewRects", []);
+    if (g.kind === "move" && !g.dup && g.uids.length) call2("previewMove", g.uids, 0, 0);
+    if (g.kind === "resize") call2("previewRects", []);
     end();
   };
   const onDblClick = (ev) => {
@@ -61007,7 +61009,7 @@ function createInteractions({ actions, settings } = {}) {
     const b = board2();
     if (t.kind === "item" && t.uid && t.region && t.row) {
       selectRegion(t.uid, t.row);
-      call("editRegionCaption", { card: t.uid, region: t.row });
+      call2("editRegionCaption", { card: t.uid, region: t.row });
       return;
     }
     if (t.kind === "item" && t.uid) {
@@ -61015,44 +61017,44 @@ function createInteractions({ actions, settings } = {}) {
       if (!item) return;
       if (item.kind === "page" && t.part === "header") {
         selectItems([t.uid]);
-        call("renamePage", t.uid);
+        call2("renamePage", t.uid);
         return;
       }
-      if (item.kind === "board" || call("isBoardCard", t.uid)) call("openBoard", t.uid);
+      if (item.kind === "board" || call2("isBoardCard", t.uid)) call2("openBoard", t.uid);
       else if (editingUid() !== t.uid) {
         selectItems([t.uid]);
-        call("enterEdit", t.uid);
+        call2("enterEdit", t.uid);
       }
       return;
     }
     if (t.kind === "grip") {
       if (t.uid && b?.items.has(t.uid) && !isPinned(t.uid)) {
-        if (t.part === "bottom") call(b.items.get(t.uid).type === "section" ? "fitSection" : "fitHeight", t.uid);
-        else if (t.part === "corner" || !t.part) call("resetSize", [t.uid]);
+        if (t.part === "bottom") call2(b.items.get(t.uid).type === "section" ? "fitSection" : "fitHeight", t.uid);
+        else if (t.part === "corner" || !t.part) call2("resetSize", [t.uid]);
       }
       return;
     }
     if (t.kind === "port" && t.side === "bottom") {
-      if (t.uid && b?.items.has(t.uid) && !isPinned(t.uid)) call(b.items.get(t.uid).type === "section" ? "fitSection" : "fitHeight", t.uid);
+      if (t.uid && b?.items.has(t.uid) && !isPinned(t.uid)) call2(b.items.get(t.uid).type === "section" ? "fitSection" : "fitHeight", t.uid);
       return;
     }
     if (t.kind === "section-title" && t.uid) {
       selectItems([t.uid]);
-      call("renameSection", t.uid);
+      call2("renameSection", t.uid);
       return;
     }
     if ((t.kind === "label" || t.kind === "edge") && t.uid) {
       selectEdge(t.uid);
-      call("editLabel", t.uid);
+      call2("editLabel", t.uid);
       return;
     }
     if (t.kind === "section-border" || t.kind === "port" || t.kind === "link") return;
     if (state.tool !== "select") return;
     const d = DEFAULT_SIZES.card;
-    Promise.resolve(call("createCard", { x: ev.world.x - d.w / 2, y: ev.world.y - d.h / 2 })).then((uid) => {
+    Promise.resolve(call2("createCard", { x: ev.world.x - d.w / 2, y: ev.world.y - d.h / 2 })).then((uid) => {
       if (uid) {
         selectItems([uid]);
-        call("enterEdit", uid);
+        call2("enterEdit", uid);
       }
     }).catch(() => {
     });
@@ -61068,7 +61070,7 @@ function createInteractions({ actions, settings } = {}) {
     if ((t.kind === "item" || t.kind === "section-title" || t.kind === "section-border") && t.uid && b?.items.has(t.uid)) {
       const item = b.items.get(t.uid);
       uid = t.uid;
-      if (editing && editing !== uid) call("exitEdit");
+      if (editing && editing !== uid) call2("exitEdit");
       if (state.selection.has(uid) && state.selection.size > 1) kind = "multi";
       else {
         if (!state.selection.has(uid) || state.edge || state.link) selectItems([uid]);
@@ -61083,7 +61085,7 @@ function createInteractions({ actions, settings } = {}) {
       uid = t.key || t.uid;
       if (state.link !== uid) selectLink(uid);
     }
-    call("openMenu", { kind, uid, screen: ev.screen, world: ev.world, selection: [...state.selection] });
+    call2("openMenu", { kind, uid, screen: ev.screen, world: ev.world, selection: [...state.selection] });
     return true;
   };
   let wheelTimer = null;
@@ -61095,13 +61097,13 @@ function createInteractions({ actions, settings } = {}) {
     }
     if (!wheelZooming) return;
     wheelZooming = false;
-    call("setGesturing", false, { moved: false });
+    call2("setGesturing", false, { moved: false });
   };
   const armWheelZoom = () => {
     if (!wheelZooming) {
       if (state.gesture) return;
       wheelZooming = true;
-      call("setGesturing", true, { wheelZoom: true });
+      call2("setGesturing", true, { wheelZoom: true });
     }
     if (wheelTimer) clearTimeout(wheelTimer);
     wheelTimer = setTimeout(() => {
@@ -61120,34 +61122,34 @@ function createInteractions({ actions, settings } = {}) {
     if (pinch || wheelMode === "zoom") {
       const factor = Math.exp(-(ev.deltaY || 0) * (pinch ? 0.01 : 2e-3));
       armWheelZoom();
-      call("setViewport", zoomAt(v, ev.screen, factor));
+      call2("setViewport", zoomAt(v, ev.screen, factor));
     } else {
-      call("setViewport", { x: v.x - (ev.deltaX || 0), y: v.y - (ev.deltaY || 0), zoom: v.zoom });
+      call2("setViewport", { x: v.x - (ev.deltaX || 0), y: v.y - (ev.deltaY || 0), zoom: v.zoom });
     }
     return true;
   };
   const zoomBy = (factor) => {
-    const s = call("size") || { width: 0, height: 0 };
-    call("animateViewport", zoomAt(vp(), { x: s.width / 2, y: s.height / 2 }, factor));
+    const s = call2("size") || { width: 0, height: 0 };
+    call2("animateViewport", zoomAt(vp(), { x: s.width / 2, y: s.height / 2 }, factor));
   };
   const zoomTo = (z) => {
-    const s = call("size") || { width: 0, height: 0 };
+    const s = call2("size") || { width: 0, height: 0 };
     const v = vp();
-    call("animateViewport", zoomAt(v, { x: s.width / 2, y: s.height / 2 }, z / (v.zoom || 1)));
+    call2("animateViewport", zoomAt(v, { x: s.width / 2, y: s.height / 2 }, z / (v.zoom || 1)));
   };
   const deleteSelection = (withContents) => {
     if (state.region?.uid) {
       const uid = state.region.uid;
       selectItems([]);
-      call("deleteRegion", uid);
-      call("toast", { message: "Region deleted", action: { label: "Undo", run: () => call("undo") } });
+      call2("deleteRegion", uid);
+      call2("toast", { message: "Region deleted", action: { label: "Undo", run: () => call2("undo") } });
       return true;
     }
     if (state.edge) {
       const uid = state.edge;
       selectItems([]);
-      call("deleteEdges", [uid]);
-      call("toast", { message: "Connection deleted", action: { label: "Undo", run: () => call("undo") } });
+      call2("deleteEdges", [uid]);
+      call2("toast", { message: "Connection deleted", action: { label: "Undo", run: () => call2("undo") } });
       return true;
     }
     if (!state.selection.size) return false;
@@ -61156,12 +61158,12 @@ function createInteractions({ actions, settings } = {}) {
     const blocked3 = (u) => isPinned(u) || Boolean(withContents) && Boolean(b) && [...descendantsOf(b, u)].some(isPinned);
     const uids = all.filter((u) => !blocked3(u));
     const kept = all.filter(blocked3);
-    if (kept.length) call("toast", { message: "Pinned items were not deleted. Unpin first." });
+    if (kept.length) call2("toast", { message: "Pinned items were not deleted. Unpin first." });
     if (!uids.length) return true;
     selectItems(kept);
-    Promise.resolve(call("deleteItems", uids, { withContents: Boolean(withContents) })).then((done3) => {
+    Promise.resolve(call2("deleteItems", uids, { withContents: Boolean(withContents) })).then((done3) => {
       if (done3 === null) return;
-      call("toast", { message: "Deleted", action: { label: "Undo", run: () => call("undo") } });
+      call2("toast", { message: "Deleted", action: { label: "Undo", run: () => call2("undo") } });
     }, () => {
     });
     return true;
@@ -61204,19 +61206,19 @@ function createInteractions({ actions, settings } = {}) {
       onPointerCancel();
       return true;
     }
-    if (call("closeQuickLook")) return true;
-    if (call("closeOverlay")) return true;
-    if (call("exitPresent")) return true;
+    if (call2("closeQuickLook")) return true;
+    if (call2("closeOverlay")) return true;
+    if (call2("exitPresent")) return true;
     if (isEditing()) {
-      call("exitEdit");
+      call2("exitEdit");
       return true;
     }
-    if (call("exitFocus")) return true;
+    if (call2("exitFocus")) return true;
     if (clearSelection()) return true;
-    if (call("popBoard")) return true;
-    if (call("overlayEscapeRecent")) return true;
-    if (call("isFullscreen")) {
-      call("setFullscreen", false);
+    if (call2("popBoard")) return true;
+    if (call2("overlayEscapeRecent")) return true;
+    if (call2("isFullscreen")) {
+      call2("setFullscreen", false);
       return true;
     }
     return false;
@@ -61231,38 +61233,38 @@ function createInteractions({ actions, settings } = {}) {
       case "space":
         if (!state.space) {
           state.space = true;
-          call("setSpace", true);
+          call2("setSpace", true);
         }
         return true;
       case "escape":
         return escape();
       case "presentNext":
-        call("presentNext");
+        call2("presentNext");
         return true;
       case "presentPrev":
-        call("presentPrev");
+        call2("presentPrev");
         return true;
       case "selectAll":
         if (b) selectItems([...b.items.keys()]);
         return true;
       case "wrap":
-        if (state.selection.size) call("wrapInSection", [...state.selection]);
+        if (state.selection.size) call2("wrapInSection", [...state.selection]);
         return true;
       case "duplicate":
         if (!state.selection.size) return false;
-        call("duplicateItems", [...state.selection], { dx: 24, dy: 24, asRef: false });
+        call2("duplicateItems", [...state.selection], { dx: 24, dy: 24, asRef: false });
         return true;
       case "fold":
-        call("foldSelection");
+        call2("foldSelection");
         return true;
       case "undo":
-        call("undo");
+        call2("undo");
         return true;
       case "redo":
-        call("redo");
+        call2("redo");
         return true;
       case "search":
-        call("openSearch");
+        call2("openSearch");
         return true;
       case "zoomIn":
         zoomBy(1.2);
@@ -61271,16 +61273,16 @@ function createInteractions({ actions, settings } = {}) {
         zoomBy(1 / 1.2);
         return true;
       case "back":
-        call("historyBack");
+        call2("historyBack");
         return true;
       case "forward":
-        call("historyForward");
+        call2("historyForward");
         return true;
       case "fitAll":
-        call("fitAll");
+        call2("fitAll");
         return true;
       case "fitSelection":
-        if (state.selection.size) call("fitSelection", [...state.selection]);
+        if (state.selection.size) call2("fitSelection", [...state.selection]);
         return true;
       case "zoomReset":
         zoomTo(1);
@@ -61292,16 +61294,16 @@ function createInteractions({ actions, settings } = {}) {
         const uid = [...state.selection][0];
         const item = b?.items.get(uid);
         if (item?.kind !== "page") return false;
-        call("renamePage", uid);
+        call2("renamePage", uid);
         return true;
       }
       case "enter": {
         if (state.selection.size !== 1) return false;
         const uid = [...state.selection][0];
         const item = b?.items.get(uid);
-        if (item?.kind === "board" || item && call("isBoardCard", uid)) call("openBoard", uid);
-        else if (item?.type === "section") call("renameSection", uid);
-        else call("enterEdit", uid);
+        if (item?.kind === "board" || item && call2("isBoardCard", uid)) call2("openBoard", uid);
+        else if (item?.type === "section") call2("renameSection", uid);
+        else call2("enterEdit", uid);
         return true;
       }
       case "nearest": {
@@ -61319,7 +61321,7 @@ function createInteractions({ actions, settings } = {}) {
         if (!uids.length) return true;
         if (ev.repeat !== true) {
           flushNudge();
-          call("commitMove", uids, dx, dy);
+          call2("commitMove", uids, dx, dy);
           return true;
         }
         const same3 = state.nudge && state.nudge.uids.length === uids.length && state.nudge.uids.every((u, i) => u === uids[i]);
@@ -61327,7 +61329,7 @@ function createInteractions({ actions, settings } = {}) {
         if (!state.nudge) state.nudge = { uids, dx: 0, dy: 0, timer: null };
         state.nudge.dx += dx;
         state.nudge.dy += dy;
-        call("previewMove", uids, state.nudge.dx, state.nudge.dy);
+        call2("previewMove", uids, state.nudge.dx, state.nudge.dy);
         if (state.nudge.timer != null) clearTimeout(state.nudge.timer);
         state.nudge.timer = setTimeout(flushNudge, NUDGE_IDLE_MS);
         return true;
@@ -61335,38 +61337,38 @@ function createInteractions({ actions, settings } = {}) {
       case "outline":
         return ev.tabOwned === false ? false : selectOutline(ev.shift);
       case "links":
-        call("cycleLinks");
+        call2("cycleLinks");
         return true;
       case "info":
-        call("openInfo");
+        call2("openInfo");
         return true;
       case "focus":
-        call("toggleFocus");
+        call2("toggleFocus");
         return true;
       case "quickLook":
-        call("quickLook");
+        call2("quickLook");
         return true;
       case "present":
-        call("present");
+        call2("present");
         return true;
       case "saveView":
-        call("saveView");
+        call2("saveView");
         return true;
       case "memoryLane":
-        call("memoryLane");
+        call2("memoryLane");
         return true;
       case "help":
-        call("toggleShortcuts");
+        call2("toggleShortcuts");
         return true;
       case "boardTab":
-        call("selectBoardTab", row4.tab);
+        call2("selectBoardTab", row4.tab);
         return true;
       case "expand": {
         if (state.selection.size !== 1) return false;
         const uid = lastSelected();
         const item = b?.items.get(uid);
         if (!item || item.type !== "card" || item.kind === "board") return false;
-        call("expandOutline", uid);
+        call2("expandOutline", uid);
         return true;
       }
       default:
@@ -61381,13 +61383,13 @@ function createInteractions({ actions, settings } = {}) {
       return true;
     }
     if (ev.inputFocused) {
-      if (key === "Escape" && isEditing() && !call("autocompleteOpen")) {
-        call("exitEdit");
+      if (key === "Escape" && isEditing() && !call2("autocompleteOpen")) {
+        call2("exitEdit");
         return true;
       }
       return false;
     }
-    if (call("presentActive") && !mod && !ev.alt) {
+    if (call2("presentActive") && !mod && !ev.alt) {
       const present2 = findShortcut(ev, "present");
       if (present2) return runShortcut(present2, ev);
     }
@@ -61403,7 +61405,7 @@ function createInteractions({ actions, settings } = {}) {
     if (ev.code === "Space" || ev.key === " ") {
       if (state.space) {
         state.space = false;
-        call("setSpace", false);
+        call2("setSpace", false);
       }
       return true;
     }
@@ -62360,7 +62362,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     }
     return { url, token };
   };
-  const call = (url, init, signal) => fetchFn(url, {
+  const call2 = (url, init, signal) => fetchFn(url, {
     ...init,
     targetAddressSpace: "loopback",
     signal: signal ?? init?.signal
@@ -62385,7 +62387,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     }
     const timer = withTimeout(timeoutMs);
     try {
-      const res = await call(`${url}/v1/health`, {
+      const res = await call2(`${url}/v1/health`, {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` }
       }, timer.signal);
@@ -62453,7 +62455,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     if (typeof fetchFn === "function") {
       const timer = withTimeout(timeoutMs);
       try {
-        const res = await call(`${url}/v1/health`, { method: "GET" }, timer.signal);
+        const res = await call2(`${url}/v1/health`, { method: "GET" }, timer.signal);
         let body = null;
         try {
           body = await res.json();
@@ -62474,7 +62476,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     if (!token || typeof fetchFn !== "function") return null;
     const timer = withTimeout(timeoutMs);
     try {
-      const res = await call(`${url}/v1/models`, { method: "GET", headers: { Authorization: `Bearer ${token}` } }, timer.signal);
+      const res = await call2(`${url}/v1/models`, { method: "GET", headers: { Authorization: `Bearer ${token}` } }, timer.signal);
       if (res.status < 200 || res.status >= 300) return null;
       return await res.json();
     } catch {
@@ -62506,7 +62508,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     const fetchToken = async () => {
       const timer = withTimeout(timeoutMs, signal);
       try {
-        return await call(`${url}/v1/pair`, { method: "GET" }, timer.signal);
+        return await call2(`${url}/v1/pair`, { method: "GET" }, timer.signal);
       } finally {
         timer.clear();
       }
@@ -62533,7 +62535,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
       const timer = withTimeout(timeoutMs, signal);
       let asked;
       try {
-        asked = await call(`${url}/v1/pair/request`, { method: "POST" }, timer.signal);
+        asked = await call2(`${url}/v1/pair/request`, { method: "POST" }, timer.signal);
       } finally {
         timer.clear();
       }
@@ -62560,7 +62562,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     const { url, token } = config();
     if (!token || typeof fetchFn !== "function") return false;
     try {
-      const res = await call(`${url}/v1/models/download`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      const res = await call2(`${url}/v1/models/download`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       invalidate();
       return res.status === 202 || res.status === 200;
     } catch {
@@ -62571,7 +62573,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     const { url, token } = config();
     if (!token || typeof fetchFn !== "function") return false;
     try {
-      const res = await call(`${url}/v1/models/download`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      const res = await call2(`${url}/v1/models/download`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
       invalidate();
       return res.status === 200;
     } catch {
@@ -62580,12 +62582,12 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
   }
   async function readJob(base2, token, jobId, { onProgress, onPage, signal }) {
     const headers = { Authorization: `Bearer ${token}` };
-    const events = await call(`${base2}/v1/jobs/${encodeURIComponent(jobId)}/events`, {
+    const events = await call2(`${base2}/v1/jobs/${encodeURIComponent(jobId)}/events`, {
       method: "GET",
       headers
     }, signal);
     await readSSE(events, { onProgress, onPage });
-    const finalRes = await call(`${base2}/v1/jobs/${encodeURIComponent(jobId)}`, {
+    const finalRes = await call2(`${base2}/v1/jobs/${encodeURIComponent(jobId)}`, {
       method: "GET",
       headers
     }, signal);
@@ -62618,12 +62620,12 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     const optsHash = await optionsHash(options || {});
     const headers = { Authorization: `Bearer ${token}` };
     const cacheUrl = `${url}/v1/cache/${encodeURIComponent(sha)}?opts=${encodeURIComponent(optsHash)}`;
-    const head = await call(cacheUrl, { method: "HEAD", headers }, signal);
+    const head = await call2(cacheUrl, { method: "HEAD", headers }, signal);
     if (head.status === 200) {
-      const got = await call(cacheUrl, { method: "GET", headers }, signal);
+      const got = await call2(cacheUrl, { method: "GET", headers }, signal);
       return { doc: await got.json(), cached: true, sha256: sha, optsHash, job: null };
     }
-    const posted = await call(`${url}/v1/jobs`, {
+    const posted = await call2(`${url}/v1/jobs`, {
       method: "POST",
       headers: {
         ...headers,
@@ -62645,7 +62647,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
   }
   async function cancel(jobId) {
     const { url, token } = config();
-    const res = await call(`${url}/v1/jobs/${encodeURIComponent(jobId)}`, {
+    const res = await call2(`${url}/v1/jobs/${encodeURIComponent(jobId)}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -62664,7 +62666,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
       tables: "accurate",
       scope: { page, bbox }
     };
-    const posted = await call(`${url}/v1/jobs`, {
+    const posted = await call2(`${url}/v1/jobs`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -62706,7 +62708,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     const options = {};
     if (pages && pages.length) options.pages = pages;
     if (cells && cells.length) options.cells = cells.map((c) => ({ page: c.page, bbox: c.bbox }));
-    const res = await call(`${url}/v1/ocr`, {
+    const res = await call2(`${url}/v1/ocr`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -62737,7 +62739,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     try {
       const { url, token } = config();
       if (!token || typeof fetchFn !== "function") return null;
-      const res = await call(`${url}/v1/ocr-image`, {
+      const res = await call2(`${url}/v1/ocr-image`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -62774,7 +62776,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     const options = {};
     if (pages && pages.length) options.pages = pages;
     if (regions && regions.length) options.tables = regions.map((t) => ({ page: t.page, bbox: t.bbox }));
-    const res = await call(`${url}/v1/tables`, {
+    const res = await call2(`${url}/v1/tables`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -62817,7 +62819,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     if (regions && regions.length) options.tables = regions.map((t) => ({ page: t.page, bbox: t.bbox }));
     if (numericPages && numericPages.length) options.numericPages = numericPages;
     if (boxMode) options.boxMode = boxMode;
-    const res = await call(`${url}/v1/vlm`, {
+    const res = await call2(`${url}/v1/vlm`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -67366,11 +67368,11 @@ function createPageChips({
     const mine = bound.splice(bound.findIndex((entry) => entry[0] === node2));
     chipNode.__release = () => mine.forEach(off);
   };
-  const release = () => {
+  const release2 = () => {
     chipNode?.__release?.();
   };
   const hideAll = () => {
-    release();
+    release2();
     hide();
   };
   const onMove = (event) => {
@@ -67412,7 +67414,7 @@ function createPageChips({
     }
     stopTimer();
     if (hit.id === current3) return;
-    release();
+    release2();
     show(hit, el2, parsed);
   };
   const clearDots = () => {
@@ -68182,7 +68184,7 @@ function startPlacement({
     win2?.addEventListener?.(type, fn, true);
     bound.push([type, fn]);
   };
-  const release = () => {
+  const release2 = () => {
     while (bound.length) {
       const [type, fn] = bound.pop();
       win2?.removeEventListener?.(type, fn, true);
@@ -68197,9 +68199,9 @@ function startPlacement({
     }
     const later = win2?.setTimeout || globalThis.setTimeout;
     try {
-      later(release, SWALLOW_MS);
+      later(release2, SWALLOW_MS);
     } catch {
-      release();
+      release2();
     }
   };
   const cancel = (reason = "cancel") => {
@@ -68266,7 +68268,7 @@ function startPlacement({
     ghost,
     dispose() {
       if (!done3) cancel("dispose");
-      release();
+      release2();
     }
   };
 }
@@ -74878,13 +74880,13 @@ ${note}` };
       else history.unshift({ role: "user", content: note });
     }
     const opened = openChat({ conversationHistory: history, model: modelSel()?.value || void 0, style: style?.name || "", forcedTools: extra.forcedTools || null }, win2);
-    const settle2 = (ok) => {
+    const settle3 = (ok) => {
       if (dead) return;
       if (ok) close();
       else say("Live AI's chat did not open. This conversation stays here.");
     };
-    if (opened && typeof opened.then === "function") void opened.then(settle2, () => settle2(false));
-    else settle2(Boolean(opened));
+    if (opened && typeof opened.then === "function") void opened.then(settle3, () => settle3(false));
+    else settle3(Boolean(opened));
   };
   const openInLiveAI = () => handOff({});
   const escape = (target) => {
@@ -79412,7 +79414,7 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     node2.addEventListener(type, fn);
     store.push([node2, type, fn]);
   };
-  const release = (store) => {
+  const release2 = (store) => {
     for (const [node2, type, fn] of store.splice(0)) node2.removeEventListener?.(type, fn);
   };
   for (const type of ["pointerdown", "mousedown", "dblclick"]) bindTo(heldStatic)(el2, type, stop3);
@@ -79455,7 +79457,7 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     const sig = JSON.stringify(rows);
     if (sig === signature) return;
     signature = sig;
-    release(heldRows);
+    release2(heldRows);
     list.innerHTML = "";
     for (const row4 of rows) {
       const node2 = doc.createElement("div");
@@ -79547,7 +79549,7 @@ function renderEnginesPanel(doc, parent, deps = {}) {
       existing.textContent = cloudRouteSentence(prefs);
       return;
     }
-    release(heldSheet);
+    release2(heldSheet);
     sheetHost.innerHTML = "";
     const box2 = doc.createElement("div");
     box2.className = "pxd-engines__sheet";
@@ -79632,7 +79634,7 @@ function renderEnginesPanel(doc, parent, deps = {}) {
       paintCloudSheet();
       return;
     }
-    release(heldSheet);
+    release2(heldSheet);
     sheetHost.innerHTML = "";
     if (sheetKind !== "helper") return;
     const sheet = helperSheet(state?.helper?.state, platform);
@@ -79710,7 +79712,7 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     if (id === "cloud-setup") {
       sheetKind = sheetKind === "cloud" ? null : "cloud";
       if (sheetKind !== "cloud") {
-        release(heldSheet);
+        release2(heldSheet);
         sheetHost.innerHTML = "";
       }
       paintSheet();
@@ -79809,9 +79811,9 @@ function renderEnginesPanel(doc, parent, deps = {}) {
   function dispose() {
     disposed = true;
     stopTimer();
-    release(heldRows);
-    release(heldSheet);
-    release(heldStatic);
+    release2(heldRows);
+    release2(heldSheet);
+    release2(heldStatic);
     el2.remove?.();
   }
   parent.append(el2);
@@ -79929,7 +79931,7 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
   const stop3 = (event) => event.stopPropagation?.();
   const heldStatic = [];
   const heldButtons = [];
-  const release = (store) => {
+  const release2 = (store) => {
     for (const [node2, type, fn] of store.splice(0)) node2.removeEventListener?.(type, fn);
   };
   for (const type of ["pointerdown", "mousedown", "dblclick"]) {
@@ -79947,7 +79949,7 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
     generation += 1;
   };
   const paint2 = (model) => {
-    release(heldButtons);
+    release2(heldButtons);
     el2.innerHTML = "";
     const text4 = doc.createElement("span");
     text4.className = "pxd-parse-status__text";
@@ -79990,7 +79992,7 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
     if (!model) {
       current3 = null;
       clearTimer();
-      release(heldButtons);
+      release2(heldButtons);
       el2.innerHTML = "";
       el2.setAttribute("hidden", "");
       el2.setAttribute("data-kind", "");
@@ -80008,7 +80010,7 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
           hideTimer = null;
           if (!disposed && mine === generation && current3?.kind === "helper-done") {
             current3 = null;
-            release(heldButtons);
+            release2(heldButtons);
             el2.innerHTML = "";
             el2.setAttribute("hidden", "");
             el2.setAttribute("data-kind", "");
@@ -80023,8 +80025,8 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
   function dispose() {
     disposed = true;
     clearTimer();
-    release(heldButtons);
-    release(heldStatic);
+    release2(heldButtons);
+    release2(heldStatic);
     el2.remove?.();
   }
   parent.append(el2);
@@ -84561,7 +84563,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now5, renderFirst 
     job.counted = true;
     if (spentCount < WARM_MAX) spentCount += 1;
   }
-  function settle2(job, value) {
+  function settle3(job, value) {
     if (job.done) return;
     job.done = true;
     if (current3 === job) current3 = null;
@@ -84579,72 +84581,72 @@ function createPdfWarm({ doc, root, host, store, timers, now: now5, renderFirst 
   function begin(job) {
     try {
       if (job.gen !== generation || job.done) {
-        settle2(job, null);
+        settle3(job, null);
         return;
       }
       const url = coverKey(job.card.url);
       const blockUid3 = typeof job.card.blockUid === "string" ? job.card.blockUid.trim() : "";
       if (!url || !blockUid3 || !doc || !root || typeof host?.renderBlock !== "function") {
         outcomes.set(job.uid, "skipped");
-        settle2(job, null);
+        settle3(job, null);
         return;
       }
       const read2 = store && typeof store.get === "function" ? store.get(url) : null;
       Promise.resolve(read2).then((record) => {
         if (job.gen !== generation || job.done) {
-          settle2(job, null);
+          settle3(job, null);
           return null;
         }
         if (hasFirst(record) && coverValid(record, job.card.hash)) {
           outcomes.set(job.uid, "ready");
           if (!needsPageTitle(record) || typeof renderFirst !== "function" || !firstPageAllowed(url)) {
-            settle2(job, record);
+            settle3(job, record);
             return null;
           }
           return Promise.resolve().then(() => renderFirst({ url, titleOnly: true, hash: job.card.hash })).catch(() => null).then(async (read3) => {
             if (job.gen !== generation || job.done) {
-              settle2(job, null);
+              settle3(job, null);
               return null;
             }
             if (read3 && read3.busy === true) {
-              settle2(job, null);
+              settle3(job, null);
               return null;
             }
             const next = staleRead(record, read3);
             if (!next) {
               finishSlot(job);
-              settle2(job, null);
+              settle3(job, null);
               return null;
             }
             const stored = await storeTitle(record, next);
             finishSlot(job);
-            settle2(job, stored || record);
+            settle3(job, stored || record);
             return null;
           });
         }
         const viaPdfjs = typeof renderFirst === "function" && firstPageAllowed(url) ? Promise.resolve().then(() => renderFirst({ url, maxW: COVER_MAX_W, hash: job.card.hash })).catch(() => null) : Promise.resolve(null);
         return viaPdfjs.then(async (shot2) => {
           if (job.gen !== generation || job.done) {
-            settle2(job, null);
+            settle3(job, null);
             return null;
           }
           if (shot2 && shot2.blob) {
             const stored = await storeFirst(url, shot2, job.card.hash, record);
             if (job.gen !== generation || job.done) {
-              settle2(job, null);
+              settle3(job, null);
               return null;
             }
             if (stored) {
               paths.pdfjs += 1;
               outcomes.set(job.uid, "ready");
               finishSlot(job);
-              settle2(job, stored);
+              settle3(job, stored);
               return null;
             }
           }
           if (foreignReader(doc, null)) {
             outcomes.set(job.uid, "skipped");
-            settle2(job, null);
+            settle3(job, null);
             return null;
           }
           paths.reader += 1;
@@ -84653,13 +84655,13 @@ function createPdfWarm({ doc, root, host, store, timers, now: now5, renderFirst 
       }).catch(() => {
         if (!job.done) {
           outcomes.set(job.uid, "none");
-          settle2(job, null);
+          settle3(job, null);
         }
       });
     } catch {
       if (!job.done) {
         outcomes.set(job.uid, "none");
-        settle2(job, null);
+        settle3(job, null);
       }
     }
   }
@@ -84681,7 +84683,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now5, renderFirst 
     } catch {
       outcomes.set(job.uid, "none");
       finishSlot(job);
-      settle2(job, null);
+      settle3(job, null);
       return null;
     }
     job.holder = holder;
@@ -84692,12 +84694,12 @@ function createPdfWarm({ doc, root, host, store, timers, now: now5, renderFirst 
       teardown(job);
       outcomes.set(job.uid, "error");
       finishSlot(job);
-      settle2(job, null);
+      settle3(job, null);
       return null;
     }
     if (job.gen !== generation || job.done) {
       teardown(job);
-      settle2(job, null);
+      settle3(job, null);
       return null;
     }
     job.killId = arm3(time, () => fail4(job, "error"), WARM_TIMEOUT_MS);
@@ -84720,17 +84722,17 @@ function createPdfWarm({ doc, root, host, store, timers, now: now5, renderFirst 
       }, () => job.gen !== generation || job.done).then((record) => {
         teardown(job);
         if (job.gen !== generation) {
-          settle2(job, null);
+          settle3(job, null);
           return;
         }
         outcomes.set(job.uid, record ? "ready" : "none");
         finishSlot(job);
-        settle2(job, record);
+        settle3(job, record);
       }).catch(() => {
         teardown(job);
         outcomes.set(job.uid, "none");
         finishSlot(job);
-        settle2(job, null);
+        settle3(job, null);
       });
     };
     look();
@@ -84741,7 +84743,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now5, renderFirst 
     teardown(job);
     outcomes.set(job.uid, status);
     finishSlot(job);
-    settle2(job, null);
+    settle3(job, null);
   }
   function cancelJob(job) {
     job.gen = -1;
@@ -84750,7 +84752,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now5, renderFirst 
     disarm(time, job.pollId);
     teardown(job);
     if (!job.counted && outcomes.get(job.uid) === "loading") outcomes.set(job.uid, "idle");
-    settle2(job, null);
+    settle3(job, null);
   }
   return {
     request(card2) {
@@ -84786,7 +84788,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now5, renderFirst 
         job.startId = arm3(time, () => begin(job), 0);
         if (job.startId == null) {
           outcomes.set(uid, "skipped");
-          settle2(job, null);
+          settle3(job, null);
         }
         return promise;
       } catch {
@@ -90732,18 +90734,44 @@ init_query_backend();
 // src/host/local-saves.js
 var SAVE_LAG_MS = 1e3;
 var DOT_CHECK_MS = 1e3;
+var EDIT_IDLE_MS = 2e3;
+var BUSY_IDLE_MS = 5e3;
+var BLUR_IDLE_MS = 400;
 var ICON2 = ".rm-sync__icon";
 var SAVING = /saving/;
 var hubs = /* @__PURE__ */ new WeakMap();
 var isEditor = (node2) => node2?.tagName === "TEXTAREA" && Boolean(node2.classList?.contains?.("rm-block-input"));
 var inBlock = (node2) => Boolean(node2?.closest?.(".roam-block, .rm-block"));
-function fire(hub) {
-  for (const cb of [...hub.subs]) {
+function call(set, why) {
+  for (const cb of [...set]) {
     try {
-      cb();
+      cb(why);
     } catch {
     }
   }
+}
+function clearEdit(hub, win2) {
+  for (const k of ["keys", "quiet", "blur"]) {
+    if (hub[k]) win2.clearTimeout(hub[k]);
+    hub[k] = null;
+  }
+}
+function settle2(hub, win2) {
+  const why = hub.keys ? "typing" : hub.quiet ? "busy" : "";
+  clearEdit(hub, win2);
+  if (why) call(hub.edits, why);
+}
+function arm4(hub, win2, k, ms) {
+  if (!hub.edits.size) return;
+  if (hub[k]) win2.clearTimeout(hub[k]);
+  hub[k] = win2.setTimeout(() => {
+    hub[k] = null;
+    call(hub.edits, k === "keys" ? "typing" : "busy");
+  }, ms);
+}
+function fire(hub, win2, lag = false) {
+  if (!lag) arm4(hub, win2, "quiet", BUSY_IDLE_MS);
+  call(hub.subs);
 }
 function watchDot(doc, hub) {
   if (hub.mo && hub.box?.isConnected !== false) return;
@@ -90766,7 +90794,7 @@ function watchDot(doc, hub) {
   try {
     const mo = new MO((records) => {
       const hit = records.some((r) => r?.target?.classList?.contains?.("rm-sync__icon") && (SAVING.test(String(r.oldValue || "")) || SAVING.test(String(r.target.className || ""))));
-      if (hit) fire(hub);
+      if (hit) fire(hub, hub.win);
     });
     mo.observe(box2, { attributes: true, attributeFilter: ["class"], attributeOldValue: true, subtree: true });
     hub.mo = mo;
@@ -90776,28 +90804,38 @@ function watchDot(doc, hub) {
   }
   if (hub.lost && hub.mo) {
     hub.lost = false;
-    fire(hub);
+    fire(hub, hub.win);
   }
 }
 function start(doc, hub) {
   const win2 = doc.defaultView || globalThis;
+  hub.win = win2;
   hub.onInput = (event) => {
     if (!isEditor(event?.target)) return;
-    fire(hub);
+    if (hub.blur) win2.clearTimeout(hub.blur);
+    hub.blur = null;
+    arm4(hub, win2, "keys", EDIT_IDLE_MS);
+    fire(hub, win2);
     if (hub.lag) win2.clearTimeout(hub.lag);
     hub.lag = win2.setTimeout(() => {
       hub.lag = null;
-      fire(hub);
+      fire(hub, win2, true);
     }, SAVE_LAG_MS);
   };
   hub.onDone = (event) => {
     if (event?.type === "focusout" && !isEditor(event.target)) return;
     if (event?.type === "change" && !inBlock(event.target)) return;
-    fire(hub);
+    fire(hub, win2);
+    if (event?.type !== "focusout" || !hub.edits.size) return;
+    if (hub.blur) win2.clearTimeout(hub.blur);
+    hub.blur = win2.setTimeout(() => {
+      hub.blur = null;
+      if (!isEditor(doc.activeElement)) settle2(hub, win2);
+    }, BLUR_IDLE_MS);
   };
   const check = () => {
     hub.check = win2.setTimeout(check, DOT_CHECK_MS);
-    watchDot(doc, hub);
+    if (hub.subs.size) watchDot(doc, hub);
   };
   hub.stop = () => {
     doc.removeEventListener?.("input", hub.onInput, true);
@@ -90819,22 +90857,59 @@ function start(doc, hub) {
   for (const type of ["focusout", "change", "drop"]) doc.addEventListener?.(type, hub.onDone, true);
   hub.check = win2.setTimeout(check, DOT_CHECK_MS);
 }
+function hubOf(doc) {
+  let hub = hubs.get(doc);
+  if (!hub) {
+    hub = { subs: /* @__PURE__ */ new Set(), edits: /* @__PURE__ */ new Set(), mo: null, box: null, lag: null, check: null, lost: false, keys: null, quiet: null, blur: null, stop: null };
+    hubs.set(doc, hub);
+  }
+  if (!hub.stop) start(doc, hub);
+  return hub;
+}
+function release(hub, set, token) {
+  if (!set.delete(token)) return;
+  if (!hub.edits.size && hub.win) clearEdit(hub, hub.win);
+  if (hub.subs.size || hub.edits.size) {
+    if (!hub.subs.size) {
+      try {
+        hub.mo?.disconnect?.();
+      } catch {
+      }
+      hub.mo = null;
+      hub.box = null;
+      hub.lost = false;
+    }
+    return;
+  }
+  hub.stop?.();
+}
 function watchLocalSaves(doc, cb) {
   if (!doc || typeof cb !== "function") return () => {
   };
-  let hub = hubs.get(doc);
-  if (!hub) {
-    hub = { subs: /* @__PURE__ */ new Set(), mo: null, box: null, lag: null, check: null, lost: false, stop: null };
-    hubs.set(doc, hub);
-  }
+  const hub = hubOf(doc);
   const token = () => cb();
   hub.subs.add(token);
-  if (!hub.stop) start(doc, hub);
   watchDot(doc, hub);
-  return () => {
-    if (!hub.subs.delete(token) || hub.subs.size) return;
-    hub.stop?.();
+  return () => release(hub, hub.subs, token);
+}
+function watchEditing(doc, cb) {
+  if (!doc || typeof cb !== "function") return () => {
   };
+  const hub = hubOf(doc);
+  const token = (why) => cb(why);
+  hub.edits.add(token);
+  return () => release(hub, hub.edits, token);
+}
+function editState(doc) {
+  const hub = doc ? hubs.get(doc) : null;
+  if (!hub?.edits.size) return { typing: false, busy: false };
+  let focused = false;
+  try {
+    focused = isEditor(doc.activeElement);
+  } catch {
+    focused = false;
+  }
+  return { typing: Boolean(hub.keys) && focused, busy: Boolean(hub.keys || hub.quiet) };
 }
 
 // src/host/follow-sources.js
@@ -91091,6 +91166,12 @@ function createFollowTray({
   let lastMs = 0;
   let waitMs = 0;
   let queuedAt = 0;
+  let held = false;
+  let floorWait = null;
+  let offEditing = () => {
+  };
+  let lastStart = -Infinity;
+  let known2 = false;
   let stale = false;
   let seen = null;
   let io = null;
@@ -91148,11 +91229,41 @@ function createFollowTray({
     paintPanel();
   }
   const showing = () => doc?.visibilityState !== "hidden" && seen !== false;
+  function gate() {
+    const edit = editState(doc);
+    const cost = known2 ? lastMs : Infinity;
+    if (edit.typing && cost >= FOLLOW_TYPING_MS) return "typing";
+    if (edit.busy && cost > FOLLOW_SLOW_MS && now5() - lastStart < FOLLOW_POLL_MS) return "floor";
+    return "";
+  }
+  function hold(why) {
+    held = true;
+    if (why !== "floor" || floorWait) return;
+    floorWait = timers.later(() => {
+      floorWait = null;
+      if (held) readSoon();
+    }, Math.max(0, lastStart + FOLLOW_POLL_MS - now5()));
+  }
+  function unhold() {
+    held = false;
+    floorWait?.();
+    floorWait = null;
+  }
+  const onEditing = (why) => {
+    if (disposed) return;
+    const cut = why === "typing" && Boolean(quiet) && !job;
+    if (cut) {
+      quiet();
+      quiet = null;
+    }
+    if (cut || held && !gate()) readSoon();
+  };
   function runRead() {
     job = null;
     if (disposed || !pointer) return;
     if (!showing()) {
       stale = true;
+      unhold();
       return;
     }
     if (inFlight) {
@@ -91166,6 +91277,12 @@ function createFollowTray({
       sync();
       return;
     }
+    const why = gate();
+    if (why) {
+      hold(why);
+      return;
+    }
+    unhold();
     const mine = key;
     inFlight = true;
     stale = false;
@@ -91184,6 +91301,8 @@ function createFollowTray({
         return;
       }
       lastMs = Math.max(0, now5() - started);
+      lastStart = started;
+      known2 = true;
       reads += 1;
       if (res?.ok) {
         read2 = res;
@@ -91208,7 +91327,7 @@ function createFollowTray({
       stale = true;
       return;
     }
-    if (quiet) return;
+    if (quiet || held) return;
     quiet = timers.later(() => {
       quiet = null;
       if (disposed || job) return;
@@ -91228,6 +91347,9 @@ function createFollowTray({
     const method = on ? "addEventListener" : "removeEventListener";
     win2?.[method]?.("focus", onFocus);
     doc?.[method]?.("visibilitychange", onVisible);
+    offEditing();
+    offEditing = on ? watchEditing(doc, onEditing) : () => {
+    };
     try {
       io?.disconnect?.();
     } catch {
@@ -91280,6 +91402,9 @@ function createFollowTray({
     quiet?.();
     quiet = null;
     lastMs = 0;
+    lastStart = -Infinity;
+    known2 = false;
+    unhold();
     pointer = next;
     key = nextKey;
     read2 = null;
@@ -91480,7 +91605,7 @@ function createFollowTray({
     left: () => diff.left.slice(),
     reads: () => reads,
     // The F10 probe: the source, reads so far, how long the last one took and waited, and the quiet period that sets.
-    stats: () => ({ key, reads, lastMs, waitMs, quietMs: followQuietMs(lastMs), stale }),
+    stats: () => ({ key, reads, lastMs, waitMs, quietMs: followQuietMs(lastMs), stale, held, editing: editState(doc) }),
     // The board menu: what Follow shows and offers.
     menuState() {
       const textUid = pointer ? null : textSourceUid(board2()?.string || "");
@@ -91508,6 +91633,7 @@ function createFollowTray({
       quiet?.();
       job?.();
       poll?.();
+      unhold();
       listen(false);
       btn2?.remove();
       panel?.remove();
@@ -92798,7 +92924,7 @@ ${hit.n}`;
     if (job) job.handle = null;
     return handle;
   }
-  function arm4() {
+  function arm5() {
     if (pumping || !queue.length || typeof budget?.idle !== "function") return;
     pumping = true;
     const gen = generation;
@@ -92817,7 +92943,7 @@ ${hit.n}`;
         }
         const cancel = later(() => {
           cancelLater = null;
-          if (gen === generation) arm4();
+          if (gen === generation) arm5();
         }, wait2);
         cancelLater = typeof cancel === "function" ? cancel : null;
         return;
@@ -92834,14 +92960,14 @@ ${hit.n}`;
           if (queue[0] === job) queue.shift();
           if (job?.url) queued.delete(job.url);
         }
-        arm4();
+        arm5();
       }, () => {
         if (gen !== generation) return;
         pumping = false;
         if (queue[0] === job) queue.shift();
         void dropHandle(takeHandle(job));
         if (job?.url) queued.delete(job.url);
-        arm4();
+        arm5();
       });
     }, { label: "pdf-text" });
   }
@@ -93011,7 +93137,7 @@ ${hit.n}`;
       queued.add(url);
       queue.push({ url, hash: job.hash || "", pdfUid: job.pdfUid || "", title: job.title || "" });
     }
-    arm4();
+    arm5();
   }
   return { search, noteParsed, enqueue, pause, paused, stop: stop3, whenLoaded, counts, docs, version: PDF_TEXT_DB_VERSION };
 }
@@ -95480,7 +95606,7 @@ function createOcrWeb({
       rejectAll(dead);
       if (api3 && engine === api3) engine = null;
     };
-    function call(msg, transfers, signal2) {
+    function call2(msg, transfers, signal2) {
       if (signal2?.aborted) return Promise.reject(abortError());
       if (dead) return Promise.reject(dead);
       const id = ++seq;
@@ -95510,7 +95636,7 @@ function createOcrWeb({
       });
     }
     try {
-      await call({ type: "init", ...urls2, det, rec, dictText }, [det, rec], signal);
+      await call2({ type: "init", ...urls2, det, rec, dictText }, [det, rec], signal);
     } catch (error) {
       try {
         worker.terminate?.();
@@ -95537,7 +95663,7 @@ function createOcrWeb({
         if (!(band > 0) && records.has(n3)) return records.get(n3);
         const rendered = cropTopBand(await renderOne(bytes, n3, signal2), band);
         const rgb = rendered.rgb;
-        const msg = await call({
+        const msg = await call2({
           type: "page",
           n: n3,
           width: rendered.width,
@@ -95552,7 +95678,7 @@ function createOcrWeb({
       },
       async image(rendered, signal2) {
         const rgb = rendered.rgb;
-        const msg = await call({
+        const msg = await call2({
           type: "page",
           n: -1,
           width: rendered.width,
@@ -95567,7 +95693,7 @@ function createOcrWeb({
       async cells(list, bytes, signal2) {
         const need2 = [...new Set(list.map((c) => c.page))];
         for (const n3 of need2) if (!records.has(n3)) await this.page(n3, bytes, signal2);
-        const msg = await call({ type: "cells", cells: list }, void 0, signal2);
+        const msg = await call2({ type: "cells", cells: list }, void 0, signal2);
         return msg.cells;
       }
     };
@@ -96448,7 +96574,7 @@ function createTypeAhead({ doc, isTarget, later, armMs = ARM_MS } = {}) {
     last = null;
     clearTimer();
   };
-  const arm4 = () => {
+  const arm5 = () => {
     armed = true;
     buffer = "";
     last = null;
@@ -96561,7 +96687,7 @@ function createTypeAhead({ doc, isTarget, later, armMs = ARM_MS } = {}) {
     return true;
   };
   return {
-    arm: arm4,
+    arm: arm5,
     cancel,
     flush,
     take,
@@ -97354,7 +97480,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
       const budget = { n: 0 };
       renderBlocks(body, result || [], 1, budget);
     };
-    const settle2 = (result, apply) => {
+    const settle3 = (result, apply) => {
       if (result && typeof result.then === "function") {
         result.then((r) => {
           if (node2 && current3 === item) apply(r);
@@ -97371,7 +97497,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
       }
       el2("div", "pxd-ql__summary", body, `${count} ${count === 1 ? "item" : "items"}`);
     } else if (item.kind === "page") {
-      settle2(host?.pagePreview?.(item.title, DEPTH, LIMIT2), (p) => {
+      settle3(host?.pagePreview?.(item.title, DEPTH, LIMIT2), (p) => {
         if (!p?.exists) {
           el2("div", "pxd-ql__placeholder", body, "Empty page");
           return;
@@ -97382,7 +97508,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
       const ref = item.target?.uid;
       const s = host?.blockString?.(ref);
       if (typeof s === "string" && s.trim()) renderRoot(body, s, "pxd-rs pxd-ql__string");
-      settle2(host?.pullTree?.(ref, DEPTH, LIMIT2), (t) => {
+      settle3(host?.pullTree?.(ref, DEPTH, LIMIT2), (t) => {
         if (!(typeof s === "string" && s.trim()) && !(t || []).length) el2("div", "pxd-ql__placeholder", body, "Empty card");
         blocksInto(t);
       });
@@ -97390,7 +97516,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
       if (item.string?.trim()) renderRoot(body, item.string, "pxd-rs pxd-ql__string");
       const kids = item.content?.length ? item.content : null;
       if (kids) blocksInto(kids);
-      else settle2(host?.pullTree?.(item.uid, DEPTH, LIMIT2), (t) => {
+      else settle3(host?.pullTree?.(item.uid, DEPTH, LIMIT2), (t) => {
         if (!item.string?.trim() && !(t || []).length) el2("div", "pxd-ql__placeholder", body, "Empty card");
         blocksInto(t);
       });
@@ -98331,7 +98457,7 @@ function createTimers({ phase = () => "" } = {}) {
     if (typeof globalThis.requestIdleCallback !== "function" || notedSpeedFlags().bgBudget === false) return idle(fn);
     let entry;
     let cancel = null;
-    const arm4 = () => {
+    const arm5 = () => {
       cancel = sharedBgBudget().idle((d) => {
         active2.delete(entry);
         bgArmed.delete(entry);
@@ -98344,18 +98470,18 @@ function createTimers({ phase = () => "" } = {}) {
       active2.delete(entry);
       bgArmed.delete(entry);
     };
-    bgArmed.set(entry, { arm: arm4, off: () => {
+    bgArmed.set(entry, { arm: arm5, off: () => {
       cancel?.();
       cancel = null;
     } });
-    if (!bgPaused) arm4();
+    if (!bgPaused) arm5();
     active2.add(entry);
     return entry;
   };
   const bgRun = (part, opts) => {
     let entry;
     let stop3 = null;
-    const arm4 = () => {
+    const arm5 = () => {
       stop3 = sharedBgBudget().run((d) => {
         let done3 = true;
         try {
@@ -98376,12 +98502,12 @@ function createTimers({ phase = () => "" } = {}) {
       bgArmed.delete(entry);
       s?.();
     };
-    bgArmed.set(entry, { arm: arm4, off: () => {
+    bgArmed.set(entry, { arm: arm5, off: () => {
       const s = stop3;
       stop3 = null;
       s?.();
     } });
-    if (!bgPaused) arm4();
+    if (!bgPaused) arm5();
     active2.add(entry);
     return entry;
   };
@@ -100786,9 +100912,9 @@ function buildBoardView(onFail, {
     } catch {
     }
     pdfPagesDialog = null;
-    const settle3 = pdfPagesPending;
+    const settle4 = pdfPagesPending;
     pdfPagesPending = null;
-    settle3?.(null);
+    settle4?.(null);
   };
   const planPdfPages = async () => {
     const b = board2();
@@ -101907,14 +102033,14 @@ function buildBoardView(onFail, {
   };
   const takeCoverSnapshot = (liveEl, info) => {
     const spec = info && typeof info === "object" ? info : {};
-    const settle3 = spec.as === "settle";
+    const settle4 = spec.as === "settle";
     let job = null;
     try {
       job = ensurePdfWarm().snapshotFrom(liveEl, {
-        page: settle3 ? 1 : spec.page,
+        page: settle4 ? 1 : spec.page,
         url: spec.url,
         pageCount: spec.pageCount,
-        as: settle3 ? "first" : "last"
+        as: settle4 ? "first" : "last"
       });
     } catch {
       job = null;
@@ -102521,7 +102647,7 @@ function buildBoardView(onFail, {
     }
     if (hoverUid) hideHover();
     markViewport();
-    if (!gesturing) settle2();
+    if (!gesturing) settle3();
   };
   let zoomOff = null;
   const clearZoomAnim = () => {
@@ -103339,7 +103465,7 @@ function buildBoardView(onFail, {
       return false;
     }
   };
-  const settle2 = () => {
+  const settle3 = () => {
     settleWaitAt = 0;
     armSettle();
   };
@@ -109138,7 +109264,7 @@ ${url}`;
       syncShellHold();
       if (!event.ctrlKey && !event.metaKey) hitShield.raise();
       else hitShield.drop();
-      settle2();
+      settle3();
     } else if (openedBurst) {
       wheelLayer = false;
       world.style.willChange = worldLayer() ? "transform" : "";
@@ -110060,7 +110186,7 @@ ${url}`;
   const MO = globalThis.MutationObserver;
   if (typeof MO === "function") {
     try {
-      let settle3 = null;
+      let settle4 = null;
       const classKey = () => [doc.documentElement, doc.body].map((n3) => String(n3?.className?.baseVal ?? n3?.className ?? "").split(/\s+/).filter((c) => c && !c.startsWith("pxd-")).sort().join(" ")).join("|");
       let lastClassKey = classKey();
       const mo = trackObserver(new MO(() => {
@@ -110071,9 +110197,9 @@ ${url}`;
           lastClassKey = key;
         }
         applyTheme();
-        settle3?.();
-        settle3 = timers.later(() => {
-          settle3 = null;
+        settle4?.();
+        settle4 = timers.later(() => {
+          settle4 = null;
           if (!disposed && !suspended) applyTheme();
         }, 300);
       }));
@@ -112911,7 +113037,7 @@ function createPrefetch({
   const prune = (t) => {
     misses = misses.filter((at) => t - at < windowMs);
   };
-  const settle2 = () => {
+  const settle3 = () => {
     inflight = 0;
     const next = queued;
     queued = null;
@@ -112953,8 +113079,8 @@ function createPrefetch({
       const job = warmOne(uid);
       if (job && typeof job.then === "function") jobs.push(job);
     }
-    if (jobs.length) Promise.all(jobs).then(settle2, settle2);
-    else settle2();
+    if (jobs.length) Promise.all(jobs).then(settle3, settle3);
+    else settle3();
   }
   function schedule(uids, el2) {
     if (enabled() === false) return;
@@ -114435,7 +114561,7 @@ function mountOutlineRegion({ doc = globalThis.document, img, onConfirm, onCance
   listen(doc, "scroll", follow, true);
   const view = doc.defaultView;
   if (view && view !== doc) listen(view, "resize", follow);
-  const arm4 = globalThis.setTimeout(() => {
+  const arm5 = globalThis.setTimeout(() => {
     if (dead) return;
     listen(doc, "pointerdown", (event) => {
       if (dead || root.contains(event.target)) return;
@@ -114443,7 +114569,7 @@ function mountOutlineRegion({ doc = globalThis.document, img, onConfirm, onCance
       onCancel?.();
     }, true);
   }, 0);
-  offs.push(() => globalThis.clearTimeout(arm4));
+  offs.push(() => globalThis.clearTimeout(arm5));
   const mark = mountRegionMark({
     doc,
     root,
@@ -115805,13 +115931,13 @@ async function installPlexusDiagram({
     rec.openSnap = snap;
     rec.openPaint = { queries, at: perfNow() - t0 };
     const raf2 = globalThis.requestAnimationFrame;
-    const settle2 = () => {
+    const settle3 = () => {
       if (!rec.openPaint) return;
       rec.openPaint.frame = perfNow() - t0;
       if (!snap) noteLive(rec);
     };
-    if (typeof raf2 === "function") raf2(settle2);
-    else settle2();
+    if (typeof raf2 === "function") raf2(settle3);
+    else settle3();
   }
   function noteLive(rec) {
     if (rec.openT0 == null || !rec.openPaint) return;
@@ -116302,7 +116428,7 @@ async function installPlexusDiagram({
   }
   function sketchStandIn(handoff) {
     const queued = [];
-    const call = (name, args) => {
+    const call2 = (name, args) => {
       const live2 = handoff.view;
       if (live2 && typeof live2[name] === "function") return live2[name](...args);
       queued.push([name, args]);
@@ -116357,19 +116483,19 @@ async function installPlexusDiagram({
         }
       },
       setSettings(value) {
-        call("setSettings", [value]);
+        call2("setSettings", [value]);
       },
       setFullscreen(value) {
-        call("setFullscreen", [value]);
+        call2("setFullscreen", [value]);
       },
       focusUid(uid) {
-        return call("focusUid", [uid]);
+        return call2("focusUid", [uid]);
       },
       applyShow(spec) {
-        call("applyShow", [spec]);
+        call2("applyShow", [spec]);
       },
       quiet(on) {
-        call("quiet", [on]);
+        call2("quiet", [on]);
       }
     };
   }

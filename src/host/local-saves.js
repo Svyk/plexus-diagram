@@ -6,8 +6,12 @@
 // - Leaving a block editor (`focusout`), a checkbox (`change`), a drop.
 // - Roam's sync dot (`.rm-sync__icon`) changing class: writes that are not typing (a menu, an undo, an extension).
 //   While Roam's sync is backed up the dot stays on saving and says little; the tray's poll is the backstop.
-// Before the topbar is drawn there is no dot: the next listener looks again.
+// Roam can draw the sync box again (a re-render, a theme change), and an observer on the old box hears nothing. Every
+// DOT_CHECK_MS the hub asks whether its box is still in the page (no observer on the topbar or the document) and, if
+// not, finds the dot again and fires once for any save made while it was deaf. Before the topbar is drawn there is
+// no dot: the same check looks again.
 export const SAVE_LAG_MS = 1000;
+export const DOT_CHECK_MS = 1000;
 const ICON = ".rm-sync__icon";
 const SAVING = /saving/;
 const hubs = new WeakMap();
@@ -23,6 +27,8 @@ function fire(hub) {
 
 function watchDot(doc, hub) {
   if (hub.mo && hub.box?.isConnected !== false) return;
+  // A box that was heard and is gone stays owed one signal until a new dot is found.
+  hub.lost = hub.lost || Boolean(hub.mo);
   try { hub.mo?.disconnect?.(); } catch { /* gone */ }
   hub.mo = null;
   hub.box = null;
@@ -45,6 +51,10 @@ function watchDot(doc, hub) {
   } catch {
     hub.mo = null;
   }
+  if (hub.lost && hub.mo) {
+    hub.lost = false;
+    fire(hub);
+  }
 }
 
 function start(doc, hub) {
@@ -60,11 +70,18 @@ function start(doc, hub) {
     if (event?.type === "change" && !inBlock(event.target)) return;
     fire(hub);
   };
+  const check = () => {
+    hub.check = win.setTimeout(check, DOT_CHECK_MS);
+    watchDot(doc, hub);
+  };
   hub.stop = () => {
     doc.removeEventListener?.("input", hub.onInput, true);
     for (const type of ["focusout", "change", "drop"]) doc.removeEventListener?.(type, hub.onDone, true);
     if (hub.lag) win.clearTimeout(hub.lag);
     hub.lag = null;
+    if (hub.check) win.clearTimeout(hub.check);
+    hub.check = null;
+    hub.lost = false;
     try { hub.mo?.disconnect?.(); } catch { /* gone */ }
     hub.mo = null;
     hub.box = null;
@@ -72,13 +89,14 @@ function start(doc, hub) {
   };
   doc.addEventListener?.("input", hub.onInput, true);
   for (const type of ["focusout", "change", "drop"]) doc.addEventListener?.(type, hub.onDone, true);
+  hub.check = win.setTimeout(check, DOT_CHECK_MS);
 }
 
 export function watchLocalSaves(doc, cb) {
   if (!doc || typeof cb !== "function") return () => {};
   let hub = hubs.get(doc);
   if (!hub) {
-    hub = { subs: new Set(), mo: null, box: null, lag: null, stop: null };
+    hub = { subs: new Set(), mo: null, box: null, lag: null, check: null, lost: false, stop: null };
     hubs.set(doc, hub);
   }
   const token = () => cb();

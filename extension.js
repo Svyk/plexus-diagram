@@ -38932,7 +38932,7 @@ __export(read_drawer_exports, {
   createReadDrawer: () => createReadDrawer
 });
 function clampFraction(n3) {
-  if (typeof n3 !== "number" || !Number.isFinite(n3)) return OPEN2;
+  if (typeof n3 !== "number" || !Number.isFinite(n3)) return OPEN3;
   return Math.min(MAX_F, Math.max(MIN_F, n3));
 }
 function countLabel2(n3) {
@@ -39030,7 +39030,7 @@ function createReadDrawer({
   let pinnedCount = null;
   let pillRow = null;
   let pillTimer = null;
-  let fraction = OPEN2;
+  let fraction = OPEN3;
   const colors = /* @__PURE__ */ new Set();
   let page = null;
   let needle = "";
@@ -39597,13 +39597,13 @@ function createReadDrawer({
     }
   };
 }
-var OPEN2, MIN_F, MAX_F, PULSE_MS, PILL_MS, SVG, LINES;
+var OPEN3, MIN_F, MAX_F, PULSE_MS, PILL_MS, SVG, LINES;
 var init_read_drawer = __esm({
   "src/view/read-drawer.js"() {
     init_ask_icon();
     init_cards();
     init_read_drawer_model();
-    OPEN2 = 0.4;
+    OPEN3 = 0.4;
     MIN_F = 0.2;
     MAX_F = 0.72;
     PULSE_MS = 600;
@@ -51857,6 +51857,53 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return result;
     });
   }
+  function dragUndo() {
+    const before = /* @__PURE__ */ new Map();
+    const remember2 = (id) => {
+      if (before.has(id)) return;
+      const node2 = rawNode(id);
+      if (!node2) return;
+      const hit = ix().get(id);
+      before.set(id, { parent: hit?.parent?.[UID3] || uid, order: node2[ORD], plexus: clone(rawPlexus(id)) });
+    };
+    const track2 = { undo: [] };
+    const custom = {
+      when: "over-native-limit",
+      async undo() {
+        const moves = [];
+        const propsOps = [];
+        const wroteMove = /* @__PURE__ */ new Set();
+        const wroteProps = /* @__PURE__ */ new Set();
+        for (const op of custom.forward || []) {
+          if (op.op === "move") wroteMove.add(op.uid);
+          else if (op.op === "props") wroteProps.add(op.uid);
+        }
+        for (const [id, prev] of before) {
+          const parentNow = ix().get(id)?.parent?.[UID3] || uid;
+          if (wroteMove.has(id) || prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
+          if (wroteProps.has(id) || stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
+        }
+        moves.sort((a, b) => a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0));
+        await execute([...moves, ...propsOps, ...[...track2.undo].reverse()]);
+      },
+      async redo() {
+        await execute(custom.forward);
+      }
+    };
+    const wrap = (t) => {
+      const move = t.move.bind(t);
+      const props = t.props.bind(t);
+      t.move = (id, parent, order) => {
+        remember2(id);
+        move(id, parent, order);
+      };
+      t.props = (id, plexus) => {
+        remember2(id);
+        props(id, plexus);
+      };
+    };
+    return { remember: remember2, track: track2, custom, wrap };
+  }
   function txn(fn, custom = null) {
     if (!board2 || destroyed || gone) return Promise.resolve(void 0);
     const ops = [];
@@ -52610,49 +52657,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     refreshLinks,
     commitMove(uids, dx, dy) {
       if (!board2 || !dx && !dy) return Promise.resolve();
-      const before = /* @__PURE__ */ new Map();
-      const remember2 = (id) => {
-        if (before.has(id)) return;
-        const node2 = rawNode(id);
-        if (!node2) return;
-        const hit = ix().get(id);
-        before.set(id, { parent: hit?.parent?.[UID3] || uid, order: node2[ORD], plexus: clone(rawPlexus(id)) });
-      };
-      const track2 = { undo: [] };
-      const custom = {
-        when: "over-native-limit",
-        async undo() {
-          const moves = [];
-          const propsOps = [];
-          const wroteMove = /* @__PURE__ */ new Set();
-          const wroteProps = /* @__PURE__ */ new Set();
-          for (const op of custom.forward || []) {
-            if (op.op === "move") wroteMove.add(op.uid);
-            else if (op.op === "props") wroteProps.add(op.uid);
-          }
-          for (const [id, prev] of before) {
-            const parentNow = ix().get(id)?.parent?.[UID3] || uid;
-            if (wroteMove.has(id) || prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
-            if (wroteProps.has(id) || stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
-          }
-          moves.sort((a, b) => a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0));
-          await execute([...moves, ...propsOps, ...[...track2.undo].reverse()]);
-        },
-        async redo() {
-          await execute(custom.forward);
-        }
-      };
+      const { remember: remember2, track: track2, custom, wrap } = dragUndo();
       return txn((t) => {
-        const move = t.move.bind(t);
-        const props = t.props.bind(t);
-        t.move = (id, parent, order) => {
-          remember2(id);
-          move(id, parent, order);
-        };
-        t.props = (id, plexus) => {
-          remember2(id);
-          props(id, plexus);
-        };
+        wrap(t);
         const top = topLevelOf(board2, uids).filter((id) => !board2.items.get(id).pinned);
         if (!top.length) return;
         for (const id of top) remember2(id);
@@ -52681,7 +52688,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     },
     commitRects(list) {
       if (!board2 || !list?.length) return Promise.resolve();
+      const { track: track2, custom, wrap } = dragUndo();
       return txn((t) => {
+        wrap(t);
         const changedSections = [];
         const fitTouched = [];
         for (const r of list) {
@@ -52707,12 +52716,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
               t.move(p.uid, p.toParent, "last");
               t.props(p.uid, itemPlexus(p.uid, { x: p.x, y: p.y }));
             }
-            runMoveHooks(t, parents, { undo: [] });
+            runMoveHooks(t, parents, track2);
             if (plan.length) t.sync();
           }
         }
         applyFit(t, fitTouched, { skip: changedSections });
-      });
+      }, custom);
     },
     addPublicCard({ string, x, y } = {}) {
       return txn((t) => addPublicCard({
@@ -55477,6 +55486,7 @@ init_board();
 
 // src/model/bucket.js
 init_schema();
+init_query();
 
 // src/model/table.js
 init_schema();
@@ -55802,9 +55812,16 @@ function attrsOfKids(kids) {
   }
   return out;
 }
+function tagBlocked(binding, string) {
+  if (binding?.kind !== "tag" || hasTag(string, binding.tag)) return false;
+  const before = String(string ?? "");
+  const after = addTag(before, binding.tag);
+  return classifyString(before).kind !== classifyString(after).kind || isQueryString(before) !== isQueryString(after);
+}
 function planBucketAdd(binding, row4) {
   if (!binding || !row4?.uid) return null;
   if (binding.kind === "tag") {
+    if (tagBlocked(binding, row4.string)) return null;
     const string = addTag(row4.string, binding.tag);
     return string === String(row4.string ?? "") ? null : { op: "string", uid: row4.uid, string };
   }
@@ -55858,6 +55875,7 @@ function chunk(list, n3 = WRITE_CHUNK) {
 var STR3 = ":block/string";
 var KIDS5 = ":block/children";
 var UID5 = ":block/uid";
+var OPEN2 = ":block/open";
 extendSession((session, api3) => {
   const { host } = api3;
   const boardUid = session.uid;
@@ -55884,7 +55902,7 @@ extendSession((session, api3) => {
       const node2 = api3.rawNode(item.uid);
       if (!node2) return null;
       const kids = api3.kidsOf(node2);
-      return { uid: item.uid, string: String(node2[STR3] ?? node2.string ?? ""), kids };
+      return { uid: item.uid, string: String(node2[STR3] ?? node2.string ?? ""), kids, self: true };
     }
     if (target?.kind === "block" && target.uid && !target.page) {
       let string = null;
@@ -55910,6 +55928,30 @@ extendSession((session, api3) => {
     const kid = target.kids.find((k) => (k[UID5] ?? k.uid) === uid);
     return String(kid?.[STR3] ?? kid?.string ?? "");
   };
+  const subtreeCreates = (target, attrUid, order) => {
+    const out = [];
+    const kidsIn = (node2) => Array.isArray(node2?.[KIDS5]) ? api3.kidsOf(node2) : [];
+    const walk3 = (node2, parent, ord) => {
+      const op = { op: "create", uid: node2[UID5] ?? node2.uid, parent, order: ord, string: String(node2[STR3] ?? node2.string ?? "") };
+      if (node2[OPEN2] !== void 0) op.open = node2[OPEN2];
+      out.push(op);
+      kidsIn(node2).forEach((k, i) => walk3(k, op.uid, i));
+    };
+    const attr = target.kids.find((k) => (k[UID5] ?? k.uid) === attrUid) ?? { [UID5]: attrUid };
+    let full = target.self ? api3.rawNode(attrUid) : null;
+    if (!target.self) {
+      let kids = [];
+      try {
+        const got = host.pullTree?.(attrUid, 20, 2e3);
+        kids = Array.isArray(got) ? got : Array.isArray(got?.[KIDS5]) ? got[KIDS5] : [];
+      } catch {
+        kids = [];
+      }
+      full = { ...attr, [KIDS5]: kids };
+    }
+    walk3(full ?? attr, target.uid, order);
+    return out;
+  };
   const emitPlan = (t, plan, target, undo) => {
     if (plan.op === "string") {
       const prev = plan.uid === target.uid ? target.string : kidString(target, plan.uid);
@@ -55920,8 +55962,9 @@ extendSession((session, api3) => {
       undo.push({ op: "delete", uid: id });
     } else if (plan.op === "delete") {
       const at = target.kids.findIndex((k) => (k[UID5] ?? k.uid) === plan.uid);
+      const creates = subtreeCreates(target, plan.uid, at >= 0 ? at : "last");
       t.del(plan.uid);
-      undo.push({ op: "create", uid: plan.uid, parent: target.uid, order: at >= 0 ? at : "last", string: kidString(target, plan.uid) });
+      for (const op of creates.reverse()) undo.push(op);
     }
   };
   const cardsUnder = (id) => {
@@ -55931,8 +55974,16 @@ extendSession((session, api3) => {
     if (item.type === "section") return [...descendantsOf(board2, id)].filter((d) => board2.items.get(d)?.type === "card");
     return item.type === "card" ? [id] : [];
   };
+  const countBlocked = (before, after, target) => {
+    const had = new Set(before.map(bindingKey));
+    return after.some((b) => !had.has(bindingKey(b)) && tagBlocked(b, target.string)) ? 1 : 0;
+  };
+  const skipToast = (n3) => {
+    if (n3) api3.emit("toast", { message: `Left ${n3} card${n3 === 1 ? "" : "s"} untagged: a tag would change what ${n3 === 1 ? "it shows" : "they show"}` });
+  };
   api3.onMoveItems((t, moves, track2) => {
     const seen = /* @__PURE__ */ new Set();
+    let skipped = 0;
     for (const m of moves) {
       const before = chainOf(m.from);
       const after = chainOf(m.to);
@@ -55941,9 +55992,11 @@ extendSession((session, api3) => {
         const target = targetOf2(id);
         if (!target || seen.has(target.uid)) continue;
         seen.add(target.uid);
+        skipped += countBlocked(before, after, target);
         for (const plan of planChainChange(before, after, rowOf(target))) emitPlan(t, plan, target, track2.undo);
       }
     }
+    skipToast(skipped);
   });
   session.sectionBinding = (id) => {
     if (api3.board()?.items.get(id)?.type !== "section") return null;
@@ -55966,16 +56019,19 @@ extendSession((session, api3) => {
     if (!binding) return 0;
     const jobs = [];
     const seen = /* @__PURE__ */ new Set();
+    let skipped = 0;
     for (const cid of cardsUnder(id)) {
       const target = targetOf2(cid);
       if (!target || seen.has(target.uid)) continue;
       seen.add(target.uid);
       const plan = planBucketAdd(binding, rowOf(target));
       if (plan) jobs.push({ plan, target });
+      else if (tagBlocked(binding, target.string)) skipped++;
     }
     const label = bindingLabel(binding);
     if (!jobs.length) {
-      api3.emit("toast", { message: seen.size ? `Every card already has ${label}` : "No cards to tag" });
+      skipToast(skipped);
+      if (!skipped) api3.emit("toast", { message: seen.size ? `Every card already has ${label}` : "No cards to tag" });
       return 0;
     }
     let written = 0;
@@ -55986,6 +56042,7 @@ extendSession((session, api3) => {
       written += part.length;
     }
     api3.emit("toast", { message: `Tagged ${written} card${written === 1 ? "" : "s"} with ${label}` });
+    skipToast(skipped);
     return written;
   };
 });

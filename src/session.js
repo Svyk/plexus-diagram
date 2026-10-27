@@ -1387,6 +1387,54 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     })).then(() => result, (err) => { handleFailure(err); return result; });
   }
 
+  // Custom undo for a drag or resize that may pass the native chunk size (see commit()). wrap(t) records the pre-write
+  // state of every block the transaction moves or rewrites; track.undo takes the hooks' inverse ops.
+  function dragUndo() {
+    // Pre-drag parent, sibling order, and plexus for every block this drag writes, including a section fit
+    // and the members it rebases. Captured on the first write, before that write changes the block.
+    const before = new Map();
+    const remember = (id) => {
+      if (before.has(id)) return;
+      const node = rawNode(id);
+      if (!node) return;
+      const hit = ix().get(id);
+      before.set(id, { parent: hit?.parent?.[UID] || uid, order: node[ORD], plexus: clone(rawPlexus(id)) });
+    };
+    const track = { undo: [] };
+    const custom = {
+      when: "over-native-limit",
+      async undo() {
+        const moves = [];
+        const propsOps = [];
+        // R4: the inverse of what this drag wrote, not a diff against the model now. A late echo can put a
+        // card back at its old parent in the model while Roam still has it in the new one (QA5 CSrDqKK2R).
+        const wroteMove = new Set();
+        const wroteProps = new Set();
+        for (const op of custom.forward || []) {
+          if (op.op === "move") wroteMove.add(op.uid);
+          else if (op.op === "props") wroteProps.add(op.uid);
+        }
+        for (const [id, prev] of before) {
+          const parentNow = ix().get(id)?.parent?.[UID] || uid;
+          if (wroteMove.has(id) || prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
+          if (wroteProps.has(id) || stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
+        }
+        // Low original order first, per parent, so each card lands in the hole it left. Props come after the
+        // move: stored x/y are relative to the parent the card is going back to.
+        moves.sort((a, b) => (a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0)));
+        await execute([...moves, ...propsOps, ...[...track.undo].reverse()]);
+      },
+      async redo() { await execute(custom.forward); },
+    };
+    const wrap = (t) => {
+      const move = t.move.bind(t);
+      const props = t.props.bind(t);
+      t.move = (id, parent, order) => { remember(id); move(id, parent, order); };
+      t.props = (id, plexus) => { remember(id); props(id, plexus); };
+    };
+    return { remember, track, custom, wrap };
+  }
+
   function txn(fn, custom = null) {
     if (!board || destroyed || gone) return Promise.resolve(undefined);
     const ops = [];
@@ -2133,47 +2181,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
     commitMove(uids, dx, dy) {
       if (!board || (!dx && !dy)) return Promise.resolve();
-      // Pre-drag parent, sibling order, and plexus for every block this drag writes, including a section fit
-      // and the members it rebases. Captured on the first write, before that write changes the block.
-      const before = new Map();
-      const remember = (id) => {
-        if (before.has(id)) return;
-        const node = rawNode(id);
-        if (!node) return;
-        const hit = ix().get(id);
-        before.set(id, { parent: hit?.parent?.[UID] || uid, order: node[ORD], plexus: clone(rawPlexus(id)) });
-      };
-      const track = { undo: [] };
-      const custom = {
-        when: "over-native-limit",
-        async undo() {
-          const moves = [];
-          const propsOps = [];
-          // R4: the inverse of what this drag wrote, not a diff against the model now. A late echo can put a
-          // card back at its old parent in the model while Roam still has it in the new one (QA5 CSrDqKK2R).
-          const wroteMove = new Set();
-          const wroteProps = new Set();
-          for (const op of custom.forward || []) {
-            if (op.op === "move") wroteMove.add(op.uid);
-            else if (op.op === "props") wroteProps.add(op.uid);
-          }
-          for (const [id, prev] of before) {
-            const parentNow = ix().get(id)?.parent?.[UID] || uid;
-            if (wroteMove.has(id) || prev.parent !== parentNow) moves.push({ op: "move", uid: id, parent: prev.parent, order: prev.order });
-            if (wroteProps.has(id) || stable(rawPlexus(id)) !== stable(prev.plexus)) propsOps.push({ op: "props", uid: id, plexus: prev.plexus });
-          }
-          // Low original order first, per parent, so each card lands in the hole it left. Props come after the
-          // move: stored x/y are relative to the parent the card is going back to.
-          moves.sort((a, b) => (a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0)));
-          await execute([...moves, ...propsOps, ...[...track.undo].reverse()]);
-        },
-        async redo() { await execute(custom.forward); },
-      };
+      const { remember, track, custom, wrap } = dragUndo();
       return txn((t) => {
-        const move = t.move.bind(t);
-        const props = t.props.bind(t);
-        t.move = (id, parent, order) => { remember(id); move(id, parent, order); };
-        t.props = (id, plexus) => { remember(id); props(id, plexus); };
+        wrap(t);
         const top = topLevelOf(board, uids).filter((id) => !board.items.get(id).pinned);
         if (!top.length) return;
         for (const id of top) remember(id);
@@ -2203,7 +2213,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
     commitRects(list) {
       if (!board || !list?.length) return Promise.resolve();
+      const { track, custom, wrap } = dragUndo();
       return txn((t) => {
+        wrap(t);
         const changedSections = [];
         const fitTouched = [];
         for (const r of list) {
@@ -2229,12 +2241,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
               t.move(p.uid, p.toParent, "last");
               t.props(p.uid, itemPlexus(p.uid, { x: p.x, y: p.y }));
             }
-            runMoveHooks(t, parents, { undo: [] });
+            runMoveHooks(t, parents, track);
             if (plan.length) t.sync();
           }
         }
         applyFit(t, fitTouched, { skip: changedSections });
-      });
+      }, custom);
     },
 
     addPublicCard({ string, x, y } = {}) {

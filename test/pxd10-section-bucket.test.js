@@ -351,3 +351,104 @@ test("PXD-10 a big drag installs a custom undo that restores strings, created an
   assert.equal(fake.children("k0").length, 0, "the created child is removed");
   assert.equal(fake.block("k0").parent, "b1");
 });
+
+test("PXD-10 growing a bound section over 15 cards installs one custom undo that restores every string and parent", async () => {
+  const cards = Array.from({ length: 15 }, (_, i) => card(`k${i}`, `card ${i}`, 800 + (i % 5) * 10, Math.floor(i / 5) * 10));
+  const { fake, session, customs } = setup({ children: [section("S", 400, 0, { bucket: TAG }), ...cards] });
+  await session.commitRects([{ uid: "S", x: 400, y: 0, w: 1000, h: 400 }]);
+  await fake.flush();
+  assert.equal(fake.block("k0").parent, "S");
+  assert.equal(fake.block("k14").string, "card 14 #reviewed");
+  const entry = customs.filter(Boolean).at(-1);
+  assert.ok(entry && typeof entry.undo === "function", "past 45 writes the undo is custom");
+  await entry.undo();
+  await fake.flush();
+  for (let i = 0; i < 15; i++) {
+    assert.equal(fake.block(`k${i}`).string, `card ${i}`, `k${i} string restored`);
+    assert.equal(fake.block(`k${i}`).parent, "b1", `k${i} parent restored`);
+  }
+  assert.equal(plexusOf(fake, "S").w, 300, "the section size is restored");
+});
+
+test("PXD-10 growing a bound section over 14 cards stays on the native path", async () => {
+  const cards = Array.from({ length: 14 }, (_, i) => card(`k${i}`, `card ${i}`, 800 + (i % 5) * 10, Math.floor(i / 5) * 10));
+  const { fake, session, customs } = setup({ children: [section("S", 400, 0, { bucket: TAG }), ...cards] });
+  await session.commitRects([{ uid: "S", x: 400, y: 0, w: 1000, h: 400 }]);
+  await fake.flush();
+  assert.equal(fake.block("k13").parent, "S");
+  assert.equal(fake.block("k13").string, "card 13 #reviewed");
+  assert.equal(customs.filter(Boolean).length, 0, "no custom entry under the native limit");
+});
+
+test("PXD-10 big drag out of an attribute section: undo brings back the attribute block and what sat under it", async () => {
+  const mk = (i) => card(`k${i}`, `card ${i}`, 20 + i, 20 + i, {}, i === 0
+    ? [{ uid: "at0", string: "Status:: Review", children: [{ uid: "keep1", string: "keep me", children: [{ uid: "deep1", string: "deeper" }] }] }]
+    : [{ uid: `at${i}`, string: "Status:: Review" }]);
+  const { fake, session, customs } = setup({ bucket: ATTR, children: [section("S", 400, 0, { bucket: ATTR, w: 1000, h: 1000 }, Array.from({ length: 16 }, (_, i) => mk(i)))] });
+  await session.commitMove(Array.from({ length: 16 }, (_, i) => `k${i}`), -500, 0);
+  await fake.flush();
+  assert.equal(fake.block("k0").parent, "b1");
+  assert.equal(fake.block("at0"), null, "the attribute child is gone");
+  const entry = customs.filter(Boolean).at(-1);
+  assert.ok(entry && typeof entry.undo === "function");
+  await entry.undo();
+  await fake.flush();
+  assert.equal(fake.block("k0").parent, "S");
+  assert.equal(fake.block("at0").string, "Status:: Review");
+  assert.equal(fake.block("keep1").string, "keep me");
+  assert.equal(fake.block("keep1").parent, "at0");
+  assert.equal(fake.block("deep1").parent, "keep1");
+});
+
+test("PXD-10 big drag out of an attribute section (ref target): undo restores the nested blocks too", async () => {
+  const cards = Array.from({ length: 45 }, (_, i) => card(`k${i}`, `card ${i}`, 20, 20));
+  const { fake, session, customs } = setup({
+    bucket: ATTR,
+    kids: [{ uid: "st1", string: "Status:: Review", children: [{ uid: "keep1", string: "keep me" }] }],
+    children: [section("S", 400, 0, { bucket: ATTR, w: 1000, h: 1000 }, [card("c1", "((abc))", 20, 20), ...cards])],
+  });
+  await session.commitMove(["c1", ...cards.map((c) => c.uid)], -500, 0);
+  await fake.flush();
+  assert.equal(fake.block("st1"), null);
+  const entry = customs.filter(Boolean).at(-1);
+  await entry.undo();
+  await fake.flush();
+  assert.equal(fake.block("st1").string, "Status:: Review");
+  assert.equal(fake.block("keep1").parent, "st1");
+});
+
+test("PXD-10 tagBlocked: an image or query card is left untagged, a task note still tagged", async () => {
+  assert.equal(planBucketAdd(TAG, { uid: "u", string: "![plot](https://example.com/a.png)", attrs: [] }), null);
+  assert.equal(planBucketAdd(TAG, { uid: "u", string: "{{[[query]]: {and: [[Lab]]}}}", attrs: [] }), null);
+  assert.deepEqual(planBucketAdd(TAG, { uid: "u", string: "{{[[TODO]]}} task", attrs: [] }), { op: "string", uid: "u", string: "{{[[TODO]]}} task #reviewed" });
+  const { fake, session } = setup({ children: [
+    card("img", "![plot](https://example.com/a.png)", 0, 0),
+    card("q", "{{[[query]]: {and: [[Lab]]}}}", 0, 150),
+    card("n1", "plain", 0, 300),
+    card("t1", "{{[[TODO]]}} task", 0, 450),
+    section("S", 400, 0, { bucket: TAG, w: 600, h: 800 }),
+  ] });
+  const toasts = [];
+  session.on("toast", (t) => toasts.push(t.message));
+  await session.commitMove(["img", "q", "n1", "t1"], 400, 0);
+  await fake.flush();
+  assert.equal(fake.block("img").string, "![plot](https://example.com/a.png)");
+  assert.equal(fake.block("q").string, "{{[[query]]: {and: [[Lab]]}}}");
+  assert.equal(fake.block("n1").string, "plain #reviewed");
+  assert.equal(fake.block("t1").string, "{{[[TODO]]}} task #reviewed");
+  assert.equal(fake.block("img").parent, "S", "the card still joins the section");
+  assert.deepEqual(toasts, ["Left 2 cards untagged: a tag would change what they show"]);
+});
+
+test("PXD-10 write to graph skips image and query cards and says so", async () => {
+  const { fake, session } = setup({ children: [section("S", 400, 0, { bucket: TAG }, [
+    card("img", "![plot](https://example.com/a.png)", 20, 20),
+    card("n1", "plain", 20, 160),
+  ])] });
+  const toasts = [];
+  session.on("toast", (t) => toasts.push(t.message));
+  assert.equal(await session.writeSectionToGraph("S"), 1);
+  await fake.flush();
+  assert.equal(fake.block("img").string, "![plot](https://example.com/a.png)");
+  assert.deepEqual(toasts, ["Tagged 1 card with #reviewed", "Left 1 card untagged: a tag would change what it shows"]);
+});

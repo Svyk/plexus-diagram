@@ -1,7 +1,8 @@
 // PXD-10: a section bound to a tag (#reviewed) or an attribute (Status:: Review). Pure planning, no Roam calls.
 // A card dropped in writes the tag onto its real block; dragged out removes it.
 
-import { attrNameOf } from "./schema.js";
+import { attrNameOf, classifyString } from "./schema.js";
+import { isQueryString } from "./query.js";
 import { columnNameOk } from "./table.js";
 import { planKanbanMove } from "./kanban.js";
 
@@ -90,9 +91,18 @@ export function attrsOfKids(kids) {
   return out;
 }
 
+// True when appending the tag would turn the card into another kind (an image or a query becomes a note).
+export function tagBlocked(binding, string) {
+  if (binding?.kind !== "tag" || hasTag(string, binding.tag)) return false;
+  const before = String(string ?? "");
+  const after = addTag(before, binding.tag);
+  return classifyString(before).kind !== classifyString(after).kind || isQueryString(before) !== isQueryString(after);
+}
+
 export function planBucketAdd(binding, row) {
   if (!binding || !row?.uid) return null;
   if (binding.kind === "tag") {
+    if (tagBlocked(binding, row.string)) return null;
     const string = addTag(row.string, binding.tag);
     return string === String(row.string ?? "") ? null : { op: "string", uid: row.uid, string };
   }

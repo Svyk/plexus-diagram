@@ -2,12 +2,13 @@
 // nothing to cards. A card moved into or out of a bound section gets the tag / attribute written onto its real block
 // inside the move's own transaction (one undo, echoes go through the ledger). Unbound sections change nothing.
 import { descendantsOf } from "./model/board.js";
-import { attrsOfKids, bindingKey, bindingLabel, chunk, planBucketAdd, planChainChange, readBinding } from "./model/bucket.js";
+import { attrsOfKids, bindingKey, bindingLabel, chunk, planBucketAdd, planChainChange, readBinding, tagBlocked } from "./model/bucket.js";
 import { extendSession } from "./session.js";
 
 const STR = ":block/string";
 const KIDS = ":block/children";
 const UID = ":block/uid";
+const OPEN = ":block/open";
 
 extendSession((session, api) => {
   const { host } = api;
@@ -40,7 +41,7 @@ extendSession((session, api) => {
       const node = api.rawNode(item.uid);
       if (!node) return null;
       const kids = api.kidsOf(node);
-      return { uid: item.uid, string: String(node[STR] ?? node.string ?? ""), kids };
+      return { uid: item.uid, string: String(node[STR] ?? node.string ?? ""), kids, self: true };
     }
     if (target?.kind === "block" && target.uid && !target.page) {
       let string = null;
@@ -63,6 +64,30 @@ extendSession((session, api) => {
     return String(kid?.[STR] ?? kid?.string ?? "");
   };
 
+  // Create ops for a block and everything under it, parent first, each with its own uid, string, order and fold.
+  const subtreeCreates = (target, attrUid, order) => {
+    const out = [];
+    const kidsIn = (node) => (Array.isArray(node?.[KIDS]) ? api.kidsOf(node) : []);
+    const walk = (node, parent, ord) => {
+      const op = { op: "create", uid: node[UID] ?? node.uid, parent, order: ord, string: String(node[STR] ?? node.string ?? "") };
+      if (node[OPEN] !== undefined) op.open = node[OPEN];
+      out.push(op);
+      kidsIn(node).forEach((k, i) => walk(k, op.uid, i));
+    };
+    const attr = target.kids.find((k) => (k[UID] ?? k.uid) === attrUid) ?? { [UID]: attrUid };
+    let full = target.self ? api.rawNode(attrUid) : null;
+    if (!target.self) {
+      let kids = [];
+      try {
+        const got = host.pullTree?.(attrUid, 20, 2000);
+        kids = Array.isArray(got) ? got : Array.isArray(got?.[KIDS]) ? got[KIDS] : [];
+      } catch { kids = []; }
+      full = { ...attr, [KIDS]: kids };
+    }
+    walk(full ?? attr, target.uid, order);
+    return out;
+  };
+
   // Emits one plan through the txn and pushes its inverse.
   const emitPlan = (t, plan, target, undo) => {
     if (plan.op === "string") {
@@ -74,8 +99,10 @@ extendSession((session, api) => {
       undo.push({ op: "delete", uid: id });
     } else if (plan.op === "delete") {
       const at = target.kids.findIndex((k) => (k[UID] ?? k.uid) === plan.uid);
+      const creates = subtreeCreates(target, plan.uid, at >= 0 ? at : "last");
       t.del(plan.uid);
-      undo.push({ op: "create", uid: plan.uid, parent: target.uid, order: at >= 0 ? at : "last", string: kidString(target, plan.uid) });
+      // Undo runs reversed: the parent goes last in the list so it is created first.
+      for (const op of creates.reverse()) undo.push(op);
     }
   };
 
@@ -87,8 +114,18 @@ extendSession((session, api) => {
     return item.type === "card" ? [id] : [];
   };
 
+  // Cards a tag would turn into another kind (image, query) are left alone; the caller says so once.
+  const countBlocked = (before, after, target) => {
+    const had = new Set(before.map(bindingKey));
+    return after.some((b) => !had.has(bindingKey(b)) && tagBlocked(b, target.string)) ? 1 : 0;
+  };
+  const skipToast = (n) => {
+    if (n) api.emit("toast", { message: `Left ${n} card${n === 1 ? "" : "s"} untagged: a tag would change what ${n === 1 ? "it shows" : "they show"}` });
+  };
+
   api.onMoveItems((t, moves, track) => {
     const seen = new Set();
+    let skipped = 0;
     for (const m of moves) {
       const before = chainOf(m.from);
       const after = chainOf(m.to);
@@ -97,9 +134,11 @@ extendSession((session, api) => {
         const target = targetOf(id);
         if (!target || seen.has(target.uid)) continue;
         seen.add(target.uid);
+        skipped += countBlocked(before, after, target);
         for (const plan of planChainChange(before, after, rowOf(target))) emitPlan(t, plan, target, track.undo);
       }
     }
+    skipToast(skipped);
   });
 
   session.sectionBinding = (id) => {
@@ -124,16 +163,19 @@ extendSession((session, api) => {
     if (!binding) return 0;
     const jobs = [];
     const seen = new Set();
+    let skipped = 0;
     for (const cid of cardsUnder(id)) {
       const target = targetOf(cid);
       if (!target || seen.has(target.uid)) continue;
       seen.add(target.uid);
       const plan = planBucketAdd(binding, rowOf(target));
       if (plan) jobs.push({ plan, target });
+      else if (tagBlocked(binding, target.string)) skipped++;
     }
     const label = bindingLabel(binding);
     if (!jobs.length) {
-      api.emit("toast", { message: seen.size ? `Every card already has ${label}` : "No cards to tag" });
+      skipToast(skipped);
+      if (!skipped) api.emit("toast", { message: seen.size ? `Every card already has ${label}` : "No cards to tag" });
       return 0;
     }
     let written = 0;
@@ -142,6 +184,7 @@ extendSession((session, api) => {
       written += part.length;
     }
     api.emit("toast", { message: `Tagged ${written} card${written === 1 ? "" : "s"} with ${label}` });
+    skipToast(skipped);
     return written;
   };
 });

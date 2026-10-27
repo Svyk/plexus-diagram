@@ -5,16 +5,17 @@
 // Bounds: a block source pulls one block's children at a time (at most CHILD_LIMIT, each with one child uid that says
 // whether it has more) and stops once it has FOLLOW_READ_CAP items, so even the whole tree pulls about
 // FOLLOW_READ_CAP + FOLLOW_TREE_DEPTH × CHILD_LIMIT blocks at most. A query stops at its result cap, linked references
-// at FOLLOW_READ_CAP + 1.
+// at FOLLOW_READ_CAP + 1. A page by headings pulls the page's top-level blocks and the children of each.
 // Triggers: a block source watches its block. A query and linked references read again after a save in this window
 // (typing, a checkbox, a drop, Roam's sync dot: watchLocalSaves). A reverse-ref watch would be pulled again on every
 // transaction in the graph, about 8 ms for a page with 2,500 backlinks. Edits on other devices come with the tray's
 // poll and focus refresh.
 //
-// An item is { uid, kind: "block" | "page", text, time, title? (page), crumb?, depth?, blank? }. `time` is the later of
+// An item is { uid, kind: "block" | "page", text, time, title? (page), crumb?, depth?, parent? (block tree), blank? }. `time` is the later of
 // create and edit time, so the tray can say what is new since the last visit.
 
 import { FOLLOW_PARENT_CAP, FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH, queryBody, sourceText as textOf } from "../model/follow.js";
+import { headingItems } from "../model/follow-headings.js";
 import { classifyString, plainText, readPlexus } from "../model/schema.js";
 import { loadQueryRows, parseQuery } from "../model/query-run.js";
 import { createQueryBackend } from "./query-backend.js";
@@ -69,7 +70,7 @@ export function treeItems(root, { depth = 1, cap = FOLLOW_READ_CAP, skip = new S
   let complete = true;
   let deeper = false;
   let cut = false;
-  const walk = (node, level) => {
+  const walk = (node, level, parent) => {
     const kids = sorted(node);
     if (kids.length > cap) cut = true;
     for (const kid of kids) {
@@ -79,16 +80,16 @@ export function treeItems(root, { depth = 1, cap = FOLLOW_READ_CAP, skip = new S
       const string = typeof kid[STR] === "string" ? kid[STR] : "";
       if (META.test(string.trim())) continue;
       if (items.length >= cap) { complete = false; return; }
-      items.push({ uid, kind: "block", text: textOf(string), time: timeOf(kid), depth: level, ...(string.trim() ? {} : { blank: true }) });
+      items.push({ uid, kind: "block", text: textOf(string), time: timeOf(kid), depth: level, parent, ...(string.trim() ? {} : { blank: true }) });
       const more = Array.isArray(kid[KIDS]) && kid[KIDS].length > 0;
       if (!more) continue;
       if (level >= depth) { deeper = true; continue; }
       const inner = load ? load(uid) : kid;
-      if (inner) walk(inner, level + 1);
+      if (inner) walk(inner, level + 1, uid);
       else cut = true;
     }
   };
-  walk(root, 1);
+  walk(root, 1, root?.[UID]);
   return { items, complete: complete && !cut, deeper };
 }
 
@@ -221,5 +222,26 @@ defineFollowKind({
     }
     items.sort((a, b) => b.time - a.time || (a.uid < b.uid ? -1 : 1));
     return { ok: true, complete: refs.length < REFS_LIMIT, items: items.slice(0, FOLLOW_READ_CAP) };
+  },
+});
+
+// PXD-14: the page's top-level blocks (with their heading level) and the children of each, in one pull.
+export const HEADINGS_PULL = `[:node/title :block/uid {(limit :block/children ${CHILD_LIMIT}) [${FIELDS} :block/heading {(limit :block/children ${CHILD_LIMIT}) [${FIELDS}]}]}]`;
+
+defineFollowKind({
+  id: "headings",
+  title: "A page by headings",
+  describe: (p, host) => `Headings of ${quote(nameOf(host, p.uid))}`,
+  // The block watch covers the page's top level; edits below come with the saves in this window and the poll.
+  watch(p, host, cb, env) {
+    const offs = [watchBlock(p, host, cb), watchSaves(env, cb)];
+    return () => { for (const off of offs) off(); };
+  },
+  async read(p, { host, boardUid }) {
+    let node = null;
+    try { node = host?.pullEntity?.(HEADINGS_PULL, p.uid) || null; } catch { node = null; }
+    if (!node) return { ok: false, reason: "missing" };
+    const { items, complete } = headingItems(node, { skip: new Set([boardUid]) });
+    return { ok: true, complete, items, heads: items.filter((item) => item.kind === "heading").map((item) => item.uid) };
   },
 });

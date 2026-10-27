@@ -166,7 +166,10 @@ extendSession((session, api) => {
 
   // binding null unbinds. Layout writes keep the key: itemPlexus carries keys it does not know.
   session.bindSection = (id, binding) => {
-    if (api.board()?.items.get(id)?.type !== "section") return Promise.resolve(false);
+    const item = api.board()?.items.get(id);
+    if (item?.type !== "section") return Promise.resolve(false);
+    // A lane with sub-lanes (PXD-11) already writes a value on each drop.
+    if (binding && item.laneAttr) return Promise.resolve(false);
     const base = api.itemPlexus(id, {});
     const current = readBinding(base);
     if (binding ? current && bindingKey(current) === bindingKey(binding) : !base.bucket) return Promise.resolve(false);

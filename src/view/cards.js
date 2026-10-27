@@ -45,6 +45,7 @@ import { createBucketHost } from "./buckets.js";
 import { findCell, forgetTableCells, measureCell, revealCell, watchTable } from "./table-cells.js";
 import { blockUidFromNode } from "./editor-keys.js";
 import { quietTextarea } from "./quiet-textarea.js";
+import { CARD_REFS_MAX } from "../model/card-refs.js";
 import { childIsOpen, findBlock, focusStep, PEEK_ANIM_MS, PEEK_HOVER_MS, PEEK_LEAVE_MS, peekAllowed } from "../model/card-children.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
@@ -1781,6 +1782,8 @@ export function createItemRenderer({
   // PXD-9: cards whose block left the board's followed source. A mark only; the card stays until the user acts.
   let followLeft = null;
   let filterCardUid = null;
+  // PXD-14: cards whose block now sits under another heading of the followed page: uid -> that heading's text.
+  let followMoved = null;
   const imageRegionString = (text) => {
     const region = parseRegion(text);
     return Boolean(region && region.kind === "img" && region.supported === true && region.owner === "plexus-diagram" && region.error == null);
@@ -1866,6 +1869,7 @@ export function createItemRenderer({
     // Classes other code toggles on the shell (offscreen shell, memory lane, pulse) survive the re-sync.
     for (const keep of TRANSIENT_CLASSES) if (node.classList?.contains(keep)) cls.push(keep);
     node.className = cls.join(" ");
+    if (item.type !== "section") paintMoved(node, item.uid);
     {
       const dueShort = item.type === "card" && cls.includes("pxd-item--task") ? taskMeta(item.string, item.content)?.due?.short : "";
       // The map tier prints it after the header text, and a pseudo element reads its own element's attribute.
@@ -1917,7 +1921,45 @@ export function createItemRenderer({
     if (item.landmark || rec.landmarkEl) paintLandmarkMark(rec, item);
     if (trailBadgeMap.size || rec.trailBadge) paintTrailBadge(rec, item.uid);
     if (item.type !== "section") paintOutside(rec, item.uid);
+    if (item.type === "section" ? (item.laneView || rec.laneEl) : (item.laneMark || rec.laneMarkEl)) paintLane(rec, item);
     if (item.type === "card" && (item.kind === "block" || item.kind === "page")) armLinkHover(rec, item);
+  };
+
+  // PXD-11. A bound lane draws a divider and a "label count" header per band; a card in it carries its value as a
+  // chip. Both exist only for bound lanes and are rebuilt only when their text changes.
+  const paintLane = (rec, item) => {
+    if (item.type === "section") {
+      const bands = Array.isArray(item.laneView) && item.laneView.length ? item.laneView : null;
+      if (!bands) {
+        if (rec.laneEl) { rec.laneEl.remove(); rec.laneEl = null; rec.laneKey = null; }
+        return;
+      }
+      const key = JSON.stringify(bands);
+      if (rec.laneKey === key && rec.laneEl) return;
+      if (!rec.laneEl) rec.laneEl = rec.el.querySelector?.(":scope > .pxd-lane-bands") || el("div", "pxd-lane-bands", rec.el);
+      rec.laneEl.textContent = "";
+      for (const band of bands) {
+        const cell = el("div", band.none ? "pxd-lane-band pxd-lane-band--none" : "pxd-lane-band", rec.laneEl);
+        const label = el("span", "pxd-lane-band__label", cell);
+        label.textContent = `${band.label} ${band.n}`;
+      }
+      rec.laneKey = key;
+      return;
+    }
+    const mark = item.laneMark;
+    if (!mark) {
+      if (rec.laneMarkEl) { rec.laneMarkEl.remove(); rec.laneMarkEl = null; }
+      return;
+    }
+    if (!rec.laneMarkEl) rec.laneMarkEl = el("span", "pxd-lane-mark", rec.el);
+    const chip = rec.laneMarkEl;
+    chip.className = `pxd-lane-mark${mark.none ? " pxd-lane-mark--none" : ""}${mark.two ? " pxd-lane-mark--two" : ""}${mark.loose ? " pxd-lane-mark--loose" : ""}`;
+    const text = mark.two ? `${mark.label} +1` : mark.label;
+    if (chip.textContent !== text) chip.textContent = text;
+    const tip = mark.loose
+      ? `${mark.name}: ${mark.label} (no sub-lane for this value yet; Add sub-lanes in the lane menu)`
+      : mark.two ? `${mark.name}: ${mark.label} (2 values; the first one sets the sub-lane)` : `${mark.name}: ${mark.label}`;
+    if (chip.title !== tip) chip.title = tip;
   };
 
   // Created only for a real landmark or a real badge, so a board with neither adds no nodes.
@@ -2058,7 +2100,7 @@ export function createItemRenderer({
   // paid style and layout for all of them. On a board past VIRTUAL_MIN items a shell is in the DOM only near the
   // view (the content cull rect), or while it is a section, selected, hovered, mounted, edited or focused. Its record
   // and element stay alive detached, so class and state writes still reach it.
-  const VIRTUAL_MIN = 400;
+  const VIRTUAL_MIN = CARD_REFS_MAX;
   const OPEN_NOW_MAX = 150;
   // Map zoom used to build all 150 priority shells in the go-live frame (~245 ms). One chunk is
   // this many shells. A frozen clock never expires PUMP_MS, so the cap is what ends the chunk.
@@ -6586,11 +6628,25 @@ export function createItemRenderer({
     rec.badgeKey = key;
   };
 
+  // The moved mark and its badge text on a card shell; a card that left the source shows that mark instead.
+  const paintMoved = (el, uid) => {
+    const on = Boolean(followMoved?.has(uid)) && !followLeft?.has(uid);
+    el.classList?.toggle?.("pxd-item--moved", on);
+    if (on) el.setAttribute?.("data-pxd-moved", `Moved to ${followMoved.get(uid) || "another heading"}`);
+    else el.removeAttribute?.("data-pxd-moved");
+  };
   const setFollowLeft = (set) => {
     followLeft = set instanceof Set && set.size ? set : null;
     for (const rec of shells.values()) {
       if (rec.type === "section") continue;
       rec.el.classList?.toggle?.("pxd-item--left", Boolean(followLeft?.has(rec.uid)));
+      if (followMoved) paintMoved(rec.el, rec.uid);
+    }
+  };
+  const setFollowMoved = (map) => {
+    followMoved = map instanceof Map && map.size ? map : null;
+    for (const rec of shells.values()) {
+      if (rec.type !== "section") paintMoved(rec.el, rec.uid);
     }
   };
   // PXD-17: the query card filtering the board wears a mark, so it is clear which card dims the rest.
@@ -7797,6 +7853,7 @@ export function createItemRenderer({
     setChanged,
     setFollowLeft,
     setFilterCard,
+    setFollowMoved,
     setShowBadges,
     setTrailBadges,
     setTaskChips,

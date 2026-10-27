@@ -2,6 +2,7 @@
 // component renders; item ids are the contract with the view, which maps them onto session calls.
 // No DOM here: everything is data so the ids, disabled and checked logic can be tested directly.
 
+import { FOLLOW_SECTION_CAP, followCapText } from "../model/follow.js";
 import { MIND_DEPTH_MAX, MIND_DEPTH_MIN, MIND_DIRECTIONS, MIND_SPACINGS, normalizeMindPreset } from "../model/mindmap.js";
 import { PALETTE, FONT_SIZES, DOCK_POSITIONS } from "../model/schema.js";
 import { SHAPES } from "../model/shapes.js";
@@ -91,6 +92,7 @@ function followMenu(f) {
         make("follow:pick-block", "Switch to a block's children…"),
         make("follow:pick-query", "Switch to a query…"),
         make("follow:pick-refs", "Switch to linked references of…"),
+        make("follow:pick-headings", "Switch to a page by headings…"),
         make("follow:stop", "Stop following"),
       ],
     })];
@@ -101,6 +103,36 @@ function followMenu(f) {
       make("follow:pick-block", "A block's children…"),
       make("follow:pick-query", "A query…"),
       make("follow:pick-refs", "Linked references of…"),
+      make("follow:pick-headings", "A page by headings…"),
+    ],
+  })];
+}
+
+// PXD-13. `f` is the tray's sectionMenuState(uid). Following: the source, Show in tray, the tree switch, another
+// source and Stop. Not following: pick a source, unless the board's sections are at the cap (the menu says why).
+function followSectionMenu(f) {
+  if (!f) return [];
+  if (f.following) {
+    return [make("follow-section", "Following", {
+      children: [
+        ...(f.label ? [make("follow-section:label", f.label, { disabled: true })] : []),
+        ...(f.over ? [make("follow-section:over", `Not read: over the limit of ${FOLLOW_SECTION_CAP}`, { disabled: true })] : []),
+        make("follow-section:show", `Show in tray (${Number(f.waiting) || 0} waiting)`),
+        ...(f.kind === "block" ? [make("follow-section:tree", "Include the whole tree", { checked: f.tree === true })] : []),
+        make("follow-section:pick-block", "Switch to a block's children…"),
+        make("follow-section:pick-query", "Switch to a query…"),
+        make("follow-section:pick-refs", "Switch to linked references of…"),
+        make("follow-section:stop", "Stop following"),
+      ],
+    })];
+  }
+  const capped = f.capped === true;
+  return [make("follow-section", "Follow…", {
+    children: [
+      ...(capped ? [make("follow-section:cap", followCapText(), { disabled: true })] : []),
+      make("follow-section:pick-block", "A block's children…", { disabled: capped }),
+      make("follow-section:pick-query", "A query…", { disabled: capped }),
+      make("follow-section:pick-refs", "Linked references of…", { disabled: capped }),
     ],
   })];
 }
@@ -113,9 +145,36 @@ function followCardItems(f) {
   if (f.block) pick.push(make("follow:this", "Its children"));
   if (f.query) pick.push(make("follow:this-query", "This query"));
   if (f.refs) pick.push(make("follow:this-refs", "Its linked references"));
+  if (f.headings) pick.push(make("follow:this-headings", "Its page by headings"));
   if (pick.length) out.push(make("follow-card", "Follow", { children: pick }));
   if (f.left) out.push(make("follow:dismiss", "Dismiss “left the source”"));
   if (f.followed) out.push(make("follow:remove", "Remove, don't bring back", { danger: true }));
+  return out;
+}
+
+// c.refs: { on, big } from session.cardRefs. Past the size cap the item stays and says why it is off.
+const refArrowsItem = (refs) => make("ref-arrows", "Ref arrows", {
+  checked: Boolean(refs?.on),
+  disabled: Boolean(refs?.big),
+  hint: refs?.big ? "Board is too big (over 400 items)" : undefined,
+});
+
+// PXD-11. `lane` is { bound, fields } for a lane section only. Sub-lanes by attribute, then (when bound) stop and pull.
+function laneItems(lane) {
+  if (!lane) return [];
+  const names = Array.isArray(lane.fields) ? lane.fields.slice() : [];
+  if (lane.bound && !names.includes(lane.bound)) names.push(lane.bound);
+  const out = [make("lane-attr", "Sub-lanes by attribute ▸", {
+    children: names.length
+      ? names.map((name) => make(`lane-attr:${name}`, name, { checked: name === lane.bound }))
+      : [make("lane-hint", "No Name:: attributes on this board", { disabled: true })],
+  })];
+  if (lane.bound) {
+    out.push(make("lane-stop", `Stop sub-lanes (${lane.bound})`));
+    out.push(make("lane-pull", `Pull blocks with ${lane.bound}::`));
+    const fresh = Array.isArray(lane.fresh) ? lane.fresh : [];
+    if (fresh.length) out.push(make("lane-add", `Add sub-lanes for ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? ` +${fresh.length - 3}` : ""}`));
+  }
   return out;
 }
 
@@ -248,6 +307,7 @@ export function buildMenu(kind, ctx = {}) {
         sep(),
         make("background", "Background…"),
         make("bg-image", "Lock copied image as background"),
+        refArrowsItem(c.refs),
         viewsMenu(),
         make("print", "Print…"),
         make("highlights", "Highlight marks"),
@@ -345,7 +405,8 @@ export function buildMenu(kind, ctx = {}) {
         make("select-connected", "Select connected"),
         make("collapse-section", c.collapsed ? "Expand" : "Collapse"),
         make("section-note", c.hasNote ? "Remove description" : "Add description"),
-        make("bucket-bind", c.bucket ? `Bound to ${c.bucket}…` : "Bind to tag or attribute…"),
+        // A lane with sub-lanes (PXD-11) writes values itself, so it offers no section binding, and the other way round.
+        ...(c.lane?.bound ? [] : [make("bucket-bind", c.bucket ? `Bound to ${c.bucket}…` : "Bind to tag or attribute…")]),
         ...(c.bucket ? [make("bucket-write", "Write section to graph", { disabled: empty }), make("bucket-unbind", "Unbind")] : []),
         c.locked ? make("unlock-contents", "Unlock") : make("lock-contents", "Lock"),
         make("present-section", "Present this section"),
@@ -358,6 +419,8 @@ export function buildMenu(kind, ctx = {}) {
           ],
         }),
         make("focus-timer", "Focus timer"),
+        ...followSectionMenu(c.follow),
+        ...(c.bucket ? [] : laneItems(c.lane)),
         sep(),
         make("fit-section", "Fit to contents", { disabled: empty }),
         make("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),
@@ -521,6 +584,7 @@ export function buildMenu(kind, ctx = {}) {
         make("add-week", "Add this week's journals"),
         sep(),
         make("background", "Background…"),
+        refArrowsItem(c.refs),
         ...(c.readOpen ? [
           make("bar-table", "Table view"),
           make("bar-kanban", "Kanban view"),

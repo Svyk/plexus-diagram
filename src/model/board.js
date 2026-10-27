@@ -1,4 +1,5 @@
 import { inflate } from "./geometry.js";
+import { readLaneBind } from "./attr-lanes.js";
 import {
   BOARD_PATTERNS,
   BOARD_TONES,
@@ -18,6 +19,7 @@ import {
   semanticRef,
 } from "./schema.js";
 import { isQueryString } from "./query.js";
+import { readFollow } from "./follow.js";
 import { captionTableKid, isRoamTableString, rowsCaption } from "./roam-table.js";
 import { regionRefModel } from "./region-card.js";
 import { drawingRefModel, isDrawingString } from "./drawing-card.js";
@@ -316,6 +318,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         kids: type === "card" && layout.kids === true,
         look: type === "card" ? cardLook(kind, layout.look) : (type === "text" || type === "section" ? layout.look : undefined),
         ...(type === "section" && layout.look === "lane" ? { axis: layout.axis || "horizontal" } : {}),
+        ...(type === "section" && layout.look === "lane" && readLaneBind(cplexus) ? (() => { const b = readLaneBind(cplexus); return { laneAttr: b.name, laneBands: b.bands }; })() : {}),
         ...(type === "text" && layout.shape ? { shape: layout.shape } : {}),
         open: type === "card" ? child[":block/open"] !== false : undefined,
         autofit: !(type === "section" && layout.fit === false),
@@ -334,6 +337,10 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         ...(openKey ? { openKey } : {}),
         // PXD-9: the source a placed card came from (its follow key). Only such cards can be marked "left the source".
         ...(typeof cplexus?.src === "string" && cplexus.src ? { src: cplexus.src } : {}),
+        // PXD-13: the source a section follows (its own plexus.follow), normalized.
+        ...(type === "section" && readFollow(cplexus) ? { follow: readFollow(cplexus) } : {}),
+        // PXD-14: the heading a followed section stands for, or the heading a followed card was placed under.
+        ...(typeof cplexus?.head === "string" && cplexus.head ? { head: cplexus.head } : {}),
       };
       items.set(cuid, item);
       preorder.push(cuid);

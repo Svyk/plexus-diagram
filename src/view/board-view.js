@@ -5093,6 +5093,7 @@ function buildBoardView(onFail, {
     storage,
     graph,
     onLeft: (set) => itemsR.setFollowLeft?.(set),
+    onMoved: (map) => itemsR.setFollowMoved?.(map),
     onShowCard: (uid) => {
       const r = rects().get(uid);
       if (!r) return;
@@ -5909,6 +5910,7 @@ function buildBoardView(onFail, {
           block: !isQueryString(queryText) && (item.kind === "note" || item.kind === "block" || item.kind === "page"),
           query: isQueryString(queryText),
           refs: item.kind === "note" || item.kind === "block" || item.kind === "page",
+          headings: item.kind === "page",
           followed: Boolean(followKey) && item.src === followKey,
           left: Boolean(followCtl?.left?.().includes(item.uid)),
         } : null;
@@ -6009,11 +6011,12 @@ function buildBoardView(onFail, {
     return typeof s === "string" ? { title: plainText(sourceText(s), 80) || "(empty block)", value: uid, meta } : null;
   };
   const followPick = (what) => {
-    const kind = what === "query" ? "query" : what === "refs" ? "refs" : "block";
+    const kind = what === "query" ? "query" : what === "refs" ? "refs" : what === "headings" ? "headings" : "block";
     const words = {
       block: { heading: "Follow a block's children", placeholder: "Search blocks and pages…", hint: "Type to search, or paste a ((block ref))" },
       query: { heading: "Follow a query", placeholder: "Search query blocks…", hint: "Type words from the query, or paste its ((block ref))" },
       refs: { heading: "Follow linked references of", placeholder: "Search pages…", hint: "Type to search pages, or paste a ((block ref))" },
+      headings: { heading: "Follow a page by headings", placeholder: "Search pages…", hint: "Top-level H1–H3 headings become sections" },
     }[kind];
     pagePicker?.close();
     pagePicker = openPagePicker({
@@ -6023,7 +6026,7 @@ function buildBoardView(onFail, {
       search: (text) => {
         const rows = [];
         const fits = (uid) => kind !== "query" || isQueryString(host?.blockString?.(uid) || "");
-        const pasted = refUidIn(text);
+        const pasted = kind === "headings" ? null : refUidIn(text);
         if (pasted) {
           const row = blockRow(pasted, "Block");
           if (row && fits(pasted)) rows.push(row);
@@ -6032,12 +6035,12 @@ function buildBoardView(onFail, {
         // A bare 9-character word may be a block uid or just a word ("Inventory"): the block it names comes first, and
         // the search runs either way.
         const word = String(text || "").trim();
-        const bare = /^[\w-]{9}$/.test(word) && fits(word) ? blockRow(word, "Block") : null;
+        const bare = kind !== "headings" && /^[\w-]{9}$/.test(word) && fits(word) ? blockRow(word, "Block") : null;
         if (bare) rows.push(bare);
         if (kind !== "query") {
-          for (const p of host?.searchPages?.(text, kind === "refs" ? 30 : 10) || []) rows.push({ title: p.title, value: p.uid || p.title, meta: "Page" });
+          for (const p of host?.searchPages?.(text, kind === "refs" || kind === "headings" ? 30 : 10) || []) rows.push({ title: p.title, value: p.uid || p.title, meta: "Page" });
         }
-        if (kind !== "refs") {
+        if (kind !== "refs" && kind !== "headings") {
           for (const r of host?.searchBlocks?.(text, 40) || []) {
             if (r.uid === boardUid || (bare && r.uid === word)) continue;
             const isQ = isQueryString(r.string);
@@ -6049,7 +6052,7 @@ function buildBoardView(onFail, {
         return rows;
       },
       onPick: async (value) => {
-        const uid = /^[\w-]{1,64}$/.test(value) && host?.blockString?.(value) != null ? value : pageUidOf(value) || value;
+        const uid = kind === "headings" ? pageUidOf(value) || value : /^[\w-]{1,64}$/.test(value) && host?.blockString?.(value) != null ? value : pageUidOf(value) || value;
         return startFollow(kind, uid);
       },
     });
@@ -6078,6 +6081,7 @@ function buildBoardView(onFail, {
       case "pick-block": followPick("block"); break;
       case "pick-query": followPick("query"); break;
       case "pick-refs": followPick("refs"); break;
+      case "pick-headings": followPick("headings"); break;
       case "text": {
         const uid = textSourceUid(board()?.string || "");
         if (uid) void startFollow(isQueryString(host?.blockString?.(uid) || "") ? "query" : "block", uid);
@@ -6086,6 +6090,7 @@ function buildBoardView(onFail, {
       case "this": void startFollow("block", followTargetOf(item, "block")); break;
       case "this-query": void startFollow("query", followTargetOf(item, "query")); break;
       case "this-refs": void startFollow("refs", followTargetOf(item, "refs")); break;
+      case "this-headings": void startFollow("headings", followTargetOf(item, "refs")); break;
       case "show": followCtl?.open?.(); break;
       case "tree": void session.setFollowTree?.(!state.tree); break;
       case "stop":

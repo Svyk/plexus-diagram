@@ -61,7 +61,7 @@ const boxOf = (rects) => {
 };
 
 // How far right `box` must move to keep GAP clear of every rect in `avoid`. Each step passes at least one rect.
-function clearRight(box, avoid) {
+export function clearRight(box, avoid) {
   let dx = 0;
   for (let i = 0; i <= avoid.length; i += 1) {
     const x = box.x + dx;

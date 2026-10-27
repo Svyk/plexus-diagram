@@ -2,9 +2,11 @@
 // runs on open or on a timer. The pointer changes only from the Follow menu; cards are written only when the user
 // places them (each placed card is a ref card that carries its source key); deleting a followed card records its uid
 // so the tray does not offer it again, in the delete's own transaction (one undo). Positions, colors, sections and
-// arrows of cards already on the board are never written.
+// arrows of cards already on the board are never written. PXD-14: a page followed by headings places one section per
+// heading (the heading's uid in `head`) with a ref card per block under it.
 import { boundsOf, containerAt, toRelative } from "./model/board.js";
 import { DEFAULT_SIZES, lookForNewString, serializeItemLayout } from "./model/schema.js";
+import { FOLLOW_HEAD, headingPlan } from "./model/follow-headings.js";
 import {
   FOLLOW_SRC,
   addSkip,
@@ -52,21 +54,26 @@ extendSession((session, api) => {
 
   // entries: source items ({ uid, kind, title? }). Ref cards in a column right of the board's cards, or a column at
   // `at` (a drag). SPREAD_CAP cards per transaction, so each batch is one undo; more go in more batches, one column
-  // each. Resolves { placed, batches, total, uids }.
-  const placeNow = (entries, { at = null } = {}) => {
+  // each. Resolves { placed, batches, total, uids }. A headings source places sections and cards (see placeHeadings);
+  // `order` is the source's heading uids in order, from the tray's last read.
+  const placeNow = (entries, { at = null, order = null } = {}) => {
     const none = { placed: 0, batches: 0, total: 0, uids: [] };
     const board = api.board();
     const pointer = readFollow(board?.plexus);
     if (!board || !pointer) return Promise.resolve(none);
     const key = sourceKey(pointer);
     const skipped = new Set(pointer.skip);
+    const heads = pointer.kind === "headings";
     const { on } = followIndex(board, key);
     const seen = new Set();
     const list = (entries || []).filter((e) => {
       if (typeof e?.uid !== "string" || !e.uid || seen.has(e.uid)) return false;
       // An entry from another source never gets this source's key.
       if (e.src !== undefined && e.src !== key) return false;
+      // A heading row is a section, never a card at a drop point.
+      if (e.kind === "heading" && (!heads || at)) return false;
       seen.add(e.uid);
+      if (heads && e.heading && e.heading !== e.uid && skipped.has(e.heading)) return false;
       return !skipped.has(e.uid) && !itemIds(e).some((id) => on.has(id));
     });
     if (!list.length) return Promise.resolve(none);
@@ -74,6 +81,7 @@ extendSession((session, api) => {
       w: Number(api.setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w,
       h: Number(api.setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h,
     };
+    if (heads && !at) return placeHeadings(list, size, key, order);
     const rects = api.rects();
     const bounds = boundsOf(board.roots.map((id) => rects.get(id)).filter(Boolean));
     const batches = followBatches(list, SPREAD_CAP);
@@ -84,7 +92,7 @@ extendSession((session, api) => {
         if (api.isGone()) return null;
         const spots = followColumn(bounds, batch.length, { ...size, column, at });
         return api.txn((t) => {
-          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key));
+          const ids = batch.map((entry, i) => placeOne(t, followCardString(entry), spots[i], size, key, heads && typeof entry.heading === "string" ? entry.heading : ""));
           api.applyFit(t, ids);
           return ids;
         }).then((ids) => { if (Array.isArray(ids)) made.push(...ids); });
@@ -94,6 +102,63 @@ extendSession((session, api) => {
   };
   let placing = Promise.resolve(null);
 
+  // PXD-14: sections and the cards under them, from headingPlan. At most SPREAD_CAP ops (sections and cards) per
+  // transaction, so each batch is one undo; a card whose section was made in an earlier batch is parented to it.
+  // Resolves { placed (cards), sections, batches, total, uids (cards and new sections) }.
+  function placeHeadings(list, size, key, order) {
+    const board = api.board();
+    const heads = Array.isArray(order) ? order : [...new Set(list.map((e) => e.heading).filter(Boolean))];
+    const ops = headingPlan({ entries: list, order: heads, board, rects: api.rects(), key, size });
+    const batches = followBatches(ops, SPREAD_CAP);
+    // A card with no stored size is drawn at DEFAULT_SIZES.card, so any other default size is written on each card.
+    const sized = size.w !== DEFAULT_SIZES.card.w || size.h !== DEFAULT_SIZES.card.h ? size : {};
+    const made = [];
+    const sectionAt = new Map();
+    let cards = 0;
+    let sections = 0;
+    let failed = false;
+    let chain = Promise.resolve();
+    for (const batch of batches) {
+      chain = chain.then(() => {
+        if (failed || api.isGone()) return null;
+        return api.txn((t) => {
+          const now = api.board();
+          const rects = api.rects();
+          const ids = [];
+          const fresh = [];
+          let n = 0;
+          for (const op of batch) {
+            if (op.op === "section") {
+              const layout = { type: "section", x: op.x, y: op.y, w: op.w, h: op.h };
+              const uid = t.create({ parent: boardUid, string: op.title, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key, [FOLLOW_HEAD]: op.head } });
+              sectionAt.set(op.head, { uid, x: api.round1(op.x), y: api.round1(op.y) });
+              ids.push(uid);
+              fresh.push(uid);
+              continue;
+            }
+            const home = op.into ? { uid: op.into } : sectionAt.get(op.head);
+            if (!home) continue;
+            const rel = op.into ? toRelative(now, op.into, op, rects) : { x: op.x - home.x, y: op.y - home.y };
+            const string = followCardString(op);
+            const layout = { x: api.round1(rel.x), y: api.round1(rel.y), ...sized };
+            const look = lookForNewString(string, api.setting("default-card-look", "block"));
+            if (look) layout.look = look;
+            ids.push(t.create({ parent: home.uid, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key, [FOLLOW_HEAD]: op.head } }));
+            n += 1;
+          }
+          api.applyFit(t, ids);
+          return { ids, cards: n, sections: fresh.length };
+        }).then((res) => {
+          if (!res) { failed = true; return; }
+          made.push(...res.ids);
+          cards += res.cards;
+          sections += res.sections;
+        });
+      });
+    }
+    return chain.then(() => ({ placed: cards, sections, batches: batches.length, total: list.length, uids: made }));
+  }
+
   // Deleting a followed card of the current source (or any card with followSkip) keeps it out of the tray.
   api.onDeleteItems?.((t, uids, opts) => {
     const board = api.board();
@@ -102,9 +167,18 @@ extendSession((session, api) => {
     if (!board || !pointer) return;
     const key = sourceKey(pointer);
     const add = [];
+    // PXD-14: a deleted heading section keeps its heading, and so every block under it, out of the tray; those blocks'
+    // own uids are not listed as well.
+    const gone = new Set();
+    for (const id of uids) {
+      const item = board.items.get(id);
+      if (item?.type === "section" && item.head && (item.src === key || opts?.followSkip === true)) gone.add(item.head);
+    }
+    add.push(...gone);
     for (const id of uids) {
       const item = board.items.get(id);
       if (!item || (item.src !== key && opts?.followSkip !== true)) continue;
+      if (item.type === "section" ? item.head : gone.has(item.head)) continue;
       const skip = skipIdOf(item);
       if (skip) add.push(skip);
     }
@@ -112,7 +186,7 @@ extendSession((session, api) => {
   });
 
   // One ref card. The parent is the section under its center, as for any drop.
-  function placeOne(t, string, spot, size, key) {
+  function placeOne(t, string, spot, size, key, head = "") {
     const board = api.board();
     const rects = api.rects();
     const parent = containerAt(board, { x: spot.x + size.w / 2, y: spot.y + size.h / 2 }, { rects });
@@ -120,7 +194,7 @@ extendSession((session, api) => {
     const layout = { x: api.round1(rel.x), y: api.round1(rel.y) };
     const look = lookForNewString(string, api.setting("default-card-look", "block"));
     if (look) layout.look = look;
-    return t.create({ parent, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key } });
+    return t.create({ parent, string, plexus: { ...serializeItemLayout(layout), [FOLLOW_SRC]: key, ...(head ? { [FOLLOW_HEAD]: head } : {}) } });
   }
 
   Object.assign(session, {
@@ -178,7 +252,8 @@ extendSession((session, api) => {
       return session.deleteItems(cardUids, { followSkip: true });
     },
 
-    // Drops the source mark from cards (a "left the source" card becomes a plain card). Everything else stays.
+    // Drops the source mark from cards (a "left the source" card becomes a plain card; a section also lets go of its
+    // heading). Everything else stays.
     dismissLeft(cardUids) {
       return api.txn((t) => {
         let n = 0;
@@ -187,7 +262,24 @@ extendSession((session, api) => {
           if (!api.board()?.items.has(id) || !(FOLLOW_SRC in raw)) continue;
           const next = { ...raw };
           delete next[FOLLOW_SRC];
+          delete next[FOLLOW_HEAD];
           t.props(id, next);
+          n += 1;
+        }
+        return n;
+      }).then((n) => n ?? 0);
+    },
+
+    // PXD-14: `{ cardUid: headingUid }`. The card stays where it is and takes the heading its block moved to as its
+    // own, so the tray stops calling it moved. Resolves the number written.
+    dismissMoved(moved) {
+      const pairs = moved instanceof Map ? [...moved] : Object.entries(moved || {});
+      return api.txn((t) => {
+        let n = 0;
+        for (const [id, to] of pairs) {
+          const item = api.board()?.items.get(id);
+          if (!item || typeof item.head !== "string" || typeof to !== "string" || !to || item.head === to) continue;
+          t.props(id, { ...api.rawPlexus(id), [FOLLOW_HEAD]: to });
           n += 1;
         }
         return n;

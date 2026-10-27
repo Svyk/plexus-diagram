@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { filterBright, filterLabel, filterQueryUid, filterTargets, intersectBright } from "../src/model/query-filter.js";
-import { createQueryFilter } from "../src/view/query-filter.js";
+import { FILTER_POLL_MS, createQueryFilter } from "../src/view/query-filter.js";
 import { buildMenu } from "../src/view/menu-model.js";
 
 // ---------------------------------------------------------------- matching
@@ -236,5 +236,83 @@ test("PXD-17: a fallback card that mounts late (zoomed in after a while) is stil
   mounted = live;
   await timers.flush(1);
   assert.deepEqual([...seen.at(-1).uids], ["note00001"]);
+  f.stop();
+});
+
+test("PXD-17: an edit moves the filter between Roam's render and query-run, both ways", async () => {
+  const timers = fakeTimers();
+  observers.length = 0;
+  let text = "{{query: {and: [[A]] {or: [[B]] {not: [[C]]}}}}}";
+  let runs = 0;
+  const backend = { hits: () => { runs += 1; return { uids: ["blkAAAAA1"], partial: false }; } };
+  const watches = [];
+  const host = { blockString: () => text, watchBlock: (uid, cb) => { watches.push(cb); return () => {}; } };
+  const live = fakeLive(["roam-query-qcard0001-note00001"]);
+  let mounted = live;
+  const seen = [];
+  const f = createQueryFilter({ host, doc: fakeDoc(), backend, later: timers.later, cancel: timers.cancel, liveNode: () => mounted, onResults: (r) => seen.push(r) });
+  f.start({ queryUid: "qcard0001", cardUid: "card00001" });
+  assert.equal(f.active().mode, "dom");
+  assert.deepEqual([...seen.at(-1).uids], ["note00001"]);
+
+  // Edited into a query Plexus runs: the card now shows Plexus' list, Roam's render is gone.
+  text = "{{query: [[Alpha]]}}";
+  mounted = null;
+  watches[0]();
+  await timers.flush(3);
+  assert.equal(f.active().mode, "run");
+  assert.ok(runs >= 1);
+  assert.deepEqual([...seen.at(-1).uids], ["blkAAAAA1"]);
+  assert.equal(seen.at(-1).mode, "run");
+  assert.equal(observers.every((o) => o.node === null), true);
+
+  // And back: Roam renders again and the filter reads it.
+  text = "{{query: {search: alpha}}}";
+  mounted = live;
+  live.ids = ["roam-query-qcard0001-blkBBBBB1"];
+  watches[0]();
+  await timers.flush(3);
+  assert.equal(f.active().mode, "dom");
+  assert.deepEqual([...seen.at(-1).uids], ["blkBBBBB1"]);
+
+  // And forward again.
+  text = "{{query: [[Alpha]]}}";
+  mounted = null;
+  const before = runs;
+  watches[0]();
+  await timers.flush(3);
+  assert.equal(f.active().mode, "run");
+  assert.ok(runs > before);
+  assert.deepEqual([...seen.at(-1).uids], ["blkAAAAA1"]);
+  f.stop();
+});
+
+test("PXD-17: a run-mode filter polls slowly for changes from elsewhere and repaints only when they differ", async () => {
+  const due = [];
+  const later = (fn, ms) => { due.push({ fn, ms }); return due.length; };
+  const hits = ["note00001"];
+  const backend = { hits: () => ({ uids: [...hits], partial: false }) };
+  const seen = [];
+  const f = createQueryFilter({ host: { blockString: () => "{{query: [[Alpha]]}}" }, doc: fakeDoc(), backend, later, cancel: () => {}, onResults: (r) => seen.push(r) });
+  f.start({ queryUid: "qcard0001", cardUid: "qcard0001" });
+  const tick = async () => {
+    for (let i = 0; i < 20; i += 1) {
+      const t = due.findIndex((d) => d.ms === 0);
+      if (t >= 0) { due.splice(t, 1)[0].fn(); } else await new Promise((r) => setImmediate(r));
+    }
+  };
+  await tick();
+  assert.equal(seen.length, 1);
+  const poll = () => { const i = due.findIndex((d) => d.ms === FILTER_POLL_MS); assert.ok(i >= 0, "poll queued"); due.splice(i, 1)[0].fn(); };
+  // Same results: no repaint.
+  poll();
+  await tick();
+  assert.equal(seen.length, 1);
+  // Another window tagged a block: the next poll picks it up.
+  hits.push("blkBBBBB1");
+  poll();
+  await tick();
+  assert.equal(seen.length, 2);
+  assert.equal(seen[1].uids.has("blkBBBBB1"), true);
   f.stop();
 });

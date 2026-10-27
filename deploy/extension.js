@@ -93927,6 +93927,7 @@ init_query_backend();
 var FILTER_QUIET_MS = 800;
 var FILTER_RETRY_MS = 1200;
 var FILTER_SLOW_RETRY_MS = 4e3;
+var FILTER_POLL_MS = 2e4;
 var FALLBACK_TRIES = 8;
 function createQueryFilter({ host, doc = globalThis.document, liveNode = () => null, onResults = () => {
 }, backend, later, cancel } = {}) {
@@ -93949,8 +93950,12 @@ function createQueryFilter({ host, doc = globalThis.document, liveNode = () => n
     }
     return out;
   };
+  const sameSet = (a, b) => a === b || a instanceof Set && b instanceof Set && a.size === b.size && [...a].every((u) => b.has(u));
   const emit2 = (f, uids, partial, status) => {
     if (cur !== f) return;
+    const last = f.last;
+    if (last && f.mode === last.mode && f.title === last.title && partial === last.partial && status === last.status && sameSet(uids, f.uids)) return;
+    f.last = { mode: f.mode, title: f.title, partial, status };
     f.uids = uids;
     onResults({ queryUid: f.queryUid, cardUid: f.cardUid, uids, partial, mode: f.mode, status });
   };
@@ -93967,14 +93972,7 @@ function createQueryFilter({ host, doc = globalThis.document, liveNode = () => n
       void read2(f);
     }, ms);
   };
-  const runOnce = async (f) => {
-    const string = host?.blockString?.(f.queryUid);
-    const parsed = parseQuery(string);
-    if (!parsed.ok || !parsed.ast) {
-      f.mode = "dom";
-      readDom(f);
-      return;
-    }
+  const runOnce = async (f, parsed) => {
     f.title = parsed.title || f.title;
     const gen = ++f.gen;
     const exclude = excludeOf(f.queryUid);
@@ -93986,6 +93984,7 @@ function createQueryFilter({ host, doc = globalThis.document, liveNode = () => n
       return;
     }
     emit2(f, new Set(res.uids.filter((u) => !exclude.has(u))), res.partial, "ok");
+    if (f.timer == null) schedule(f, FILTER_POLL_MS);
   };
   const watchDom = (f, node2) => {
     if (f.observed === node2) return;
@@ -94019,12 +94018,21 @@ function createQueryFilter({ host, doc = globalThis.document, liveNode = () => n
     emit2(f, new Set(uids), failed, failed ? "error" : "ok");
   }
   async function read2(f) {
-    if (f.mode === "dom") {
+    const parsed = parseQuery(host?.blockString?.(f.queryUid));
+    const mode = parsed.ok && parsed.ast ? "run" : "dom";
+    if (mode !== f.mode) {
+      f.mode = mode;
+      f.tries = 0;
+      f.mo?.disconnect?.();
+      f.mo = null;
+      f.observed = null;
+    }
+    if (mode === "dom") {
       readDom(f);
       return;
     }
     try {
-      await runOnce(f);
+      await runOnce(f, parsed);
     } catch {
       emit2(f, f.uids, true, "error");
     }
@@ -94057,6 +94065,7 @@ function createQueryFilter({ host, doc = globalThis.document, liveNode = () => n
       gen: 0,
       tries: 0,
       waited: false,
+      last: null,
       timer: null,
       mo: null,
       observed: null,
@@ -113200,7 +113209,8 @@ ${url}`;
       chrome.ctx.reposition();
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLiftIdle();
-    if (filterCard && (itemsChanged || dirty.viewport && !gesturing)) filterCtl?.poke();
+    if (filterCard && itemsChanged && board2() && !board2().items.has(filterCard)) filterCtl?.stop();
+    else if (filterCard && (itemsChanged || dirty.viewport && !gesturing)) filterCtl?.poke();
     const wheelMinimap = wheelLayer && !itemsChanged && !dirty.minimap || Boolean(dragRide) && !itemsChanged;
     if ((itemsChanged || dirty.minimap || dirty.viewport && !gesturing) && !(wheelMinimap && perfNow3() - minimapAt < MINIMAP_WHEEL_MS)) {
       minimapAt = perfNow3();

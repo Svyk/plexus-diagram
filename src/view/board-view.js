@@ -10781,7 +10781,9 @@ function buildBoardView(onFail, {
       chrome.ctx.reposition();
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLiftIdle();
-    if (filterCard && (itemsChanged || (dirty.viewport && !gesturing))) filterCtl?.poke();
+    // The filtering card left the board (deleted, moved out): its filter ends with it.
+    if (filterCard && itemsChanged && board() && !board().items.has(filterCard)) filterCtl?.stop();
+    else if (filterCard && (itemsChanged || (dirty.viewport && !gesturing))) filterCtl?.poke();
     // During a wheel pan or zoom the minimap and landmark dots repaint at most every MINIMAP_WHEEL_MS (they rebuilt
     // their marks every frame, and every DOM write inside Roam's block re-runs its :has() checks); the settle paints them.
     const wheelMinimap = (wheelLayer && !itemsChanged && !dirty.minimap) || (Boolean(dragRide) && !itemsChanged);

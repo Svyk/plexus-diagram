@@ -418,6 +418,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   const listeners = new Map();
   // fn(t, uids, opts) inside deleteItems' own transaction: uids are every item that goes (contents included).
   const deleteHooks = [];
+  // fn(t, moves, track) inside commitMove / commitRects: moves are [{ uid, from, to }] parent uids before and after;
+  // the hook pushes inverse ops into track.undo for the custom undo of a big drag.
+  const moveHooks = [];
+  const runMoveHooks = (t, moves, track) => {
+    if (!moves.length) return;
+    for (const fn of moveHooks) {
+      try { fn(t, moves, track); } catch (err) { console.error("[plexus session] move hook", err); }
+    }
+  };
   const emit = (name, payload) => {
     for (const fn of [...(listeners.get(name) ?? [])]) {
       try { fn(payload); } catch (err) { console.error("[plexus session]", err); }
@@ -2134,6 +2143,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         const hit = ix().get(id);
         before.set(id, { parent: hit?.parent?.[UID] || uid, order: node[ORD], plexus: clone(rawPlexus(id)) });
       };
+      const track = { undo: [] };
       const custom = {
         when: "over-native-limit",
         async undo() {
@@ -2155,7 +2165,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           // Low original order first, per parent, so each card lands in the hole it left. Props come after the
           // move: stored x/y are relative to the parent the card is going back to.
           moves.sort((a, b) => (a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0)));
-          await execute([...moves, ...propsOps]);
+          await execute([...moves, ...propsOps, ...[...track.undo].reverse()]);
         },
         async redo() { await execute(custom.forward); },
       };
@@ -2173,16 +2183,19 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           moved.set(id, { ...r, x: r.x + dx, y: r.y + dy });
         }
         const plan = new Map(membershipPlan(board, top, moved).map((p) => [p.uid, p]));
+        const parents = [];
         for (const id of top) {
           const item = board.items.get(id);
           const p = plan.get(id);
           if (p) {
+            if (p.toParent !== item.parentUid) parents.push({ uid: id, from: item.parentUid, to: p.toParent });
             t.move(id, p.toParent, "last");
             t.props(id, itemPlexus(id, { x: p.x, y: p.y }));
           } else {
             t.props(id, itemPlexus(id, { x: item.x + dx, y: item.y + dy }));
           }
         }
+        runMoveHooks(t, parents, track);
         applyFit(t, top);
         if (flag("space-out", false)) spaceOutAfter(t, top);
       }, custom);
@@ -2211,10 +2224,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           t.sync();
           for (const sid of changedSections) {
             const plan = sectionAdoptPlan(board, sid, rects);
+            const parents = plan.filter((p) => p.toParent !== board.items.get(p.uid)?.parentUid).map((p) => ({ uid: p.uid, from: board.items.get(p.uid).parentUid, to: p.toParent }));
             for (const p of plan) {
               t.move(p.uid, p.toParent, "last");
               t.props(p.uid, itemPlexus(p.uid, { x: p.x, y: p.y }));
             }
+            runMoveHooks(t, parents, { undo: [] });
             if (plan.length) t.sync();
           }
         }
@@ -4212,6 +4227,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     clone,
     round1,
     emit,
+    onMoveItems(fn) {
+      if (typeof fn !== "function") return () => {};
+      moveHooks.push(fn);
+      return () => {
+        const at = moveHooks.indexOf(fn);
+        if (at >= 0) moveHooks.splice(at, 1);
+      };
+    },
     onDeleteItems(fn) {
       if (typeof fn !== "function") return () => {};
       deleteHooks.push(fn);

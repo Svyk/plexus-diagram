@@ -121,7 +121,7 @@ import { LONG_PRESS_CANCEL_PX, LONG_PRESS_MS, longPressAt } from "../model/touch
 import { closeTab, openTab, tabAt } from "../model/tabs.js";
 import { createPanel, parseDropPayload } from "./panel.js";
 import { createInbox } from "./inbox.js";
-import { createFollowTray } from "./follow-tray.js";
+import { REASONS as FOLLOW_REASONS, createFollowTray } from "./follow-tray.js";
 import { FOLLOW_MIME, sourceText, textSourceUid } from "../model/follow.js";
 import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
@@ -5953,6 +5953,7 @@ function buildBoardView(onFail, {
           query: isQueryString(queryText),
           refs: item.kind === "note" || item.kind === "block" || item.kind === "page",
           headings: item.kind === "page",
+          board: item.kind === "board" && item.uid !== boardUid,
           followed: Boolean(followKey) && item.src === followKey,
           left: Boolean(followCtl?.left?.().includes(item.uid)),
         } : null;
@@ -6057,7 +6058,62 @@ function buildBoardView(onFail, {
     try { s = host?.blockString?.(uid); } catch { s = null; }
     return typeof s === "string" ? { title: plainText(sourceText(s), 80) || "(empty block)", value: uid, meta } : null;
   };
+  // PXD-19: boards (from one listBoards per picker) and their sections (one pull per matching board, on demand).
+  const SECTIONS_PULL = "[{(limit :block/children nil) [:block/uid :block/string :block/order :block/props {(limit :block/children nil) [:block/uid :block/string :block/order :block/props]}]}]";
+  const boardPick = () => {
+    let boards = null;
+    const sections = new Map();
+    const sectionsOf = (uid) => {
+      if (sections.has(uid)) return sections.get(uid);
+      const out = [];
+      let node = null;
+      try { node = host?.pullEntity?.(SECTIONS_PULL, uid) || null; } catch { node = null; }
+      const walk = (n, depth) => {
+        const kids = Array.isArray(n?.[":block/children"]) ? n[":block/children"].slice() : [];
+        kids.sort((x, y) => (Number(x?.[":block/order"]) || 0) - (Number(y?.[":block/order"]) || 0));
+        for (const kid of kids) {
+          if (readPlexus(kid?.[":block/props"])?.type !== "section") continue;
+          out.push({ uid: kid[":block/uid"], title: plainText(sourceText(kid[":block/string"] || ""), 60) || "Section" });
+          if (depth < 2) walk(kid, depth + 1);
+        }
+      };
+      walk(node, 1);
+      sections.set(uid, out);
+      return out;
+    };
+    pagePicker?.close();
+    pagePicker = openPagePicker({
+      doc,
+      heading: "Mirror a board or section",
+      placeholder: "Search boards…",
+      hint: "A whole board, or one of its sections",
+      none: "Nothing matches",
+      search: (text) => {
+        if (!boards) {
+          try { boards = (host?.listBoards?.() || []).filter((b) => b.uid !== boardUid); } catch { boards = []; }
+        }
+        const words = String(text || "").trim().toLowerCase();
+        const rows = [];
+        for (const b of boards) {
+          if (rows.length >= 40) break;
+          const title = b.title || "Untitled board";
+          if (!`${title}\n${b.pageTitle || ""}`.toLowerCase().includes(words)) continue;
+          rows.push({ title, value: b.uid, meta: b.pageTitle || "Board" });
+          for (const sec of sectionsOf(b.uid)) {
+            if (rows.length >= 40) break;
+            rows.push({ title: `${title} › ${sec.title}`, value: `${b.uid}/${sec.uid}`, meta: "Section" });
+          }
+        }
+        return rows;
+      },
+      onPick: async (value) => {
+        const [uid, section] = String(value || "").split("/");
+        return startFollow("board", uid, section || undefined);
+      },
+    });
+  };
   const followPick = (what) => {
+    if (what === "board") { boardPick(); return; }
     const kind = what === "query" ? "query" : what === "refs" ? "refs" : what === "headings" ? "headings" : "block";
     const words = {
       block: { heading: "Follow a block's children", placeholder: "Search blocks and pages…", hint: "Type to search, or paste a ((block ref))" },
@@ -6104,9 +6160,14 @@ function buildBoardView(onFail, {
       },
     });
   };
-  const startFollow = async (kind, uid) => {
+  const startFollow = async (kind, uid, section) => {
     if (!uid) return false;
-    const ok = await session.followSource?.({ kind, uid });
+    const refusal = session.followRefusal?.({ kind, uid, section }) || "";
+    if (refusal === "cycle" || refusal === "self") {
+      toast(FOLLOW_REASONS[refusal]);
+      return true;
+    }
+    const ok = await session.followSource?.({ kind, uid, section });
     if (disposed) return false;
     if (ok) {
       followCtl?.open?.();
@@ -6129,6 +6190,7 @@ function buildBoardView(onFail, {
       case "pick-query": followPick("query"); break;
       case "pick-refs": followPick("refs"); break;
       case "pick-headings": followPick("headings"); break;
+      case "pick-board": followPick("board"); break;
       case "text": {
         const uid = textSourceUid(board()?.string || "");
         if (uid) void startFollow(isQueryString(host?.blockString?.(uid) || "") ? "query" : "block", uid);
@@ -6138,6 +6200,7 @@ function buildBoardView(onFail, {
       case "this-query": void startFollow("query", followTargetOf(item, "query")); break;
       case "this-refs": void startFollow("refs", followTargetOf(item, "refs")); break;
       case "this-headings": void startFollow("headings", followTargetOf(item, "refs")); break;
+      case "this-board": if (item?.kind === "board") void startFollow("board", item.uid); break;
       case "show": followCtl?.open?.(); break;
       case "tree": void session.setFollowTree?.(!state.tree); break;
       case "stop":

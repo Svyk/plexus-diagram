@@ -37,13 +37,18 @@ import { followKind } from "../host/follow-sources.js";
 import { editState, watchEditing } from "../host/local-saves.js";
 import { SPREAD_CAP } from "../session-clip.js";
 
-const REASONS = {
+export const REASONS = {
   missing: "The source block is gone.",
   missingText: "The block in the board text does not exist.",
   unsupported: "Plexus cannot run this query. It reads page and block refs with and, or and not.",
   slow: "The query took too long to read.",
   unknown: "This board follows a kind of source this version cannot read.",
+  missingSection: "The followed section is gone.",
+  cycle: "That board follows this one, so mirroring it would make a loop.",
+  self: "A board cannot mirror itself.",
 };
+// PXD-19: under the head of a board source whose last read held cards the source got from a third board.
+export const RELAYED_NOTE = "Cards this board got from mirroring another board are not passed on.";
 
 export function createFollowTray({
   doc = globalThis.document,
@@ -450,6 +455,7 @@ export function createFollowTray({
     else if (read && !read.complete) note = "Only part of the source was read, so nothing is marked as left.";
     else if (read?.deeper) note = `Blocks more than ${FOLLOW_TREE_DEPTH} levels down are not listed. Cards placed from there still count as in the source.`;
     if (note) el("div", "pxd-follow__note", panel, note);
+    if (pointer?.kind === "board" && read?.relayed > 0) el("div", "pxd-follow__note", panel, RELAYED_NOTE);
     const heads = pointer?.kind === "headings";
     if (heads) {
       el("div", "pxd-follow__note", panel, headingsNote);

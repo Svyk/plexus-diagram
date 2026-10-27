@@ -1915,7 +1915,42 @@ export function createItemRenderer({
     if (item.landmark || rec.landmarkEl) paintLandmarkMark(rec, item);
     if (trailBadgeMap.size || rec.trailBadge) paintTrailBadge(rec, item.uid);
     if (item.type !== "section") paintOutside(rec, item.uid);
+    if (item.type === "section" ? (item.laneView || rec.laneEl) : (item.laneMark || rec.laneMarkEl)) paintLane(rec, item);
     if (item.type === "card" && (item.kind === "block" || item.kind === "page")) armLinkHover(rec, item);
+  };
+
+  // PXD-11. A bound lane draws a divider and a "label count" header per band; a card in it carries its value as a
+  // chip. Both exist only for bound lanes and are rebuilt only when their text changes.
+  const paintLane = (rec, item) => {
+    if (item.type === "section") {
+      const bands = Array.isArray(item.laneView) && item.laneView.length ? item.laneView : null;
+      if (!bands) {
+        if (rec.laneEl) { rec.laneEl.remove(); rec.laneEl = null; rec.laneKey = null; }
+        return;
+      }
+      const key = JSON.stringify(bands);
+      if (rec.laneKey === key && rec.laneEl) return;
+      if (!rec.laneEl) rec.laneEl = rec.el.querySelector?.(":scope > .pxd-lane-bands") || el("div", "pxd-lane-bands", rec.el);
+      rec.laneEl.textContent = "";
+      for (const band of bands) {
+        const cell = el("div", band.none ? "pxd-lane-band pxd-lane-band--none" : "pxd-lane-band", rec.laneEl);
+        const label = el("span", "pxd-lane-band__label", cell);
+        label.textContent = `${band.label} ${band.n}`;
+      }
+      rec.laneKey = key;
+      return;
+    }
+    const mark = item.laneMark;
+    if (!mark) {
+      if (rec.laneMarkEl) { rec.laneMarkEl.remove(); rec.laneMarkEl = null; }
+      return;
+    }
+    if (!rec.laneMarkEl) rec.laneMarkEl = el("span", "pxd-lane-mark", rec.el);
+    const chip = rec.laneMarkEl;
+    chip.className = `pxd-lane-mark${mark.none ? " pxd-lane-mark--none" : ""}${mark.two ? " pxd-lane-mark--two" : ""}`;
+    if (chip.textContent !== mark.label) chip.textContent = mark.label;
+    const tip = mark.two ? `${mark.name}: ${mark.label} (2 values; the first one sets the sub-lane)` : `${mark.name}: ${mark.label}`;
+    if (chip.title !== tip) chip.title = tip;
   };
 
   // Created only for a real landmark or a real badge, so a board with neither adds no nodes.

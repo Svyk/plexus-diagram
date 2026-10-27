@@ -27,6 +27,8 @@ import {
   topLevelOf,
   worldRects,
 } from "./model/board.js";
+import { isTableRow } from "./model/table.js";
+import { bandIndexAt, laneBands, laneRow, laneRows, laneView, planLaneDrop, serializeBands } from "./model/attr-lanes.js";
 import { whyPlan } from "./model/why.js";
 import { isInlinePdfCard, pageCardString } from "./model/pdf-page.js";
 import { isOldTableCard } from "./model/table-captions.js";
@@ -94,7 +96,7 @@ const PROPS = ":block/props";
 const OPEN = ":block/open";
 
 const LINK_MODES = ["off", "attributes", "all"];
-const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
+const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "look", "axis", "attr", "bands", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
 const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 const MAX_PARENT_STRINGS = 200;
 // A held big board whose resume Roam refused (rate limit while rebuilding an expired hold) tries again after this.
@@ -522,6 +524,72 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return derivedMemo.pointer;
   };
 
+  // ---- PXD-11 attribute lanes ----
+  // A drop into a ref card's referenced block is shown at once from here (the board watch does not see that block).
+  // Dropped when the host read agrees, or after LANE_WRITE_MS.
+  const laneWrites = new Map(); // block uid -> { uid, string, at }
+  const LANE_WRITE_MS = 10000;
+  function laneKids(targetUid) {
+    let kids = [];
+    try { kids = host.pullTree?.(targetUid, 1, 40) || []; } catch { kids = []; }
+    const w = laneWrites.get(targetUid);
+    if (!w) return kids;
+    const hit = kids.find((k) => k.uid === w.uid);
+    if ((hit && hit.string === w.string) || Date.now() - w.at > LANE_WRITE_MS) {
+      laneWrites.delete(targetUid);
+      return kids;
+    }
+    return hit ? kids.map((k) => (k.uid === w.uid ? { ...k, string: w.string } : k)) : [...kids, { uid: w.uid, string: w.string }];
+  }
+  const laneResolve = (id) => {
+    try {
+      const text = host.blockString?.(id);
+      return typeof text === "string" ? text : null;
+    } catch { return null; }
+  };
+  // Bound lanes only: the bands with their counts on the lane, the value mark on each member card. No work when no
+  // lane is bound.
+  function annotateLanes(b) {
+    if (!b) return;
+    for (const item of b.items.values()) {
+      if (item.type !== "section" || item.look !== "lane" || !item.laneAttr) continue;
+      const rows = laneRows(b, item.uid, laneKids, laneResolve);
+      const view = laneView(laneBands(rows, item.laneAttr, item.laneBands), rows, item.laneAttr);
+      item.laneView = view.bands;
+      for (const [id, mark] of view.marks) {
+        const card = b.items.get(id);
+        if (card) card.laneMark = mark;
+      }
+    }
+  }
+
+  // Lane drops for a drag: for each moved card that ends up in a bound lane, the band under its center (bands as the
+  // user saw them, from the lane's members before this move) and the one write that puts its value there.
+  function planLaneDrops(top, plan, moved) {
+    const out = { writes: [], bands: new Map() };
+    const perLane = new Map();
+    for (const id of top) {
+      const item = board.items.get(id);
+      if (!item || !isTableRow(item)) continue;
+      const lane = board.items.get(plan.get(id)?.toParent ?? item.parentUid);
+      if (!lane || lane.type !== "section" || lane.look !== "lane" || !lane.laneAttr) continue;
+      const laneRect = rects.get(lane.uid);
+      const r = moved.get(id);
+      if (!laneRect || !r) continue;
+      let ctx = perLane.get(lane.uid);
+      if (!ctx) {
+        ctx = { bands: laneBands(laneRows(board, lane.uid, laneKids, laneResolve), lane.laneAttr, lane.laneBands) };
+        perLane.set(lane.uid, ctx);
+        const ser = serializeBands(ctx.bands);
+        if (JSON.stringify(ser) !== JSON.stringify(lane.laneBands)) out.bands.set(lane.uid, ser);
+      }
+      const at = bandIndexAt(laneRect, lane.axis, ctx.bands.length, { x: r.x + r.w / 2, y: r.y + r.h / 2 });
+      const step = planLaneDrop({ name: lane.laneAttr, row: laneRow(board, item, laneKids, laneResolve), band: ctx.bands[at] });
+      if (step) out.writes.push({ ...step, ref: item.kind === "block" ? item.target?.uid ?? null : null });
+    }
+    return out;
+  }
+
   const rebuild = () => {
     rix = null;
     const plexusApi = globalThis.window?.RoamPlexus ?? globalThis.RoamPlexus ?? null;
@@ -554,6 +622,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         return pending;
       },
     }) : null;
+    annotateLanes(board);
     if (board && outlineRev.size) {
       for (const [id, rev] of outlineRev) {
         const item = board.items.get(id);
@@ -2134,6 +2203,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         const hit = ix().get(id);
         before.set(id, { parent: hit?.parent?.[UID] || uid, order: node[ORD], plexus: clone(rawPlexus(id)) });
       };
+      // PXD-11: attribute values a drop wrote (previous string per block) and the Name:: children it created.
+      const stringBefore = new Map();
+      const laneCreated = [];
       const custom = {
         when: "over-native-limit",
         async undo() {
@@ -2155,7 +2227,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           // Low original order first, per parent, so each card lands in the hole it left. Props come after the
           // move: stored x/y are relative to the parent the card is going back to.
           moves.sort((a, b) => (a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : (a.order ?? 0) - (b.order ?? 0)));
-          await execute([...moves, ...propsOps]);
+          const valueOps = [];
+          for (const [id, prev] of stringBefore) valueOps.push({ op: "string", uid: id, string: prev });
+          for (const id of laneCreated) valueOps.push({ op: "delete", uid: id });
+          await execute([...moves, ...propsOps, ...valueOps]);
         },
         async redo() { await execute(custom.forward); },
       };
@@ -2183,6 +2258,23 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
             t.props(id, itemPlexus(id, { x: item.x + dx, y: item.y + dy }));
           }
         }
+        const drops = planLaneDrops(top, plan, moved);
+        for (const w of drops.writes) {
+          if (w.op === "string") {
+            if (!stringBefore.has(w.uid)) {
+              let prev = rawNode(w.uid)?.[STR];
+              if (typeof prev !== "string") prev = laneResolve(w.uid);
+              if (typeof prev === "string") stringBefore.set(w.uid, prev);
+            }
+            t.string(w.uid, w.string);
+            if (w.ref) laneWrites.set(w.ref, { uid: w.uid, string: w.string, at: Date.now() });
+          } else if (w.op === "create") {
+            const made = t.create({ parent: w.parent, string: w.string, order: "last" });
+            laneCreated.push(made);
+            if (w.ref) laneWrites.set(w.ref, { uid: made, string: w.string, at: Date.now() });
+          }
+        }
+        for (const [laneUid, bands] of drops.bands) t.props(laneUid, itemPlexus(laneUid, { bands }));
         applyFit(t, top);
         if (flag("space-out", false)) spaceOutAfter(t, top);
       }, custom);
@@ -4199,6 +4291,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     rawPlexus,
     itemPlexus,
     edgePlexus,
+    laneKids,
+    laneResolve,
+    laneWrites,
     insertOrder,
     ensureContainer,
     edgeStringFor,

@@ -119,6 +119,23 @@ function followCardItems(f) {
   return out;
 }
 
+// PXD-11. `lane` is { bound, fields } for a lane section only. Sub-lanes by attribute, then (when bound) stop and pull.
+function laneItems(lane) {
+  if (!lane) return [];
+  const names = Array.isArray(lane.fields) ? lane.fields.slice() : [];
+  if (lane.bound && !names.includes(lane.bound)) names.push(lane.bound);
+  const out = [make("lane-attr", "Sub-lanes by attribute ▸", {
+    children: names.length
+      ? names.map((name) => make(`lane-attr:${name}`, name, { checked: name === lane.bound }))
+      : [make("lane-hint", "No Name:: attributes on this board", { disabled: true })],
+  })];
+  if (lane.bound) {
+    out.push(make("lane-stop", `Stop sub-lanes (${lane.bound})`));
+    out.push(make("lane-pull", `Pull blocks with ${lane.bound}::`));
+  }
+  return out;
+}
+
 // Optional keys are only written when set, so items compare cleanly and carry no undefined noise.
 const make = (id, label, extra = {}) => {
   const out = { id, label };
@@ -353,6 +370,7 @@ export function buildMenu(kind, ctx = {}) {
           ],
         }),
         make("focus-timer", "Focus timer"),
+        ...laneItems(c.lane),
         sep(),
         make("fit-section", "Fit to contents", { disabled: empty }),
         make("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),

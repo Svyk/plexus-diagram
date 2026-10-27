@@ -54,14 +54,19 @@ import { JOURNAL_DAY_CAP, followKind } from "../host/follow-sources.js";
 import { editState, watchEditing } from "../host/local-saves.js";
 import { SPREAD_CAP } from "../session-clip.js";
 
-const REASONS = {
+export const REASONS = {
   missing: "The source block is gone.",
   missingText: "The block in the board text does not exist.",
   unsupported: "Plexus cannot run this query. It reads page and block refs with and, or and not.",
   slow: "The query took too long to read.",
   window: "This journal window is not one this version knows.",
   unknown: "This board follows a kind of source this version cannot read.",
+  missingSection: "The followed section is gone.",
+  cycle: "That board follows this one, so mirroring it would make a loop.",
+  self: "A board cannot mirror itself.",
 };
+// PXD-19: under the head of a board source whose last read held cards the source got from a third board.
+export const RELAYED_NOTE = "Cards this board got from mirroring another board are not passed on.";
 
 
 const EMPTY_DIFF = { pending: [], left: [], placed: 0, dismissed: 0 };
@@ -647,6 +652,7 @@ export function createFollowTray({
       const parts = lane.read.omitted.slice().reverse().map((o, i) => `${o.n} ${i ? "of" : "left out of"} ${o.title}`);
       el("div", "pxd-follow__note", parent, `At most ${JOURNAL_DAY_CAP} blocks per day: ${parts.join(", ")}.`);
     }
+    if (lane.pointer.kind === "board" && lane.read?.relayed > 0) el("div", "pxd-follow__note", parent, RELAYED_NOTE);
     const heads = lane.pointer.kind === "headings";
     if (heads) {
       el("div", "pxd-follow__note", parent, headingsNote);

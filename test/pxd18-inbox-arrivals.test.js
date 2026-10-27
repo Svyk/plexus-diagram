@@ -246,7 +246,7 @@ test("PXD-18 menu: the Inbox is offered as a source, and not again while it is f
   const ids = (follow) => flattenMenu(buildMenu("board-menu", { follow })).map((m) => m.id).filter((id) => id.startsWith("follow:"));
   assert.ok(ids({ following: false }).includes("follow:inbox"));
   assert.ok(ids({ following: true, kind: "block", label: "x" }).includes("follow:inbox"));
-  assert.deepEqual(ids({ following: true, kind: "inbox", label: "this board's Inbox" }), ["follow:label", "follow:show", "follow:pick-block", "follow:pick-query", "follow:pick-refs", "follow:pick-headings", "follow:pick-journals", "follow:stop"]);
+  assert.deepEqual(ids({ following: true, kind: "inbox", label: "this board's Inbox" }), ["follow:label", "follow:show", "follow:pick-block", "follow:pick-query", "follow:pick-refs", "follow:pick-headings", "follow:pick-board", "follow:pick-journals", "follow:stop"]);
 });
 
 test("PXD-18 Inbox pill: hidden while the board follows its Inbox, with no read; Follow in its panel", async () => {

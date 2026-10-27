@@ -6,7 +6,7 @@
 
 import { firstLine, parseBoardRef, plainText } from "./schema.js";
 
-// Board plexus key: { kind, uid, tree?, columns?, skip? }. Written only from the Follow menu and the tray's own buttons.
+// Board plexus key: { kind, uid, tree?, columns?, section?, skip? }. Written only from the Follow menu and the tray's own buttons.
 export const FOLLOW_KEY = "follow";
 // Board plexus key: [{ kind, uid, skip }] of sources the board stopped following, newest last: at most
 // FOLLOW_KEPT_SOURCES of them and FOLLOW_SKIP_CAP uids in all (the oldest sources go first; the newest always stays).
@@ -70,7 +70,8 @@ export function normalizePointer(raw) {
   const kind = typeof raw.kind === "string" && KIND_RE.test(raw.kind) ? raw.kind : null;
   const uid = typeof raw.uid === "string" && UID_RE.test(raw.uid) ? raw.uid : null;
   if (!kind || !uid) return null;
-  return { kind, uid, ...(raw.tree === true ? { tree: true } : {}), ...(raw.columns === true ? { columns: true } : {}), skip: cleanSkip(raw.skip) };
+  const section = typeof raw.section === "string" && UID_RE.test(raw.section) ? raw.section : null;
+  return { kind, uid, ...(raw.tree === true ? { tree: true } : {}), ...(raw.columns === true ? { columns: true } : {}), ...(section ? { section } : {}), skip: cleanSkip(raw.skip) };
 }
 
 export function serializePointer(pointer) {
@@ -79,6 +80,7 @@ export function serializePointer(pointer) {
   const out = { kind: p.kind, uid: p.uid };
   if (p.tree) out.tree = true;
   if (p.columns) out.columns = true;
+  if (p.section) out.section = p.section;
   if (p.skip.length) out.skip = p.skip;
   return out;
 }
@@ -87,7 +89,10 @@ export function readFollow(plexus) {
   return isObject(plexus) ? normalizePointer(plexus[FOLLOW_KEY]) : null;
 }
 
-export const sourceKey = (pointer) => (pointer?.kind && pointer?.uid ? `${pointer.kind}:${pointer.uid}` : "");
+// PXD-19: a section of another board is "board:<board>/<section>" (a uid never holds "/").
+export const sourceKey = (pointer) => (pointer?.kind && pointer?.uid
+  ? `${pointer.kind}:${pointer.uid}${typeof pointer.section === "string" && pointer.section ? `/${pointer.section}` : ""}`
+  : "");
 
 // The skip list of a source the board stopped following, as a pointer ({ kind, uid, skip }) that is not followed.
 function keptList(plexus) {
@@ -95,7 +100,7 @@ function keptList(plexus) {
   return (Array.isArray(raw) ? raw : raw ? [raw] : []).map(normalizePointer).filter((p) => p && p.skip.length);
 }
 
-// The kept skip list of source `key` ("<kind>:<uid>"), as a pointer that is not followed, or null.
+// The kept skip list of source `key` (sourceKey), as a pointer that is not followed, or null.
 export function keptFollow(plexus, key) {
   return keptList(plexus).find((p) => sourceKey(p) === key) || null;
 }
@@ -110,7 +115,7 @@ export function withFollow(plexus, pointer) {
   const nextKey = sourceKey(next);
   const kept = keptList(base).filter((p) => sourceKey(p) !== nextKey);
   if (prev && sourceKey(prev) !== nextKey && prev.skip.length) kept.push(prev);
-  let list = kept.slice(-FOLLOW_KEPT_SOURCES).map((p) => ({ kind: p.kind, uid: p.uid, skip: p.skip }));
+  let list = kept.slice(-FOLLOW_KEPT_SOURCES).map((p) => ({ kind: p.kind, uid: p.uid, ...(p.section ? { section: p.section } : {}), skip: p.skip }));
   while (list.length > 1 && list.reduce((n, p) => n + p.skip.length, 0) > FOLLOW_SKIP_CAP) list = list.slice(1);
   if (list.length) base[FOLLOW_KEPT_KEY] = list;
   else delete base[FOLLOW_KEPT_KEY];
@@ -119,12 +124,49 @@ export function withFollow(plexus, pointer) {
   return base;
 }
 
-// Following the same source again keeps its skip list and tree choice; a new source starts clean.
-export function followPointerFor(current, kind, uid, { tree, columns } = {}) {
-  const same = current?.kind === kind && current?.uid === uid;
+// Following the same source again keeps its skip list and tree choice; a new source starts clean. Another section of
+// the same board is another source.
+export function followPointerFor(current, kind, uid, { tree, columns, section } = {}) {
+  const sec = typeof section === "string" && UID_RE.test(section) ? section : "";
+  const same = current?.kind === kind && current?.uid === uid && (current.section || "") === sec;
   const deep = tree === undefined ? same && current.tree === true : tree === true;
   const cols = columns === undefined ? same && current.columns === true : columns === true;
-  return { kind, uid, ...(deep ? { tree: true } : {}), ...(cols ? { columns: true } : {}), skip: same ? current.skip : [] };
+  return { kind, uid, ...(deep ? { tree: true } : {}), ...(cols ? { columns: true } : {}), ...(sec ? { section: sec } : {}), skip: same ? current.skip : [] };
+}
+
+// PXD-19: boards a mirror chain looks through before it gives up (a longer chain is not called a loop).
+export const MIRROR_CHAIN_CAP = 8;
+
+// Why board `boardUid` cannot mirror `pointer` (a board-kind pointer), or "". "self": the source is this board or one
+// of its sections. "cycle": the source board, or a board it mirrors (and so on), mirrors this board. followsOf(uid)
+// gives the boards a board mirrors (its own pointer and its sections' pointers); one that throws mirrors nothing.
+export function mirrorRefusal({ boardUid, pointer, followsOf } = {}) {
+  if (!pointer || pointer.kind !== "board" || !pointer.uid) return "";
+  if (pointer.uid === boardUid) return "self";
+  const seen = new Set();
+  const queue = [pointer.uid];
+  while (queue.length && seen.size < MIRROR_CHAIN_CAP) {
+    const uid = queue.shift();
+    if (seen.has(uid)) continue;
+    seen.add(uid);
+    let next = [];
+    try { next = typeof followsOf === "function" ? followsOf(uid) || [] : []; } catch { next = []; }
+    for (const n of next) {
+      if (n === boardUid) return "cycle";
+      if (typeof n === "string" && n && !seen.has(n)) queue.push(n);
+    }
+  }
+  return "";
+}
+
+// The source boards of the board-kind pointers in a set of plexus props (a board's own, its sections').
+export function mirroredBoards(plexusList) {
+  const out = [];
+  for (const plexus of plexusList || []) {
+    const p = readFollow(plexus);
+    if (p?.kind === "board" && !out.includes(p.uid)) out.push(p.uid);
+  }
+  return out;
 }
 
 // "days-N" -> { days: N } (1..JOURNAL_MAX_DAYS), "week" -> { week: true }, anything else null.

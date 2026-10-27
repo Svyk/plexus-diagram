@@ -14,11 +14,12 @@
 // An item is { uid, kind: "block" | "page", text, time, title? (page), crumb?, depth?, parent? (block tree), blank? }. `time` is the later of
 // create and edit time, so the tray can say what is new since the last visit.
 
-import { FOLLOW_PARENT_CAP, FOLLOW_READ_CAP, FOLLOW_TREE_DEPTH, INBOX_KIND, journalSpec, queryBody, sourceText as textOf } from "../model/follow.js";
+import { FOLLOW_PARENT_CAP, FOLLOW_READ_CAP, FOLLOW_SRC, FOLLOW_TREE_DEPTH, INBOX_KIND, journalSpec, queryBody, readFollow, sourceText as textOf } from "../model/follow.js";
+import { BOARD_MEMBER_RULE } from "../model/board-rule.js";
 import { headingItems } from "../model/follow-headings.js";
 import { filterInbox, inboxTitles, readInbox } from "../model/inbox.js";
 import { dailyTitle, dailyUid, journalWindow, titleToTime } from "../model/journal.js";
-import { classifyString, plainText, readPlexus } from "../model/schema.js";
+import { classifyString, firstLine, parseBoardTitle, plainText, readPlexus } from "../model/schema.js";
 import { loadQueryRows, parseQuery } from "../model/query-run.js";
 import { createQueryBackend } from "./query-backend.js";
 import { watchLocalSaves } from "./local-saves.js";
@@ -245,6 +246,138 @@ defineFollowKind({
     if (!node) return { ok: false, reason: "missing" };
     const { items, complete } = headingItems(node, { skip: new Set([boardUid]) });
     return { ok: true, complete, items, heads: items.filter((item) => item.kind === "heading").map((item) => item.uid) };
+  },
+});
+
+// PXD-19: another board, or one section of it ({ kind: "board", uid, section? }). The rows are the source's own cards
+// in outline order; sections are not rows, they name the rows under them. A card the source got by mirroring a third
+// board is not passed on (one level of mirroring), but it still counts as in the source. One q with the board-member
+// rule, bound to the board or to the section (the rule's second branch then gives the cards of nested sections).
+// A whole board has no pull watch: a big board would be pulled again on every transaction. Saves in this window
+// trigger a read; a section source also watches the section's direct children.
+export const BOARD_MEMBERS_QUERY = "[:find (pull ?b [:block/uid :block/string :block/props :block/order :create/time :edit/time]) ?pu ?po :in $ % ?bu :where [?board :block/uid ?bu] (board-member ?board ?b) [?pa :block/children ?b] [?pa :block/uid ?pu] [(get-else $ ?pa :block/order -1) ?po]]";
+const BOARD_PULL = "[:block/uid :block/string :block/props]";
+
+const pullOne = (host, pattern, uid) => {
+  try { return host?.pullEntity?.(pattern, uid) || null; } catch { return null; }
+};
+const plexusOf = (node) => readPlexus(pick(node, "block/props")) || {};
+const boardTitle = (host, uid) => parseBoardTitle(String(pick(pullOne(host, BOARD_PULL, uid), "block/string") ?? "")) || "Untitled board";
+const sectionTitle = (string) => firstLine(string) || "Section";
+const pointsAt = (plexus, boardUid) => {
+  const p = readFollow(plexus);
+  return p?.kind === "board" && p.uid === boardUid;
+};
+
+// Rows of BOARD_MEMBERS_QUERY into source items, depth first from `root`. Exported for the tests.
+export function boardMemberItems(rows, { root, host, boardUid = "", cap = FOLLOW_READ_CAP } = {}) {
+  const kids = new Map();
+  const nodes = new Map();
+  for (const row of rows || []) {
+    const node = Array.isArray(row) ? row[0] : row;
+    const uid = pick(node, "block/uid");
+    if (typeof uid !== "string" || nodes.has(uid)) continue;
+    const parent = Array.isArray(row) ? row[1] : null;
+    nodes.set(uid, { node, parent, order: Number(pick(node, "block/order")) || 0, parentOrder: Array.isArray(row) ? Number(row[2]) || 0 : 0 });
+    if (!kids.has(parent)) kids.set(parent, []);
+    kids.get(parent).push(uid);
+  }
+  const byOrder = (a, b) => nodes.get(a).order - nodes.get(b).order;
+  const items = [];
+  const members = [];
+  let relayed = 0;
+  let cycle = false;
+  let complete = true;
+  const take = (uid, crumb) => {
+    const { node } = nodes.get(uid);
+    const plexus = plexusOf(node);
+    members.push(uid);
+    const type = plexus.type;
+    if (type === "edge" || type === "edges") return;
+    const string = String(pick(node, "block/string") ?? "");
+    const time = timeOf(node);
+    const extra = crumb ? { crumb } : {};
+    const cls = classifyString(string);
+    let item;
+    if (cls.kind === "page") {
+      let pageUid = null;
+      try { pageUid = host?.pageUid?.(cls.title) || null; } catch { pageUid = null; }
+      if (!pageUid) return;
+      item = { uid: pageUid, kind: "page", title: cls.title, text: cls.title, time, ...extra };
+    } else if (cls.kind === "block") {
+      let shown = "";
+      try { shown = String(host?.blockString?.(cls.refUid) ?? ""); } catch { shown = ""; }
+      item = { uid: cls.refUid, kind: "block", text: textOf(shown), time, ...extra, ...(shown.trim() ? {} : { blank: true }) };
+    } else {
+      item = { uid, kind: "block", text: textOf(string), time, ...extra, ...(string.trim() ? {} : { blank: true }) };
+    }
+    members.push(item.uid);
+    // What the source got by mirroring a third board stays in the source (a card placed from it earlier is not left).
+    if (typeof plexus[FOLLOW_SRC] === "string" && plexus[FOLLOW_SRC].startsWith("board:")) { relayed += 1; return; }
+    if (item.uid === boardUid) return;
+    if (items.length >= cap) { complete = false; return; }
+    items.push(item);
+  };
+  const visited = new Set();
+  const walk = (parent, crumb) => {
+    for (const uid of (kids.get(parent) || []).slice().sort(byOrder)) {
+      if (visited.has(uid)) continue;
+      visited.add(uid);
+      const { node } = nodes.get(uid);
+      const plexus = plexusOf(node);
+      if (plexus.type === "section") {
+        if (pointsAt(plexus, boardUid)) cycle = true;
+        walk(uid, sectionTitle(String(pick(node, "block/string") ?? "")));
+      } else take(uid, crumb);
+    }
+  };
+  walk(root, "");
+  // Cards whose parent is not in the read (a section inside a card): after the rest, by their parent's order.
+  const rest = [...nodes.keys()].filter((uid) => !visited.has(uid));
+  rest.sort((a, b) => nodes.get(a).parentOrder - nodes.get(b).parentOrder || byOrder(a, b));
+  for (const uid of rest) {
+    visited.add(uid);
+    const plexus = plexusOf(nodes.get(uid).node);
+    if (plexus.type === "section") { if (pointsAt(plexus, boardUid)) cycle = true; continue; }
+    take(uid, "");
+  }
+  return { items, members, relayed, cycle, complete };
+}
+
+defineFollowKind({
+  id: "board",
+  title: "Another board",
+  describe(p, host) {
+    const board = `“${plainText(boardTitle(host, p.uid), 48) || "Untitled board"}”`;
+    if (!p.section) return `Board ${board}`;
+    return `Section ${quote(sectionTitle(String(pick(pullOne(host, BOARD_PULL, p.section), "block/string") ?? "")))} of ${board}`;
+  },
+  watch(p, host, cb, env) {
+    const offs = [watchSaves(env, cb)];
+    if (p.section) offs.push(watchBlock({ uid: p.section }, host, cb));
+    return () => { for (const off of offs) off(); };
+  },
+  async read(p, { host, boardUid }) {
+    if (p.uid === boardUid) return { ok: false, reason: "self" };
+    const board = pullOne(host, BOARD_PULL, p.uid);
+    const plexus = board ? plexusOf(board) : null;
+    if (!plexus || plexus.v !== 2) return { ok: false, reason: "missing" };
+    if (pointsAt(plexus, boardUid)) return { ok: false, reason: "cycle" };
+    let root = p.uid;
+    if (p.section) {
+      const section = pullOne(host, BOARD_PULL, p.section);
+      const parents = pullOne(host, PARENTS_PULL, p.section);
+      const under = Array.isArray(parents?.[":block/parents"]) && parents[":block/parents"].some((n) => n?.[UID] === p.uid);
+      if (!section || plexusOf(section).type !== "section" || !under) return { ok: false, reason: "missingSection" };
+      if (pointsAt(plexusOf(section), boardUid)) return { ok: false, reason: "cycle" };
+      root = p.section;
+    }
+    let rows = null;
+    try { rows = host?.q?.(BOARD_MEMBERS_QUERY, BOARD_MEMBER_RULE, root); } catch { rows = null; }
+    if (!Array.isArray(rows)) return { ok: false, reason: "error" };
+    const res = boardMemberItems(rows, { root, host, boardUid });
+    if (res.cycle) return { ok: false, reason: "cycle" };
+    return { ok: true, complete: res.complete, items: res.items, members: res.members, relayed: res.relayed };
   },
 });
 

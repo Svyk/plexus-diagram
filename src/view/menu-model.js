@@ -92,6 +92,7 @@ function followMenu(f) {
         make("follow:pick-block", "Switch to a block's children…"),
         make("follow:pick-query", "Switch to a query…"),
         make("follow:pick-refs", "Switch to linked references of…"),
+        make("follow:pick-headings", "Switch to a page by headings…"),
         make("follow:stop", "Stop following"),
       ],
     })];
@@ -102,6 +103,7 @@ function followMenu(f) {
       make("follow:pick-block", "A block's children…"),
       make("follow:pick-query", "A query…"),
       make("follow:pick-refs", "Linked references of…"),
+      make("follow:pick-headings", "A page by headings…"),
     ],
   })];
 }
@@ -143,9 +145,29 @@ function followCardItems(f) {
   if (f.block) pick.push(make("follow:this", "Its children"));
   if (f.query) pick.push(make("follow:this-query", "This query"));
   if (f.refs) pick.push(make("follow:this-refs", "Its linked references"));
+  if (f.headings) pick.push(make("follow:this-headings", "Its page by headings"));
   if (pick.length) out.push(make("follow-card", "Follow", { children: pick }));
   if (f.left) out.push(make("follow:dismiss", "Dismiss “left the source”"));
   if (f.followed) out.push(make("follow:remove", "Remove, don't bring back", { danger: true }));
+  return out;
+}
+
+// PXD-11. `lane` is { bound, fields } for a lane section only. Sub-lanes by attribute, then (when bound) stop and pull.
+function laneItems(lane) {
+  if (!lane) return [];
+  const names = Array.isArray(lane.fields) ? lane.fields.slice() : [];
+  if (lane.bound && !names.includes(lane.bound)) names.push(lane.bound);
+  const out = [make("lane-attr", "Sub-lanes by attribute ▸", {
+    children: names.length
+      ? names.map((name) => make(`lane-attr:${name}`, name, { checked: name === lane.bound }))
+      : [make("lane-hint", "No Name:: attributes on this board", { disabled: true })],
+  })];
+  if (lane.bound) {
+    out.push(make("lane-stop", `Stop sub-lanes (${lane.bound})`));
+    out.push(make("lane-pull", `Pull blocks with ${lane.bound}::`));
+    const fresh = Array.isArray(lane.fresh) ? lane.fresh : [];
+    if (fresh.length) out.push(make("lane-add", `Add sub-lanes for ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? ` +${fresh.length - 3}` : ""}`));
+  }
   return out;
 }
 
@@ -372,7 +394,8 @@ export function buildMenu(kind, ctx = {}) {
         make("select-connected", "Select connected"),
         make("collapse-section", c.collapsed ? "Expand" : "Collapse"),
         make("section-note", c.hasNote ? "Remove description" : "Add description"),
-        make("bucket-bind", c.bucket ? `Bound to ${c.bucket}…` : "Bind to tag or attribute…"),
+        // A lane with sub-lanes (PXD-11) writes values itself, so it offers no section binding, and the other way round.
+        ...(c.lane?.bound ? [] : [make("bucket-bind", c.bucket ? `Bound to ${c.bucket}…` : "Bind to tag or attribute…")]),
         ...(c.bucket ? [make("bucket-write", "Write section to graph", { disabled: empty }), make("bucket-unbind", "Unbind")] : []),
         c.locked ? make("unlock-contents", "Unlock") : make("lock-contents", "Lock"),
         make("present-section", "Present this section"),
@@ -386,6 +409,7 @@ export function buildMenu(kind, ctx = {}) {
         }),
         make("focus-timer", "Focus timer"),
         ...followSectionMenu(c.follow),
+        ...(c.bucket ? [] : laneItems(c.lane)),
         sep(),
         make("fit-section", "Fit to contents", { disabled: empty }),
         make("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),

@@ -5,6 +5,8 @@
 // one read per quiet period and never two at once, only while the board is on screen and the tab is visible; a slow
 // read stretches the quiet period (followQuietMs). A board change only sorts the last read again. Cards that left the
 // source get a mark (onLeft) after two complete reads without them; a partial or failed read never adds one.
+// PXD-14: a page followed by headings groups the tray by heading, and cards whose block moved under another heading
+// get a "moved" mark (onMoved) and a list; the card stays where it is until the user dismisses the mark.
 // PXD-20: a read that would start while the user types waits for editing to go idle when its source's last read was a
 // long task (or it has none yet); a slow one also waits out FOLLOW_POLL_MS since the last read while edits go on.
 // PXD-13: the board and up to FOLLOW_SECTION_CAP sections each follow a source, one lane per owner. Each lane keeps its
@@ -36,6 +38,7 @@ import {
   textSourceUid,
   trayHeadline,
 } from "../model/follow.js";
+import { headingsEmpty, headingsNote, movedCards } from "../model/follow-headings.js";
 import { itemLabel, plainText } from "../model/schema.js";
 import { followKind } from "../host/follow-sources.js";
 import { editState, watchEditing } from "../host/local-saves.js";
@@ -63,6 +66,7 @@ export function createFollowTray({
   storage = globalThis.localStorage,
   graph = "",
   onLeft,
+  onMoved,
   onShowCard,
   onPlaced,
   toast,
@@ -74,6 +78,8 @@ export function createFollowTray({
   let lanes = new Map();
   let order = [];
   let leftShown = "";
+  let moved = [];
+  let movedShown = "";
   let open = false;
   let autoOpened = false;
   let disposed = false;
@@ -198,6 +204,14 @@ export function createFollowTray({
     if (next !== leftShown) {
       leftShown = next;
       onLeft?.(new Set(left));
+    }
+    // PXD-14: only the board follows headings.
+    const own = lanes.get(boardUid);
+    moved = readable(own) && own.pointer.kind === "headings" ? movedCards(own.read, b, own.key) : [];
+    const mark = moved.map((m) => `${m.uid}>${m.to}`).join("\n");
+    if (mark !== movedShown) {
+      movedShown = mark;
+      onMoved?.(new Map(moved.map((m) => [m.uid, m.toText])));
     }
   }
 
@@ -468,14 +482,21 @@ export function createFollowTray({
   }
 
   // ---- placing ----
-  const entryOf = (row) => ({ uid: row.uid, kind: row.kind, ...(row.title ? { title: row.title } : {}) });
+  const entryOf = (row) => ({
+    uid: row.uid,
+    kind: row.kind,
+    ...(row.title ? { title: row.title } : {}),
+    // PXD-14: the heading a row sits under, so a placed card knows its section.
+    ...(row.heading ? { heading: row.heading, ...(row.kind === "heading" ? { text: row.text } : { headingText: row.headingText }) } : {}),
+  });
   // One place at a time: a second click while the first is still writing does nothing.
   function place(rows, lane) {
     if (!rows.length || placing) return Promise.resolve(null);
     placing = true;
     paintPanel();
     const entries = rows.map(entryOf);
-    return Promise.resolve(lane?.section ? session.placeFollowed?.(entries, { owner: lane.uid }) : session.placeFollowed?.(entries)).then((res) => {
+    const opts = lane?.section ? { owner: lane.uid } : lane?.pointer?.kind === "headings" ? { order: lane.read?.heads } : undefined;
+    return Promise.resolve(session.placeFollowed?.(entries, opts)).then((res) => {
       if (disposed || !res) return res;
       if (res.batches > 1) toast?.(`Placed ${res.placed} cards in ${res.batches} batches of up to ${SPREAD_CAP}. Each Cmd+Z takes back one batch.`);
       if (res.uids?.length) onPlaced?.(res.uids);
@@ -574,20 +595,26 @@ export function createFollowTray({
 
   function paintLane(parent, lane, grouped) {
     if (grouped) {
-      const head = el("div", "pxd-follow__group-head", parent);
-      el("div", "pxd-follow__group-title", head, lane.section ? lane.name : "This board");
-      if (lane.label) el("div", "pxd-follow__group-source", head, lane.label);
+      const head = el("div", "pxd-follow__owner-head", parent);
+      el("div", "pxd-follow__owner-title", head, lane.section ? lane.name : "This board");
+      if (lane.label) el("div", "pxd-follow__owner-source", head, lane.label);
     }
     const note = noteOf(lane);
     if (note) el("div", "pxd-follow__note", parent, note);
     if (!readable(lane)) return;
+    const heads = lane.pointer.kind === "headings";
+    if (heads) {
+      el("div", "pxd-follow__note", parent, headingsNote);
+      if (lane.read?.ok && !lane.read.items.some((row) => row.kind === "heading")) el("div", "pxd-follow__note", parent, headingsEmpty);
+    }
     const bar = el("div", "pxd-follow__bar", parent);
     el("span", "pxd-follow__count", bar, `${lane.pending.length} waiting · ${lane.diff.placed} on the board`);
     const all = button(bar, "pxd-follow__all", lane.pending.length > SPREAD_CAP ? `Place all (batches of ${SPREAD_CAP})` : "Place all", () => { void place(lane.pending.slice(), lane); });
     all.disabled = lane.pending.length === 0 || placing;
     const list = el("div", "pxd-follow__list", parent);
     if (!lane.pending.length && !lane.hints.length) el("div", "pxd-follow__empty", list, lane.read ? "Everything in the source is on the board." : "");
-    for (const row of lane.pending) rowEl(list, row, lane);
+    if (heads) groupRows(list, lane);
+    else for (const row of lane.pending) rowEl(list, row, lane);
     for (const row of lane.hints) hintEl(list, row);
     if (lane.diff.left.length) {
       el("div", "pxd-follow__section", parent, `Left the source (${lane.diff.left.length})`);
@@ -602,6 +629,45 @@ export function createFollowTray({
         button(acts, "pxd-follow__delete", "Delete", () => { void session.deleteItems?.([uid]); });
         shield(node);
       }
+    }
+    if (!lane.section && moved.length) {
+      el("div", "pxd-follow__section", parent, `Moved (${moved.length})`);
+      const moves = el("div", "pxd-follow__list pxd-follow__list--left", parent);
+      for (const m of moved) {
+        const node = el("div", "pxd-follow__row pxd-follow__row--left", moves);
+        node.dataset.uid = m.uid;
+        el("div", "pxd-follow__text", node, cardTitle(m.uid));
+        el("div", "pxd-follow__crumb", node, `Moved to ${m.toText || "another heading"}`);
+        const acts = el("div", "pxd-follow__acts", node);
+        button(acts, "pxd-follow__show", "Show", () => onShowCard?.(m.uid));
+        button(acts, "pxd-follow__dismiss", "Dismiss", () => { void session.dismissMoved?.({ [m.uid]: m.to }); });
+        shield(node);
+      }
+    }
+  }
+
+  // PXD-14: pending rows under a header per heading, in source order. A heading already on the board has a header
+  // only while it has blocks waiting.
+  function groupRows(list, lane) {
+    const groups = new Map();
+    for (const row of lane.pending) {
+      const head = row.kind === "heading" ? row.uid : row.heading;
+      if (!head) continue;
+      if (!groups.has(head)) groups.set(head, { head, text: "", row: null, blocks: [] });
+      const g = groups.get(head);
+      if (row.kind === "heading") { g.row = row; g.text = row.text; } else {
+        g.blocks.push(row);
+        if (!g.text) g.text = row.headingText || "";
+      }
+    }
+    for (const g of groups.values()) {
+      const bar = el("div", "pxd-follow__group", list);
+      el("span", "pxd-follow__text", bar, g.text || "(empty heading)");
+      const acts = el("div", "pxd-follow__acts", bar);
+      button(acts, "pxd-follow__place", "Place", () => { void place(g.row ? [g.row, ...g.blocks] : g.blocks, lane); });
+      if (g.row) button(acts, "pxd-follow__skip", "Don't bring back", () => { void session.dontBringBack?.([g.head]); });
+      shield(bar);
+      for (const row of g.blocks) rowEl(list, row, lane);
     }
   }
 
@@ -652,9 +718,9 @@ export function createFollowTray({
       paintLane(panel, single, false);
       listEl = panel.querySelector?.(".pxd-follow__list") || null;
     } else {
-      groupsEl = el("div", "pxd-follow__groups", panel);
+      groupsEl = el("div", "pxd-follow__owners", panel);
       for (const lane of order) {
-        const group = el("div", "pxd-follow__group", groupsEl);
+        const group = el("div", "pxd-follow__owner", groupsEl);
         group.dataset.owner = lane.uid;
         groupEls.set(lane.uid, group);
         paintLane(group, lane, true);
@@ -705,7 +771,8 @@ export function createFollowTray({
     const owners = Boolean(change?.structural) || Boolean(dirty?.has?.(boardUid))
       || [...(dirty || [])].some((uid) => lanes.has(uid) || b?.items.get(uid)?.type === "section");
     if (owners) { adopt(); autoOpen(); }
-    if (!order.length) { paintPill(); return; }
+    // Stop (or an undo of Follow) clears the left and moved marks of the sources no longer followed.
+    if (!order.length) { recompute(); paintPill(); return; }
     const keys = new Set(order.map((lane) => lane.key));
     if (owners || allLeft().some((uid) => dirty?.has?.(uid))) sync();
     else if (dirty && [...dirty].some((uid) => keys.has(b?.items.get(uid)?.src))) sync();
@@ -752,6 +819,7 @@ export function createFollowTray({
     rows: (owner) => (owner ? lanes.get(owner)?.pending.slice() || [] : order.flatMap((lane) => lane.pending)),
     hints: (owner) => (owner ? lanes.get(owner)?.hints.slice() || [] : order.flatMap((lane) => lane.hints)),
     left: (owner) => (owner ? lanes.get(owner)?.diff.left.slice() || [] : allLeft()),
+    moved: () => moved.slice(),
     reads: () => order.reduce((n, lane) => n + lane.reads, 0),
     // Source keys of every owner that is read (a card from any of them is a followed card).
     keys: () => order.filter(readable).map((lane) => lane.key),
@@ -759,6 +827,7 @@ export function createFollowTray({
     // sets; PXD-13: the same per owner (lanes), shared passes, sorts painted, and the most reads that ever ran at once.
     stats: () => ({
       ...laneStats(lanes.get(boardUid)),
+      moved: moved.length,
       editing: editState(doc),
       lanes: order.map((lane) => ({ owner: lane.uid, ...laneStats(lane), over: lane.over, dup: lane.dup })),
       passes,

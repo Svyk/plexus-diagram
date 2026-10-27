@@ -16,6 +16,7 @@ export const TEXT_LOOKS = ["section-note", "sticky"];
 export const STICKY_SIZE = { w: 200, h: 200 };
 export const STICKY_COLOR = "yellow";
 export const SECTION_LOOKS = ["lane", "calendar", "timer"];
+const LANE_BANDS_MAX = 16;
 export const LANE_AXES = ["horizontal", "vertical"];
 export const LANE_SIZE = { horizontal: { w: 960, h: 180 }, vertical: { w: 240, h: 640 } };
 export const CARD_FONT_MIN = 10;
@@ -144,6 +145,10 @@ export function normalizeItemLayout(plexus) {
     axis: type === "section" && p.look === "lane"
       ? (p.axis === "vertical" ? "vertical" : "horizontal")
       : undefined,
+    attr: type === "section" && p.look === "lane" && typeof p.attr === "string" && p.attr.trim() ? p.attr.trim() : undefined,
+    bands: type === "section" && p.look === "lane" && typeof p.attr === "string" && p.attr.trim() && Array.isArray(p.bands)
+      ? p.bands.filter((v) => typeof v === "string" && v.trim()).slice(0, LANE_BANDS_MAX)
+      : undefined,
     textColor: section ? undefined : styleColor(p.textColor),
     align: section || !ALIGNS.includes(p.align) ? undefined : p.align,
     fill: section ? undefined : styleColor(p.fill),
@@ -233,7 +238,15 @@ export function serializeItemLayout(layout) {
     if (SHAPES.includes(l.shape)) out.shape = l.shape;
   } else if (type === "section" && SECTION_LOOKS.includes(l.look)) {
     out.look = l.look;
-    if (l.look === "lane") out.axis = l.axis === "vertical" ? "vertical" : "horizontal";
+    if (l.look === "lane") {
+      out.axis = l.axis === "vertical" ? "vertical" : "horizontal";
+      // PXD-11: the bound attribute and the band order seen at bind.
+      if (typeof l.attr === "string" && l.attr.trim()) {
+        out.attr = l.attr.trim();
+        const bands = Array.isArray(l.bands) ? l.bands.filter((v) => typeof v === "string" && v.trim()).slice(0, LANE_BANDS_MAX) : [];
+        if (bands.length) out.bands = bands;
+      }
+    }
   } else if (CARD_LOOKS.includes(l.look)) out.look = l.look;
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
   const tone = boardColor(l.bgColor);

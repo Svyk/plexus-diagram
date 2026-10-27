@@ -176,6 +176,14 @@ test("PXD-13 session: a section's Follow writes only the section's props; the bo
   f.tray.dispose();
 });
 
+test("PXD-13 session: a section cannot follow a page's headings (they make sections of their own); the board can", async () => {
+  const f = mount({ children: [section("S1", "Reading", 0, 0, 400, 300)] });
+  assert.equal(await f.session.followSource({ kind: "headings", uid: "SRCPAGE", owner: "S1" }), false);
+  assert.deepEqual(f.session.followRefusal(), { reason: "kind" });
+  assert.equal(f.fake.props("S1").plexus.follow, undefined, "nothing written");
+  assert.equal(await f.session.followSource({ kind: "headings", uid: "SRCPAGE" }), true);
+});
+
 test("PXD-13 session: the same source on two owners is refused and names the owner that has it", async () => {
   const f = mount({
     plexus: { v: 2, follow: { kind: "block", uid: "SRC" } },
@@ -253,9 +261,9 @@ test("PXD-13 place: a section's Place all writes children of the section, below 
   await f.timers.run();
   assert.deepEqual(f.tray.rows("S1").map((r) => r.uid), ["k1", "k2", "k3"]);
   f.tray.open("S1");
-  const group = f.root.querySelector(".pxd-follow__group");
+  const group = f.root.querySelector(".pxd-follow__owner");
   assert.equal(group.dataset.owner, "S1");
-  assert.equal(f.root.querySelector(".pxd-follow__group-title").textContent, "“Reading”");
+  assert.equal(f.root.querySelector(".pxd-follow__owner-title").textContent, "“Reading”");
   f.root.querySelector(".pxd-follow__all").click();
   await flush(20);
   await f.fake.flush();
@@ -328,7 +336,7 @@ test("PXD-13 tray: an item in two sections waits once in the first and is a hint
     assert.equal(hint.querySelector(".pxd-follow__text").textContent, "k2");
     assert.equal(hint.querySelector(".pxd-follow__also").textContent, "Also in “First”", "on its own line, not after a title that ellipsizes");
     assert.equal(hint.querySelector(".pxd-follow__place"), null, "a hint has no Place");
-    const groups = g.root.querySelectorAll(".pxd-follow__group");
+    const groups = g.root.querySelectorAll(".pxd-follow__owner");
     assert.deepEqual(groups.map((n) => n.dataset.owner), ["S1", "S2"]);
     const counts = g.root.querySelectorAll(".pxd-follow__count").map((n) => n.textContent);
     assert.deepEqual(counts, ["3 waiting · 0 on the board", "1 waiting · 0 on the board"]);
@@ -348,8 +356,8 @@ function layoutGroups(doc) {
     const node = make(tag);
     Object.defineProperty(node, "offsetTop", {
       get() {
-        if (node.classList.contains("pxd-follow__groups")) return 40;
-        if (!node.classList.contains("pxd-follow__group")) return 0;
+        if (node.classList.contains("pxd-follow__owners")) return 40;
+        if (!node.classList.contains("pxd-follow__owner")) return 0;
         return 40 + 300 * (node.parentElement?._kids || []).indexOf(node);
       },
     });
@@ -368,7 +376,7 @@ test("PXD-13 tray: reads and places paint again without moving the drawer; Show 
     });
     layoutGroups(g.dom.document);
     await g.timers.run();
-    const scroller = () => g.root.querySelector(".pxd-follow__groups");
+    const scroller = () => g.root.querySelector(".pxd-follow__owners");
     // Show in tray on the second section: the drawer opens on it, and the read that open asks for keeps it there.
     g.tray.open("S2");
     assert.equal(scroller().scrollTop, 300, "Show in tray puts the section's group at the top");

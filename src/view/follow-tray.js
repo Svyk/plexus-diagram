@@ -5,12 +5,16 @@
 // one read per quiet period and never two at once, only while the board is on screen and the tab is visible; a slow
 // read stretches the quiet period (followQuietMs). A board change only sorts the last read again. Cards that left the
 // source get a mark (onLeft) after two complete reads without them; a partial or failed read never adds one.
+// PXD-20: a read that would start while the user types waits for editing to go idle when its source's last read was a
+// long task (or it has none yet); a slow one also waits out FOLLOW_POLL_MS since the last read while edits go on.
 
 import { CARD_MIME } from "../model/drop.js";
 import {
   FOLLOW_MIME,
   FOLLOW_POLL_MS,
+  FOLLOW_SLOW_MS,
   FOLLOW_TREE_DEPTH,
+  FOLLOW_TYPING_MS,
   absentStep,
   createLeftMemory,
   followCardString,
@@ -27,6 +31,7 @@ import {
 } from "../model/follow.js";
 import { itemLabel, plainText } from "../model/schema.js";
 import { followKind } from "../host/follow-sources.js";
+import { editState, watchEditing } from "../host/local-saves.js";
 import { SPREAD_CAP } from "../session-clip.js";
 
 const REASONS = {
@@ -81,6 +86,15 @@ export function createFollowTray({
   // How long the last read waited for the shared background budget after its quiet period.
   let waitMs = 0;
   let queuedAt = 0;
+  // PXD-20: a read is owed but waits for editing to go idle (held), or for the slow-read floor (floorWait).
+  let held = false;
+  let floorWait = null;
+  // Editing went idle with a read pending: that read skips the floor.
+  let owed = false;
+  let offEditing = () => {};
+  // When this source's last read started, and whether it has one (an unknown cost counts as slow).
+  let lastStart = -Infinity;
+  let known = false;
   // A trigger came while the board was off screen or the tab hidden: read when it shows again.
   let stale = false;
   // The root's IntersectionObserver: null until it reports.
@@ -139,13 +153,54 @@ export function createFollowTray({
   // ---- reads ----
   const showing = () => doc?.visibilityState !== "hidden" && seen !== false;
 
+  function gate() {
+    const edit = editState(doc);
+    const cost = known ? lastMs : Infinity;
+    if (edit.typing && cost >= FOLLOW_TYPING_MS) return "typing";
+    if (!owed && edit.busy && cost > FOLLOW_SLOW_MS && now() - lastStart < FOLLOW_POLL_MS) return "floor";
+    return "";
+  }
+
+  function hold(why) {
+    held = true;
+    if (why !== "floor" || floorWait) return;
+    floorWait = timers.later(() => {
+      floorWait = null;
+      if (held) readSoon();
+    }, Math.max(0, lastStart + FOLLOW_POLL_MS - now()));
+  }
+
+  function unhold() {
+    held = false;
+    floorWait?.();
+    floorWait = null;
+  }
+
+  // Editing went idle (or may have): a held read runs now. When the user's typing stops (a pause, or leaving the
+  // editors), the read the edits asked for is owed at once: a quiet period stretched by a slow read ends early, and the
+  // floor lets this one read through. Save signals that stop on their own (another extension's writes) do neither.
+  const onEditing = (why) => {
+    if (disposed) return;
+    if (why === "typing" && (held || quiet) && !job) {
+      owed = true;
+      quiet?.();
+      quiet = null;
+    }
+    if ((held || owed) && !gate()) readSoon();
+  };
+
   function runRead() {
     job = null;
     if (disposed || !pointer) return;
-    if (!showing()) { stale = true; return; }
+    // Off screen: the held read becomes a stale one, read when the board shows again.
+    if (!showing()) { stale = true; unhold(); return; }
     if (inFlight) { again = true; return; }
     const kind = followKind(pointer.kind);
     if (!kind) { status = "error"; reason = "unknown"; sync(); return; }
+    const why = gate();
+    if (why) { hold(why); return; }
+    unhold();
+    owed = false;
     const mine = key;
     inFlight = true;
     stale = false;
@@ -162,6 +217,8 @@ export function createFollowTray({
         return;
       }
       lastMs = Math.max(0, now() - started);
+      lastStart = started;
+      known = true;
       reads += 1;
       if (res?.ok) {
         read = res;
@@ -185,7 +242,8 @@ export function createFollowTray({
   function schedule() {
     if (disposed || !pointer) return;
     if (!showing()) { stale = true; return; }
-    if (quiet) return;
+    // A held read already covers this trigger: it runs when editing goes idle.
+    if (quiet || held) return;
     quiet = timers.later(() => {
       quiet = null;
       if (disposed || job) return;
@@ -210,6 +268,8 @@ export function createFollowTray({
     const method = on ? "addEventListener" : "removeEventListener";
     win?.[method]?.("focus", onFocus);
     doc?.[method]?.("visibilitychange", onVisible);
+    offEditing();
+    offEditing = on ? watchEditing(doc, onEditing) : () => {};
     try { io?.disconnect?.(); } catch { /* gone */ }
     io = null;
     seen = null;
@@ -258,6 +318,10 @@ export function createFollowTray({
     quiet?.();
     quiet = null;
     lastMs = 0;
+    lastStart = -Infinity;
+    known = false;
+    owed = false;
+    unhold();
     pointer = next;
     key = nextKey;
     read = null;
@@ -433,7 +497,7 @@ export function createFollowTray({
     left: () => diff.left.slice(),
     reads: () => reads,
     // The F10 probe: the source, reads so far, how long the last one took and waited, and the quiet period that sets.
-    stats: () => ({ key, reads, lastMs, waitMs, quietMs: followQuietMs(lastMs), stale }),
+    stats: () => ({ key, reads, lastMs, waitMs, quietMs: followQuietMs(lastMs), stale, held, editing: editState(doc) }),
     // The board menu: what Follow shows and offers.
     menuState() {
       const textUid = pointer ? null : textSourceUid(board()?.string || "");
@@ -456,6 +520,7 @@ export function createFollowTray({
       quiet?.();
       job?.();
       poll?.();
+      unhold();
       listen(false);
       btn?.remove();
       panel?.remove();

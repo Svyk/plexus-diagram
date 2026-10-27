@@ -31,6 +31,12 @@ export const FOLLOW_POLL_MS = 60000;
 // A slow read stretches the quiet period to this many times its own length (a TODO query on a big graph reads at most
 // a tenth of the time), never past the poll.
 export const FOLLOW_BACKOFF = 10;
+// PXD-20: a read this long or longer is a long task, so it waits while the user types (and so does a source's first
+// read, whose cost is not known yet). One longer than FOLLOW_SLOW_MS runs at most once per FOLLOW_POLL_MS while edits go
+// on, and once when they stop. Roam's only other query read, data.backend.q, does not block but trails a save by 1.2-3.6 s
+// (sometimes past 8 s), and on an encrypted graph it runs here and blocks like q.
+export const FOLLOW_TYPING_MS = 50;
+export const FOLLOW_SLOW_MS = 200;
 export const followQuietMs = (lastMs) => Math.min(FOLLOW_POLL_MS, Math.max(FOLLOW_QUIET_MS, FOLLOW_BACKOFF * (Number(lastMs) || 0)));
 // A card is marked "left the source" after this many complete reads in a row without it.
 export const LEFT_CONFIRM = 2;

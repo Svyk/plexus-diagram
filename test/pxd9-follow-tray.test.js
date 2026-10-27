@@ -8,8 +8,8 @@ import { acquireSession, resetSessions } from "../src/session.js";
 import "../src/session-follow.js";
 import { createFollowTray } from "../src/view/follow-tray.js";
 import { defineFollowKind, followKind } from "../src/host/follow-sources.js";
-import { SAVE_LAG_MS, watchLocalSaves } from "../src/host/local-saves.js";
-import { FOLLOW_MIME, FOLLOW_POLL_MS, FOLLOW_QUIET_MS, FOLLOW_TREE_DEPTH, followQuietMs } from "../src/model/follow.js";
+import { BLUR_IDLE_MS, BUSY_IDLE_MS, EDIT_IDLE_MS, SAVE_LAG_MS, editState, watchEditing, watchLocalSaves } from "../src/host/local-saves.js";
+import { FOLLOW_MIME, FOLLOW_POLL_MS, FOLLOW_QUIET_MS, FOLLOW_SLOW_MS, FOLLOW_TREE_DEPTH, FOLLOW_TYPING_MS, followQuietMs } from "../src/model/follow.js";
 import { SPREAD_CAP } from "../src/session-clip.js";
 import { buildMenu, flattenMenu } from "../src/view/menu-model.js";
 
@@ -552,11 +552,14 @@ test("PXD-9 F10 tray: a slow read stretches the quiet period to ten times its le
     f.live.save();
     assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 0);
     assert.equal(f.timers.pending(4000), 1, "the last read took 400 ms: the next waits 4 s");
+    // PXD-20: past FOLLOW_SLOW_MS a read also waits for the edits to stop (the floor has its own test).
+    f.dom.flushTimers();
     await f.timers.run(4000);
     assert.equal(calls, 2);
     cost = 5;
     f.live.save();
     assert.equal(f.timers.pending(4000), 1, "still 400 ms last time");
+    f.dom.flushTimers();
     await f.timers.run(4000);
     assert.equal(calls, 3);
     f.live.save();
@@ -645,6 +648,250 @@ test("PXD-9 F10 tray: a source switched while a read runs is read as soon as tha
     assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 1, "and the new source's read is asked for");
     await f.timers.run();
     assert.deepEqual(f.tray.rows().map((r) => r.uid), ["k1", "k2", "k3"]);
+    f.tray.dispose();
+  } finally { off(); }
+});
+
+// PXD-20: the DOM stub's timers that have this delay, run once (the stub's flushTimers runs them all).
+function runDom(dom, ms) {
+  const due = [...dom.timers].filter((t) => t.ms === ms);
+  for (const t of due) dom.timers.delete(t);
+  for (const t of due) t.fn();
+  return due.length;
+}
+
+test("PXD-20 edit state: typing while an editor has focus, busy on any save, idle after a pause or leaving the editors; Enter into the next block is still typing", () => {
+  const dom = createDomStub();
+  const live = liveDom(dom);
+  const doc = dom.document;
+  const { editor } = roamBlock(dom);
+  const next = roamBlock(dom).editor;
+  assert.deepEqual(editState(doc), { typing: false, busy: false }, "nobody watches: nothing is kept");
+  let saves = 0;
+  const offSaves = watchLocalSaves(doc, () => { saves += 1; });
+  editor.focus();
+  editor.dispatchEvent({ type: "input" });
+  assert.equal(dom.timers.size, 1, "with no edit watcher a key arms only the lag timer");
+  assert.deepEqual(editState(doc), { typing: false, busy: false });
+  dom.flushTimers();
+  let idle = 0;
+  const whys = [];
+  const offEdit = watchEditing(doc, (why) => { idle += 1; whys.push(why); });
+  editor.dispatchEvent({ type: "input" });
+  assert.deepEqual(editState(doc), { typing: true, busy: true }, "a key in a focused editor is typing");
+  runDom(dom, SAVE_LAG_MS);
+  assert.deepEqual(editState(doc), { typing: true, busy: true }, "the lag signal is not an edit of its own");
+  editor.blur();
+  assert.deepEqual(editState(doc), { typing: false, busy: true }, "no editor focused: not typing");
+  editor.focus();
+  assert.equal(runDom(dom, EDIT_IDLE_MS), 1, "the keys stop first");
+  assert.deepEqual(editState(doc), { typing: false, busy: true }, "the save signals have a longer window");
+  assert.equal(runDom(dom, BUSY_IDLE_MS), 1);
+  assert.deepEqual(editState(doc), { typing: false, busy: false });
+  assert.deepEqual(whys, ["typing", "busy"], "the watcher hears each go idle");
+  idle = 0;
+  editor.dispatchEvent({ type: "input" });
+  editor.blur();
+  editor.dispatchEvent({ type: "focusout" });
+  next.focus();
+  runDom(dom, BLUR_IDLE_MS);
+  assert.equal(idle, 0, "Enter: the caret is in the next block, so editing goes on");
+  assert.equal(editState(doc).typing, true);
+  next.dispatchEvent({ type: "input" });
+  next.blur();
+  next.dispatchEvent({ type: "focusout" });
+  runDom(dom, BLUR_IDLE_MS);
+  assert.equal(idle, 1, "leaving the editors ends editing at once");
+  assert.deepEqual(editState(doc), { typing: false, busy: false });
+  live.save();
+  assert.deepEqual(editState(doc), { typing: false, busy: true }, "a write that is not typing (the sync dot) is busy, not typing");
+  assert.ok(saves > 0);
+  offEdit();
+  assert.deepEqual(editState(doc), { typing: false, busy: false });
+  assert.equal(live.observing(), 1, "the save listener keeps the dot");
+  offSaves();
+  assert.equal(dom.timers.size, 0, "every timer goes with the last watcher");
+  const base = createDomStub();
+  const n = base.listenerCount();
+  const offOnly = watchEditing(base.document, () => {});
+  assert.equal(base.listenerCount() - n, 4, "editing alone: the document listeners");
+  offOnly();
+  assert.equal(base.listenerCount() - n, 0);
+});
+
+test("PXD-20 tray: a long-task read never starts while the user types; it runs once when typing pauses or the editor is left", async () => {
+  const clock = { t: 0 };
+  let calls = 0;
+  let cost = 100;
+  const off = liveProbe("pxd20-typing", async () => { calls += 1; clock.t += cost; return { ok: true, complete: true, items: [liveItem("k2")] }; });
+  try {
+    assert.ok(cost >= FOLLOW_TYPING_MS && cost <= FOLLOW_SLOW_MS, "a read the floor does not cover");
+    const f = mount({ plexus: { v: 2, follow: { kind: "pxd20-typing", uid: "P" } }, children: [card("n1", "Note one", 0, 0)], live: true, clock });
+    const { editor } = roamBlock(f.dom);
+    const next = roamBlock(f.dom).editor;
+    editor.focus();
+    editor.dispatchEvent({ type: "input" });
+    await f.timers.run();
+    assert.equal(calls, 0, "the first read's cost is not known: it waits for the typing to stop");
+    assert.equal(f.tray.stats().held, true);
+    for (let i = 0; i < 4; i += 1) editor.dispatchEvent({ type: "input" });
+    assert.equal(f.timers.pending(FOLLOW_QUIET_MS), 0, "keys while a read is held start no quiet period");
+    runDom(f.dom, SAVE_LAG_MS);
+    await f.timers.run();
+    assert.equal(calls, 0, "still typing");
+    runDom(f.dom, EDIT_IDLE_MS);
+    await f.timers.run();
+    assert.equal(calls, 1, "a pause in the typing: one read");
+    assert.equal(f.tray.stats().held, false);
+    editor.dispatchEvent({ type: "input" });
+    await f.timers.run();
+    assert.equal(calls, 1, "a 100 ms read waits while the user types");
+    editor.blur();
+    editor.dispatchEvent({ type: "focusout" });
+    runDom(f.dom, BLUR_IDLE_MS);
+    await f.timers.run();
+    assert.equal(calls, 2, "leaving the editor: it reads without waiting for the pause");
+    editor.focus();
+    editor.dispatchEvent({ type: "input" });
+    await f.timers.run();
+    editor.blur();
+    editor.dispatchEvent({ type: "focusout" });
+    next.focus();
+    runDom(f.dom, BLUR_IDLE_MS);
+    await f.timers.run();
+    assert.equal(calls, 2, "Enter into the next block: still typing, still waiting");
+    next.dispatchEvent({ type: "input" });
+    runDom(f.dom, SAVE_LAG_MS);
+    runDom(f.dom, EDIT_IDLE_MS);
+    await f.timers.run();
+    assert.equal(calls, 3);
+    cost = 10;
+    next.dispatchEvent({ type: "input" });
+    runDom(f.dom, EDIT_IDLE_MS);
+    await f.timers.run();
+    assert.equal(calls, 4);
+    next.dispatchEvent({ type: "input" });
+    await f.timers.run();
+    assert.equal(calls, 5, "a 10 ms read is no long task: it runs while the user types, as before");
+    await f.fake.flush();
+    assert.deepEqual(f.fake.writesLog(), [], "no writes");
+    f.tray.dispose();
+    assert.equal(f.listeners(), 0, "dispose lets the editing listeners go");
+  } finally { off(); }
+});
+
+test("PXD-20 tray: a slow read runs at most once per poll period while edits go on, and once when they stop", async () => {
+  const clock = { t: 0 };
+  let calls = 0;
+  const off = liveProbe("pxd20-floor", async () => { calls += 1; clock.t += 1200; return { ok: true, complete: true, items: [liveItem("k2")] }; });
+  try {
+    const f = mount({ plexus: { v: 2, follow: { kind: "pxd20-floor", uid: "P" } }, children: [card("n1", "Note one", 0, 0)], live: true, clock });
+    await f.timers.run();
+    assert.equal(calls, 1, "nobody edits: the first read runs");
+    assert.ok(1200 > FOLLOW_SLOW_MS);
+    f.live.save();
+    await f.timers.run(12000);
+    assert.equal(calls, 1, "a 1.2 s read and edits going on: no read 12 s later");
+    const wait = FOLLOW_POLL_MS - 1200;
+    assert.equal(f.timers.pending(wait), 1, "it waits for a poll period since the last read started");
+    for (let i = 0; i < 5; i += 1) f.live.save();
+    assert.equal(f.timers.pending(12000), 0, "more saves only join the held read");
+    clock.t = FOLLOW_POLL_MS;
+    await f.timers.run(wait);
+    assert.equal(calls, 2, "a poll period later it reads, edits or not");
+    f.live.save();
+    await f.timers.run(12000);
+    assert.equal(calls, 2, "and the next waits again");
+    assert.equal(f.timers.pending(FOLLOW_POLL_MS - 1200), 1);
+    runDom(f.dom, BUSY_IDLE_MS);
+    await f.timers.run();
+    assert.equal(calls, 3, "the edits stop: one read now");
+    assert.equal(f.timers.pending(FOLLOW_POLL_MS - 1200), 0, "the floor's timer goes with it");
+    runDom(f.dom, BUSY_IDLE_MS);
+    await f.timers.run();
+    assert.equal(calls, 3, "idle again with nothing owed reads nothing");
+    f.live.save();
+    await f.timers.run(12000);
+    assert.equal(calls, 3);
+    assert.equal(f.tray.stats().held, true);
+    await f.session.followSource({ kind: "block", uid: "SRC" });
+    assert.equal(f.tray.stats().held, false, "a new source is not held by the old one's cost");
+    assert.equal(f.timers.pending(FOLLOW_POLL_MS - 1200), 0);
+    await f.timers.run();
+    assert.deepEqual(f.tray.rows().map((r) => r.uid), ["k1", "k2", "k3"], "the block source reads at once");
+    const { editor } = roamBlock(f.dom);
+    editor.focus();
+    editor.dispatchEvent({ type: "input" });
+    const before = f.tray.reads();
+    f.tray.refresh();
+    await f.timers.run();
+    assert.equal(f.tray.reads(), before + 1, "a fast block read runs while the user types");
+    f.tray.dispose();
+    assert.equal(f.listeners(), 0);
+    const g = mount({ plexus: { v: 2, follow: { kind: "pxd20-floor", uid: "P" } }, children: [card("n1", "Note one", 0, 0)], live: true, clock });
+    await g.timers.run();
+    g.live.save();
+    await g.timers.run(12000);
+    assert.equal(g.tray.stats().held, true);
+    assert.equal(g.timers.pending(FOLLOW_POLL_MS - 1200), 1);
+    g.tray.dispose();
+    assert.equal(g.timers.pending(FOLLOW_POLL_MS - 1200), 0, "dispose drops the floor's timer");
+  } finally { off(); }
+});
+
+test("PXD-20 tray: when typing stops, a quiet period stretched by a slow read ends at once; saves that stop on their own do not", async () => {
+  const clock = { t: 0 };
+  let calls = 0;
+  const off = liveProbe("pxd20-cut", async () => { calls += 1; clock.t += 1200; return { ok: true, complete: true, items: [liveItem("k2")] }; });
+  try {
+    const f = mount({ plexus: { v: 2, follow: { kind: "pxd20-cut", uid: "P" } }, children: [card("n1", "Note one", 0, 0)], live: true, clock });
+    await f.timers.run();
+    assert.equal(calls, 1);
+    f.live.save();
+    assert.equal(f.timers.pending(12000), 1, "a 1.2 s read: a 12 s quiet period");
+    runDom(f.dom, BUSY_IDLE_MS);
+    await f.timers.run();
+    assert.equal(calls, 1, "save signals that stop leave it running");
+    assert.equal(f.timers.pending(12000), 1);
+    const { editor } = roamBlock(f.dom);
+    editor.focus();
+    for (let i = 0; i < 3; i += 1) editor.dispatchEvent({ type: "input" });
+    runDom(f.dom, SAVE_LAG_MS);
+    f.live.save();
+    assert.equal(runDom(f.dom, EDIT_IDLE_MS), 1);
+    assert.equal(editState(f.dom.document).busy, true, "Roam's write of the keys: still busy");
+    await f.timers.run();
+    assert.equal(calls, 2, "the typing stops: one read now, past the floor too");
+    assert.equal(f.timers.pending(12000), 0, "the stretched period is gone");
+    runDom(f.dom, BUSY_IDLE_MS);
+    await f.timers.run();
+    assert.equal(calls, 2, "and nothing more");
+    f.tray.dispose();
+  } finally { off(); }
+});
+
+test("PXD-20 tray: a held read that comes due while the board is off screen reads once when it shows again", async () => {
+  const clock = { t: 0 };
+  let calls = 0;
+  const off = liveProbe("pxd20-park", async () => { calls += 1; clock.t += 100; return { ok: true, complete: true, items: [liveItem("k2")] }; });
+  try {
+    const f = mount({ plexus: { v: 2, follow: { kind: "pxd20-park", uid: "P" } }, children: [card("n1", "Note one", 0, 0)], live: true, clock });
+    await f.timers.run();
+    assert.equal(calls, 1);
+    const { editor } = roamBlock(f.dom);
+    editor.focus();
+    editor.dispatchEvent({ type: "input" });
+    await f.timers.run();
+    assert.equal(f.tray.stats().held, true, "held while the user types");
+    f.live.show(false);
+    runDom(f.dom, EDIT_IDLE_MS);
+    await f.timers.run();
+    assert.equal(calls, 1, "off screen: no read");
+    assert.equal(f.tray.stats().held, false);
+    assert.equal(f.tray.stats().stale, true, "it waits as a stale read");
+    f.live.show(true);
+    await f.timers.run();
+    assert.equal(calls, 2, "back on screen: one read");
     f.tray.dispose();
   } finally { off(); }
 });

@@ -3543,6 +3543,123 @@ var init_trails = __esm({
   }
 });
 
+// src/model/linked-cards.js
+function linkedRefRows(rows, { selfUid = "", selfTitle = "" } = {}) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const row4 of rows || []) {
+    const uid = row4?.[0];
+    const pageTitle = typeof row4?.[1] === "string" ? row4[1] : "";
+    if (typeof uid !== "string" || !uid || seen.has(uid)) continue;
+    if (selfUid && uid === selfUid) continue;
+    if (selfTitle && pageTitle === selfTitle) continue;
+    seen.add(uid);
+    out.push({ uid, pageTitle });
+  }
+  return out;
+}
+function groupLinkedRefs(refs, { skip } = {}) {
+  const skipSet = skip instanceof Set ? skip : new Set(skip || []);
+  const groups2 = /* @__PURE__ */ new Map();
+  const seen = /* @__PURE__ */ new Set();
+  for (const ref of refs || []) {
+    const uid = ref?.uid;
+    if (typeof uid !== "string" || !REF_UID.test(uid) || seen.has(uid) || skipSet.has(uid)) continue;
+    seen.add(uid);
+    const title = String(ref.pageTitle ?? "").trim();
+    if (!groups2.has(title)) groups2.set(title, []);
+    groups2.get(title).push(uid);
+  }
+  return [...groups2.entries()].map(([title, uids]) => ({ title, uids })).sort((a, b) => b.uids.length - a.uids.length || a.title.localeCompare(b.title));
+}
+function clearRight(box2, avoid) {
+  let dx = 0;
+  for (let i = 0; i <= avoid.length; i += 1) {
+    const x = box2.x + dx;
+    const hits = avoid.filter((o) => o && x - GAP < o.x + o.w && o.x < x + box2.w + GAP && box2.y - GAP < o.y + o.h && o.y < box2.y + box2.h + GAP);
+    if (!hits.length) break;
+    dx = Math.max(...hits.map((o) => o.x + o.w)) + BESIDE - box2.x;
+  }
+  return dx;
+}
+function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap: cap4 = 22, card: card2 = CARD, avoid = [] } = {}) {
+  const groups2 = groupLinkedRefs(refs, { skip });
+  const total = groups2.reduce((n3, g) => n3 + g.uids.length, 0);
+  if (!rect || !total) return { cards: [], sections: [], added: 0, total, left: total };
+  const limit = Math.max(0, Math.floor(Number(cap4) || 0));
+  const w = card2?.w > 0 ? card2.w : CARD.w;
+  const h = card2?.h > 0 ? card2.h : CARD.h;
+  const x0 = rect.x + rect.w + BESIDE;
+  const y0 = rect.y;
+  const at = (x, y2, i, cols) => ({ x: x + i % cols * (w + GAP), y: y2 + Math.floor(i / cols) * (h + GAP) });
+  if (mode !== "page") {
+    const uids = groups2.flatMap((g) => g.uids).slice(0, limit);
+    const { cols } = gridOf(uids.length);
+    const placed2 = uids.map((uid, i) => ({ string: `((${uid}))`, ...at(x0, y0, i, cols) }));
+    const dx2 = placed2.length ? clearRight(boxOf(placed2.map((c) => ({ ...c, w, h }))), avoid || []) : 0;
+    const cards = placed2.map((c) => ({ ...c, x: c.x + dx2 }));
+    return { cards, sections: [], added: cards.length, total, left: total - cards.length };
+  }
+  const picked = [];
+  let budget = limit;
+  for (const g of groups2) {
+    if (budget < 2) break;
+    const uids = g.uids.slice(0, budget - 1);
+    picked.push({ title: g.title || "Untitled", uids });
+    budget -= 1 + uids.length;
+  }
+  const { cols: perRow } = gridOf(picked.length);
+  const placed = [];
+  let y = y0;
+  for (let start2 = 0; start2 < picked.length; start2 += perRow) {
+    let x = x0;
+    let rowH = 0;
+    for (const g of picked.slice(start2, start2 + perRow)) {
+      const { cols, rows } = gridOf(g.uids.length);
+      const sw = PAD * 2 + cols * w + (cols - 1) * GAP;
+      const sh = PAD * 2 + rows * h + (rows - 1) * GAP;
+      const cards = g.uids.map((uid, i) => ({ string: `((${uid}))`, ...at(x + PAD, y + PAD, i, cols) }));
+      placed.push({ title: g.title, x, y, w: sw, h: sh, cards });
+      x += sw + SECTION_GAP;
+      rowH = Math.max(rowH, sh);
+    }
+    y += rowH + SECTION_GAP;
+  }
+  const dx = placed.length ? clearRight(withTitle(boxOf(placed)), avoid || []) : 0;
+  const sections = placed.map((s) => ({ ...s, x: s.x + dx, cards: s.cards.map((c) => ({ ...c, x: c.x + dx })) }));
+  const added = sections.reduce((n3, s) => n3 + s.cards.length, 0);
+  return { cards: [], sections, added, total, left: total - added };
+}
+function linkedCardsMessage({ added = 0, sections = 0, left = 0 } = {}) {
+  const refs = `${added} linked ${added === 1 ? "reference" : "references"}`;
+  const inside8 = sections ? ` in ${sections} ${sections === 1 ? "section" : "sections"}` : "";
+  const rest = left ? `, ${left} left out (Roam undo holds 50 changes)` : "";
+  return `Added ${refs}${inside8}${rest}`;
+}
+var LINKED_CARD_MODES, CARD, GAP, BESIDE, PAD, SECTION_GAP, SECTION_TITLE, withTitle, REF_UID, gridOf, boxOf;
+var init_linked_cards = __esm({
+  "src/model/linked-cards.js"() {
+    LINKED_CARD_MODES = ["flat", "page"];
+    CARD = { w: 280, h: 160 };
+    GAP = 24;
+    BESIDE = 80;
+    PAD = 32;
+    SECTION_GAP = 64;
+    SECTION_TITLE = 32;
+    withTitle = (r) => ({ ...r, y: r.y - (SECTION_TITLE - GAP), h: r.h + (SECTION_TITLE - GAP) });
+    REF_UID = /^[\w-]+$/;
+    gridOf = (n3) => {
+      const cols = Math.max(1, Math.ceil(Math.sqrt(n3)));
+      return { cols, rows: Math.max(1, Math.ceil(n3 / cols)) };
+    };
+    boxOf = (rects) => {
+      const x = Math.min(...rects.map((r) => r.x));
+      const y = Math.min(...rects.map((r) => r.y));
+      return { x, y, w: Math.max(...rects.map((r) => r.x + r.w)) - x, h: Math.max(...rects.map((r) => r.y + r.h)) - y };
+    };
+  }
+});
+
 // src/model/why.js
 function readWhy(children) {
   for (const child of children || []) {
@@ -3588,7 +3705,7 @@ var init_why = __esm({
 function finite(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
-function boxOf(rect) {
+function boxOf2(rect) {
   if (!rect || typeof rect !== "object") return null;
   const x = finite(rect.x ?? rect.left);
   const y = finite(rect.y ?? rect.top);
@@ -3602,7 +3719,7 @@ function clamp(n3, lo, hi) {
   return Math.min(hi, Math.max(lo, n3));
 }
 function fracFromDrag(rect, x0, y0, x1, y1) {
-  const box2 = boxOf(rect);
+  const box2 = boxOf2(rect);
   if (!box2) return null;
   const pts = [x0, y0, x1, y1].map(finite);
   if (pts.some((n3) => n3 === null)) return null;
@@ -3684,7 +3801,7 @@ function edgeBox(edge) {
   };
 }
 function paintedContentRect(rect, natural, { fit: fit3 = "fill", position = "50% 50%", zoom = 1, padding, border } = {}) {
-  const box2 = boxOf(rect);
+  const box2 = boxOf2(rect);
   if (!box2) return null;
   const z = Number(zoom) > 0 ? Number(zoom) : 1;
   const pad2 = edgeBox(padding);
@@ -5772,6 +5889,91 @@ function sectionFitPlan(board2, rects, touchedUids, {
   };
   return [...work.entries()].map(([uid, rect]) => ({ uid, rect, depth: depthOf(uid) })).sort((a, b) => b.depth - a.depth).map(({ uid, rect }) => ({ uid, rect }));
 }
+function clearShift(before, after, rf, r, gap) {
+  const eps = 0.01;
+  const opts = [];
+  if (rf.x >= before.x + before.w - eps) opts.push({ x: after.x + after.w + gap - r.x, y: 0 });
+  if (rf.y >= before.y + before.h - eps) opts.push({ x: 0, y: after.y + after.h + gap - r.y });
+  if (rf.x + rf.w <= before.x + eps) opts.push({ x: after.x - gap - r.x - r.w, y: 0 });
+  if (rf.y + rf.h <= before.y + eps) opts.push({ x: 0, y: after.y - gap - r.y - r.h });
+  let best = null;
+  for (const o of opts) if (!best || Math.abs(o.x) + Math.abs(o.y) < Math.abs(best.x) + Math.abs(best.y)) best = o;
+  return best;
+}
+function sectionFitClearPlan(board2, rects, touchedUids, {
+  pad: pad2 = FIT_PAD,
+  gap = FIT_PAD,
+  skip = /* @__PURE__ */ new Set(),
+  parentOf = (u) => board2.items.get(u)?.parentUid,
+  maxMoves = FIT_PUSH_CAP
+} = {}) {
+  const world = new Map(rects);
+  const grown = /* @__PURE__ */ new Map();
+  const moved = /* @__PURE__ */ new Set();
+  const changed2 = /* @__PURE__ */ new Set();
+  const kidsOf5 = (pid) => (pid === board2.uid ? board2.roots : board2.items.get(pid)?.members) ?? [];
+  const occ = (u, r) => board2.items.get(u)?.type === "section" ? withTitle(r) : r;
+  const translate = (u, dx, dy) => {
+    const r = world.get(u);
+    if (r) world.set(u, { ...r, x: r.x + dx, y: r.y + dy });
+    changed2.add(u);
+    for (const m of board2.items.get(u)?.members ?? []) translate(m, dx, dy);
+  };
+  let touched = [...touchedUids];
+  for (let round6 = 0; round6 < 64 && touched.length; round6++) {
+    const queue = [];
+    for (const { uid, rect } of sectionFitPlan(board2, world, touched, { pad: pad2, skip, parentOf })) {
+      queue.push({ uid, before: world.get(uid) });
+      world.set(uid, rect);
+      grown.set(uid, rect);
+      changed2.add(uid);
+    }
+    touched = [];
+    while (queue.length) {
+      const m = queue.shift();
+      const after = occ(m.uid, world.get(m.uid));
+      const was = rects.get(m.uid);
+      for (const s of kidsOf5(parentOf(m.uid) ?? board2.uid)) {
+        if (s === m.uid || skip.has(s) || board2.items.get(s)?.pinned) continue;
+        const rf = world.get(s);
+        const r = rf && occ(s, rf);
+        if (!r || !intersects(after, r)) continue;
+        const r0 = rects.get(s);
+        if (was && r0 && intersects(was, r0)) continue;
+        const d = clearShift(m.before, after, rf, r, gap);
+        if (!d || moved.size >= maxMoves && !moved.has(s)) continue;
+        for (let hop = 0; hop < 64; hop++) {
+          const at = { ...r, x: r.x + d.x, y: r.y + d.y };
+          const hit = kidsOf5(parentOf(s) ?? board2.uid).find((p2) => p2 !== s && p2 !== m.uid && (skip.has(p2) || board2.items.get(p2)?.pinned) && world.get(p2) && intersects(at, occ(p2, world.get(p2))) && !(r0 && rects.get(p2) && intersects(r0, rects.get(p2))));
+          if (!hit) break;
+          const p = occ(hit, world.get(hit));
+          if (d.x > 0) d.x = p.x + p.w + gap - r.x;
+          else if (d.x < 0) d.x = p.x - gap - r.x - r.w;
+          else if (d.y > 0) d.y = p.y + p.h + gap - r.y;
+          else d.y = p.y - gap - r.y - r.h;
+        }
+        const prev = world.get(s);
+        translate(s, d.x, d.y);
+        moved.add(s);
+        queue.push({ uid: s, before: prev });
+        touched.push(s);
+      }
+    }
+  }
+  const depthOf = (u) => {
+    let d = 0;
+    for (let cur = u, i = 0; i < 256; i++) {
+      cur = parentOf(cur);
+      if (!cur || cur === board2.uid) break;
+      d++;
+    }
+    return d;
+  };
+  const sections = [...grown.entries()].map(([uid, rect]) => ({ uid, rect: world.get(uid) ?? rect, depth: depthOf(uid) })).sort((a, b) => b.depth - a.depth).map(({ uid, rect }) => ({ uid, rect }));
+  const final = /* @__PURE__ */ new Map();
+  for (const u of changed2) final.set(u, world.get(u));
+  return { grown: sections, moved: [...moved], world: final };
+}
 function sidebarOutlineUids(board2) {
   if (!board2) return [];
   const uids = [...board2.roots || []];
@@ -5993,7 +6195,7 @@ function diffBoards(prev, next) {
   }
   return { structural, dirty };
 }
-var AUTO_GAP, AUTO_OFFSET, AUTO_ROWS, TITLE_BAND, BORDER_BAND, isNum2, OPEN_KEY_DEPTH, HIGHLIGHT_HINT, COLLAPSED_SECTION_H, COLLAPSED_CARD_H, STICKY_HEADER_H, rowDroppable, clamp2, PREVIEW_MIN, PREVIEW_TITLE;
+var AUTO_GAP, AUTO_OFFSET, AUTO_ROWS, TITLE_BAND, BORDER_BAND, isNum2, OPEN_KEY_DEPTH, HIGHLIGHT_HINT, COLLAPSED_SECTION_H, COLLAPSED_CARD_H, STICKY_HEADER_H, rowDroppable, clamp2, PREVIEW_MIN, PREVIEW_TITLE, FIT_PUSH_CAP;
 var init_board = __esm({
   "src/model/board.js"() {
     init_geometry();
@@ -6008,6 +6210,7 @@ var init_board = __esm({
     init_snapshots();
     init_trails();
     init_highlight();
+    init_linked_cards();
     init_why();
     init_endpoints();
     init_pdf_page();
@@ -6026,6 +6229,7 @@ var init_board = __esm({
     clamp2 = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
     PREVIEW_MIN = { w: DEFAULT_SIZES.card.w * 2, h: DEFAULT_SIZES.card.h * 2 };
     PREVIEW_TITLE = 40;
+    FIT_PUSH_CAP = 24;
   }
 });
 
@@ -6652,7 +6856,7 @@ function extractGraphics(ops, { transform = [1, 0, 0, 1, 0, 0], maxSegments = 5e
       if (sp.length < 2) continue;
       const points = sp.map((p) => [...applyPoint(ctm, p[0], p[1]), p[2]]);
       const hasCurve = points.some((p) => p[2]);
-      const bbox = boxOf2(points);
+      const bbox = boxOf3(points);
       out.segments += Math.max(1, points.length - 1);
       if (out.segments > maxSegments) {
         out.truncated = true;
@@ -6843,9 +7047,9 @@ function strokeWidth(lineWidth, ctm) {
 }
 function unitBox(ctm) {
   const pts = [applyPoint(ctm, 0, 0), applyPoint(ctm, 1, 0), applyPoint(ctm, 1, 1), applyPoint(ctm, 0, 1)];
-  return boxOf2(pts);
+  return boxOf3(pts);
 }
-function boxOf2(points) {
+function boxOf3(points) {
   let x0 = Infinity;
   let y0 = Infinity;
   let x1 = -Infinity;
@@ -10267,7 +10471,7 @@ function groupHead(text4) {
 function overlapX(a, b) {
   return Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
 }
-function boxOf3(block) {
+function boxOf4(block) {
   const b = block.bbox;
   return Array.isArray(b) ? { x0: b[0], y0: b[1], x1: b[2], y1: b[3] } : b;
 }
@@ -10417,7 +10621,7 @@ function growContentsTables(tables, textBlocks, bodySize) {
     if (used.has(seed)) continue;
     const col2 = { x0: seed.bbox[0], x1: seed.bbox[2] };
     const near2 = (box2) => box2 && overlapX(col2, box2) >= 0.5 * Math.min(col2.x1 - col2.x0, box2.x1 - box2.x0);
-    const blocks = (textBlocks || []).filter((b) => !used.has(b) && ["para", "caption", "heading"].includes(b.type) && b.lines?.length && near2(boxOf3(b)));
+    const blocks = (textBlocks || []).filter((b) => !used.has(b) && ["para", "caption", "heading"].includes(b.type) && b.lines?.length && near2(boxOf4(b)));
     const others = (tables || []).filter((t) => t !== seed && !used.has(t) && contentsShaped(t, { maxCols: 3 }) && Array.isArray(t.sourceLines) && near2({ x0: t.bbox[0], x1: t.bbox[2] }));
     const owner = /* @__PURE__ */ new Map();
     for (const b of blocks) for (const l of b.lines) owner.set(l, b);
@@ -14184,7 +14388,7 @@ function digitHeavy(text4) {
   }
   return alnum > 0 && digits * 2 >= alnum;
 }
-function boxOf4(item) {
+function boxOf5(item) {
   const t = item?.transform || [];
   const x = Number(t[4]) || 0;
   const w = Number(item?.width) || 0;
@@ -14311,13 +14515,13 @@ function preferSpellings(items, lexicon, { rules = null, pageW = 612, pageH = 79
   const counts = /* @__PURE__ */ new Map();
   cores.forEach((core, index) => {
     if (core.length < 4) return;
-    if (rects.length && inRuledRegion(boxOf4(items[index]), rects)) return;
+    if (rects.length && inRuledRegion(boxOf5(items[index]), rects)) return;
     counts.set(core, (counts.get(core) || 0) + 1);
   });
   return items.map((item, index) => {
     const core = cores[index];
     if (!item || core.length < 4 || known(lexicon, core)) return item;
-    if (rects.length && inRuledRegion(boxOf4(item), rects)) return item;
+    if (rects.length && inRuledRegion(boxOf5(item), rects)) return item;
     const mine = counts.get(core) || 0;
     let best = null;
     let bestN = 0;
@@ -14368,7 +14572,7 @@ function chooseReading(vision, other, lexicon) {
   return v;
 }
 function lineClusters(items) {
-  const entries = items.map((item, index) => ({ item, index, box: boxOf4(item) }));
+  const entries = items.map((item, index) => ({ item, index, box: boxOf5(item) }));
   entries.sort((a, b) => a.box[3] - b.box[3] || a.box[0] - b.box[0]);
   const lines = [];
   for (const entry of entries) {
@@ -14416,8 +14620,8 @@ function snapOnto(item, line) {
 }
 function voteItems(visionItems, otherItems, lexicon, regions) {
   const pairs = [];
-  const vBoxes = visionItems.map(boxOf4);
-  const oBoxes = otherItems.map(boxOf4);
+  const vBoxes = visionItems.map(boxOf5);
+  const oBoxes = otherItems.map(boxOf5);
   for (let i = 0; i < visionItems.length; i += 1) {
     for (let j = 0; j < otherItems.length; j += 1) {
       const score = iou(vBoxes[i], oBoxes[j]);
@@ -14485,7 +14689,7 @@ function voteItems(visionItems, otherItems, lexicon, regions) {
     if (crowded) return;
     added.push(snapOnto(item, line));
   });
-  added.sort((a, b) => boxOf4(a)[1] - boxOf4(b)[1] || boxOf4(a)[0] - boxOf4(b)[0]);
+  added.sort((a, b) => boxOf5(a)[1] - boxOf5(b)[1] || boxOf5(a)[0] - boxOf5(b)[0]);
   return preferSpellings([...next, ...added], lexicon, { regions });
 }
 function deskewCcw(page) {
@@ -15959,7 +16163,7 @@ function num2(value, fallback = 0) {
   const n3 = Number(value);
   return Number.isFinite(n3) ? n3 : fallback;
 }
-function boxOf5(bbox) {
+function boxOf6(bbox) {
   if (!Array.isArray(bbox) || bbox.length < 4) return null;
   const x0 = num2(bbox[0]);
   const y0 = num2(bbox[1]);
@@ -15973,7 +16177,7 @@ function viewportSize(w, h, rotation) {
   return { w, h };
 }
 function userBoxToViewport(bbox, page) {
-  const box2 = boxOf5(bbox);
+  const box2 = boxOf6(bbox);
   if (!box2) return null;
   const w = num2(page?.w, 1) || 1;
   const h = num2(page?.h, 1) || 1;
@@ -15990,7 +16194,7 @@ function userBoxToViewport(bbox, page) {
   return [Math.min(...xs2), Math.min(...ys2), Math.max(...xs2), Math.max(...ys2)];
 }
 function frameBoxToViewport(bbox, page) {
-  const box2 = boxOf5(bbox);
+  const box2 = boxOf6(bbox);
   if (!box2) return null;
   const fw = num2(page?.w, 1) || 1;
   const fh = num2(page?.h, 1) || 1;
@@ -41184,117 +41388,8 @@ function findNode(node2, uid) {
   return null;
 }
 
-// src/model/linked-cards.js
-var LINKED_CARD_MODES = ["flat", "page"];
-var CARD = { w: 280, h: 160 };
-var GAP = 24;
-var BESIDE = 80;
-var PAD = 32;
-var SECTION_GAP = 64;
-var SECTION_TITLE = 32;
-var withTitle = (r) => ({ ...r, y: r.y - (SECTION_TITLE - GAP), h: r.h + (SECTION_TITLE - GAP) });
-var REF_UID = /^[\w-]+$/;
-function linkedRefRows(rows, { selfUid = "", selfTitle = "" } = {}) {
-  const out = [];
-  const seen = /* @__PURE__ */ new Set();
-  for (const row4 of rows || []) {
-    const uid = row4?.[0];
-    const pageTitle = typeof row4?.[1] === "string" ? row4[1] : "";
-    if (typeof uid !== "string" || !uid || seen.has(uid)) continue;
-    if (selfUid && uid === selfUid) continue;
-    if (selfTitle && pageTitle === selfTitle) continue;
-    seen.add(uid);
-    out.push({ uid, pageTitle });
-  }
-  return out;
-}
-function groupLinkedRefs(refs, { skip } = {}) {
-  const skipSet = skip instanceof Set ? skip : new Set(skip || []);
-  const groups2 = /* @__PURE__ */ new Map();
-  const seen = /* @__PURE__ */ new Set();
-  for (const ref of refs || []) {
-    const uid = ref?.uid;
-    if (typeof uid !== "string" || !REF_UID.test(uid) || seen.has(uid) || skipSet.has(uid)) continue;
-    seen.add(uid);
-    const title = String(ref.pageTitle ?? "").trim();
-    if (!groups2.has(title)) groups2.set(title, []);
-    groups2.get(title).push(uid);
-  }
-  return [...groups2.entries()].map(([title, uids]) => ({ title, uids })).sort((a, b) => b.uids.length - a.uids.length || a.title.localeCompare(b.title));
-}
-var gridOf = (n3) => {
-  const cols = Math.max(1, Math.ceil(Math.sqrt(n3)));
-  return { cols, rows: Math.max(1, Math.ceil(n3 / cols)) };
-};
-var boxOf6 = (rects) => {
-  const x = Math.min(...rects.map((r) => r.x));
-  const y = Math.min(...rects.map((r) => r.y));
-  return { x, y, w: Math.max(...rects.map((r) => r.x + r.w)) - x, h: Math.max(...rects.map((r) => r.y + r.h)) - y };
-};
-function clearRight(box2, avoid) {
-  let dx = 0;
-  for (let i = 0; i <= avoid.length; i += 1) {
-    const x = box2.x + dx;
-    const hits = avoid.filter((o) => o && x - GAP < o.x + o.w && o.x < x + box2.w + GAP && box2.y - GAP < o.y + o.h && o.y < box2.y + box2.h + GAP);
-    if (!hits.length) break;
-    dx = Math.max(...hits.map((o) => o.x + o.w)) + BESIDE - box2.x;
-  }
-  return dx;
-}
-function linkedCardsLayout(rect, refs, { mode = "flat", skip, cap: cap4 = 22, card: card2 = CARD, avoid = [] } = {}) {
-  const groups2 = groupLinkedRefs(refs, { skip });
-  const total = groups2.reduce((n3, g) => n3 + g.uids.length, 0);
-  if (!rect || !total) return { cards: [], sections: [], added: 0, total, left: total };
-  const limit = Math.max(0, Math.floor(Number(cap4) || 0));
-  const w = card2?.w > 0 ? card2.w : CARD.w;
-  const h = card2?.h > 0 ? card2.h : CARD.h;
-  const x0 = rect.x + rect.w + BESIDE;
-  const y0 = rect.y;
-  const at = (x, y2, i, cols) => ({ x: x + i % cols * (w + GAP), y: y2 + Math.floor(i / cols) * (h + GAP) });
-  if (mode !== "page") {
-    const uids = groups2.flatMap((g) => g.uids).slice(0, limit);
-    const { cols } = gridOf(uids.length);
-    const placed2 = uids.map((uid, i) => ({ string: `((${uid}))`, ...at(x0, y0, i, cols) }));
-    const dx2 = placed2.length ? clearRight(boxOf6(placed2.map((c) => ({ ...c, w, h }))), avoid || []) : 0;
-    const cards = placed2.map((c) => ({ ...c, x: c.x + dx2 }));
-    return { cards, sections: [], added: cards.length, total, left: total - cards.length };
-  }
-  const picked = [];
-  let budget = limit;
-  for (const g of groups2) {
-    if (budget < 2) break;
-    const uids = g.uids.slice(0, budget - 1);
-    picked.push({ title: g.title || "Untitled", uids });
-    budget -= 1 + uids.length;
-  }
-  const { cols: perRow } = gridOf(picked.length);
-  const placed = [];
-  let y = y0;
-  for (let start2 = 0; start2 < picked.length; start2 += perRow) {
-    let x = x0;
-    let rowH = 0;
-    for (const g of picked.slice(start2, start2 + perRow)) {
-      const { cols, rows } = gridOf(g.uids.length);
-      const sw = PAD * 2 + cols * w + (cols - 1) * GAP;
-      const sh = PAD * 2 + rows * h + (rows - 1) * GAP;
-      const cards = g.uids.map((uid, i) => ({ string: `((${uid}))`, ...at(x + PAD, y + PAD, i, cols) }));
-      placed.push({ title: g.title, x, y, w: sw, h: sh, cards });
-      x += sw + SECTION_GAP;
-      rowH = Math.max(rowH, sh);
-    }
-    y += rowH + SECTION_GAP;
-  }
-  const dx = placed.length ? clearRight(withTitle(boxOf6(placed)), avoid || []) : 0;
-  const sections = placed.map((s) => ({ ...s, x: s.x + dx, cards: s.cards.map((c) => ({ ...c, x: c.x + dx })) }));
-  const added = sections.reduce((n3, s) => n3 + s.cards.length, 0);
-  return { cards: [], sections, added, total, left: total - added };
-}
-function linkedCardsMessage({ added = 0, sections = 0, left = 0 } = {}) {
-  const refs = `${added} linked ${added === 1 ? "reference" : "references"}`;
-  const inside8 = sections ? ` in ${sections} ${sections === 1 ? "section" : "sections"}` : "";
-  const rest = left ? `, ${left} left out (Roam undo holds 50 changes)` : "";
-  return `Added ${refs}${inside8}${rest}`;
-}
+// src/session-clip.js
+init_linked_cards();
 
 // src/model/table-captions.js
 init_schema();
@@ -43209,6 +43304,7 @@ function neighborLayout(rect, titles, { skip = [] } = {}) {
 }
 
 // src/host/roam.js
+init_linked_cards();
 init_pdf();
 init_pdf_page();
 init_semantic();
@@ -49401,6 +49497,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // Closes the open group as a chunk now and returns a function that opens a fresh one with the same label. A long
     // wait between batches (the sync hold) is outside any undo group: another session's writes made meanwhile are
     // their own steps, and invalidateUndo works. No-op with no group open.
+    // Writes in the open group's current chunk (0 with no group open).
+    groupWrites() {
+      return openGroup ? openGroup.n : 0;
+    },
     suspendGroup() {
       const done3 = openGroup;
       if (!done3) return () => {
@@ -52756,6 +52856,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           if (resume) resume();
           if (held) setSyncState("writing");
         }
+        if (list[i].op === "keep") {
+          const open = host.groupWrites?.() ?? 0;
+          if (suspend && open > 0 && open + list[i].n > MAX_GROUP_WRITES) host.suspendGroup?.()?.();
+          continue;
+        }
         await runOpWithRetry(list[i]);
         settleOp(list[i]);
       }
@@ -52881,13 +52986,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (!ops.length) return Promise.resolve(result);
     stampBoard(ops);
     const list = coalesce(ops);
-    if (!bulkAllowed(list.length)) {
+    const writes = list.filter((op) => op.op !== "keep").length;
+    if (!bulkAllowed(writes)) {
       repull();
       return Promise.resolve(void 0);
     }
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish2();
-    const active2 = custom && (custom.when !== "over-native-limit" || list.length > MAX_GROUP_WRITES) ? custom : null;
+    const active2 = custom && (custom.when !== "over-native-limit" || writes > MAX_GROUP_WRITES) ? custom : null;
     if (active2) active2.forward = list;
     return queue.run(() => grouped(async () => {
       if (active2) host.setCustomUndo?.(active2);
@@ -52974,6 +53080,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       props(id, plexus) {
         rawProps(id, plexus);
         ops.push({ op: "props", uid: id, plexus });
+      },
+      // The writes fn makes land in one native undo chunk (a fit and the pushes it makes, PXD-23).
+      together(fn2) {
+        const at = ops.length;
+        fn2();
+        if (ops.length > at) ops.splice(at, 0, { op: "keep", n: ops.length - at });
       },
       string(id, string) {
         rawString(id, string);
@@ -53227,29 +53339,37 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const list = [...touched ?? []];
     if (!list.length) return;
     t.sync();
-    const plan = sectionFitPlan(board2, rects, list, skip ? { skip: new Set(skip) } : {});
-    if (!plan.length) return;
-    const grown = new Map(plan.map((p) => [p.uid, p.rect]));
+    const plan = sectionFitClearPlan(board2, rects, list, skip ? { skip: new Set(skip) } : {});
+    if (!plan.grown.length && !plan.moved.length) return;
     const finalWorld = new Map(rects);
-    for (const [sid, r] of grown) finalWorld.set(sid, r);
+    for (const [id, r] of plan.world) finalWorld.set(id, r);
     const originOf2 = (pid) => pid === uid ? { x: 0, y: 0 } : finalWorld.get(pid) ?? { x: 0, y: 0 };
-    for (const [sid, r] of grown) {
-      const p = originOf2(board2.items.get(sid).parentUid);
-      t.props(sid, itemPlexus(sid, { x: round14(r.x - p.x), y: round14(r.y - p.y), w: round14(r.w), h: round14(r.h) }));
-    }
-    for (const [sid, r] of grown) {
-      const old = rects.get(sid);
-      if (Math.abs(r.x - old.x) < 0.01 && Math.abs(r.y - old.y) < 0.01) continue;
-      for (const m of board2.items.get(sid).members) {
-        if (grown.has(m)) continue;
-        const mr = rects.get(m);
-        const nx = round14(mr.x - r.x);
-        const ny = round14(mr.y - r.y);
-        const stored2 = rawPlexus(m);
-        if (stored2.x === nx && stored2.y === ny) continue;
-        t.props(m, itemPlexus(m, { x: nx, y: ny }));
+    const relOf = (id) => {
+      const r = finalWorld.get(id);
+      const p = originOf2(board2.items.get(id).parentUid);
+      return { x: round14(r.x - p.x), y: round14(r.y - p.y) };
+    };
+    t.together(() => {
+      const grown = /* @__PURE__ */ new Set();
+      for (const { uid: sid, rect: r } of plan.grown) {
+        grown.add(sid);
+        t.props(sid, itemPlexus(sid, { ...relOf(sid), w: round14(r.w), h: round14(r.h) }));
       }
-    }
+      const rebase2 = new Set(plan.moved);
+      for (const { uid: sid } of plan.grown) {
+        const r = finalWorld.get(sid);
+        const old = rects.get(sid);
+        if (Math.abs(r.x - old.x) < 0.01 && Math.abs(r.y - old.y) < 0.01) continue;
+        for (const m of board2.items.get(sid).members) rebase2.add(m);
+      }
+      for (const m of rebase2) {
+        if (grown.has(m)) continue;
+        const rel = relOf(m);
+        const stored2 = rawPlexus(m);
+        if (stored2.x === rel.x && stored2.y === rel.y) continue;
+        t.props(m, itemPlexus(m, rel));
+      }
+    });
   }
   function spaceOutAfter(t, moved) {
     t.sync();
@@ -56503,6 +56623,7 @@ init_schema();
 
 // src/model/follow-headings.js
 init_follow();
+init_linked_cards();
 init_schema();
 var FOLLOW_HEAD = "head";
 var headingsNote = "Sections are the page's top-level H1–H3 headings. Each block directly under a heading becomes a card in its section.";
@@ -61894,6 +62015,7 @@ function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win
 
 // src/view/board-view.js
 init_avoid();
+init_linked_cards();
 init_query();
 init_geometry();
 

@@ -22,7 +22,7 @@ import {
   outlineOrder,
   readingOrder,
   sectionAdoptPlan,
-  sectionFitPlan,
+  sectionFitClearPlan,
   toRelative,
   topLevelOf,
   worldRects,
@@ -1328,6 +1328,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           if (resume) resume();
           if (held) setSyncState("writing");
         }
+        if (list[i].op === "keep") {
+          // Past the chunk size these writes would straddle two native chunks: start a fresh one before them.
+          const open = host.groupWrites?.() ?? 0;
+          if (suspend && open > 0 && open + list[i].n > MAX_GROUP_WRITES) host.suspendGroup?.()?.();
+          continue;
+        }
         await runOpWithRetry(list[i]);
         settleOp(list[i]);
       }
@@ -1444,7 +1450,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     if (!ops.length) return Promise.resolve(result);
     stampBoard(ops);
     const list = coalesce(ops);
-    if (!bulkAllowed(list.length)) {
+    const writes = list.filter((op) => op.op !== "keep").length;
+    if (!bulkAllowed(writes)) {
       // The optimistic model already holds the change: read the board back from Roam.
       repull();
       return Promise.resolve(undefined);
@@ -1453,7 +1460,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     publish();
     // A drag's inverse is installed only past the native chunk size. Smaller moves stay native so one Cmd+Z still
     // walks them with data.undo(). Fold and the other callers pass no `when` and stay one custom entry at any size.
-    const active = custom && (custom.when !== "over-native-limit" || list.length > MAX_GROUP_WRITES) ? custom : null;
+    const active = custom && (custom.when !== "over-native-limit" || writes > MAX_GROUP_WRITES) ? custom : null;
     if (active) active.forward = list;
     return queue.run(() => grouped(async () => {
       if (active) host.setCustomUndo?.(active);
@@ -1541,6 +1548,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       props(id, plexus) {
         rawProps(id, plexus);
         ops.push({ op: "props", uid: id, plexus });
+      },
+      // The writes fn makes land in one native undo chunk (a fit and the pushes it makes, PXD-23).
+      together(fn) {
+        const at = ops.length;
+        fn();
+        if (ops.length > at) ops.splice(at, 0, { op: "keep", n: ops.length - at });
       },
       string(id, string) {
         rawString(id, string);
@@ -1797,35 +1810,45 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   // Grows auto-fit sections around the touched items (grow only), all inside the caller's txn. Grown sections
   // are written relative to their parent's final rect; direct members of a section whose origin moved are
   // rebased so their world positions stay put (this overwrites their earlier write in the same txn).
+  // PXD-23: whatever a grown section would come over moves out of the way as a whole unit (sectionFitClearPlan),
+  // written in this same txn, so the growth and the pushes are one undo step.
   function applyFit(t, touched, { skip } = {}) {
     if (!flag("auto-fit-sections", true)) return;
     const list = [...(touched ?? [])];
     if (!list.length) return;
     t.sync();
-    const plan = sectionFitPlan(board, rects, list, skip ? { skip: new Set(skip) } : {});
-    if (!plan.length) return;
-    const grown = new Map(plan.map((p) => [p.uid, p.rect]));
+    const plan = sectionFitClearPlan(board, rects, list, skip ? { skip: new Set(skip) } : {});
+    if (!plan.grown.length && !plan.moved.length) return;
     const finalWorld = new Map(rects);
-    for (const [sid, r] of grown) finalWorld.set(sid, r);
+    for (const [id, r] of plan.world) finalWorld.set(id, r);
     const originOf = (pid) => (pid === uid ? { x: 0, y: 0 } : finalWorld.get(pid) ?? { x: 0, y: 0 });
-    for (const [sid, r] of grown) {
-      const p = originOf(board.items.get(sid).parentUid);
-      t.props(sid, itemPlexus(sid, { x: round1(r.x - p.x), y: round1(r.y - p.y), w: round1(r.w), h: round1(r.h) }));
-    }
-    for (const [sid, r] of grown) {
-      const old = rects.get(sid);
-      if (Math.abs(r.x - old.x) < 0.01 && Math.abs(r.y - old.y) < 0.01) continue;
-      for (const m of board.items.get(sid).members) {
-        if (grown.has(m)) continue;
-        const mr = rects.get(m);
-        const nx = round1(mr.x - r.x);
-        const ny = round1(mr.y - r.y);
-        // Only a member whose stored position changes is written.
-        const stored = rawPlexus(m);
-        if (stored.x === nx && stored.y === ny) continue;
-        t.props(m, itemPlexus(m, { x: nx, y: ny }));
+    const relOf = (id) => {
+      const r = finalWorld.get(id);
+      const p = originOf(board.items.get(id).parentUid);
+      return { x: round1(r.x - p.x), y: round1(r.y - p.y) };
+    };
+    t.together(() => {
+      const grown = new Set();
+      for (const { uid: sid, rect: r } of plan.grown) {
+        grown.add(sid);
+        t.props(sid, itemPlexus(sid, { ...relOf(sid), w: round1(r.w), h: round1(r.h) }));
       }
-    }
+      // Moved units and members of a grown section whose origin moved: only a stored position that changes is written.
+      const rebase = new Set(plan.moved);
+      for (const { uid: sid } of plan.grown) {
+        const r = finalWorld.get(sid);
+        const old = rects.get(sid);
+        if (Math.abs(r.x - old.x) < 0.01 && Math.abs(r.y - old.y) < 0.01) continue;
+        for (const m of board.items.get(sid).members) rebase.add(m);
+      }
+      for (const m of rebase) {
+        if (grown.has(m)) continue;
+        const rel = relOf(m);
+        const stored = rawPlexus(m);
+        if (stored.x === rel.x && stored.y === rel.y) continue;
+        t.props(m, itemPlexus(m, rel));
+      }
+    });
   }
 
   // Pushes overlapping siblings of just-moved items apart. Sections only take part when a section moved.

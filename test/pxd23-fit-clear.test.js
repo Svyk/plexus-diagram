@@ -108,6 +108,18 @@ test("a loose card in the way moves as itself; a pinned item and one that alread
   assert.equal(plexus(fake, "under").x, 300);
 });
 
+test("a pushed section goes on past a pinned card instead of landing on it", async () => {
+  const { fake, session } = setup([
+    section("A", 0, 0, 400, 300, [card("a", 40, 60)]),
+    section("B", 440, 0, 300, 300, [card("b", 24, 40)]),
+    card("pin", 760, 20, 200, 100, { pinned: true }),
+  ]);
+  await session.commitMove(["a"], 250, 0);
+  assert.equal(plexus(fake, "pin").x, 760, "the pinned card stays");
+  assert.equal(plexus(fake, "B").x, 760 + 200 + FIT_PAD, "B lands past the pinned card");
+  assertApart(session, ["A", "B", "pin"]);
+});
+
 test("a chain of three: A grows into B, B is pushed into C, C moves on", async () => {
   const { fake, session } = setup([
     section("A", 0, 0, 400, 300, [card("a", 40, 60)]),

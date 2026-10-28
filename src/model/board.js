@@ -758,7 +758,8 @@ function clearShift(before, after, rf, r, gap) {
 // PXD-23: sectionFitPlan that never grows a section over what stands beside it. Each section the fit grows is a
 // mover among its siblings; a sibling it now overlaps (and did not before) moves as a whole unit, with everything
 // in it, by the least distance that clears the frame on the side it stood on. A moved unit is a mover too (chains),
-// and its own section fits around it in the next round (nested). Pinned items and `skip` never move. Sections count
+// and its own section fits around it in the next round (nested). Pinned items and `skip` never move: a pushed unit
+// goes on past them. A grown frame may still cover one, since its members and the pinned item both stay. Sections count
 // their title above the frame. Returns the grown sections (deepest first), the moved units, and the final world
 // rect of every item that changed (a moved unit's descendants included).
 export function sectionFitClearPlan(board, rects, touchedUids, {
@@ -804,6 +805,19 @@ export function sectionFitClearPlan(board, rects, touchedUids, {
         if (was && r0 && intersects(was, r0)) continue;
         const d = clearShift(m.before, after, rf, r, gap);
         if (!d || (moved.size >= maxMoves && !moved.has(s))) continue;
+        // An item that never moves (pinned, or being resized) is an obstacle: the push goes on past it.
+        for (let hop = 0; hop < 64; hop++) {
+          const at = { ...r, x: r.x + d.x, y: r.y + d.y };
+          const hit = kidsOf(parentOf(s) ?? board.uid).find((p) => p !== s && p !== m.uid
+            && (skip.has(p) || board.items.get(p)?.pinned) && world.get(p) && intersects(at, occ(p, world.get(p)))
+            && !(r0 && rects.get(p) && intersects(r0, rects.get(p))));
+          if (!hit) break;
+          const p = occ(hit, world.get(hit));
+          if (d.x > 0) d.x = p.x + p.w + gap - r.x;
+          else if (d.x < 0) d.x = p.x - gap - r.x - r.w;
+          else if (d.y > 0) d.y = p.y + p.h + gap - r.y;
+          else d.y = p.y - gap - r.y - r.h;
+        }
         const prev = world.get(s);
         translate(s, d.x, d.y);
         moved.add(s);

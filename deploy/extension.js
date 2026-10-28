@@ -5942,6 +5942,16 @@ function sectionFitClearPlan(board2, rects, touchedUids, {
         if (was && r0 && intersects(was, r0)) continue;
         const d = clearShift(m.before, after, rf, r, gap);
         if (!d || moved.size >= maxMoves && !moved.has(s)) continue;
+        for (let hop = 0; hop < 64; hop++) {
+          const at = { ...r, x: r.x + d.x, y: r.y + d.y };
+          const hit = kidsOf5(parentOf(s) ?? board2.uid).find((p2) => p2 !== s && p2 !== m.uid && (skip.has(p2) || board2.items.get(p2)?.pinned) && world.get(p2) && intersects(at, occ(p2, world.get(p2))) && !(r0 && rects.get(p2) && intersects(r0, rects.get(p2))));
+          if (!hit) break;
+          const p = occ(hit, world.get(hit));
+          if (d.x > 0) d.x = p.x + p.w + gap - r.x;
+          else if (d.x < 0) d.x = p.x - gap - r.x - r.w;
+          else if (d.y > 0) d.y = p.y + p.h + gap - r.y;
+          else d.y = p.y - gap - r.y - r.h;
+        }
         const prev = world.get(s);
         translate(s, d.x, d.y);
         moved.add(s);

@@ -7,6 +7,7 @@ import { SLICED_LEVEL_PATTERN } from "../src/host/sliced-read.js";
 import { noteSpeedFlags } from "../src/settings.js";
 import { createModelStore } from "../src/host/model-store.js";
 import { acquireSession, resetSessions } from "../src/session.js";
+import { resetSharedBgBudget } from "../src/bg-budget.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 import { createFakeIDB } from "./fixtures/fake-idb.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
@@ -18,6 +19,14 @@ async function until(fn, ms = 6000) {
   const end = Date.now() + ms;
   while (!fn()) {
     if (Date.now() > end) throw new Error("timed out");
+    await tick(20);
+  }
+}
+// Bounded by turns of the loop, not by wall time: a busy machine makes each turn slower, not the wait shorter.
+async function untilTurns(fn, turns, spin) {
+  for (let i = 0; !fn(); i += 1) {
+    if (i >= turns) throw new Error("timed out");
+    spin();
     await tick(20);
   }
 }
@@ -65,23 +74,36 @@ async function preread(host, uid = "sb1", opts = {}) {
 const cardOf = (tree, uid) => tree[":block/children"].flatMap((s) => s[":block/children"] || []).find((c) => c[":block/uid"] === uid);
 
 // A first open (sliced read) stores the model; returns the idb that holds it.
-async function storedBoard(fake) {
+async function storedBoard(fake, spin = () => {}) {
   const idb = createFakeIDB();
   const { host, store } = hostOver(fake, idb);
   await store.ready;
   await preread(host);
   host.pullBoard("sb1", { light: true });
   assert.equal(host.stats.slicedReads, 1);
-  await until(() => store.stampOf("sb1") != null);
+  await untilTurns(() => store.stampOf("sb1") != null, 3000, spin);
   host.dispose();
   await store.dispose();
   return idb;
 }
 
 test("trusted open: an unchanged page mounts from the stored model with no board read, then is verified", async () => {
+  // The check waits on the shared background budget's quiet time. Its clock is the test's: each turn of the wait adds
+  // virtual time, so the check runs when the loop says, not when a loaded machine's wall clock does.
+  const realNow = globalThis.performance.now;
+  let clock = 1_000_000;
+  globalThis.performance.now = () => clock;
+  resetSharedBgBudget();
+  try {
+    await unchangedPageOpen();
+  } finally {
+    globalThis.performance.now = realNow;
+    resetSharedBgBudget();
+  }
+  async function unchangedPageOpen() {
   const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
   seed(fake);
-  const idb = await storedBoard(fake);
+  const idb = await storedBoard(fake, () => { clock += 500; });
   const { host, store } = hostOver(fake, idb);
   await store.ready;
   fake.pullLog = [];
@@ -100,7 +122,7 @@ test("trusted open: an unchanged page mounts from the stored model with no board
   host.onBoardVerified("sb1", () => { verified += 1; });
   const trees = [];
   const off = host.watchBoard("sb1", (tree) => trees.push(tree));
-  await until(() => !host.boardUnverified("sb1"));
+  await untilTurns(() => !host.boardUnverified("sb1"), 3000, () => { clock += 500; });
   assert.equal(verified, 1);
   assert.equal(host.stats.checks, 1);
   assert.ok(!host.stats.checkChanges, "nothing changed, nothing published");
@@ -108,6 +130,7 @@ test("trusted open: an unchanged page mounts from the stored model with no board
   off();
   host.dispose();
   await store.dispose();
+  }
 });
 
 test("trusted open: a moved page stamp reads the board (sliced read), and the result is stored again", async () => {

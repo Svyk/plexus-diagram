@@ -5,6 +5,7 @@ import test from "node:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { cpuNow } from "./fixtures/cpu-clock.js";
 import { ATTENTION, ATTENTION_EXPECTED, FIX, parseFile, reportTruth } from "./parse-engine-fixtures.js";
 import { matchTables, scoreDoc, scoreTable } from "./parse-metrics.js";
 
@@ -12,7 +13,11 @@ const median = (v) => { const s = [...v].sort((a, b) => a - b); return s.length 
 
 let reportDoc;
 test("report.pdf parses as three text pages with a pxd-parse/1 document", async () => {
-  reportDoc = await parseFile(join(FIX, "report.pdf"));
+  // The engine stamps ms per page from performance.now. Read CPU time for this parse so the speed budget below
+  // does not count the time a loaded runner keeps the thread waiting for a core (pdf.js runs on this thread).
+  const wall = globalThis.performance.now;
+  globalThis.performance.now = cpuNow;
+  try { reportDoc = await parseFile(join(FIX, "report.pdf")); } finally { globalThis.performance.now = wall; }
   assert.equal(reportDoc.schema, "pxd-parse/1");
   assert.deepEqual(reportDoc.pages.map((p) => p.kind), ["text", "text", "text"]);
   assert.deepEqual(reportDoc.pages.map((p) => p.columns), [2, 2, 1]);

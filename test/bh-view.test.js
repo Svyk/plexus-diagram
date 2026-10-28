@@ -171,8 +171,10 @@ test("item 8: a title-only warm pass keeps the ready cover painted (never back t
   const lib = { GlobalWorkerOptions: { workerSrc: "w.js" }, getDocument: () => ({ promise: Promise.reject(new Error("no title here")), destroy() {} }) };
   const f = mountView({ settings: { "pdf-cover-warm": true }, pdfjs: lib });
   try {
-    await cycle(f, 3);
     const state = () => f.root.querySelector("[data-uid=pdfcard01] [data-cover]")?.getAttribute("data-cover");
+    // The cover store read is a short timer chain; a loaded runner fires it late. Turns, not time, bound the wait.
+    await cycle(f, 3);
+    for (let i = 0; i < 200 && state() !== "ready"; i += 1) await cycle(f, 1);
     assert.equal(state(), "ready", "the seeded cover is painted before the pass");
     const seen = new Set();
     const make = f.stub.document.createElement.bind(f.stub.document);

@@ -4,11 +4,10 @@
 // frame grew with the slice.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mountBig, settledIn } from "./fixtures/big-mount.js";
+import { mountBig, settledIn, tick } from "./fixtures/big-mount.js";
 
-const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const builtAtFit = async (flags = {}) => {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, flags: { overviewCanvas: false, ...flags } });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, flags: { overviewCanvas: false, ...flags }, virtualClock: true });
   await settledIn(m);
   for (let k = 0; k < 40 && m.view.stats().shells < 1570; k += 1) { await tick(100); await m.pump(50); }
   await tick(700);

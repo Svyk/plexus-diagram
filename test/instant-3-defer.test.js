@@ -2,6 +2,7 @@
 // turn. They run in idle time after the board has painted, and they still arrive.
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
+import { resetSharedBgBudget } from "../src/bg-budget.js";
 import { createHost } from "../src/host/roam.js";
 import { acquireSession, resetSessions } from "../src/session.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
@@ -10,8 +11,18 @@ import { createFakeRoam } from "./fixtures/fake-roam.js";
 afterEach(() => resetSessions());
 
 function open() {
+  // Frozen clock: a background slice of 5 ms or more owes the shared budget a gap, which a loaded runner's slices all
+  // did, and the deferred reads then missed the flushes below.
+  const realNow = globalThis.performance.now;
+  globalThis.performance.now = () => 1_000_000;
+  resetSharedBgBudget();
   const stub = createDomStub();
-  const restore = stub.install();
+  const restoreDom = stub.install();
+  const restore = () => {
+    restoreDom();
+    globalThis.performance.now = realNow;
+    resetSharedBgBudget();
+  };
   const fake = createFakeRoam({ echoDelay: 0 });
   const host = createHost({ api: fake.api, storage: stub.localStorage, graph: "g" });
   fake.seedPage({ title: "A", uid: "pageA" });

@@ -4,6 +4,7 @@ import test from "node:test";
 import { colorPalette, paletteDistance, rgbToOklab, oklabToHex } from "../src/model/color.js";
 import { similarImages } from "../src/model/image-search.js";
 import { createPanel } from "../src/view/panel.js";
+import { cpuNow } from "./fixtures/cpu-clock.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const entry = (r, g, b, weight) => { const lab = rgbToOklab(r, g, b); return { hex: oklabToHex(lab), lab, weight }; };
@@ -43,10 +44,10 @@ test("paletteDistance: 5,000 comparisons of 5-colour palettes under 20 ms", () =
   const others = Array.from({ length: 5000 }, (_, i) => make(i + 2));
   let best = Infinity;
   for (let run = 0; run < 5; run += 1) {
-    const t0 = performance.now();
+    const t0 = cpuNow();
     let sink = 0;
     for (const o of others) sink += paletteDistance(source, o);
-    best = Math.min(best, performance.now() - t0);
+    best = Math.min(best, cpuNow() - t0);
     assert.ok(sink > 0);
   }
   assert.ok(best < 20, `took ${best.toFixed(1)} ms`);

@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { dragSelection, missingFrames, mountBig, riders, settledIn, withFrozenClock, zoomBurst } from "./fixtures/big-mount.js";
+import { dragSelection, missingFrames, mountBig, riders, settledIn, tick, withFrozenClock, zoomBurst } from "./fixtures/big-mount.js";
 
 // perf2 lane E: no-flash navigation and tier flips on the 1,560-card fixture, through the view's real entry points.
-const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
 
 test("E1: a parked fullscreen board lets go of the mount's chrome observers, takes them back on unpark, and its dispose leaves the mount fullscreen", async () => {
@@ -244,7 +243,7 @@ test("E6: dragLayer off keeps the 3.34.0 drag (every touching edge placed each f
 // E2-5 (perf2): crumb back to a kept PhD MAIN at fit un-parked ~1,500 attached shells in one task (QA3: 514-595 ms,
 // 3.34.0 311). The un-park now renders the nearest RESUME_SHELLS; the rest come back in slices over styled boxes.
 const builtAtFit = async (flags = {}) => {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, flags: { overviewCanvas: false, ...flags } });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, flags: { overviewCanvas: false, ...flags }, virtualClock: true });
   await settledIn(m);
   for (let k = 0; k < 40 && m.view.stats().shells < 1570; k += 1) { await tick(100); await m.pump(50); }
   await tick(700);
@@ -446,14 +445,14 @@ test("E2-6: no background-budget slice runs inside a wheel burst while the board
   resetSharedBgBudget();
   resetSharedTaskProbe();
   const realRic = globalThis.requestIdleCallback;
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: false } });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: false }, virtualClock: true });
   const probe = sharedTaskProbe();
   const orig = probe.span;
   const seen = { open: 0, burst: 0, after: 0 };
   let phase = "open";
   probe.span = (name, fn, ph) => { if (typeof name === "string" && name.startsWith("bg:")) seen[phase] += 1; return orig(name, fn, ph); };
   try {
-    const run = async (ms, step) => { const end = Date.now() + ms; while (Date.now() < end) { step?.(); m.stub.flushFrames(); m.stub.flushIdle(); m.stub.flushTimers(); await tick(16); } };
+    const run = async (ms, step) => { for (let n = Math.ceil(ms / 16); n > 0; n -= 1) { step?.(); m.stub.flushFrames(); m.stub.flushIdle(); m.stub.flushTimers(); await tick(16); } };
     await run(300);
     phase = "burst";
     await run(700, () => m.stub.dispatch(m.view.root, "wheel", { deltaX: 20, deltaY: 20, deltaMode: 0, clientX: 700, clientY: 450 }));

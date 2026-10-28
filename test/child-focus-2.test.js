@@ -5,6 +5,7 @@ import test from "node:test";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { mountBoardView } from "../src/view/board-view.js";
 import { blockUidFromNode, inputBlockRole } from "../src/view/editor-keys.js";
+import { resetSharedBgBudget } from "../src/bg-budget.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const CHILD_ID = "block-input-render-block-path-cardAAAA1-uuid4fa27c31-4792-400b-a4fd-de63b311804b-kidA00001";
@@ -81,7 +82,16 @@ function pulled() {
 
 function mount({ inputId = CHILD_ID } = {}) {
   const stub = createDomStub();
-  const restore = stub.install();
+  const restoreDom = stub.install();
+  // Frozen clock: the shared background budget and slice sizers read performance.now; under load every slice looks long.
+  const realNow = globalThis.performance.now;
+  globalThis.performance.now = () => 1_000_000;
+  resetSharedBgBudget();
+  const restore = () => {
+    globalThis.performance.now = realNow;
+    resetSharedBgBudget();
+    restoreDom();
+  };
   stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify({ x: 0, y: 0, zoom: 1 }));
   const board = buildBoard(pulled());
   const mutations = [];

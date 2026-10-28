@@ -8,6 +8,7 @@ import { buildBoard, worldRects } from "../src/model/board.js";
 import { HAY_SLICE_MS, createHayIndex, findOnBoard, scheduleHayIndex } from "../src/model/find.js";
 import { noteSpeedFlags } from "../src/settings.js";
 import { mountBoardView } from "../src/view/board-view.js";
+import { cpuNow } from "./fixtures/cpu-clock.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const blk = (uid, string, plexus, order, children = []) => ({
@@ -224,9 +225,9 @@ test("a 1564-card keystroke stays under 5 ms and matches findOnBoard", () => {
   ix.note(board, []);
   finish(ix);
   const before = calls;
-  const t0 = performance.now();
+  const t0 = cpuNow();
   const hit = ix.find(board, "needle");
-  const ms = performance.now() - t0;
+  const ms = cpuNow() - t0;
   assert.deepEqual(hit.map((row) => row.uid), ["c42"]);
   assert.ok(ms < 5, `keystroke took ${ms} ms`);
   assert.equal(calls, before, "find() called resolve");
@@ -310,6 +311,10 @@ function mountSearch({ flag = true } = {}) {
 }
 
 test("the search field calls no host pull, blockString, or q per key once the index is built", () => {
+  // Index slices and the shared budget read performance.now. Frozen, a slice never runs out, so the pump builds the
+  // whole index however busy the machine is.
+  const realNow = globalThis.performance.now;
+  globalThis.performance.now = () => 1_000_000;
   const f = mountSearch({ flag: true });
   try {
     f.pump();
@@ -332,6 +337,7 @@ test("the search field calls no host pull, blockString, or q per key once the in
     assert.equal(f.view.root.querySelector(".pxd-search__count").textContent, "1");
   } finally {
     f.done();
+    globalThis.performance.now = realNow;
   }
 });
 

@@ -6,6 +6,7 @@ import { createItemRenderer } from "../src/view/cards.js";
 import { mountBoardView } from "../src/view/board-view.js";
 import { createRowScheduler, mountFpsFromStamps } from "../src/view/progressive.js";
 import { MAIN_IDLE_LONG_TASK_MS, SIDEBAR_BOARD_LONG_TASK_MS, SIDEBAR_PARKED_LONG_TASK_MS } from "../tools/live/perf-gate.mjs";
+import { resetSharedBgBudget } from "../src/bg-budget.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -317,7 +318,12 @@ test("FAST-8: a pan writes the world transform and does not mount bodies", async
   }
 });
 
-test("FAST-8: the view passes one dirty uid through to renderBlock", async () => {
+test("FAST-8: the view passes one dirty uid through to renderBlock", async (t) => {
+  // Frozen clock: a body mount that looks long under load owes the shared budget a gap and defers the second card.
+  const realNow = globalThis.performance.now;
+  globalThis.performance.now = () => 1_000_000;
+  resetSharedBgBudget();
+  t.after(() => { globalThis.performance.now = realNow; resetSharedBgBudget(); });
   const stub = createDomStub();
   const restore = stub.install();
   stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify({ x: 0, y: 0, zoom: 1 }));

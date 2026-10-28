@@ -26,13 +26,21 @@ function seed(fake, extra = {}) {
   });
 }
 
-function setup(opts = {}, { seedFn = seed, settings = null } = {}) {
+function setup(opts = {}, { seedFn = seed, settings = null, now = Date.now } = {}) {
   const fake = createFakeRoam(opts);
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
   seedFn(fake);
-  const session = acquireSession("b1", { host, settings, linkDelay: 0 });
+  const session = acquireSession("b1", { host, settings, linkDelay: 0, now });
   fake.clearLog();
   return { fake, host, session };
+}
+
+// The fake's echo timers drained, then the session's own zero-delay flush that the echo queued, twice over.
+async function settle(fake) {
+  for (let i = 0; i < 2; i += 1) {
+    await fake.flush();
+    await sleep(0);
+  }
 }
 
 const kinds = (fake, k) => fake.writesLog().filter((e) => e[0] === k);
@@ -107,42 +115,43 @@ test("moving a section is one write and members follow", async () => {
 });
 
 test("echo safety: quick double commitMove never reports the stale x", async () => {
-  const { session } = setup({ echoDelay: 30, echoMode: "snapshot" });
+  const { fake, session } = setup({ echoDelay: 30, echoMode: "snapshot" });
   await session.commitMove(["c1"], 10, 0);
   const seen = [];
   session.on("change", () => seen.push(session.board.items.get("c1").x));
   const p = session.commitMove(["c1"], 10, 0);
   await p;
-  await sleep(200);
+  await settle(fake);
   assert.ok(seen.length >= 1);
   assert.ok(seen.every((x) => x === 20), `saw ${seen}`);
   assert.equal(session.board.items.get("c1").x, 20);
 });
 
 test("echo safety: overlapping in-flight commits with write delay", async () => {
-  const { session } = setup({ echoDelay: 30, writeDelay: 15, echoMode: "snapshot" });
+  const { fake, session } = setup({ echoDelay: 30, writeDelay: 15, echoMode: "snapshot" });
   const seen = [];
   const a = session.commitMove(["c1"], 10, 0);
   const b = session.commitMove(["c1"], 10, 0);
   session.on("change", () => seen.push(session.board.items.get("c1").x));
   await Promise.all([a, b]);
-  await sleep(200);
+  await settle(fake);
   assert.ok(seen.every((x) => x === 20), `saw ${seen}`);
 });
 
 test("external change is accepted after the grace period", async () => {
-  const { fake, session } = setup({ echoDelay: 5 });
+  // The echo grace (800 ms) is timed by this clock: standing still, the edit below lands inside it on any runner.
+  const { fake, session } = setup({ echoDelay: 5 }, { now: () => 1_000_000 });
   await session.commitMove(["c1"], 10, 0);
-  await sleep(50);
+  await settle(fake);
   await fake.api.data.block.update({ block: { uid: "c1", props: { plexus: { x: 999, y: 0, w: 280, h: 160 } } } });
-  await sleep(50);
+  await settle(fake);
   assert.equal(session.board.items.get("c1").x, 10);
 });
 
 test("external change on another block is accepted immediately", async () => {
   const { fake, session } = setup({ echoDelay: 5 });
   await fake.api.data.block.update({ block: { uid: "c2", props: { plexus: { x: 555, y: 0 } } } });
-  await sleep(50);
+  await settle(fake);
   assert.equal(session.board.items.get("c2").x, 555);
 });
 
@@ -236,19 +245,19 @@ test("setBlockOpen writes Roam open on the card and leaves plexus props alone", 
     location: { "parent-uid": "c4", order: "last" },
     block: { uid: "kidOPEN1", string: "child", open: false },
   });
-  await sleep(40);
+  await settle(fake);
   const childOpen = () => fake.block("kidOPEN1").open;
   assert.equal(childOpen(), false);
   assert.equal(session.board.items.get("c4").open, true);
   const before = fake.block("c4").open;
   await session.setBlockOpen("c4", false);
-  await sleep(30);
+  await settle(fake);
   assert.equal(fake.block("c4").open, false);
   assert.equal(session.board.items.get("c4").open, false);
   assert.equal(childOpen(), false);
   assert.equal(fake.props("c4").plexus.x, 800);
   await session.setBlockOpen("c4", true);
-  await sleep(30);
+  await settle(fake);
   assert.equal(fake.block("c4").open, before);
   assert.equal(session.board.items.get("c4").open, true);
   assert.equal(childOpen(), false);
@@ -1024,11 +1033,11 @@ test("with auto-enhance off a non-enhanced native diagram card is neither a move
 });
 
 test("session emits gone once when the board block disappears, and stops writing", async () => {
-  const { session, host } = setup();
+  const { fake, session, host } = setup();
   const seen = [];
   session.on("gone", () => seen.push(1));
   await host.deleteBlock("b1");
-  await sleep(30);
+  await settle(fake);
   assert.deepEqual(seen, [1]);
   assert.equal(session.gone, true);
   assert.equal(await session.commitMove?.("c1", { x: 5, y: 5 }), undefined);
@@ -1039,9 +1048,9 @@ test("a foreign edit that arrives while the queue is idle asks the host to drop 
   let invalidated = 0;
   host.invalidateUndo = () => { invalidated += 1; };
   await session.commitMove(["c1"], 10, 0);
-  await sleep(50);
+  await settle(fake);
   assert.equal(invalidated, 0, "the echo of our own write is already in the optimistic model");
   await fake.api.data.block.update({ block: { uid: "c2", props: { plexus: { x: 555, y: 0 } } } });
-  await sleep(50);
+  await settle(fake);
   assert.ok(invalidated >= 1, "an edit made elsewhere in Roam is a foreign change");
 });

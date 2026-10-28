@@ -242,11 +242,13 @@ describe("FAST-7 hot paths", { concurrency: 1 }, () => {
     const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
     const calls = [];
     const orig = host.resolveEid.bind(host);
+    // The host's background card-stats prime resolves the same titles on its own timer. Count only the link run.
+    let linking = false;
     host.resolveEid = (ref) => {
-      calls.push({ uid: ref?.uid, title: ref?.title });
+      if (linking) calls.push({ uid: ref?.uid, title: ref?.title });
       return orig(ref);
     };
-    const session = acquireSession("b1", { host, linkDelay: 0, idle: (fn) => fn() });
+    const session = acquireSession("b1", { host, linkDelay: 0, idle: (fn) => { linking = true; try { fn(); } finally { linking = false; } } });
     await settled(session);
     calls.length = 0;
     await settled(session);
@@ -270,11 +272,13 @@ describe("FAST-7 hot paths", { concurrency: 1 }, () => {
     const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
     let calls = 0;
     const orig = host.resolveEid.bind(host);
+    // The host's background card-stats prime resolves the same targets on its own timer. Count only the link run.
+    let linking = false;
     host.resolveEid = (ref) => {
-      calls += 1;
+      if (linking) calls += 1;
       return orig(ref);
     };
-    const session = acquireSession(tree[":block/uid"], { host, linkDelay: 0, idle: (fn) => fn() });
+    const session = acquireSession(tree[":block/uid"], { host, linkDelay: 0, idle: (fn) => { linking = true; try { fn(); } finally { linking = false; } } });
     await settled(session);
     const board = session.board;
     calls = 0;

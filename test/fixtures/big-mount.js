@@ -3,15 +3,24 @@ import { bigBoardTree } from "../../src/model/stress-board.js";
 import { buildBoard, worldRects } from "../../src/model/board.js";
 import { mountBoardView } from "../../src/view/board-view.js";
 import { noteSpeedFlags } from "../../src/settings.js";
+import { resetSharedBgBudget } from "../../src/bg-budget.js";
 import { createDomStub } from "./dom-stub.js";
 
-const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+const realNow = globalThis.performance.now.bind(globalThis.performance);
+// The test-owned clock behind performance.now while a board mounted with { virtualClock: true } is up. Slice sizers,
+// frame budgets and the shared background budget (a >= 5 ms slice owes a 3x gap) read it; on a loaded machine real
+// time made every slice look long. Work done inside a flush costs 0 ms; time passes only through tick().
+export const clock = { t: 5_000_000 };
+// Advances the test clock by ms, then waits ms of real time for the product's own real timers.
+export const tick = (ms = 0) => { clock.t += ms; return new Promise((r) => setTimeout(r, ms)); };
 
 // renderMs: each card body render spins this long (Roam's renderString/renderBlock cost per card). With 0 the stub
 // builds a whole view of shells in one pump chunk, which hid the live zoom-in gap (QA3: 2-3 shells per pump frame).
-const spin = (ms) => { if (!(ms > 0)) return; const t0 = performance.now(); while (performance.now() - t0 < ms) { /* render */ } };
-export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, prep = null, renderMs = 0, unmountMs = 0, slowUids = null } = {}) {
+const spin = (ms) => { if (!(ms > 0)) return; const t0 = realNow(); while (realNow() - t0 < ms) { /* render */ } };
+export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, prep = null, renderMs = 0, unmountMs = 0, slowUids = null, virtualClock = false } = {}) {
   noteSpeedFlags(flags);
+  const prevNow = globalThis.performance.now;
+  if (virtualClock) { globalThis.performance.now = () => clock.t; resetSharedBgBudget(); }
   const stub = createDomStub({ width: 1400, height: 900 });
   const restore = stub.install();
   if (theme) Object.assign(stub.theme, theme);
@@ -53,7 +62,7 @@ export function mountBig(vp, { flags = {}, fullscreen = false, theme = null, pre
     for (let i = 0; i < 4; i += 1) { stub.flushFrames(); stub.flushIdle(); stub.flushTimers(); }
   };
   const settle = async () => { await tick(160); await pump(4); };
-  const done = () => { try { view.dispose(); } catch { /* gone */ } restore(); noteSpeedFlags(null); };
+  const done = () => { try { view.dispose(); } catch { /* gone */ } restore(); noteSpeedFlags(null); if (virtualClock) { globalThis.performance.now = prevNow; resetSharedBgBudget(); } };
   return { stub, view, mountEl, pump, settle, done, board, session, commits, unmounts: () => host.stats.unmounts || 0 };
 }
 
@@ -82,7 +91,7 @@ export const settledIn = async (m) => { await m.pump(300); await m.settle(); awa
 export const missingFrames = (frames) => frames.filter((f) => f.missing > 0).map((f) => `${f.lod}:${f.attached}+${f.covered}/${f.inView}`);
 
 export async function dragSelection(flags) {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags, virtualClock: true });
   await m.pump(400);
   await tick(300);
   await m.pump(100);

@@ -42,6 +42,7 @@ import {
   wordStyle,
 } from "../src/view/text-layer.js";
 import { tipEntry } from "../src/view/tooltip-text.js";
+import { cpuNow } from "./fixtures/cpu-clock.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
 
@@ -174,9 +175,10 @@ test("U2 budget: 600 words mount with O(words) DOM work and no DOM measuring", (
     let created = 0;
     const createElement = doc.createElement.bind(doc);
     doc.createElement = (tag) => { created += 1; return createElement(tag); };
-    const t0 = now();
+    // CPU time: a loaded runner's wait for a core is not mount work.
+    const t0 = cpuNow();
     const out = mountWords(layer, record, { doc, widthPx: 900, measure: (t) => { measured += 1; return t.length * 52; } });
-    const ms = now() - t0;
+    const ms = cpuNow() - t0;
     assert.equal(out.count, 600);
     assert.ok(appends <= 1300, `appends ${appends}`);
     assert.equal(measured, 600, "one string measure per word");
@@ -627,7 +629,7 @@ test("U5 budget: ≤ 2 ms per move frame over a 3 s drag (180 frames, fake DOM)"
     const root = doc.createElement("div");
     root.className = "pxd-root";
     doc.body.append(root);
-    const g = createDragGhost({ doc, root, from: rect(0, 0, 200, 40), pointer: { x: 10, y: 10 }, content: { kind: "text", text: "x".repeat(400) }, blocked: [] });
+    const g = createDragGhost({ doc, root, from: rect(0, 0, 200, 40), pointer: { x: 10, y: 10 }, content: { kind: "text", text: "x".repeat(400) }, blocked: [], now: cpuNow });
     for (let i = 0; i < 180; i += 1) {
       g.move(10 + i * 3, 10 + (i % 40) * 4);
       stub.flushFrames();

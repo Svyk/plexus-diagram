@@ -5,6 +5,7 @@ import test from "node:test";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { imageRegionString } from "../src/model/image-region.js";
 import { freshCardIsBlank, mountBoardView, pageRenameNeedsConfirm, sidebarMountKind, toggleTodoAt } from "../src/view/board-view.js";
+import { resetSharedBgBudget } from "../src/bg-budget.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -140,7 +141,18 @@ function fakeSession(board) {
 
 function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extraChildren = [], extraEdges = [], hostOverrides = {}, viewOptions = {}, cardOpen, kidsOn = [] } = {}) {
   const stub = createDomStub();
-  const restore = stub.install();
+  const restoreDom = stub.install();
+  // Frozen clock: the shared background budget and slice sizers read performance.now; under load every slice looks long.
+  const realNow = globalThis.performance.now;
+  let frozen = true;
+  globalThis.performance.now = () => (frozen ? 1_000_000 : realNow.call(globalThis.performance));
+  resetSharedBgBudget();
+  const thaw = () => { frozen = false; };
+  const restore = () => {
+    globalThis.performance.now = realNow;
+    resetSharedBgBudget();
+    restoreDom();
+  };
   stub.localStorage.setItem(`plexus-diagram:vp:Svy:board0001`, JSON.stringify(vp));
   const tree = pulled(extraChildren, extraEdges);
   if (cardOpen === false) tree[":block/children"][0][":block/open"] = false;
@@ -165,7 +177,7 @@ function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extraChildr
     stub.flushIdle();
     stub.flushFrames();
   };
-  return { stub, restore, board, session, host, mountEl, view, flush };
+  return { stub, restore, thaw, board, session, host, mountEl, view, flush };
 }
 
 test("fresh card stays when the editor has text Roam has not saved yet", () => {
@@ -1110,6 +1122,7 @@ test("R2: floor stands down for outside pointerdown, outside focus targets, and 
 
 test("R2: a refused recovery (burst cap) is retried once the burst ages out, so typing never goes to <body> for good", async () => {
   const f = mountFixture();
+  f.thaw(); // the burst window ages out on the real clock
   try {
     await f.flush();
     const alpha = await startEdit(f);
@@ -2067,6 +2080,7 @@ test("NP-7: sidebar mount kind comes from the window id", () => {
 
 test("NP-7: a sidebar board keeps its own viewport, keys, and fullscreen", async () => {
   const f = mountFixture();
+  f.thaw(); // the viewport store debounce reads the real clock
   const sidebar = f.stub.document.createElement("div");
   sidebar.id = "sidebar-window-sidebar-block-board0001";
   sidebar.className = "rm-sidebar-window";
@@ -2098,7 +2112,7 @@ test("NP-7: a sidebar board keeps its own viewport, keys, and fullscreen", async
     assert.notEqual(sideWorld.style.transform, mainBefore, "the sidebar board pans");
     assert.equal(mainWorld.style.transform, mainBefore, "the main board stays put");
     // Gesture end waits 120ms, then the viewport store waits another 500ms. Both are real timers.
-    await tick(700);
+    for (let i = 0; i < 100 && !f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001:block"); i += 1) await tick(50);
     const sideRaw = f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001:block");
     const mainRaw = f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001");
     assert.equal(JSON.parse(mainRaw).zoom, 1, "the main viewport key is unchanged");

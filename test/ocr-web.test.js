@@ -9,6 +9,7 @@ import { MODEL_FILES, SCHEMA } from "../src/model/ocr/manifest.js";
 import { fillsFromCanvas, inkBoxesFromCanvas, inkGlyph, rulesFromCanvas } from "../src/model/ocr/rules-from-canvas.js";
 import { ctcText, snapOcrItems, wordsFromCtc } from "../src/model/ocr/words-from-ctc.js";
 import { createOcrWeb, cropTopBand } from "../src/host/ocr-web.js";
+import { cpuNow } from "./fixtures/cpu-clock.js";
 
 function logitsFor(classesByFrame, classes) {
   const time = classesByFrame.length;
@@ -128,11 +129,11 @@ test("inkBoxesFromCanvas keeps a curve and punches out a word", () => {
   const { gray, rect } = fillPage(width, height);
   for (let i = 0; i < 80; i++) rect(40 + i * 3, 40 + Math.round(12 * Math.sin(i / 8)), 46 + i * 3, 52 + Math.round(12 * Math.sin(i / 8)), 0);
   rect(300, 40, 360, 70, 0);
-  const t0 = performance.now();
+  const t0 = cpuNow();
   const boxes = inkBoxesFromCanvas(gray, width, height, scale, {
     words: [{ transform: [10, 0, 0, 10, 300 / scale, 0], width: 60 / scale, y0: 40 / scale, y1: 70 / scale }],
   });
-  const ms = performance.now() - t0;
+  const ms = cpuNow() - t0;
   assert.ok(ms < 100, `ink pass ${ms.toFixed(1)} ms`);
   assert.ok(boxes.length >= 1, JSON.stringify(boxes));
   assert.ok(boxes.every((b) => b.x0 > 5), `word ink was punched: ${JSON.stringify(boxes)}`);

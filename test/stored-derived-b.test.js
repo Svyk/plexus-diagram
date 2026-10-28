@@ -149,10 +149,13 @@ test("trusted hit: the live open paints stored badges and links and does not ask
   seed(fake);
   const idb = await storedBoard(fake);
   plant(idb, GHOST);
+  // The check waits 1.5 s of budget time. A frozen clock never reaches it, so the open checks cannot lose a race to it.
+  const realNow = globalThis.performance.now;
+  globalThis.performance.now = () => 1_000_000;
+  resetSharedBgBudget();
   const live = await openLive(fake, idb);
   try {
     assert.equal(live.host.stats.trustedOpens, 1);
-    assert.ok(Date.now() - live.opened < 1400, "the open assertions run before the background check");
     assert.equal(live.host.boardUnverified("sb1"), true, "the check has not replaced the stored derived data yet");
     assert.equal(live.calls.stats.length, 0, "refreshBadges must not call cardStats");
     assert.equal(live.calls.links.length, 0, "the initial refreshLinks must not run");
@@ -165,6 +168,8 @@ test("trusted hit: the live open paints stored badges and links and does not ask
     live.host.dispose();
     await live.store.dispose();
     live.restore();
+    globalThis.performance.now = realNow;
+    resetSharedBgBudget();
   }
 });
 

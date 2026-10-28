@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { cpuNow } from "./fixtures/cpu-clock.js";
 import { bareMention, isDailyTitle, linkMention, suggestPairs } from "../src/model/suggest.js";
 
 test("unlinked titles and shared refs become two reasons", () => {
@@ -31,9 +32,9 @@ test("300 cards finish under 150ms and 301 is too many", () => {
   for (let i = 0; i < 300; i += 1) {
     cards.push({ uid: `c${i}`, text: i === 0 ? "alpha drift" : "note", pageTitle: i === 1 ? "Alpha" : "", refs: i < 4 ? ["Zone 2"] : [] });
   }
-  const start = Date.now();
+  const start = cpuNow();
   const got = suggestPairs(cards, { mode: "both" });
-  const ms = Date.now() - start;
+  const ms = cpuNow() - start;
   assert.ok(ms < 150, String(ms));
   assert.equal(got.tooMany, false);
   assert.ok(got.pairs.length >= 1);

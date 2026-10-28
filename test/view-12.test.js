@@ -16,6 +16,7 @@ import { linkedRefCard, linkedRefLabel } from "../src/model/refs.js";
 import { isLightHost, mountBoardView } from "../src/view/board-view.js";
 import { SHORTCUTS } from "../src/view/shortcuts.js";
 import { CARD_MIME } from "../src/view/panel.js";
+import { resetSharedBgBudget } from "../src/bg-budget.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -116,7 +117,16 @@ function fakeSession(board) {
 
 function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extra = [], rootPlexus = {}, hostOverrides = {}, viewOptions = {}, hash = "" } = {}) {
   const stub = createDomStub();
-  const restore = stub.install();
+  const restoreDom = stub.install();
+  // Frozen clock: the shared background budget and slice sizers read performance.now; under load every slice looks long.
+  const realNow = globalThis.performance.now;
+  globalThis.performance.now = () => 1_000_000;
+  resetSharedBgBudget();
+  const restore = () => {
+    globalThis.performance.now = realNow;
+    resetSharedBgBudget();
+    restoreDom();
+  };
   if (hash) stub.window.location.hash = hash;
   stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify(vp));
   const board = buildBoard(pulled({ extra, rootPlexus }));

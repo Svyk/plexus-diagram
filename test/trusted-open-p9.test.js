@@ -1,35 +1,32 @@
 // P9 units 2-3: a cold open of a big board mounts from its stored model when the page stamp is the stored one, and a
 // background read verifies it; until then nothing destructive acts on the board.
 import assert from "node:assert/strict";
-import test, { afterEach } from "node:test";
+import test, { afterEach, beforeEach } from "node:test";
 import { createHost, BOARD_PATTERN } from "../src/host/roam.js";
 import { SLICED_LEVEL_PATTERN } from "../src/host/sliced-read.js";
 import { noteSpeedFlags } from "../src/settings.js";
 import { createModelStore } from "../src/host/model-store.js";
 import { acquireSession, resetSessions } from "../src/session.js";
 import { resetSharedBgBudget } from "../src/bg-budget.js";
+import { installOwnClock, tick, untilTurns } from "./fixtures/own-clock.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 import { createFakeIDB } from "./fixtures/fake-idb.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
 
-afterEach(() => resetSessions());
+// Every test runs on the owned clock: the background check waits for virtual time, which each wait turn supplies.
+let own = null;
+beforeEach(() => {
+  own = installOwnClock();
+  resetSharedBgBudget();
+});
+afterEach(() => {
+  resetSessions();
+  resetSharedBgBudget();
+  own?.restore();
+  own = null;
+});
 
-const tick = (ms = 5) => new Promise((resolve) => { setTimeout(resolve, ms); });
-async function until(fn, ms = 6000) {
-  const end = Date.now() + ms;
-  while (!fn()) {
-    if (Date.now() > end) throw new Error("timed out");
-    await tick(20);
-  }
-}
-// Bounded by turns of the loop, not by wall time: a busy machine makes each turn slower, not the wait shorter.
-async function untilTurns(fn, turns, spin) {
-  for (let i = 0; !fn(); i += 1) {
-    if (i >= turns) throw new Error("timed out");
-    spin();
-    await tick(20);
-  }
-}
+const until = (fn, turns) => untilTurns(own, fn, turns);
 
 // 3 sections x 230 cards x (card, kid, grandchild) = 2,000+ blocks: a big board.
 function seed(fake, n = 230) {
@@ -74,36 +71,23 @@ async function preread(host, uid = "sb1", opts = {}) {
 const cardOf = (tree, uid) => tree[":block/children"].flatMap((s) => s[":block/children"] || []).find((c) => c[":block/uid"] === uid);
 
 // A first open (sliced read) stores the model; returns the idb that holds it.
-async function storedBoard(fake, spin = () => {}) {
+async function storedBoard(fake) {
   const idb = createFakeIDB();
   const { host, store } = hostOver(fake, idb);
   await store.ready;
   await preread(host);
   host.pullBoard("sb1", { light: true });
   assert.equal(host.stats.slicedReads, 1);
-  await untilTurns(() => store.stampOf("sb1") != null, 3000, spin);
+  await until(() => store.stampOf("sb1") != null);
   host.dispose();
   await store.dispose();
   return idb;
 }
 
 test("trusted open: an unchanged page mounts from the stored model with no board read, then is verified", async () => {
-  // The check waits on the shared background budget's quiet time. Its clock is the test's: each turn of the wait adds
-  // virtual time, so the check runs when the loop says, not when a loaded machine's wall clock does.
-  const realNow = globalThis.performance.now;
-  let clock = 1_000_000;
-  globalThis.performance.now = () => clock;
-  resetSharedBgBudget();
-  try {
-    await unchangedPageOpen();
-  } finally {
-    globalThis.performance.now = realNow;
-    resetSharedBgBudget();
-  }
-  async function unchangedPageOpen() {
   const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
   seed(fake);
-  const idb = await storedBoard(fake, () => { clock += 500; });
+  const idb = await storedBoard(fake);
   const { host, store } = hostOver(fake, idb);
   await store.ready;
   fake.pullLog = [];
@@ -122,7 +106,7 @@ test("trusted open: an unchanged page mounts from the stored model with no board
   host.onBoardVerified("sb1", () => { verified += 1; });
   const trees = [];
   const off = host.watchBoard("sb1", (tree) => trees.push(tree));
-  await untilTurns(() => !host.boardUnverified("sb1"), 3000, () => { clock += 500; });
+  await until(() => !host.boardUnverified("sb1"));
   assert.equal(verified, 1);
   assert.equal(host.stats.checks, 1);
   assert.ok(!host.stats.checkChanges, "nothing changed, nothing published");
@@ -130,7 +114,6 @@ test("trusted open: an unchanged page mounts from the stored model with no board
   off();
   host.dispose();
   await store.dispose();
-  }
 });
 
 test("trusted open: a moved page stamp reads the board (sliced read), and the result is stored again", async () => {
@@ -228,7 +211,8 @@ test("trusted open: a parked board's check waits for its resume", async () => {
   host.pullBoard("sb1", { light: true });
   const off = host.watchBoard("sb1", () => {});
   off.pause();
-  await tick(2500);
+  own.advance(2500);
+  await tick(20);
   assert.equal(host.boardUnverified("sb1"), true, "no check while parked");
   off.resume();
   await until(() => !host.boardUnverified("sb1"));
@@ -394,9 +378,9 @@ test("background check: a change after the read, on the accept stamp pull, is no
   const trees = [];
   const off = host.watchBoard("sb1", (tree) => trees.push(tree));
   accept.arm();
-  await until(() => !host.boardUnverified("sb1"), 12000);
+  await until(() => !host.boardUnverified("sb1"));
   assert.ok(accept.stamps >= 3, `the accept pull is where the late edit lands (${accept.stamps})`);
-  await until(() => trees.length > 0, 12000);
+  await until(() => trees.length > 0);
   const last = trees[trees.length - 1];
   assert.equal(last[":block/children"].find((s) => s[":block/uid"] === "sec1")[":block/open"], false);
   assert.equal(cardOf(last, "c0_3")[":block/children"][0][":block/string"], "synced late");
@@ -457,10 +441,10 @@ test("background check: a failed read runs again and then verifies", { timeout: 
   assert.equal(node[":block/children"].find((s) => s[":block/uid"] === "sec1")[":block/open"], true, "stored fold until the check");
   const trees = [];
   const off = host.watchBoard("sb1", (tree) => trees.push(tree));
-  await until(() => (host.stats.checkFails || 0) >= 1, 8000);
+  await until(() => (host.stats.checkFails || 0) >= 1);
   assert.equal(host.stats.checks || 0, 0, "the failed take is not a verification");
-  await until(() => !host.boardUnverified("sb1"), 12000);
-  await until(() => trees.length > 0, 4000);
+  await until(() => !host.boardUnverified("sb1"));
+  await until(() => trees.length > 0);
   const last = trees[trees.length - 1];
   assert.equal(last[":block/children"].find((s) => s[":block/uid"] === "sec1")[":block/open"], false);
   assert.equal(host.stats.checks, 1);
@@ -495,7 +479,7 @@ test("background check: a torn level read is not stored; the retry publishes one
     }
     return out;
   };
-  await until(() => trees.length > 0, 12000);
+  await until(() => trees.length > 0);
   const last = trees[trees.length - 1];
   assert.equal(cardOf(last, "c0_3")[":block/string"], "torn-old");
   assert.equal(cardOf(last, "c2_5")[":block/string"], "torn-new");

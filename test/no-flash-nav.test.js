@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { dragSelection, missingFrames, mountBig, riders, settledIn, tick, withFrozenClock, zoomBurst } from "./fixtures/big-mount.js";
+import { clock, dragSelection, missingFrames, mountBig, riders, settledIn, tick, withFrozenClock, zoomBurst } from "./fixtures/big-mount.js";
 
 // perf2 lane E: no-flash navigation and tier flips on the 1,560-card fixture, through the view's real entry points.
 
 
 test("E1: a parked fullscreen board lets go of the mount's chrome observers, takes them back on unpark, and its dispose leaves the mount fullscreen", async () => {
-  const m = mountBig({ x: 0, y: 0, zoom: 1 }, { fullscreen: true });
+  const m = mountBig({ x: 0, y: 0, zoom: 1 }, { fullscreen: true, virtualClock: true });
   try {
     await m.pump(4);
     assert.ok(m.mountEl.classList.contains("pxd-mount--fullscreen"));
@@ -41,7 +41,7 @@ const colourCards = (board) => {
 
 test("styledUnderlay: the open cover draws queued cards the way the cards look (card fill, palette fill, palette border)", async () => {
   await withFrozenClock(async () => {
-    const m = mountBig({ x: 0, y: 0, zoom: 0.3 }, { theme: VARS, prep: colourCards });
+    const m = mountBig({ x: 0, y: 0, zoom: 0.3 }, { theme: VARS, prep: colourCards, virtualClock: true });
     try {
       m.stub.flushFrames();
       const canvas = m.view.root.querySelector(".pxd-underlay");
@@ -57,7 +57,7 @@ test("styledUnderlay: the open cover draws queued cards the way the cards look (
 
 test("styledUnderlay: at overview the cover fills a coloured card with its line colour, as the overview CSS does", async () => {
   await withFrozenClock(async () => {
-    const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { theme: VARS, prep: colourCards });
+    const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { theme: VARS, prep: colourCards, virtualClock: true });
     try {
       m.stub.flushFrames();
       assert.equal(m.view.state().lod, "overview");
@@ -72,7 +72,7 @@ test("styledUnderlay: at overview the cover fills a coloured card with its line 
 
 test("styledUnderlay off draws the 3.34.0 plain boxes", async () => {
   await withFrozenClock(async () => {
-    const m = mountBig({ x: 0, y: 0, zoom: 0.3 }, { flags: { styledUnderlay: false }, theme: VARS, prep: colourCards });
+    const m = mountBig({ x: 0, y: 0, zoom: 0.3 }, { flags: { styledUnderlay: false }, theme: VARS, prep: colourCards, virtualClock: true });
     try {
       m.stub.flushFrames();
       const ops = m.view.root.querySelector(".pxd-underlay").__ctx.ops.map((op) => op.join(" "));
@@ -84,7 +84,7 @@ test("styledUnderlay off draws the 3.34.0 plain boxes", async () => {
 
 test("E2: a zoom-out from detail to overview shows every in-view card in every frame, and the burst closes", async () => {
   for (const flags of [{ overviewCanvas: false }, { overviewCanvas: true }]) {
-    const m = mountBig({ x: -2000, y: -1500, zoom: 1 }, { flags });
+    const m = mountBig({ x: -2000, y: -1500, zoom: 1 }, { flags, virtualClock: true });
     try {
       await settledIn(m);
       const frames = await zoomBurst(m, 1, 14);
@@ -98,7 +98,7 @@ test("E2: a zoom-out from detail to overview shows every in-view card in every f
 });
 
 test("E3: a zoom-in from overview to detail shows every in-view card in every frame, and the flip restyles only near shells", async () => {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { virtualClock: true });
   try {
     await settledIn(m);
     const frames = await zoomBurst(m, -1, 16);
@@ -114,6 +114,7 @@ test("E3: a zoom-in from overview to detail shows every in-view card in every fr
 test("E1: resuming a parked big board with shells still queued re-places no edge, keeps every edge element, and paints every in-view card", async () => {
   {
     for (const vp of [{ x: 300, y: 20, zoom: 0.1 }, { x: 0, y: 0, zoom: 0.3 }]) {
+      // Real clock: the assertion needs shells still queued after 30 pumps, and a test clock never lets a slice run long.
       const m = mountBig(vp, { flags: { overviewCanvas: false } });
       try {
         await m.pump(30);
@@ -144,7 +145,7 @@ test("E5: no background slice runs inside a wheel burst on the board; it runs on
   for (const on of [true, false]) {
     bindBgGestureFlag(() => on);
     resetSharedBgBudget();
-    const m = mountBig({ x: 0, y: 0, zoom: 0.3 });
+    const m = mountBig({ x: 0, y: 0, zoom: 0.3 }, { virtualClock: true });
     try {
       await settledIn(m);
       await tick(600);
@@ -153,8 +154,8 @@ test("E5: no background slice runs inside a wheel burst on the board; it runs on
       m.stub.dispatch(m.view.root, "wheel", { deltaX: 30, deltaY: 30, deltaMode: 0, clientX: 700, clientY: 450 });
       m.stub.flushFrames();
       sharedBgBudget().idle(() => { runs.push(inBurst); }, { label: "test" });
-      const t0 = Date.now();
-      while (Date.now() - t0 < 700) {
+      const t0 = clock.t;
+      while (clock.t - t0 < 700) {
         inBurst = true;
         m.stub.dispatch(m.view.root, "wheel", { deltaX: 30, deltaY: 30, deltaMode: 0, clientX: 700, clientY: 450 });
         m.stub.flushFrames();
@@ -162,11 +163,11 @@ test("E5: no background slice runs inside a wheel burst on the board; it runs on
         await tick(16);
       }
       inBurst = false;
-      const t1 = Date.now();
-      while (!runs.length && Date.now() - t1 < 2500) { await tick(30); m.stub.flushTimers(); m.stub.flushFrames(); m.stub.flushIdle(); }
+      const t1 = clock.t;
+      while (!runs.length && clock.t - t1 < 2500) { await tick(30); m.stub.flushTimers(); m.stub.flushFrames(); m.stub.flushIdle(); }
       if (on) {
         assert.deepEqual(runs, [false], "the job ran once, after the burst");
-        assert.ok(Date.now() - t1 >= 120 + BG_QUIET_MS - 40, `not before the settle's quiet (${Date.now() - t1} ms)`);
+        assert.ok(clock.t - t1 >= 120 + BG_QUIET_MS - 40, `not before the settle's quiet (${clock.t - t1} ms)`);
       } else assert.equal(runs[0], true, "flag off: the 3.34.0 budget ran it inside the burst");
     } finally { m.done(); bindBgGestureFlag(() => false); resetSharedBgBudget(); }
   }
@@ -287,7 +288,7 @@ test("E2-5: slicedResume off un-parks every attached shell at once (3.34.0 + E)"
 // once (underlayDrawn still set), and at detail it never drew queued cards. Ctrl-wheel into the part of the board the
 // open had not built yet, fullscreen, real card render cost.
 test("E2-2: a Ctrl-wheel zoom into unbuilt cards keeps a box under every in-view card until its shell is in the DOM", async () => {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, renderMs: 1 });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, renderMs: 1, virtualClock: true });
   try {
     await settledIn(m);
     const frames = [];
@@ -306,7 +307,7 @@ test("E2-2: a Ctrl-wheel zoom into unbuilt cards keeps a box under every in-view
 });
 
 test("E2-2: the cover released when the slices run out draws the in-view cards that have no shell in the DOM", async () => {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { virtualClock: true });
   try {
     await m.pump(30);
     // Park and come back: the resume keeps 96 shells, the slices end once the built ones are back, the queued rest
@@ -345,7 +346,7 @@ test("E2-2: the zoom-in settle parks far edges in slices (at most ~500 per task)
 // blocks), and at ~0.3 the flat line-colour blocks turned into card-look shells in one frame (the hand-back pop).
 const bitmapScale = (canvas) => canvas.width / parseFloat(canvas.style.width || /(?:^|;)width:([\d.]+)px/.exec(canvas.style.cssText)?.[1]);
 test("E2-1: on the overview canvas a zoom burst redraws the bitmap before it would be upscaled (no blur)", async () => {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true }, fullscreen: true });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true }, fullscreen: true, virtualClock: true });
   try {
     await settledIn(m);
     const canvas = m.view.root.querySelector(".pxd-underlay");
@@ -365,7 +366,7 @@ test("E2-1: on the overview canvas a zoom burst redraws the bitmap before it wou
 test("E2-1: the hand-back from the overview canvas to the map tier draws the boxes in the map card look with titles", async () => {
   const VARS2 = { "--pxd-card": "#26333f", "--pxd-border-strong": "#6b7f91", "--pxd-red-line": "#f87171", "--pxd-red-fill": "#3a1f1f", "--pxd-red-text": "#fca5a5", "--pxd-text": "#e5e7eb" };
   const titled = (board) => { let i = 0; for (const item of board.items.values()) { if (item.type === "section") continue; item.color = i % 2 ? "red" : ""; item.title = `Card ${i}`; i += 1; } };
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true }, fullscreen: true, theme: VARS2, prep: titled });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true }, fullscreen: true, theme: VARS2, prep: titled, virtualClock: true });
   try {
     await settledIn(m);
     const canvas = m.view.root.querySelector(".pxd-underlay");
@@ -400,7 +401,7 @@ test("E2-1: the hand-back from the overview canvas to the map tier draws the box
 test("E2-4: a zoom-out burst from detail draws the far cards with greeked titles and body lines, not empty dark boxes", async () => {
   const VARS3 = { "--pxd-card": "#26333f", "--pxd-border-strong": "#6b7f91", "--pxd-text": "#e5e7eb" };
   const titled = (board) => { let i = 0; for (const item of board.items.values()) { if (item.type === "section") continue; item.title = `Card number ${i}`; i += 1; } };
-  const m = mountBig({ x: -2000, y: -1500, zoom: 1 }, { theme: VARS3, prep: titled });
+  const m = mountBig({ x: -2000, y: -1500, zoom: 1 }, { theme: VARS3, prep: titled, virtualClock: true });
   try {
     await settledIn(m);
     for (let i = 0; i < 6; i += 1) {

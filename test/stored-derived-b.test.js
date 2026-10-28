@@ -2,7 +2,7 @@
 // ask Roam for them. The background check recomputes both. A stamp miss and an older
 // store (no derived field) still take today's reads.
 import assert from "node:assert/strict";
-import test, { afterEach } from "node:test";
+import test, { afterEach, beforeEach } from "node:test";
 import { createHost } from "../src/host/roam.js";
 import { createModelStore } from "../src/host/model-store.js";
 import { acquireSession, resetSessions } from "../src/session.js";
@@ -12,21 +12,23 @@ import { createDomStub } from "./fixtures/dom-stub.js";
 import { createFakeIDB } from "./fixtures/fake-idb.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { resetSharedBgBudget } from "../src/bg-budget.js";
+import { installOwnClock, tick, untilTurns } from "./fixtures/own-clock.js";
 
+// Every test runs on the owned clock: the background check waits for virtual time, which each wait turn supplies.
+let own = null;
+beforeEach(() => {
+  own = installOwnClock();
+  resetSharedBgBudget();
+});
 afterEach(() => {
   resetSessions();
   resetSharedBgBudget();
   noteSpeedFlags(null);
+  own?.restore();
+  own = null;
 });
 
-const tick = (ms = 20) => new Promise((resolve) => { setTimeout(resolve, ms); });
-async function until(fn, ms = 20000) {
-  const end = Date.now() + ms;
-  while (!fn()) {
-    if (Date.now() > end) throw new Error("timed out");
-    await tick(20);
-  }
-}
+const until = (fn, turns) => untilTurns(own, fn, turns);
 
 function seed(fake, n = 230) {
   const sections = [];
@@ -73,7 +75,7 @@ async function storedBoard(fake) {
   await store.ready;
   await preread(host);
   host.pullBoard("sb1", { light: true });
-  await until(() => store.stampOf("sb1") != null, 8000);
+  await until(() => store.stampOf("sb1") != null);
   host.dispose();
   await store.dispose();
   return idb;
@@ -149,10 +151,6 @@ test("trusted hit: the live open paints stored badges and links and does not ask
   seed(fake);
   const idb = await storedBoard(fake);
   plant(idb, GHOST);
-  // The check waits 1.5 s of budget time. A frozen clock never reaches it, so the open checks cannot lose a race to it.
-  const realNow = globalThis.performance.now;
-  globalThis.performance.now = () => 1_000_000;
-  resetSharedBgBudget();
   const live = await openLive(fake, idb);
   try {
     assert.equal(live.host.stats.trustedOpens, 1);
@@ -168,8 +166,6 @@ test("trusted hit: the live open paints stored badges and links and does not ask
     live.host.dispose();
     await live.store.dispose();
     live.restore();
-    globalThis.performance.now = realNow;
-    resetSharedBgBudget();
   }
 });
 
@@ -214,7 +210,7 @@ test("stamp miss: today's badge and link reads still run", { timeout: 30000 }, a
       live.stub.flushFrames();
       live.stub.flushIdle();
       return live.calls.stats.length > 0 && live.calls.links.length > 0;
-    }, 8000);
+    });
     assert.ok(live.calls.stats.length > 0, "a miss still reads card stats");
     assert.ok(live.calls.links.length > 0, "a miss still reads links");
   } finally {
@@ -239,7 +235,7 @@ test("an older store with no derived field falls back to cardStats and links and
       live.stub.flushFrames();
       live.stub.flushIdle();
       return live.calls.stats.length > 0 && live.calls.links.length > 0;
-    }, 8000);
+    });
     assert.ok(live.calls.stats.length > 0);
     assert.ok(live.calls.links.length > 0);
     assert.equal(live.session.links.some((l) => l.key === "c0_0->c2_0"), false);
@@ -265,7 +261,7 @@ test("storedDerived off keeps today's reads even when the store has derived data
       live.stub.flushFrames();
       live.stub.flushIdle();
       return live.calls.stats.length > 0 && live.calls.links.length > 0;
-    }, 8000);
+    });
     assert.ok(live.calls.stats.length > 0);
     assert.ok(live.calls.links.length > 0);
   } finally {

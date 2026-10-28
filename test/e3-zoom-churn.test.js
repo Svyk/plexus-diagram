@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { missingFrames, mountBig, settledIn, taskLedger, zoomBurst } from "./fixtures/big-mount.js";
+import { clock, missingFrames, mountBig, settledIn, taskLedger, zoomBurst, tick } from "./fixtures/big-mount.js";
 import budgets from "../tools/live/big-board-budgets.json" with { type: "json" };
 
 // perf2 lane E fix round 3: the browser work a zoom-in leaves to the page (QA4 B zoom-in: 65 long tasks / 7.5 s against
 // 26 / 2.5 s in 3.34.0, ~95% of it browser raster and layout).
-const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const builtAtFit = async (flags = {}) => {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, flags: { overviewCanvas: false, ...flags }, renderMs: 1 });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, flags: { overviewCanvas: false, ...flags }, renderMs: 1, virtualClock: true });
   await settledIn(m);
   for (let k = 0; k < 40 && m.view.stats().shells < 1570; k += 1) { await tick(100); await m.pump(50); }
   await tick(700);
@@ -49,7 +48,7 @@ test("E3-1: a zoom-in burst that starts while the fit's slices are attaching red
 });
 
 test("E3-1: the gap cover after a zoom into unbuilt cards is redrawn at most once a frame, not once per pump chunk", async () => {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, renderMs: 1 });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, renderMs: 1, virtualClock: true });
   try {
     await settledIn(m);
     const S = m.stub;
@@ -117,11 +116,11 @@ test("E3-1 ratchet: the bench's second zoom-in (the fit's slices still attaching
 // overview-fast pump chunk drew the cover again: 44 full bitmaps (46 megapixels) in the open of the fixture, styled
 // since round 1 (palette fill, border stroke per card), each one a raster and an upload in the browser.
 test("E3-2: the open of a big board at overview draws the cover a couple of times, not once per pump chunk", async () => {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, flags: { overviewCanvas: false } });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, flags: { overviewCanvas: false }, virtualClock: true });
   try {
     // Wait by condition, bounded by time (slow runners build the board later).
-    const end = Date.now() + 15_000;
-    while (Date.now() < end && m.view.stats().shells < 1570) { await tick(20); m.stub.flushFrames(); m.stub.flushTimers(); m.stub.flushIdle(); }
+    const end = clock.t + 15_000;
+    while (clock.t < end && m.view.stats().shells < 1570) { await tick(20); m.stub.flushFrames(); m.stub.flushTimers(); m.stub.flushIdle(); }
     assert.ok(m.view.stats().shells >= 1500, `the open built the board: ${m.view.stats().shells}`);
     const { draws, resizes } = m.view.underlayStats();
     assert.ok(draws <= 3, `cover draws in the open: ${draws} (resizes ${resizes})`);

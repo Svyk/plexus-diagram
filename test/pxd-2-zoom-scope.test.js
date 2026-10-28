@@ -10,9 +10,8 @@ import { mountBoardView } from "../src/view/board-view.js";
 import { boardZoom } from "../src/view/drag-ghost.js";
 import { noteSpeedFlags } from "../src/settings.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
-import { mountBig, settledIn, zoomBurst } from "./fixtures/big-mount.js";
+import { mountBig, settledIn, zoomBurst, tick } from "./fixtures/big-mount.js";
 
-const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const css = readFileSync(new URL("../extension.css", import.meta.url), "utf8");
 const ZOOM_VARS = ["--pxd-inv-zoom", "--pxd-screen-px", "--pxd-map-font", "--pxd-overview-font", "--pxd-ui"];
 
@@ -137,7 +136,7 @@ test("zoomVarScope off: the variables go on the root as in 3.37.0 and the handle
 });
 
 test("zoomVarScope: a Ctrl-wheel zoom across both tier flips on the 1,560-card board writes no zoom variable on the root", async () => {
-  const m = mountBig({ x: -2000, y: -1500, zoom: 1 });
+  const m = mountBig({ x: -2000, y: -1500, zoom: 1 }, { virtualClock: true });
   try {
     await settledIn(m);
     const writes = [];

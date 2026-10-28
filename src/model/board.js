@@ -740,14 +740,16 @@ export function sectionFitPlan(board, rects, touchedUids, {
 // Most items one fit may move out of the way: one props write each, so the growth and its pushes stay one undo step.
 export const FIT_PUSH_CAP = 24;
 
-// Least shift that takes `r` clear of `after` (plus gap) on a side it stood on before the growth; right/down win ties.
-function clearShift(before, after, r, gap) {
+// Least shift that takes `r` clear of `after` (plus gap) on a side its frame stood on before the growth; right/down
+// win ties. Sides compare frames (`before`, `rf`); distances use the boxes with titles (`after`, `r`), so a section
+// flush against the frame, its title pill already in the gap, still has a side.
+function clearShift(before, after, rf, r, gap) {
   const eps = 0.01;
   const opts = [];
-  if (r.x >= before.x + before.w - eps) opts.push({ x: after.x + after.w + gap - r.x, y: 0 });
-  if (r.y >= before.y + before.h - eps) opts.push({ x: 0, y: after.y + after.h + gap - r.y });
-  if (r.x + r.w <= before.x + eps) opts.push({ x: after.x - gap - r.x - r.w, y: 0 });
-  if (r.y + r.h <= before.y + eps) opts.push({ x: 0, y: after.y - gap - r.y - r.h });
+  if (rf.x >= before.x + before.w - eps) opts.push({ x: after.x + after.w + gap - r.x, y: 0 });
+  if (rf.y >= before.y + before.h - eps) opts.push({ x: 0, y: after.y + after.h + gap - r.y });
+  if (rf.x + rf.w <= before.x + eps) opts.push({ x: after.x - gap - r.x - r.w, y: 0 });
+  if (rf.y + rf.h <= before.y + eps) opts.push({ x: 0, y: after.y - gap - r.y - r.h });
   let best = null;
   for (const o of opts) if (!best || Math.abs(o.x) + Math.abs(o.y) < Math.abs(best.x) + Math.abs(best.y)) best = o;
   return best;
@@ -791,15 +793,16 @@ export function sectionFitClearPlan(board, rects, touchedUids, {
     while (queue.length) {
       const m = queue.shift();
       const after = occ(m.uid, world.get(m.uid));
-      const before = occ(m.uid, m.before);
-      const was = rects.get(m.uid) && occ(m.uid, rects.get(m.uid));
+      const was = rects.get(m.uid);
       for (const s of kidsOf(parentOf(m.uid) ?? board.uid)) {
         if (s === m.uid || skip.has(s) || board.items.get(s)?.pinned) continue;
-        const r = world.get(s) && occ(s, world.get(s));
+        const rf = world.get(s);
+        const r = rf && occ(s, rf);
         if (!r || !intersects(after, r)) continue;
-        const r0 = rects.get(s) && occ(s, rects.get(s));
+        // Frames that overlapped before stay as the user left them. A title pill in the gap is no overlap.
+        const r0 = rects.get(s);
         if (was && r0 && intersects(was, r0)) continue;
-        const d = clearShift(before, after, r, gap);
+        const d = clearShift(m.before, after, rf, r, gap);
         if (!d || (moved.size >= maxMoves && !moved.has(s))) continue;
         const prev = world.get(s);
         translate(s, d.x, d.y);

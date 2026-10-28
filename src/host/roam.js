@@ -3312,6 +3312,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     // Closes the open group as a chunk now and returns a function that opens a fresh one with the same label. A long
     // wait between batches (the sync hold) is outside any undo group: another session's writes made meanwhile are
     // their own steps, and invalidateUndo works. No-op with no group open.
+    // Writes in the open group's current chunk (0 with no group open).
+    groupWrites() {
+      return openGroup ? openGroup.n : 0;
+    },
+
     suspendGroup() {
       const done = openGroup;
       if (!done) return () => {};

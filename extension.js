@@ -5889,13 +5889,13 @@ function sectionFitPlan(board2, rects, touchedUids, {
   };
   return [...work.entries()].map(([uid, rect]) => ({ uid, rect, depth: depthOf(uid) })).sort((a, b) => b.depth - a.depth).map(({ uid, rect }) => ({ uid, rect }));
 }
-function clearShift(before, after, r, gap) {
+function clearShift(before, after, rf, r, gap) {
   const eps = 0.01;
   const opts = [];
-  if (r.x >= before.x + before.w - eps) opts.push({ x: after.x + after.w + gap - r.x, y: 0 });
-  if (r.y >= before.y + before.h - eps) opts.push({ x: 0, y: after.y + after.h + gap - r.y });
-  if (r.x + r.w <= before.x + eps) opts.push({ x: after.x - gap - r.x - r.w, y: 0 });
-  if (r.y + r.h <= before.y + eps) opts.push({ x: 0, y: after.y - gap - r.y - r.h });
+  if (rf.x >= before.x + before.w - eps) opts.push({ x: after.x + after.w + gap - r.x, y: 0 });
+  if (rf.y >= before.y + before.h - eps) opts.push({ x: 0, y: after.y + after.h + gap - r.y });
+  if (rf.x + rf.w <= before.x + eps) opts.push({ x: after.x - gap - r.x - r.w, y: 0 });
+  if (rf.y + rf.h <= before.y + eps) opts.push({ x: 0, y: after.y - gap - r.y - r.h });
   let best = null;
   for (const o of opts) if (!best || Math.abs(o.x) + Math.abs(o.y) < Math.abs(best.x) + Math.abs(best.y)) best = o;
   return best;
@@ -5932,15 +5932,15 @@ function sectionFitClearPlan(board2, rects, touchedUids, {
     while (queue.length) {
       const m = queue.shift();
       const after = occ(m.uid, world.get(m.uid));
-      const before = occ(m.uid, m.before);
-      const was = rects.get(m.uid) && occ(m.uid, rects.get(m.uid));
+      const was = rects.get(m.uid);
       for (const s of kidsOf5(parentOf(m.uid) ?? board2.uid)) {
         if (s === m.uid || skip.has(s) || board2.items.get(s)?.pinned) continue;
-        const r = world.get(s) && occ(s, world.get(s));
+        const rf = world.get(s);
+        const r = rf && occ(s, rf);
         if (!r || !intersects(after, r)) continue;
-        const r0 = rects.get(s) && occ(s, rects.get(s));
+        const r0 = rects.get(s);
         if (was && r0 && intersects(was, r0)) continue;
-        const d = clearShift(before, after, r, gap);
+        const d = clearShift(m.before, after, rf, r, gap);
         if (!d || moved.size >= maxMoves && !moved.has(s)) continue;
         const prev = world.get(s);
         translate(s, d.x, d.y);
@@ -49487,6 +49487,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // Closes the open group as a chunk now and returns a function that opens a fresh one with the same label. A long
     // wait between batches (the sync hold) is outside any undo group: another session's writes made meanwhile are
     // their own steps, and invalidateUndo works. No-op with no group open.
+    // Writes in the open group's current chunk (0 with no group open).
+    groupWrites() {
+      return openGroup ? openGroup.n : 0;
+    },
     suspendGroup() {
       const done3 = openGroup;
       if (!done3) return () => {
@@ -52842,6 +52846,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           if (resume) resume();
           if (held) setSyncState("writing");
         }
+        if (list[i].op === "keep") {
+          const open = host.groupWrites?.() ?? 0;
+          if (suspend && open > 0 && open + list[i].n > MAX_GROUP_WRITES) host.suspendGroup?.()?.();
+          continue;
+        }
         await runOpWithRetry(list[i]);
         settleOp(list[i]);
       }
@@ -52967,13 +52976,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (!ops.length) return Promise.resolve(result);
     stampBoard(ops);
     const list = coalesce(ops);
-    if (!bulkAllowed(list.length)) {
+    const writes = list.filter((op) => op.op !== "keep").length;
+    if (!bulkAllowed(writes)) {
       repull();
       return Promise.resolve(void 0);
     }
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish2();
-    const active2 = custom && (custom.when !== "over-native-limit" || list.length > MAX_GROUP_WRITES) ? custom : null;
+    const active2 = custom && (custom.when !== "over-native-limit" || writes > MAX_GROUP_WRITES) ? custom : null;
     if (active2) active2.forward = list;
     return queue.run(() => grouped(async () => {
       if (active2) host.setCustomUndo?.(active2);
@@ -53060,6 +53070,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       props(id, plexus) {
         rawProps(id, plexus);
         ops.push({ op: "props", uid: id, plexus });
+      },
+      // The writes fn makes land in one native undo chunk (a fit and the pushes it makes, PXD-23).
+      together(fn2) {
+        const at = ops.length;
+        fn2();
+        if (ops.length > at) ops.splice(at, 0, { op: "keep", n: ops.length - at });
       },
       string(id, string) {
         rawString(id, string);
@@ -53323,25 +53339,27 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       const p = originOf2(board2.items.get(id).parentUid);
       return { x: round14(r.x - p.x), y: round14(r.y - p.y) };
     };
-    const grown = /* @__PURE__ */ new Set();
-    for (const { uid: sid, rect: r } of plan.grown) {
-      grown.add(sid);
-      t.props(sid, itemPlexus(sid, { ...relOf(sid), w: round14(r.w), h: round14(r.h) }));
-    }
-    const rebase2 = new Set(plan.moved);
-    for (const { uid: sid } of plan.grown) {
-      const r = finalWorld.get(sid);
-      const old = rects.get(sid);
-      if (Math.abs(r.x - old.x) < 0.01 && Math.abs(r.y - old.y) < 0.01) continue;
-      for (const m of board2.items.get(sid).members) rebase2.add(m);
-    }
-    for (const m of rebase2) {
-      if (grown.has(m)) continue;
-      const rel = relOf(m);
-      const stored2 = rawPlexus(m);
-      if (stored2.x === rel.x && stored2.y === rel.y) continue;
-      t.props(m, itemPlexus(m, rel));
-    }
+    t.together(() => {
+      const grown = /* @__PURE__ */ new Set();
+      for (const { uid: sid, rect: r } of plan.grown) {
+        grown.add(sid);
+        t.props(sid, itemPlexus(sid, { ...relOf(sid), w: round14(r.w), h: round14(r.h) }));
+      }
+      const rebase2 = new Set(plan.moved);
+      for (const { uid: sid } of plan.grown) {
+        const r = finalWorld.get(sid);
+        const old = rects.get(sid);
+        if (Math.abs(r.x - old.x) < 0.01 && Math.abs(r.y - old.y) < 0.01) continue;
+        for (const m of board2.items.get(sid).members) rebase2.add(m);
+      }
+      for (const m of rebase2) {
+        if (grown.has(m)) continue;
+        const rel = relOf(m);
+        const stored2 = rawPlexus(m);
+        if (stored2.x === rel.x && stored2.y === rel.y) continue;
+        t.props(m, itemPlexus(m, rel));
+      }
+    });
   }
   function spaceOutAfter(t, moved) {
     t.sync();

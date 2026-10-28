@@ -16,8 +16,9 @@ const section = (uid, x, y, w, h, children = [], extra = {}) => ({
   uid, string: uid, props: { plexus: { type: "section", x, y, w, h, ...extra } }, children,
 });
 
-function setup(children) {
+function setup(children, { trackUndo = false } = {}) {
   const fake = createFakeRoam();
+  fake.trackUndo = trackUndo;
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
   fake.seedBoard({ uid: "b1", props: { "rf-diagram": { keep: 1 }, plexus: { v: 2 } }, children });
   const session = acquireSession("b1", { host, linkDelay: 0 });
@@ -78,6 +79,19 @@ test("grow down into a neighbour: the section below moves down and keeps room fo
   assert.equal(plexus(fake, "B").x, 0);
   assert.deepEqual(plexus(fake, "free"), { x: 600, y: 350, w: 200, h: 100 }, "an item off to the side stays put");
   assertApart(session, ["A", "B", "free"]);
+});
+
+test("a section flush below, or with its title pill already in the gap, still moves down", async () => {
+  for (const by of [300, 304]) {
+    const { fake, session } = setup([
+      section("A", 0, 0, 400, 300, [card("a", 40, 40)]),
+      section("B", 0, by, 400, 200, [card("b", 24, 40)]),
+    ]);
+    await session.commitRects([{ uid: "a", x: 40, y: 40, w: 200, h: 400 }]);
+    const A = plexus(fake, "A");
+    assert.equal(plexus(fake, "B").y, A.h + SECTION_TITLE, `B at ${by}`);
+    assertApart(session, ["A", "B"]);
+  }
 });
 
 test("a loose card in the way moves as itself; a pinned item and one that already overlapped stay put", async () => {
@@ -141,6 +155,20 @@ test("growth and its pushes are one undo step", async () => {
   fake.calls.length = 0;
   await session.undo();
   assert.equal(fake.calls.filter((c) => c[0] === "undo").length, 3, "card, section and pushed neighbour undone by one Cmd+Z");
+});
+
+test("a tidy past the native chunk size: one undo takes back the growth and the push together", async () => {
+  const members = [];
+  for (let i = 0; i < 45; i++) members.push(card(`m${i}`, 80, 30 + (i % 5) * 10, 100, 36));
+  const { fake, session } = setup([
+    section("A", 0, 0, 260, 200, members),
+    section("B", 300, 0, 180, 160, [card("b", 16, 16)]),
+  ], { trackUndo: true });
+  await session.tidyItems(["A"], "row");
+  assert.ok(updated(fake).length > 45, "the tidy alone passes one native chunk");
+  assert.ok(plexus(fake, "B").x > 300, "B was pushed");
+  await session.undo();
+  assert.deepEqual([plexus(fake, "A").w, plexus(fake, "B").x], [260, 300]);
 });
 
 test("model: a growth that comes over nothing moves nothing; the push count is capped", () => {

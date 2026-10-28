@@ -18,10 +18,20 @@ function mountView({ settings = {}, count = () => 0, cards = null, hostOverrides
   const restoreDom = stub.install();
   const realNow = Date.now;
   // Cover warm waits 1.5 s, then 400 ms between jobs: shrink real timers and start the clock "10 s ago".
+  // The clock stands still apart from skew(), so a slow runner never makes a title backoff come due.
+  const base = realNow();
   let skew = -10000;
-  Date.now = () => realNow() + skew;
+  Date.now = () => base + skew;
   const realSetTimeout = globalThis.setTimeout;
-  globalThis.setTimeout = (fn, ms, ...rest) => realSetTimeout(fn, Math.min(Number(ms) || 0, 4), ...rest);
+  const realClearTimeout = globalThis.clearTimeout;
+  // Timers still to fire: settle() waits for none, however late the runner fires them.
+  const live = new Set();
+  globalThis.setTimeout = (fn, ms, ...rest) => {
+    const id = realSetTimeout((...args) => { live.delete(id); fn(...args); }, Math.min(Number(ms) || 0, 4), ...rest);
+    live.add(id);
+    return id;
+  };
+  globalThis.clearTimeout = (id) => { live.delete(id); realClearTimeout(id); };
   const prevReader = globalThis.FileReader;
   globalThis.FileReader = class {
     readAsDataURL(blob) {
@@ -72,8 +82,8 @@ function mountView({ settings = {}, count = () => 0, cards = null, hostOverrides
   const flush = () => { stub.flushFrames(); stub.flushIdle(); stub.flushFrames(); };
   flush();
   return {
-    stub, view, calls, flush, root: view.root, skew: (ms) => { skew = ms; },
-    restore() { view.dispose(); Date.now = realNow; globalThis.setTimeout = realSetTimeout; restoreDom(); if (prevReader) globalThis.FileReader = prevReader; else delete globalThis.FileReader; },
+    stub, view, calls, flush, root: view.root, skew: (ms) => { skew = ms; }, pendingTimers: () => live.size,
+    restore() { view.dispose(); Date.now = realNow; globalThis.setTimeout = realSetTimeout; globalThis.clearTimeout = realClearTimeout; restoreDom(); if (prevReader) globalThis.FileReader = prevReader; else delete globalThis.FileReader; },
   };
 }
 
@@ -93,11 +103,11 @@ test("item 4: with no usable pdf.js, a cached cover without a title is not re-wa
     await cycle(f, 2);
     f.skew(0);
     await cycle(f, 8);
-    // The highlight count is its own budget part, so it can land one short timer after the last paint.
-    // Wait by time, not a fixed tick: slow runners land that last part later.
-    const until = Date.now() + 2000;
-    let early;
-    do { early = f.calls.pdfCover; await tick(20); await cycle(f, 4); } while (f.calls.pdfCover !== early && Date.now() < until);
+    // The highlight count is its own budget part and the idle retries are a bounded timer chain: wait until no
+    // timer is left, however slow the runner.
+    for (let i = 0; i < 500 && f.pendingTimers() > 0; i += 1) await cycle(f, 1);
+    assert.equal(f.pendingTimers(), 0, "the warm retries end");
+    const early = f.calls.pdfCover;
     await cycle(f, 40);
     assert.equal(f.calls.pdfCover, early, "no repaint cycles after the retry cap");
   } finally { f.restore(); }

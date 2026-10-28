@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { isTextEntryTarget } from "../src/view/cards.js";
-import { askPerf, closeAskAI, DEFAULT_HEIGHT, DEFAULT_WIDTH, EDGE, GEOM_KEY, MIN_HEIGHT, MIN_WIDTH, modelLabel, openAskAI, PAINT_MS, PLACEHOLDER, TITLE } from "../src/view/ask-ai.js";
+import { closeAskAI, DEFAULT_HEIGHT, DEFAULT_WIDTH, EDGE, GEOM_KEY, MIN_HEIGHT, MIN_WIDTH, modelLabel, openAskAI, PAINT_MS, PLACEHOLDER, TITLE } from "../src/view/ask-ai.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const DOC = {
@@ -55,7 +55,12 @@ function withDom(fn) {
 
 test("the window is built once and reused: close detaches it, the next Ask puts the same element back", () => withDom(async (stub, doc) => {
   const w = fakeWindow();
+  // Elements made, not milliseconds: a busy runner made the old 16 ms reopen budget fail at random.
+  let made = 0;
+  const rawCreate = doc.createElement.bind(doc);
+  doc.createElement = (...args) => { made += 1; return rawCreate(...args); };
   const a = openAskAI({ doc: DOC, blockId: "p", document: doc, window: w });
+  const built = made;
   assert.equal(a.el.getAttribute("role"), "dialog");
   assert.equal(find(a.el, "pxd-ask__title").textContent, TITLE);
   assert.equal(find(a.el, "pxd-ask__question").getAttribute("placeholder"), PLACEHOLDER);
@@ -64,12 +69,13 @@ test("the window is built once and reused: close detaches it, the next Ask puts 
   a.close();
   assert.equal(a.el.isConnected, false);
   assert.equal(w.count("resize"), 0);
+  made = 0;
   const b = openAskAI({ doc: DOC, blockId: "t", document: doc, window: w });
   assert.equal(b.el, a.el);
   assert.equal(find(b.el, "pxd-ask__composer"), composer);
   assert.equal(findAll(doc.body, "pxd-ask").length, 1);
   assert.match(find(b.el, "pxd-ask__chip").textContent, /Table · p\. 3/);
-  assert.ok(askPerf.lastOpenMs < 16, `reopen took ${askPerf.lastOpenMs.toFixed(2)} ms`);
+  assert.ok(made * 2 < built, `reopen made ${made} elements, the first open ${built}`);
 }));
 
 test("a second Ask while the window is open adds its part as a chip and focuses the composer; both parts are sent", () => withDom(async (stub, doc) => {

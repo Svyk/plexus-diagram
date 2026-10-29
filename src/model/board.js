@@ -27,6 +27,7 @@ import { isContainerString, parseRegion } from "./regions.js";
 import { listFromNodes } from "./snapshots.js";
 import { parseTrails } from "./trails.js";
 import { highlightModel } from "./highlight.js";
+import { withTitle } from "./linked-cards.js";
 import { readWhy } from "./why.js";
 import { edgeMayTarget, endpointHitsKey } from "./endpoints.js";
 import { pageCardRef, pdfOfPageNode, pdfPageName } from "./pdf-page.js";
@@ -734,6 +735,113 @@ export function sectionFitPlan(board, rects, touchedUids, {
     .map(([uid, rect]) => ({ uid, rect, depth: depthOf(uid) }))
     .sort((a, b) => b.depth - a.depth)
     .map(({ uid, rect }) => ({ uid, rect }));
+}
+
+// Most items one fit may move out of the way: one props write each, so the growth and its pushes stay one undo step.
+export const FIT_PUSH_CAP = 24;
+
+// Least shift that takes `r` clear of `after` (plus gap) on a side its frame stood on before the growth; right/down
+// win ties. Sides compare frames (`before`, `rf`); distances use the boxes with titles (`after`, `r`), so a section
+// flush against the frame, its title pill already in the gap, still has a side.
+function clearShift(before, after, rf, r, gap) {
+  const eps = 0.01;
+  const opts = [];
+  if (rf.x >= before.x + before.w - eps) opts.push({ x: after.x + after.w + gap - r.x, y: 0 });
+  if (rf.y >= before.y + before.h - eps) opts.push({ x: 0, y: after.y + after.h + gap - r.y });
+  if (rf.x + rf.w <= before.x + eps) opts.push({ x: after.x - gap - r.x - r.w, y: 0 });
+  if (rf.y + rf.h <= before.y + eps) opts.push({ x: 0, y: after.y - gap - r.y - r.h });
+  let best = null;
+  for (const o of opts) if (!best || Math.abs(o.x) + Math.abs(o.y) < Math.abs(best.x) + Math.abs(best.y)) best = o;
+  return best;
+}
+
+// PXD-23: sectionFitPlan that never grows a section over what stands beside it. Each section the fit grows is a
+// mover among its siblings; a sibling it now overlaps (and did not before) moves as a whole unit, with everything
+// in it, by the least distance that clears the frame on the side it stood on. A moved unit is a mover too (chains),
+// and its own section fits around it in the next round (nested). Pinned items and `skip` never move: a pushed unit
+// goes on past them. A grown frame may still cover one, since its members and the pinned item both stay. Sections count
+// their title above the frame. Returns the grown sections (deepest first), the moved units, and the final world
+// rect of every item that changed (a moved unit's descendants included).
+export function sectionFitClearPlan(board, rects, touchedUids, {
+  pad = FIT_PAD,
+  gap = FIT_PAD,
+  skip = new Set(),
+  parentOf = (u) => board.items.get(u)?.parentUid,
+  maxMoves = FIT_PUSH_CAP,
+} = {}) {
+  const world = new Map(rects);
+  const grown = new Map();
+  const moved = new Set();
+  const changed = new Set();
+  const kidsOf = (pid) => (pid === board.uid ? board.roots : board.items.get(pid)?.members) ?? [];
+  const occ = (u, r) => (board.items.get(u)?.type === "section" ? withTitle(r) : r);
+  const translate = (u, dx, dy) => {
+    const r = world.get(u);
+    if (r) world.set(u, { ...r, x: r.x + dx, y: r.y + dy });
+    changed.add(u);
+    for (const m of board.items.get(u)?.members ?? []) translate(m, dx, dy);
+  };
+  let touched = [...touchedUids];
+  for (let round = 0; round < 64 && touched.length; round++) {
+    const queue = [];
+    for (const { uid, rect } of sectionFitPlan(board, world, touched, { pad, skip, parentOf })) {
+      queue.push({ uid, before: world.get(uid) });
+      world.set(uid, rect);
+      grown.set(uid, rect);
+      changed.add(uid);
+    }
+    touched = [];
+    while (queue.length) {
+      const m = queue.shift();
+      const after = occ(m.uid, world.get(m.uid));
+      const was = rects.get(m.uid);
+      for (const s of kidsOf(parentOf(m.uid) ?? board.uid)) {
+        if (s === m.uid || skip.has(s) || board.items.get(s)?.pinned) continue;
+        const rf = world.get(s);
+        const r = rf && occ(s, rf);
+        if (!r || !intersects(after, r)) continue;
+        // Frames that overlapped before stay as the user left them. A title pill in the gap is no overlap.
+        const r0 = rects.get(s);
+        if (was && r0 && intersects(was, r0)) continue;
+        const d = clearShift(m.before, after, rf, r, gap);
+        if (!d || (moved.size >= maxMoves && !moved.has(s))) continue;
+        // An item that never moves (pinned, or being resized) is an obstacle: the push goes on past it.
+        for (let hop = 0; hop < 64; hop++) {
+          const at = { ...r, x: r.x + d.x, y: r.y + d.y };
+          const hit = kidsOf(parentOf(s) ?? board.uid).find((p) => p !== s && p !== m.uid
+            && (skip.has(p) || board.items.get(p)?.pinned) && world.get(p) && intersects(at, occ(p, world.get(p)))
+            && !(r0 && rects.get(p) && intersects(r0, rects.get(p))));
+          if (!hit) break;
+          const p = occ(hit, world.get(hit));
+          if (d.x > 0) d.x = p.x + p.w + gap - r.x;
+          else if (d.x < 0) d.x = p.x - gap - r.x - r.w;
+          else if (d.y > 0) d.y = p.y + p.h + gap - r.y;
+          else d.y = p.y - gap - r.y - r.h;
+        }
+        const prev = world.get(s);
+        translate(s, d.x, d.y);
+        moved.add(s);
+        queue.push({ uid: s, before: prev });
+        touched.push(s);
+      }
+    }
+  }
+  const depthOf = (u) => {
+    let d = 0;
+    for (let cur = u, i = 0; i < 256; i++) {
+      cur = parentOf(cur);
+      if (!cur || cur === board.uid) break;
+      d++;
+    }
+    return d;
+  };
+  const sections = [...grown.entries()]
+    .map(([uid, rect]) => ({ uid, rect: world.get(uid) ?? rect, depth: depthOf(uid) }))
+    .sort((a, b) => b.depth - a.depth)
+    .map(({ uid, rect }) => ({ uid, rect }));
+  const final = new Map();
+  for (const u of changed) final.set(u, world.get(u));
+  return { grown: sections, moved: [...moved], world: final };
 }
 
 // Top-level cards and sections, then the Connections block. Nested members stay inside their parent

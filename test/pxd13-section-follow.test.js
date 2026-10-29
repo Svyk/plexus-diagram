@@ -603,3 +603,21 @@ test("PXD-13 drop: a section's row is placed while that section follows the same
     assert.deepEqual(e.calls, [["addRefCards", ["((k2))"]]], "the section switched source since the drag began");
   } finally { e.done(); }
 });
+
+test("PXD-23: Place all grows a section over the one below; that section moves down with its cards, nothing overlaps", async () => {
+  const f = mount({ children: [
+    section("A", "Bucket A", 0, 0, 500, 200, { follow: { kind: "block", uid: "SRC" } }, [card("m1", "member", 24, 24)]),
+    section("B", "Bucket B", 0, 240, 500, 200, {}, [card("m2", "other", 24, 24)]),
+  ] });
+  await f.timers.run();
+  f.tray.open("A");
+  f.root.querySelector(".pxd-follow__all").click();
+  await flush(20);
+  await f.fake.flush();
+  const a = f.fake.props("A").plexus;
+  const b = f.fake.props("B").plexus;
+  assert.ok(a.h > 200, `Bucket A grew (${a.h})`);
+  assert.ok(b.y >= a.y + a.h + FIT_PAD, `Bucket B (y ${b.y}) is below Bucket A (bottom ${a.y + a.h})`);
+  assert.deepEqual([f.fake.props("m2").plexus.x, f.fake.props("m2").plexus.y], [24, 24], "B's card moved with B");
+  f.tray.dispose();
+});

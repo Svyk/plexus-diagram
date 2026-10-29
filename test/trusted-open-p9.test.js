@@ -211,11 +211,17 @@ test("trusted open: a parked board's check waits for its resume", async () => {
   host.pullBoard("sb1", { light: true });
   const off = host.watchBoard("sb1", () => {});
   off.pause();
-  own.advance(2500);
-  await tick(20);
-  assert.equal(host.boardUnverified("sb1"), true, "no check while parked");
+  // Parked for as many turns as the check takes once resumed (asserted below), so an unguarded check would land here.
+  const parkedTurns = 100;
+  for (let i = 0; i < parkedTurns; i += 1) {
+    own.advance(500);
+    await tick(5);
+    assert.equal(host.boardUnverified("sb1"), true, "no check while parked");
+  }
   off.resume();
-  await until(() => !host.boardUnverified("sb1"));
+  let resumedTurns = 0;
+  await until(() => { resumedTurns += 1; return !host.boardUnverified("sb1"); });
+  assert.ok(resumedTurns < parkedTurns, `the parked wait outlasts a whole check (${resumedTurns} turns after resume)`);
   off();
   host.dispose();
   await store.dispose();

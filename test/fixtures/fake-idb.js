@@ -1,9 +1,9 @@
 // Minimal IndexedDB for the snapshot store tests: open/upgrade, out-of-line keys,
 // get/put/delete, transaction oncomplete. Every open is recorded.
-export function createFakeIDB() {
+// `later` runs each request's callback; a test whose code races IDB against a wall-clock cap passes queueMicrotask.
+export function createFakeIDB({ later = (fn) => setTimeout(fn, 0) } = {}) {
   const dbs = new Map();
   const opens = [];
-  const later = (fn) => setTimeout(fn, 0);
   const copy = (v) => (v === undefined ? undefined : structuredClone(v));
   function makeDb(name, rec) {
     const db = {

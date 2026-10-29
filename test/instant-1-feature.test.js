@@ -173,8 +173,10 @@ const SNAP = {
   }],
 };
 
+// The open races the warm snapshot read against a 50 ms timer (SNAP_WARM_WAIT_MS). Requests answered in microtasks
+// always win it, so a busy runner cannot make an open paint the old way.
 async function seededIdb(snap = SNAP, more = []) {
-  const idb = createFakeIDB();
+  const idb = createFakeIDB({ later: queueMicrotask });
   const store = createBoardSnapStore({ indexedDB: idb, graph: "Svy", debounceMs: 0, idle: (fn) => fn() });
   await store.ready;
   store.set(UID, snap);
@@ -472,6 +474,9 @@ test("the hand-off to the live board cross-fades the snapshot out instead of cut
   const frames = [];
   env.win.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
   const step = () => { const due = frames.splice(0); for (const fn of due) fn(); };
+  // The fade steps by this clock, not the runner's: a busy runner cannot finish it inside the "mid" wait.
+  const clock = { t: 1000 };
+  env.win.performance = { now: () => clock.t };
   try {
     await env.install();
     await tick(20);
@@ -489,11 +494,11 @@ test("the hand-off to the live board cross-fades the snapshot out instead of cut
     step();
     assert.ok(!snapRoot.style.opacity || snapRoot.style.opacity === "1", `held: ${snapRoot.style.opacity}`);
     step();
-    await tick(70);
+    clock.t += 70;
     step();
     const mid = Number(snapRoot.style.opacity);
     assert.ok(mid > 0 && mid < 1, `stepping: ${snapRoot.style.opacity}`);
-    await tick(120);
+    clock.t += 120;
     step();
     assert.equal(snapRoot.parentElement, null, "gone after the fade");
   } finally {

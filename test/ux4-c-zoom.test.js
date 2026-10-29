@@ -2,10 +2,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { mountBig, settledIn } from "./fixtures/big-mount.js";
+import { mountBig, settledIn, tick } from "./fixtures/big-mount.js";
 import { applyFullscreenChrome, FS_COVER_CLASS, holdFsCover } from "../src/view/fullscreen.js";
 
-const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const css = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
 
 // Every frame of a Ctrl-wheel burst: root connected, mount fullscreen, body covering the article.
@@ -31,7 +30,7 @@ async function zoomFrames(m, dir, ticks) {
 }
 
 test("C2: a zoom across both tier flips on the big fullscreen board keeps the root, the fullscreen mount and the article cover on every frame", async () => {
-  const m = mountBig({ x: -2000, y: -1500, zoom: 1 }, { fullscreen: true });
+  const m = mountBig({ x: -2000, y: -1500, zoom: 1 }, { fullscreen: true, virtualClock: true });
   try {
     await settledIn(m);
     const out = await zoomFrames(m, 1, 14);
@@ -52,7 +51,7 @@ test("C2: the cover rule hides the article and keeps the mounts visible; no :has
 });
 
 test("C2: a held cover outlives the fullscreen chrome until the hold is dropped; a new fullscreen board takes it over", async () => {
-  const m = mountBig({ x: 0, y: 0, zoom: 0.3 }, { fullscreen: true });
+  const m = mountBig({ x: 0, y: 0, zoom: 0.3 }, { fullscreen: true, virtualClock: true });
   const doc = m.stub.document;
   const body = doc.body;
   try {
@@ -76,7 +75,7 @@ test("C2: a held cover outlives the fullscreen chrome until the hold is dropped;
 });
 
 test("C2: fsCover off adds no cover (3.36.0)", async () => {
-  const m = mountBig({ x: 0, y: 0, zoom: 0.3 }, { fullscreen: true, flags: { fsCover: false } });
+  const m = mountBig({ x: 0, y: 0, zoom: 0.3 }, { fullscreen: true, flags: { fsCover: false }, virtualClock: true });
   try {
     await settledIn(m);
     assert.ok(m.stub.document.body.classList.contains("pxd-has-fullscreen"));
@@ -87,7 +86,7 @@ test("C2: fsCover off adds no cover (3.36.0)", async () => {
 // C3 zoomHeads: a settle on a new zoom step resizes the heads in place; the full re-place gives the same heads.
 // The zoom lands at overview, where the DOM arrows exist only with overviewCanvas off (on, they are canvas hairlines).
 async function zoomOutHeads(flags) {
-  const m = mountBig({ x: -400, y: -300, zoom: 0.5 }, { flags: { overviewCanvas: false, ...flags }, fullscreen: true });
+  const m = mountBig({ x: -400, y: -300, zoom: 0.5 }, { flags: { overviewCanvas: false, ...flags }, fullscreen: true, virtualClock: true });
   try {
     await settledIn(m);
     // Line paths of the edges already on the board: a full re-place writes each of them again.
@@ -126,7 +125,7 @@ test("C3 zoomHeads: a zoom-out settle on a new zoom step re-sizes the arrow head
 // C3 zoomHeads, zoom-in: the far edges a detail settle will park are not resized first. It starts from DOM arrows at
 // overview (overviewCanvas off).
 async function zoomInHeads(flags) {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: false, ...flags }, fullscreen: true });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: false, ...flags }, fullscreen: true, virtualClock: true });
   try {
     await settledIn(m);
     let headWrites = 0;

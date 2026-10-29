@@ -14,6 +14,7 @@ import {
 } from "../src/model/library.js";
 import { buildPartsIndex, finishPartsIndex, partSnippet, searchParts } from "../src/model/parts-search.js";
 import { serializeRegion } from "../src/model/regions.js";
+import { cpuNow } from "./fixtures/cpu-clock.js";
 
 test("types accept a set, a legacy string, and collapse a full set to all", () => {
   assert.deepEqual(normalizeLibraryFilter({ types: ["pdf", "table", "nope", "pdf"] }).types, ["pdf", "table"]);
@@ -157,19 +158,19 @@ test("a 300-page index searches well under 50 ms", () => {
   const rows = buildPartsIndex({ sha256: "big", blocks, order }, { docTitle: "Big" });
   assert.equal(rows.length, 6000);
   finishPartsIndex(rows);
-  const t0 = performance.now();
+  const t0 = cpuNow();
   const hit = searchParts(rows, { text: "needle phrase" });
-  const ms = performance.now() - t0;
+  const ms = cpuNow() - t0;
   assert.equal(hit.length, 1);
   assert.equal(hit[0].page, 150);
-  const t2 = performance.now();
+  const t2 = cpuNow();
   const multi = searchParts(rows, { text: "needle lorem phrase" });
-  const ms3 = performance.now() - t2;
+  const ms3 = cpuNow() - t2;
   assert.equal(multi.length, 1);
   assert.ok(ms3 < 50, `multi-term search took ${ms3}ms`);
-  const t1 = performance.now();
+  const t1 = cpuNow();
   searchParts(rows, { text: "lorem", pages: "100-200" });
-  const ms2 = performance.now() - t1;
+  const ms2 = cpuNow() - t1;
   assert.ok(ms < 50, `needle search took ${ms}ms`);
   assert.ok(ms2 < 50, `broad search took ${ms2}ms`);
 });

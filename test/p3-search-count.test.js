@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { mountBig } from "./fixtures/big-mount.js";
 
 test("P3: typing in board search and pressing Enter keep the count's one text node (no child-list change per key)", async () => {
-  const m = mountBig({ x: 0, y: 0, zoom: 0.5 });
+  const m = mountBig({ x: 0, y: 0, zoom: 0.5 }, { virtualClock: true });
   try {
     await m.pump(4);
     m.view.root.focus();

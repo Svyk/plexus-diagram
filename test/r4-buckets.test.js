@@ -22,7 +22,7 @@ function shellOrder(m) {
 }
 
 test("R4: a big board puts shells, edges and labels in buckets, in board order", async () => {
-  const m = mountBig({ x: 40, y: 40, zoom: 0.3 });
+  const m = mountBig({ x: 40, y: 40, zoom: 0.3 }, { virtualClock: true });
   try {
     await settledIn(m);
     const root = m.view.root;
@@ -52,7 +52,7 @@ test("R4: a big board puts shells, edges and labels in buckets, in board order",
 });
 
 test("R4: bucketLayers off keeps shells and edges as direct children (3.34.0 layout)", async () => {
-  const m = mountBig({ x: 40, y: 40, zoom: 0.3 }, { flags: { bucketLayers: false } });
+  const m = mountBig({ x: 40, y: 40, zoom: 0.3 }, { flags: { bucketLayers: false }, virtualClock: true });
   try {
     await settledIn(m);
     const root = m.view.root;

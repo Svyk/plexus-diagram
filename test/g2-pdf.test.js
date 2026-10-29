@@ -21,6 +21,7 @@ import {
   pickFlipTarget,
   renderPixels,
 } from "../src/view/pdf-flip.js";
+import { resetSharedBgBudget } from "../src/bg-budget.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const SELF = "{{[[pdf]]: https://example.test/self.pdf}}";
@@ -429,7 +430,16 @@ function boardItem(uid, string, plexus, order) {
 
 function mountBoard() {
   const stub = createDomStub();
-  const restore = stub.install();
+  const restoreDom = stub.install();
+  // Frozen clock: the shared background budget and slice sizers read performance.now; under load every slice looks long.
+  const realNow = globalThis.performance.now;
+  globalThis.performance.now = () => 1_000_000;
+  resetSharedBgBudget();
+  const restore = () => {
+    globalThis.performance.now = realNow;
+    resetSharedBgBudget();
+    restoreDom();
+  };
   stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify({ x: 0, y: 0, zoom: 1 }));
   const lib = fakePdf(5);
   stub.window.pdfjsLib = lib;

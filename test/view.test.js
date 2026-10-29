@@ -5,6 +5,7 @@ import test from "node:test";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { imageRegionString } from "../src/model/image-region.js";
 import { freshCardIsBlank, mountBoardView, pageRenameNeedsConfirm, sidebarMountKind, toggleTodoAt } from "../src/view/board-view.js";
+import { resetSharedBgBudget } from "../src/bg-budget.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -138,9 +139,29 @@ function fakeSession(board) {
   return session;
 }
 
+// Waits for a condition in turns, not time: each turn moves the test clock on and lets real timers and frames run.
+async function settleUntil(f, cond, step = 50) {
+  for (let i = 0; i < 400 && !cond(); i += 1) {
+    f.advance(step);
+    f.stub.flushFrames();
+    await tick(10);
+  }
+}
+
 function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extraChildren = [], extraEdges = [], hostOverrides = {}, viewOptions = {}, cardOpen, kidsOn = [] } = {}) {
   const stub = createDomStub();
-  const restore = stub.install();
+  const restoreDom = stub.install();
+  // Frozen clock: the shared background budget and slice sizers read performance.now; under load every slice looks long.
+  const realNow = globalThis.performance.now;
+  const clock = { t: 1_000_000 };
+  globalThis.performance.now = () => clock.t;
+  resetSharedBgBudget();
+  const advance = (ms) => { clock.t += ms; };
+  const restore = () => {
+    globalThis.performance.now = realNow;
+    resetSharedBgBudget();
+    restoreDom();
+  };
   stub.localStorage.setItem(`plexus-diagram:vp:Svy:board0001`, JSON.stringify(vp));
   const tree = pulled(extraChildren, extraEdges);
   if (cardOpen === false) tree[":block/children"][0][":block/open"] = false;
@@ -165,7 +186,7 @@ function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extraChildr
     stub.flushIdle();
     stub.flushFrames();
   };
-  return { stub, restore, board, session, host, mountEl, view, flush };
+  return { stub, restore, clock, advance, board, session, host, mountEl, view, flush };
 }
 
 test("fresh card stays when the editor has text Roam has not saved yet", () => {
@@ -1140,8 +1161,8 @@ test("R2: a refused recovery (burst cap) is retried once the burst ages out, so 
     dropFocus();
     roamRerender();
     assert.ok(doc.activeElement === doc.body, "the fifth loss inside the burst window is rate-limited");
-    await tick(1600);
-    f.stub.flushFrames();
+    f.advance(1600); // the burst ages out only now
+    await settleUntil(f, () => doc.activeElement === current, 0);
     assert.ok(doc.activeElement === current, "the deferred retry recovered focus after the burst aged out");
   } finally {
     f.view.dispose();
@@ -2098,7 +2119,7 @@ test("NP-7: a sidebar board keeps its own viewport, keys, and fullscreen", async
     assert.notEqual(sideWorld.style.transform, mainBefore, "the sidebar board pans");
     assert.equal(mainWorld.style.transform, mainBefore, "the main board stays put");
     // Gesture end waits 120ms, then the viewport store waits another 500ms. Both are real timers.
-    await tick(700);
+    await settleUntil(f, () => f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001:block"));
     const sideRaw = f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001:block");
     const mainRaw = f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001");
     assert.equal(JSON.parse(mainRaw).zoom, 1, "the main viewport key is unchanged");
@@ -2126,7 +2147,7 @@ test("NP-7: a sidebar board keeps its own viewport, keys, and fullscreen", async
     assert.equal(side.root.querySelector(".pxd-item[data-uid=cardAAAA1]").style.transform, moved);
     const zoomBefore = sideVp.zoom;
     f.stub.dispatch(side.root.querySelector(".pxd-viewport"), "wheel", { ctrlKey: true, deltaY: -80, clientX: 200, clientY: 200 });
-    await tick(1100);
+    await settleUntil(f, () => JSON.parse(f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001:block")).zoom > zoomBefore);
     const zoomed = JSON.parse(f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001:block"));
     assert.ok(zoomed.zoom > zoomBefore, "a pinch on the sidebar stores its own zoom");
     assert.equal(JSON.parse(f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001")).zoom, 1);
@@ -2205,7 +2226,7 @@ test("RG-10: two embeds keep their own viewports and a shortcut card stays a thu
     assert.notEqual(aWorld.style.transform, before, "the panned embed moves");
     assert.equal(mainWorld.style.transform, before, "the original stays");
     assert.equal(bWorld.style.transform, before, "the other embed stays");
-    await tick(700);
+    await settleUntil(f, () => f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001:embed:uyXFLc-bf"));
     assert.equal(f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001"), exact);
     const stored = f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001:embed:uyXFLc-bf");
     assert.equal(f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001:embed:bf"), null);

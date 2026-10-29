@@ -5,9 +5,13 @@ import { buildBoard, worldRects } from "../src/model/board.js";
 import { edgeString } from "../src/model/schema.js";
 import { stressBoardTree } from "../src/model/stress-board.js";
 import { mountBoardView } from "../src/view/board-view.js";
+import { resetSharedBgBudget } from "../src/bg-budget.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
-const tick = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// performance.now is the test's clock while a board is measured: slices and the shared background budget are sized
+// by it, so real time on a loaded machine changed how many DOM mutations a gesture counted. Time passes only in tick().
+const clock = { t: 5_000_000 };
+const tick = (ms) => { clock.t += ms; return new Promise((resolve) => setTimeout(resolve, ms)); };
 
 const node = (id, string, plexus, children = []) => ({
   ":block/uid": id,
@@ -376,8 +380,8 @@ function fakeSession(board) {
 }
 
 async function quiet(stub) {
-  const start = Date.now();
-  while (Date.now() - start < 700) {
+  const start = clock.t;
+  while (clock.t - start < 700) {
     stub.flushFrames();
     stub.flushIdle();
     await tick(25);
@@ -394,6 +398,9 @@ function cardEl(root) {
 }
 
 async function measureBoard(tree) {
+  const realNow = globalThis.performance.now;
+  globalThis.performance.now = () => clock.t;
+  resetSharedBgBudget();
   const stub = createDomStub();
   const restore = stub.install();
   const meter = instrument(stub);
@@ -471,8 +478,8 @@ async function measureBoard(tree) {
 
     stub.dispatch(card, "dblclick", { button: 0, clientX: 40, clientY: 40 });
     let editor = null;
-    const opened = Date.now();
-    while (Date.now() - opened < 900) {
+    const opened = clock.t;
+    while (clock.t - opened < 900) {
       stub.flushFrames();
       stub.flushIdle();
       await tick(20);
@@ -510,6 +517,8 @@ async function measureBoard(tree) {
   } finally {
     try { view?.dispose(); } catch { /* already disposing */ }
     restore();
+    globalThis.performance.now = realNow;
+    resetSharedBgBudget();
   }
 }
 

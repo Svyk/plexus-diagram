@@ -4,12 +4,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { missingFrames, mountBig, settledIn } from "./fixtures/big-mount.js";
+import { missingFrames, mountBig, settledIn, tick } from "./fixtures/big-mount.js";
 
-const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
 async function handBack(flags) {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true, canvasPrebuild: false, ...flags }, fullscreen: true });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true, canvasPrebuild: false, ...flags }, fullscreen: true, virtualClock: true });
   await settledIn(m);
   const frames = [];
   for (let i = 0; i < 7; i += 1) {

@@ -308,6 +308,10 @@ test("light prime reads linked refs 40 titles per part, then every card stat in 
     return queued.length;
   };
   const spent = { timeRemaining: () => 0, didTimeout: false };
+  // The shared background budget owes a duty-cycle gap after a slice of 5 ms or more; a frozen clock keeps a slow
+  // runner from moving the next slice onto a timer.
+  const realNow = globalThis.performance.now;
+  globalThis.performance.now = () => 0;
   try {
     const { host, calls, linked } = pageBoard(41);
     host.pullBoard("b1", { light: true });
@@ -324,5 +328,6 @@ test("light prime reads linked refs 40 titles per part, then every card stat in 
     assert.equal(queued.length, 3);
   } finally {
     globalThis.requestIdleCallback = previous;
+    globalThis.performance.now = realNow;
   }
 });

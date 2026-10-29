@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { missingFrames, mountBig, settledIn, withFrozenClock } from "./fixtures/big-mount.js";
+import { missingFrames, mountBig, settledIn, tick, withFrozenClock } from "./fixtures/big-mount.js";
 
 // PXD-6 (canvasPrebuild): on the overview canvas tier no card shell was built, so the first zoom into the map band
 // built the in-view cards in 12 ms frame chunks (PhD main board live: 62 of 137 after 6 s) and the next map visits
 // built the other ~1,450 in the background. The queue now builds on the canvas tier too: background budget, detached.
-const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const OVERVIEW = { x: 300, y: 20, zoom: 0.075 };
 const cardsInDom = (m) => m.view.root.querySelectorAll(".pxd-item--card[data-uid]").filter((el) => !el.classList.contains("pxd-item--board")).length;
 const total = (m) => m.board.items.size;
@@ -33,7 +32,7 @@ test("canvasPrebuild: on the overview canvas every queued shell is built in the 
 });
 
 test("canvasPrebuild: no shell is built inside a wheel burst on the canvas; the build goes on after the settle", async () => {
-  const m = mountBig(OVERVIEW, { flags: { overviewCanvas: true } });
+  const m = mountBig(OVERVIEW, { flags: { overviewCanvas: true }, virtualClock: true });
   try {
     m.stub.flushFrames();
     const before = m.view.stats().shells;
@@ -53,7 +52,7 @@ test("canvasPrebuild: no shell is built inside a wheel burst on the canvas; the 
 
 // The R4 hand-back (r4-handback.test.js), after the background build: the zoom attaches shells and builds none.
 async function handBack(flags) {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true, ...flags }, fullscreen: true });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true, ...flags }, fullscreen: true, virtualClock: true });
   await settledIn(m);
   if (flags.canvasPrebuild !== false) await buildAll(m);
   const built = m.view.stats().shells;

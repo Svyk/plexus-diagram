@@ -12,7 +12,7 @@ const search = (m, text) => {
 };
 
 test("P3: search with no edge hit sets one dim attribute on the edge and label layers, and no per-edge dim class", async () => {
-  const m = mountBig({ x: 0, y: 0, zoom: 0.5 });
+  const m = mountBig({ x: 0, y: 0, zoom: 0.5 }, { virtualClock: true });
   try {
     await m.pump(4);
     m.view.root.focus();
@@ -34,7 +34,7 @@ test("P3: search with no edge hit sets one dim attribute on the edge and label l
 });
 
 test("P3: searchLayerDim off keeps the per-edge dim classes", async () => {
-  const m = mountBig({ x: 0, y: 0, zoom: 0.5 }, { flags: { searchLayerDim: false } });
+  const m = mountBig({ x: 0, y: 0, zoom: 0.5 }, { flags: { searchLayerDim: false }, virtualClock: true });
   try {
     await m.pump(4);
     m.view.root.focus();

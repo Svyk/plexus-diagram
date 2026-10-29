@@ -8,7 +8,7 @@ import test from "node:test";
 import { mountBig, settledIn } from "./fixtures/big-mount.js";
 
 test("R4: paintAudit between a wheel event and its render frame counts the camera the DOM shows", async () => {
-  const m = mountBig({ x: -300, y: -200, zoom: 0.6 }, { flags: { overviewCanvas: false } });
+  const m = mountBig({ x: -300, y: -200, zoom: 0.6 }, { flags: { overviewCanvas: false }, virtualClock: true });
   try {
     await settledIn(m);
     const world = m.view.root.querySelector(".pxd-world");

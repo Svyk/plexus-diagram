@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { missingFrames, mountBig, settledIn } from "./fixtures/big-mount.js";
+import { missingFrames, mountBig, settledIn, tick } from "./fixtures/big-mount.js";
 
-const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const VARS = { "--pxd-card": "#26333f", "--pxd-border-strong": "#6b7f91", "--pxd-red-line": "#f87171", "--pxd-red-fill": "#3a1f1f", "--pxd-red-text": "#fca5a5", "--pxd-text": "#e5e7eb" };
 const titled = (board) => { let i = 0; for (const item of board.items.values()) { if (item.type === "section") continue; item.color = i % 2 ? "red" : ""; item.title = `Card ${i}`; i += 1; } };
 
@@ -10,7 +9,7 @@ const titled = (board) => { let i = 0; for (const item of board.items.values()) 
 // blocks without titles (the tier is held until the settle), then the map shells landed in the dark card look with
 // titles: a pop at the hand-back. From 0.2 on the canvas draws the card look of the tier the zoom shows, in the burst.
 test("E3-4: in a zoom burst past 0.2 on the overview canvas the boxes are drawn in the map card look with titles, before the tier flips", async () => {
-  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true }, fullscreen: true, theme: VARS, prep: titled });
+  const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { flags: { overviewCanvas: true }, fullscreen: true, theme: VARS, prep: titled, virtualClock: true });
   try {
     await settledIn(m);
     const canvas = m.view.root.querySelector(".pxd-underlay");

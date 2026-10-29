@@ -13,9 +13,8 @@ import { SPLIT_WATCH_MIN } from "../src/host/split-watch.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 import { BIG_BUDGETS_PATH, checkBigCeilings, lowerBigCeilings, readBigBudgets } from "../tools/live/big-board-budgets.mjs";
-import { dragSelection, mountBig, settledIn, zoomBurst } from "./fixtures/big-mount.js";
+import { dragSelection, mountBig, settledIn, zoomBurst, tick } from "./fixtures/big-mount.js";
 
-const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const counts = {};
 
 // Pull trees carry :plexus props with colon keys; the fake Roam seeds plain ones.
@@ -117,7 +116,7 @@ test("the DOM near the view stays bounded at detail and at map zoom, and dispose
 test("no-flash counts: swap frames, edge churn on a crumb back, shells restyled by a tier flip, edges placed per drag frame", async () => {
   let swap = 0;
   for (const [vp, dir, ticks] of [[{ x: -2000, y: -1500, zoom: 1 }, 1, 14], [{ x: 300, y: 20, zoom: 0.1 }, -1, 16]]) {
-    const m = mountBig(vp);
+    const m = mountBig(vp, { virtualClock: true });
     try {
       await settledIn(m);
       const frames = await zoomBurst(m, dir, ticks);
@@ -126,7 +125,7 @@ test("no-flash counts: swap frames, edge churn on a crumb back, shells restyled 
     } finally { m.done(); }
   }
   {
-    const m = mountBig({ x: 300, y: 20, zoom: 0.1 });
+    const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { virtualClock: true });
     try {
       await m.pump(30);
       const placed = m.view.stats().edgePlacements;
@@ -168,7 +167,7 @@ test("no-flash counts: swap frames, edge churn on a crumb back, shells restyled 
 test("no-flash counts, round 2: zoom into unbuilt cards, canvas hand-back, sliced crumb back, grouped drag", async () => {
   let swap = 0;
   for (const [flags, x, y, ticks] of [[{}, 1100, 120, 9], [{ overviewCanvas: true }, 700, 450, 6]]) {
-    const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, renderMs: 1, flags });
+    const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, renderMs: 1, flags, virtualClock: true });
     try {
       await settledIn(m);
       const audit = async () => { await null; await null; if (m.view.paintAudit().missing > 0) swap += 1; };
@@ -183,7 +182,7 @@ test("no-flash counts, round 2: zoom into unbuilt cards, canvas hand-back, slice
   }
   counts.swapFramesMissingCards += swap;
   {
-    const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true });
+    const m = mountBig({ x: 300, y: 20, zoom: 0.1 }, { fullscreen: true, virtualClock: true });
     try {
       await settledIn(m);
       for (let k = 0; k < 40 && m.view.stats().shells < 1570; k += 1) { await tick(100); await m.pump(50); }

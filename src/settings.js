@@ -61,7 +61,6 @@ export const SETTING_IDS = Object.freeze({
   pdfDark: "pdf-dark",
   pdfReaderDark: "pdf-reader-dark",
   parseHelperUrl: "parse-helper-url",
-  parseHelperToken: "parse-helper-token",
   parseEngineDefault: "parse-engine-default",
   parseFormula: "parse-formula",
   parseOcr: "parse-ocr",
@@ -139,7 +138,6 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.pdfDark]: "dim",
   [SETTING_IDS.pdfReaderDark]: "follow",
   [SETTING_IDS.parseHelperUrl]: "http://127.0.0.1:48765",
-  [SETTING_IDS.parseHelperToken]: "",
   [SETTING_IDS.parseEngineDefault]: "auto",
   [SETTING_IDS.parseFormula]: false,
   [SETTING_IDS.parseOcr]: "auto",
@@ -559,7 +557,6 @@ const SETTING_ROWS = {
   [SETTING_IDS.pdfDark]: () => selectRow(SETTING_IDS.pdfDark, "PDF pages in dark mode", "When the board is dark. Off keeps white pages. Dim darkens the page. Invert flips the page colors. Marks stay readable.", ["off", "dim", "invert"]),
   [SETTING_IDS.pdfReaderDark]: () => selectRow(SETTING_IDS.pdfReaderDark, "PDF dark mode", "Off, Follow Roam, or On. Follow Roam is the default. On inverts the page canvas in Roam's own PDF window so the page matches a dark graph. Pictures drawn on the page invert with the text. Plexus paints them back when it can read their place. Highlights and parsed outlines stay. The reader beside the board is left alone.", ["off", "follow", "on"]),
   [SETTING_IDS.parseHelperUrl]: () => inputRow(SETTING_IDS.parseHelperUrl, "Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
-  [SETTING_IDS.parseHelperToken]: () => inputRow(SETTING_IDS.parseHelperToken, "Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address.", { password: true, placeholder: "Token" }),
   [SETTING_IDS.parseEngineDefault]: () => selectRow(SETTING_IDS.parseEngineDefault, "Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper.", ["auto", "builtin", "docling"]),
   [SETTING_IDS.parseFormula]: () => switchRow(SETTING_IDS.parseFormula, "Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
   [SETTING_IDS.parseOcr]: () => selectRow(SETTING_IDS.parseOcr, "Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR.", ["auto", "on", "off"]),
@@ -611,7 +608,7 @@ const SETTING_GROUPS = [
     SETTING_IDS.motion, SETTING_IDS.disableOnMobile, SETTING_IDS.collapseOutline, SETTING_IDS.speedLog,
   ]],
   ["group-parse", "PDF parse", "A local helper for harder PDFs, and how parsed text is inserted.", [
-    SETTING_IDS.parseHelperUrl, SETTING_IDS.parseHelperToken, SETTING_IDS.parseEngineDefault, SETTING_IDS.parseFormula,
+    SETTING_IDS.parseHelperUrl, SETTING_IDS.parseEngineDefault, SETTING_IDS.parseFormula,
     SETTING_IDS.parseOcr, SETTING_IDS.parsePageReader, SETTING_IDS.parseAutoRead, SETTING_IDS.keepReads, SETTING_IDS.askFigureImages, SETTING_IDS.askModel, SETTING_IDS.linkAnswers, SETTING_IDS.parseLinkSafe, SETTING_IDS.parseNumbered, SETTING_IDS.parseFootnotes, SETTING_IDS.parseFootnoteFormat,
   ]],
   ["group-images", "Image search", "Search inside pictures by colour and by the words in them.", [

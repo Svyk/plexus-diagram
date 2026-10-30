@@ -64,8 +64,8 @@ test("the helper endpoint is local and does not fetch", () => {
   const calls = [];
   const api = createHelperClient({
     fetch: () => { calls.push(1); throw new Error("fetch"); },
-    settings: () => ({ "parse-helper-token": "helper-token" }),
-    setSetting: async () => {},
+    settings: () => ({}),
+    storage: { getItem: (k) => (k === "plexus-diagram:parse-helper-token" ? "helper-token" : null), setItem() {} },
   });
   assert.deepEqual(api.endpoint(), { url: "http://127.0.0.1:48765", token: "helper-token" });
   assert.equal(calls.length, 0);

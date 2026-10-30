@@ -217,8 +217,8 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
 
   const pause = typeof sleep === "function" ? sleep : (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  // Roam Depot wipes extension settings when the URL entry is removed and re-added, so the token
-  // is also kept in a localStorage-like store and restored into settings when settings are empty.
+  // The token lives only in this device's storage, so a graph-wide install never shows it to other
+  // members. The old extension setting is read once to migrate it here, then cleared.
   const readBackup = () => {
     try { return String(storage?.getItem?.(TOKEN_BACKUP_KEY) || "").trim(); } catch { return ""; }
   };
@@ -226,20 +226,33 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
     try { storage?.setItem?.(TOKEN_BACKUP_KEY, value); } catch { /* storage may be blocked */ }
   };
 
-  let restored = false;
+  let migrated = false;
   const config = () => {
     const url = String(readSetting(settings, "parse-helper-url", "http://127.0.0.1:48765")).replace(/\/$/, "");
-    let token = String(readSetting(settings, "parse-helper-token", "") || "").trim();
-    const backup = readBackup();
-    if (!token && backup) {
-      token = backup;
-      if (!restored) try {
-        restored = true; void Promise.resolve(setSetting?.(TOKEN_SETTING, backup)).catch(() => {}); } catch { /* settings may be unavailable */ }
-    } else if (token && token !== backup) {
-      writeBackup(token);
+    let token = readBackup();
+    const legacy = String(readSetting(settings, TOKEN_SETTING, "") || "").trim();
+    if (legacy) {
+      if (!token) { writeBackup(legacy); token = readBackup(); }
+      if (token && !migrated) {
+        migrated = true;
+        try { void Promise.resolve(setSetting?.(TOKEN_SETTING, "")).catch(() => {}); } catch { /* settings may be unavailable */ }
+      }
+      if (!token) token = legacy;
     }
     return { url, token };
   };
+
+  // Runs the one-time move at extension load, so the old setting does not wait for the first parse.
+  function migrateToken() {
+    config();
+  }
+
+  function setToken(value) {
+    const next = String(value ?? "").trim();
+    writeBackup(next);
+    invalidate();
+    return readBackup() === next;
+  }
 
   const call = (url, init, signal) => fetchFn(url, {
     ...init,
@@ -381,7 +394,7 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
   async function pair({ signal, onWaiting } = {}) {
     const { url } = config();
     if (typeof fetchFn !== "function") return { ok: false, reason: "not-running" };
-    if (typeof setSetting !== "function") return { ok: false, reason: "no-settings" };
+    if (!storage || typeof storage.setItem !== "function") return { ok: false, reason: "no-storage" };
     const fetchToken = async () => {
       const timer = withTimeout(timeoutMs, signal);
       try {
@@ -394,7 +407,6 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
       let body = null;
       try { body = await res.json(); } catch { body = null; }
       if (body?.helper !== HELPER_NAME || typeof body.token !== "string" || !body.token) return { ok: false, reason: "error" };
-      await setSetting(TOKEN_SETTING, body.token);
       writeBackup(body.token);
       invalidate();
       return { ok: true, version: body.version };
@@ -731,7 +743,7 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
   }
 
   return {
-    health, status, pair, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr, ocrImagePath, tables, vlm, endpoint,
+    health, status, pair, setToken, migrateToken, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr, ocrImagePath, tables, vlm, endpoint,
     get vlmTables() { return vlmOn; },
     get vlmHigh() { return vlmHighOn; },
   };

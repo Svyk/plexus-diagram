@@ -21415,7 +21415,6 @@ var init_settings = __esm({
       pdfDark: "pdf-dark",
       pdfReaderDark: "pdf-reader-dark",
       parseHelperUrl: "parse-helper-url",
-      parseHelperToken: "parse-helper-token",
       parseEngineDefault: "parse-engine-default",
       parseFormula: "parse-formula",
       parseOcr: "parse-ocr",
@@ -21492,7 +21491,6 @@ var init_settings = __esm({
       [SETTING_IDS.pdfDark]: "dim",
       [SETTING_IDS.pdfReaderDark]: "follow",
       [SETTING_IDS.parseHelperUrl]: "http://127.0.0.1:48765",
-      [SETTING_IDS.parseHelperToken]: "",
       [SETTING_IDS.parseEngineDefault]: "auto",
       [SETTING_IDS.parseFormula]: false,
       [SETTING_IDS.parseOcr]: "auto",
@@ -21642,7 +21640,6 @@ var init_settings = __esm({
       [SETTING_IDS.pdfDark]: () => selectRow(SETTING_IDS.pdfDark, "PDF pages in dark mode", "When the board is dark. Off keeps white pages. Dim darkens the page. Invert flips the page colors. Marks stay readable.", ["off", "dim", "invert"]),
       [SETTING_IDS.pdfReaderDark]: () => selectRow(SETTING_IDS.pdfReaderDark, "PDF dark mode", "Off, Follow Roam, or On. Follow Roam is the default. On inverts the page canvas in Roam's own PDF window so the page matches a dark graph. Pictures drawn on the page invert with the text. Plexus paints them back when it can read their place. Highlights and parsed outlines stay. The reader beside the board is left alone.", ["off", "follow", "on"]),
       [SETTING_IDS.parseHelperUrl]: () => inputRow(SETTING_IDS.parseHelperUrl, "Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
-      [SETTING_IDS.parseHelperToken]: () => inputRow(SETTING_IDS.parseHelperToken, "Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address.", { password: true, placeholder: "Token" }),
       [SETTING_IDS.parseEngineDefault]: () => selectRow(SETTING_IDS.parseEngineDefault, "Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper.", ["auto", "builtin", "docling"]),
       [SETTING_IDS.parseFormula]: () => switchRow(SETTING_IDS.parseFormula, "Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
       [SETTING_IDS.parseOcr]: () => selectRow(SETTING_IDS.parseOcr, "Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR.", ["auto", "on", "off"]),
@@ -21737,7 +21734,6 @@ var init_settings = __esm({
       ]],
       ["group-parse", "PDF parse", "A local helper for harder PDFs, and how parsed text is inserted.", [
         SETTING_IDS.parseHelperUrl,
-        SETTING_IDS.parseHelperToken,
         SETTING_IDS.parseEngineDefault,
         SETTING_IDS.parseFormula,
         SETTING_IDS.parseOcr,
@@ -22593,7 +22589,7 @@ var init_tooltip_text = __esm({
       "parse.show-parsed": e("Show parsed", "Draw a soft box around every parsed block on the page, with a copy button at its left edge. Remembered on this device."),
       "page-chip.list": e("List", "Insert this list below the PDF."),
       "parse.helper-url": e("Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
-      "parse.helper-token": e("Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address."),
+      "parse.helper-token": e("Parse helper token", "Secret from the helper's first start. It stays on this device. Empty turns the helper off. Plexus sends it only to that address."),
       "parse.engine": e("Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper."),
       "parse.formula": e("Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
       "parse.ocr": e("Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR."),
@@ -64894,24 +64890,37 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     } catch {
     }
   };
-  let restored = false;
+  let migrated = false;
   const config = () => {
     const url = String(readSetting(settings, "parse-helper-url", "http://127.0.0.1:48765")).replace(/\/$/, "");
-    let token = String(readSetting(settings, "parse-helper-token", "") || "").trim();
-    const backup = readBackup();
-    if (!token && backup) {
-      token = backup;
-      if (!restored) try {
-        restored = true;
-        void Promise.resolve(setSetting?.(TOKEN_SETTING, backup)).catch(() => {
-        });
-      } catch {
+    let token = readBackup();
+    const legacy = String(readSetting(settings, TOKEN_SETTING, "") || "").trim();
+    if (legacy) {
+      if (!token) {
+        writeBackup(legacy);
+        token = readBackup();
       }
-    } else if (token && token !== backup) {
-      writeBackup(token);
+      if (token && !migrated) {
+        migrated = true;
+        try {
+          void Promise.resolve(setSetting?.(TOKEN_SETTING, "")).catch(() => {
+          });
+        } catch {
+        }
+      }
+      if (!token) token = legacy;
     }
     return { url, token };
   };
+  function migrateToken() {
+    config();
+  }
+  function setToken(value) {
+    const next = String(value ?? "").trim();
+    writeBackup(next);
+    invalidate();
+    return readBackup() === next;
+  }
   const call2 = (url, init, signal) => fetchFn(url, {
     ...init,
     targetAddressSpace: "loopback",
@@ -65054,7 +65063,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
   async function pair2({ signal, onWaiting } = {}) {
     const { url } = config();
     if (typeof fetchFn !== "function") return { ok: false, reason: "not-running" };
-    if (typeof setSetting !== "function") return { ok: false, reason: "no-settings" };
+    if (!storage || typeof storage.setItem !== "function") return { ok: false, reason: "no-storage" };
     const fetchToken = async () => {
       const timer = withTimeout(timeoutMs, signal);
       try {
@@ -65071,7 +65080,6 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
         body = null;
       }
       if (body?.helper !== HELPER_NAME || typeof body.token !== "string" || !body.token) return { ok: false, reason: "error" };
-      await setSetting(TOKEN_SETTING, body.token);
       writeBackup(body.token);
       invalidate();
       return { ok: true, version: body.version };
@@ -65399,6 +65407,8 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     health,
     status,
     pair: pair2,
+    setToken,
+    migrateToken,
     models,
     downloadModels,
     cancelModels,
@@ -81946,7 +81956,7 @@ function memoryStorage() {
   };
 }
 function renderEnginesPanel(doc, parent, deps = {}) {
-  const { client, device, setSetting, copy, toast, onUpdate } = deps;
+  const { client, device, copy, toast, onUpdate } = deps;
   const storage = deps.storage || memoryStorage();
   const platform = deps.platform || "mac";
   const pollMs = deps.pollMs > 0 ? deps.pollMs : DEFAULT_POLL_MS;
@@ -82296,6 +82306,7 @@ function renderEnginesPanel(doc, parent, deps = {}) {
       else if (result?.reason === "timeout") sayHere("No answer from the Mac dialog. Click Pair to try again.");
       else if (result?.reason === "window-closed") sayHere("This helper is older. Run plexus-parse-helper pair in Terminal, then click Pair.");
       else if (result?.reason === "not-running") sayHere("The helper is not running.");
+      else if (result?.reason === "no-storage") sayHere("This browser blocks local storage, so the token cannot be kept.");
       else sayHere("Could not pair.");
     } else if (id === "download") {
       await client?.downloadModels?.();
@@ -82309,11 +82320,13 @@ function renderEnginesPanel(doc, parent, deps = {}) {
       onUpdate?.();
     } else if (id === "save-token") {
       const value = String(tokenInput.value || "").trim();
-      if (!value || typeof setSetting !== "function") return;
-      await setSetting("parse-helper-token", value);
-      tokenInput.value = "";
-      client?.invalidate?.();
-      say("Token saved");
+      if (!value || typeof client?.setToken !== "function") return;
+      if (client.setToken(value)) {
+        tokenInput.value = "";
+        say("Token saved on this device");
+      } else {
+        say("This browser blocks local storage, so the token cannot be kept.");
+      }
     }
     await refresh();
   }
@@ -123221,15 +123234,17 @@ async function installPlexusDiagram({
       });
     });
   }
+  const tablesHelper = createHelperClient({ settings: extensionAPI?.settings, setSetting: (id, value) => extensionAPI?.settings?.set?.(id, value), fetch: win2.fetch?.bind(win2), storage: (() => {
+    try {
+      return win2.localStorage;
+    } catch {
+      return void 0;
+    }
+  })() });
+  tablesHelper.migrateToken();
   const pdfTables = createPdfTables({
     store: createParseStore({ indexedDB: win2.indexedDB }),
-    helper: createHelperClient({ settings: extensionAPI?.settings, setSetting: (id, value) => extensionAPI?.settings?.set?.(id, value), fetch: win2.fetch?.bind(win2), storage: (() => {
-      try {
-        return win2.localStorage;
-      } catch {
-        return void 0;
-      }
-    })() }),
+    helper: tablesHelper,
     fetchBytes: async (url) => {
       const res = await win2.fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

@@ -38520,9 +38520,8 @@ function createItemRenderer({
     const h = (Number(rec.header?.offsetHeight) || 0) + natural;
     return h > 0 ? h : null;
   };
-  const attrChipsOf = (rec, item) => {
+  const attrChipsOf = (rec, item, shown = null) => {
     if (item.kind === "board") return [];
-    const picked = lastBoard?.chips;
     const lines = [];
     const own2 = item.kind === "block" ? rec.refString : item.string;
     if (typeof own2 === "string") lines.push(...own2.split("\n"));
@@ -38531,7 +38530,7 @@ function createItemRenderer({
     for (const line of lines) {
       if (out.length >= ATTR_CHIPS_MAX) break;
       const name = attrNameOf(line);
-      if (!name || skipChildString(line) || !rec.propsLater && picked?.includes(name)) continue;
+      if (!name || skipChildString(line) || shown?.has(name)) continue;
       const value = plainText(line.slice(line.indexOf("::") + 2), 40);
       if (value) out.push(`${plainText(name, 24)}: ${value}`);
     }
@@ -38607,7 +38606,8 @@ function createItemRenderer({
     let at = 0;
     while (chips[at] && (chips[at].cls === "due" || chips[at].cls === "project" || chips[at].cls === "priority" || chips[at].cls === "repeat" || chips[at].cls === "status" || chips[at].cls === "waiting" || chips[at].cls === "gtd")) at += 1;
     chips.splice(at, 0, ...propChips.map((c) => ({ cls: "prop", text: `${c.name}: ${c.text}`, title: `${c.name}:: ${c.text}` })));
-    for (const text4 of attrChipsOf(rec, item)) chips.push({ cls: "attr", text: text4 });
+    const shown = propChips.length ? new Set(propChips.map((c) => c.name)) : null;
+    for (const text4 of attrChipsOf(rec, item, shown)) chips.push({ cls: "attr", text: text4 });
     return paintBadges(rec, chips, clear3);
   };
   const paintBadges = (rec, chips, clear3) => {
@@ -57700,16 +57700,19 @@ extendSession((session, api3) => {
     const item = board2?.items.get(uid);
     let row4 = null;
     if (isTableRow(item)) {
-      if (item.kind === "block" && item.target?.uid) row4 = laneRow(board2, item, api3.laneKids, api3.laneResolve);
+      const ref = item.kind === "block" && item.target?.uid ? item.target.uid : null;
+      const own2 = ref ? api3.laneResolve(ref) : item.string;
+      const lines = typeof own2 === "string" ? own2.split("\n").map((string) => ({ string, uid: null })) : [];
+      let more = [];
+      if (ref) more = api3.laneKids(ref) || [];
       else if (item.kind === "page" && item.target?.uid) {
-        let top = [];
         try {
-          top = host.pullTree?.(item.target.uid, 1, 40) || [];
+          more = host.pullTree?.(item.target.uid, 1, 40) || [];
         } catch {
-          top = [];
+          more = [];
         }
-        row4 = tableRow(board2, item, api3.laneResolve, [...item.content || [], ...top]);
-      } else row4 = tableRow(board2, item, api3.laneResolve);
+      }
+      row4 = tableRow(board2, item, api3.laneResolve, [...lines, ...ref ? [] : item.content || [], ...more]);
     }
     memo.set(uid, row4);
     return row4;
@@ -92802,6 +92805,7 @@ function mountKanban({
 
 // src/view/board-view.js
 init_attr_lanes();
+init_prop_chips();
 init_table();
 
 // src/view/props-panel.js
@@ -109058,7 +109062,7 @@ ${b.pageTitle || ""}`.toLowerCase().includes(words)) continue;
           const was = b.chips || [];
           void Promise.resolve(session.toggleBoardChip?.(arg)).then((ok) => {
             if (disposed || ok !== false) return;
-            toast(!was.includes(arg) && was.length >= 6 ? "Up to 6 card properties" : "This board can't store card properties");
+            toast(!was.includes(arg) && was.length >= PROP_CHIPS_CAP ? `Up to ${PROP_CHIPS_CAP} card properties` : "This board can't store card properties");
           }).catch(() => {
           });
         }

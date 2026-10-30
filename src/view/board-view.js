@@ -115,6 +115,7 @@ import { applyMotionClasses, motionProfile, resolveMotion } from "./motion.js";
 import { mountTable } from "./table-view.js";
 import { mountKanban } from "./kanban-view.js";
 import { laneFields } from "../model/attr-lanes.js";
+import { PROP_CHIPS_CAP } from "../model/prop-chips.js";
 import { tableRows } from "../model/table.js";
 import { createPropsPanel } from "./props-panel.js";
 import { PANEL_WIDTH_DEFAULT, nextPanelWidth } from "../model/info.js";
@@ -6467,7 +6468,7 @@ function buildBoardView(onFail, {
           const was = b.chips || [];
           void Promise.resolve(session.toggleBoardChip?.(arg)).then((ok) => {
             if (disposed || ok !== false) return;
-            toast(!was.includes(arg) && was.length >= 6 ? "Up to 6 card properties" : "This board can't store card properties");
+            toast(!was.includes(arg) && was.length >= PROP_CHIPS_CAP ? `Up to ${PROP_CHIPS_CAP} card properties` : "This board can't store card properties");
           }).catch(() => {});
         }
         break;

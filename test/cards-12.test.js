@@ -714,8 +714,15 @@ test("PXD-7 prop chips: only picked names show at detail, none at map, far cards
     h.r.scheduleContent({ visibleRect: { x: -50, y: -50, w: 700, h: 400 }, zoom: 1, tier: "detail" });
     h.flush();
     assert.deepEqual(chip("cardAAAA1"), ["Status: open"], "back near the view at detail the chip returns");
+    h.r.setShowBadges(true);
+    const attrs = (uid) => h.shell(uid)?.querySelectorAll?.(".pxd-badge-chip--attr").map((n) => n.textContent) || [];
+    assert.deepEqual(chip("cardAAAA1"), ["Status: open"], "badges on: the prop chip stays");
+    assert.deepEqual(attrs("cardAAAA1"), [], "badges on: the same name is not repeated as an attr chip");
+    assert.deepEqual(attrs("cardFAR01"), [], "the far card has no attr lines");
     reads.length = 0;
     h.load(rawBoard(children), { dirty: null, structural: true });
+    assert.deepEqual(attrs("cardAAAA1"), ["Status: open"], "with the pick gone the attr chip is back");
+    h.r.setShowBadges(false);
     assert.deepEqual(chip("cardAAAA1"), [], "clearing the pick removes the chips");
     assert.deepEqual(reads, []);
   } finally {

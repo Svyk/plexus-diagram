@@ -1,7 +1,7 @@
 // PXD-7 session calls for property chips. The board's plexus `chips` list is the only write. Card values are read
 // lazily, one card at a time, and only when the board has picks.
 import { PROP_CHIPS_KEY, propChipsOf, togglePropChip } from "./model/prop-chips.js";
-import { laneAttrOk, laneFields, laneRow } from "./model/attr-lanes.js";
+import { laneAttrOk, laneFields } from "./model/attr-lanes.js";
 import { isTableRow, tableRow } from "./model/table.js";
 import { extendSession } from "./session.js";
 
@@ -23,12 +23,17 @@ extendSession((session, api) => {
     const item = board?.items.get(uid);
     let row = null;
     if (isTableRow(item)) {
-      if (item.kind === "block" && item.target?.uid) row = laneRow(board, item, api.laneKids, api.laneResolve);
+      // The same lines the card's attr chips read: its own text (a ref card's block text) and children, then a ref
+      // card's block children or a page card's top-level blocks.
+      const ref = item.kind === "block" && item.target?.uid ? item.target.uid : null;
+      const own = ref ? api.laneResolve(ref) : item.string;
+      const lines = typeof own === "string" ? own.split("\n").map((string) => ({ string, uid: null })) : [];
+      let more = [];
+      if (ref) more = api.laneKids(ref) || [];
       else if (item.kind === "page" && item.target?.uid) {
-        let top = [];
-        try { top = host.pullTree?.(item.target.uid, 1, 40) || []; } catch { top = []; }
-        row = tableRow(board, item, api.laneResolve, [...(item.content || []), ...top]);
-      } else row = tableRow(board, item, api.laneResolve);
+        try { more = host.pullTree?.(item.target.uid, 1, 40) || []; } catch { more = []; }
+      }
+      row = tableRow(board, item, api.laneResolve, [...lines, ...(ref ? [] : item.content || []), ...more]);
     }
     memo.set(uid, row);
     return row;

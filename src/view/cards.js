@@ -6549,9 +6549,9 @@ export function createItemRenderer({
   };
 
   // ---------------------------------------------------------------- badges and focus (read-only, never touch the model)
-  const attrChipsOf = (rec, item) => {
+  // `shown` holds the names the card's property chips already show; those are not repeated here.
+  const attrChipsOf = (rec, item, shown = null) => {
     if (item.kind === "board") return [];
-    const picked = lastBoard?.chips;
     const lines = [];
     const own = item.kind === "block" ? rec.refString : item.string;
     if (typeof own === "string") lines.push(...own.split("\n"));
@@ -6560,8 +6560,7 @@ export function createItemRenderer({
     for (const line of lines) {
       if (out.length >= ATTR_CHIPS_MAX) break;
       const name = attrNameOf(line);
-      // A pick still waiting for its read keeps its plain attr chip, so the value does not blink out.
-      if (!name || skipChildString(line) || (!rec.propsLater && picked?.includes(name))) continue;
+      if (!name || skipChildString(line) || shown?.has(name)) continue;
       const value = plainText(line.slice(line.indexOf("::") + 2), 40);
       if (value) out.push(`${plainText(name, 24)}: ${value}`);
     }
@@ -6632,7 +6631,8 @@ export function createItemRenderer({
     let at = 0;
     while (chips[at] && (chips[at].cls === "due" || chips[at].cls === "project" || chips[at].cls === "priority" || chips[at].cls === "repeat" || chips[at].cls === "status" || chips[at].cls === "waiting" || chips[at].cls === "gtd")) at += 1;
     chips.splice(at, 0, ...propChips.map((c) => ({ cls: "prop", text: `${c.name}: ${c.text}`, title: `${c.name}:: ${c.text}` })));
-    for (const text of attrChipsOf(rec, item)) chips.push({ cls: "attr", text });
+    const shown = propChips.length ? new Set(propChips.map((c) => c.name)) : null;
+    for (const text of attrChipsOf(rec, item, shown)) chips.push({ cls: "attr", text });
     return paintBadges(rec, chips, clear);
   };
   const paintBadges = (rec, chips, clear) => {

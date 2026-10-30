@@ -111,6 +111,19 @@ test("PXD-7 cardPropChips: a page card reads the page's top-level attrs after it
   assert.deepEqual(session.cardPropChips("p2"), [{ name: "Status", text: "Only page" }]);
 });
 
+test("PXD-7 cardPropChips: a card's own text and a ref card's block text count, as for attr chips", async () => {
+  const { fake, session } = setup([
+    card("o", "Task\nStatus:: open", 20, 40, [attr("o1", "Author:: Ada")]),
+    card("s", "Status:: Done", 220, 40),
+    card("r", "((T))", 420, 40),
+  ], { v: 2 }, { pages: [{ title: "Src", uid: "SRC", children: [{ uid: "T", string: "Status:: Shipped", children: [{ uid: "T1", string: "Author:: Lin" }] }] }] });
+  await session.setBoardChips(["Status", "Author"]);
+  await fake.flush();
+  assert.deepEqual(session.cardPropChips("o"), [{ name: "Status", text: "open" }, { name: "Author", text: "Ada" }]);
+  assert.deepEqual(session.cardPropChips("s"), [{ name: "Status", text: "Done" }]);
+  assert.deepEqual(session.cardPropChips("r"), [{ name: "Status", text: "Shipped" }, { name: "Author", text: "Lin" }]);
+});
+
 test("PXD-7 no picks: no host reads at all", async () => {
   const { session, pulls } = setup([card("r", "((T))", 20, 40), ...cards()], { v: 2 }, { pages: [{ title: "Src", uid: "SRC", children: [{ uid: "T", string: "Target", children: [{ uid: "T1", string: "Status:: Review" }] }] }] });
   const before = pulls();

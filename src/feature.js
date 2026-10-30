@@ -2897,7 +2897,7 @@ export async function installPlexusDiagram({
 
   function unmount(rec) {
     if (!rec || !mounts.has(rec.native)) return;
-    if (rec.fullscreen && !stopped && !routeLeftZoomedDiagram(rec.uid)) {
+    if (rec.fullscreen && !stopped && active() && !routeLeftZoomedDiagram(rec.uid)) {
       coverHold = { uid: rec.uid, at: Date.now() };
       holdFsCover(doc, true);
     }

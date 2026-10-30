@@ -3136,7 +3136,9 @@ function buildBoardView(onFail, {
     const face = coverFaces.get(key);
     // A card never built (overview canvas) asks the cover store once; the load redraws the canvas.
     if (!face) { loadCover(key); return null; }
-    const src = face.state !== "loading" ? presentFace(key, face)?.src : null;
+    // PXD-1: the image only. presentFace also builds the highlight ticks, a walk of every board item per PDF card,
+    // and this runs per card on every canvas frame (map-tier pan on the PhD main board: ~50 ms a frame).
+    const src = face.state !== "loading" ? sharpOf(key, { state: face.state, src: face.src || "", w: face.w ?? null })?.src : null;
     if (!src) return null;
     let img = canvasCovers.get(src);
     if (!img) {

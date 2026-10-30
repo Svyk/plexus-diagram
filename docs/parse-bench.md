@@ -695,7 +695,7 @@ Label words in small scanned type can still be misread, so check a scanned table
 
 ### Every engine
 
-Seven ways to read a PDF. The first five stay on this device. Cloud sends the PDF out only after you confirm the cost. Bench numbers are from the tables above or from `docs/parse-bench.md`. LlamaParse prices are its published credits, $1.25 per 1,000. Agentic was 10 credits per page on 2026-10-09, with or without layout images (measured on two pages both ways). Mistral OCR is $4 per 1,000 pages on the model card checked 2026-10-09. LlamaParse was live-tested in Roam on 2026-10-09 through the hosted relay, including the confirm sheet. Mistral OCR is not live-tested yet.
+Seven ways to read a PDF. The first five stay on this device. Cloud sends the PDF out only after you confirm the cost. Bench numbers are from the tables in this file. LlamaParse prices are its published credits, $1.25 per 1,000. Agentic was 10 credits per page on 2026-10-09, with or without layout images (measured on two pages both ways). Mistral OCR is $4 per 1,000 pages on the model card checked 2026-10-09. LlamaParse was live-tested in Roam on 2026-10-09 through the hosted relay, including the confirm sheet. Mistral OCR is not live-tested yet.
 
 | Engine | What it reads | Install | Speed | Stays on this device? | Accuracy | Best for | When to use |
 |---|---|---|---|---|---|---|---|

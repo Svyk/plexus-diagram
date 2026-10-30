@@ -166,19 +166,24 @@ export function createAiTools(deps) {
       const rects = worldRects(board);
       let area = boardArea(board, rects);
       let cols = 4;
+      let into = null;
       if (args?.section) {
         const sec = board.items.get(boardUidOf(args.section));
         if (!sec || sec.type !== "section") throw new Error(`Not a section on this board: ${args.section}`);
         const r = rects.get(sec.uid);
         area = { x: r.x + 24, y: r.y + 60 };
         cols = Math.max(1, Math.floor((r.w - 24) / 320));
+        into = sec.uid;
       }
       const slots = autoPlace(cards.length, area, { cols });
       const list = cards.map((c, i) => {
         const text = String(c?.text ?? "").trim();
         if (!text) throw new Error("Every card needs text");
         const placed = Number.isFinite(c.x) && Number.isFinite(c.y);
-        return { string: text, x: placed ? c.x : slots[i].x, y: placed ? c.y : slots[i].y };
+        const card = { string: text, x: placed ? c.x : slots[i].x, y: placed ? c.y : slots[i].y };
+        // Auto-placed rows past the section's bottom still join it; auto-fit grows the section around them.
+        if (into && !placed) card.into = into;
+        return card;
       });
       const added = await run(context, args.board, (session) => session.addRefCards(list));
       return { added: added ?? [], count: (added ?? []).length };

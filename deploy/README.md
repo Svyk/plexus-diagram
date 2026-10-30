@@ -252,7 +252,7 @@ The Task tool and Better Tasks start off. Turn them on under Settings → Integr
 
 ## AI agents (Roam MCP)
 
-On Roam builds that support extension tools, Plexus registers six tools that Roam AI agents can call. The graph must be open in a Roam client. Writes are credited to the AI's "(AI)" user, and each call is one undo step.
+On Roam builds that support extension tools, Plexus registers six tools that Roam AI agents can call. The graph must be open in a Roam client. Blocks a tool call writes are credited to the AI's user (Roam's user-uid); Plexus's own later upkeep writes are not. Each call is one undo step, so a call that would need more than 45 writes is refused with an error: split it into smaller calls.
 
 - `list_boards` (read): boards in the graph, optionally filtered by page title.
 - `read_board` (read): a board as text, plus sections, cards and arrows with positions.

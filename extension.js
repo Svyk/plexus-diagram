@@ -53165,13 +53165,19 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     return ok;
   }
   let actingUser = null;
+  let actingLimit = null;
   function commit(ops, result, custom = null) {
     if (!ops.length) return Promise.resolve(result);
     const user = actingUser;
+    const limit = actingLimit;
     stampBoard(ops);
     const list = coalesce(ops);
     const runList = user ? list.map((op) => op.op === "keep" ? op : { ...op, user }) : list;
     const writes = list.filter((op) => op.op !== "keep").length;
+    if (limit && writes > limit) {
+      repull();
+      return Promise.reject(new Error(`This change needs ${writes} writes, but one undo step holds ${limit}. Split it into smaller calls.`));
+    }
     if (!bulkAllowed(writes)) {
       repull();
       return Promise.resolve(void 0);
@@ -53589,8 +53595,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const look = lookForNewString(string, setting("default-card-look", "block"));
     return look ? { ...layout, look } : layout;
   };
-  const cardAt = (t, string, x, y, size = null) => {
-    const parent = containerAt(board2, { x: x + (size?.w ?? DEFAULT_SIZES.card.w) / 2, y: y + (size?.h ?? DEFAULT_SIZES.card.h) / 2 }, { rects });
+  const cardAt = (t, string, x, y, size = null, into = null) => {
+    const parent = into && board2.items.get(into)?.type === "section" ? into : containerAt(board2, { x: x + (size?.w ?? DEFAULT_SIZES.card.w) / 2, y: y + (size?.h ?? DEFAULT_SIZES.card.h) / 2 }, { rects });
     const rel = toRelative(board2, parent, { x, y }, rects);
     const layout = withCardLook({ x: rel.x, y: rel.y }, string);
     if (Number.isFinite(size?.w)) layout.w = size.w;
@@ -54010,13 +54016,16 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     get gone() {
       return gone;
     },
-    asUser(userUid, fn) {
+    asUser(userUid, fn, { maxWrites } = {}) {
       const prev = actingUser;
+      const prevLimit = actingLimit;
       actingUser = typeof userUid === "string" && userUid ? userUid : null;
+      actingLimit = Number.isFinite(maxWrites) && maxWrites > 0 ? maxWrites : null;
       try {
         return fn(session);
       } finally {
         actingUser = prev;
+        actingLimit = prevLimit;
       }
     },
     get rects() {
@@ -54687,7 +54696,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     addRefCards(list) {
       const items = capBulk(list ?? [], emit2);
       return txn((t) => {
-        const ids = items.map(({ string, x, y, w, h }) => cardAt(t, string, x, y, w || h ? { w, h } : null));
+        const ids = items.map(({ string, x, y, w, h, into }) => cardAt(t, string, x, y, w || h ? { w, h } : null, into));
         applyFit(t, ids);
         return ids;
       });
@@ -118407,12 +118416,15 @@ function createAiTools(deps) {
     return withSession(uid, async (session) => {
       if (!session?.board) throw new Error("Board not loaded");
       let pending;
+      let ran = false;
       const go = () => {
-        pending = session.asUser(context?.tokenUserUid, () => fn(session));
+        ran = true;
+        pending = session.asUser(context?.tokenUserUid, () => fn(session), { maxWrites: MAX_GROUP_WRITES });
         return pending;
       };
       if (typeof context?.asTokenUser === "function") context.asTokenUser(go);
       else go();
+      if (!ran) throw new Error("Roam did not run the write");
       return pending;
     });
   };
@@ -118506,19 +118518,23 @@ function createAiTools(deps) {
       const rects = worldRects(board2);
       let area2 = boardArea(board2, rects);
       let cols = 4;
+      let into = null;
       if (args?.section) {
-        const sec = board2.items.get(String(args.section).trim().replace(/^\(\(|\)\)$/g, ""));
+        const sec = board2.items.get(boardUidOf(args.section));
         if (!sec || sec.type !== "section") throw new Error(`Not a section on this board: ${args.section}`);
         const r = rects.get(sec.uid);
         area2 = { x: r.x + 24, y: r.y + 60 };
         cols = Math.max(1, Math.floor((r.w - 24) / 320));
+        into = sec.uid;
       }
       const slots = autoPlace2(cards.length, area2, { cols });
       const list = cards.map((c, i) => {
         const text4 = String(c?.text ?? "").trim();
         if (!text4) throw new Error("Every card needs text");
         const placed = Number.isFinite(c.x) && Number.isFinite(c.y);
-        return { string: text4, x: placed ? c.x : slots[i].x, y: placed ? c.y : slots[i].y };
+        const card2 = { string: text4, x: placed ? c.x : slots[i].x, y: placed ? c.y : slots[i].y };
+        if (into && !placed) card2.into = into;
+        return card2;
       });
       const added = await run(context, args.board, (session) => session.addRefCards(list));
       return { added: added ?? [], count: (added ?? []).length };

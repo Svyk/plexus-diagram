@@ -297,3 +297,13 @@ test("a tool whose asTokenUser never runs the write rejects", async () => {
   const { tool } = setup();
   await assert.rejects(tool("add_section").handler({ board: "b1", title: "T" }, { tokenUserUid: "ai-user", asTokenUser: () => {} }), /did not run/);
 });
+
+test("add_cards: auto-placed cards past the section's bottom still join it and the section grows", async () => {
+  const { host, tool } = setup();
+  const before = worldRects(buildBoard(host.pullBoard("b1"))).get("s1");
+  const out = await tool("add_cards").handler({ board: "b1", section: "s1", cards: Array.from({ length: 6 }, (_, i) => ({ text: `row ${i}` })) }, ctx());
+  const board = buildBoard(host.pullBoard("b1"));
+  assert.ok(out.added.every((id) => board.items.get(id).parentUid === "s1"));
+  const after = worldRects(board).get("s1");
+  assert.ok(after.h > before.h);
+});

@@ -1900,8 +1900,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return look ? { ...layout, look } : layout;
   };
 
-  const cardAt = (t, string, x, y, size = null) => {
-    const parent = containerAt(board, { x: x + (size?.w ?? DEFAULT_SIZES.card.w) / 2, y: y + (size?.h ?? DEFAULT_SIZES.card.h) / 2 }, { rects });
+  // `into` names the section the card must join (an AI tool's target); otherwise the container under its centre.
+  const cardAt = (t, string, x, y, size = null, into = null) => {
+    const parent = into && board.items.get(into)?.type === "section" ? into
+      : containerAt(board, { x: x + (size?.w ?? DEFAULT_SIZES.card.w) / 2, y: y + (size?.h ?? DEFAULT_SIZES.card.h) / 2 }, { rects });
     const rel = toRelative(board, parent, { x, y }, rects);
     const layout = withCardLook({ x: rel.x, y: rel.y }, string);
     if (Number.isFinite(size?.w)) layout.w = size.w;
@@ -2981,7 +2983,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     addRefCards(list) {
       const items = capBulk(list ?? [], emit);
       return txn((t) => {
-        const ids = items.map(({ string, x, y, w, h }) => cardAt(t, string, x, y, w || h ? { w, h } : null));
+        const ids = items.map(({ string, x, y, w, h, into }) => cardAt(t, string, x, y, w || h ? { w, h } : null, into));
         applyFit(t, ids);
         return ids;
       });

@@ -482,7 +482,18 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
     event.stopPropagation?.();
     void act("save-token");
   });
-  advanced.append(summary, tokenInput, tokenSave);
+  const tokenForget = doc.createElement("button");
+  tokenForget.type = "button";
+  tokenForget.setAttribute("type", "button");
+  tokenForget.className = "pxd-engines__btn";
+  tokenForget.setAttribute("data-action", "forget-token");
+  tokenForget.setAttribute("data-tip", "engines.token-forget");
+  tokenForget.textContent = "Forget token";
+  bindTo(heldStatic)(tokenForget, "click", (event) => {
+    event.stopPropagation?.();
+    void act("forget-token");
+  });
+  advanced.append(summary, tokenInput, tokenSave, tokenForget);
   el.append(advanced);
 
   async function act(id) {
@@ -550,6 +561,11 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
       } else {
         say("This browser blocks local storage, so the token cannot be kept.");
       }
+    } else if (id === "forget-token") {
+      if (typeof client?.setToken !== "function") return;
+      client.setToken("");
+      tokenInput.value = "";
+      say("Token removed from this device. The helper is off until you pair again.");
     }
     await refresh();
   }

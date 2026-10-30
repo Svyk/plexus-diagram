@@ -437,6 +437,15 @@ test("a manual token is saved on this device through the client and clears the f
   assert.equal(input.value, "");
 });
 
+test("Forget token clears the token on this device, which turns the helper off", async () => {
+  const client = fakeClient({ state: "ready", paired: true });
+  const { panel } = mount({ client, toast: () => {} });
+  await tick();
+  panel.el.querySelector('[data-action="forget-token"]').click();
+  await tick();
+  assert.ok(client.state.calls.some((c) => c[0] === "setToken" && c[1] === ""));
+});
+
 test("rendering the panel and the strip fetches nothing by itself without a client", async () => {
   const stub = createDomStub();
   const parent = stub.document.createElement("div");

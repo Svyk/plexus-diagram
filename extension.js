@@ -22589,7 +22589,7 @@ var init_tooltip_text = __esm({
       "parse.show-parsed": e("Show parsed", "Draw a soft box around every parsed block on the page, with a copy button at its left edge. Remembered on this device."),
       "page-chip.list": e("List", "Insert this list below the PDF."),
       "parse.helper-url": e("Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
-      "parse.helper-token": e("Parse helper token", "Secret from the helper's first start. It stays on this device. Empty turns the helper off. Plexus sends it only to that address."),
+      "parse.helper-token": e("Parse helper token", "Secret from the helper's first start. It stays on this device. Forget token in Engines turns the helper off. Plexus sends it only to that address."),
       "parse.engine": e("Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper."),
       "parse.formula": e("Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
       "parse.ocr": e("Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR."),
@@ -22644,6 +22644,7 @@ var init_tooltip_text = __esm({
       "engines.update": e("Update Plexus", "The helper is newer than this Plexus. Reload the extension from Roam Depot."),
       "engines.copy": e("Copy command", "Copy the command, then paste it in Terminal."),
       "engines.token-save": e("Save token", "Store a token you copied by hand. Pair is easier."),
+      "engines.token-forget": e("Forget token", "Remove the helper token from this device. The helper stays off until you pair again."),
       "parse.cancel": e("Cancel", "Stop this parse. Nothing is written to the graph."),
       "parse.sync": e("Sync scroll", "Parsed scrolling follows the reader. Click to unlock."),
       "parse.copy": e("Copy", "Copy Markdown. One table copies as CSV. Shift copies tables as CSV."),
@@ -82260,7 +82261,18 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     event.stopPropagation?.();
     void act("save-token");
   });
-  advanced.append(summary, tokenInput, tokenSave);
+  const tokenForget = doc.createElement("button");
+  tokenForget.type = "button";
+  tokenForget.setAttribute("type", "button");
+  tokenForget.className = "pxd-engines__btn";
+  tokenForget.setAttribute("data-action", "forget-token");
+  tokenForget.setAttribute("data-tip", "engines.token-forget");
+  tokenForget.textContent = "Forget token";
+  bindTo(heldStatic)(tokenForget, "click", (event) => {
+    event.stopPropagation?.();
+    void act("forget-token");
+  });
+  advanced.append(summary, tokenInput, tokenSave, tokenForget);
   el2.append(advanced);
   async function act(id) {
     if (disposed) return;
@@ -82327,6 +82339,11 @@ function renderEnginesPanel(doc, parent, deps = {}) {
       } else {
         say("This browser blocks local storage, so the token cannot be kept.");
       }
+    } else if (id === "forget-token") {
+      if (typeof client?.setToken !== "function") return;
+      client.setToken("");
+      tokenInput.value = "";
+      say("Token removed from this device. The helper is off until you pair again.");
     }
     await refresh();
   }

@@ -313,7 +313,7 @@ export function installPublicApi(api, { win = globalThis.window ?? globalThis, C
   return true;
 }
 
-// Delete the global only when it is still this object. Always fire unload.
+// Delete the global only when it is still this object. Fire unload only for the copy that installed it.
 export function uninstallPublicApi(api, { win = globalThis.window ?? globalThis, CustomEventCtor } = {}) {
   const target = win ?? globalThis;
   let ours = false;
@@ -323,6 +323,6 @@ export function uninstallPublicApi(api, { win = globalThis.window ?? globalThis,
   } catch {
     ours = false;
   }
-  fire(target, "plexus-diagram:unload", { apiVersion: API_VERSION }, CustomEventCtor);
+  if (ours) fire(target, "plexus-diagram:unload", { apiVersion: API_VERSION }, CustomEventCtor);
   return ours;
 }

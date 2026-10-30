@@ -82,11 +82,11 @@ test("editorPastePlan keeps one line with Roam and turns a root paste into child
   assert.deepEqual(editorPastePlan({ text: "a\n", value: "", isRoot: true }), { type: "roam" });
   assert.deepEqual(
     editorPastePlan({ text: "A\nB\nC\n", value: "HelloWorld", selectionStart: 5, selectionEnd: 5, isRoot: true }),
-    { type: "blocks", string: "HelloAWorld", children: ["B", "C"] },
+    { type: "blocks", string: "HelloAWorld", children: ["B", "C"], dropped: 0 },
   );
   assert.deepEqual(
     editorPastePlan({ text: "- a\n- b", value: "", isRoot: true }),
-    { type: "blocks", string: "- a", children: ["- b"] },
+    { type: "blocks", string: "- a", children: ["- b"], dropped: 0 },
   );
   const many = Array.from({ length: 60 }, (_, i) => `L${i}`).join("\n");
   const capped = editorPastePlan({ text: many, value: "", isRoot: true });
@@ -94,6 +94,7 @@ test("editorPastePlan keeps one line with Roam and turns a root paste into child
   assert.equal(capped.string, "L0");
   assert.equal(capped.children.length, 44);
   assert.equal(capped.children[43], "L44");
+  assert.equal(capped.dropped, 15);
   assert.equal(editorPastePlan({ text: "a\nb", imageCount: 1, isRoot: true }).type, "images");
   assert.equal(imageMarkdown(["https://x/a.png", "", "https://x/b.png"]), "![](https://x/a.png)![](https://x/b.png)");
   assert.deepEqual(inlineAtCaret("Hello", 5, 5, "![](u)"), { string: "Hello![](u)", caret: 11 });

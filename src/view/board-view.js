@@ -5700,7 +5700,7 @@ function buildBoardView(onFail, {
     const cards = cardsIn(selection.items);
     if (!cards.length) return;
     const b = board();
-    void session.setCollapsedMany?.(cards, cards.some((u) => !b.items.get(u).collapsed));
+    void session.setCollapsedMany?.(cards, cards.some((u) => !b.items.get(u)?.collapsed));
   };
   const alignSel = (mode, uids = selection.items) => {
     const r = rects();
@@ -5928,7 +5928,12 @@ function buildBoardView(onFail, {
     if (!urls.length) { if (!disposed) toast("Couldn't upload the image"); return; }
     // A drop on a card that is not being edited has no textarea; appending to an empty
     // snapshot would replace the block's text with the image.
-    if (!ta) {
+    const taLive = !!ta && ta.isConnected !== false;
+    if (taLive && ta.value !== snap.value) {
+      snap.value = ta.value;
+      snap.start = snap.end = Math.min(Number.isFinite(snap.start) ? snap.start : ta.value.length, ta.value.length);
+    }
+    if (!taLive) {
       let current = null;
       try { current = host?.blockString?.(blockUid); } catch { current = null; }
       if (typeof current !== "string") { if (!disposed) toast("Couldn't add the image to this card"); return; }
@@ -5936,7 +5941,7 @@ function buildBoardView(onFail, {
       snap.start = snap.end = current.length;
     }
     const placed = inlineAtCaret(snap.value, snap.start, snap.end, imageMarkdown(urls));
-    if (ta) {
+    if (taLive) {
       commitTextareaValue(ta, placed.string);
       try { ta.setSelectionRange?.(placed.caret, placed.caret); } catch { /* caret */ }
     }
@@ -5963,6 +5968,7 @@ function buildBoardView(onFail, {
       else await write();
     } catch { return; }
     if (disposed) return;
+    if (plan.dropped > 0) toast(`Pasted the first ${1 + plan.children.length} lines; ${plan.dropped} more were left out`);
     await remountEditor(cardUid);
   };
   const editorPaste = (event) => {
@@ -6402,7 +6408,7 @@ function buildBoardView(onFail, {
               try { current = host?.blockString?.(arg) || ""; } catch { current = ""; }
               const next = renameRegionCaption(current, caption);
               if (!next || next === current || typeof host?.updateString !== "function") return;
-              void host.updateString(arg, next);
+              Promise.resolve(host.updateString(arg, next)).catch(() => { if (!disposed) toast("Couldn't rename the region"); });
             },
           });
           break;

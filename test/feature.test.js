@@ -2159,3 +2159,37 @@ test("PXD-3: turning Plexus off while a zoomed board is fullscreen does not leav
     assert.ok(!t.doc.body.classList.contains("pxd-fs-cover"), "the article cover is gone");
   });
 });
+
+test("PXD-3: the sidebar-PDF and reader-dark marks stay off while Plexus is disabled, and go when it is turned off", async () => {
+  const prevMO = globalThis.MutationObserver;
+  globalThis.MutationObserver = class { observe() {} disconnect() {} takeRecords() { return []; } };
+  const sidebarWithPdf = (doc) => {
+    const side = doc.createElement("div");
+    side.id = "right-sidebar";
+    const pdf = doc.createElement("div");
+    pdf.cls.add("rm-pdf-container");
+    side.append(pdf);
+    doc.body.append(side);
+  };
+  try {
+    await withEnv({ settings: { enabled: false } }, async (t) => {
+      t.doc.documentElement = t.doc.root;
+      sidebarWithPdf(t.doc);
+      await t.install();
+      t.tick();
+      assert.equal(t.doc.root.cls.has("pxd-sidebar-pdf"), false, "no mark while disabled");
+    });
+    await withEnv({}, async (t) => {
+      t.doc.documentElement = t.doc.root;
+      sidebarWithPdf(t.doc);
+      await t.install();
+      t.tick();
+      assert.equal(t.doc.root.cls.has("pxd-sidebar-pdf"), true, "mark while enabled");
+      createSettingsPanel().settings.find((row) => row.id === "enabled").action.onChange(false);
+      t.tick();
+      assert.equal(t.doc.root.cls.has("pxd-sidebar-pdf"), false, "mark removed when turned off");
+    });
+  } finally {
+    globalThis.MutationObserver = prevMO;
+  }
+});

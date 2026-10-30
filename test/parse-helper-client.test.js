@@ -574,3 +574,15 @@ test("migrateToken moves the old setting at load without a request", () => {
   assert.deepEqual(cleared, [[TOKEN_SETTING, ""]]);
   assert.equal(fetched, 0);
 });
+
+test("setToken('') also clears a leftover old setting so Forget token sticks", () => {
+  const mem = new Map();
+  const storage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)) };
+  const sets = [];
+  const api = createHelperClient({ settings: {}, setSetting: (id, value) => sets.push([id, value]), storage });
+  api.setToken("tok");
+  assert.deepEqual(sets, []);
+  api.setToken("");
+  assert.deepEqual(sets, [[TOKEN_SETTING, ""]]);
+  assert.equal(mem.get(TOKEN_BACKUP_KEY), "");
+});

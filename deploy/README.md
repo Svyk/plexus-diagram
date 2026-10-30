@@ -171,7 +171,7 @@ The local helper reads scans with Apple Vision. On a Mac the default install is 
 | Install | Open Engines (from the notice under the reader header, or the pane gear), press Set up, copy the command and run it in Terminal. On a Mac it installs the light helper and starts it at login. Another system installs the Python helper |
 | Pair | When the command says "Back to Roam: click Pair", press Pair. The token is stored for you; nothing is pasted. Pairing is open for 90 seconds. `plexus-parse-helper-rs pair` (or `plexus-parse-helper pair` for the Docling add-on) reopens it |
 | Docling | Optional. Run the installer with `--docling`, then press Download on the helper row. A bar shows progress, and Cancel keeps what is fetched. The light helper has no model download |
-| By hand | Run `plexus-parse-helper-rs token` (or `plexus-parse-helper token`) and paste the result into Advanced in Engines, or into Settings, Plexus Diagram, Parse helper token |
+| By hand | Run `plexus-parse-helper-rs token` (or `plexus-parse-helper token`) and paste the result into Advanced in Engines. The token stays in this browser, not in graph settings, so each browser pairs once. Forget token there turns the helper off |
 | Scans | Read the scan appears on scanned pages when the helper's OCR is ready. The outline's Read text button asks for the same reading |
 
 ### In-browser reading (beta)
@@ -444,7 +444,6 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Performance | Collapse the outline | Fold an enhanced board once, so the outline does not list every card. Opening the bullet is remembered. |
 | Performance | Speed log | Record open time, click-to-paint, pan frame rate, and long tasks in this tab. Nothing is sent or saved. |
 | PDF parse | Parse helper address | Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse. |
-| PDF parse | Parse helper token | Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address. |
 | PDF parse | Default parse engine | Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper. |
 | PDF parse | Formula enrichment | Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse. |
 | PDF parse | Parse OCR | Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR. |

@@ -41,4 +41,4 @@ def token_matches(header: str | None, token: str) -> bool:
 
 def print_token_banner(token: str) -> None:
     print(f"Token: {token}")
-    print("Paste this in Roam → Settings → Plexus Diagram → Parse helper token")
+    print("Paste this in Plexus → Engines → Advanced → Save token")

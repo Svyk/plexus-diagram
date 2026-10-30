@@ -64918,6 +64918,11 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
   }
   function setToken(value) {
     const next = String(value ?? "").trim();
+    if (!next) try {
+      void Promise.resolve(setSetting?.(TOKEN_SETTING, "")).catch(() => {
+      });
+    } catch {
+    }
     writeBackup(next);
     invalidate();
     return readBackup() === next;

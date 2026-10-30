@@ -59,7 +59,7 @@ fn run(args: Vec<String>) -> Result<i32, String> {
             let (token, created) = load_or_create_token(&path).map_err(|err| err.to_string())?;
             if created {
                 eprintln!("Token: {token}");
-                eprintln!("Paste this in Roam → Settings → Plexus Diagram → Parse helper token");
+                eprintln!("Paste this in Plexus → Engines → Advanced → Save token");
             } else {
                 println!("{token}");
             }
@@ -104,7 +104,7 @@ fn serve(args: &[String]) -> Result<i32, String> {
     let (token, created) = load_or_create_token(&token_path).map_err(|err| err.to_string())?;
     if created {
         eprintln!("Token: {token}");
-        eprintln!("Paste this in Roam → Settings → Plexus Diagram → Parse helper token");
+        eprintln!("Paste this in Plexus → Engines → Advanced → Save token");
     }
     let mut allow = std::collections::HashSet::from(["https://roamresearch.com".to_string()]);
     for origin in flags(args, "--allow-origin") {

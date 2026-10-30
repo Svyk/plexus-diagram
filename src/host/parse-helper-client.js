@@ -249,6 +249,8 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
 
   function setToken(value) {
     const next = String(value ?? "").trim();
+    // A leftover old setting would migrate back in on the next read and undo Forget token.
+    if (!next) try { void Promise.resolve(setSetting?.(TOKEN_SETTING, "")).catch(() => {}); } catch { /* settings may be unavailable */ }
     writeBackup(next);
     invalidate();
     return readBackup() === next;

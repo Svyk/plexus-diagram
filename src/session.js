@@ -3791,7 +3791,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       return txn((t) => {
         let moves = 0;
         for (const group of readingOrder(board, rects)) {
-          group.uids.forEach((id, index) => {
+          // The static picture stays the board's first child.
+          const lead = group.parent === uid && readPlexus(kidsOf(raw)[0]?.[PROPS])?.type === "picture" ? 1 : 0;
+          group.uids.forEach((id, i) => {
+            const index = i + lead;
             const kids = kidsOf(rawNode(group.parent));
             const at = kids.findIndex((k) => k[UID] === id);
             if (at < 0 || at === index) return;

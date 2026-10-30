@@ -32,7 +32,7 @@ export const SPLIT_WATCH_MIN = 2000;
 const UID = ":block/uid";
 const KIDS = ":block/children";
 const kidsOf = (node) => (Array.isArray(node?.[KIDS]) ? node[KIDS] : []);
-const MARKERS = { edges: "edges", snapshots: "deep", regions: "deep", trails: "deep" };
+const MARKERS = { edges: "edges", snapshots: "deep", regions: "deep", trails: "deep", picture: "deep" };
 
 export function treeSize(node, cap = Infinity) {
   let n = 0;

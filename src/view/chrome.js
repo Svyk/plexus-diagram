@@ -275,6 +275,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const lensBtn = iconButton(groupView, "pxd-toolbar__lens", "tag", "Tags", "Tag lens: keep cards with one tag bright", () => on.toggleLens?.());
   const focusBtn = iconButton(groupView, "pxd-toolbar__focus", "eye-open", "Focus", "Focus mode: fade everything but the selection", () => on.toggleFocus?.());
   iconButton(groupView, "pxd-toolbar__present", "presentation", "Present", "Present this board", () => on.present?.());
+  const pictureBtn = iconButton(groupView, "pxd-toolbar__picture", "camera", "Picture", "Refresh the static picture", () => on.refreshPicture?.());
+  pictureBtn.style.display = "none";
   const moreBtn = iconButton(groupView, "pxd-toolbar__more", "more", "More", "More board actions", () => {
     const r = moreBtn.getBoundingClientRect();
     on.openMore?.({ x: r.left, y: r.bottom, w: r.width, h: r.height });
@@ -583,6 +585,14 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       if (next === boardDock) return;
       boardDock = next;
       applyControls();
+    },
+    setPicture({ on: shown = false, at = "" } = {}) {
+      pictureBtn.style.display = shown ? "" : "none";
+      if (!shown) return;
+      const when = at && !Number.isNaN(Date.parse(at)) ? new Date(at).toLocaleString() : "";
+      const text = when ? `Refresh the static picture (last ${when})` : "Refresh the static picture";
+      pictureBtn.title = text;
+      pictureBtn.setAttribute("aria-label", text);
     },
     setBoardColor(value) {
       let line = null;

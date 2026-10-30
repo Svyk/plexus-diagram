@@ -6,6 +6,7 @@ import "./session-source-order.js";
 import "./session-bucket.js";
 import "./templates.js";
 import "./snapshots.js";
+import "./picture.js";
 import "./views.js";
 import { createLifecycle } from "./lifecycle.js";
 import { installPlexusDiagram } from "./feature.js";

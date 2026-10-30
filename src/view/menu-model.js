@@ -569,6 +569,8 @@ export function buildMenu(kind, ctx = {}) {
         templateMenu(),
         make("save-template", "Save board as template"),
         ...snapshotMenus(),
+        make("keep-picture", "Keep a static picture", { checked: c.picture === true }),
+        ...(c.picture ? [make("refresh-picture", "Refresh static picture")] : []),
         make("save-view", "Save view…"),
         make("memory-lane", "Memory lane", { hint: "Shift T" }),
         ...(c.changes ? [make("changed-since", "Changed since last visit", { checked: c.changed === true })] : []),

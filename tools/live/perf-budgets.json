@@ -7,7 +7,7 @@
     "domMutationsSelect": 421,
     "domMutationsDrag": 370,
     "domMutationsType": 0,
-    "listenersPerBoard": 451,
+    "listenersPerBoard": 454,
     "layoutReadsPerPanFrame": 0
   },
   "300": {
@@ -18,7 +18,7 @@
     "domMutationsSelect": 421,
     "domMutationsDrag": 520,
     "domMutationsType": 0,
-    "listenersPerBoard": 451,
+    "listenersPerBoard": 454,
     "layoutReadsPerPanFrame": 0
   }
 }

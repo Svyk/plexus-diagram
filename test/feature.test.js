@@ -508,7 +508,7 @@ test("commands register in palette and slash, the context menu gets Enhance, and
   const t = setup();
   try {
     await t.install();
-    const labels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram", "Plexus: Export board as SVG", "Plexus: Copy board as text"];
+    const labels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram", "Plexus: Export board as SVG", "Plexus: Refresh static picture", "Plexus: Copy board as text"];
     assert.deepEqual([...t.commands.palette.keys()], ["Plexus: Commands…", "Plexus: New whiteboard here"]);
     assert.deepEqual([...t.commands.slash.keys()], labels);
     assert.deepEqual([...t.commands.context.keys()], ["Plexus: Enhance", "Show on board", "Add to board…", "Plexus: Mark image region"]);
@@ -523,7 +523,7 @@ test("commands register in palette and slash, the context menu gets Enhance, and
     assert.equal(t.commands.slash.has("Add to board…"), false);
     await t.lifecycle.dispose();
     assert.equal(t.commands.palette.size + t.commands.slash.size + t.commands.context.size, 0);
-    assert.equal(t.commands.removed.length, 12);
+    assert.equal(t.commands.removed.length, 13);
   } finally {
     t.restore();
   }
@@ -942,6 +942,7 @@ test("PF-1: Commands… lists every action and keeps the focused block after the
       "Restore native diagram",
       "Fullscreen this diagram",
       "Export board as SVG",
+      "Refresh static picture",
       "Copy board as text",
       "Add page…",
       "New drawing here",

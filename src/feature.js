@@ -3872,6 +3872,10 @@ export async function installPlexusDiagram({
     return rec?.view ?? null;
   }
 
+  function refreshPictureCommand(context) {
+    return targetView(context)?.refreshPicture?.();
+  }
+
   function exportSvgCommand(context) {
     return targetView(context)?.exportSvg?.({ download: true });
   }
@@ -3933,6 +3937,7 @@ export async function installPlexusDiagram({
     ["Plexus: Restore native diagram", restoreCommand],
     ["Plexus: Fullscreen this diagram", fullscreenCommand],
     ["Plexus: Export board as SVG", exportSvgCommand],
+    ["Plexus: Refresh static picture", refreshPictureCommand],
     ["Plexus: Copy board as text", copyOutlineCommand],
   ];
   // Sheet only: no slash command and no palette entry (PF-1).

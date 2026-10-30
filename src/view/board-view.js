@@ -83,6 +83,7 @@ import { cameraForCard } from "../model/zoom-open.js";
 import { itemSig } from "../model/boardsnap.js";
 import { captionForView, selectionViewRect } from "../model/view-save.js";
 import { PLEXUS_MIME, copyPayload, editorPastePlan, imageMarkdown, inlineAtCaret, parseClipboard, parsePastedText } from "../model/clipboard.js";
+import { PICTURE_MAX_SIDE, pictureString } from "../model/picture.js";
 import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../model/export.js";
 import { createInteractions, emptyLabelShouldDeleteEdge, whyLabelField } from "./interactions.js";
 import { openPagePicker } from "./board-picker.js";
@@ -217,12 +218,12 @@ const DEFAULT_HEIGHT = 560;
 // Chrome refuses canvases past ~16k px a side or ~268M px in all; toBlob then gives null. Stay well inside both.
 export const PNG_MAX_SIDE = 16384;
 export const PNG_MAX_AREA = 64e6;
-export function pngScale(w, h) {
+export function pngScale(w, h, maxSide = PNG_MAX_SIDE) {
   const width = Math.max(1, w), height = Math.max(1, h);
-  return Math.min(2, PNG_MAX_SIDE / width, PNG_MAX_SIDE / height, Math.sqrt(PNG_MAX_AREA / (width * height)) * 0.999);
+  return Math.min(2, maxSide / width, maxSide / height, Math.sqrt(PNG_MAX_AREA / (width * height)) * 0.999);
 }
 
-function rasterizeSvg(doc, svg) {
+function rasterizeSvg(doc, svg, maxSide = PNG_MAX_SIDE) {
   return new Promise((resolve, reject) => {
     const Img = doc.defaultView?.Image || globalThis.Image;
     if (typeof Img !== "function" || typeof URL === "undefined" || typeof Blob === "undefined") { resolve(null); return; }
@@ -235,7 +236,7 @@ function rasterizeSvg(doc, svg) {
         const canvas = doc.createElement("canvas");
         const w = img.naturalWidth || img.width || 1;
         const h = img.naturalHeight || img.height || 1;
-        const scale = pngScale(w, h);
+        const scale = pngScale(w, h, maxSide);
         canvas.width = Math.max(1, Math.round(w * scale));
         canvas.height = Math.max(1, Math.round(h * scale));
         const g = canvas.getContext?.("2d");
@@ -5549,6 +5550,7 @@ function buildBoardView(onFail, {
     const own = b?.plexus;
     chrome.toolbar.setBoardColor?.(own?.bgColor);
     chrome.toolbar.setBoardDock?.(own?.dock);
+    syncPicture();
     const ownPattern = BOARD_PATTERNS.includes(own?.bg) ? own.bg : null;
     const ownHex = hexColor(own?.bgColor) || null;
     const ownTone = ownHex ? null : (BOARD_TONES.includes(own?.bgColor) ? own.bgColor : null);
@@ -6034,7 +6036,7 @@ function buildBoardView(onFail, {
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true, refs: session.cardRefs };
-      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, filtering: Boolean(filterCard), strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null, refs: session.cardRefs, ...(b?.enhanced ? { chips: { picked: b.chips || [], fields: session.chipFieldsFor?.() || [] } } : {}) };
+      case "board-menu": return { picture: Boolean(b?.pictureUid), pictureAt: b?.picture?.at || "", inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, filtering: Boolean(filterCard), strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null, refs: session.cardRefs, ...(b?.enhanced ? { chips: { picked: b.chips || [], fields: session.chipFieldsFor?.() || [] } } : {}) };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -6692,6 +6694,8 @@ function buildBoardView(onFail, {
       }
       case "clear-bends": if (edgeUid) void session.updateEdge?.(edgeUid, { via: [] }); break;
       case "export-svg": void view.exportSvg({ download: true }); break;
+      case "keep-picture": void (b?.pictureUid ? removePicture() : savePicture({ turnOn: true })); break;
+      case "refresh-picture": void savePicture({ turnOn: false }); break;
       case "export-png": void exportPng(); break;
       case "copy-png": {
         let ids = uids;
@@ -7456,6 +7460,7 @@ function buildBoardView(onFail, {
       toggleFocus: () => toggleFocus(),
       toggleLens: () => toggleLens(),
       present: () => startPresent(),
+      refreshPicture: () => { void savePicture({ turnOn: false }); },
       openMore: ({ x, y } = {}) => { openMenuAt("board-menu", null, { x: x ?? 0, y: y ?? 0 }, viewCenterWorld()); },
       backToContent: () => fitAll(),
       setBackground: (patch) => {
@@ -11344,7 +11349,7 @@ function buildBoardView(onFail, {
       return data.startsWith("data:") ? data : "";
     } catch { return ""; }
   };
-  const svgOf = async (b, uids = null) => {
+  const svgOf = async (b, uids = null, { dark = root.classList.contains("pxd-root--dark") } = {}) => {
     const pictured = uids ? sliceBoard(b, uids) : b;
     const hrefs = new Map();
     for (const item of pictured.items.values()) {
@@ -11352,7 +11357,7 @@ function buildBoardView(onFail, {
       const data = await dataUrlFor(imageSrc(item.string));
       if (data) hrefs.set(item.uid, data);
     }
-    const text = boardToSvg(pictured, rects(), { dark: root.classList.contains("pxd-root--dark"), imageHrefs: hrefs });
+    const text = boardToSvg(pictured, rects(), { dark, imageHrefs: hrefs });
     return dropExternalImages(text);
   };
   const pngName = (b) => {
@@ -11383,6 +11388,58 @@ function buildBoardView(onFail, {
       if (!disposed) toast("PNG failed");
       return false;
     }
+  }
+  const pictureTitle = (b) => {
+    const title = String(b.title || "").trim();
+    if (title && title.toLowerCase() !== UNTITLED_BOARD.toLowerCase()) return title;
+    let pageTitle = "";
+    try { pageTitle = host?.pageTitleOf?.(b.uid) || ""; } catch { pageTitle = ""; }
+    return String(pageTitle).trim() || title || "board";
+  };
+  function syncPicture() {
+    const p = board()?.picture;
+    chrome.toolbar.setPicture?.({ on: Boolean(p), at: p?.at || "" });
+  }
+  // Old picture files are left in Roam's storage, as Roam does for a deleted image block: undo can bring the old block
+  // back, and a copied board or template can point at the same file.
+  let pictureBusy = null;
+  async function savePicture({ turnOn = false } = {}) {
+    if (pictureBusy) { toast("Picture is already updating"); return false; }
+    const b = board();
+    if (!b) return false;
+    if (!turnOn && !b.pictureUid) { toast("Turn on Keep a static picture first (board menu)"); return false; }
+    if (typeof host?.uploadFile !== "function") { toast("Upload is not available here"); return false; }
+    let done;
+    pictureBusy = new Promise((resolve) => { done = resolve; });
+    try {
+      const blob = await rasterizeSvg(doc, await svgOf(b, null, { dark: false }), PICTURE_MAX_SIDE);
+      if (!blob || disposed) { if (!disposed) toast("Picture failed"); return false; }
+      const file = new File([blob], pngName(b), { type: "image/png" });
+      const url = String(await host.uploadFile(file) || "");
+      if (!url) { if (!disposed) toast("Picture failed"); return false; }
+      const had = Boolean(board()?.pictureUid);
+      const kept = await session.keepPicture({
+        at: new Date().toISOString(),
+        string: pictureString({ url, title: pictureTitle(b), date: localDay() }),
+        create: turnOn,
+      });
+      if (!kept) { try { await host.deleteFile?.(url); } catch { /* nothing points at it */ } if (!disposed) toast("Static picture is off"); return false; }
+      if (!disposed) { toast(had ? "Static picture updated" : "Static picture saved"); syncPicture(); }
+      return true;
+    } catch {
+      if (!disposed) toast("Picture failed");
+      return false;
+    } finally {
+      pictureBusy = null;
+      done();
+    }
+  }
+  async function removePicture() {
+    if (pictureBusy) await pictureBusy;
+    const dropped = await session.dropPicture();
+    if (dropped === false) return false;
+    if (!disposed) { toast("Static picture removed"); syncPicture(); }
+    return true;
   }
   async function copySelectionPng(uids) {
     const b = board();
@@ -11720,6 +11777,8 @@ function buildBoardView(onFail, {
       return text;
     },
     async exportPng() { return exportPng(); },
+    refreshPicture() { return savePicture({ turnOn: false }); },
+    pictureState() { const p = board()?.picture; return { on: Boolean(p), at: p?.at || "" }; },
     addPage(at = null) { addPage(at); },
     movePdfsToPages() { return movePdfsToPages(); },
     foldTableCaptions() { return foldTableCaptions(); },

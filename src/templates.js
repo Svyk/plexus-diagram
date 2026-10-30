@@ -53,8 +53,10 @@ extendSession((session, api) => {
   };
 
   session.saveAsTemplate = async () => {
-    const tree = api.rawNode(api.uid);
-    if (!tree) return null;
+    const raw = api.rawNode(api.uid);
+    if (!raw) return null;
+    // A board made from the template starts without a static picture: that stays the user's choice.
+    const tree = { ...raw, ":block/children": (raw[":block/children"] || []).filter((k) => api.rawPlexus(k[":block/uid"])?.type !== "picture") };
     const pageUid = await host.ensurePage?.(TEMPLATE_PAGE);
     if (!pageUid) {
       api.emit("toast", { message: "Couldn't open the templates page." });

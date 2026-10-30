@@ -18,6 +18,7 @@ Boards that follow a source, sections that write back to the graph, and a faster
 - **Drop a card on a child row.** Dragging a card onto another card's child row adds the card's ref under that row, in one undo step. Shift moves the card instead.
 - **Plexus tools for Roam AI agents.** On Roam builds that support extension tools, AI agents on Roam MCP can list and read boards, add cards and sections, connect cards and arrange a board. Their writes are credited to the AI, one undo step per call.
 - **Card properties.** Board menu, Card properties: pick up to six `Name::` attributes to show as read-only chips on cards at detail zoom. Only the board's own pick is written.
+- **Keep a static picture.** Board menu, Keep a static picture, saves the board as one image block, the first child of the board block, so readers without Plexus (public graphs, Roam Publish) see it. Off until you turn it on; it refreshes only by hand (Refresh static picture, the camera button, or Plexus: Refresh static picture).
 - **Add to Desk.** The card menu adds a card to Roam's Desk, written the way Roam writes it. Plexus stays out of Roam's Sidecar window, and its fullscreen and PDF styles no longer leak into it.
 - **Contents panel.** The panel's Outline tab is now Contents: sections, landmarks, trails and saved views in outline order. Click a row to fly there.
 - **Parse helper token in this browser.** The token is kept in this browser, not in graph settings, so members of a shared graph cannot read it. An old value moves over once. Forget token in Engines turns the helper off.

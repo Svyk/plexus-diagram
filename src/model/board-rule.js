@@ -6,7 +6,7 @@
 
 export const BOARD_MEMBER_NAME = "board-member";
 
-const CONTAINERS = ["edges", "snapshots", "regions", "trails"].map((t) => `"${t}"`).join(" ");
+const CONTAINERS = ["edges", "snapshots", "regions", "trails", "picture"].map((t) => `"${t}"`).join(" ");
 
 // Branch 1: a direct child of the board that is not a container block (Connections, snapshots, regions, trails).
 // Branch 2: a child of a section that sits anywhere under the board (nested sections included).

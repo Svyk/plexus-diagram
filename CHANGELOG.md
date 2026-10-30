@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Card properties.** Board menu, Card properties: pick up to six Name:: attributes to show as read-only chips on cards at detail zoom. The pick is stored on the board block only, cards read their values only when on screen at detail zoom, and a board with no picks reads nothing while you look around.
+- **Keep a static picture.** Board menu, **Keep a static picture**, saves the board as one image block, the first child of the board block, so readers without Plexus (public graphs, Roam Publish) see it when they expand the board block. It is off until you turn it on, and refreshes only by hand: **Refresh static picture** in the menu, the camera button in the toolbar, or **Plexus: Refresh static picture**. The picture is light, at most 4096 px on a side, and the old file stays in Roam's storage, as it does when you delete any image block, so undo still shows it.
 
 ## 3.37.0 — 2026-10-17
 

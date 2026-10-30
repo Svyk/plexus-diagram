@@ -34,6 +34,7 @@ export const TIP_TEXT = {
   "toolbar.lens": e("Tags", "Tag lens: keep the cards with one tag bright and dim the rest."),
   "toolbar.focus": e("Focus", "Fade everything except the selected cards and what they connect to.", "F"),
   "toolbar.present": e("Present", "Step through the sections full screen, one frame at a time.", "P"),
+  "toolbar.picture": e("Picture", "Refresh the static picture that readers without Plexus see."),
   "toolbar.more": e("More", "More board actions: export, templates, dock position, layouts and views."),
   "toolbar.zoom-out": e("Zoom out", "Make everything on the board smaller.", "⌘ −"),
   "toolbar.zoom": e("Zoom", "The current zoom. Click to return to 100%.", "⇧ 0"),

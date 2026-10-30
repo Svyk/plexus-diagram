@@ -10,6 +10,7 @@ A Heptabase-style whiteboard for Roam `{{[[diagram]]}}` blocks. Cards, colored s
 - **Plexus: New whiteboard here** (palette or slash) creates `{{[[diagram]]:Untitled board}}` under the focused block and opens it.
 - **Plexus: Commands…** (palette) lists every action and keeps the block that was focused: Enhance, Restore, Fullscreen, Export board as SVG, and Copy board as text. Slash still runs each action by its **Plexus:** name.
 - **Plexus: Enhance this diagram** turns an existing native diagram into a board. Native node positions, groups (become sections), and edges (become connections) are imported. With Every diagram is a Plexus board off, native diagrams you never enhance are never touched.
+- **Keep a static picture** (board menu) is opt-in per board. It writes the PNG export as the first child of the board block, so readers without Plexus (public graphs, Roam Publish) see the board when they expand that block (Roam shows them an empty native diagram above it). It refreshes only by hand: **Refresh static picture** in the menu, the camera button in the toolbar, or **Plexus: Refresh static picture**. The picture is light, at most 4096 px on its longest side, and the old file stays in Roam's storage, as it does when you delete any image block, so undo still shows it. It is not Snapshots, which save layouts.
 - **Plexus: Restore native diagram** gives the block back to Roam's React Flow view. Content is not deleted.
 - Opening a board's block page (zoomed in) shows it full screen. **Plexus: Fullscreen this diagram** does the same from anywhere.
 

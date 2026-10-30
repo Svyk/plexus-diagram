@@ -27,6 +27,7 @@ import { drawingRefModel, isDrawingString } from "./drawing-card.js";
 import { isContainerString, parseRegion } from "./regions.js";
 import { listFromNodes } from "./snapshots.js";
 import { parseTrails } from "./trails.js";
+import { imageSrc } from "./export.js";
 import { highlightModel } from "./highlight.js";
 import { withTitle } from "./linked-cards.js";
 import { readWhy } from "./why.js";
@@ -189,6 +190,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
   let snapshotsUid = null;
   let regionsUid = null;
   let trailsUid = null;
+  let pictureUid = null;
   boardKids.forEach((child, index) => {
     const marker = readPlexus(child[":block/props"])?.type;
     if (containerUid === null && marker === "edges") {
@@ -198,6 +200,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
     if (snapshotsUid === null && marker === "snapshots") snapshotsUid = child[":block/uid"];
     if (regionsUid === null && marker === "regions") regionsUid = child[":block/uid"];
     if (trailsUid === null && marker === "trails") trailsUid = child[":block/uid"];
+    if (pictureUid === null && marker === "picture") pictureUid = child[":block/uid"];
   });
 
   const sectionDefaults = normalizeSectionDefaults(plexus?.defaults?.section);
@@ -206,8 +209,10 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
     const siblings = [];
     for (const child of children) {
       const cuid = child[":block/uid"];
-      if (cuid === containerUid || cuid === snapshotsUid || cuid === regionsUid || cuid === trailsUid) continue;
+      if (cuid === containerUid || cuid === snapshotsUid || cuid === regionsUid || cuid === trailsUid || cuid === pictureUid) continue;
       const cplexus = readPlexus(child[":block/props"]);
+      // A second picture block (a native copy from another board) is not a card either.
+      if (depth === 0 && cplexus?.type === "picture") continue;
       const cstring = child[":block/string"] ?? "";
       const heading = child[":block/heading"] || 0;
       const kids = sortedChildren(child);
@@ -427,12 +432,20 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
     snapshotsUid,
     snapshots: listFromNodes(sortedChildren(snapshotsUid ? boardKids.find((child) => child[":block/uid"] === snapshotsUid) : null)),
     regionsUid,
+    pictureUid,
+    picture: pictureOfNode(pictureUid ? boardKids.find((child) => child[":block/uid"] === pictureUid) : null),
     trailsUid,
     trails: parseTrails(trailsUid ? boardKids.find((child) => child[":block/uid"] === trailsUid) : null),
     views: viewsOf(boardKids, regionsUid),
     childCount: boardKids.length,
     edges,
   };
+}
+
+function pictureOfNode(node) {
+  if (!node) return null;
+  const at = readPlexus(node[":block/props"])?.at;
+  return { uid: node[":block/uid"], url: imageSrc(node[":block/string"] ?? ""), at: typeof at === "string" ? at : "" };
 }
 
 // Visual height of a collapsed section. Stored :plexus h is left alone.

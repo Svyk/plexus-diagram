@@ -3721,7 +3721,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         const count = kids.filter((k) => {
           const kp = k?.[":block/props"];
           const type = kp && typeof kp === "object" ? plainKeys(kp)?.plexus?.type : "";
-          return type !== "edges" && type !== "snapshots" && type !== "regions";
+          return type !== "edges" && type !== "snapshots" && type !== "regions" && type !== "picture";
         }).length;
         const edited = res[":edit/time"];
         out.push({

@@ -2935,20 +2935,34 @@ function buildBoardView(onFail, {
     const n = Number(value);
     return Number.isInteger(n) && n >= 1 ? n : null;
   };
-  const rowsForCover = (url) => {
-    const key = coverKey(url);
-    if (!key) return [];
-    const rows = [];
-    for (const other of board()?.items.values() || []) {
+  // PXD-1: one walk of the board's highlights per board (and at most per 30 s, for page urls that change under a
+  // board that did not), keyed by cover. Each PDF card walked every item with two host reads per highlight on every
+  // shell paint: ~150 ms of the PhD main board's open tail and its zoom-in to detail.
+  let coverRowsMemo = null;
+  const COVER_ROWS_TTL_MS = 30000;
+  const coverRowsIndex = () => {
+    const current = board();
+    const at = Date.now();
+    if (coverRowsMemo && coverRowsMemo.board === current && Math.abs(at - coverRowsMemo.at) < COVER_ROWS_TTL_MS) return coverRowsMemo.byKey;
+    const byKey = new Map();
+    for (const other of current?.items.values() || []) {
       if (other?.kind !== "highlight" || !other.target?.uid) continue;
       let pageUid = "";
       let pageUrl = "";
       try { pageUid = host?.blockPageUid?.(other.target.uid) || ""; } catch { pageUid = ""; }
       try { pageUrl = pageUid ? (host?.pdfPageUrl?.(pageUid) || "") : ""; } catch { pageUrl = ""; }
-      if (coverKey(pageUrl) !== key) continue;
-      rows.push({ page: other.highlight?.page, color: other.highlight?.color || "", highlight: other.highlight });
+      const key = coverKey(pageUrl);
+      if (!key) continue;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push({ page: other.highlight?.page, color: other.highlight?.color || "", highlight: other.highlight });
     }
-    return rows;
+    coverRowsMemo = { board: current, at, byKey };
+    return byKey;
+  };
+  const rowsForCover = (url) => {
+    const key = coverKey(url);
+    if (!key) return [];
+    return [...coverRowsIndex().get(key) || []];
   };
   const ticksFor = (url, pageCount) => {
     const rows = rowsForCover(url);

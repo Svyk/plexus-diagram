@@ -21091,7 +21091,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: true, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, zoomVarScope: true, handlesWrap: true, seedRows: true, canvasPrebuild: true, cardRowDrop: true, slicedCards: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: true, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, zoomVarScope: true, handlesWrap: true, seedRows: true, canvasPrebuild: true, cardRowDrop: true, slicedCards: true, slicedDerived: true };
 }
 function parseSpeedFlags(raw) {
   const base2 = defaultSpeedFlags();
@@ -21545,7 +21545,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "zoomVarScope", "handlesWrap", "seedRows", "canvasPrebuild", "cardRowDrop", "slicedCards"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "zoomVarScope", "handlesWrap", "seedRows", "canvasPrebuild", "cardRowDrop", "slicedCards", "slicedDerived"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -47191,6 +47191,59 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       return null;
     }
   }
+  const slicedDerivedOn = () => {
+    try {
+      return notedSpeedFlags().slicedDerived !== false;
+    } catch {
+      return true;
+    }
+  };
+  const refreshDerived = (uid, tree, stamp2) => {
+    rederives.get(uid)?.();
+    let found = null;
+    let at = 0;
+    let links = null;
+    const badges = /* @__PURE__ */ new Map();
+    const cancel = sharedBgBudget().run(() => {
+      if (!found) {
+        try {
+          found = collectTargets(tree);
+        } catch {
+          found = { stats: [] };
+        }
+        return false;
+      }
+      if (at < found.stats.length) {
+        try {
+          const res = host.cardStats(found.stats.slice(at, at + STATS_PART), { boardUid: uid });
+          if (res instanceof Map) for (const [key, stat] of res) badges.set(key, stat);
+        } catch {
+        }
+        at += STATS_PART;
+        return false;
+      }
+      if (links == null) {
+        try {
+          links = linksFromTree(uid, tree) || [];
+        } catch {
+          links = [];
+        }
+        return false;
+      }
+      if (rederives.get(uid) === cancel) rederives.delete(uid);
+      derivedLive.set(uid, { stamp: null, badges, links });
+      let packed = null;
+      try {
+        packed = packDerived(badges, links);
+      } catch {
+        packed = null;
+      }
+      if (modelStore?.stampOf(uid) === stamp2) void modelStore.putDerived(uid, stamp2, packed);
+      markVerified(uid);
+      return true;
+    }, { label: "derived", partMs: 4 });
+    rederives.set(uid, cancel);
+  };
   let modelStore = null;
   const unverified = /* @__PURE__ */ new Map();
   const verifyListeners = /* @__PURE__ */ new Map();
@@ -47200,6 +47253,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const checkDelay = /* @__PURE__ */ new Map();
   const keeps = /* @__PURE__ */ new Map();
   const refreshes = /* @__PURE__ */ new Map();
+  const rederives = /* @__PURE__ */ new Map();
   const CHECK_QUIET_MS = 1500;
   const CHECK_SLICE_MS = 20;
   const CHECK_BATCH = 250;
@@ -47336,7 +47390,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     checkTimers.delete(uid);
   };
   const retryCheck = (uid) => {
-    if (checkTimers.has(uid) || checks.has(uid) || !unverified.has(uid)) return;
+    if (checkTimers.has(uid) || checks.has(uid) || rederives.has(uid) || !unverified.has(uid)) return;
     const split = splitWatches.get(uid);
     if (!split || split.disposed) return;
     if (split.held) {
@@ -47364,7 +47418,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   };
   const scheduleCheck = (uid) => {
     clearCheckTimer(uid);
-    if (checks.has(uid) || !unverified.has(uid)) return;
+    if (checks.has(uid) || rederives.has(uid) || !unverified.has(uid)) return;
     let stopped = false;
     const cancel = backgroundRead(uid, "check", (tree, stamp2) => {
       checks.delete(uid);
@@ -47381,6 +47435,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (split && !split.disposed) changed2 = split.reseed(tree, { contents: true }) !== false;
       stats.checks = (stats.checks || 0) + 1;
       if (changed2) stats.checkChanges = (stats.checkChanges || 0) + 1;
+      if (!changed2 && derivedOn() && slicedDerivedOn() && modelStore?.stampOf(uid) === stamp2) {
+        refreshDerived(uid, tree, stamp2);
+        return;
+      }
       let packed;
       if (derivedOn()) {
         try {
@@ -48840,7 +48898,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       for (const timer of checkTimers.values()) clearTimeout(timer);
       checkTimers.clear();
       checkDelay.clear();
-      for (const jobs of [checks, keeps, refreshes]) {
+      for (const jobs of [checks, keeps, refreshes, rederives]) {
         for (const cancel of jobs.values()) {
           try {
             cancel();
@@ -104663,11 +104721,14 @@ function buildBoardView(onFail, {
     const n3 = Number(value);
     return Number.isInteger(n3) && n3 >= 1 ? n3 : null;
   };
-  const rowsForCover = (url) => {
-    const key = coverKey(url);
-    if (!key) return [];
-    const rows = [];
-    for (const other of board2()?.items.values() || []) {
+  let coverRowsMemo = null;
+  const COVER_ROWS_TTL_MS = 3e4;
+  const coverRowsIndex = () => {
+    const current3 = board2();
+    const at = Date.now();
+    if (coverRowsMemo && coverRowsMemo.board === current3 && Math.abs(at - coverRowsMemo.at) < COVER_ROWS_TTL_MS) return coverRowsMemo.byKey;
+    const byKey = /* @__PURE__ */ new Map();
+    for (const other of current3?.items.values() || []) {
       if (other?.kind !== "highlight" || !other.target?.uid) continue;
       let pageUid2 = "";
       let pageUrl = "";
@@ -104681,10 +104742,18 @@ function buildBoardView(onFail, {
       } catch {
         pageUrl = "";
       }
-      if (coverKey(pageUrl) !== key) continue;
-      rows.push({ page: other.highlight?.page, color: other.highlight?.color || "", highlight: other.highlight });
+      const key = coverKey(pageUrl);
+      if (!key) continue;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push({ page: other.highlight?.page, color: other.highlight?.color || "", highlight: other.highlight });
     }
-    return rows;
+    coverRowsMemo = { board: current3, at, byKey };
+    return byKey;
+  };
+  const rowsForCover = (url) => {
+    const key = coverKey(url);
+    if (!key) return [];
+    return [...coverRowsIndex().get(key) || []];
   };
   const ticksFor = (url, pageCount) => {
     const rows = rowsForCover(url);
@@ -118794,13 +118863,28 @@ async function installPlexusDiagram({
     cardChips.scan(doc?.body);
   };
   const readCardStamps = (uids) => {
+    const next = /* @__PURE__ */ new Map();
+    if (typeof host.pullMany === "function") {
+      let rows = null;
+      try {
+        rows = uids.length ? host.pullMany("[:block/uid :edit/time]", uids) : [];
+      } catch {
+        rows = null;
+      }
+      if (!Array.isArray(rows) || uids.length && !rows.length) return next;
+      for (const row4 of rows) {
+        const uid = row4?.[":block/uid"];
+        if (typeof uid === "string") next.set(uid, row4[":edit/time"] ?? null);
+      }
+      next.gone = new Set(uids.filter((uid) => !next.has(uid)));
+      return next;
+    }
     let edits = [];
     try {
       edits = uids.length && typeof host.q === "function" ? host.q("[:find ?u ?t :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/time ?t]]", uids) || [] : [];
     } catch {
       edits = [];
     }
-    const next = /* @__PURE__ */ new Map();
     for (const row4 of edits) {
       if (Array.isArray(row4) && row4.length >= 2) next.set(row4[0], row4[1]);
     }
@@ -118883,6 +118967,12 @@ async function installPlexusDiagram({
       while (i < due.length) {
         const uid = due[i++];
         if (editSeen.has(uid) && editSeen.get(uid) === (next.has(uid) ? next.get(uid) : null)) continue;
+        if (next.gone?.has(uid)) {
+          editSeen.set(uid, null);
+          previewBoards.delete(uid);
+          cardCache.setBoard(uid, "", []);
+          continue;
+        }
         if (shown.has(uid)) {
           const board2 = shown.get(uid);
           if (board2) {

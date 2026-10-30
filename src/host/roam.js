@@ -1119,6 +1119,44 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     derivedLive.set(uid, { stamp: null, badges, links });
     try { return packDerived(badges, links); } catch { return null; }
   }
+  // PXD-1 (speed flag slicedDerived). A check that found the board unchanged refreshes the stored badges and links,
+  // then marks the board verified, in background parts of STATS_PART cards: recomputeDerived in one part was a 5 s
+  // task on the PhD main board (1,500 cards' stats, then the links query) ~20 s after every cold open.
+  const slicedDerivedOn = () => { try { return notedSpeedFlags().slicedDerived !== false; } catch { return true; } };
+  const refreshDerived = (uid, tree, stamp) => {
+    rederives.get(uid)?.();
+    let found = null;
+    let at = 0;
+    let links = null;
+    const badges = new Map();
+    const cancel = sharedBgBudget().run(() => {
+      if (!found) {
+        try { found = collectTargets(tree); } catch { found = { stats: [] }; }
+        return false;
+      }
+      if (at < found.stats.length) {
+        try {
+          const res = host.cardStats(found.stats.slice(at, at + STATS_PART), { boardUid: uid });
+          if (res instanceof Map) for (const [key, stat] of res) badges.set(key, stat);
+        } catch { /* the stored badges stay */ }
+        at += STATS_PART;
+        return false;
+      }
+      if (links == null) {
+        try { links = linksFromTree(uid, tree) || []; } catch { links = []; }
+        return false;
+      }
+      if (rederives.get(uid) === cancel) rederives.delete(uid);
+      derivedLive.set(uid, { stamp: null, badges, links });
+      let packed = null;
+      try { packed = packDerived(badges, links); } catch { packed = null; }
+      if (modelStore?.stampOf(uid) === stamp) void modelStore.putDerived(uid, stamp, packed);
+      // Verified only now, as before: the listeners take the recomputed links in the same turn.
+      markVerified(uid);
+      return true;
+    }, { label: "derived", partMs: 4 });
+    rederives.set(uid, cancel);
+  };
   let modelStore = null;
   const unverified = new Map(); // uid -> stamp the model was read at
   const verifyListeners = new Map(); // uid -> Set(fn)
@@ -1128,6 +1166,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const checkDelay = new Map(); // uid -> backoff before the next failed-check retry
   const keeps = new Map(); // uid -> cancel of the running model store job
   const refreshes = new Map(); // uid -> cancel of the running model refresh read
+  const rederives = new Map(); // uid -> cancel of the running sliced derived refresh
   const CHECK_QUIET_MS = 1500;
   const CHECK_SLICE_MS = 20;
   const CHECK_BATCH = 250;
@@ -1244,7 +1283,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // A failed check left the board unverified. Run it again, after a growing wait, while the split is still
   // live and not held. A park owes the check to resume; an unmount or dispose drops it.
   const retryCheck = (uid) => {
-    if (checkTimers.has(uid) || checks.has(uid) || !unverified.has(uid)) return;
+    if (checkTimers.has(uid) || checks.has(uid) || rederives.has(uid) || !unverified.has(uid)) return;
     const split = splitWatches.get(uid);
     if (!split || split.disposed) return;
     if (split.held) { checkOwed.add(uid); return; }
@@ -1264,7 +1303,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // The background check of a trusted open. A parked board stops it (resume runs it again).
   const scheduleCheck = (uid) => {
     clearCheckTimer(uid);
-    if (checks.has(uid) || !unverified.has(uid)) return;
+    if (checks.has(uid) || rederives.has(uid) || !unverified.has(uid)) return;
     let stopped = false;
     const cancel = backgroundRead(uid, "check", (tree, stamp) => {
       checks.delete(uid);
@@ -1281,6 +1320,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (split && !split.disposed) changed = split.reseed(tree, { contents: true }) !== false;
       stats.checks = (stats.checks || 0) + 1;
       if (changed) stats.checkChanges = (stats.checkChanges || 0) + 1;
+      if (!changed && derivedOn() && slicedDerivedOn() && modelStore?.stampOf(uid) === stamp) {
+        refreshDerived(uid, tree, stamp);
+        return;
+      }
       // Recompute before the listeners run, so a seeded open replaces the stored links in the same turn.
       let packed;
       if (derivedOn()) {
@@ -2673,7 +2716,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       for (const timer of checkTimers.values()) clearTimeout(timer);
       checkTimers.clear();
       checkDelay.clear();
-      for (const jobs of [checks, keeps, refreshes]) {
+      for (const jobs of [checks, keeps, refreshes, rederives]) {
         for (const cancel of jobs.values()) { try { cancel(); } catch { /* done */ } }
         jobs.clear();
       }

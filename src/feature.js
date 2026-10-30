@@ -473,13 +473,28 @@ export async function installPlexusDiagram({
     cardChips.scan(doc?.body);
   };
   const readCardStamps = (uids) => {
+    const next = new Map();
+    // PXD-1: one pull_many (6 ms for the PhD graph's 277 boards) instead of an `:in $ [?u ...]` query (84 ms).
+    if (typeof host.pullMany === "function") {
+      let rows = null;
+      try { rows = uids.length ? host.pullMany("[:block/uid :edit/time]", uids) : []; } catch { rows = null; }
+      // host.pullMany answers [] on a throw: no rows at all is a failed read, never "every board is gone".
+      if (!Array.isArray(rows) || (uids.length && !rows.length)) return next;
+      for (const row of rows) {
+        const uid = row?.[":block/uid"];
+        if (typeof uid === "string") next.set(uid, row[":edit/time"] ?? null);
+      }
+      // Every uid the pull did not return is gone from the graph (227 of the PhD graph's 277 cached board uids):
+      // no board pull for those, ~90 ms each.
+      next.gone = new Set(uids.filter((uid) => !next.has(uid)));
+      return next;
+    }
     let edits = [];
     try {
       edits = uids.length && typeof host.q === "function"
         ? host.q("[:find ?u ?t :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/time ?t]]", uids) || []
         : [];
     } catch { edits = []; }
-    const next = new Map();
     for (const row of edits) {
       if (Array.isArray(row) && row.length >= 2) next.set(row[0], row[1]);
     }
@@ -552,6 +567,12 @@ export async function installPlexusDiagram({
       while (i < due.length) {
         const uid = due[i++];
         if (editSeen.has(uid) && editSeen.get(uid) === (next.has(uid) ? next.get(uid) : null)) continue;
+        if (next.gone?.has(uid)) {
+          editSeen.set(uid, null);
+          previewBoards.delete(uid);
+          cardCache.setBoard(uid, "", []);
+          continue;
+        }
         if (shown.has(uid)) {
           const board = shown.get(uid);
           if (board) { editSeen.set(uid, next.has(uid) ? next.get(uid) : null); noteCards(board); }

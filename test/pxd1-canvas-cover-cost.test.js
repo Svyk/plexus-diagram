@@ -198,13 +198,13 @@ describe("canvas cover cost", { concurrency: 1 }, () => {
       calls.blockPageUid = 0;
       calls.pdfPageUrl = 0;
       const vp0 = { ...f.view.viewport() };
-      // Cover rows may be memoized for a second: step the clock past that on every frame so each frame counts.
+      // Cover rows may be memoized for 30 s: step the clock past that on every frame so each frame counts.
       const realNow = Date.now;
       let skew = 0;
       Date.now = () => realNow() + skew;
       try {
       for (let i = 1; i <= 8; i += 1) {
-        skew += 1500;
+        skew += 31000;
         f.stub.dispatch(f.view.root, "wheel", { deltaX: 40, deltaY: 60, deltaMode: 0, clientX: 600, clientY: 400 });
         for (let k = 0; k < 4; k += 1) { f.stub.flushFrames(); f.stub.flushIdle(); f.stub.flushTimers(); await tick(2); }
       }

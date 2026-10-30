@@ -472,46 +472,129 @@ export async function installPlexusDiagram({
     boardChips.scan(doc?.body);
     cardChips.scan(doc?.body);
   };
-  function refreshCardCache() {
-    const started = Date.now();
-    const uids = [...guardUids];
+  const readCardStamps = (uids) => {
+    const next = new Map();
+    // PXD-1: one pull_many (6 ms for the PhD graph's 277 boards) instead of an `:in $ [?u ...]` query (84 ms).
+    if (typeof host.pullMany === "function") {
+      let rows = null;
+      try { rows = uids.length ? host.pullMany("[:block/uid :edit/time]", uids) : []; } catch { rows = null; }
+      // host.pullMany answers [] on a throw: no rows at all is a failed read, never "every board is gone".
+      if (!Array.isArray(rows) || (uids.length && !rows.length)) return next;
+      for (const row of rows) {
+        const uid = row?.[":block/uid"];
+        if (typeof uid === "string") next.set(uid, row[":edit/time"] ?? null);
+      }
+      // Every uid the pull did not return is gone from the graph (227 of the PhD graph's 277 cached board uids):
+      // no board pull for those, ~90 ms each.
+      next.gone = new Set(uids.filter((uid) => !next.has(uid)));
+      return next;
+    }
     let edits = [];
     try {
       edits = uids.length && typeof host.q === "function"
         ? host.q("[:find ?u ?t :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/time ?t]]", uids) || []
         : [];
     } catch { edits = []; }
-    const next = new Map();
     for (const row of edits) {
       if (Array.isArray(row) && row.length >= 2) next.set(row[0], row[1]);
     }
-    const due = [];
-    for (const uid of uids) {
-      const stamp = next.has(uid) ? next.get(uid) : null;
-      if (editSeen.has(uid) && editSeen.get(uid) === stamp) continue;
-      due.push(uid);
-    }
-    for (const uid of due) {
-      let board = null;
-      let read = true;
-      try {
-        // Structure only: priming every enhanced board's card stats here (PhD main board, at install and every
-        // minute) ran in idle slices under gestures on whatever board was open.
-        const pulled = host.pullBoard?.(uid, { prime: false });
-        board = pulled ? buildBoard(pulled) : null;
-      } catch { board = null; read = false; }
-      // The stamp is remembered only after a pull that did not throw, so a failed read is tried again.
-      if (read) editSeen.set(uid, next.has(uid) ? next.get(uid) : null);
-      previewBoards.delete(uid);
-      if (board?.uid) noteCards(board);
-      else cardCache.setBoard(uid, "", []);
-    }
+    return next;
+  };
+  const cardsDue = (uids, next) => uids.filter((uid) => !(editSeen.has(uid) && editSeen.get(uid) === (next.has(uid) ? next.get(uid) : null)));
+  const pullCards = (uid, next) => {
+    let board = null;
+    let read = true;
+    try {
+      // Structure only: priming every enhanced board's card stats here (PhD main board, at install and every
+      // minute) ran in idle slices under gestures on whatever board was open.
+      const pulled = host.pullBoard?.(uid, { prime: false });
+      board = pulled ? buildBoard(pulled) : null;
+    } catch { board = null; read = false; }
+    // The stamp is remembered only after a pull that did not throw, so a failed read is tried again.
+    if (read) editSeen.set(uid, next.has(uid) ? next.get(uid) : null);
+    previewBoards.delete(uid);
+    if (board?.uid) noteCards(board);
+    else cardCache.setBoard(uid, "", []);
+  };
+  const finishCards = (started) => {
     for (const rec of mounts.values()) {
       if (rec.session?.board) noteCards(rec.session.board);
     }
     if (cacheLoadMs == null) cacheLoadMs = Date.now() - started;
     boardChips.scan(doc?.body);
     cardChips.scan(doc?.body);
+  };
+  // PXD-1 (speed flag slicedCards). The first refresh pulled all 277 enhanced boards of the PhD graph in one task
+  // 600 ms after install, the open board's 28k blocks among them: 2 s between its snapshot paint and live on a cold
+  // start. Now one board per background slice, and a board shown in a mount is not pulled: its session publishes
+  // its own cards (publishCards) once live.
+  let cardJob = null;
+  lifecycle.add(() => { cardJob?.(); cardJob = null; });
+  const shownBoards = () => {
+    const shown = new Map(); // uid -> its live board, or null while the mount is not live yet
+    for (const rec of mounts.values()) {
+      let uid = null;
+      try { uid = currentUid(rec); } catch { uid = null; }
+      if (!uid) continue;
+      const board = rec.session?.board?.uid === uid ? rec.session.board : null;
+      if (board || !shown.has(uid)) shown.set(uid, board);
+    }
+    return shown;
+  };
+  function refreshCardCache() {
+    const started = Date.now();
+    if (speedFlags().slicedCards === false) {
+      const uids = [...guardUids];
+      const next = readCardStamps(uids);
+      for (const uid of cardsDue(uids, next)) pullCards(uid, next);
+      finishCards(started);
+      return;
+    }
+    if (cardJob) return;
+    let next = null;
+    let due = null;
+    let i = 0;
+    let scannedAt = Date.now();
+    const done = () => { cardJob = null; finishCards(started); return true; };
+    const part = () => {
+      if (stopped) { cardJob = null; return true; }
+      if (!next) {
+        const uids = [...guardUids];
+        next = readCardStamps(uids);
+        due = cardsDue(uids, next);
+        return due.length ? false : done();
+      }
+      const shown = shownBoards();
+      while (i < due.length) {
+        const uid = due[i++];
+        if (editSeen.has(uid) && editSeen.get(uid) === (next.has(uid) ? next.get(uid) : null)) continue;
+        if (next.gone?.has(uid)) {
+          editSeen.set(uid, null);
+          previewBoards.delete(uid);
+          cardCache.setBoard(uid, "", []);
+          continue;
+        }
+        if (shown.has(uid)) {
+          const board = shown.get(uid);
+          if (board) { editSeen.set(uid, next.has(uid) ? next.get(uid) : null); noteCards(board); }
+          continue;
+        }
+        pullCards(uid, next);
+        if (i >= due.length) return done();
+        // Chips for the boards read so far, at most every 2 s, not only when the whole sweep ends.
+        if (Date.now() - scannedAt > 2000) {
+          scannedAt = Date.now();
+          boardChips.scan(doc?.body);
+          cardChips.scan(doc?.body);
+        }
+        return false;
+      }
+      return done();
+    };
+    // A thrown part ends the job (bg-budget logs it): clear it so the next minute's tick runs again.
+    cardJob = sharedBgBudget().run(() => {
+      try { return part(); } catch (error) { cardJob = null; throw error; }
+    }, { label: "cards", partMs: 4 });
   }
   function chipPreview(boardUid, cardUid) {
     let board = null;

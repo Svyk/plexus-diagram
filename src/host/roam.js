@@ -1119,6 +1119,55 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     derivedLive.set(uid, { stamp: null, badges, links });
     try { return packDerived(badges, links); } catch { return null; }
   }
+  // PXD-1 (speed flag slicedDerived). A check that found the board unchanged marks it verified at once (its seeded
+  // derived data was stored with this same stamp) and refreshes the badges and links in background parts of
+  // STATS_PART cards: recomputeDerived in one part was a 5 s task on the PhD main board (1,500 cards' stats, then the
+  // links query) ~20 s after every cold open. The result replaces the seeded one only when the board's page did not
+  // move since the read (an edit meanwhile: the session's own reads are fresher); listeners then take it.
+  const slicedDerivedOn = () => { try { return notedSpeedFlags().slicedDerived !== false; } catch { return true; } };
+  const refreshDerived = (uid, tree, stamp) => {
+    rederives.get(uid)?.();
+    let found = null;
+    let at = 0;
+    let links = null;
+    const badges = new Map();
+    let cancel = null;
+    const end = () => { if (rederives.get(uid) === cancel) rederives.delete(uid); return true; };
+    cancel = sharedBgBudget().run(() => {
+      try {
+        if (!found) {
+          try { found = collectTargets(tree); } catch { found = { stats: [] }; }
+          return false;
+        }
+        if (at < found.stats.length) {
+          try {
+            const res = host.cardStats(found.stats.slice(at, at + STATS_PART), { boardUid: uid });
+            if (res instanceof Map) for (const [key, stat] of res) badges.set(key, stat);
+          } catch { /* the stored badges stay */ }
+          at += STATS_PART;
+          return false;
+        }
+        if (links == null) {
+          try { links = linksFromTree(uid, tree) || []; } catch { links = []; }
+          return false;
+        }
+        end();
+        if (pageStampOf(uid) !== stamp) return true;
+        derivedLive.set(uid, { stamp: null, badges, links });
+        let packed = null;
+        try { packed = packDerived(badges, links); } catch { packed = null; }
+        if (modelStore?.stampOf(uid) === stamp) void modelStore.putDerived(uid, stamp, packed);
+        for (const fn of [...(derivedListeners.get(uid) || [])]) {
+          try { fn(); } catch (error) { console.warn("[plexus-diagram] derived listener failed", error); }
+        }
+        return true;
+      } catch (error) {
+        end();
+        throw error;
+      }
+    }, { label: "derived", partMs: 4 });
+    rederives.set(uid, cancel);
+  };
   let modelStore = null;
   const unverified = new Map(); // uid -> stamp the model was read at
   const verifyListeners = new Map(); // uid -> Set(fn)
@@ -1128,6 +1177,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const checkDelay = new Map(); // uid -> backoff before the next failed-check retry
   const keeps = new Map(); // uid -> cancel of the running model store job
   const refreshes = new Map(); // uid -> cancel of the running model refresh read
+  const rederives = new Map(); // uid -> cancel of the running sliced derived refresh
+  const derivedListeners = new Map(); // uid -> Set(fn) told when a sliced refresh replaced the derived data
   const CHECK_QUIET_MS = 1500;
   const CHECK_SLICE_MS = 20;
   const CHECK_BATCH = 250;
@@ -1281,6 +1332,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (split && !split.disposed) changed = split.reseed(tree, { contents: true }) !== false;
       stats.checks = (stats.checks || 0) + 1;
       if (changed) stats.checkChanges = (stats.checkChanges || 0) + 1;
+      if (!changed && derivedOn() && slicedDerivedOn() && modelStore?.stampOf(uid) === stamp) {
+        markVerified(uid);
+        refreshDerived(uid, tree, stamp);
+        return;
+      }
       // Recompute before the listeners run, so a seeded open replaces the stored links in the same turn.
       let packed;
       if (derivedOn()) {
@@ -2650,6 +2706,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       set.add(fn);
       return () => { set.delete(fn); };
     },
+    // PXD-1: fn runs each time a sliced refresh replaced the board's derived badges and links. Returns off().
+    onDerivedRefreshed(uid, fn) {
+      const id = String(uid ?? "");
+      let set = derivedListeners.get(id);
+      if (!set) { set = new Set(); derivedListeners.set(id, set); }
+      set.add(fn);
+      return () => { set.delete(fn); if (!set.size && derivedListeners.get(id) === set) derivedListeners.delete(id); };
+    },
     // After a change settled (the snapshot capture): a big board whose stored model is older than its page is read
     // again in background slices and stored. Not while it is unverified or parked.
     refreshModel(uid) {
@@ -2673,11 +2737,12 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       for (const timer of checkTimers.values()) clearTimeout(timer);
       checkTimers.clear();
       checkDelay.clear();
-      for (const jobs of [checks, keeps, refreshes]) {
+      for (const jobs of [checks, keeps, refreshes, rederives]) {
         for (const cancel of jobs.values()) { try { cancel(); } catch { /* done */ } }
         jobs.clear();
       }
       verifyListeners.clear();
+      derivedListeners.clear();
       for (const h of idleHandles.values()) {
         if (h.timer != null) clearTimeout(h.timer);
         else if (h.cancel) h.cancel();

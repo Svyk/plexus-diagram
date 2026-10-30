@@ -2935,20 +2935,34 @@ function buildBoardView(onFail, {
     const n = Number(value);
     return Number.isInteger(n) && n >= 1 ? n : null;
   };
-  const rowsForCover = (url) => {
-    const key = coverKey(url);
-    if (!key) return [];
-    const rows = [];
-    for (const other of board()?.items.values() || []) {
+  // PXD-1: one walk of the board's highlights per board (and at most per 30 s, for page urls that change under a
+  // board that did not), keyed by cover. Each PDF card walked every item with two host reads per highlight on every
+  // shell paint: ~150 ms of the PhD main board's open tail and its zoom-in to detail.
+  let coverRowsMemo = null;
+  const COVER_ROWS_TTL_MS = 30000;
+  const coverRowsIndex = () => {
+    const current = board();
+    const at = Date.now();
+    if (coverRowsMemo && coverRowsMemo.board === current && Math.abs(at - coverRowsMemo.at) < COVER_ROWS_TTL_MS) return coverRowsMemo.byKey;
+    const byKey = new Map();
+    for (const other of current?.items.values() || []) {
       if (other?.kind !== "highlight" || !other.target?.uid) continue;
       let pageUid = "";
       let pageUrl = "";
       try { pageUid = host?.blockPageUid?.(other.target.uid) || ""; } catch { pageUid = ""; }
       try { pageUrl = pageUid ? (host?.pdfPageUrl?.(pageUid) || "") : ""; } catch { pageUrl = ""; }
-      if (coverKey(pageUrl) !== key) continue;
-      rows.push({ page: other.highlight?.page, color: other.highlight?.color || "", highlight: other.highlight });
+      const key = coverKey(pageUrl);
+      if (!key) continue;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push({ page: other.highlight?.page, color: other.highlight?.color || "", highlight: other.highlight });
     }
-    return rows;
+    coverRowsMemo = { board: current, at, byKey };
+    return byKey;
+  };
+  const rowsForCover = (url) => {
+    const key = coverKey(url);
+    if (!key) return [];
+    return [...coverRowsIndex().get(key) || []];
   };
   const ticksFor = (url, pageCount) => {
     const rows = rowsForCover(url);
@@ -3136,7 +3150,9 @@ function buildBoardView(onFail, {
     const face = coverFaces.get(key);
     // A card never built (overview canvas) asks the cover store once; the load redraws the canvas.
     if (!face) { loadCover(key); return null; }
-    const src = face.state !== "loading" ? presentFace(key, face)?.src : null;
+    // PXD-1: the image only. presentFace also builds the highlight ticks, a walk of every board item per PDF card,
+    // and this runs per card on every canvas frame (map-tier pan on the PhD main board: ~50 ms a frame).
+    const src = face.state !== "loading" ? sharpOf(key, { state: face.state, src: face.src || "", w: face.w ?? null })?.src : null;
     if (!src) return null;
     let img = canvasCovers.get(src);
     if (!img) {
@@ -11242,6 +11258,8 @@ function buildBoardView(onFail, {
   seedSnapshotBadges();
   seedStoredBadges();
   try { host.onBoardVerified?.(boardUid, () => { if (!disposed) seedStoredBadges(); }); } catch { /* listener */ }
+  let offDerived = null;
+  try { offDerived = host.onDerivedRefreshed?.(boardUid, () => { if (!disposed) seedStoredBadges(); }) || null; } catch { offDerived = null; }
   dirty.viewport = true;
   markAll();
   consumeDeepLink();
@@ -11746,6 +11764,7 @@ function buildBoardView(onFail, {
       if (disposing) return;
       disposing = true;
       disposed = true;
+      try { offDerived?.(); } catch { /* gone */ }
       inputProfile?.dispose();
       inputProfile = null;
       try { sharedBgBudget().hold(bgHoldKey, false); } catch { /* budget */ }

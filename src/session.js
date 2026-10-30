@@ -4332,6 +4332,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      offDerived?.();
       try { editStringOff(); } catch { /* already dropped */ }
       try { host.noteEditing?.(uid, null); } catch { /* host */ }
       if (boardWatchOn) {
@@ -4429,16 +4430,19 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return sectionUid;
   }
 
+  let offDerived = null;
   const stored = host.storedDerived?.(uid);
   if (stored?.links && linkMode !== "off" && board) {
     allLinks = stored.links;
     recomputeLinks(true);
-    host.onBoardVerified?.(uid, () => {
+    const takeDerived = () => {
       const next = host.storedDerived?.(uid);
       if (destroyed || !next?.links) return;
       allLinks = next.links;
       recomputeLinks(false);
-    });
+    };
+    host.onBoardVerified?.(uid, takeDerived);
+    offDerived = host.onDerivedRefreshed?.(uid, takeDerived) || null;
   } else if (linkMode !== "off" && board) refreshLinks();
 
   const api = {

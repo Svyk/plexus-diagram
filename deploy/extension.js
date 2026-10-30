@@ -21091,7 +21091,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: true, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, zoomVarScope: true, handlesWrap: true, seedRows: true, canvasPrebuild: true, cardRowDrop: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: true, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, zoomVarScope: true, handlesWrap: true, seedRows: true, canvasPrebuild: true, cardRowDrop: true, slicedCards: true, slicedDerived: true };
 }
 function parseSpeedFlags(raw) {
   const base2 = defaultSpeedFlags();
@@ -21545,7 +21545,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "zoomVarScope", "handlesWrap", "seedRows", "canvasPrebuild", "cardRowDrop"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "zoomVarScope", "handlesWrap", "seedRows", "canvasPrebuild", "cardRowDrop", "slicedCards", "slicedDerived"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -47191,6 +47191,76 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       return null;
     }
   }
+  const slicedDerivedOn = () => {
+    try {
+      return notedSpeedFlags().slicedDerived !== false;
+    } catch {
+      return true;
+    }
+  };
+  const refreshDerived = (uid, tree, stamp2) => {
+    rederives.get(uid)?.();
+    let found = null;
+    let at = 0;
+    let links = null;
+    const badges = /* @__PURE__ */ new Map();
+    let cancel = null;
+    const end = () => {
+      if (rederives.get(uid) === cancel) rederives.delete(uid);
+      return true;
+    };
+    cancel = sharedBgBudget().run(() => {
+      try {
+        if (!found) {
+          try {
+            found = collectTargets(tree);
+          } catch {
+            found = { stats: [] };
+          }
+          return false;
+        }
+        if (at < found.stats.length) {
+          try {
+            const res = host.cardStats(found.stats.slice(at, at + STATS_PART), { boardUid: uid });
+            if (res instanceof Map) for (const [key, stat] of res) badges.set(key, stat);
+          } catch {
+          }
+          at += STATS_PART;
+          return false;
+        }
+        if (links == null) {
+          try {
+            links = linksFromTree(uid, tree) || [];
+          } catch {
+            links = [];
+          }
+          return false;
+        }
+        end();
+        if (pageStampOf(uid) !== stamp2) return true;
+        derivedLive.set(uid, { stamp: null, badges, links });
+        let packed = null;
+        try {
+          packed = packDerived(badges, links);
+        } catch {
+          packed = null;
+        }
+        if (modelStore?.stampOf(uid) === stamp2) void modelStore.putDerived(uid, stamp2, packed);
+        for (const fn of [...derivedListeners.get(uid) || []]) {
+          try {
+            fn();
+          } catch (error) {
+            console.warn("[plexus-diagram] derived listener failed", error);
+          }
+        }
+        return true;
+      } catch (error) {
+        end();
+        throw error;
+      }
+    }, { label: "derived", partMs: 4 });
+    rederives.set(uid, cancel);
+  };
   let modelStore = null;
   const unverified = /* @__PURE__ */ new Map();
   const verifyListeners = /* @__PURE__ */ new Map();
@@ -47200,6 +47270,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const checkDelay = /* @__PURE__ */ new Map();
   const keeps = /* @__PURE__ */ new Map();
   const refreshes = /* @__PURE__ */ new Map();
+  const rederives = /* @__PURE__ */ new Map();
+  const derivedListeners = /* @__PURE__ */ new Map();
   const CHECK_QUIET_MS = 1500;
   const CHECK_SLICE_MS = 20;
   const CHECK_BATCH = 250;
@@ -47381,6 +47453,11 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (split && !split.disposed) changed2 = split.reseed(tree, { contents: true }) !== false;
       stats.checks = (stats.checks || 0) + 1;
       if (changed2) stats.checkChanges = (stats.checkChanges || 0) + 1;
+      if (!changed2 && derivedOn() && slicedDerivedOn() && modelStore?.stampOf(uid) === stamp2) {
+        markVerified(uid);
+        refreshDerived(uid, tree, stamp2);
+        return;
+      }
       let packed;
       if (derivedOn()) {
         try {
@@ -48814,6 +48891,20 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         set.delete(fn);
       };
     },
+    // PXD-1: fn runs each time a sliced refresh replaced the board's derived badges and links. Returns off().
+    onDerivedRefreshed(uid, fn) {
+      const id = String(uid ?? "");
+      let set = derivedListeners.get(id);
+      if (!set) {
+        set = /* @__PURE__ */ new Set();
+        derivedListeners.set(id, set);
+      }
+      set.add(fn);
+      return () => {
+        set.delete(fn);
+        if (!set.size && derivedListeners.get(id) === set) derivedListeners.delete(id);
+      };
+    },
     // After a change settled (the snapshot capture): a big board whose stored model is older than its page is read
     // again in background slices and stored. Not while it is unverified or parked.
     refreshModel(uid) {
@@ -48840,7 +48931,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       for (const timer of checkTimers.values()) clearTimeout(timer);
       checkTimers.clear();
       checkDelay.clear();
-      for (const jobs of [checks, keeps, refreshes]) {
+      for (const jobs of [checks, keeps, refreshes, rederives]) {
         for (const cancel of jobs.values()) {
           try {
             cancel();
@@ -48850,6 +48941,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         jobs.clear();
       }
       verifyListeners.clear();
+      derivedListeners.clear();
       for (const h of idleHandles.values()) {
         if (h.timer != null) clearTimeout(h.timer);
         else if (h.cancel) h.cancel();
@@ -55858,6 +55950,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      offDerived?.();
       try {
         editStringOff();
       } catch {
@@ -55971,16 +56064,19 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
     return sectionUid;
   }
+  let offDerived = null;
   const stored = host.storedDerived?.(uid);
   if (stored?.links && linkMode !== "off" && board2) {
     allLinks = stored.links;
     recomputeLinks(true);
-    host.onBoardVerified?.(uid, () => {
+    const takeDerived = () => {
       const next = host.storedDerived?.(uid);
       if (destroyed || !next?.links) return;
       allLinks = next.links;
       recomputeLinks(false);
-    });
+    };
+    host.onBoardVerified?.(uid, takeDerived);
+    offDerived = host.onDerivedRefreshed?.(uid, takeDerived) || null;
   } else if (linkMode !== "off" && board2) refreshLinks();
   const api3 = {
     uid,
@@ -104663,11 +104759,14 @@ function buildBoardView(onFail, {
     const n3 = Number(value);
     return Number.isInteger(n3) && n3 >= 1 ? n3 : null;
   };
-  const rowsForCover = (url) => {
-    const key = coverKey(url);
-    if (!key) return [];
-    const rows = [];
-    for (const other of board2()?.items.values() || []) {
+  let coverRowsMemo = null;
+  const COVER_ROWS_TTL_MS = 3e4;
+  const coverRowsIndex = () => {
+    const current3 = board2();
+    const at = Date.now();
+    if (coverRowsMemo && coverRowsMemo.board === current3 && Math.abs(at - coverRowsMemo.at) < COVER_ROWS_TTL_MS) return coverRowsMemo.byKey;
+    const byKey = /* @__PURE__ */ new Map();
+    for (const other of current3?.items.values() || []) {
       if (other?.kind !== "highlight" || !other.target?.uid) continue;
       let pageUid2 = "";
       let pageUrl = "";
@@ -104681,10 +104780,18 @@ function buildBoardView(onFail, {
       } catch {
         pageUrl = "";
       }
-      if (coverKey(pageUrl) !== key) continue;
-      rows.push({ page: other.highlight?.page, color: other.highlight?.color || "", highlight: other.highlight });
+      const key = coverKey(pageUrl);
+      if (!key) continue;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push({ page: other.highlight?.page, color: other.highlight?.color || "", highlight: other.highlight });
     }
-    return rows;
+    coverRowsMemo = { board: current3, at, byKey };
+    return byKey;
+  };
+  const rowsForCover = (url) => {
+    const key = coverKey(url);
+    if (!key) return [];
+    return [...coverRowsIndex().get(key) || []];
   };
   const ticksFor = (url, pageCount) => {
     const rows = rowsForCover(url);
@@ -104894,7 +105001,7 @@ function buildBoardView(onFail, {
       loadCover(key);
       return null;
     }
-    const src = face.state !== "loading" ? presentFace(key, face)?.src : null;
+    const src = face.state !== "loading" ? sharpOf(key, { state: face.state, src: face.src || "", w: face.w ?? null })?.src : null;
     if (!src) return null;
     let img = canvasCovers.get(src);
     if (!img) {
@@ -114401,6 +114508,14 @@ ${url}`;
     });
   } catch {
   }
+  let offDerived = null;
+  try {
+    offDerived = host.onDerivedRefreshed?.(boardUid, () => {
+      if (!disposed) seedStoredBadges();
+    }) || null;
+  } catch {
+    offDerived = null;
+  }
   dirty.viewport = true;
   markAll();
   consumeDeepLink();
@@ -115020,6 +115135,10 @@ ${url}`;
       if (disposing) return;
       disposing = true;
       disposed = true;
+      try {
+        offDerived?.();
+      } catch {
+      }
       inputProfile?.dispose();
       inputProfile = null;
       try {
@@ -118793,46 +118912,145 @@ async function installPlexusDiagram({
     boardChips.scan(doc?.body);
     cardChips.scan(doc?.body);
   };
-  function refreshCardCache() {
-    const started = Date.now();
-    const uids = [...guardUids];
+  const readCardStamps = (uids) => {
+    const next = /* @__PURE__ */ new Map();
+    if (typeof host.pullMany === "function") {
+      let rows = null;
+      try {
+        rows = uids.length ? host.pullMany("[:block/uid :edit/time]", uids) : [];
+      } catch {
+        rows = null;
+      }
+      if (!Array.isArray(rows) || uids.length && !rows.length) return next;
+      for (const row4 of rows) {
+        const uid = row4?.[":block/uid"];
+        if (typeof uid === "string") next.set(uid, row4[":edit/time"] ?? null);
+      }
+      next.gone = new Set(uids.filter((uid) => !next.has(uid)));
+      return next;
+    }
     let edits = [];
     try {
       edits = uids.length && typeof host.q === "function" ? host.q("[:find ?u ?t :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/time ?t]]", uids) || [] : [];
     } catch {
       edits = [];
     }
-    const next = /* @__PURE__ */ new Map();
     for (const row4 of edits) {
       if (Array.isArray(row4) && row4.length >= 2) next.set(row4[0], row4[1]);
     }
-    const due = [];
-    for (const uid of uids) {
-      const stamp2 = next.has(uid) ? next.get(uid) : null;
-      if (editSeen.has(uid) && editSeen.get(uid) === stamp2) continue;
-      due.push(uid);
+    return next;
+  };
+  const cardsDue = (uids, next) => uids.filter((uid) => !(editSeen.has(uid) && editSeen.get(uid) === (next.has(uid) ? next.get(uid) : null)));
+  const pullCards = (uid, next) => {
+    let board2 = null;
+    let read2 = true;
+    try {
+      const pulled = host.pullBoard?.(uid, { prime: false });
+      board2 = pulled ? buildBoard(pulled) : null;
+    } catch {
+      board2 = null;
+      read2 = false;
     }
-    for (const uid of due) {
-      let board2 = null;
-      let read2 = true;
-      try {
-        const pulled = host.pullBoard?.(uid, { prime: false });
-        board2 = pulled ? buildBoard(pulled) : null;
-      } catch {
-        board2 = null;
-        read2 = false;
-      }
-      if (read2) editSeen.set(uid, next.has(uid) ? next.get(uid) : null);
-      previewBoards.delete(uid);
-      if (board2?.uid) noteCards(board2);
-      else cardCache.setBoard(uid, "", []);
-    }
+    if (read2) editSeen.set(uid, next.has(uid) ? next.get(uid) : null);
+    previewBoards.delete(uid);
+    if (board2?.uid) noteCards(board2);
+    else cardCache.setBoard(uid, "", []);
+  };
+  const finishCards = (started) => {
     for (const rec of mounts.values()) {
       if (rec.session?.board) noteCards(rec.session.board);
     }
     if (cacheLoadMs == null) cacheLoadMs = Date.now() - started;
     boardChips.scan(doc?.body);
     cardChips.scan(doc?.body);
+  };
+  let cardJob = null;
+  lifecycle.add(() => {
+    cardJob?.();
+    cardJob = null;
+  });
+  const shownBoards = () => {
+    const shown = /* @__PURE__ */ new Map();
+    for (const rec of mounts.values()) {
+      let uid = null;
+      try {
+        uid = currentUid(rec);
+      } catch {
+        uid = null;
+      }
+      if (!uid) continue;
+      const board2 = rec.session?.board?.uid === uid ? rec.session.board : null;
+      if (board2 || !shown.has(uid)) shown.set(uid, board2);
+    }
+    return shown;
+  };
+  function refreshCardCache() {
+    const started = Date.now();
+    if (speedFlags().slicedCards === false) {
+      const uids = [...guardUids];
+      const next2 = readCardStamps(uids);
+      for (const uid of cardsDue(uids, next2)) pullCards(uid, next2);
+      finishCards(started);
+      return;
+    }
+    if (cardJob) return;
+    let next = null;
+    let due = null;
+    let i = 0;
+    let scannedAt = Date.now();
+    const done3 = () => {
+      cardJob = null;
+      finishCards(started);
+      return true;
+    };
+    const part = () => {
+      if (stopped) {
+        cardJob = null;
+        return true;
+      }
+      if (!next) {
+        const uids = [...guardUids];
+        next = readCardStamps(uids);
+        due = cardsDue(uids, next);
+        return due.length ? false : done3();
+      }
+      const shown = shownBoards();
+      while (i < due.length) {
+        const uid = due[i++];
+        if (editSeen.has(uid) && editSeen.get(uid) === (next.has(uid) ? next.get(uid) : null)) continue;
+        if (next.gone?.has(uid)) {
+          editSeen.set(uid, null);
+          previewBoards.delete(uid);
+          cardCache.setBoard(uid, "", []);
+          continue;
+        }
+        if (shown.has(uid)) {
+          const board2 = shown.get(uid);
+          if (board2) {
+            editSeen.set(uid, next.has(uid) ? next.get(uid) : null);
+            noteCards(board2);
+          }
+          continue;
+        }
+        pullCards(uid, next);
+        if (i >= due.length) return done3();
+        if (Date.now() - scannedAt > 2e3) {
+          scannedAt = Date.now();
+          boardChips.scan(doc?.body);
+          cardChips.scan(doc?.body);
+        }
+        return false;
+      }
+      return done3();
+    };
+    cardJob = sharedBgBudget().run(() => {
+      try {
+        return part();
+      } catch (error) {
+        cardJob = null;
+        throw error;
+      }
+    }, { label: "cards", partMs: 4 });
   }
   function chipPreview(boardUid, cardUid) {
     let board2 = null;

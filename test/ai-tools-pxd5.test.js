@@ -193,7 +193,7 @@ test("add_section, connect_cards and arrange_board", async () => {
   await assert.rejects(tool("connect_cards").handler({ board: "b1", from: "c1", to: "nope" }, ctx()), /nope/);
   seen.length = 0;
   const arranged = await tool("arrange_board").handler({ board: "b1", mode: "row", cards: ["c1", "c2"] }, ctx());
-  assert.equal(arranged.moved, 2);
+  assert.equal(arranged.moved, 1); // c1 already sits at the row start: only c2 moves
   assert.ok(seen.length > 0);
   assert.ok(seen.every((e) => e.arg.block["user-uid"] === "ai-user"));
   const board2 = buildBoard(host.pullBoard("b1"));

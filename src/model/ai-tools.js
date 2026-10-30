@@ -158,13 +158,15 @@ export function createAiTools(deps) {
       const { board } = load(args?.board);
       const rects = worldRects(board);
       let area = boardArea(board, rects);
+      let cols = 4;
       if (args?.section) {
         const sec = board.items.get(String(args.section).trim().replace(/^\(\(|\)\)$/g, ""));
         if (!sec || sec.type !== "section") throw new Error(`Not a section on this board: ${args.section}`);
         const r = rects.get(sec.uid);
         area = { x: r.x + 24, y: r.y + 60 };
+        cols = Math.max(1, Math.floor((r.w - 24) / 320));
       }
-      const slots = autoPlace(cards.length, area);
+      const slots = autoPlace(cards.length, area, { cols });
       const list = cards.map((c, i) => {
         const text = String(c?.text ?? "").trim();
         if (!text) throw new Error("Every card needs text");
@@ -254,8 +256,8 @@ export function createAiTools(deps) {
       else if (args.section) uids = [boardUidOf(args.section)];
       else uids = [...board.items.values()].filter((i) => i.parentUid === board.uid).map((i) => i.uid);
       for (const id of uids) if (!board.items.has(id)) throw new Error(`Not an item on this board: ${id}`);
-      await run(context, args.board, (session) => session.tidyItems(uids, args.mode));
-      return { moved: uids.length };
+      const moved = await run(context, args.board, (session) => session.tidyItems(uids, args.mode));
+      return { moved: Number(moved) || 0 };
     },
   };
 

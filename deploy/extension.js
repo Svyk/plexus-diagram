@@ -118505,13 +118505,15 @@ function createAiTools(deps) {
       const { board: board2 } = load(args?.board);
       const rects = worldRects(board2);
       let area2 = boardArea(board2, rects);
+      let cols = 4;
       if (args?.section) {
         const sec = board2.items.get(String(args.section).trim().replace(/^\(\(|\)\)$/g, ""));
         if (!sec || sec.type !== "section") throw new Error(`Not a section on this board: ${args.section}`);
         const r = rects.get(sec.uid);
         area2 = { x: r.x + 24, y: r.y + 60 };
+        cols = Math.max(1, Math.floor((r.w - 24) / 320));
       }
-      const slots = autoPlace2(cards.length, area2);
+      const slots = autoPlace2(cards.length, area2, { cols });
       const list = cards.map((c, i) => {
         const text4 = String(c?.text ?? "").trim();
         if (!text4) throw new Error("Every card needs text");
@@ -118598,8 +118600,8 @@ function createAiTools(deps) {
       else if (args.section) uids = [boardUidOf(args.section)];
       else uids = [...board2.items.values()].filter((i) => i.parentUid === board2.uid).map((i) => i.uid);
       for (const id of uids) if (!board2.items.has(id)) throw new Error(`Not an item on this board: ${id}`);
-      await run(context, args.board, (session) => session.tidyItems(uids, args.mode));
-      return { moved: uids.length };
+      const moved = await run(context, args.board, (session) => session.tidyItems(uids, args.mode));
+      return { moved: Number(moved) || 0 };
     }
   };
   return [list_boards, read_board, add_cards, add_section, connect_cards, arrange_board];

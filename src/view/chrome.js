@@ -4,7 +4,7 @@
 import { PALETTE, FONT_SIZES, BOARD_PATTERNS, DOCK_POSITIONS } from "../model/schema.js";
 import { SHAPES } from "../model/shapes.js";
 import { changelogEntry } from "../model/changelog.js";
-import { CHANGELOG_TEXT } from "../changelog-text.js";
+import { changelogText } from "../changelog-text.js";
 import { buildColorPicker } from "./color-picker.js";
 import { placeNearAnchor } from "./avoid.js";
 import { EDGE_BAR_MAX, avoidDock, avoidObstacles, dockOverflow, placeBarClear, readerLimit } from "../model/card-face.js";
@@ -294,7 +294,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const toggleLog = () => {
     if (logEl) { closeLog(); return; }
     const ver = String(version || "").replace(/^v/, "");
-    const entry = changelogEntry(CHANGELOG_TEXT, ver);
+    const entry = changelogEntry(changelogText(), ver);
     logEl = el("div", "pxd-changelog pxd-chrome", root);
     logEl.setAttribute("role", "dialog");
     logEl.setAttribute("aria-label", "Changelog");

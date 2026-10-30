@@ -4,13 +4,14 @@
 
 import { sha256Hex, optionsHash } from "../model/parse-hash.js";
 import { assembleDocument, parsePageGeometry } from "../model/parse/index.js";
-import { scanPagesOf } from "../model/parse/ocr-merge.js";
+import { scanPagesOf } from "../model/scan-pages.js";
+import { PDF_TABLES_CAPABILITIES } from "../model/pdf-capabilities.js";
 import { toGridModelSpec } from "../model/parse-to-grid.js";
 import { restorableParse } from "./parse-store.js";
 import { helperCanOcr } from "./parse-helper-client.js";
 import { detectPdfjs, loadPageData, readScan } from "../view/parse-engine.js";
 
-export const PDF_TABLES_CAPABILITIES = Object.freeze(["tablesFromPdf", "tablesFromPdf.cache", "tablesFromPdf.scan.helper", "tablesFromPdf.scan.source"]);
+export { PDF_TABLES_CAPABILITIES };
 
 const OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
 const ENGINES = ["builtin", "docling", "mixed", "anydoc"];

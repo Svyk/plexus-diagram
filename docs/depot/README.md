@@ -62,3 +62,7 @@ From the 2026-10-29 Depot research:
 - `source_commit` `d7b48d6` still ships the OCR beta and Every diagram is a Plexus board on. Move it to a commit at or after this change before any pull request.
 - `extension.js` is about 4.6 MiB. Depot sets no limit, but Roam asks that heavy dependencies load lazily.
 - README images use relative paths. Other Depot READMEs use absolute `raw.githubusercontent.com` URLs; whether Roam resolves relative ones is unchecked.
+
+## Note for the reviewer
+
+`extension.js` holds rarely used code as deflated, base64 text and runs it with `new Function` on first use. The text is built from this repository by `build.sh` (`scripts/pieces.mjs`, `src/piece-loader.js`); nothing is fetched. Depot publishes only `extension.js` and `extension.css`, so this is how the extension starts light without loading remote code. If a reviewer objects, listing no pieces in `scripts/pieces.mjs` gives one plain minified bundle with the same features.

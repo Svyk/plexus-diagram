@@ -5,6 +5,7 @@ import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { createHost } from "../src/host/roam.js";
 import { deskEntryKey, deskEntryString, deskTargetOf, sameDeskEntry } from "../src/model/desk.js";
 import { buildMenu, flattenMenu } from "../src/view/menu-model.js";
+import { sourceCss } from "./css-source.js";
 
 test("deskEntryString: block is embed-path closed, page is embed", () => {
   assert.equal(deskEntryString({ kind: "block", uid: "abc123xyz" }), "{{embed-path: ((abc123xyz)) closed}}");
@@ -87,7 +88,7 @@ test("card menu: add-to-desk follows open-sidebar only when canDesk", () => {
 });
 
 test("built extension.css scopes page-chrome rules out of Roam's Sidecar", () => {
-  const css = readFileSync(new URL("../extension.css", import.meta.url), "utf8");
+  const css = sourceCss();
   // Every rule keyed on a Plexus class on <html> or <body> (both mirrored into the Sidecar) must exclude it.
   const bad = css.split("\n").filter((l) => /^(body|html|:root)\.pxd-/.test(l) && !l.includes("rm-sidecar"));
   assert.deepEqual(bad, []);

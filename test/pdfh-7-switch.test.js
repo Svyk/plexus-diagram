@@ -163,6 +163,7 @@ test("list keys live on the pane: arrows, Enter locates, the reader and Escape a
     root,
     host,
     onNote(row) { noted.push(row.uid); },
+    liveDrawer: null,
   });
   try {
     pane.open({ blockUid: "pdfblock1", cardUid: "pdfcard01", title: "Paper", pageUid: "pagepdf01" });

@@ -4,6 +4,8 @@ import { setTitleLexicon } from "../src/model/title-cap.js";
 import { pdfTitlePlan } from "../src/model/pdf.js";
 import { scheduleTitleLexiconWarm } from "../src/view/title-lexicon-warm.js";
 import { createDeviceOcr } from "../src/host/device-ocr.js";
+import { hasCachedLexicon } from "../src/model/lexicon-cache.js";
+import { CACHE_NAME, LEXICON_FILE, PAGES_ORIGIN } from "../src/model/ocr/manifest.js";
 
 const lex = new Set("summary of reported cases per population".split(" "));
 
@@ -83,4 +85,33 @@ test("warmTitleLexicon is memoized, reads the cache only and never fetches", asy
     assert.equal(reads, 1);
     assert.equal(fetches, 0);
   } finally { globalThis.fetch = saved; setTitleLexicon(null); }
+});
+
+test("pre-check: the OCR code is reached only when the lexicon is cached", async () => {
+  for (const hit of [false, true]) {
+    const calls = { ocr: 0, warm: 0 };
+    const idle = [];
+    scheduleTitleLexiconWarm({
+      win: { requestIdleCallback: (fn) => idle.push(fn) },
+      hasPdf: () => true,
+      ocr: () => { calls.ocr++; return { warmTitleLexicon: async () => { calls.warm++; return true; } }; },
+      cached: async () => hit,
+      isDisposed: () => false,
+      onWarm: () => {},
+    });
+    idle[0]();
+    await new Promise((r) => setImmediate(r));
+    assert.equal(calls.ocr, hit ? 1 : 0);
+    assert.equal(calls.warm, hit ? 1 : 0);
+  }
+});
+
+test("hasCachedLexicon looks up the cache name and URL ocr-web uses, and never fetches", async () => {
+  const seen = [];
+  const mk = (hit) => ({ open: async (name) => ({ match: async (url) => { seen.push([name, url]); return hit ? {} : undefined; } }) });
+  assert.equal(await hasCachedLexicon({ cachesImpl: mk(true) }), true);
+  assert.deepEqual(seen[0], [CACHE_NAME, `${PAGES_ORIGIN}assets/ocr/${LEXICON_FILE.file}`]);
+  assert.equal(await hasCachedLexicon({ cachesImpl: mk(false) }), false);
+  assert.equal(await hasCachedLexicon({ cachesImpl: null }), false);
+  assert.equal(await hasCachedLexicon({ cachesImpl: { open: async () => { throw new Error("x"); } } }), false);
 });

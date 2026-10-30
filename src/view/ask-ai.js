@@ -6,6 +6,7 @@
 import { answerCardMarkdown, buildFocusContext, buildMultiContext, chipText, contextWithImage, MULTI_DEFAULT_PROMPT, MULTI_QUICK_PROMPTS, parseAnswer, previewText, promptWithImage, promptWithImages, QUICK_PROMPTS, selectionDoc, splitCitations, withImageInstructions } from "../model/ai-context.js";
 import { graphOfWindow, modelPickKey, pickAskModel } from "../model/ask-models.js";
 import * as liveai from "../host/liveai.js";
+import { getAskModelSetting, setAskSettings } from "../model/ask-setting.js";
 import { getFigureImages, isUsableImageUrl, noteFor } from "../host/figure-image.js";
 import { applyMention, blockMention, BUILTIN_STYLES, buildRoamContext, COMMAND_CATEGORIES, COMMANDS, CONTEXT_SOURCES, customItems, DEFAULT_LOG_DAYS, effortOptions, effortsFor, filterCommands, LIVE_TOOLS, MAX_SUGGESTIONS, pageMention, parseMentions, prepareTitles, rankTitles, TOOL_CATEGORIES, TRANSLATIONS, triggerAt, withStyle } from "../model/ask-composer.js";
 import * as lookup from "../host/roam-lookup.js";
@@ -51,11 +52,7 @@ const titleCase = (c) => String(c || "").toLowerCase().replace(/^\w/, (x) => x.t
 const now = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
 const clamp = (n, lo, hi) => Math.min(Math.max(n, lo), Math.max(lo, hi));
 
-let askModelSetting = () => "auto";
-// The board hands over the "Ask AI model" setting; a conversation reads it when it starts.
-export function setAskSettings({ model = null } = {}) {
-  askModelSetting = typeof model === "function" ? model : () => "auto";
-}
+export { setAskSettings };
 
 function make(doc, tag, cls, parent, text) {
   const node = doc.createElement(tag);
@@ -1107,7 +1104,7 @@ function startSession(s, o) {
     let remembered = "";
     try { remembered = String(storage()?.getItem(modelPickKey(graphOfWindow(win))) || ""); } catch { remembered = ""; }
     if (!remembered && anyImage()) { try { remembered = String(storage()?.getItem(visionKey()) || ""); } catch { remembered = ""; } }
-    const def = pickAskModel(models, { setting: askModel ?? askModelSetting(), remembered, liveDefault: liveai.defaultModel(win), needImage: anyImage() });
+    const def = pickAskModel(models, { setting: askModel ?? getAskModelSetting(), remembered, liveDefault: liveai.defaultModel(win), needImage: anyImage() });
     for (const m of models) {
       const opt = make(dom, "option", "", sel, m.provider ? `${m.name} · ${m.provider}` : m.name);
       opt.value = m.id;

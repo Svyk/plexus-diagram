@@ -1,8 +1,10 @@
-import { build as esbuild } from "esbuild";
+import { build as esbuild, transform as esbuildTransform } from "esbuild";
 import { createHash } from "node:crypto";
-import { copyFile, cp, mkdir, readFile, readdir, rm, watch, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, readdir, realpath, rm, watch, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { buildPieces } from "./scripts/pieces.mjs";
 
 const thisFile = fileURLToPath(import.meta.url);
 const defaultRoot = dirname(thisFile);
@@ -33,7 +35,7 @@ const anydocWasmExternal = {
 const depotSwaps = {
   name: "depot-swaps",
   setup(build) {
-    build.onResolve({ filter: /\/(anydoc|device-ocr|build-flavor)\.js$/ }, async (args) => {
+    build.onResolve({ filter: /\/(anydoc|device-ocr|build-flavor|lexicon-cache)\.js$/ }, async (args) => {
       if (!args.importer) return undefined;
       const importer = args.importer.split("\\").join("/");
       if (!importer.includes("/src/") || importer.includes("/src/host/depot/")) return undefined;
@@ -67,7 +69,7 @@ export function bundleBuildOptions({
     target: ["es2020"],
     charset: "utf8",
     legalComments: "none",
-    minify: false,
+    minify: true,
     sourcemap: false,
     treeShaking: true,
     logLevel: "silent",
@@ -77,6 +79,20 @@ export function bundleBuildOptions({
   };
 }
 
+// The extension itself: minified, with rarely used code split into pieces (scripts/pieces.mjs).
+export async function renderBundle({ rootDirectory = defaultRoot, banner = "", metafilePath, depot = false } = {}) {
+  const rawCss = await readCss(rootDirectory);
+  const { code: css } = await esbuildTransform(rawCss, { loader: "css", minify: true, charset: "utf8", legalComments: "none", logLevel: "silent" });
+  const options = bundleBuildOptions({ rootDirectory, banner, depot });
+  const out = await buildPieces({ root: await realpath(resolve(rootDirectory)), options, css });
+  if (metafilePath) {
+    const target = resolve(metafilePath);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, `${JSON.stringify(out.metafile)}\n`, "utf8");
+  }
+  return out;
+}
+
 export async function bundleEntry({
   rootDirectory = defaultRoot,
   entryPoint = "src/extension.js",
@@ -84,6 +100,7 @@ export async function bundleEntry({
   metafilePath,
   depot = false,
 } = {}) {
+  if (entryPoint === "src/extension.js") return (await renderBundle({ rootDirectory, banner, metafilePath, depot })).javascript;
   const result = await esbuild(bundleBuildOptions({
     rootDirectory,
     entryPoint,
@@ -134,7 +151,7 @@ export async function readCss(rootDirectory = defaultRoot) {
 export async function syncChangelogText(rootDirectory = defaultRoot) {
   const root = resolve(rootDirectory);
   const text = await readFile(resolve(root, "CHANGELOG.md"), "utf8");
-  const out = `// Generated from CHANGELOG.md. build.mjs rewrites this file.\nexport const CHANGELOG_TEXT = ${JSON.stringify(text)};\n`;
+  const out = `// Generated from CHANGELOG.md. build.mjs rewrites this file.\nexport const changelogText = () => ${JSON.stringify(text)};\n`;
   const path = resolve(root, "src/changelog-text.js");
   let prev = "";
   try { prev = await readFile(path, "utf8"); } catch { /* first build */ }
@@ -188,20 +205,23 @@ export async function renderArtifacts(rootDirectory = defaultRoot, options = {})
   const banner = artifactBanner(packageMetadata.version);
   const forbidden = await depotForbiddenInputs(rootDirectory);
   if (forbidden.length) throw new Error(`Depot build still bundles:\n- ${forbidden.join("\n- ")}`);
+  const pages = await renderBundle({ rootDirectory, banner, metafilePath: options.metafilePath });
+  const depot = await renderBundle({ rootDirectory, banner, depot: true });
   return {
-    javascript: await bundleEntry({ rootDirectory, banner, metafilePath: options.metafilePath }),
-    depotJavascript: await bundleEntry({ rootDirectory, banner, depot: true }),
-    css: await readCss(rootDirectory),
+    javascript: pages.javascript,
+    depotJavascript: depot.javascript,
+    css: pages.css,
+    depotCss: depot.css,
     ocrWorker,
   };
 }
 
 export async function build(rootDirectory = defaultRoot, options = {}) {
-  const { javascript, depotJavascript, css, ocrWorker } = await renderArtifacts(rootDirectory, options);
+  const { javascript, depotJavascript, css, depotCss, ocrWorker } = await renderArtifacts(rootDirectory, options);
   const deployDir = resolve(rootDirectory, "deploy");
   await Promise.all([
     writeFile(resolve(rootDirectory, "extension.js"), depotJavascript, "utf8"),
-    writeFile(resolve(rootDirectory, "extension.css"), css, "utf8"),
+    writeFile(resolve(rootDirectory, "extension.css"), depotCss, "utf8"),
   ]);
   await rm(deployDir, { recursive: true, force: true });
   await mkdir(resolve(deployDir, "helper"), { recursive: true });
@@ -256,7 +276,7 @@ export async function verifyGeneratedArtifacts(rootDirectory = defaultRoot) {
   const expected = await renderArtifacts(rootDirectory);
   const comparisons = [
     ["extension.js", expected.depotJavascript],
-    ["extension.css", expected.css],
+    ["extension.css", expected.depotCss],
     ["deploy/extension.js", expected.javascript],
     ["deploy/extension.css", expected.css],
     ["deploy/README.md", await readFile(resolve(rootDirectory, "README.md"), "utf8")],

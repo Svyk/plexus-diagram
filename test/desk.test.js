@@ -88,7 +88,8 @@ test("card menu: add-to-desk follows open-sidebar only when canDesk", () => {
 
 test("built extension.css scopes page-chrome rules out of Roam's Sidecar", () => {
   const css = readFileSync(new URL("../extension.css", import.meta.url), "utf8");
-  const bad = css.split("\n").filter((l) => /^body\.pxd-(has-fullscreen|fs-cover|has-board)/.test(l));
+  // Every rule keyed on a Plexus class on <html> or <body> (both mirrored into the Sidecar) must exclude it.
+  const bad = css.split("\n").filter((l) => /^(body|html|:root)\.pxd-/.test(l) && !l.includes("rm-sidecar"));
   assert.deepEqual(bad, []);
   assert.ok(css.includes("html:not(.rm-sidecar) > body.pxd-has-board"));
   assert.ok(css.includes(":root.pxd-sidebar-pdf:not(.rm-sidecar)"));

@@ -83,6 +83,6 @@
    editor's ancestors include the board block and its page, outside the board, so the line ran from the card to the
    page's left edge. While a card editor is open (body class from the view), boxes outside any board root are hidden.
    The path inside the card stays. */
-body.pxd-editing-active [data-reference-path-has-style]:not(.pxd-root *) > div.controls span.bp3-popover-target::before {
+html:not(.rm-sidecar) > body.pxd-editing-active [data-reference-path-has-style]:not(.pxd-root *) > div.controls span.bp3-popover-target::before {
   display: none !important;
 }

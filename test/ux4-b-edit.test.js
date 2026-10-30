@@ -97,7 +97,7 @@ import { readFileSync } from "node:fs";
 const UX4_CSS = readFileSync(new URL("../src/css/ux4-children.css", import.meta.url), "utf8");
 
 test("B5: while a card editor is open, Reference Path boxes on ancestors outside the board are hidden; inside the card they stay", async () => {
-  const rule = /body\.pxd-editing-active \[data-reference-path-has-style\]:not\(\.pxd-root \*\) > div\.controls span\.bp3-popover-target::before\s*\{[^}]*display:\s*none\s*!important/;
+  const rule = /html:not\(\.rm-sidecar\) > body\.pxd-editing-active \[data-reference-path-has-style\]:not\(\.pxd-root \*\) > div\.controls span\.bp3-popover-target::before\s*\{[^}]*display:\s*none\s*!important/;
   assert.match(UX4_CSS, rule, "one rule, gated on the body class, that skips anything inside a board root");
   assert.doesNotMatch(UX4_CSS, /:has\(/, "no :has()");
   const rendered = [];

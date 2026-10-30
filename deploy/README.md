@@ -487,13 +487,17 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 
 ## Privacy
 
-Plexus reads and writes your graph through Roam's extension API. Opening a board, panning, zooming and reading a followed source make no network request of their own, with two exceptions that are on by default and only download your graph's own files: an open board downloads a visible PDF that has no cover yet to draw one (Settings, Prepare PDF covers in the background), and board search downloads each Image or Figure card's picture once to index its colours (Settings, Index image colours). Turn either off in Settings. Keys you save in Engines (LlamaParse, Mistral) and the Parse helper token stay in this browser and are never written to the graph or its settings.
+Plexus reads and writes your graph through Roam's extension API. Opening a board, panning, zooming and reading a followed source send nothing out of your graph. A few things on screen download your graph's own files (usually from Roam's file storage) without a click, all on by default:
+
+- a visible PDF card with no cover yet, to draw one (Settings, Prepare PDF covers in the background);
+- the PDF behind a PDF source pin or region crop shown in the outline, to draw the crop (Settings, Inline region crops);
+- each Image or Figure card's picture, once, while board search lists them, to index its colours (Settings, Index image colours). Keys you save in Engines (LlamaParse, Mistral) and the Parse helper token stay in this browser and are never written to the graph or its settings.
 
 Each request below happens only in the case named, and goes only to the address named.
 
 | Request | Goes to | When |
 |---|---|---|
-| Files in your graph | The file's own address, usually Roam's file storage | A PDF on the board is downloaded (by Plexus or Roam's PDF reader) when an open board shows it without a cover, to draw one (Settings, Prepare PDF covers in the background, on); when you open the Add panel, to search the board's PDFs by name and text (no setting turns this off); and when you open it in Quick Look, flip its card, open it in the reading pane, parse it or read its tables; a file-link card when you choose Convert to cards; a picture once to index its colours while board search lists Image or Figure cards (Settings, Index image colours, on) |
+| Files in your graph | The file's own address, usually Roam's file storage | A PDF on the board is downloaded (by Plexus or Roam's PDF reader) when an open board shows it without a cover, to draw one (Settings, Prepare PDF covers in the background, on); when a PDF source pin scrolls into view, to draw its crop (Settings, Inline region crops, on); when you open the Add panel, to search the board's PDFs by name and text (no setting turns this off); and when you open it in Quick Look, flip its card, open it in the reading pane, parse it or read its tables; a file-link card when you choose Convert to cards; a picture once to index its colours while board search lists Image or Figure cards (Settings, Index image colours, on) |
 | Uploads to your graph | Roam's file storage, through Roam's own upload | Pasting or dropping an image; after a helper, High accuracy or cloud read (Settings, Keep reads in the graph, on); the first time you ask AI about a figure with a model that can see images (Settings, Send figure images to AI, on) |
 | Local parse helper | `http://127.0.0.1:48765` on this computer, or the address in Settings | Only once you install and pair the helper: Set up and Pair in Engines, opening Parse, and parsing or reading a scan. The PDF goes to the helper on this computer |
 | Document converter | `svyk.github.io/plexus-diagram` (this extension's own site) | The first time you drop a Word, PowerPoint, Excel, OpenDocument, CSV or EPUB file, choose Convert to cards, or pick Alternative read. Plexus downloads the converter, checks it against a pinned hash and keeps it in this browser. Your file is not sent |

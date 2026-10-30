@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { buildBoard, worldRects } from "../src/model/board.js";
 import {
-  blocksToText, boardToCanvas, boardToCanvasText, canvasFileName, canvasTitle, canvasToTree,
+  blocksToText, boardToCanvas, boardToCanvasText, canvasFileName, canvasTitle, canvasToTree, exportCanvas,
   mdToRoam, parseCanvas, roamToMd, textToBlocks,
 } from "../src/model/json-canvas.js";
 import { planCopy, starterById } from "../src/model/templates.js";
@@ -195,4 +195,59 @@ test("JC-9: file names and titles", () => {
   assert.equal(canvasTitle("/x/Project map.canvas"), "Project map");
   assert.equal(canvasTitle(""), "Untitled board");
   assert.equal(canvasFileName("A/B: c"), "A-B- c.canvas");
+});
+
+test("JC-10: export writes what a card shows, not Roam markup", () => {
+  const strings = { abcdefghi: "Target **text** with ((zzzzzzzzz))", zzzzzzzzz: "inner" };
+  const board = buildBoard({
+    ":block/uid": "b", ":block/string": "{{[[diagram]]:B}}", ":block/props": { plexus: { v: 2 } },
+    ":block/children": [
+      { ":block/uid": "c1", ":block/string": "((abcdefghi))", ":block/order": 0, ":block/props": { plexus: { type: "card", x: 0, y: 0, w: 200, h: 100 } } },
+      { ":block/uid": "c2", ":block/string": "{{[[TODO]]}} do it ((abcdefghi))", ":block/order": 1, ":block/props": { plexus: { type: "card", x: 300, y: 0, w: 200, h: 100 } } },
+      { ":block/uid": "c3", ":block/string": "{{[[pdf]]: https://x.org/y.pdf}}", ":block/order": 2, ":block/props": { plexus: { type: "card", x: 600, y: 0, w: 200, h: 100 } } },
+    ],
+  }, { resolve: (id) => strings[id] ?? null });
+  const canvas = boardToCanvas(board, worldRects(board), { resolve: (id) => strings[id] ?? null });
+  const by = (id) => canvas.nodes.find((n) => n.id === id);
+  assert.equal(by("c1").text, "Target **text** with inner");
+  assert.equal(by("c2").text, "[ ] do it Target **text** with inner");
+  assert.deepEqual([by("c3").type, by("c3").url], ["link", "https://x.org/y.pdf"]);
+  assert.ok(canvas.nodes.every((n) => !/\(\(|\{\{/.test(n.text ?? "")));
+});
+
+test("JC-11: an arrow to an arrow is counted as left out", () => {
+  const board = buildBoard({
+    ":block/uid": "b", ":block/string": "{{[[diagram]]:B}}", ":block/props": { plexus: { v: 2 } },
+    ":block/children": [
+      { ":block/uid": "a", ":block/string": "A", ":block/order": 0, ":block/props": { plexus: { type: "card", x: 0, y: 0, w: 200, h: 100 } } },
+      { ":block/uid": "c", ":block/string": "C", ":block/order": 1, ":block/props": { plexus: { type: "card", x: 400, y: 0, w: 200, h: 100 } } },
+      { ":block/uid": "d", ":block/string": "D", ":block/order": 2, ":block/props": { plexus: { type: "card", x: 400, y: 300, w: 200, h: 100 } } },
+      { ":block/uid": "E", ":block/string": "Connections", ":block/order": 3, ":block/props": { plexus: { type: "edges" } }, ":block/children": [
+        { ":block/uid": "e1", ":block/string": "((a)) → ((c))", ":block/order": 0, ":block/props": { plexus: { type: "edge", from: "a", to: "c" } } },
+        { ":block/uid": "e2", ":block/string": "((d)) → ((e1))", ":block/order": 1, ":block/props": { plexus: { type: "edge", from: "d", to: "e1" } } },
+      ] },
+    ],
+  });
+  const { canvas, leftOut } = exportCanvas(board, worldRects(board));
+  assert.deepEqual(canvas.edges.map((e) => e.id), ["e1"]);
+  assert.equal(board.edges.get("e2").valid, true);
+  assert.equal(leftOut, 1);
+});
+
+test("JC-12: inline marks leave URLs and code alone; tasks, bold and code fences survive a trip", () => {
+  assert.equal(mdToRoam("see https://x.com/*a*/b and `x *y*` but *z*"), "see https://x.com/*a*/b and `x *y*` but __z__");
+  assert.equal(mdToRoam("__bold__ _it_"), "**bold** __it__");
+  assert.equal(roamToMd(mdToRoam("__bold__ *it*")), "**bold** *it*");
+  const blocks = textToBlocks("Plan\n- [ ] buy\n- [x] sold\n```js\nconst a = 1;\n\nconst b = 2;\n```\nafter");
+  assert.deepEqual(blocks.children.map((c) => c.string), ["{{[[TODO]]}} buy", "{{[[DONE]]}} sold", "```js\nconst a = 1;\n\nconst b = 2;\n```", "after"]);
+  const tree = blocks.children.map((c, i) => ({ ":block/string": c.string, ":block/order": i }));
+  assert.equal(blocksToText(blocks.string, tree), "Plan\n- [ ] buy\n- [x] sold\n```js\nconst a = 1;\n\nconst b = 2;\n```\n- after");
+});
+
+test("JC-13: link and file nodes with nothing to point at are skipped", () => {
+  const parsed = parseCanvas(JSON.stringify({ nodes: [
+    { id: "l", type: "link", x: 0, y: 0, width: 10, height: 10, url: "  " },
+    { id: "f", type: "file", x: 0, y: 0, width: 10, height: 10 },
+  ] }));
+  assert.deepEqual([parsed.nodes.length, parsed.skipped], [0, 2]);
 });

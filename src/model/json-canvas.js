@@ -37,24 +37,44 @@ function colorOut(v) {
   return /^#[0-9a-f]{6}$/.test(v) ? v : undefined;
 }
 
-// Obsidian Markdown to Roam: *italic*, ==highlight== and [[Note|alias]].
+// Code spans and URLs pass through the inline rewrites untouched.
+const KEEP = /(`[^`\n]*`|https?:\/\/[^\s)\]]+)/;
+const outsideKept = (s, fn) => String(s ?? "").split(KEEP).map((part, i) => (i % 2 ? part : fn(part))).join("");
+
+// Obsidian Markdown to Roam: __bold__, *italic* and _italic_, ==highlight==, [[Note|alias]] and - [ ] tasks.
 export function mdToRoam(s) {
-  return String(s ?? "")
+  return outsideKept(s, (t) => t
     .replace(/\[\[([^\]|\n]+)\|([^\]\n]+)\]\]/g, (m, page, alias) => `[${alias}]([[${page}]])`)
     .replace(/==([^=\n]+)==/g, "^^$1^^")
-    .replace(/(^|[^*\w])\*(?![*\s])([^*\n]*?[^*\s])\*(?![*\w])/g, "$1__$2__");
+    .replace(/(^|[^_\w])__(?!\s)([^_\n]*?[^_\s])__(?![_\w])/g, "$1**$2**")
+    .replace(/(^|[^_\w])_(?![_\s])([^_\n]*?[^_\s])_(?![_\w])/g, "$1__$2__")
+    .replace(/(^|[^*\w])\*(?![*\s])([^*\n]*?[^*\s])\*(?![*\w])/g, "$1__$2__")
+    .replace(/^\[ \]\s+/, "{{[[TODO]]}} ")
+    .replace(/^\[[xX]\]\s+/, "{{[[DONE]]}} "));
 }
 
-// Roam to Obsidian Markdown: the reverse of mdToRoam.
-export function roamToMd(s) {
-  return String(s ?? "")
+// Roam to Obsidian Markdown: the reverse of mdToRoam, plus what Obsidian has no use for. A block ref is its
+// text when `resolve` knows it, a TODO is a task box, and a {{[[pdf]]: url}} is its url.
+export function roamToMd(s, resolve = null, depth = 0) {
+  const refs = (t) => t.replace(/\(\(([\w-]{1,64})\)\)/g, (m, uid) => {
+    let text = null;
+    if (typeof resolve === "function" && depth < 2) {
+      try { text = resolve(uid); } catch { text = null; }
+    }
+    return typeof text === "string" ? roamToMd(text.replace(/\s*\n\s*/g, " "), resolve, depth + 1) : m;
+  });
+  return outsideKept(s, (t) => refs(t)
+    .replace(/\{\{\s*(?:\[\[)?TODO(?:\]\])?\s*\}\}\s*/g, "[ ] ")
+    .replace(/\{\{\s*(?:\[\[)?DONE(?:\]\])?\s*\}\}\s*/g, "[x] ")
+    .replace(/\{\{\s*(?:\[\[pdf\]\]|pdf)\s*:\s*([^}]*?)\s*\}\}/g, "$1")
     .replace(/\[([^\]\n]+)\]\(\[\[([^\]\n]+)\]\]\)/g, (m, alias, page) => `[[${page}|${alias}]]`)
     .replace(/\^\^([^^\n]+)\^\^/g, "==$1==")
-    .replace(/(^|[^_\w])__(?!\s)([^_\n]*?[^_\s])__(?![_\w])/g, "$1*$2*");
+    .replace(/(^|[^_\w])__(?!\s)([^_\n]*?[^_\s])__(?![_\w])/g, "$1*$2*"));
 }
 
 // A text node's Markdown: the first line is the card's own string, the rest are child blocks.
-// List items nest by indent; other lines are top-level children. Blank lines are dropped.
+// List items nest by indent; other lines are top-level children; a fenced code block stays one block.
+// Blank lines outside code are dropped.
 export function textToBlocks(text) {
   const lines = String(text ?? "").replace(/\r\n?/g, "\n").split("\n");
   let i = 0;
@@ -65,6 +85,16 @@ export function textToBlocks(text) {
   for (i += 1; i < lines.length; i += 1) {
     const raw = lines[i].replace(/\t/g, "  ");
     if (!raw.trim()) continue;
+    if (/^\s*```/.test(raw)) {
+      const fence = [raw.trim()];
+      for (i += 1; i < lines.length; i += 1) {
+        fence.push(lines[i]);
+        if (/^\s*```\s*$/.test(lines[i])) break;
+      }
+      stack.length = 1;
+      root.children.push({ string: fence.join("\n").replace(/\n\s*```\s*$/, "\n```"), children: [] });
+      continue;
+    }
     const m = /^(\s*)(?:[-*+]|\d+[.)])\s+(.*)$/.exec(raw);
     const indent = m ? m[1].length : 0;
     const string = mdToRoam(m ? m[2].trim() : raw.trim().replace(/^#{1,6}\s+/, ""));
@@ -78,13 +108,16 @@ export function textToBlocks(text) {
 }
 
 // A card's string and child blocks back to Markdown: the string, then the children as a nested list.
-export function blocksToText(string, children) {
-  const out = [roamToMd(string)];
+// A fenced code block keeps its lines.
+export function blocksToText(string, children, resolve = null) {
+  const out = [roamToMd(string, resolve)];
   const walk = (kids, depth) => {
     const sorted = [...(kids ?? [])].sort((a, b) => (a?.[":block/order"] ?? 0) - (b?.[":block/order"] ?? 0));
     for (const c of sorted) {
-      const s = String(c?.[":block/string"] ?? "").replace(/\s*\n\s*/g, " ");
-      out.push(`${"  ".repeat(depth)}- ${roamToMd(s)}`);
+      const raw = String(c?.[":block/string"] ?? "");
+      const pad = "  ".repeat(depth);
+      if (raw.trim().startsWith("```")) out.push(raw.trim().split("\n").map((l) => `${pad}${l}`).join("\n"));
+      else out.push(`${pad}- ${roamToMd(raw.replace(/\s*\n\s*/g, " "), resolve)}`);
       walk(c?.[":block/children"], depth + 1);
     }
   };
@@ -112,7 +145,9 @@ export function parseCanvas(text) {
     const h = num(n?.height);
     const type = n?.type;
     if (!id || ids.has(id) || x == null || y == null || w == null || h == null || w <= 0 || h <= 0
-      || !["text", "file", "link", "group"].includes(type)) { skipped += 1; continue; }
+      || !["text", "file", "link", "group"].includes(type)
+      || (type === "link" && !(typeof n.url === "string" && n.url.trim()))
+      || (type === "file" && !(typeof n.file === "string" && n.file.trim()))) { skipped += 1; continue; }
     ids.add(id);
     nodes.push({
       id, type, x, y, w, h,
@@ -273,7 +308,7 @@ export function canvasFileName(title) {
 }
 
 // The node one board item becomes, or null for an item a canvas has no use for.
-function nodeOf(item, r) {
+function nodeOf(item, r, resolve) {
   const base = { id: item.uid, x: Math.round(r.x), y: Math.round(r.y), width: Math.max(1, Math.round(r.w)), height: Math.max(1, Math.round(r.h)) };
   const color = colorOut(item.color);
   if (color) base.color = color;
@@ -284,16 +319,22 @@ function nodeOf(item, r) {
     return { ...base, type: "file", file: /\.canvas$/i.test(cls.title) ? cls.title : `${cls.title}.md` };
   }
   if (URL_RE.test(string) && !item.content?.length) return { ...base, type: "link", url: string };
+  const pdf = /^\{\{\s*(?:\[\[pdf\]\]|pdf)\s*:\s*(https?:\/\/[^\s}]+)\s*\}\}$/.exec(string);
+  if (pdf && !item.content?.length) return { ...base, type: "link", url: pdf[1] };
   let text;
   if (item.kind === "board") text = item.title || "Board";
-  else if (item.tableUid) text = blocksToText(string, [{ ":block/string": "{{[[table]]}}", ":block/children": item.content }]);
-  else text = blocksToText(string, item.type === "card" ? item.content : []);
+  else if (item.tableUid) text = blocksToText(string, [{ ":block/string": "{{[[table]]}}", ":block/children": item.content }], resolve);
+  // A card that is one block ref (a ref, highlight, region or PDF card) shows its target: write what it shows.
+  else if (cls.kind === "block") text = blocksToText(item.title || string, item.content, resolve);
+  else text = blocksToText(string, item.type === "card" ? item.content : [], resolve);
   return { ...base, type: "text", text };
 }
 
 // The board as a JSON Canvas object: groups first (outer before inner) so they draw behind, then the
 // rest in board order; arrows whose ends both made it. `rects` are world rects (worldRects or the view's).
-export function boardToCanvas(board, rects) {
+// `resolve(uid)` gives a block's string so block refs inside text go out as their text.
+// `leftOut` counts arrows a canvas can't hold (an arrow to an arrow).
+export function exportCanvas(board, rects, { resolve = null } = {}) {
   const groups = [];
   const rest = [];
   const kept = new Set();
@@ -301,7 +342,7 @@ export function boardToCanvas(board, rects) {
     const item = board.items.get(uid);
     const r = rects?.get(uid);
     if (!item || !r) continue;
-    const node = nodeOf(item, r);
+    const node = nodeOf(item, r, resolve);
     if (!node) continue;
     kept.add(uid);
     (node.type === "group" ? groups : rest).push({ node, depth: item.depth ?? 0 });
@@ -309,8 +350,13 @@ export function boardToCanvas(board, rects) {
   groups.sort((a, b) => a.depth - b.depth);
   const nodes = [...groups, ...rest].map((e) => e.node);
   const edges = [];
+  let leftOut = 0;
   for (const [uid, e] of board?.edges ?? []) {
-    if (!e?.valid || !kept.has(e.from) || !kept.has(e.to)) continue;
+    if (!e?.valid) continue;
+    if (!kept.has(e.from) || !kept.has(e.to)) {
+      if (board.edges.has(e.from) || board.edges.has(e.to)) leftOut += 1;
+      continue;
+    }
     const out = { id: uid, fromNode: e.from, toNode: e.to };
     if (SIDES.includes(e.fromSide)) out.fromSide = e.fromSide;
     if (SIDES.includes(e.toSide)) out.toSide = e.toSide;
@@ -321,9 +367,13 @@ export function boardToCanvas(board, rects) {
     if (e.label) out.label = e.label;
     edges.push(out);
   }
-  return { nodes, edges };
+  return { canvas: { nodes, edges }, leftOut };
 }
 
-export function boardToCanvasText(board, rects) {
-  return `${JSON.stringify(boardToCanvas(board, rects), null, "\t")}\n`;
+export function boardToCanvas(board, rects, opts) {
+  return exportCanvas(board, rects, opts).canvas;
+}
+
+export function boardToCanvasText(board, rects, opts) {
+  return `${JSON.stringify(boardToCanvas(board, rects, opts), null, "\t")}\n`;
 }

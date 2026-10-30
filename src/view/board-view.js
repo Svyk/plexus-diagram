@@ -84,7 +84,7 @@ import { itemSig } from "../model/boardsnap.js";
 import { captionForView, selectionViewRect } from "../model/view-save.js";
 import { PLEXUS_MIME, copyPayload, editorPastePlan, imageMarkdown, inlineAtCaret, parseClipboard, parsePastedText } from "../model/clipboard.js";
 import { PICTURE_MAX_SIDE, pictureString } from "../model/picture.js";
-import { boardToCanvasText, canvasFileName } from "../model/json-canvas.js";
+import { canvasFileName, exportCanvas as canvasExport } from "../model/json-canvas.js";
 import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../model/export.js";
 import { createInteractions, emptyLabelShouldDeleteEdge, whyLabelField } from "./interactions.js";
 import { openPagePicker } from "./board-picker.js";
@@ -6539,6 +6539,7 @@ function buildBoardView(onFail, {
         input.accept = ".canvas,.json,application/json";
         input.style.display = "none";
         const done = () => input.remove();
+        input.addEventListener("cancel", done);
         input.addEventListener("change", () => {
           const file = input.files?.[0];
           if (!file || disposed) { done(); return; }
@@ -11803,7 +11804,12 @@ function buildBoardView(onFail, {
     async exportCanvas({ download = true } = {}) {
       const b = board();
       if (!b) return "";
-      const text = boardToCanvasText(b, rects());
+      const resolve = (id) => {
+        try { const s = host?.blockString?.(id); return typeof s === "string" ? s : null; } catch { return null; }
+      };
+      const { canvas, leftOut } = canvasExport(b, rects(), { resolve });
+      const text = `${JSON.stringify(canvas, null, "\t")}\n`;
+      if (download && leftOut && !disposed) toast(`${leftOut} ${leftOut === 1 ? "arrow" : "arrows"} to an arrow left out: JSON Canvas has none`);
       if (download) {
         try {
           const blob = new Blob([text], { type: "application/json" });

@@ -3880,6 +3880,10 @@ export async function installPlexusDiagram({
     return targetView(context)?.exportSvg?.({ download: true });
   }
 
+  function exportCanvasCommand(context) {
+    return targetView(context)?.exportCanvas?.({ download: true });
+  }
+
   function copyOutlineCommand(context) {
     return targetView(context)?.copyOutline?.();
   }
@@ -3937,6 +3941,7 @@ export async function installPlexusDiagram({
     ["Plexus: Restore native diagram", restoreCommand],
     ["Plexus: Fullscreen this diagram", fullscreenCommand],
     ["Plexus: Export board as SVG", exportSvgCommand],
+    ["Plexus: Export board as JSON Canvas", exportCanvasCommand],
     ["Plexus: Refresh static picture", refreshPictureCommand],
     ["Plexus: Copy board as text", copyOutlineCommand],
   ];

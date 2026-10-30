@@ -84,6 +84,7 @@ import { itemSig } from "../model/boardsnap.js";
 import { captionForView, selectionViewRect } from "../model/view-save.js";
 import { PLEXUS_MIME, copyPayload, editorPastePlan, imageMarkdown, inlineAtCaret, parseClipboard, parsePastedText } from "../model/clipboard.js";
 import { PICTURE_MAX_SIDE, pictureString } from "../model/picture.js";
+import { canvasFileName, exportCanvas as canvasExport } from "../model/json-canvas.js";
 import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../model/export.js";
 import { createInteractions, emptyLabelShouldDeleteEdge, whyLabelField } from "./interactions.js";
 import { openPagePicker } from "./board-picker.js";
@@ -6531,6 +6532,29 @@ function buildBoardView(onFail, {
         Promise.resolve(session.insertTemplate?.(arg, rect)).then((uid) => { if (uid && !disposed) ctl.select([uid]); }).catch(() => {});
         break;
       }
+      case "export-canvas": void view.exportCanvas({ download: true }); break;
+      case "import-canvas": {
+        const input = doc.createElement("input");
+        input.type = "file";
+        input.accept = ".canvas,.json,application/json";
+        input.style.display = "none";
+        const done = () => input.remove();
+        input.addEventListener("cancel", done);
+        input.addEventListener("change", () => {
+          const file = input.files?.[0];
+          if (!file || disposed) { done(); return; }
+          const d = DEFAULT_BOARD_CARD;
+          const rect = { x: world.x - d.w / 2, y: world.y - d.h / 2, w: d.w, h: d.h };
+          Promise.resolve(file.text())
+            .then((text) => (disposed ? null : session.importCanvas?.(text, rect, file.name)))
+            .then((uid) => { if (uid && !disposed) ctl.select([uid]); })
+            .catch(() => {})
+            .finally(done);
+        });
+        doc.body.append(input);
+        input.click();
+        break;
+      }
       case "save-template":
         Promise.resolve(session.saveAsTemplate?.()).catch(() => {});
         break;
@@ -11768,6 +11792,31 @@ function buildBoardView(onFail, {
           const a = doc.createElement("a");
           a.href = url;
           a.download = `${String(b.title || UNTITLED_BOARD).replace(/[\\/:*?"<>|]+/g, "-").trim() || "board"}.svg`;
+          doc.body.append(a);
+          a.click();
+          a.remove();
+          timers.later(() => URL.revokeObjectURL(url), 4000);
+        } catch { /* no Blob / URL in this environment: the text is still returned */ }
+      }
+      return text;
+    },
+    // Serializes the board to JSON Canvas text; with download it also offers a .canvas file.
+    async exportCanvas({ download = true } = {}) {
+      const b = board();
+      if (!b) return "";
+      const resolve = (id) => {
+        try { const s = host?.blockString?.(id); return typeof s === "string" ? s : null; } catch { return null; }
+      };
+      const { canvas, leftOut } = canvasExport(b, rects(), { resolve });
+      const text = `${JSON.stringify(canvas, null, "\t")}\n`;
+      if (download && leftOut && !disposed) toast(`${leftOut} ${leftOut === 1 ? "arrow" : "arrows"} to an arrow left out: JSON Canvas has none`);
+      if (download) {
+        try {
+          const blob = new Blob([text], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = doc.createElement("a");
+          a.href = url;
+          a.download = canvasFileName(b.title);
           doc.body.append(a);
           a.click();
           a.remove();

@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { artifactBanner, bundleBuildOptions, readCss } from "../build.mjs";
+import { artifactBanner, renderBundle } from "../build.mjs";
 import { CSS_BUDGET_BYTES, JS_BUDGET_BYTES } from "./size-gate.mjs";
 
 const thisFile = fileURLToPath(import.meta.url);
@@ -24,7 +24,7 @@ export function modulesByOutputBytes(metafile, limit = TOP_MODULES) {
   return rows.slice(0, limit);
 }
 
-export function formatSizeReport({ jsBytes, cssBytes, modules, measured }) {
+export function formatSizeReport({ jsBytes, startBytes, cssBytes, modules, measured, pieces = {} }) {
   const lines = [
     "# Bundle size",
     "",
@@ -34,6 +34,12 @@ export function formatSizeReport({ jsBytes, cssBytes, modules, measured }) {
     "| --- | ---: | --- |",
     `| extension.js | ${jsBytes} | ${JS_BUDGET_BYTES} (900 KB) |`,
     `| extension.css | ${cssBytes} | ${CSS_BUDGET_BYTES} (90 KB) |`,
+    "",
+    `Start code in extension.js: ${startBytes} bytes. The rest of the file is the pieces below, kept as deflated text and only inflated and evaluated on first use. Roam Depot publishes extension.js and extension.css alone and remote code is ruled out, so pieces cannot leave the file, and extension.js cannot reach its budget.`,
+    "",
+    "| piece | code bytes | CSS bytes | stored bytes |",
+    "| --- | ---: | ---: | ---: |",
+    ...Object.entries(pieces).map(([name, row]) => `| ${name} | ${row.bytes} | ${row.cssBytes} | ${row.stored} |`),
     "",
     "Regenerate with `node scripts/size-report.mjs --write docs/size.md`.",
     "",
@@ -56,20 +62,16 @@ function localDay(date) {
 
 export async function collectSizeReport(rootDirectory = defaultRoot) {
   const packageMetadata = JSON.parse(await readFile(resolve(rootDirectory, "package.json"), "utf8"));
-  const [result, css] = await Promise.all([
-    esbuild(bundleBuildOptions({
-      rootDirectory,
-      banner: artifactBanner(packageMetadata.version),
-      metafile: true,
-    })),
-    readCss(rootDirectory),
-  ]);
-  const output = result.outputFiles.find((file) => file.path.endsWith("extension.js"));
-  if (!output) throw new Error("esbuild did not emit extension.js");
+  const { javascript, css, metafile, report } = await renderBundle({
+    rootDirectory,
+    banner: artifactBanner(packageMetadata.version),
+  });
   return {
-    jsBytes: output.contents.byteLength,
+    jsBytes: Buffer.byteLength(javascript, "utf8"),
+    startBytes: report.coreBytes,
     cssBytes: Buffer.byteLength(css, "utf8"),
-    modules: modulesByOutputBytes(result.metafile, TOP_MODULES),
+    pieces: report.pieces,
+    modules: modulesByOutputBytes(metafile, TOP_MODULES),
   };
 }
 

@@ -18,6 +18,7 @@ import { SHORTCUTS } from "../src/view/shortcuts.js";
 import { CARD_MIME } from "../src/view/panel.js";
 import { resetSharedBgBudget } from "../src/bg-budget.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
+import { sourceCss } from "./css-source.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
@@ -3021,7 +3022,7 @@ test("PO-5: --pxd-inv-zoom is 1/zoom clamped to 0.25..4, written once per zoom c
 });
 
 test("PO-5: the grips, ports and end handles size themselves from --pxd-inv-zoom with calc()", () => {
-  const css = readFileSync(new URL("../extension.css", import.meta.url), "utf8");
+  const css = sourceCss();
   assert.equal(/--pxd-ui\b/.test(css), false, "the old zoom-out-only variable is gone from the CSS");
   for (const rule of [/\.pxd-port \{[^}]*width: calc\(12px \* var\(--pxd-inv-zoom, 1\)\)/, /\.pxd-grip--right \{[^}]*width: calc\(8px \* var\(--pxd-inv-zoom, 1\)\)/, /\.pxd-grip--corner \{[^}]*width: calc\(14px \* var\(--pxd-inv-zoom, 1\)\)/, /\.pxd-edge__end \{[^}]*r: calc\(6px \* var\(--pxd-inv-zoom, 1\)\)/]) {
     assert.match(css, rule);

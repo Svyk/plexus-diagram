@@ -7,14 +7,19 @@
 let table = {};
 let core = [];
 const loaded = new Map();
+const styles = [];
+const styled = new Set();
+const log = [];
+
+// Which pieces ran in this window, and how long each took to inflate and evaluate.
+export const pieceLog = () => log.slice();
 
 export function pieceTable(pieces, coreModules) {
   table = pieces;
   core = coreModules;
 }
 
-export function pieceLoad(name, path, fn) {
-  if (fn) { const t = (globalThis.__plexusPieceCalls ||= {}); const k = path + " " + fn; t[k] = (t[k] || 0) + 1; }
+export function pieceLoad(name, path) {
   let piece = loaded.get(name);
   if (!piece) {
     const entry = table[name];
@@ -23,46 +28,62 @@ export function pieceLoad(name, path, fn) {
     const exports = new Function("__core", text)(core);
     piece = { exports, roots: entry.roots };
     loaded.set(name, piece);
-    if (entry.css) addPieceStyle(name, entry.css);
-    (globalThis.__plexusPieces ||= []).push({ name, ms: Math.round((globalThis.performance?.now?.() ?? 0) - start) });
+    log.push({ name, ms: Math.round((globalThis.performance?.now?.() ?? 0) - start) });
+  }
+  if (table[name].css && !styled.has(name)) {
+    styled.add(name);
+    addPieceStyle(name, new TextDecoder().decode(inflateBase64(table[name].css)));
   }
   return piece.exports[piece.roots[path]];
 }
 
 // A view built at board mount but rarely opened (the side panel, Kanban, presenter). It is built on
 // the first use that needs it. `idle` answers the calls made while it does not exist yet: `calls`
-// gives a method's result, `props` a property's value.
-export function pieceDefer(make, idle, label) {
+// gives a method's result, `props` a property's value, and `replay` names setters whose last call
+// is passed on when it gets built.
+export function pieceDefer(make, idle) {
   let real = null;
-  const proxy = new Proxy({}, {
+  const owed = new Map();
+  const build = () => {
+    if (real === null) {
+      real = make();
+      for (const [key, args] of owed) real[key](...args);
+      owed.clear();
+    }
+    return real;
+  };
+  return new Proxy({}, {
     get(_, key) {
       if (real === null && typeof key === "string") {
         if (idle.calls && key in idle.calls) return () => idle.calls[key];
         if (idle.props && key in idle.props) return idle.props[key];
-        if (label) { const t = (globalThis.__plexusPieceCalls ||= {}); const k = `defer ${label}.${key}`; t[k] = (t[k] || 0) + 1; }
+        if (idle.replay?.includes(key)) return (...args) => { owed.set(key, args); };
       }
-      real ??= make();
-      const value = real?.[key];
+      const value = build()[key];
       return typeof value === "function" ? value.bind(real) : value;
     },
     set(_, key, value) {
-      real ??= make();
-      real[key] = value;
+      build()[key] = value;
       return true;
     },
     has(_, key) {
-      real ??= make();
-      return key in real;
+      return key in build();
     },
   });
-  return proxy;
 }
 
 function addPieceStyle(name, css) {
   const style = document.createElement("style");
-  style.dataset.pxdPiece = name;
+  style.setAttribute("data-pxd-piece", name);
   style.textContent = css;
   document.head.appendChild(style);
+  styles.push(style);
+}
+
+export function removePieceStyles() {
+  for (const style of styles) style.remove();
+  styles.length = 0;
+  styled.clear();
 }
 
 const LENGTH_BASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];

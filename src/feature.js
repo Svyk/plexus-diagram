@@ -57,7 +57,9 @@ import { createHelperClient } from "./host/parse-helper-client.js";
 import { closeDiagramDb } from "./host/diagram-db.js";
 import { createDocCache } from "./host/doc-cache.js";
 import { createParseStore } from "./host/parse-store.js";
+import { pieceLog } from "./piece-loader.js";
 import { createPdfTables } from "./host/pdf-tables.js";
+import { PDF_TABLES_CAPABILITIES } from "./model/pdf-capabilities.js";
 import { createAiTools, installAiTools } from "./model/ai-tools.js";
 import { boardBounds, createPublicApi, emitPublicEvent, fitThumbSize, installPublicApi, thumbStroke, uninstallPublicApi } from "./model/public-api.js";
 import { motionProfile, resolveMotion } from "./view/motion.js";
@@ -4457,8 +4459,8 @@ export async function installPlexusDiagram({
     },
   });
   const publicApi = createPublicApi({
-    tablesFromPdf: pdfTables.tablesFromPdf,
-    capabilities: pdfTables.capabilities,
+    tablesFromPdf: (...args) => pdfTables.tablesFromPdf(...args),
+    capabilities: PDF_TABLES_CAPABILITIES,
     host: {
       graphName: () => host.graph || graphFromHash(),
       listBoards: (...args) => host.listBoards?.(...args),
@@ -4524,6 +4526,7 @@ export async function installPlexusDiagram({
     },
     // INSTANT-1. Open timings: { snap, firstPaintMs, liveMs, queriesBeforePaint } per open.
     perf: openPerf,
+    pieces: pieceLog,
     bgOverruns: () => sharedBgBudget().overruns.slice(),
     snapshots: {
       size: () => snapStore.size(),

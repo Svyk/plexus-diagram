@@ -1,8 +1,10 @@
-import { build as esbuild } from "esbuild";
+import { build as esbuild, transform as esbuildTransform } from "esbuild";
 import { createHash } from "node:crypto";
-import { copyFile, cp, mkdir, readFile, readdir, rm, watch, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, readdir, realpath, rm, watch, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { buildPieces } from "./scripts/pieces.mjs";
 
 const thisFile = fileURLToPath(import.meta.url);
 const defaultRoot = dirname(thisFile);
@@ -51,7 +53,7 @@ export function bundleBuildOptions({
     target: ["es2020"],
     charset: "utf8",
     legalComments: "none",
-    minify: false,
+    minify: true,
     sourcemap: false,
     treeShaking: true,
     logLevel: "silent",
@@ -61,12 +63,27 @@ export function bundleBuildOptions({
   };
 }
 
+// The extension itself: minified, with rarely used code split into pieces (scripts/pieces.mjs).
+export async function renderBundle({ rootDirectory = defaultRoot, banner = "", metafilePath } = {}) {
+  const rawCss = await readCss(rootDirectory);
+  const { code: css } = await esbuildTransform(rawCss, { loader: "css", minify: true, charset: "utf8", legalComments: "none", logLevel: "silent" });
+  const options = bundleBuildOptions({ rootDirectory, banner });
+  const out = await buildPieces({ root: await realpath(resolve(rootDirectory)), options, css });
+  if (metafilePath) {
+    const target = resolve(metafilePath);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, `${JSON.stringify(out.metafile)}\n`, "utf8");
+  }
+  return out;
+}
+
 export async function bundleEntry({
   rootDirectory = defaultRoot,
   entryPoint = "src/extension.js",
   banner = "",
   metafilePath,
 } = {}) {
+  if (entryPoint === "src/extension.js") return (await renderBundle({ rootDirectory, banner, metafilePath })).javascript;
   const result = await esbuild(bundleBuildOptions({
     rootDirectory,
     entryPoint,
@@ -105,7 +122,7 @@ export async function readCss(rootDirectory = defaultRoot) {
 export async function syncChangelogText(rootDirectory = defaultRoot) {
   const root = resolve(rootDirectory);
   const text = await readFile(resolve(root, "CHANGELOG.md"), "utf8");
-  const out = `// Generated from CHANGELOG.md. build.mjs rewrites this file.\nexport const CHANGELOG_TEXT = ${JSON.stringify(text)};\n`;
+  const out = `// Generated from CHANGELOG.md. build.mjs rewrites this file.\nexport const changelogText = () => ${JSON.stringify(text)};\n`;
   const path = resolve(root, "src/changelog-text.js");
   let prev = "";
   try { prev = await readFile(path, "utf8"); } catch { /* first build */ }
@@ -157,11 +174,8 @@ export async function renderArtifacts(rootDirectory = defaultRoot, options = {})
   const ocrWorker = await syncOcrWorkerAsset(rootDirectory);
   const packageMetadata = JSON.parse(await readFile(resolve(rootDirectory, "package.json"), "utf8"));
   const banner = artifactBanner(packageMetadata.version);
-  return {
-    javascript: await bundleEntry({ rootDirectory, banner, metafilePath: options.metafilePath }),
-    css: await readCss(rootDirectory),
-    ocrWorker,
-  };
+  const { javascript, css } = await renderBundle({ rootDirectory, banner, metafilePath: options.metafilePath });
+  return { javascript, css, ocrWorker };
 }
 
 export async function build(rootDirectory = defaultRoot, options = {}) {

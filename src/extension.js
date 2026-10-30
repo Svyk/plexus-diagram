@@ -11,6 +11,7 @@ import "./views.js";
 import { createLifecycle } from "./lifecycle.js";
 import { installPlexusDiagram } from "./feature.js";
 import { createSettingsPanel, initializeSettings } from "./settings.js";
+import { removePieceStyles } from "./piece-loader.js";
 
 let activeLifecycle = null;
 let ourTeardown = null;
@@ -42,6 +43,7 @@ export async function onload({ extensionAPI, extension, deps }) {
 
   const lifecycle = createLifecycle();
   activeLifecycle = lifecycle;
+  lifecycle.add(removePieceStyles);
   const dispose = async () => {
     detachTeardown(win, dispose);
     if (activeLifecycle === lifecycle) activeLifecycle = null;

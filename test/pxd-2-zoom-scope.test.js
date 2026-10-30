@@ -11,8 +11,9 @@ import { boardZoom } from "../src/view/drag-ghost.js";
 import { noteSpeedFlags } from "../src/settings.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 import { mountBig, settledIn, zoomBurst, tick } from "./fixtures/big-mount.js";
+import { sourceCss } from "./css-source.js";
 
-const css = readFileSync(new URL("../extension.css", import.meta.url), "utf8");
+const css = sourceCss();
 const ZOOM_VARS = ["--pxd-inv-zoom", "--pxd-screen-px", "--pxd-map-font", "--pxd-overview-font", "--pxd-ui"];
 
 const id = (ch, n) => `${ch}${String(n).padStart(8, "0")}`;

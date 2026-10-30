@@ -3,7 +3,7 @@
 // 50 documents LRU, 200 MB of images LRU. When IndexedDB is missing or fails,
 // the same API runs on an in-memory fallback. No graph writes.
 
-import { scanPagesOf } from "../model/parse/ocr-merge.js";
+import { scanPagesOf } from "../model/scan-pages.js";
 import { bestLocalDoc, fillFreePages, paidPagesOnly } from "../model/cloud-merge.js";
 import { parsedDocTitle, parsedTitleLines } from "../model/pdf.js";
 import { forgetDiagramDb, openDiagramDb, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX } from "./diagram-db.js";

@@ -94,7 +94,8 @@ import { createPageChips } from "./page-chips.js";
 import { SIDEBAR_WAIT_MS, jumpSidebarPdf, pdfTargetsMatch, sidebarPageEl, sidebarPdfContainer, waitForSidebarPdf, watchNodeGone } from "./pin-reveal.js";
 import { createCardMotionRelay } from "./card-parse-motion.js";
 import { runChartToTable } from "./chart-table.js";
-import { askThemeChanged, openAskAI, setAskSettings } from "./ask-ai.js";
+import { askThemeChanged, openAskAI } from "./ask-ai.js";
+import { setAskSettings } from "../model/ask-setting.js";
 import { BASKET_MESSAGES, basketFor, makePart, pillText } from "../model/ask-basket.js";
 import { graphOfWindow } from "../model/ask-models.js";
 import { BUILTIN_OPTIONS, readParsedUrls } from "./parse-view.js";
@@ -156,6 +157,7 @@ import { queryFoldLines, queryNudgeKey, shouldNudgeQueries } from "../model/quer
 import { dataUrlToBlob } from "./parse-crop.js";
 import { sharedDeviceOcr } from "../host/device-ocr.js";
 import { scheduleTitleLexiconWarm } from "./title-lexicon-warm.js";
+import { hasCachedLexicon } from "../model/lexicon-cache.js";
 import { createParseActions, freeSpotBeside } from "./parse-actions.js";
 import { createPartsIndex } from "../host/parts-index.js";
 import { searchParts } from "../model/parts-search.js";
@@ -10839,6 +10841,7 @@ function buildBoardView(onFail, {
         win,
         hasPdf: () => [...b.items.values()].some((it) => it?.kind === "pdf"),
         ocr: sharedDeviceOcr,
+        cached: hasCachedLexicon,
         isDisposed: () => disposed,
         onWarm: () => repaintPdfTitlesSoon(),
         setTimer: (fn, ms) => timers.later(fn, ms),

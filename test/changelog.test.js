@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { changelogEntry } from "../src/model/changelog.js";
-import { CHANGELOG_TEXT } from "../src/changelog-text.js";
+import { changelogText } from "../src/changelog-text.js";
 
 const file = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
 
 test("UI-9: the bundled changelog is the repo file, and the entry is only the running version", () => {
-  assert.equal(CHANGELOG_TEXT, file);
+  assert.equal(changelogText(), file);
   const entry = changelogEntry(file, "1.3.0");
   assert.match(entry, /^## 1\.3\.0 /);
   assert.match(entry, /Native parity on an enhanced board/);

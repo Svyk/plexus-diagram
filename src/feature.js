@@ -1,6 +1,7 @@
 import pkg from "../package.json" with { type: "json" };
 import { createHost } from "./host/roam.js";
 import { acquireSession as acquireSessionDefault, hasSession } from "./session.js";
+import { resetSharedTaskProbe } from "./long-tasks.js";
 import { bindBgBudgetFlag, bindBgGestureFlag, resetSharedBgBudget, sharedBgBudget } from "./bg-budget.js";
 import { clearPinnedToast, mountBoardView, viewportStorageId } from "./view/board-view.js";
 import {
@@ -282,9 +283,8 @@ export async function installPlexusDiagram({
   const syncPdfReaderDark = () => {
     let background = "";
     try { background = sampleRoam(doc).background; } catch { background = ""; }
-    applyPdfReaderDark(doc, pdfReaderDarkOn(settings[SETTING_IDS.pdfReaderDark], doc, background));
+    applyPdfReaderDark(doc, active() && pdfReaderDarkOn(settings[SETTING_IDS.pdfReaderDark], doc, background));
   };
-  syncPdfReaderDark();
   // Hidden speed-flags. The panel never lists this id, so the next gate re-reads the store.
   bindSpeedFlagSource(() => {
     try { return extensionAPI?.settings?.get?.(SETTING_IDS.speedFlags); }
@@ -462,6 +462,7 @@ export async function installPlexusDiagram({
   lifecycle.add(() => previewBoards.clear());
   lifecycle.add(() => clearPinnedToast());
   lifecycle.add(() => resetSharedBgBudget());
+  lifecycle.add(() => resetSharedTaskProbe());
   let cacheLoadMs = null;
   // A board that left the enhanced set or was deleted takes its chips with it.
   const dropBoardCards = (uid) => {
@@ -668,6 +669,11 @@ export async function installPlexusDiagram({
 
   const active = () => !stopped && settings[SETTING_IDS.enabled] !== false
     && !(settings[SETTING_IDS.disableOnMobile] && isMobile(extensionAPI));
+  const syncSidebarPdfGated = () => {
+    if (active()) syncSidebarPdf(doc);
+    else doc?.documentElement?.classList?.remove?.(SIDEBAR_PDF_CLASS);
+  };
+  syncPdfReaderDark();
 
   // Runs last on dispose (disposers unwind in reverse): tear every mount down, restore native Roam.
   lifecycle.add(() => {
@@ -2897,7 +2903,7 @@ export async function installPlexusDiagram({
 
   function unmount(rec) {
     if (!rec || !mounts.has(rec.native)) return;
-    if (rec.fullscreen && !stopped && !routeLeftZoomedDiagram(rec.uid)) {
+    if (rec.fullscreen && !stopped && active() && !routeLeftZoomedDiagram(rec.uid)) {
       coverHold = { uid: rec.uid, at: Date.now() };
       holdFsCover(doc, true);
     }
@@ -4158,7 +4164,10 @@ export async function installPlexusDiagram({
     if (stopped) return;
     const next = id === SETTING_IDS.speedFlags ? parseSpeedFlags(value) : normalizeSetting(id, value);
     settings = { ...settings, [id]: next };
-    if (id === SETTING_IDS.pdfReaderDark) syncPdfReaderDark();
+    if (id === SETTING_IDS.pdfReaderDark || id === SETTING_IDS.enabled || id === SETTING_IDS.disableOnMobile) {
+      syncPdfReaderDark();
+      syncSidebarPdfGated();
+    }
     if (id === SETTING_IDS.speedFlags) noteSpeedFlags(next);
     if (id === SETTING_IDS.speedLog) syncSpeedLog();
     if (id === SETTING_IDS.resurface) {
@@ -4543,9 +4552,9 @@ export async function installPlexusDiagram({
     };
     const onAppChange = (records) => {
       onAdded(records);
-      if (sidebarPdfDirty(records, doc.documentElement?.classList?.contains?.(SIDEBAR_PDF_CLASS), doc)) syncSidebarPdf(doc);
+      if (sidebarPdfDirty(records, doc.documentElement?.classList?.contains?.(SIDEBAR_PDF_CLASS), doc)) syncSidebarPdfGated();
     };
-    syncSidebarPdf(doc);
+    syncSidebarPdfGated();
     lifecycle.add(() => doc.documentElement?.classList?.remove?.(SIDEBAR_PDF_CLASS));
     const app = doc.querySelector(".roam-app");
     if (app) lifecycle.observer(new MutationObserver(guardCallback("observer", onAppChange)), app, { childList: true, subtree: true });

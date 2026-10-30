@@ -117,7 +117,8 @@ export function editorPastePlan({
   let lines = raw.split("\n");
   if (lines.length && lines[lines.length - 1] === "") lines.pop();
   if (lines.length <= 1) return { type: "roam" };
-  if (lines.length > MAX_EDITOR_LINES) lines = lines.slice(0, MAX_EDITOR_LINES);
+  const dropped = Math.max(0, lines.length - MAX_EDITOR_LINES);
+  if (dropped) lines = lines.slice(0, MAX_EDITOR_LINES);
   const v = String(value ?? "");
   let a = Number(selectionStart);
   let b = Number(selectionEnd);
@@ -129,6 +130,7 @@ export function editorPastePlan({
     type: "blocks",
     string: v.slice(0, start) + lines[0] + v.slice(end),
     children: lines.slice(1),
+    dropped,
   };
 }
 
@@ -175,7 +177,7 @@ function sortedKids(node) {
 
 export function planSubtreeClone(node, { genUid, parentUid, order = "last", plexusPatch = null, uidMap = new Map() } = {}) {
   const assign = (n) => {
-    uidMap.set(n[":block/uid"], genUid());
+    uidMap.set(n[":block/uid"], genUid(n[":block/uid"]));
     for (const c of sortedKids(n)) assign(c);
   };
   assign(node);

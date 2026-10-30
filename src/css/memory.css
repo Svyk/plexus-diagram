@@ -37,7 +37,8 @@
 .bp3-dark .pxd-root .pxd-memory,
 body.bt-theme-dark .pxd-root .pxd-memory,
 .rm-dark-theme .pxd-root .pxd-memory,
-body.roam-body.dark .pxd-root .pxd-memory {
+body.roam-body.dark .pxd-root .pxd-memory,
+.pxd-root.pxd-root--dark .pxd-memory {
   border-color: #3b4b58;
   color: #e6edf3;
 }

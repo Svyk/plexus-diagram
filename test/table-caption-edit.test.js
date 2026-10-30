@@ -364,3 +364,16 @@ test("R4: the caption field shows over a block-look card without moving the tabl
   const css = readFileSync(new URL("../src/css/table-card.css", import.meta.url), "utf8");
   assert.match(css, /pxd-card--block\.pxd-item--roam-table\.pxd-item--editing > \.pxd-item__header[^{]*\{[^}]*display: block;[^}]*position: absolute;/);
 });
+
+test("PXD-3: disposing the renderer while a caption is being typed commits it", () => {
+  const h = rendererHarness();
+  try {
+    h.r.enterEdit("cap00001");
+    const open = sample(h.r.shellOf("cap00001"));
+    open.field.value = "Typed then closed";
+    h.r.dispose();
+    assert.deepEqual(h.writes, [["cap00001", "Typed then closed"]]);
+  } finally {
+    h.done();
+  }
+});

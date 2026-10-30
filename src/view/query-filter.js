@@ -66,12 +66,11 @@ export function createQueryFilter({ host, doc = globalThis.document, liveNode = 
     const src = backend || createQueryBackend(host);
     const res = await runQuery(parsed.ast, src, { tick: () => new Promise((r) => wait(r, 0)), isCancelled: () => cur !== f || gen !== f.gen });
     if (cur !== f || gen !== f.gen) return;
-    if (res.status !== "ok") {
-      if (res.status !== "cancelled") emit(f, f.uids, true, res.status);
-      return;
-    }
-    emit(f, new Set(res.uids.filter((u) => !exclude.has(u))), res.partial, "ok");
-    // Backstop for changes a save in this window does not signal (another window or device).
+    if (res.status === "cancelled") return;
+    if (res.status !== "ok") emit(f, f.uids, true, res.status);
+    else emit(f, new Set(res.uids.filter((u) => !exclude.has(u))), res.partial, "ok");
+    // Backstop for changes a save in this window does not signal (another window or device). A slow, partial or
+    // failed read polls again too.
     if (f.timer == null) schedule(f, FILTER_POLL_MS);
   };
 
@@ -117,7 +116,10 @@ export function createQueryFilter({ host, doc = globalThis.document, liveNode = 
       f.observed = null;
     }
     if (mode === "dom") { readDom(f); return; }
-    try { await runOnce(f, parsed); } catch { emit(f, f.uids, true, "error"); }
+    try { await runOnce(f, parsed); } catch {
+      emit(f, f.uids, true, "error");
+      if (f.timer == null) schedule(f, FILTER_POLL_MS);
+    }
   }
 
   const stop = () => {

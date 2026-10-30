@@ -29,6 +29,7 @@ class El {
       add: (...names) => names.forEach((n) => cls.add(n)),
       remove: (...names) => names.forEach((n) => cls.delete(n)),
       contains: (n) => cls.has(n),
+      toggle: (n, force) => { const on = force ?? !cls.has(n); if (on) cls.add(n); else cls.delete(n); return on; },
     };
   }
   get tagName() { return this.tag.toUpperCase(); }
@@ -2137,5 +2138,58 @@ test("teardown sweep never removes html or body, only strips their pxd marks", a
     assert.equal(doc.app.children.includes(mount), false);
   } finally {
     ctx.restore();
+  }
+});
+
+test("PXD-3: turning Plexus off while a zoomed board is fullscreen does not leave the page covered", async () => {
+  const { applyFullscreenChrome } = await import("../src/view/fullscreen.js");
+  await withEnv({ enhanced: ["boardAAA1"], hash: "#/app/Svy/page/boardAAA1" }, async (t) => {
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    assert.equal(t.views[0].args.fullscreen, true);
+    // The real view puts the fullscreen chrome and the article cover on, and takes the chrome off on dispose.
+    applyFullscreenChrome(null, true, t.doc);
+    const dispose = t.views[0].dispose;
+    t.views[0].dispose = function () { applyFullscreenChrome(null, false, t.doc); return dispose.call(this); };
+    assert.ok(t.doc.body.classList.contains("pxd-fs-cover"));
+    createSettingsPanel().settings.find((row) => row.id === "enabled").action.onChange(false);
+    t.tick();
+    assert.deepEqual(t.env.win.__plexusDiagram.mounts(), []);
+    assert.ok(!t.doc.body.classList.contains("pxd-fs-cover"), "the article cover is gone");
+  });
+});
+
+test("PXD-3: the sidebar-PDF and reader-dark marks stay off while Plexus is disabled, and go when it is turned off", async () => {
+  const prevMO = globalThis.MutationObserver;
+  globalThis.MutationObserver = class { observe() {} disconnect() {} takeRecords() { return []; } };
+  const sidebarWithPdf = (doc) => {
+    const side = doc.createElement("div");
+    side.id = "right-sidebar";
+    const pdf = doc.createElement("div");
+    pdf.cls.add("rm-pdf-container");
+    side.append(pdf);
+    doc.body.append(side);
+  };
+  try {
+    await withEnv({ settings: { enabled: false } }, async (t) => {
+      t.doc.documentElement = t.doc.root;
+      sidebarWithPdf(t.doc);
+      await t.install();
+      t.tick();
+      assert.equal(t.doc.root.cls.has("pxd-sidebar-pdf"), false, "no mark while disabled");
+    });
+    await withEnv({}, async (t) => {
+      t.doc.documentElement = t.doc.root;
+      sidebarWithPdf(t.doc);
+      await t.install();
+      t.tick();
+      assert.equal(t.doc.root.cls.has("pxd-sidebar-pdf"), true, "mark while enabled");
+      createSettingsPanel().settings.find((row) => row.id === "enabled").action.onChange(false);
+      t.tick();
+      assert.equal(t.doc.root.cls.has("pxd-sidebar-pdf"), false, "mark removed when turned off");
+    });
+  } finally {
+    globalThis.MutationObserver = prevMO;
   }
 });

@@ -201,7 +201,9 @@ test("a cut is a move: the snapshot survives the delete, so a plain paste restor
   ], bounds: { x: 0, y: 100, w: 500, h: 600 }, snapshot });
   await session.deleteItems(["N", "S"], { withContents: true });
   assert.equal(fake.block("N"), null, "the source blocks are gone");
+  const sLeft = Boolean(fake.block("S"));
   fake.clearLog();
+  const uidsOf = [];
   for (const mode of ["refs", "clone"]) {
     const made = await session.pasteItems(JSON.parse(JSON.stringify(data)), { x: 2000, y: 0, mode });
     assert.equal(made.length, 2, `${mode}: both items come back`);
@@ -209,8 +211,29 @@ test("a cut is a move: the snapshot survives the delete, so a plain paste restor
     assert.equal(fake.children(made[0]).length, 2, `${mode}: the note keeps its children`);
     assert.equal(fake.block(made[1]).string, "S");
     assert.equal(fake.children(made[1]).length, 2, `${mode}: the section keeps its members`);
+    uidsOf.push(made);
   }
-  assert.equal(fake.block("N"), null);
+  assert.equal(uidsOf[0][0], "N", "the first paste brings a cut block back under its own uid");
+  // A pinned member keeps the section block; a uid still in use is never reused.
+  assert.equal(uidsOf[0][1] === "S", !sLeft);
+  assert.deepEqual(fake.children("N"), ["K1", "K2"], "children keep theirs too");
+  assert.ok(!uidsOf[1].includes("N") && !uidsOf[1].includes("S"), "a second paste is a copy with fresh uids");
+});
+
+test("PXD-3: a ref to a cut card still resolves after the paste", async () => {
+  const { fake, session } = setup(mainChildren(), {
+    extra: (f) => f.seedBoard({ uid: "elsewhere", props: null, children: [{ uid: "R1", string: "see ((N)) and ((K2))" }] }),
+  });
+  const snapshot = session.snapshotItems(["N"]);
+  const data = payloadOf({ board: "b1", items: [
+    { uid: "N", type: "card", kind: "note", string: "Note text", target: { kind: "self", uid: "N" }, x: 100, y: 100, w: 200, h: 100 },
+  ], bounds: { x: 100, y: 100, w: 200, h: 100 }, snapshot });
+  await session.deleteItems(["N"], { withContents: true });
+  const made = await session.pasteItems(data, { x: 900, y: 900 });
+  assert.deepEqual(made, ["N"]);
+  assert.equal(fake.block("N").string, "Note text");
+  assert.equal(fake.block("K2").string, "second");
+  assert.equal(fake.block("R1").string, "see ((N)) and ((K2))");
 });
 
 test("snapshotItems carries connections between the copied items only, and refuses an empty selection", () => {

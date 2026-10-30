@@ -546,7 +546,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   const LANE_WRITE_MS = 10000;
   function laneKids(targetUid) {
     let kids = [];
-    try { kids = host.pullTree?.(targetUid, 1, 40) || []; } catch { kids = []; }
+    try { kids = host.pullTree?.(targetUid, 1, 500) || []; } catch { kids = []; }
     const w = laneWrites.get(targetUid);
     if (!w) return kids;
     const hit = kids.find((k) => k.uid === w.uid);

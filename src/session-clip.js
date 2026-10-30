@@ -91,8 +91,17 @@ extendSession((session, api) => {
   // Clones `entries` ({uid, x, y}: world top-left of the copy) out of `src` ({board, node(uid)}) into this
   // board. Page, block, image and text cards become another card with the same string; notes, sections and
   // enhanced nested boards are cloned as a whole subtree. Connections between cloned items are cloned too.
-  function cloneSet(t, src, entries, exclude) {
+  // keepUids (a cut's paste): a block whose uid is free again comes back under it, so refs to it still resolve.
+  function cloneSet(t, src, entries, exclude, { keepUids = false } = {}) {
     const board = api.board();
+    const used = new Set();
+    const pick = (old) => {
+      if (keepUids && typeof old === "string" && /^[\w-]+$/.test(old) && !used.has(old) && host.blockExists?.(old) === false) {
+        used.add(old);
+        return old;
+      }
+      return gen();
+    };
     const rects = api.rects();
     const at = new Map(entries.map((e) => [e.uid, e]));
     const uidMap = new Map();
@@ -111,7 +120,7 @@ extendSession((session, api) => {
       if (simple) {
         const plexus = { ...(readPlexus(node[PROPS]) ?? {}), x, y };
         delete plexus.pinned;
-        const fresh = gen();
+        const fresh = pick(id);
         uidMap.set(id, fresh);
         t.create({ parent, uid: fresh, string: node[STR] ?? "", plexus });
         if (item.kind === "image") cloneRegions(t, node, id, fresh);
@@ -122,7 +131,7 @@ extendSession((session, api) => {
       if (item.type === "section") Object.assign(patch, { type: "section", w: item.w, h: item.h });
       // An old-form table card duplicates as a folded caption with the table under it.
       const tree = isOldTableCard(item) ? wrapTableNode(node, item.title) : node;
-      const plan = planSubtreeClone(tree, { genUid: gen, parentUid: parent, order: api.insertOrder(parent), plexusPatch: patch, uidMap });
+      const plan = planSubtreeClone(tree, { genUid: pick, parentUid: parent, order: api.insertOrder(parent), plexusPatch: patch, uidMap });
       const oldOf = new Map([...uidMap].map(([o, n]) => [n, o]));
       for (const c of plan.creates) {
         const plexus = c.props?.[PLEXUS_KEY] ? { ...c.props[PLEXUS_KEY] } : null;
@@ -254,7 +263,7 @@ extendSession((session, api) => {
           }
           const bounds = payload.bounds ?? boundsOf(payload.items) ?? { x: 0, y: 0 };
           const entries = payload.items.map((i) => ({ uid: i.uid, x: x + (i.x - bounds.x), y: y + (i.y - bounds.y) }));
-          made = cloneSet(t, src, entries);
+          made = cloneSet(t, src, entries, undefined, { keepUids: Boolean(payload.snapshot) });
         } else {
           made = capBulk(refCardStrings(payload, { x, y }), api.emit).map((c) => placeCard(t, c.string, c.x, c.y, { w: c.w, h: c.h, color: c.color }));
         }

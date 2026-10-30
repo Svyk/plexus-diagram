@@ -903,16 +903,30 @@ export function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}
 // True only when the host is measurably light: no dark marker, and the first opaque background up the chain
 // (Roam paints only <body>; the app wrappers are transparent) has high luminance. The OS color-scheme hint must not
 // darken a board that sits on a light host, so a confirmed-light host opts out of the prefers-color-scheme rules.
-export function isLightHost(root, doc = globalThis.document, win = globalThis.window) {
-  if (isDarkHost(root, doc)) return false;
-  if (typeof win?.getComputedStyle !== "function") return false;
+// Luminance (0-1) of the first opaque background at or above root, or null. Roam paints only <body>.
+function hostLuma(root, win) {
+  if (typeof win?.getComputedStyle !== "function") return null;
   for (let node = root; node; node = node.parentElement) {
     let color;
-    try { color = rgbOf(win.getComputedStyle(node)?.backgroundColor); } catch { return false; }
+    try { color = rgbOf(win.getComputedStyle(node)?.backgroundColor); } catch { return null; }
     if (!color || color.a < 0.5) continue;
-    return (0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b) / 255 > 0.6;
+    return (0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b) / 255;
   }
-  return false;
+  return null;
+}
+
+export function isLightHost(root, doc = globalThis.document, win = globalThis.window) {
+  if (isDarkHost(root, doc)) return false;
+  const luma = hostLuma(root, win);
+  return luma != null && luma > 0.6;
+}
+
+// A dark theme with none of Roam's dark markers (a custom CSS theme) still gets the dark board (same 0.4 cut as
+// theme-follow's hostDark).
+export function isDarkLookingHost(root, doc = globalThis.document, win = globalThis.window) {
+  if (isDarkHost(root, doc)) return true;
+  const luma = hostLuma(root, win);
+  return luma != null && luma < 0.4;
 }
 
 function graphName(win = globalThis.window) {
@@ -1259,7 +1273,7 @@ function buildBoardView(onFail, {
     applyPdfReaderDark(doc, pdfReaderDarkOn(readSetting("pdf-reader-dark"), doc, background));
   };
   const applyTheme = () => {
-    const dark = isDarkHost(mountEl, doc);
+    const dark = isDarkLookingHost(mountEl, doc, globalThis.window);
     root.classList.toggle("pxd-root--dark", dark);
     root.classList.toggle("pxd-root--light", !dark && isLightHost(mountEl, doc, globalThis.window));
     applyPdfDark();
@@ -5282,7 +5296,7 @@ function buildBoardView(onFail, {
   const openSuggestAction = (line) => {
     closeLinksMenu();
     const menu = doc.createElement("div");
-    menu.className = "pxd-linksmenu pxd-root";
+    menu.className = root.classList.contains("pxd-root--dark") ? "pxd-linksmenu pxd-root pxd-root--dark" : "pxd-linksmenu pxd-root";
     menu.style.position = "fixed";
     const box = line?.getBoundingClientRect?.() || { left: 8, bottom: 40 };
     menu.style.left = `${box.left || 8}px`;
@@ -5436,7 +5450,7 @@ function buildBoardView(onFail, {
   const openLinksMenu = (anchor) => {
     closeLinksMenu();
     const menu = doc.createElement("div");
-    menu.className = "pxd-linksmenu pxd-root";
+    menu.className = root.classList.contains("pxd-root--dark") ? "pxd-linksmenu pxd-root pxd-root--dark" : "pxd-linksmenu pxd-root";
     menu.style.position = "fixed";
     const box = anchor?.getBoundingClientRect?.() || { left: 8, bottom: 40 };
     menu.style.left = `${box.left || 8}px`;
@@ -5701,7 +5715,7 @@ function buildBoardView(onFail, {
     const cards = cardsIn(selection.items);
     if (!cards.length) return;
     const b = board();
-    void session.setCollapsedMany?.(cards, cards.some((u) => !b.items.get(u).collapsed));
+    void session.setCollapsedMany?.(cards, cards.some((u) => !b.items.get(u)?.collapsed));
   };
   const alignSel = (mode, uids = selection.items) => {
     const r = rects();
@@ -5917,7 +5931,12 @@ function buildBoardView(onFail, {
     if (!urls.length) { if (!disposed) toast("Couldn't upload the image"); return; }
     // A drop on a card that is not being edited has no textarea; appending to an empty
     // snapshot would replace the block's text with the image.
-    if (!ta) {
+    const taLive = !!ta && ta.isConnected !== false;
+    if (taLive && ta.value !== snap.value) {
+      snap.value = ta.value;
+      snap.start = snap.end = Math.min(Number.isFinite(snap.start) ? snap.start : ta.value.length, ta.value.length);
+    }
+    if (!taLive) {
       let current = null;
       try { current = host?.blockString?.(blockUid); } catch { current = null; }
       if (typeof current !== "string") { if (!disposed) toast("Couldn't add the image to this card"); return; }
@@ -5925,7 +5944,7 @@ function buildBoardView(onFail, {
       snap.start = snap.end = current.length;
     }
     const placed = inlineAtCaret(snap.value, snap.start, snap.end, imageMarkdown(urls));
-    if (ta) {
+    if (taLive) {
       commitTextareaValue(ta, placed.string);
       try { ta.setSelectionRange?.(placed.caret, placed.caret); } catch { /* caret */ }
     }
@@ -5952,6 +5971,7 @@ function buildBoardView(onFail, {
       else await write();
     } catch { return; }
     if (disposed) return;
+    if (plan.dropped > 0) toast(`Pasted the first ${1 + plan.children.length} lines; ${plan.dropped} more were left out`);
     await remountEditor(cardUid);
   };
   const editorPaste = (event) => {
@@ -6391,7 +6411,7 @@ function buildBoardView(onFail, {
               try { current = host?.blockString?.(arg) || ""; } catch { current = ""; }
               const next = renameRegionCaption(current, caption);
               if (!next || next === current || typeof host?.updateString !== "function") return;
-              void host.updateString(arg, next);
+              Promise.resolve(host.updateString(arg, next)).catch(() => { if (!disposed) toast("Couldn't rename the region"); });
             },
           });
           break;

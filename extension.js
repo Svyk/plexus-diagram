@@ -39816,7 +39816,7 @@ function createItemRenderer({
     }
     if (editing?.tableCaption) {
       try {
-        editing.finish?.(false);
+        editing.finish?.(lastBoard?.items?.has?.(editing.uid) === true);
       } catch {
       }
     } else if (editing) {
@@ -41153,7 +41153,8 @@ function editorPastePlan({
   let lines = raw.split("\n");
   if (lines.length && lines[lines.length - 1] === "") lines.pop();
   if (lines.length <= 1) return { type: "roam" };
-  if (lines.length > MAX_EDITOR_LINES) lines = lines.slice(0, MAX_EDITOR_LINES);
+  const dropped = Math.max(0, lines.length - MAX_EDITOR_LINES);
+  if (dropped) lines = lines.slice(0, MAX_EDITOR_LINES);
   const v = String(value ?? "");
   let a = Number(selectionStart);
   let b = Number(selectionEnd);
@@ -41164,7 +41165,8 @@ function editorPastePlan({
   return {
     type: "blocks",
     string: v.slice(0, start2) + lines[0] + v.slice(end),
-    children: lines.slice(1)
+    children: lines.slice(1),
+    dropped
   };
 }
 function inlineAtCaret(value, selectionStart, selectionEnd, insert) {
@@ -41202,7 +41204,7 @@ function sortedKids(node2) {
 }
 function planSubtreeClone(node2, { genUid, parentUid, order = "last", plexusPatch = null, uidMap = /* @__PURE__ */ new Map() } = {}) {
   const assign = (n3) => {
-    uidMap.set(n3[":block/uid"], genUid());
+    uidMap.set(n3[":block/uid"], genUid(n3[":block/uid"]));
     for (const c of sortedKids(n3)) assign(c);
   };
   assign(node2);
@@ -46008,6 +46010,10 @@ var shared = null;
 function sharedTaskProbe() {
   if (!shared) shared = createTaskProbe();
   return shared;
+}
+function resetSharedTaskProbe() {
+  shared?.dispose();
+  shared = null;
 }
 
 // src/bg-budget.js
@@ -52179,7 +52185,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   function laneKids(targetUid) {
     let kids = [];
     try {
-      kids = host.pullTree?.(targetUid, 1, 40) || [];
+      kids = host.pullTree?.(targetUid, 1, 500) || [];
     } catch {
       kids = [];
     }
@@ -56293,8 +56299,16 @@ extendSession((session, api3) => {
       }
     }
   }
-  function cloneSet(t, src, entries, exclude) {
+  function cloneSet(t, src, entries, exclude, { keepUids = false } = {}) {
     const board2 = api3.board();
+    const used = /* @__PURE__ */ new Set();
+    const pick3 = (old) => {
+      if (keepUids && typeof old === "string" && /^[\w-]+$/.test(old) && !used.has(old) && host.blockExists?.(old) === false) {
+        used.add(old);
+        return old;
+      }
+      return gen();
+    };
     const rects = api3.rects();
     const at = new Map(entries.map((e2) => [e2.uid, e2]));
     const uidMap = /* @__PURE__ */ new Map();
@@ -56313,7 +56327,7 @@ extendSession((session, api3) => {
       if (simple) {
         const plexus = { ...readPlexus(node2[PROPS2]) ?? {}, x, y };
         delete plexus.pinned;
-        const fresh = gen();
+        const fresh = pick3(id);
         uidMap.set(id, fresh);
         t.create({ parent, uid: fresh, string: node2[STR2] ?? "", plexus });
         if (item.kind === "image") cloneRegions(t, node2, id, fresh);
@@ -56323,7 +56337,7 @@ extendSession((session, api3) => {
       const patch = { x, y };
       if (item.type === "section") Object.assign(patch, { type: "section", w: item.w, h: item.h });
       const tree = isOldTableCard(item) ? wrapTableNode(node2, item.title) : node2;
-      const plan = planSubtreeClone(tree, { genUid: gen, parentUid: parent, order: api3.insertOrder(parent), plexusPatch: patch, uidMap });
+      const plan = planSubtreeClone(tree, { genUid: pick3, parentUid: parent, order: api3.insertOrder(parent), plexusPatch: patch, uidMap });
       const oldOf = new Map([...uidMap].map(([o, n3]) => [n3, o]));
       for (const c of plan.creates) {
         const plexus = c.props?.[PLEXUS_KEY] ? { ...c.props[PLEXUS_KEY] } : null;
@@ -56446,7 +56460,7 @@ extendSession((session, api3) => {
           }
           const bounds = payload.bounds ?? boundsOf(payload.items) ?? { x: 0, y: 0 };
           const entries = payload.items.map((i) => ({ uid: i.uid, x: x + (i.x - bounds.x), y: y + (i.y - bounds.y) }));
-          made = cloneSet(t, src, entries);
+          made = cloneSet(t, src, entries, void 0, { keepUids: Boolean(payload.snapshot) });
         } else {
           made = capBulk(refCardStrings(payload, { x, y }), api3.emit).map((c) => placeCard(t, c.string, c.x, c.y, { w: c.w, h: c.h, color: c.color }));
         }
@@ -92357,10 +92371,9 @@ function mountKanban({
         base2 = null;
       }
     }
-    if (!base2 || typeof base2 !== "object") base2 = board2?.plexus && typeof board2.plexus === "object" ? board2.plexus : null;
-    if (!base2 || base2.kanban === next) return;
-    const copy = { ...base2, kanban: next };
     if (board2?.plexus && typeof board2.plexus === "object") board2.plexus.kanban = next;
+    if (!base2 || typeof base2 !== "object" || base2.v !== 2 || base2.kanban === next) return;
+    const copy = { ...base2, kanban: next };
     try {
       const write = host.updateProps(uid, copy);
       if (write && typeof write.then === "function") void write.catch(() => {
@@ -94828,11 +94841,9 @@ function createQueryFilter({ host, doc = globalThis.document, liveNode = () => n
     const src = backend || createQueryBackend(host);
     const res = await runQuery(parsed.ast, src, { tick: () => new Promise((r) => wait2(r, 0)), isCancelled: () => cur !== f || gen !== f.gen });
     if (cur !== f || gen !== f.gen) return;
-    if (res.status !== "ok") {
-      if (res.status !== "cancelled") emit2(f, f.uids, true, res.status);
-      return;
-    }
-    emit2(f, new Set(res.uids.filter((u) => !exclude.has(u))), res.partial, "ok");
+    if (res.status === "cancelled") return;
+    if (res.status !== "ok") emit2(f, f.uids, true, res.status);
+    else emit2(f, new Set(res.uids.filter((u) => !exclude.has(u))), res.partial, "ok");
     if (f.timer == null) schedule(f, FILTER_POLL_MS);
   };
   const watchDom = (f, node2) => {
@@ -94884,6 +94895,7 @@ function createQueryFilter({ host, doc = globalThis.document, liveNode = () => n
       await runOnce(f, parsed);
     } catch {
       emit2(f, f.uids, true, "error");
+      if (f.timer == null) schedule(f, FILTER_POLL_MS);
     }
   }
   const stop3 = () => {
@@ -102365,20 +102377,29 @@ function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
   paint2();
   return root;
 }
-function isLightHost(root, doc = globalThis.document, win2 = globalThis.window) {
-  if (isDarkHost(root, doc)) return false;
-  if (typeof win2?.getComputedStyle !== "function") return false;
+function hostLuma(root, win2) {
+  if (typeof win2?.getComputedStyle !== "function") return null;
   for (let node2 = root; node2; node2 = node2.parentElement) {
     let color;
     try {
       color = rgbOf(win2.getComputedStyle(node2)?.backgroundColor);
     } catch {
-      return false;
+      return null;
     }
     if (!color || color.a < 0.5) continue;
-    return (0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b) / 255 > 0.6;
+    return (0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b) / 255;
   }
-  return false;
+  return null;
+}
+function isLightHost(root, doc = globalThis.document, win2 = globalThis.window) {
+  if (isDarkHost(root, doc)) return false;
+  const luma = hostLuma(root, win2);
+  return luma != null && luma > 0.6;
+}
+function isDarkLookingHost(root, doc = globalThis.document, win2 = globalThis.window) {
+  if (isDarkHost(root, doc)) return true;
+  const luma = hostLuma(root, win2);
+  return luma != null && luma < 0.4;
 }
 function graphName2(win2 = globalThis.window) {
   const m = /#\/app\/([^/]+)/.exec(String(win2?.location?.hash || ""));
@@ -102759,7 +102780,7 @@ function buildBoardView(onFail, {
     applyPdfReaderDark(doc, pdfReaderDarkOn(readSetting2("pdf-reader-dark"), doc, background));
   };
   const applyTheme = () => {
-    const dark = isDarkHost(mountEl, doc);
+    const dark = isDarkLookingHost(mountEl, doc, globalThis.window);
     root.classList.toggle("pxd-root--dark", dark);
     root.classList.toggle("pxd-root--light", !dark && isLightHost(mountEl, doc, globalThis.window));
     applyPdfDark();
@@ -107446,7 +107467,7 @@ function buildBoardView(onFail, {
   const openSuggestAction = (line) => {
     closeLinksMenu();
     const menu2 = doc.createElement("div");
-    menu2.className = "pxd-linksmenu pxd-root";
+    menu2.className = root.classList.contains("pxd-root--dark") ? "pxd-linksmenu pxd-root pxd-root--dark" : "pxd-linksmenu pxd-root";
     menu2.style.position = "fixed";
     const box2 = line?.getBoundingClientRect?.() || { left: 8, bottom: 40 };
     menu2.style.left = `${box2.left || 8}px`;
@@ -107616,7 +107637,7 @@ function buildBoardView(onFail, {
   const openLinksMenu = (anchor) => {
     closeLinksMenu();
     const menu2 = doc.createElement("div");
-    menu2.className = "pxd-linksmenu pxd-root";
+    menu2.className = root.classList.contains("pxd-root--dark") ? "pxd-linksmenu pxd-root pxd-root--dark" : "pxd-linksmenu pxd-root";
     menu2.style.position = "fixed";
     const box2 = anchor?.getBoundingClientRect?.() || { left: 8, bottom: 40 };
     menu2.style.left = `${box2.left || 8}px`;
@@ -107915,7 +107936,7 @@ function buildBoardView(onFail, {
     const cards = cardsIn(selection.items);
     if (!cards.length) return;
     const b = board2();
-    void session.setCollapsedMany?.(cards, cards.some((u) => !b.items.get(u).collapsed));
+    void session.setCollapsedMany?.(cards, cards.some((u) => !b.items.get(u)?.collapsed));
   };
   const alignSel = (mode, uids = selection.items) => {
     const r = rects();
@@ -108175,7 +108196,12 @@ function buildBoardView(onFail, {
       if (!disposed) toast("Couldn't upload the image");
       return;
     }
-    if (!ta) {
+    const taLive = !!ta && ta.isConnected !== false;
+    if (taLive && ta.value !== snap.value) {
+      snap.value = ta.value;
+      snap.start = snap.end = Math.min(Number.isFinite(snap.start) ? snap.start : ta.value.length, ta.value.length);
+    }
+    if (!taLive) {
       let current3 = null;
       try {
         current3 = host?.blockString?.(blockUid3);
@@ -108190,7 +108216,7 @@ function buildBoardView(onFail, {
       snap.start = snap.end = current3.length;
     }
     const placed = inlineAtCaret(snap.value, snap.start, snap.end, imageMarkdown(urls2));
-    if (ta) {
+    if (taLive) {
       commitTextareaValue(ta, placed.string);
       try {
         ta.setSelectionRange?.(placed.caret, placed.caret);
@@ -108225,6 +108251,7 @@ function buildBoardView(onFail, {
       return;
     }
     if (disposed) return;
+    if (plan.dropped > 0) toast(`Pasted the first ${1 + plan.children.length} lines; ${plan.dropped} more were left out`);
     await remountEditor(cardUid);
   };
   const editorPaste = (event) => {
@@ -108757,7 +108784,9 @@ ${b.pageTitle || ""}`.toLowerCase().includes(words)) continue;
               }
               const next = renameRegionCaption(current3, caption);
               if (!next || next === current3 || typeof host?.updateString !== "function") return;
-              void host.updateString(arg, next);
+              Promise.resolve(host.updateString(arg, next)).catch(() => {
+                if (!disposed) toast("Couldn't rename the region");
+              });
             }
           });
           break;
@@ -118296,7 +118325,7 @@ function uninstallPublicApi(api3, { win: win2 = globalThis.window ?? globalThis,
   } catch {
     ours = false;
   }
-  fire2(target, "plexus-diagram:unload", { apiVersion: API_VERSION }, CustomEventCtor);
+  if (ours) fire2(target, "plexus-diagram:unload", { apiVersion: API_VERSION }, CustomEventCtor);
   return ours;
 }
 
@@ -118818,9 +118847,8 @@ async function installPlexusDiagram({
     } catch {
       background = "";
     }
-    applyPdfReaderDark(doc, pdfReaderDarkOn(settings[SETTING_IDS.pdfReaderDark], doc, background));
+    applyPdfReaderDark(doc, active2() && pdfReaderDarkOn(settings[SETTING_IDS.pdfReaderDark], doc, background));
   };
-  syncPdfReaderDark();
   bindSpeedFlagSource(() => {
     try {
       return extensionAPI?.settings?.get?.(SETTING_IDS.speedFlags);
@@ -119021,6 +119049,7 @@ async function installPlexusDiagram({
   lifecycle.add(() => previewBoards.clear());
   lifecycle.add(() => clearPinnedToast());
   lifecycle.add(() => resetSharedBgBudget());
+  lifecycle.add(() => resetSharedTaskProbe());
   let cacheLoadMs = null;
   const dropBoardCards = (uid) => {
     if (!uid) return;
@@ -119247,6 +119276,11 @@ async function installPlexusDiagram({
     resetCropUrls();
   });
   const active2 = () => !stopped && settings[SETTING_IDS.enabled] !== false && !(settings[SETTING_IDS.disableOnMobile] && isMobile(extensionAPI));
+  const syncSidebarPdfGated = () => {
+    if (active2()) syncSidebarPdf(doc);
+    else doc?.documentElement?.classList?.remove?.(SIDEBAR_PDF_CLASS);
+  };
+  syncPdfReaderDark();
   lifecycle.add(() => {
     for (const native of [...convertButtons.keys()]) dropConvert(native);
     for (const rec of [...mounts.values()]) unmount(rec);
@@ -121689,7 +121723,7 @@ async function installPlexusDiagram({
   }
   function unmount(rec) {
     if (!rec || !mounts.has(rec.native)) return;
-    if (rec.fullscreen && !stopped && !routeLeftZoomedDiagram(rec.uid)) {
+    if (rec.fullscreen && !stopped && active2() && !routeLeftZoomedDiagram(rec.uid)) {
       coverHold = { uid: rec.uid, at: Date.now() };
       holdFsCover(doc, true);
     }
@@ -123014,7 +123048,10 @@ async function installPlexusDiagram({
     if (stopped) return;
     const next = id === SETTING_IDS.speedFlags ? parseSpeedFlags(value) : normalizeSetting(id, value);
     settings = { ...settings, [id]: next };
-    if (id === SETTING_IDS.pdfReaderDark) syncPdfReaderDark();
+    if (id === SETTING_IDS.pdfReaderDark || id === SETTING_IDS.enabled || id === SETTING_IDS.disableOnMobile) {
+      syncPdfReaderDark();
+      syncSidebarPdfGated();
+    }
     if (id === SETTING_IDS.speedFlags) noteSpeedFlags(next);
     if (id === SETTING_IDS.speedLog) syncSpeedLog();
     if (id === SETTING_IDS.resurface) {
@@ -123476,9 +123513,9 @@ async function installPlexusDiagram({
     };
     const onAppChange = (records) => {
       onAdded(records);
-      if (sidebarPdfDirty(records, doc.documentElement?.classList?.contains?.(SIDEBAR_PDF_CLASS), doc)) syncSidebarPdf(doc);
+      if (sidebarPdfDirty(records, doc.documentElement?.classList?.contains?.(SIDEBAR_PDF_CLASS), doc)) syncSidebarPdfGated();
     };
-    syncSidebarPdf(doc);
+    syncSidebarPdfGated();
     lifecycle.add(() => doc.documentElement?.classList?.remove?.(SIDEBAR_PDF_CLASS));
     const app = doc.querySelector(".roam-app");
     if (app) lifecycle.observer(new MutationObserver(guardCallback("observer", onAppChange)), app, { childList: true, subtree: true });

@@ -356,7 +356,7 @@ test("thumbnail size, stroke, and board bounds", () => {
   });
 });
 
-test("install leaves a foreign global and unload always fires", () => {
+test("install leaves a foreign global and unload fires only for the installing copy", () => {
   const api = createPublicApi({ host: { graphName: () => "G" }, version: "2.10.1" });
   const win = eventWin();
   win.__plexusDiagram = { debug: true };
@@ -385,6 +385,6 @@ test("install leaves a foreign global and unload always fires", () => {
   win.PlexusDiagram = foreign;
   assert.equal(uninstallPublicApi(api, { win }), false);
   assert.equal(win.PlexusDiagram, foreign);
-  assert.deepEqual(unload, [{ apiVersion: 1 }, { apiVersion: 1 }]);
+  assert.deepEqual(unload, [{ apiVersion: 1 }], "a refused copy does not announce an unload");
   assert.deepEqual(win.__plexusDiagram, { debug: true });
 });

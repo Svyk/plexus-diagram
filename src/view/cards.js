@@ -7773,7 +7773,7 @@ export function createItemRenderer({
       outsidePeekOn = false;
     }
     if (editing?.tableCaption) {
-      try { editing.finish?.(false); } catch { /* already closed */ }
+      try { editing.finish?.(lastBoard?.items?.has?.(editing.uid) === true); } catch { /* already closed */ }
     } else if (editing) {
       const e = editing;
       clearEditFade(e);

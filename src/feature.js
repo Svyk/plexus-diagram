@@ -58,6 +58,7 @@ import { closeDiagramDb } from "./host/diagram-db.js";
 import { createDocCache } from "./host/doc-cache.js";
 import { createParseStore } from "./host/parse-store.js";
 import { createPdfTables } from "./host/pdf-tables.js";
+import { createAiTools, installAiTools } from "./model/ai-tools.js";
 import { boardBounds, createPublicApi, emitPublicEvent, fitThumbSize, installPublicApi, thumbStroke, uninstallPublicApi } from "./model/public-api.js";
 import { motionProfile, resolveMotion } from "./view/motion.js";
 import { createShowStash, pickCameraMount, resolveRegionTarget } from "./view/region-open.js";
@@ -4466,6 +4467,14 @@ export async function installPlexusDiagram({
   });
   publicEmit = (type, detail) => emitPublicEvent(publicApi, type, detail);
   installPublicApi(publicApi, { win });
+  lifecycle.add(installAiTools(extensionAPI, createAiTools({
+    listBoards: () => host.listBoards?.() ?? [],
+    pullBoard: (uid) => host.pullBoard?.(uid),
+    withSession: async (boardUid, fn) => {
+      const session = acquireSession(boardUid, { host, settings: liveSettings });
+      try { return await fn(session); } finally { try { session?.release?.(); } catch { /* released */ } }
+    },
+  })));
 
   const api = {
     version: badge,

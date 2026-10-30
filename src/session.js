@@ -1276,14 +1276,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   async function runOp(op) {
     switch (op.op) {
       case "create":
-        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open, heading: op.heading, textAlign: op.textAlign });
+        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open, heading: op.heading, textAlign: op.textAlign, user: op.user });
         break;
-      case "move": await host.moveBlock(op.uid, op.parent, op.order); break;
-      case "delete": await host.deleteBlock(op.uid); break;
-      case "props": await host.updateProps(op.uid, op.plexus); break;
-      case "string": await host.updateString(op.uid, op.string); break;
-      case "open": await host.setOpen(op.uid, op.open); break;
-      case "page": await host.createPage({ uid: op.uid, title: op.title }); break;
+      case "move": await host.moveBlock(op.uid, op.parent, op.order, op.user); break;
+      case "delete": await host.deleteBlock(op.uid, op.user); break;
+      case "props": await host.updateProps(op.uid, op.plexus, op.user); break;
+      case "string": await host.updateString(op.uid, op.string, op.user); break;
+      case "open": await host.setOpen(op.uid, op.open, op.user); break;
+      case "page": await host.createPage({ uid: op.uid, title: op.title, user: op.user }); break;
       default: break;
     }
   }
@@ -1446,11 +1446,24 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return ok;
   }
 
+  // The AI user a synchronous asUser(...) block is acting for (PXD-5). commit() reads it before any await, so every
+  // op of that transaction carries it; undo and redo run the plain list and stay the human's.
+  let actingUser = null;
+  // The most writes one asUser(...) transaction may make (one undo step); null is unlimited.
+  let actingLimit = null;
+
   function commit(ops, result, custom = null) {
     if (!ops.length) return Promise.resolve(result);
+    const user = actingUser;
+    const limit = actingLimit;
     stampBoard(ops);
     const list = coalesce(ops);
+    const runList = user ? list.map((op) => (op.op === "keep" ? op : { ...op, user })) : list;
     const writes = list.filter((op) => op.op !== "keep").length;
+    if (limit && writes > limit) {
+      repull();
+      return Promise.reject(new Error(`This change needs ${writes} writes, but one undo step holds ${limit}. Split it into smaller calls.`));
+    }
     if (!bulkAllowed(writes)) {
       // The optimistic model already holds the change: read the board back from Roam.
       repull();
@@ -1466,13 +1479,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       if (active) host.setCustomUndo?.(active);
       try {
         // A custom entry cannot be suspended: closing the chunk here would push the inverse before the later writes.
-        return await execute(list, { hold: true, suspend: !active });
+        return await execute(runList, { hold: true, suspend: !active });
       } catch (err) {
         // The inverse covers the whole list, but only part of it ran: close as a native chunk of what did.
         if (active) host.setCustomUndo?.(null);
         throw err;
       }
-    })).then(() => result, (err) => { handleFailure(err); return result; });
+    // A tool call (asUser with a limit) gets the failure: an agent must not read a reverted change as done.
+    })).then(() => result, (err) => { handleFailure(err); if (limit) throw err; return result; });
   }
 
   // Custom undo for a drag or resize that may pass the native chunk size (see commit()). wrap(t) records the pre-write
@@ -1887,8 +1901,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return look ? { ...layout, look } : layout;
   };
 
-  const cardAt = (t, string, x, y, size = null) => {
-    const parent = containerAt(board, { x: x + (size?.w ?? DEFAULT_SIZES.card.w) / 2, y: y + (size?.h ?? DEFAULT_SIZES.card.h) / 2 }, { rects });
+  // `into` names the section the card must join (an AI tool's target); otherwise the container under its centre.
+  const cardAt = (t, string, x, y, size = null, into = null) => {
+    const parent = into && board.items.get(into)?.type === "section" ? into
+      : containerAt(board, { x: x + (size?.w ?? DEFAULT_SIZES.card.w) / 2, y: y + (size?.h ?? DEFAULT_SIZES.card.h) / 2 }, { rects });
     const rel = toRelative(board, parent, { x, y }, rects);
     const layout = withCardLook({ x: rel.x, y: rel.y }, string);
     if (Number.isFinite(size?.w)) layout.w = size.w;
@@ -2296,6 +2312,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     settings,
     get board() { return board; },
     get gone() { return gone; },
+    asUser(userUid, fn, { maxWrites } = {}) {
+      const prev = actingUser;
+      const prevLimit = actingLimit;
+      actingUser = typeof userUid === "string" && userUid ? userUid : null;
+      actingLimit = Number.isFinite(maxWrites) && maxWrites > 0 ? maxWrites : null;
+      try { return fn(session); } finally { actingUser = prev; actingLimit = prevLimit; }
+    },
     get rects() { return rects; },
     get links() { return visibleLinks; },
     get linksPromise() { return linkPromise ?? Promise.resolve(); },
@@ -2961,7 +2984,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     addRefCards(list) {
       const items = capBulk(list ?? [], emit);
       return txn((t) => {
-        const ids = items.map(({ string, x, y, w, h }) => cardAt(t, string, x, y, w || h ? { w, h } : null));
+        const ids = items.map(({ string, x, y, w, h, into }) => cardAt(t, string, x, y, w || h ? { w, h } : null, into));
         applyFit(t, ids);
         return ids;
       });

@@ -1433,13 +1433,13 @@ function edgeString({ srcRef, dstRef, dir = "one", label = "", srcBlock, dstBloc
   return label ? `${srcRef} ${a} ${label} ${a} ${dstRef}` : `${srcRef} ${a} ${dstRef}`;
 }
 function parseEdgeLabel(s, srcRef, dstRef) {
-  const str3 = String(s ?? "").trim();
+  const str4 = String(s ?? "").trim();
   if (srcRef && dstRef) {
     let rest = null;
     for (const a of ARROW_TOKENS) {
       const prefix = `${srcRef} ${a} `;
-      if (str3.startsWith(prefix)) {
-        rest = str3.slice(prefix.length);
+      if (str4.startsWith(prefix)) {
+        rest = str4.slice(prefix.length);
         break;
       }
     }
@@ -1451,7 +1451,7 @@ function parseEdgeLabel(s, srcRef, dstRef) {
       }
     }
   }
-  let out = str3;
+  let out = str4;
   for (const token of [srcRef, dstRef, ...ARROW_TOKENS]) {
     if (token) out = out.split(token).join(" ");
   }
@@ -1460,9 +1460,9 @@ function parseEdgeLabel(s, srcRef, dstRef) {
 function colorForLabel(label) {
   if (label == null || label === "" || label === "mentions") return "gray";
   let h = 2166136261;
-  const str3 = String(label);
-  for (let i = 0; i < str3.length; i++) {
-    h ^= str3.charCodeAt(i);
+  const str4 = String(label);
+  for (let i = 0; i < str4.length; i++) {
+    h ^= str4.charCodeAt(i);
     h = Math.imul(h, 16777619) >>> 0;
   }
   return PALETTE[1 + h % 9];
@@ -5964,7 +5964,7 @@ function sectionFitClearPlan(board2, rects, touchedUids, {
     for (const m of board2.items.get(u)?.members ?? []) translate(m, dx, dy);
   };
   let touched = [...touchedUids];
-  for (let round6 = 0; round6 < 64 && touched.length; round6++) {
+  for (let round7 = 0; round7 < 64 && touched.length; round7++) {
     const queue = [];
     for (const { uid, rect } of sectionFitPlan(board2, world, touched, { pad: pad2, skip, parentOf })) {
       queue.push({ uid, before: world.get(uid) });
@@ -6386,9 +6386,9 @@ function mul(a, b) {
 function applyPoint(m, x, y) {
   return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
 }
-function normalizeText(str3) {
+function normalizeText(str4) {
   let out = "";
-  for (const ch of str3) {
+  for (const ch of str4) {
     const code = ch.codePointAt(0);
     if (ch === "­") continue;
     if (LIGATURES[ch]) {
@@ -6420,8 +6420,8 @@ function isMathChar(ch) {
   return MATH_CHAR_RE.test(ch);
 }
 function piecesOf(item, transform, fonts) {
-  const str3 = normalizeText(item.str || "");
-  if (!str3) return [];
+  const str4 = normalizeText(item.str || "");
+  if (!str4) return [];
   const m = mul(transform, item.transform);
   const size = Math.hypot(m[2], m[3]) || Math.hypot(m[0], m[1]);
   const angle = Math.atan2(m[1], m[0]);
@@ -6432,19 +6432,19 @@ function piecesOf(item, transform, fonts) {
   const width = (item.width || 0) * scaleX;
   const flags = fontFlags(item.fontName, fonts);
   const ocrWord = item.fontName === "ocr";
-  if (!str3.trim()) return [{ space: true, x0: x, x1: x + width, base: base2, size, rotated, angle }];
-  const spaced = letterSpaced(str3) ? str3.replace(/\s+/g, "") : null;
+  if (!str4.trim()) return [{ space: true, x0: x, x1: x + width, base: base2, size, rotated, angle }];
+  const spaced = letterSpaced(str4) ? str4.replace(/\s+/g, "") : null;
   if (spaced) {
     let math = 0;
     for (const ch of spaced) if (isMathChar(ch)) math++;
     return [{ text: spaced, x0: x, x1: x + width, base: base2, size, font: item.fontName, fontName: flags.name, bold: flags.bold, italic: flags.italic, mathFont: flags.math, mono: flags.mono, mathChars: math, rotated, angle, leadingSpace: false, trailingSpace: false, spaced: true }];
   }
-  const perChar = width / Math.max(1, str3.length);
+  const perChar = width / Math.max(1, str4.length);
   const out = [];
   let i = 0;
   const re = /(\s+)|(\S+)/g;
   let match;
-  while (match = re.exec(str3)) {
+  while (match = re.exec(str4)) {
     const start2 = match.index;
     const end = start2 + match[0].length;
     if (match[1]) {
@@ -6467,8 +6467,8 @@ function piecesOf(item, transform, fonts) {
         mathChars: math,
         rotated,
         angle,
-        leadingSpace: ocrWord || start2 > 0 && str3[start2 - 1] === " ",
-        trailingSpace: ocrWord || end < str3.length && str3[end] === " ",
+        leadingSpace: ocrWord || start2 > 0 && str4[start2 - 1] === " ",
+        trailingSpace: ocrWord || end < str4.length && str4[end] === " ",
         conf: item.conf,
         boxY: ocrWord && item.y0 != null && item.y1 != null ? [item.y0, item.y1] : null
       });
@@ -6477,8 +6477,8 @@ function piecesOf(item, transform, fonts) {
   }
   return out;
 }
-function letterSpaced(str3) {
-  const parts = str3.trim().split(/\s+/);
+function letterSpaced(str4) {
+  const parts = str4.trim().split(/\s+/);
   if (parts.length < 4) return false;
   const single = parts.filter((p) => p.length === 1).length;
   return single >= 0.6 * parts.length;
@@ -14583,8 +14583,8 @@ function preferSpellings(items, lexicon, { rules = null, pageW = 612, pageH = 79
       }
     }
     if (!best) return item;
-    const str3 = replaceCore(item.str, core, best.word);
-    return str3 === item.str ? item : { ...item, str: str3 };
+    const str4 = replaceCore(item.str, core, best.word);
+    return str4 === item.str ? item : { ...item, str: str4 };
   });
 }
 function chooseReading(vision, other, lexicon) {
@@ -14705,8 +14705,8 @@ function voteItems(visionItems, otherItems, lexicon, regions) {
     if (regions.length && inRuledRegion(vBoxes[i], regions)) return item;
     const j = match.get(i);
     if (j == null) return item;
-    const str3 = chooseReading(item, otherItems[j], lexicon);
-    return str3 === item.str ? item : { ...item, str: str3 };
+    const str4 = chooseReading(item, otherItems[j], lexicon);
+    return str4 === item.str ? item : { ...item, str: str4 };
   });
   const lines = lineClusters(visionItems);
   const added = [];
@@ -23170,8 +23170,8 @@ function rowFraction(blocks, uid) {
   const rows = [];
   const walk3 = (list) => {
     for (const c of list || []) {
-      const str3 = c?.[":block/string"] ?? c?.string ?? "";
-      if (attrNameOf(str3) === "BT_attrDue") continue;
+      const str4 = c?.[":block/string"] ?? c?.string ?? "";
+      if (attrNameOf(str4) === "BT_attrDue") continue;
       rows.push(c?.[":block/uid"] ?? c?.uid ?? "");
       if (c?.open !== false && c?.[":block/open"] !== false) walk3(c?.[":block/children"] ?? c?.children);
     }
@@ -26908,10 +26908,10 @@ function pageFromTextContent({ n: n3 = 1, width = 0, height = 0, items = [] } = 
   const pageW = Number(width) || 0;
   const pageH = Number(height) || 0;
   for (const item of Array.isArray(items) ? items : []) {
-    const str3 = String(item?.str || "");
-    if (!str3) continue;
-    bits.push(str3);
-    if (pageW > 0 && pageH > 0) spans.push({ str: str3, frac: fracOf(item, pageW, pageH) });
+    const str4 = String(item?.str || "");
+    if (!str4) continue;
+    bits.push(str4);
+    if (pageW > 0 && pageH > 0) spans.push({ str: str4, frac: fracOf(item, pageW, pageH) });
   }
   const text4 = bits.join(" ").replace(/\s+/g, " ").trim();
   return { n: Number(n3) || 0, text: text4, lower: text4.toLowerCase(), spans };
@@ -26933,8 +26933,8 @@ function flashFrac(page, needle, fuzzyWord) {
   const want = String(fuzzyWord || needle || "").toLowerCase();
   if (!want) return null;
   for (const span of spans) {
-    const str3 = String(span?.str || "").toLowerCase();
-    if (str3.includes(want)) return span.frac || null;
+    const str4 = String(span?.str || "").toLowerCase();
+    if (str4.includes(want)) return span.frac || null;
   }
   if (fuzzyWord) {
     for (const span of spans) {
@@ -35809,8 +35809,8 @@ function createItemRenderer({
     const walk3 = (parent, list, depth) => {
       for (const c of list || []) {
         if (left <= 0) return;
-        const str3 = childString5(c);
-        if (skipChildString(str3)) continue;
+        const str4 = childString5(c);
+        if (skipChildString(str4)) continue;
         left -= 1;
         const row4 = el2("div", "pxd-block pxd-prow", parent);
         const line = el2("div", "pxd-row", row4);
@@ -35818,7 +35818,7 @@ function createItemRenderer({
         const kids = childKids(c);
         if (kids.length || c.kids > 0) el2("span", "pxd-row__fold", line);
         el2("span", "pxd-outline__bullet", line);
-        el2("div", "pxd-block__text pxd-block__plain", line).textContent = isHeavyRow(str3) ? "…" : plainText(str3, Infinity);
+        el2("div", "pxd-block__text pxd-block__plain", line).textContent = isHeavyRow(str4) ? "…" : plainText(str4, Infinity);
         if (kids.length && c.open !== false && depth < PREVIEW_DEPTH) walk3(el2("div", "pxd-block__children", row4), kids, depth + 1);
       }
     };
@@ -49573,9 +49573,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     generateUid() {
       return api3.util.generateUID();
     },
-    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType, heading, textAlign } = {}) {
+    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType, heading, textAlign, user } = {}) {
       const id = uid ?? api3.util.generateUID();
       const block = { uid: id, string };
+      if (user && typeof user === "string") block["user-uid"] = user;
       if (props !== void 0) block.props = plainKeys(props);
       if (open !== void 0) block.open = open;
       if (heading) block.heading = heading;
@@ -49699,17 +49700,21 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (!parentUid || !Number.isInteger(order)) return null;
       return { parentUid, order };
     },
-    async updateString(uid, string) {
+    async updateString(uid, string, user) {
       stats.writes++;
-      await mutate(() => data.block.update({ block: { uid, string } }));
+      const block = { uid, string };
+      if (user && typeof user === "string") block["user-uid"] = user;
+      await mutate(() => data.block.update({ block }));
       noteWrite("update");
       forgetUid(uid);
     },
-    async updateProps(uid, plexus) {
+    async updateProps(uid, plexus, user) {
       forgetUid(uid);
       const merged = mergePropsForWrite(host.pullProps(uid), plexus);
       stats.writes++;
-      await mutate(() => data.block.update({ block: { uid, props: merged } }));
+      const block = { uid, props: merged };
+      if (user && typeof user === "string") block["user-uid"] = user;
+      await mutate(() => data.block.update({ block }));
       noteWrite("update");
     },
     // Notes kept reads on a PDF block. Only the `plexus-reads` prop changes; every other prop stays.
@@ -49720,21 +49725,27 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       await mutate(() => data.block.update({ block: { uid, props: merged } }));
       noteWrite("update");
     },
-    async moveBlock(uid, parentUid, order = "last") {
+    async moveBlock(uid, parentUid, order = "last", user) {
       stats.writes++;
-      await mutate(() => data.block.move({ location: { "parent-uid": parentUid, order }, block: { uid } }));
+      const block = { uid };
+      if (user && typeof user === "string") block["user-uid"] = user;
+      await mutate(() => data.block.move({ location: { "parent-uid": parentUid, order }, block }));
       noteWrite("move");
       forgetUid(uid);
     },
-    async deleteBlock(uid) {
+    async deleteBlock(uid, user) {
       stats.writes++;
-      await mutate(() => data.block.delete({ block: { uid } }));
+      const block = { uid };
+      if (user && typeof user === "string") block["user-uid"] = user;
+      await mutate(() => data.block.delete({ block }));
       noteWrite("delete");
       forgetUid(uid);
     },
-    async setOpen(uid, open) {
+    async setOpen(uid, open, user) {
       stats.writes++;
-      await mutate(() => data.block.update({ block: { uid, open } }));
+      const block = { uid, open };
+      if (user && typeof user === "string") block["user-uid"] = user;
+      await mutate(() => data.block.update({ block }));
       noteWrite("update");
       forgetUid(uid);
     },
@@ -50092,11 +50103,12 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       }
     },
     // A new page with a known uid, so later writes in the same group can target it.
-    async createPage({ uid, title } = {}) {
+    async createPage({ uid, title, user } = {}) {
       const name = String(title ?? "").trim();
       if (!name) throw new Error("createPage: no title");
       const page = { title: name };
       if (typeof uid === "string" && uid) page.uid = uid;
+      if (user && typeof user === "string") page["user-uid"] = user;
       stats.writes++;
       await mutate(() => data.page.create({ page }));
       noteWrite("create");
@@ -53050,25 +53062,25 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   async function runOp(op) {
     switch (op.op) {
       case "create":
-        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open, heading: op.heading, textAlign: op.textAlign });
+        await host.createBlock({ parentUid: op.parent, order: op.order, uid: op.uid, string: op.string, props: op.props, open: op.open, heading: op.heading, textAlign: op.textAlign, user: op.user });
         break;
       case "move":
-        await host.moveBlock(op.uid, op.parent, op.order);
+        await host.moveBlock(op.uid, op.parent, op.order, op.user);
         break;
       case "delete":
-        await host.deleteBlock(op.uid);
+        await host.deleteBlock(op.uid, op.user);
         break;
       case "props":
-        await host.updateProps(op.uid, op.plexus);
+        await host.updateProps(op.uid, op.plexus, op.user);
         break;
       case "string":
-        await host.updateString(op.uid, op.string);
+        await host.updateString(op.uid, op.string, op.user);
         break;
       case "open":
-        await host.setOpen(op.uid, op.open);
+        await host.setOpen(op.uid, op.open, op.user);
         break;
       case "page":
-        await host.createPage({ uid: op.uid, title: op.title });
+        await host.createPage({ uid: op.uid, title: op.title, user: op.user });
         break;
       default:
         break;
@@ -53239,11 +53251,20 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (!ok) emit2("toast", { message: `Cancelled ${n3} writes.` });
     return ok;
   }
+  let actingUser = null;
+  let actingLimit = null;
   function commit(ops, result, custom = null) {
     if (!ops.length) return Promise.resolve(result);
+    const user = actingUser;
+    const limit = actingLimit;
     stampBoard(ops);
     const list = coalesce(ops);
+    const runList = user ? list.map((op) => op.op === "keep" ? op : { ...op, user }) : list;
     const writes = list.filter((op) => op.op !== "keep").length;
+    if (limit && writes > limit) {
+      repull();
+      return Promise.reject(new Error(`This change needs ${writes} writes, but one undo step holds ${limit}. Split it into smaller calls.`));
+    }
     if (!bulkAllowed(writes)) {
       repull();
       return Promise.resolve(void 0);
@@ -53255,13 +53276,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     return queue.run(() => grouped(async () => {
       if (active2) host.setCustomUndo?.(active2);
       try {
-        return await execute(list, { hold: true, suspend: !active2 });
+        return await execute(runList, { hold: true, suspend: !active2 });
       } catch (err) {
         if (active2) host.setCustomUndo?.(null);
         throw err;
       }
     })).then(() => result, (err) => {
       handleFailure(err);
+      if (limit) throw err;
       return result;
     });
   }
@@ -53661,8 +53683,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const look = lookForNewString(string, setting("default-card-look", "block"));
     return look ? { ...layout, look } : layout;
   };
-  const cardAt = (t, string, x, y, size = null) => {
-    const parent = containerAt(board2, { x: x + (size?.w ?? DEFAULT_SIZES.card.w) / 2, y: y + (size?.h ?? DEFAULT_SIZES.card.h) / 2 }, { rects });
+  const cardAt = (t, string, x, y, size = null, into = null) => {
+    const parent = into && board2.items.get(into)?.type === "section" ? into : containerAt(board2, { x: x + (size?.w ?? DEFAULT_SIZES.card.w) / 2, y: y + (size?.h ?? DEFAULT_SIZES.card.h) / 2 }, { rects });
     const rel = toRelative(board2, parent, { x, y }, rects);
     const layout = withCardLook({ x: rel.x, y: rel.y }, string);
     if (Number.isFinite(size?.w)) layout.w = size.w;
@@ -54081,6 +54103,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     },
     get gone() {
       return gone;
+    },
+    asUser(userUid, fn, { maxWrites } = {}) {
+      const prev = actingUser;
+      const prevLimit = actingLimit;
+      actingUser = typeof userUid === "string" && userUid ? userUid : null;
+      actingLimit = Number.isFinite(maxWrites) && maxWrites > 0 ? maxWrites : null;
+      try {
+        return fn(session);
+      } finally {
+        actingUser = prev;
+        actingLimit = prevLimit;
+      }
     },
     get rects() {
       return rects;
@@ -54750,7 +54784,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     addRefCards(list) {
       const items = capBulk(list ?? [], emit2);
       return txn((t) => {
-        const ids = items.map(({ string, x, y, w, h }) => cardAt(t, string, x, y, w || h ? { w, h } : null));
+        const ids = items.map(({ string, x, y, w, h, into }) => cardAt(t, string, x, y, w || h ? { w, h } : null, into));
         applyFit(t, ids);
         return ids;
       });
@@ -59165,9 +59199,9 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     return draw({ items, edges, zoom, dpr, styled: true, tier: look === "map" || look === "detail" ? look : "overview", view });
   };
   const paintCards = (ctx, { items, c, scale, tier = "detail", zoom = 1, view = null }) => {
-    const round6 = typeof ctx.roundRect === "function";
+    const round7 = typeof ctx.roundRect === "function";
     const shape = (r) => {
-      if (round6) ctx.roundRect(r.x, r.y, r.w, r.h, 8);
+      if (round7) ctx.roundRect(r.x, r.y, r.w, r.h, 8);
       else ctx.rect(r.x, r.y, r.w, r.h);
     };
     ctx.globalAlpha = 1;
@@ -77002,8 +77036,8 @@ ${lines.join("\n")}` : "";
     for (const title of found.pages) if (!dropped.has(`p:${title}`) && !mentions.some((m) => m.title === title) && pageUid(win2, title)) addMention({ kind: "page", title });
     for (const uid of found.blocks) {
       if (dropped.has(`b:${uid}`) || mentions.some((m) => m.uid === uid)) continue;
-      const str3 = blockString(win2, uid);
-      if (str3) addMention({ kind: "block", uid, label: clipQuestion(str3) });
+      const str4 = blockString(win2, uid);
+      if (str4) addMention({ kind: "block", uid, label: clipQuestion(str4) });
     }
   };
   const chip = (label, onX, cls = "") => {
@@ -118242,6 +118276,9 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
   return { tablesFromPdf, capabilities: PDF_TABLES_CAPABILITIES };
 }
 
+// src/model/ai-tools.js
+init_board();
+
 // src/model/public-api.js
 init_board();
 init_deeplink();
@@ -118533,6 +118570,296 @@ function uninstallPublicApi(api3, { win: win2 = globalThis.window ?? globalThis,
   }
   if (ours) fire2(target, "plexus-diagram:unload", { apiVersion: API_VERSION }, CustomEventCtor);
   return ours;
+}
+
+// src/model/ai-tools.js
+init_schema();
+var MAX_TOOLS = 25;
+var LIST_CAP = 200;
+var CARD_CAP2 = 500;
+var TEXT_CAP = 4e4;
+var ADD_CAP = 45;
+function boardUidOf(raw) {
+  const s = String(raw ?? "").trim().replace(/^\(\(/, "").replace(/\)\)$/, "").trim();
+  if (!s) throw new Error("Give a board uid");
+  return s;
+}
+var round6 = (r) => ({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
+function boardArea(board2, rects) {
+  let left = Infinity;
+  let bottom = -Infinity;
+  for (const item of board2.items.values()) {
+    if (item.parentUid !== board2.uid) continue;
+    const r = rects.get(item.uid);
+    if (!r) continue;
+    left = Math.min(left, r.x);
+    bottom = Math.max(bottom, r.y + r.h);
+  }
+  return Number.isFinite(left) ? { x: left, y: bottom + 80 } : { x: 0, y: 0 };
+}
+function autoPlace2(n3, area2, { w = 280, h = 160, gap = 40, cols = 4 } = {}) {
+  const out = [];
+  for (let i = 0; i < n3; i++) {
+    out.push({ x: area2.x + i % cols * (w + gap), y: area2.y + Math.floor(i / cols) * (h + gap) });
+  }
+  return out;
+}
+var str3 = (description) => ({ type: "string", description });
+var boardProp = str3("Board block uid, with or without (( )). Get it from list_boards.");
+function createAiTools(deps) {
+  const { listBoards, pullBoard, withSession } = deps;
+  const load = (raw) => {
+    const uid = boardUidOf(raw);
+    const pulled = pullBoard(uid);
+    if (boardVersion(pulled) !== 2) {
+      throw new Error("Not a Plexus board. Open it in Roam and run Plexus: Enhance this diagram first.");
+    }
+    const board2 = buildBoard(pulled);
+    if (!board2) throw new Error("Not a Plexus board. Open it in Roam and run Plexus: Enhance this diagram first.");
+    return { uid, board: board2 };
+  };
+  const run = async (context, raw, fn) => {
+    const { uid } = load(raw);
+    return withSession(uid, async (session) => {
+      if (!session?.board) throw new Error("Board not loaded");
+      let pending;
+      let ran = false;
+      const go = () => {
+        ran = true;
+        pending = session.asUser(context?.tokenUserUid, () => fn(session), { maxWrites: MAX_GROUP_WRITES });
+        return pending;
+      };
+      if (typeof context?.asTokenUser === "function") context.asTokenUser(go);
+      else go();
+      if (!ran) throw new Error("Roam did not run the write");
+      try {
+        return await pending;
+      } catch (err) {
+        if (/one undo step holds/.test(String(err?.message))) throw err;
+        throw new Error(`Roam did not save this change (${err?.message || err}). Plexus reloaded the board: read it and try again.`);
+      }
+    });
+  };
+  const list_boards = {
+    name: "list_boards",
+    scope: "read",
+    description: "Lists the Plexus whiteboards in this graph with their uid, title, page and card count. Use it first to find a board uid. Up to 200 boards.",
+    inputSchema: {
+      type: "object",
+      properties: { page: str3("Only boards whose page title contains this text (case-insensitive).") },
+      additionalProperties: false
+    },
+    handler(args) {
+      const needle = String(args?.page ?? "").trim().toLowerCase();
+      const rows = (listBoards() ?? []).filter((r) => !needle || String(r.pageTitle ?? "").toLowerCase().includes(needle));
+      const boards = rows.slice(0, LIST_CAP).map((r) => ({ uid: r.uid, title: r.title, page: r.pageTitle, pageUid: r.pageUid, cards: r.count }));
+      return { boards, count: rows.length, truncated: rows.length > LIST_CAP };
+    }
+  };
+  const read_board = {
+    name: "read_board",
+    scope: "read",
+    description: "Reads one Plexus board: its outline as text, plus every section, card and arrow with world rectangles. Use it before changing a board. Returns at most 500 cards and 40000 characters of text.",
+    inputSchema: {
+      type: "object",
+      properties: { board: boardProp },
+      required: ["board"],
+      additionalProperties: false
+    },
+    handler(args) {
+      const { uid, board: board2 } = load(args?.board);
+      const rects = worldRects(board2);
+      const top = (item) => item.parentUid === board2.uid ? null : item.parentUid;
+      const sections = [];
+      const cards = [];
+      let truncated = false;
+      for (const item of board2.items.values()) {
+        const r = rects.get(item.uid);
+        if (!r) continue;
+        if (item.type === "section") {
+          sections.push({ uid: item.uid, title: titleOf3(item), parent: top(item), rect: round6(r) });
+        } else if (cards.length < CARD_CAP2) {
+          cards.push({ uid: item.uid, title: titleOf3(item), kind: item.kind, section: top(item), rect: round6(r) });
+        } else truncated = true;
+      }
+      const arrows = [...board2.edges.values()].filter((e2) => e2.valid).map((e2) => ({ uid: e2.uid, from: e2.from, to: e2.to, label: e2.label || "", direction: e2.dir }));
+      let text4 = boardToMarkdown(board2, rects);
+      if (text4.length > TEXT_CAP) {
+        text4 = text4.slice(0, TEXT_CAP);
+        truncated = true;
+      }
+      const out = { uid, title: board2.title, text: text4, sections, cards, arrows };
+      if (truncated) out.truncated = true;
+      return out;
+    }
+  };
+  const add_cards = {
+    name: "add_cards",
+    // Edit, not append: a card placed in a section can grow that existing section (auto-fit) and push its neighbours.
+    scope: "edit",
+    description: "Adds cards to a board. Each card is plain text, one [[Page]] link or one ((block uid)). Up to 45 cards per call, one undo step; a section that grows to fit them takes a few writes of that budget, and a call over budget is refused with an error (split it). Cards without x and y are laid out in a grid.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        board: boardProp,
+        cards: {
+          type: "array",
+          minItems: 1,
+          maxItems: ADD_CAP,
+          description: "The cards to add, at most 45.",
+          items: {
+            type: "object",
+            properties: {
+              text: str3("Card text: plain text, one [[Page]] or one ((block uid))."),
+              x: { type: "number", description: "World x. Leave out to auto-place." },
+              y: { type: "number", description: "World y. Leave out to auto-place." }
+            },
+            required: ["text"],
+            additionalProperties: false
+          }
+        },
+        section: str3("Section uid on this board to place the auto-placed cards in.")
+      },
+      required: ["board", "cards"],
+      additionalProperties: false
+    },
+    async handler(args, context) {
+      const cards = Array.isArray(args?.cards) ? args.cards : [];
+      if (!cards.length) throw new Error("Give at least one card");
+      if (cards.length > ADD_CAP) throw new Error("At most 45 cards per call (Roam undo holds 50 changes)");
+      const { board: board2 } = load(args?.board);
+      const rects = worldRects(board2);
+      let area2 = boardArea(board2, rects);
+      let cols = 4;
+      let into = null;
+      if (args?.section) {
+        const sec = board2.items.get(boardUidOf(args.section));
+        if (!sec || sec.type !== "section") throw new Error(`Not a section on this board: ${args.section}`);
+        const r = rects.get(sec.uid);
+        area2 = { x: r.x + 24, y: r.y + 60 };
+        cols = Math.max(1, Math.floor((r.w - 24) / 320));
+        into = sec.uid;
+      }
+      const slots = autoPlace2(cards.length, area2, { cols });
+      const list = cards.map((c, i) => {
+        const text4 = String(c?.text ?? "").trim();
+        if (!text4) throw new Error("Every card needs text");
+        const placed = Number.isFinite(c.x) && Number.isFinite(c.y);
+        const card2 = { string: text4, x: placed ? c.x : slots[i].x, y: placed ? c.y : slots[i].y };
+        if (into && !placed) card2.into = into;
+        return card2;
+      });
+      const added = await run(context, args.board, (session) => session.addRefCards(list));
+      return { added: added ?? [], count: (added ?? []).length };
+    }
+  };
+  const add_section = {
+    name: "add_section",
+    scope: "append",
+    description: "Adds an empty titled section (a frame that groups cards) to a board. Defaults to 640 by 400 below the existing content. One undo step.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        board: boardProp,
+        title: str3("Section title."),
+        x: { type: "number", description: "World x of the left edge." },
+        y: { type: "number", description: "World y of the top edge." },
+        w: { type: "number", description: "Width, default 640." },
+        h: { type: "number", description: "Height, default 400." }
+      },
+      required: ["board", "title"],
+      additionalProperties: false
+    },
+    async handler(args, context) {
+      const { board: board2 } = load(args?.board);
+      const area2 = boardArea(board2, worldRects(board2));
+      const num9 = (v, d) => Number.isFinite(v) ? v : d;
+      const rect = { x: num9(args.x, area2.x), y: num9(args.y, area2.y), w: num9(args.w, 640), h: num9(args.h, 400) };
+      const uid = await run(context, args.board, (session) => session.createSection({ rect, title: String(args.title ?? "").trim() || "Section" }));
+      return { uid };
+    }
+  };
+  const connect_cards = {
+    name: "connect_cards",
+    scope: "append",
+    description: "Draws an arrow between two items on a board, with an optional label. One undo step.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        board: boardProp,
+        from: str3("Uid of the item the arrow starts at."),
+        to: str3("Uid of the item the arrow ends at."),
+        label: str3("Text on the arrow."),
+        direction: { type: "string", enum: DIRS, description: "one = arrowhead at the end (default), two = both ends, none = a plain line." }
+      },
+      required: ["board", "from", "to"],
+      additionalProperties: false
+    },
+    async handler(args, context) {
+      const { board: board2 } = load(args?.board);
+      const from = boardUidOf(args?.from);
+      const to = boardUidOf(args?.to);
+      for (const id of [from, to]) if (!board2.items.has(id)) throw new Error(`Not an item on this board: ${id}`);
+      const dir = DIRS.includes(args.direction) ? args.direction : "one";
+      const uid = await run(context, args.board, (session) => session.addEdge({ from, to, label: String(args.label ?? ""), dir }));
+      if (!uid) throw new Error("Could not connect these two");
+      return { uid };
+    }
+  };
+  const arrange_board = {
+    name: "arrange_board",
+    scope: "edit",
+    description: "Re-lays out cards in a grid, a row, a column or an outline. Targets the given cards, else one section, else the whole board. Moves existing cards; one undo step.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        board: boardProp,
+        mode: { type: "string", enum: ["grid", "row", "column", "outline"], description: "The layout to apply." },
+        section: str3("Arrange the members of this section."),
+        cards: { type: "array", items: { type: "string" }, description: "Uids of the cards to arrange." }
+      },
+      required: ["board", "mode"],
+      additionalProperties: false
+    },
+    async handler(args, context) {
+      const { board: board2 } = load(args?.board);
+      if (!["grid", "row", "column", "outline"].includes(args.mode)) throw new Error("mode must be grid, row, column or outline");
+      let uids;
+      if (Array.isArray(args.cards) && args.cards.length) uids = args.cards.map(boardUidOf);
+      else if (args.section) uids = [boardUidOf(args.section)];
+      else uids = [...board2.items.values()].filter((i) => i.parentUid === board2.uid).map((i) => i.uid);
+      for (const id of uids) if (!board2.items.has(id)) throw new Error(`Not an item on this board: ${id}`);
+      const moved = await run(context, args.board, (session) => session.tidyItems(uids, args.mode));
+      return { moved: Number(moved) || 0 };
+    }
+  };
+  return [list_boards, read_board, add_cards, add_section, connect_cards, arrange_board];
+}
+function installAiTools(extensionAPI, tools) {
+  const ai = extensionAPI?.ai;
+  if (typeof ai?.addTool !== "function") return () => {
+  };
+  const added = [];
+  let warned = false;
+  for (const tool of (tools ?? []).slice(0, MAX_TOOLS)) {
+    try {
+      ai.addTool({ name: tool.name, description: tool.description, scope: tool.scope, inputSchema: tool.inputSchema, handler: tool.handler });
+      added.push(tool.name);
+    } catch (err) {
+      if (!warned) {
+        warned = true;
+        console.warn("[plexus] AI tool not registered", tool.name, err);
+      }
+    }
+  }
+  return () => {
+    for (const name of added.splice(0)) {
+      try {
+        ai.removeTool?.({ name });
+      } catch {
+      }
+    }
+  };
 }
 
 // src/feature.js
@@ -123623,6 +123950,21 @@ async function installPlexusDiagram({
   });
   publicEmit = (type, detail) => emitPublicEvent(publicApi, type, detail);
   installPublicApi(publicApi, { win: win2 });
+  lifecycle.add(installAiTools(extensionAPI, createAiTools({
+    listBoards: () => host.listBoards?.() ?? [],
+    pullBoard: (uid) => host.pullBoard?.(uid),
+    withSession: async (boardUid, fn) => {
+      const session = acquireSession2(boardUid, { host, settings: liveSettings });
+      try {
+        return await fn(session);
+      } finally {
+        try {
+          session?.release?.();
+        } catch {
+        }
+      }
+    }
+  })));
   const api3 = {
     version: badge,
     stats: host.stats,

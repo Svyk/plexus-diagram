@@ -3195,9 +3195,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     generateUid() { return api.util.generateUID(); },
 
-    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType, heading, textAlign } = {}) {
+    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType, heading, textAlign, user } = {}) {
       const id = uid ?? api.util.generateUID();
       const block = { uid: id, string };
+      if (user && typeof user === "string") block["user-uid"] = user;
       if (props !== undefined) block.props = plainKeys(props);
       if (open !== undefined) block.open = open;
       if (heading) block.heading = heading;
@@ -3315,18 +3316,22 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return { parentUid, order };
     },
 
-    async updateString(uid, string) {
+    async updateString(uid, string, user) {
       stats.writes++;
-      await mutate(() => data.block.update({ block: { uid, string } }));
+      const block = { uid, string };
+      if (user && typeof user === "string") block["user-uid"] = user;
+      await mutate(() => data.block.update({ block }));
       noteWrite("update");
       forgetUid(uid);
     },
 
-    async updateProps(uid, plexus) {
+    async updateProps(uid, plexus, user) {
       forgetUid(uid);
       const merged = mergePropsForWrite(host.pullProps(uid), plexus);
       stats.writes++;
-      await mutate(() => data.block.update({ block: { uid, props: merged } }));
+      const block = { uid, props: merged };
+      if (user && typeof user === "string") block["user-uid"] = user;
+      await mutate(() => data.block.update({ block }));
       noteWrite("update");
     },
 
@@ -3339,23 +3344,29 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       noteWrite("update");
     },
 
-    async moveBlock(uid, parentUid, order = "last") {
+    async moveBlock(uid, parentUid, order = "last", user) {
       stats.writes++;
-      await mutate(() => data.block.move({ location: { "parent-uid": parentUid, order }, block: { uid } }));
+      const block = { uid };
+      if (user && typeof user === "string") block["user-uid"] = user;
+      await mutate(() => data.block.move({ location: { "parent-uid": parentUid, order }, block }));
       noteWrite("move");
       forgetUid(uid);
     },
 
-    async deleteBlock(uid) {
+    async deleteBlock(uid, user) {
       stats.writes++;
-      await mutate(() => data.block.delete({ block: { uid } }));
+      const block = { uid };
+      if (user && typeof user === "string") block["user-uid"] = user;
+      await mutate(() => data.block.delete({ block }));
       noteWrite("delete");
       forgetUid(uid);
     },
 
-    async setOpen(uid, open) {
+    async setOpen(uid, open, user) {
       stats.writes++;
-      await mutate(() => data.block.update({ block: { uid, open } }));
+      const block = { uid, open };
+      if (user && typeof user === "string") block["user-uid"] = user;
+      await mutate(() => data.block.update({ block }));
       noteWrite("update");
       forgetUid(uid);
     },
@@ -3681,11 +3692,12 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     },
 
     // A new page with a known uid, so later writes in the same group can target it.
-    async createPage({ uid, title } = {}) {
+    async createPage({ uid, title, user } = {}) {
       const name = String(title ?? "").trim();
       if (!name) throw new Error("createPage: no title");
       const page = { title: name };
       if (typeof uid === "string" && uid) page.uid = uid;
+      if (user && typeof user === "string") page["user-uid"] = user;
       stats.writes++;
       await mutate(() => data.page.create({ page }));
       noteWrite("create");

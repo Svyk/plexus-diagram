@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { COLOR_MIN_SCORE, colorPalette, colorQuery, colorScore, rgbToOklab } from "../src/model/color.js";
 import { searchImages, splitImageQuery, stripColorWords } from "../src/model/image-search.js";
+import { budgetMessage, measureBudget } from "./fixtures/speed.js";
 
 function pixels(parts, total = 4096) {
   const out = new Uint8ClampedArray(total * 4);
@@ -72,25 +73,15 @@ test("speed: k-means on 64x64 under 10 ms, colorScore over 5,000 palettes under 
   let seed = 7;
   for (let i = 0; i < data.length; i += 1) { seed = (seed * 1103515245 + 12345) & 0x7fffffff; data[i] = i % 4 === 3 ? 255 : seed >> 8 & 255; }
   colorPalette(data);
-  let best = Infinity;
-  for (let r = 0; r < 5; r += 1) {
-    const t0 = performance.now();
-    colorPalette(data);
-    best = Math.min(best, performance.now() - t0);
-  }
-  assert.ok(best < 10, `k-means ${best.toFixed(2)} ms`);
+  const kmeans = measureBudget(() => colorPalette(data), 10);
+  assert.ok(kmeans.ok, budgetMessage("k-means", kmeans));
   const palette = colorPalette(pixels([[[224, 32, 32], 0.5], [[10, 10, 10], 0.3], [[255, 255, 255], 0.2]]));
   const palettes = Array.from({ length: 5000 }, () => palette);
   const target = colorQuery("red");
-  let fastest = Infinity;
-  for (let r = 0; r < 5; r += 1) {
-    const t0 = performance.now();
-    let sum = 0;
-    for (const p of palettes) sum += colorScore(p, target);
-    fastest = Math.min(fastest, performance.now() - t0);
-    assert.ok(sum > 0);
-  }
-  assert.ok(fastest < 15, `score ${fastest.toFixed(2)} ms`);
+  let sum = 0;
+  const score = measureBudget(() => { for (const p of palettes) sum += colorScore(p, target); }, 15);
+  assert.ok(sum > 0);
+  assert.ok(score.ok, budgetMessage("colorScore", score));
 });
 
 test("splitImageQuery and stripColorWords", () => {

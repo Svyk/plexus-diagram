@@ -2,7 +2,22 @@
 
 A Heptabase-style whiteboard for Roam `{{[[diagram]]}}` blocks. Cards, colored sections, and connections on an infinite canvas, where every object is a real Roam block: sections are parent blocks of their cards, connections are blocks that link both ends, and relationships already in your graph show up as arrows.
 
-**Developer extension URL:** https://svyk.github.io/plexus-diagram
+- **Think on a canvas, keep it in your graph.** Cards are blocks, pages, block refs, images, tables, PDFs and nested boards. Moving a card into a section moves its block; an arrow writes a block that links both ends, so it shows in backlinks.
+- **Boards that follow your graph.** A board or a section can follow a block's children, a query, linked references, a page's headings, your recent journals, its Inbox, or another board. New items wait in a tray until you place them.
+- **Sections that write back.** Bind a section to a tag or an attribute, or split it into lanes by an attribute's value, and dropping a card writes the change on its block. Apply a board's order back to the outline.
+- **Works with Roam AI.** AI agents on Roam MCP can read boards, add cards and sections, connect and arrange them.
+- **Read and parse PDFs.** Roam's own PDF reader beside the board, highlights as cards, and a parser that turns a PDF into headings, lists and tables you can insert.
+- **Big boards stay quick.** Boards of more than a thousand cards open from a snapshot and pan and zoom smoothly.
+
+![The fixture board in the light theme](docs/img/board-light.png)
+
+## Install
+
+Plexus Diagram is not listed in Roam Depot yet. Until it is, install the [developer build](#developer-build).
+
+Once it is listed: in Roam, **Settings → Roam Depot → Browse**, search for **Plexus Diagram**, and press **Install**. Roam Depot installs updates for you.
+
+Then type `{{[[diagram]]}}` in any block, or run **Plexus: New whiteboard here** from the command palette.
 
 ## Start a board
 
@@ -20,15 +35,13 @@ Boards enhanced with 0.6 upgrade to the 1.0 format once, the first time they are
 
 An enhanced board keeps Roam's diagram controls and adds to them (the 1.3 native set: the rail, Edit Block, the Properties panel, and the note-card hover).
 
-![The fixture board in the light theme](docs/img/board-light.png)
-
 ![The same board with the dark token set](docs/img/board-dark.png)
 
 - **Rail.** The vertical stack on the right (Settings can switch it to a horizontal bar): zoom in, zoom out, fit view, Toggle Minimap, Save PNG, Open outline in sidebar, Edit Block, Maximize, the zoom percent, and the version badge. Edit Block opens the diagram block's text. Esc returns to the board. The badge opens this version's changelog from the bundle. No network.
 - **Properties.** The panel on the canvas. It edits the selection: text, title size, title color, title fill, area fill, fill, border, edges, and sections. Reset default clears that selection's overrides. Background, on the board, sets this board's pattern and tone.
 - **Board bar.** The top row: breadcrumbs, Add, Info, graph links, Find, and More. The last breadcrumb and the bar's bottom edge take the board's own color. More holds export, templates, snapshots, background, dock position and a Views submenu (Gallery, Timeline, Graph); the same Views submenu is in the canvas right-click menu. Hovering any control shows a tooltip with its name, shortcut and a one-line description (Settings, Hover tooltips and Tooltip delay). A selection shows a context bar: colors, align, distribute, and, for a connection, direction, route, dash, weight, and label. Toolbar layout in Settings: Split (default, tools in the dock), Classic (tools in the top bar, as in 2.1), or Dock only (the bar appears when the pointer is near the top edge).
 - **JSON Canvas.** Right-click the board and pick **Import JSON Canvas…** to turn an Obsidian `.canvas` file into a nested board: text, file and link nodes become cards, groups become sections, edges become arrows. **Export as JSON Canvas** (More, or the palette) saves the open board as a `.canvas` file.
-- **Panel.** Add opens the side panel, to the left of the rail. Search finds pages and blocks. Related lists what the selected card links to and what links to it. Info (also the I key) shows the card or the board. Boards lists saved views: a small map, Go, Copy ref, Rename, and Delete. Go restores the camera and writes nothing. The outline in the sidebar is the same canvas, not a second copy of the bullets.
+- **Panel.** Add opens the side panel, to the left of the rail. Search finds pages and blocks. Related lists what the selected card links to and what links to it. Info (also the I key) shows the card or the board. Boards lists saved views: a small map, Go, Copy ref, Rename, and Delete. Go restores the camera and writes nothing. Contents lists the board's sections, landmarks, trails and saved views in outline order; click a row to fly there. The outline in the sidebar is the same canvas, not a second copy of the bullets.
 - **Tool dock.** The floating bar along the bottom, above the minimap: Select (V), Hand (H), Card (N), Text (T), Sticky (S), Shape (R), Section (G), Board (W), Table (B), Connect (C). The active tool has a sliding highlight; double-click a tool to lock it (padlock). With Card, Sticky, Section or Shape active the dock shows that tool's options: with nothing selected a color, look or shape sets the next item you create (kept in memory only); with a selection it restyles the selection. Position, shape, labels and size are in Settings; a board can pick its own position from More, Dock position for this board. Below zoom 0.2 the dock keeps Select, Hand and Board. Hide it with Show tool palette.
 - A note card is a plain block. Hover shows Color, Expand, and References.
 
@@ -45,7 +58,7 @@ An enhanced board keeps Roam's diagram controls and adds to them (the 1.3 native
 | Edit a card | Double-click or Enter. Roam's own editor opens in the card. A page card edits in place: same size and look, the cursor lands on the row you clicked, Esc returns to the same view. The card keeps its size while you edit, and its arrows stay attached; the editor fills the card and the card grows only if your text is taller. Esc to finish |
 | Open | Click a `[[link]]` in a card to go there (Shift-click: sidebar). Context bar: Open in sidebar |
 | Move / resize | Drag a card (from anywhere, links included); drag the right edge, bottom edge, or corner. Alignment guides snap to neighbours. The Hand tool moves cards and resizes too: drag a card to move it, a grip to resize, empty board to pan (Space-drag always pans). Page cards have a wide grip band and a corner above the scrollbar. Grips, connection dots and arrow-end handles keep the same size on screen at every zoom |
-| Section | G, then drag (or click for a default size). Cmd+G wraps the selection. Drop cards in and out of sections. A section grows to contain a card moved or resized past its edge (24 px padding, cascading through nested sections); Fit to contents shrinks it, and Auto-fit in the menu turns it off for one section |
+| Section | G, then drag (or click for a default size). Cmd+G wraps the selection. Drop cards in and out of sections. A section grows to contain a card moved or resized past its edge (24 px padding, cascading through nested sections) and pushes the sections in its way, in the same undo step (pinned items never move); Fit to contents shrinks it, and Auto-fit in the menu turns it off for one section |
 | Connect | Drag from a card's port (the dots on its edges) to another card or section. Drop on empty board to create a new linked card. C turns the whole card into a handle. A release over an image ends on the image card, or on a region when you release over its outline. Hold ⌥ while releasing over an image to mark a new region as the end: the end stays at the pointer, drag a box or a pen stroke on the picture (P switches, and the choice is remembered), and the region and the arrow are written together (Esc cancels, nothing written). With the Connect tool, ⌥-drag on a picture starts a region the same way and the arrow then starts from it; click where it should end. A hint "⌥ to mark a region · P switches pen" shows while the arrow is over an image. Deleting that arrow also deletes the region when nothing else uses it |
 | Text | T for a free heading on the board (16/24/32/48) |
 | Sticky notes | S, then click the board. A sticky is a real Roam block in a coloured note: drag the header bar to move it, click once in the note to type (tags, images, links, refs and the slash menu all work), drag a corner or edge to resize. The header has a colour dot (pick one of ten) and a minimize toggle that folds the note to its header; the choice is saved with the note. Stickies persist: there is no close button, and an empty sticky stays. Delete (or the menu) removes one, and Cmd+Z brings it back |
@@ -54,6 +67,11 @@ An enhanced board keeps Roam's diagram controls and adds to them (the 1.3 native
 | Right-click menu | Right-click empty board, a card, section, text, connection, or a multi-selection. The board menu (toolbar More) has export, fold all, journals, background |
 | Page cards | Add page… in the canvas menu searches for a page; dropping a page from the left sidebar does the same. A page card shows the title as a header (click opens the page, Shift-click the sidebar) and the whole outline, scrolling inside the card. Click a row to edit that block. A row that holds a board shows it as a small map with its title and item count (a one-line chip after four, and for the board you are on, "this board"); click opens it, Shift-click opens it in the sidebar. A row Roam cannot render shows its raw text. Roam's right sidebar title, links inside blocks and search results carry no drag data, so they cannot be dropped |
 | Arrows to blocks | Drag an arrow end over a page card: the row under the pointer lights up and the arrow connects to that block with a `((ref))` (so it shows in Roam's backlinks); the title connects to the page. The end follows the row when the card scrolls and shows a marker at the edge when the row is out of view (click it to scroll there). Select an arrow to drag its end handles; the arrow menu has Connect to the page instead. The arrow continues into the card and its head stops beside the row; the row keeps a mark in the arrow's color. Hover either one and both light up; a row scrolled out of view becomes a pill at the card edge (click it to scroll back). |
+| Drop on a child row | Drag a card over another card's child row (a folded card unfolds after half a second). The row lights up and the dragged cards turn see-through; drop to add each card's ref as the row's last child: `((uid))` for a note or block card, `[[Page]]` for a page card. The cards snap back. One undo step. Hold Shift to move the card instead |
+| Ref arrows | `[[page]]`, `#tag`, `((block))` and `Attr::` refs in note cards and child rows to other cards on the board draw as faint arrows; a followed tree draws parent-to-child lines the same way. Toggle Ref arrows in the board menu. Boards over 400 items draw none. Pin ref arrows on a card's context bar turns up to 20 of them into connections, in one undo step. Drawing them writes nothing |
+| Card properties | Board menu, Card properties: pick up to six `Name::` attributes to show as read-only chips on cards at detail zoom. Only the board's own pick is written; values are read only for cards on screen |
+| Add to Desk | Card menu, Add to Desk puts the card's page or block on Roam's Desk, the same way Roam does. Roam must have made the Desk page once |
+| Query filter | Use as filter on a query card keeps the cards whose block or page is in the query's results bright and dims the rest. It reads again after a save in this window. A pill names the filtering card; Stop filtering ends it. One filter at a time. Nothing is written |
 | Journal | Panel tab Journal: the top-level blocks of a daily page, a day stepper and Today. Drag a row onto the board for a card. Viewing and stepping write nothing |
 | Fullscreen tabs | Boards opened while fullscreen become tabs above the board bar, up to 9. Cmd/Ctrl+1 to 9 switch tabs; the list returns next time, per graph, stored on this device only |
 | Touch | Pinch to zoom, two fingers to pan, long-press (half a second, still) for the menu, 44 px grips under a coarse pointer. Phones stay off with Disable on mobile |
@@ -69,7 +87,7 @@ An enhanced board keeps Roam's diagram controls and adds to them (the 1.3 native
 | Quick look | Q shows the selected card and its children in an overlay |
 | Present | P steps through the sections in outline order (arrows or Space, Esc to exit) |
 | Mind map | M (Expand outline) on one note, block, or page card lays its children out as a mind map, up to 24 branches. The card menu has the same action |
-| Background | The Background button picks a pattern (dots, lines, grid, plain) and a tone for this board; Use as default saves it for every board |
+| Background | The Background button picks a pattern (dots, lines, grid, plain) and a tone for this board; Use as default saves it for every board. The Flat grey canvas replaces only the default pattern and tone, never a board's own |
 | Delete | Delete/Backspace. The toast offers Undo; Cmd+Z / Shift+Cmd+Z are Roam's own undo and redo |
 | Search | `/` filters the board and steps through matches |
 | Add | The Add panel searches pages and blocks, and its Related tab lists what the selected card links to and is linked from |
@@ -96,6 +114,37 @@ The context bar above a selection has 10 colors for cards, sections, text, and c
 | Pinned, fit | `pinned` on an item locks it; `fit:false` on a section opts it out of auto-fit. Both are properties on the block |
 | Badges | The small counts on a card (references, boards, open and done TODOs) are read from Roam and never written |
 | Pan and zoom | Stored per device in local storage. Opening, panning, and zooming write nothing to the graph |
+| Followed source | `follow` in the board's (or a section's) properties names the source. Each placed card keeps its source key. Cards you delete or mark Don't bring back are remembered on the board so they stay away |
+| Bound section, lane | `bucket` (a tag or `Name:: value`) or `attr` with its band order, in the section's properties. The value itself is written on the card's block |
+
+## Follow a source
+
+A board can follow something elsewhere in the graph and offer what is new there. The board never adds cards by itself: new items wait in the **Following** tray (the pill at the top right), which says what arrived and what left since your last visit. Place, drag a row onto the board, or Place all. Opening the board, panning and reading the source write nothing.
+
+| Source | What it offers |
+|---|---|
+| A block's children | Each child block, as a `((ref))` card. Include the whole tree goes eight levels deep |
+| A query | The blocks and pages a `{{query}}` block returns |
+| Linked references of… | The blocks that reference a page or block |
+| A page by headings… | One section per top-level H1–H3 heading of a page, holding the blocks under it. A block moved under another heading is marked Moved to, never moved on the board |
+| Journals… | The last 1–31 days (7 by default) or this week. One column per day places each day's blocks under its daily page card |
+| This board's Inbox | Daily-note blocks that cite the board, in an Arrivals strip, 20 per visit |
+| Another board or section… | The cards of another board, or of one of its sections, as refs. A board cannot mirror itself or make a loop |
+
+- **Where.** Board menu **Follow…**; on a card, the menu offers that block's children, that query, its linked references or its page by headings. A diagram written as `{{diagram ((uid))}}` (block ref, no colon) opens as a board that follows that block; nothing is written until the first edit.
+- **A source per section.** Up to 8 sections can each follow their own source from the section menu. Placing writes the cards into that section. The tray keeps one group per section, then the board's own. An item two sources offer is placed by the first.
+- **Left the source.** A placed card whose block left the source is marked "left the source" after two complete reads. It is never deleted or moved; Dismiss clears the mark. A partial or failed read never marks a card.
+- **When it reads.** About 1.5 s after a save in this window, when the tray opens, when the window gets focus, and every 60 s, only while the board is on screen. A slow source waits while you type and reads at most once a minute while saves go on.
+- **Stop following** keeps the placed cards and remembers what you chose not to bring back, so following the same source again does not return them.
+
+## Sections that write to the graph
+
+| Do | How |
+|---|---|
+| Bind to a tag or attribute | Section menu, Bind to tag or attribute…: `#reviewed` or `Status:: Review`. Dropping a card into the section writes that on the card's block (a ref card writes on the block it points to); dragging it out removes it. The write is part of the move, so one undo reverts both. Write section to graph tags every card already in it, 45 per undo step. `BT_attr` attributes cannot be bound |
+| Attribute lanes | Section menu, Sub-lanes by attribute ▸ picks a `Name::` attribute. The section splits into one band per value plus none, and its cards move into their bands. Dropping a card in another band rewrites the value in the same undo step; a small drag within a band writes nothing. Pull blocks with `Name::` places the graph's blocks that have it. A value with no band shows on the card as loose; Add sub-lanes for new values gives it a band without moving the old band edges |
+| Apply order to source | Selection or section menu. Reorders the real blocks under their Roam parent to the board's reading order. Only those blocks move, nothing is reparented, and the confirm names the parent. One Cmd+Z undoes the whole apply. Card positions stay |
+| Keep outline order | Section menu. When the section's blocks are reordered in Roam, the section re-tidies its cards in the new order. Plexus's own apply and undo do not trigger it |
 
 ## Regions and views
 
@@ -180,45 +229,23 @@ The local helper reads scans with Apple Vision. On a Mac the default install is 
 
 Without the helper, a scanned page can be read inside Roam. Engines has an In-browser reading (beta) row with Download: onnxruntime-web and the PP-OCRv5 mobile models, about 39 MB once, hash-checked and kept in this browser's Cache Storage. Read text on a scanned page downloads them first if they are not there yet; Cancel stops the download. Nothing is fetched when a board or the reader opens, and automatic reading never starts a download. When the local helper is ready, Read text uses the helper instead, because it reads more accurately.
 
-Measured in node with onnxruntime-node and the same model files (browser speed is not measured here). Details are in `docs/parse-bench.md`.
-
-| Test | In-browser (beta) | Local helper (Apple Vision) |
-|---|---|---|
-| Scanned CDC 1980 table (image only), structure F1 | 0.983 | 1.000 |
-| Scanned CDC 1980 table, cell F1 | 0.922 | 0.957 |
-| Scanned 3-page report, cell F1 per table | 0.947 / 0.976 / 0.952 | 0.974 / 0.952 / 1.000 |
-| ICDAR 2013 rasterised at 300 dpi, adjacency F1 / cell F1 | 0.876 / 0.787 | not measured |
-| ICDAR 2013 rasterised at 150 dpi, adjacency F1 / cell F1 | 0.850 / 0.792 | not measured |
-
-Expect more misread letters in small scanned labels than with the helper. For comparison, the built-in parser on the same 67 files' own text layers reads 0.979 / 0.932.
+Scanned tables are read less accurately than text layers, and small scanned labels can be misread, so check a scanned table before you insert it.
 
 An insert is one Roam write per table or page range, plus the card layout. Roam Grid tables keep merged cells when Roam Grid 0.18.3 or later is installed.
 
-Measured on the 67 government PDFs of ICDAR 2013 and on a scanned CDC table. Details are in `docs/parse-bench.md`.
-
-| Test | Built-in | Docling |
-|---|---|---|
-| ICDAR 2013, adjacency F1 | 0.979 | 0.865 |
-| ICDAR 2013, cell F1 | 0.932 | 0.795 |
-| ICDAR 2013, all 67 files | 2.5 s | 5 min |
-| Scanned CDC 1980 table (image only), structure F1 | 1.000 | 0.821 |
-| Scanned CDC 1980 table, cell F1 | 0.957 | 0.082 |
-
-Label words in small scanned type can still be misread, so check a scanned table before you insert it.
-
 ### Which engine
 
-Seven ways to read a PDF. The first five stay on this device. Cloud sends the PDF out only after you confirm the cost. Bench numbers are from the tables above or from `docs/parse-bench.md`. LlamaParse prices are its published credits, $1.25 per 1,000. Agentic was 10 credits per page on 2026-10-09, with or without layout images (measured on two pages both ways). Mistral OCR is $4 per 1,000 pages on the model card checked 2026-10-09. LlamaParse was live-tested in Roam on 2026-10-09 through the hosted relay, including the confirm sheet. Mistral OCR is not live-tested yet.
+Seven ways to read a PDF. The first five stay on this device. Cloud sends the PDF out only after you confirm the cost. Measured speed and accuracy for each engine are in [docs/parse-bench.md](docs/parse-bench.md).
 
-| Engine | What it reads | Install | Speed | Stays on this device? | Accuracy | Best for | When to use |
-|---|---|---|---|---|---|---|---|
-| Built-in parser | Born-digital text, headings, lists, and ruled or borderless tables. Figures and formulas come back as crops. A page with no text layer stays a scan. | None. pdf.js, inside Roam. | About 10 ms a page on ICDAR 2013 (median 9.1 ms US, 10.1 ms EU). | Yes. The file is not sent. | ICDAR 2013, 67 government PDFs: table structure F1 0.979, cell F1 0.932. | A PDF that already has text. | You can select the text. |
-| In-browser reading (beta) | Scans. PP-OCRv5 reads the page in a Web Worker, then the same table engine runs. Doubtful text lines are read again and checked against a word list. Not a formula reader. | Download in Engines. onnxruntime-web and the PP-OCRv5 mobile models, about 39 MB once, hash-checked and cached in this browser. Nothing is fetched when a board or the reader opens. | About 25 s for a dense scanned page in the browser (the CDC 1980 page, live). | Yes. The page stays in the browser. The download is the models, not the PDF. | CDC 1980 scan: structure F1 0.983. Cell F1 0.922 on the bench raster, 0.932 on the browser's own raster and live. | A scan, with nothing to install. | The local helper is not ready. |
-| Local helper | Scans, through Apple Vision word boxes and the same table engine. macOS. Not a formula reader. | One command, then Pair. In Engines, press Set up, paste the command in Terminal, and press Pair. The program is `tools/parse-helper-rs`. It starts at login. About 15 MB (8.2 MB binary + 7.0 MB libpdfium, 15.2 MB together, after the LlamaParse client). | Round 1, M1 Max, macOS 26: CDC image-only page 10.87 s (651 words, 34 rules); report-scan 7.73 s (2.58 s/page). Cold start to the first health response 0.43 s, 27 MB RSS. | Yes. It listens on this Mac only. | Round 1, same pages: CDC cell F1 0.957 (structure F1 was 1.000). report-scan cell F1 0.974 / 1.000 / 1.000. The Python helper on the same run scored CDC 0.957 and report-scan 0.974 / 0.952 / 1.000. | A scan you care about. | You are on a Mac and can install about 15 MB. |
-| Docling add-on | Layout, TableFormer tables, and formulas as LaTeX. The Python helper. Scans still go through Apple Vision when you use it for OCR. | `install.sh --docling`, then Pair, then Download. About 1.1 GB (the uv tool measured in round 1). | Formula enrichment is the slow part (one 15-page paper took 180 s). An earlier live figure for the CDC 1980 scan was 14.3 s. Round 1 measured the Python OCR path at 11.19 s for that image-only page, and 7.92 s (2.64 s/page) for report-scan. Cold start 0.42 s, 74 MB RSS. | Yes. It listens on this Mac only. | Docling on the CDC scan: cell F1 0.082. Docling on the 67 ICDAR files: structure F1 0.865, cell F1 0.795. Apple Vision on that scan, through either helper, is the 0.957 above. | A formula as LaTeX, or a Docling layout pass. | You want more than scan reading. |
-| High accuracy (local) | Scans, photographed and handwritten pages, and old tables. Apple Vision words, then a layout model, a table reader and a page-text model. Figures are boxed with their captions. | `install.sh --docling --vlm`, then Pair. Nothing downloads at install. The first read downloads PaddleOCR-VL-0.9B (about 1.9 GB), Qwen3-VL-8B-Instruct-4bit (about 5.8 GB) and PP-DocLayoutV2 (about 204 MB), each checked against a pinned SHA-256 hash. All Apache-2.0. | About 5–12 s a printed scanned page, about 30 s a handwritten page read by the page model (M1 Max). | Yes. It listens on this Mac only. | On 35 unseen test pages from libraries never used in development (2026-10-11), 0.80 against LlamaParse Agentic's 0.82 on the same pages; ahead on handwritten pages (0.88 against 0.77), level on old printed scans, behind on photographed pages. The difference is not statistically significant. | Rough scans, photographed and handwritten pages. | You will wait and not pay, and the file must stay on the Mac. |
-| Cloud, LlamaParse (main) | Headings, paragraphs, lists, tables with cells and spans, and figures with a box and a caption. A layout chart is a figure crop; when LlamaParse also returns the numbers, the table stays and is marked `fromChart`. Per-cell boxes when the local helper downloads the result sidecar. A relay parse still has the table box and the spans. | A LlamaParse key saved in Engines on this device. The route is a paired helper that lists the cloud engine, then a relay URL you set, then the hosted relay (`https://plexus-cloud-relay.svyk.workers.dev`). Roam cannot call LlamaParse itself. | One hosted-relay read of the CDC 1980 scan finished in 2.5 s (2026-10-09). | No. After you confirm, the PDF is sent to LlamaParse (US or EU). The key stays in this browser. It is not written to the graph. | Not measured. | A rough scan, a real table, or a figure. | You accept the cost and that the file leaves the device. The default tier is Agentic. Per 1,000 pages: Fast $1.25, Cost-effective $3.75, Agentic $12.50, Agentic Plus $56.25. Agentic was 10 credits per page on 2026-10-09, with or without layout images (measured on two pages both ways). |
-| Cloud, Mistral OCR | Headings, paragraphs, lists, and figures with a box and the caption line beside the image. Tables come from markdown, or from HTML when Mistral returns HTML, including spans. Cell boxes are not part of this read. | A Mistral key saved in Engines on this device (`pxd-cloud-mistral-key`). No helper and no relay. The browser calls `https://api.mistral.ai/v1/ocr`. | Not measured. Not live-tested yet. | No. After you confirm, the PDF is sent to Mistral. The key stays in this browser. It is not written to the graph. | Not measured. Not live-tested yet. | A scan when you will not install anything and you can accept weaker tables. | You accept $4 / 1,000 pages (model card checked 2026-10-09) and that the file leaves the device. LlamaParse stays the default. |
+| Engine | Reads | Install | Stays on this device? |
+|---|---|---|---|
+| Built-in parser | Born-digital text, headings, lists, ruled and borderless tables; figures and formulas as crops | None | Yes |
+| In-browser reading (beta) | Scans, in a Web Worker | Download in Engines, about 39 MB once | Yes |
+| Local helper | Scans, through Apple Vision (macOS) | One command, then Pair; about 15 MB | Yes, it listens on this Mac only |
+| Docling add-on | Layout, tables, formulas as LaTeX | `install.sh --docling`; about 1.1 GB | Yes |
+| High accuracy (local) | Photographed, handwritten and old printed scans | `install.sh --docling --vlm`; about 8 GB of models on the first read | Yes |
+| Cloud, LlamaParse | Headings, lists, tables with spans, figures with captions | A LlamaParse key in Engines | No: the PDF goes to LlamaParse after you confirm |
+| Cloud, Mistral OCR | Headings, lists, tables from markdown or HTML, figures | A Mistral key in Engines | No: the PDF goes to Mistral after you confirm |
 
 Which one should I use?
 
@@ -444,9 +471,9 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Board | Controls | Rail is the vertical stack on the right. Bar is the horizontal zoom group. |
 | Board | Snap guides | Line a dragged card up with its neighbours and show the guides. |
 | Board | Snap to grid | Snap a dragged card to the 24 pixel grid. Hold Alt while dragging to skip snapping. |
-| Board | Default board background: pattern | Dots, lines, grid, or plain, for boards that do not set their own. |
-| Board | Default board background: tone | Color wash for boards that do not set their own. |
-| Board | Canvas | Dots keeps the dot grid. Flat grey is a plain canvas, the Heptabase grey, with no grid. |
+| Board | Default board background: pattern | Dots, lines, grid, or plain, for boards that do not set their own. Flat grey replaces it with plain. |
+| Board | Default board background: tone | Color wash for boards that do not set their own. Flat grey replaces it with its grey. |
+| Board | Canvas | Dots uses the default background pattern and tone. Flat grey is a plain canvas, the Heptabase grey, with no grid. A board's own Background still shows. |
 | Board | Section fill | None leaves a section as it is today. Pastel washes it with its colour. |
 | Board | Highlight cards | Bar keeps the colour strip. Tint fills the card with the highlight colour and hides the strip. |
 | Board | Theme | Follow Roam uses the colours of the open graph. Plexus keeps the slate board. |
@@ -478,7 +505,28 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 
 ## Privacy
 
-No network requests. All reads and writes go through Roam's extension API on your graph.
+Plexus reads and writes your graph through Roam's extension API. Opening a board, panning, zooming and reading a followed source send nothing out of your graph. A few things on screen download your graph's own files (usually from Roam's file storage) without a click, all on by default:
+
+- a visible PDF card with no cover yet, to draw one (Settings, Prepare PDF covers in the background);
+- the PDF behind a PDF source pin shown on screen, to draw its crop (Settings, Inline region crops);
+- each Image or Figure card's picture, once, while board search lists them, to index its colours (Settings, Index image colours).
+
+Keys you save in Engines (LlamaParse, Mistral) and the Parse helper token stay in this browser and are never written to the graph or its settings.
+
+Each request below happens only in the case named, and goes only to the address named.
+
+| Request | Goes to | When |
+|---|---|---|
+| Files in your graph | The file's own address, usually Roam's file storage | A PDF on the board is downloaded (by Plexus or Roam's PDF reader) when an open board shows it without a cover, to draw one (Settings, Prepare PDF covers in the background, on); when a PDF source pin scrolls into view, to draw its crop (Settings, Inline region crops, on); when you open the Add panel, to search the board's PDFs by name and text (no setting turns this off); and when you open it in Quick Look, flip its card, open it in the reading pane, parse it or read its tables; a file-link card when you choose Convert to cards; a picture once to index its colours while board search lists Image or Figure cards (Settings, Index image colours, on) |
+| Uploads to your graph | Roam's file storage, through Roam's own upload | Pasting or dropping an image; turning on or refreshing Keep a static picture; after a helper, High accuracy or cloud read (Settings, Keep reads in the graph, on); the first time you ask AI about a figure with a model that can see images (Settings, Send figure images to AI, on) |
+| Local parse helper | `http://127.0.0.1:48765` on this computer, or the address in Settings | Only once you install and pair the helper: Set up and Pair in Engines, opening Parse, and parsing or reading a scan. The PDF goes to the helper on this computer |
+| Document converter | `svyk.github.io/plexus-diagram` (this extension's own site) | The first time you drop a Word, PowerPoint, Excel, OpenDocument, CSV or EPUB file, choose Convert to cards, or pick Alternative read. Plexus downloads the converter, checks it against a pinned hash and keeps it in this browser. Your file is not sent |
+| In-browser reading (beta) | `cdn.jsdelivr.net` (onnxruntime-web) and `www.modelscope.cn` (PP-OCRv5 models), plus `svyk.github.io/plexus-diagram` | Only when you press Download in Engines, or Read text on a scanned page before the models are here. About 39 MB once, hash-checked and kept in this browser. Pages are read in the browser and not sent |
+| LlamaParse | Your paired helper, your relay URL, or the hosted relay `plexus-cloud-relay.svyk.workers.dev`, then LlamaParse (US or EU) | Only after you save a LlamaParse key and confirm the cost sheet for one read. The PDF and your key go to LlamaParse for that read |
+| Mistral OCR | `api.mistral.ai` | Only after you save a Mistral key and confirm the cost sheet for one read. The PDF and your key go to Mistral |
+| Helper install | `svyk.github.io/plexus-diagram/helper/install.sh` | Only when you run the install command yourself in Terminal. High accuracy then downloads its page models on its first read, on your Mac |
+
+Ask AI questions go through the Live AI Assistant extension, not through Plexus. Card thumbnails from Roam Plexus and Compass are calls to those extensions; Settings, Roam Plexus and Compass turns them off.
 
 ## Development
 
@@ -487,13 +535,11 @@ npm ci --ignore-scripts --no-audit --no-fund
 npm run check
 ```
 
-Design: `docs/spec-plexus-1.0.md`, `docs/spec-plexus-1.2.md`, and `docs/spec-plexus-3.0.md`. Module contracts: `docs/api-plexus-1.0.md`, `docs/api-plexus-2.0.md`, and `docs/api-plexus-3.0.md`. Commit `src/` with the generated root `extension.js` / `extension.css` and `deploy/`.
+Design: `docs/spec-plexus-1.0.md`, `docs/spec-plexus-1.2.md`, and `docs/spec-plexus-3.0.md`. Module contracts: `docs/api-plexus-1.0.md`, `docs/api-plexus-2.0.md`, and `docs/api-plexus-3.0.md`. Parse benchmarks: `docs/parse-bench.md`. Commit `src/` with the generated root `extension.js` / `extension.css` and `deploy/`.
 
-## Install
+### Developer build
 
-Roam: **Settings → Roam Depot → Developer extensions → Load extension → URL** → `https://svyk.github.io/plexus-diagram`.
-
-To update, remove that URL and add it again. The page serves the latest build from `main`. An open tab keeps the old bundle until you do that.
+GitHub Pages serves the latest build from `main` at `https://svyk.github.io/plexus-diagram`. To run it before it reaches Roam Depot, uninstall the Roam Depot copy, then in Roam: **Settings → Roam Depot → Developer extensions → Load extension → URL** and paste that address. To update, remove the URL and add it again; an open tab keeps the old bundle until you do.
 
 ## License
 

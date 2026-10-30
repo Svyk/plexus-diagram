@@ -1,9 +1,33 @@
 # Changelog
 
-## Unreleased
+## 3.38.0 — 2026-10-29
 
-- **Card properties.** Board menu, Card properties: pick up to six Name:: attributes to show as read-only chips on cards at detail zoom. The pick is stored on the board block only, cards read their values only when on screen at detail zoom, and a board with no picks reads nothing while you look around.
-- **Keep a static picture.** Board menu, **Keep a static picture**, saves the board as one image block, the first child of the board block, so readers without Plexus (public graphs, Roam Publish) see it when they expand the board block. It is off until you turn it on, and refreshes only by hand: **Refresh static picture** in the menu, the camera button in the toolbar, or **Plexus: Refresh static picture**. The picture is light, at most 4096 px on a side, and the old file stays in Roam's storage, as it does when you delete any image block, so undo still shows it.
+Boards that follow a source, sections that write back to the graph, and a faster stress board.
+
+- **Follow a source.** A board can follow a block's children (or its whole tree), a `{{query}}`, the linked references of a page or block, a page by its H1–H3 headings (one section per heading), a rolling window of journals (the last 1–31 days or this week, optionally one column per day), this board's Inbox, or another board or one of its sections. Board menu Follow…, or the card menu on a block, query or page card. New items wait in the Following tray: Place, drag, or Place all. The board never adds cards by itself, never moves a placed card, and marks a card that left the source instead of deleting it. Stop following keeps the cards.
+- **A source per section.** Up to 8 sections can each follow their own source. The tray keeps one group per section, then the board's own.
+- **Inbox arrivals.** Following this board's Inbox shows new citing blocks in an Arrivals strip, 20 per visit.
+- **Typing stays smooth.** A followed source reads again about 1.5 s after a save in this window, waits while you type when its read is slow, and reads a slow query at most once a minute while saves go on.
+- **`{{diagram ((ref))}}` boards.** A diagram written with a block ref and no colon opens as a Plexus board that follows that block. Nothing is written until the first edit.
+- **Linked references as cards.** On a page or block card, Add linked references as cards, flat or grouped by page, placed clear of what is already there, in one undo step.
+- **Sections write back.** Bind to tag or attribute… makes a section write `#tag` or `Name:: value` on a card dropped in and remove it when the card leaves, in the move's own undo step. Write section to graph tags every member.
+- **Attribute lanes.** Sub-lanes by attribute splits a section into one band per value of a `Name::` attribute. Dropping a card in another band rewrites the value. Pull blocks with `Name::` places the graph's blocks that have it; Add sub-lanes for new values grows the lane without moving the bands under cards.
+- **Apply order to source.** Reorders a section's or selection's real blocks under their Roam parent to the board's reading order, in one undo step. Keep outline order re-tidies a section when its order changes in Roam.
+- **Query card as a filter.** Use as filter on a query card keeps cards in its results bright and dims the rest. A pill names the filter; Stop filtering ends it. Nothing is written.
+- **Ref arrows.** Refs in note cards and child rows to other cards on the board draw as faint arrows (Ref arrows in the board menu; off over 400 items). Pin ref arrows on a card's context bar turns up to 20 of them into connections.
+- **Drop a card on a child row.** Dragging a card onto another card's child row adds the card's ref under that row, in one undo step. Shift moves the card instead.
+- **Plexus tools for Roam AI agents.** On Roam builds that support extension tools, AI agents on Roam MCP can list and read boards, add cards and sections, connect cards and arrange a board. Their writes are credited to the AI, one undo step per call.
+- **Card properties.** Board menu, Card properties: pick up to six `Name::` attributes to show as read-only chips on cards at detail zoom. Only the board's own pick is written.
+- **Keep a static picture.** Board menu, Keep a static picture, saves the board as one image block, the first child of the board block, so readers without Plexus (public graphs, Roam Publish) see it. Off until you turn it on; it refreshes only by hand (Refresh static picture, the camera button, or Plexus: Refresh static picture).
+- **JSON Canvas.** Right-click the board, Import JSON Canvas…, to turn an Obsidian `.canvas` file into a nested board (text, file and link nodes become cards, groups sections, edges arrows). Export as JSON Canvas (More, or the palette) saves the open board as a `.canvas` file.
+- **Add to Desk.** The card menu adds a card to Roam's Desk, written the way Roam writes it. Plexus stays out of Roam's Sidecar window, and its fullscreen and PDF styles no longer leak into it.
+- **Contents panel.** The panel's Outline tab is now Contents: sections, landmarks, trails and saved views in outline order. Click a row to fly there.
+- **Parse helper token in this browser.** The token is kept in this browser, not in graph settings, so members of a shared graph cannot read it. An old value moves over once. Forget token in Engines turns the helper off.
+- **Growing sections push neighbours.** An auto-fit section that grows moves the sections in its way, in the same undo step. Pinned items never move.
+- **Arrows to rows keep clear.** An arrow to a child row no longer runs behind the row's card.
+- **Board backgrounds show again.** Lines, dots, grid and tones show again, and Flat grey no longer hides a board's own background.
+- **Faster big boards.** Typing in a card no longer restyles the board on every key (keydown to paint about 60–79 ms down to 32 ms on the stress board). Zooming, the first zoom-in of a session (page cards show rows, not empty boxes), the overview canvas, cold start and panning at map zoom are faster on big boards.
+- **Fixes.** Turning Plexus off on a fullscreen board no longer leaves the page covered. Cut then paste keeps the blocks' uids, so refs to them still work. Kanban Group by no longer writes onto a diagram that was not enhanced. Dark custom themes get the dark board. Paste keeps text typed during an image upload. Region rename, fold, the query filter and lane reads recover from failed reads, and unloading the extension leaves no observer behind.
 
 ## 3.37.0 — 2026-10-17
 

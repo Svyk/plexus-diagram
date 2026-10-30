@@ -3,6 +3,7 @@
 // the lookup tries `<id>:<state>` first, then `<id>`.
 // Entry: name (bold), key (shortcut, string or array, shown in <kbd>), desc (one line), hint (second line).
 
+import { DEPOT_BUILD } from "../host/build-flavor.js";
 import { PALETTE } from "../model/schema.js";
 import { SHAPES } from "../model/shapes.js";
 
@@ -230,7 +231,7 @@ export const TIP_TEXT = {
   "parse.engine": e("Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper."),
   "parse.formula": e("Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
   "parse.ocr": e("Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR."),
-  "parse.auto-read": e("Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
+  "parse.auto-read": e("Auto-read scanned pages", DEPOT_BUILD ? "Read the text of a scanned page as soon as you open it, once the local helper is ready. Off waits until you press Read text." : "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
   "parse.link-safe": e("Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
   "parse.numbered": e("Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
   "parse.footnotes": e("Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert."),

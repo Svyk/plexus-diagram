@@ -65,7 +65,7 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
     "parse-helper-url", "parse-engine-default", "parse-formula", "parse-ocr", "parse-page-reader", "parse-auto-read", "keep-reads", "ask-figure-images", "ask-model", "link-answer-sources", "parse-link-safe", "parse-numbered", "parse-footnotes", "parse-footnote-format",
     "image-index-colors", "image-read-text",
   ].sort());
-  assert.equal(settingsDefaults()["auto-enhance"], true);
+  assert.equal(settingsDefaults()["auto-enhance"], false);
   assert.equal(settingsDefaults()["enter-in-card"], "newline");
   assert.deepEqual(byIdOf(panel)["enter-in-card"].action.items, ["newline", "child"]);
   const byId = Object.fromEntries(panel.settings.map((row) => [row.id, row]));

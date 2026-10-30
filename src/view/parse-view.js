@@ -467,6 +467,7 @@ export function createParseView({
   altNote.textContent = "no tables guarantee";
   altBtn.setAttribute("aria-label", "Alternative read, no tables guarantee");
   altBtn.setAttribute("data-guarantee", "no tables guarantee");
+  if (!anydocHost) altBtn.remove();
   const cancelBtn = el("button", "pxd-parse__cancel", enginePop);
   cancelBtn.type = "button";
   cancelBtn.textContent = "Cancel";
@@ -1707,7 +1708,7 @@ export function createParseView({
   }
 
   async function readAlternative() {
-    if (dead || phase === "running") return;
+    if (dead || phase === "running" || !anydocHost) return;
     const previous = parsed;
     const gen = targetGen;
     phase = "running";

@@ -1485,7 +1485,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         if (active) host.setCustomUndo?.(null);
         throw err;
       }
-    })).then(() => result, (err) => { handleFailure(err); return result; });
+    // A tool call (asUser with a limit) gets the failure: an agent must not read a reverted change as done.
+    })).then(() => result, (err) => { handleFailure(err); if (limit) throw err; return result; });
   }
 
   // Custom undo for a drag or resize that may pass the native chunk size (see commit()). wrap(t) records the pre-write

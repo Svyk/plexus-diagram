@@ -53196,6 +53196,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       }
     })).then(() => result, (err) => {
       handleFailure(err);
+      if (limit) throw err;
       return result;
     });
   }
@@ -118425,20 +118426,13 @@ function createAiTools(deps) {
       if (typeof context?.asTokenUser === "function") context.asTokenUser(go);
       else go();
       if (!ran) throw new Error("Roam did not run the write");
-      return pending;
+      try {
+        return await pending;
+      } catch (err) {
+        if (/one undo step holds/.test(String(err?.message))) throw err;
+        throw new Error(`Roam did not save this change (${err?.message || err}). Plexus reloaded the board: read it and try again.`);
+      }
     });
-  };
-  const saved2 = (raw, uids, want) => {
-    const ids = Array.isArray(uids) ? uids.filter((u) => typeof u === "string" && u) : [];
-    const have = /* @__PURE__ */ new Set();
-    const walk3 = (node2) => {
-      if (!node2 || typeof node2 !== "object") return;
-      if (typeof node2[":block/uid"] === "string") have.add(node2[":block/uid"]);
-      for (const kid of node2[":block/children"] ?? []) walk3(kid);
-    };
-    walk3(pullBoard(boardUidOf(raw)));
-    const missing2 = ids.filter((u) => !have.has(u)).length + Math.max(0, want - ids.length);
-    if (missing2) throw new Error(`Roam did not save ${missing2} of ${want} block(s). Read the board and try again.`);
   };
   const list_boards = {
     name: "list_boards",
@@ -118550,7 +118544,6 @@ function createAiTools(deps) {
         return card2;
       });
       const added = await run(context, args.board, (session) => session.addRefCards(list));
-      saved2(args.board, added, list.length);
       return { added: added ?? [], count: (added ?? []).length };
     }
   };
@@ -118577,7 +118570,6 @@ function createAiTools(deps) {
       const num9 = (v, d) => Number.isFinite(v) ? v : d;
       const rect = { x: num9(args.x, area2.x), y: num9(args.y, area2.y), w: num9(args.w, 640), h: num9(args.h, 400) };
       const uid = await run(context, args.board, (session) => session.createSection({ rect, title: String(args.title ?? "").trim() || "Section" }));
-      saved2(args.board, [uid], 1);
       return { uid };
     }
   };
@@ -118605,7 +118597,6 @@ function createAiTools(deps) {
       const dir = DIRS.includes(args.direction) ? args.direction : "one";
       const uid = await run(context, args.board, (session) => session.addEdge({ from, to, label: String(args.label ?? ""), dir }));
       if (!uid) throw new Error("Could not connect these two");
-      saved2(args.board, [uid], 1);
       return { uid };
     }
   };

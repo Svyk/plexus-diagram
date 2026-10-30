@@ -311,8 +311,10 @@ test("add_cards: auto-placed cards past the section's bottom still join it and t
 test("a write Roam rejects is an error to the agent, not a success with phantom uids", async () => {
   const { fake, tool } = setup();
   fake.failNext = 100;
-  await assert.rejects(tool("add_cards").handler({ board: "b1", cards: [{ text: "lost" }] }, ctx()), /Roam did not save 1 of 1/);
+  await assert.rejects(tool("add_cards").handler({ board: "b1", cards: [{ text: "lost" }] }, ctx()), /Roam did not save/);
   await assert.rejects(tool("add_section").handler({ board: "b1", title: "Lost" }, ctx()), /Roam did not save/);
+  await assert.rejects(tool("arrange_board").handler({ board: "b1", mode: "row", cards: ["c1", "c2"] }, ctx()), /Roam did not save/);
+  await assert.rejects(tool("connect_cards").handler({ board: "b1", from: "c1", to: "c2" }, ctx()), /Roam did not save/);
   fake.failNext = 0;
   const ok = await tool("add_cards").handler({ board: "b1", cards: [{ text: "kept" }] }, ctx());
   assert.equal(ok.count, 1);

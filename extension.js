@@ -118428,6 +118428,18 @@ function createAiTools(deps) {
       return pending;
     });
   };
+  const saved2 = (raw, uids, want) => {
+    const ids = Array.isArray(uids) ? uids.filter((u) => typeof u === "string" && u) : [];
+    const have = /* @__PURE__ */ new Set();
+    const walk3 = (node2) => {
+      if (!node2 || typeof node2 !== "object") return;
+      if (typeof node2[":block/uid"] === "string") have.add(node2[":block/uid"]);
+      for (const kid of node2[":block/children"] ?? []) walk3(kid);
+    };
+    walk3(pullBoard(boardUidOf(raw)));
+    const missing2 = ids.filter((u) => !have.has(u)).length + Math.max(0, want - ids.length);
+    if (missing2) throw new Error(`Roam did not save ${missing2} of ${want} block(s). Read the board and try again.`);
+  };
   const list_boards = {
     name: "list_boards",
     scope: "read",
@@ -118483,8 +118495,9 @@ function createAiTools(deps) {
   };
   const add_cards = {
     name: "add_cards",
-    scope: "append",
-    description: "Adds cards to a board. Each card is plain text, one [[Page]] link or one ((block uid)). Up to 45 cards per call; one undo step. Cards without x and y are laid out in a grid.",
+    // Edit, not append: a card placed in a section can grow that existing section (auto-fit) and push its neighbours.
+    scope: "edit",
+    description: "Adds cards to a board. Each card is plain text, one [[Page]] link or one ((block uid)). Up to 45 cards per call, one undo step; a section that grows to fit them takes a few writes of that budget, and a call over budget is refused with an error (split it). Cards without x and y are laid out in a grid.",
     inputSchema: {
       type: "object",
       properties: {
@@ -118537,6 +118550,7 @@ function createAiTools(deps) {
         return card2;
       });
       const added = await run(context, args.board, (session) => session.addRefCards(list));
+      saved2(args.board, added, list.length);
       return { added: added ?? [], count: (added ?? []).length };
     }
   };
@@ -118563,6 +118577,7 @@ function createAiTools(deps) {
       const num9 = (v, d) => Number.isFinite(v) ? v : d;
       const rect = { x: num9(args.x, area2.x), y: num9(args.y, area2.y), w: num9(args.w, 640), h: num9(args.h, 400) };
       const uid = await run(context, args.board, (session) => session.createSection({ rect, title: String(args.title ?? "").trim() || "Section" }));
+      saved2(args.board, [uid], 1);
       return { uid };
     }
   };
@@ -118590,6 +118605,7 @@ function createAiTools(deps) {
       const dir = DIRS.includes(args.direction) ? args.direction : "one";
       const uid = await run(context, args.board, (session) => session.addEdge({ from, to, label: String(args.label ?? ""), dir }));
       if (!uid) throw new Error("Could not connect these two");
+      saved2(args.board, [uid], 1);
       return { uid };
     }
   };

@@ -307,3 +307,20 @@ test("add_cards: auto-placed cards past the section's bottom still join it and t
   const after = worldRects(board).get("s1");
   assert.ok(after.h > before.h);
 });
+
+test("a write Roam rejects is an error to the agent, not a success with phantom uids", async () => {
+  const { fake, tool } = setup();
+  fake.failNext = 100;
+  await assert.rejects(tool("add_cards").handler({ board: "b1", cards: [{ text: "lost" }] }, ctx()), /Roam did not save 1 of 1/);
+  await assert.rejects(tool("add_section").handler({ board: "b1", title: "Lost" }, ctx()), /Roam did not save/);
+  fake.failNext = 0;
+  const ok = await tool("add_cards").handler({ board: "b1", cards: [{ text: "kept" }] }, ctx());
+  assert.equal(ok.count, 1);
+});
+
+test("add_cards declares edit (it can grow an existing section); add_section and connect_cards append", () => {
+  const { tool } = setup();
+  assert.equal(tool("add_cards").scope, "edit");
+  assert.equal(tool("add_section").scope, "append");
+  assert.equal(tool("connect_cards").scope, "append");
+});

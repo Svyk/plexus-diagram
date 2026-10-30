@@ -256,7 +256,7 @@ On Roam builds that support extension tools, Plexus registers six tools that Roa
 
 - `list_boards` (read): boards in the graph, optionally filtered by page title.
 - `read_board` (read): a board as text, plus sections, cards and arrows with positions.
-- `add_cards` (append): up to 45 cards per call, auto-placed unless given x and y.
+- `add_cards` (edit): up to 45 cards per call, auto-placed unless given x and y.
 - `add_section` (append): an empty titled section.
 - `connect_cards` (append): an arrow between two items, with an optional label.
 - `arrange_board` (edit): grid, row, column or outline layout.

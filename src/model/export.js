@@ -32,7 +32,7 @@ const esc = (s) => String(s ?? "")
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 const n1 = (n) => Math.round(n * 10) / 10;
-const titleOf = (item) => {
+export const titleOf = (item) => {
   if (item.title) return item.title;
   if (item.kind === "image") return "Image";
   return item.string || "Untitled";

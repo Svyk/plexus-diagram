@@ -250,6 +250,19 @@ The Task tool and Better Tasks start off. Turn them on under Settings → Integr
 | Tasks on the board | The Task tool and Better Tasks start off. Turn them on under Settings, Integrations. A Task tool you already saved stays on. With both off, the dock has no Task button and K does nothing. With them on, K, then click the board, makes a task card: a Roam `{{[[TODO]]}}` block. With Better Tasks loaded, the card shows its checkbox, its title and chips for due date, project, priority, repeat, status, waiting-for and GTD. Click the due, project, priority or repeat chip to change it from a small popover; the change is made by Better Tasks, so Plexus never writes a `BT_attr` block itself, and Cmd+Z after a chip change is Roam's undo, not the board's. Cmd+Z right after K removes the new block in one step. Today's due date gets a teal border, an overdue task a red one, a done task is dimmed and struck through. Tick the checkbox on the card (it is a light checkbox of Plexus's own, so a board of many tasks stays under Better Tasks' 100-checkbox limit) and Better Tasks writes the completed date and, for a repeating task, the next occurrence on its daily or project page; a toast offers Add to board. Zoomed out, a task is a check box of at least 20 screen pixels with its due date. Dragging a task card onto a daily-page card (or a section named for a day) sets that day as its due date, the same attribute block keeps its uid; hold Shift to move the card only. A Kanban drop on Done goes through the same Better Tasks checkbox, so a repeating task also makes its next occurrence. Popovers, the children peek and the card menu open clear of the dock, top bar, rail, minimap and panels. The card menu has Make task for a plain note card. Better Tasks' own attribute blocks and its activity log never show as rows, badges or children on a card. Without Better Tasks the tool still makes a plain TODO card and the chips are read-only |
 | Task statuses | With Roam Task Status Tags 0.9.0+ loaded, a task card shows its status glyph on the checkbox and a status chip. The ring left of the checkbox opens the status chooser (Shift-click removes). Card menu and multi-select: Status ▸, at most 45 cards. Task Status Tags writes the tag; Plexus writes nothing. Kanban has Lanes: Status (columns per status, No status, Done; `[` `]` move a focused card) |
 
+## AI agents (Roam MCP)
+
+On Roam builds that support extension tools, Plexus registers six tools that Roam AI agents can call. The graph must be open in a Roam client. Writes are credited to the AI's "(AI)" user, and each call is one undo step.
+
+- `list_boards` (read): boards in the graph, optionally filtered by page title.
+- `read_board` (read): a board as text, plus sections, cards and arrows with positions.
+- `add_cards` (append): up to 45 cards per call, auto-placed unless given x and y.
+- `add_section` (append): an empty titled section.
+- `connect_cards` (append): an arrow between two items, with an optional label.
+- `arrange_board` (edit): grid, row, column or outline layout.
+
+Only boards that were enhanced in Roam are touched.
+
 ## Remembering
 
 Lenses, trails, landmarks, the timeline, and resurface. Strength, Dust, the timeline, and card context are views: they read Roam and do not write the graph.

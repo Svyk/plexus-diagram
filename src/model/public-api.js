@@ -31,7 +31,7 @@ function pullBlock(host, uid) {
   return fn.call(host, uid);
 }
 
-function boardVersion(pulled) {
+export function boardVersion(pulled) {
   if (!pulled || typeof pulled !== "object") return undefined;
   if (pulled.plexus && typeof pulled.plexus === "object" && !Array.isArray(pulled.plexus) && "v" in pulled.plexus) {
     return pulled.plexus.v;

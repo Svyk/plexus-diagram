@@ -32,14 +32,9 @@ import { createParseMotion, motionMode, prefersReducedMotion } from "./parse-mot
 import { askAiIcon } from "./ask-icon.js";
 import { pdfNameFor } from "../model/pdf-name-for.js";
 import { motionRouter } from "./card-parse-motion.js";
+import { createReadDrawer } from "./read-drawer.js";
 
-// U4 owns the visible drawer. The import is async so a missing file leaves the pane's own list.
-let liveDrawer = null;
-import("./read-drawer.js")
-  .then((mod) => {
-    liveDrawer = typeof mod?.createReadDrawer === "function" ? mod.createReadDrawer : null;
-  })
-  .catch(() => { liveDrawer = null; });
+const liveDrawer = createReadDrawer;
 
 const PLACE_W = 300;
 const PLACE_H = 140;

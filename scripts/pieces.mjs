@@ -208,6 +208,12 @@ export function assignModules(metafile, pieces, entry) {
   for (const [path, input] of Object.entries(metafile.inputs)) {
     graph[path] = input.imports.filter((edge) => edge.kind === "import-statement").map((edge) => edge.path);
   }
+  // A piece runs in the middle of a call, so an import() in it would resolve after that call returns.
+  for (const [path, input] of Object.entries(metafile.inputs)) {
+    if (!path.startsWith("src/")) continue;
+    const late = input.imports.find((edge) => edge.kind === "dynamic-import");
+    if (late) throw new Error(`${path} imports ${late.path} with import(); pieces need a static import`);
+  }
   const members = new Map();
   for (const path of Object.keys(graph)) {
     if (path === entry || path === RUNTIME) continue;

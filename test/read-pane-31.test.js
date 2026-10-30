@@ -388,7 +388,7 @@ test("the pane source adds no document listener and the toolbar is tucked withou
   assert.equal(paneSrc.includes("doc.addEventListener"), false);
   assert.equal(paneSrc.includes("setPointerCapture"), false);
   assert.equal(paneSrc.includes("rm-pdf-highlight-color-icon"), false);
-  assert.match(paneSrc, /import\("\.\/read-drawer\.js"\)/);
+  assert.match(paneSrc, /from "\.\/read-drawer\.js"/);
   assert.match(paneSrc, /createReadDrawer/);
   assert.match(css, /top:\s*var\(--pxd-tabs-h,\s*0px\)/);
   assert.match(css, /cubic-bezier\(\.2,\s*\.7,\s*\.2,\s*1\)/);

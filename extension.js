@@ -110963,8 +110963,8 @@ ${url}`;
         } else if (kind === "view") {
           const view2 = board2()?.views?.find((row4) => row4.uid === uid);
           if (!view2?.v) return;
-          const next = viewportFromWorldRect({ x: view2.v[0], y: view2.v[1], w: view2.v[2], h: view2.v[3] }, viewSize());
-          if (next) animateViewport(next);
+          const rect = { x: view2.v[0], y: view2.v[1], w: view2.v[2], h: view2.v[3] };
+          if (rect.w > 0 && rect.h > 0) animateViewport(fitViewport(rect, viewSize(), { padding: 0, maxZoom: 4, insets: fitInsets(rect) }));
         } else {
           fitSelection([uid]);
           ctl.select([uid]);

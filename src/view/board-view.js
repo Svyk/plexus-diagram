@@ -7979,8 +7979,9 @@ function buildBoardView(onFail, {
         } else if (kind === "view") {
           const view = board()?.views?.find((row) => row.uid === uid);
           if (!view?.v) return;
-          const next = viewportFromWorldRect({ x: view.v[0], y: view.v[1], w: view.v[2], h: view.v[3] }, viewSize());
-          if (next) animateViewport(next);
+          // The saved frame lands beside the open panel, not under it.
+          const rect = { x: view.v[0], y: view.v[1], w: view.v[2], h: view.v[3] };
+          if (rect.w > 0 && rect.h > 0) animateViewport(fitViewport(rect, viewSize(), { padding: 0, maxZoom: 4, insets: fitInsets(rect) }));
         } else { fitSelection([uid]); ctl.select([uid]); }
       },
       isFullscreen: () => isFullscreen,

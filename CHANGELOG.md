@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Roam Depot build is lighter.** The build at the repo root leaves out In-browser reading (beta) and the document converter (Office and ebook files, Convert to cards, Alternative read), so it loads nothing from outside the extension. The GitHub Pages install keeps both.
+- **Every diagram is a Plexus board is off by default.** A diagram stays Roam's own until you run Plexus: Enhance this diagram or New whiteboard here. A choice you already saved is kept.
+
 ## 3.38.0 — 2026-10-29
 
 Boards that follow a source, sections that write back to the graph, and a faster stress board.

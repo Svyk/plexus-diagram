@@ -2811,9 +2811,9 @@ function journalColumnSpots(existing, entries, { bounds = null, w, h, gap = FOLL
   for (const r of rects) {
     right = Math.max(right, r.x + r.w);
     top = Math.min(top, r.y);
-    const shared5 = rects.some((o) => o.day !== r.day && o.x < r.x + r.w && o.x + o.w > r.x);
+    const shared4 = rects.some((o) => o.day !== r.day && o.x < r.x + r.w && o.x + o.w > r.x);
     const col2 = cols.get(r.day);
-    if (!shared5 && (!col2 || r.y + r.h > col2.bottom)) cols.set(r.day, { x: r.x, bottom: r.y + r.h });
+    if (!shared4 && (!col2 || r.y + r.h > col2.bottom)) cols.set(r.day, { x: r.x, bottom: r.y + r.h });
   }
   const x0 = Number.isFinite(right) ? right + gap : bounds ? bounds.x + bounds.w + gap : 0;
   const y0 = Number.isFinite(top) ? top : bounds ? bounds.y : 0;
@@ -4782,9 +4782,6 @@ var init_endpoints = __esm({
 });
 
 // src/model/title-cap.js
-function setTitleLexicon(words) {
-  titleLexicon = words && typeof words.has === "function" ? words : null;
-}
 function segmentToken(token, lexicon) {
   const t = String(token || "");
   if (!lexicon || t.length < SEG_MIN || !/^\p{L}+$/u.test(t)) return null;
@@ -6219,7 +6216,7 @@ function sectionFitClearPlan(board2, rects, touchedUids, {
     for (const m of board2.items.get(u)?.members ?? []) translate(m, dx, dy);
   };
   let touched = [...touchedUids];
-  for (let round7 = 0; round7 < 64 && touched.length; round7++) {
+  for (let round6 = 0; round6 < 64 && touched.length; round6++) {
     const queue = [];
     for (const { uid, rect } of sectionFitPlan(board2, world, touched, { pad: pad2, skip, parentOf })) {
       queue.push({ uid, before: world.get(uid) });
@@ -13382,10 +13379,6 @@ function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
   }
   return "";
 }
-function titleFromBand(lines, { bodySize = 10 } = {}) {
-  if (!lines?.length) return "";
-  return findPageTitle([{ n: 1, free: lines }], { bodySize }) || "";
-}
 var MAX_LINES, MAX_WORDS;
 var init_title = __esm({
   "src/model/parse/title.js"() {
@@ -15824,11 +15817,11 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       units.push({ id, x0: 0, y0: 0, x1: pg.w, y1: pg.h });
     }
     const dots = pg.graphics.dots;
-    const shared5 = splitSharedCaptions(pg.free);
-    pg.free = shared5.lines;
+    const shared4 = splitSharedCaptions(pg.free);
+    pg.free = shared4.lines;
     const keepGutter = (list) => {
       const out = [...list];
-      for (const g of shared5.gutters) {
+      for (const g of shared4.gutters) {
         if (!out.some((o) => g.x0 <= o.x1 + 8 && o.x0 <= g.x1 + 8)) out.push(g);
       }
       return out.sort((a, b) => a.x0 - b.x0);
@@ -15866,8 +15859,8 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       const line = byY[k];
       let wide = rowWide.has(line) || gutters.some((g) => crossesGutter(line, g));
       if (!wide && lastWide && line.base - lastWide.base <= 1.7 * line.size && Math.abs(line.x0 - lastWide.x0) <= 1.5 * line.size && Math.abs(line.size - lastWide.size) <= 0.6) {
-        const shared6 = byY.some((o) => o !== line && Math.abs(o.base - line.base) <= 0.3 * line.size);
-        if (!shared6) wide = true;
+        const shared5 = byY.some((o) => o !== line && Math.abs(o.base - line.base) <= 0.3 * line.size);
+        if (!shared5) wide = true;
       }
       if (wide) {
         wideSeq.push(line);
@@ -16920,9 +16913,9 @@ function matchParsedBlock(doc, { page, frac } = {}, min = 0.5) {
     if (!block || block.type === "caption" || Number(block.page) !== pg || !Array.isArray(block.bbox)) continue;
     const box2 = pageFracFromBbox(block.bbox, info);
     if (!box2) continue;
-    const iou6 = rectIou(box2, frac);
-    if (iou6 > score) {
-      score = iou6;
+    const iou5 = rectIou(box2, frac);
+    if (iou5 > score) {
+      score = iou5;
       best = block;
     }
     const area2 = rectArea(box2);
@@ -20833,6 +20826,14 @@ var init_changes = __esm({
   }
 });
 
+// src/host/depot/build-flavor.js
+var DEPOT_BUILD;
+var init_build_flavor = __esm({
+  "src/host/depot/build-flavor.js"() {
+    DEPOT_BUILD = true;
+  }
+});
+
 // src/model/detect.js
 function read(win2, key) {
   try {
@@ -21654,6 +21655,7 @@ function createSettingsPanel({ stats } = {}) {
 var SETTING_IDS, DEFAULTS, BOARD_TONES2, MAP_ZOOMS, TOOLTIP_DELAYS, TASK_CHIPS, ENUMS, NUMBERS, SPEED_FLAG_NAMES, notedFlags, speedSource, settingsStore, listeners2, STATUS_IDS, STATUS_FOR, SWITCH_FOR, INTEGRATION_SWITCH_IDS, integrationText, liveSwitches, SETTING_ROWS, SETTING_GROUPS, ERROR_ROW_ID, panelRef, statsRef, unhookErrors;
 var init_settings = __esm({
   "src/settings.js"() {
+    init_build_flavor();
     init_guard();
     init_detect();
     init_perf_log();
@@ -21736,7 +21738,7 @@ var init_settings = __esm({
     });
     DEFAULTS = Object.freeze({
       [SETTING_IDS.enabled]: true,
-      [SETTING_IDS.autoEnhance]: true,
+      [SETTING_IDS.autoEnhance]: false,
       [SETTING_IDS.fullscreenOnZoom]: true,
       [SETTING_IDS.graphLinks]: "all",
       [SETTING_IDS.attrStyles]: "",
@@ -21947,7 +21949,7 @@ var init_settings = __esm({
       [SETTING_IDS.parsePageReader]: () => selectRow(SETTING_IDS.parsePageReader, "High accuracy page reader", "All (default) reads every scanned page with the page model: better on photographed, handwritten and old printed pages, about ten times slower per scanned page. Doubtful reads only the scanned pages the recogniser is unsure of.", ["doubtful", "all"]),
       [SETTING_IDS.imageColors]: () => switchRow(SETTING_IDS.imageColors, "Index image colours", "On. While the board search panel lists Image or Figure cards, Plexus reads each picture once, in the background, to find its main colours so you can search by colour. Nothing leaves this device."),
       [SETTING_IDS.imageText]: () => switchRow(SETTING_IDS.imageText, "Read text in images", "Off. On lets the board search find words inside pictures, using the in-browser reading models. It only runs when those models are already on this device, never downloads them, and reads at most a few dozen pictures per session."),
-      [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
+      [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", DEPOT_BUILD ? "Read the text of a scanned page as soon as you open it, once the local helper is ready. Off waits until you press Read text." : "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
       [SETTING_IDS.keepReads]: () => switchRow(SETTING_IDS.keepReads, "Keep reads in the graph", "After a High accuracy, helper or cloud read, upload the read as one file to the graph and note it on the PDF block, so your other computers load it instead of reading again. The built-in parse is never kept. Off uploads nothing; reads already kept still load."),
       [SETTING_IDS.askFigureImages]: () => switchRow(SETTING_IDS.askFigureImages, "Send figure images to AI", "Uploads the figure's image to your graph as a file the first time you ask about it."),
       [SETTING_IDS.askModel]: () => inputRow(SETTING_IDS.askModel, "Ask AI model", "Auto picks Claude Sonnet 5.5, then Claude Opus 5.5, Claude Sonnet 5, Gemini 3.8 Flash, Gemini 3.1 Pro, then any Claude or Gemini, then your Live AI default. Or type a model name from Live AI Assistant. A model you pick in the Ask AI window is remembered for this graph and wins.", { placeholder: "auto" }),
@@ -22049,9 +22051,9 @@ var init_settings = __esm({
         SETTING_IDS.parseFootnotes,
         SETTING_IDS.parseFootnoteFormat
       ]],
-      ["group-images", "Image search", "Search inside pictures by colour and by the words in them.", [
+      ["group-images", "Image search", DEPOT_BUILD ? "Search inside pictures by colour." : "Search inside pictures by colour and by the words in them.", [
         SETTING_IDS.imageColors,
-        SETTING_IDS.imageText
+        ...DEPOT_BUILD ? [] : [SETTING_IDS.imageText]
       ]]
     ];
     ERROR_ROW_ID = "plexus-errors";
@@ -22713,6 +22715,7 @@ function tipIdForClass(cls) {
 var LOCK, e, cap, TIP_TEXT, BLOCKS, SKIP2;
 var init_tooltip_text = __esm({
   "src/view/tooltip-text.js"() {
+    init_build_flavor();
     init_schema();
     init_shapes();
     LOCK = "Double-click to keep this tool.";
@@ -22931,7 +22934,7 @@ var init_tooltip_text = __esm({
       "parse.engine": e("Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper."),
       "parse.formula": e("Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
       "parse.ocr": e("Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR."),
-      "parse.auto-read": e("Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
+      "parse.auto-read": e("Auto-read scanned pages", DEPOT_BUILD ? "Read the text of a scanned page as soon as you open it, once the local helper is ready. Off waits until you press Read text." : "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
       "parse.link-safe": e("Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
       "parse.numbered": e("Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
       "parse.footnotes": e("Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert."),
@@ -25294,7 +25297,7 @@ var init_anydoc_to_parse = __esm({
 });
 
 // src/model/drop.js
-function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
+function parseDropPayload(dataTransfer, { resolveUid, graph = "", office: allowOffice = true } = {}) {
   if (!dataTransfer) return [];
   const take = (type) => {
     try {
@@ -25315,7 +25318,7 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
   const resolve = typeof resolveUid === "function" ? resolveUid : (uid) => `((${uid}))`;
   const own2 = take(CARD_MIME).trim();
   if (own2) return [{ string: own2 }];
-  const officeFiles = officeFilesFrom(dataTransfer);
+  const officeFiles = allowOffice ? officeFilesFrom(dataTransfer) : [];
   if (officeFiles.length) return officeFiles.map((office) => ({ office }));
   const tokens2 = (text4) => text4.split(/\s+/).filter((t) => /^[\w-]+$/.test(t));
   let uids = tokens2(take("roam/block-uid-list-only-parents"));
@@ -25349,7 +25352,7 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
       if (typeof string === "string" && string.trim()) out.push({ string });
     }
     if (out.length === 1) {
-      const office = officeTargetFromText(out[0].string);
+      const office = allowOffice ? officeTargetFromText(out[0].string) : null;
       if (office) return [{ office }];
     }
     if (out.length) return out;
@@ -25359,7 +25362,7 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
     if (lines.length !== 1) return null;
     return officeTargetFromText(lines[0]);
   };
-  const droppedOffice = soleOffice(take("text/uri-list")) || soleOffice(take("text/plain")) || officeTargetFromText(take("text/html").trim());
+  const droppedOffice = !allowOffice ? null : soleOffice(take("text/uri-list")) || soleOffice(take("text/plain")) || officeTargetFromText(take("text/html").trim());
   if (droppedOffice) return [{ office: droppedOffice }];
   const chunks = [take("text/plain"), take("text/html")];
   const types = dataTransfer.types;
@@ -57841,7 +57844,7 @@ extendSession((session, api3) => {
     const lane2 = api3.board()?.items.get(id);
     return lane2 && lane2.type === "section" && lane2.look === "lane" ? lane2 : null;
   };
-  const rowsOf2 = (id) => laneRows(api3.board(), id, api3.laneKids, api3.laneResolve);
+  const rowsOf = (id) => laneRows(api3.board(), id, api3.laneKids, api3.laneResolve);
   function growWith(lane2, rect, bands) {
     const n0 = shownBands(lane2.laneBands).length;
     const added = Math.max(0, bands.length - n0);
@@ -57851,7 +57854,7 @@ extendSession((session, api3) => {
     const local = { x: 0, y: 0, w: grown.w, h: grown.h };
     const moves = [];
     const ends = bands.map(() => LANE_PAD);
-    for (const row4 of rowsOf2(lane2.uid)) {
+    for (const row4 of rowsOf(lane2.uid)) {
       const r = api3.rects().get(row4.uid);
       if (!r) continue;
       let q2 = { x: r.x - rect.x, y: r.y - rect.y, w: r.w, h: r.h };
@@ -57877,14 +57880,14 @@ extendSession((session, api3) => {
     laneNewValues(id) {
       const lane2 = laneOf(id);
       if (!lane2?.laneAttr) return [];
-      return newLaneValues(rowsOf2(id), lane2.laneAttr, lane2.laneBands).map(valueKey);
+      return newLaneValues(rowsOf(id), lane2.laneAttr, lane2.laneBands).map(valueKey);
     },
     // One band per new value, appended before none. Old band edges stay; cards in none move with it; no value is written.
     addLaneValues(id) {
       const lane2 = laneOf(id);
       if (!lane2?.laneAttr) return Promise.resolve(0);
       const rect = api3.rects().get(id);
-      const add = newLaneValues(rowsOf2(id), lane2.laneAttr, lane2.laneBands);
+      const add = newLaneValues(rowsOf(id), lane2.laneAttr, lane2.laneBands);
       if (!rect || !add.length) return Promise.resolve(0);
       const g = growWith(lane2, rect, laneBands([], lane2.laneAttr, [...lane2.laneBands || [], ...add]));
       return api3.txn((t) => {
@@ -57896,7 +57899,7 @@ extendSession((session, api3) => {
     laneFieldsFor(id) {
       const board2 = api3.board();
       if (!board2) return [];
-      return laneFields([...tableRows(board2), ...laneOf(id) ? rowsOf2(id) : []]);
+      return laneFields([...tableRows(board2), ...laneOf(id) ? rowsOf(id) : []]);
     },
     // One transaction: the lane keeps `attr` and the band order, its cards are arranged into their bands, and the lane
     // grows to hold them. Text and sections inside it stay where they are.
@@ -57908,7 +57911,7 @@ extendSession((session, api3) => {
       const board2 = api3.board();
       const rect = api3.rects().get(id);
       if (!rect) return Promise.resolve(false);
-      const rows = rowsOf2(id);
+      const rows = rowsOf(id);
       const bands = laneBands(rows, attr, lane2.laneAttr === attr ? lane2.laneBands : []);
       const cards = rows.map((row4) => {
         const r = api3.rects().get(row4.uid);
@@ -59915,9 +59918,9 @@ function createGestureUnderlay({ doc, world, root, before = null } = {}) {
     return draw({ items, edges, zoom, dpr, styled: true, tier: look === "map" || look === "detail" ? look : "overview", view });
   };
   const paintCards = (ctx, { items, c, scale, tier = "detail", zoom = 1, view = null }) => {
-    const round7 = typeof ctx.roundRect === "function";
+    const round6 = typeof ctx.roundRect === "function";
     const shape = (r) => {
-      if (round7) ctx.roundRect(r.x, r.y, r.w, r.h, 8);
+      if (round6) ctx.roundRect(r.x, r.y, r.w, r.h, 8);
       else ctx.rect(r.x, r.y, r.w, r.h);
     };
     ctx.globalAlpha = 1;
@@ -62172,11 +62175,11 @@ function recencyNorm(editTime, now5) {
 }
 function strengthScore(components = {}, { trackOpens = false, now: now5 = components?.now ?? Date.now() } = {}) {
   const refs = normCount(components?.refs, REFS_CAP);
-  const shared5 = normCount(components?.shared, SHARED_CAP);
+  const shared4 = normCount(components?.shared, SHARED_CAP);
   const recency = recencyNorm(components?.editTime ?? components?.edit, now5);
-  if (trackOpens !== true) return clamp014(0.6 * refs + 0.25 * shared5 + 0.15 * recency);
+  if (trackOpens !== true) return clamp014(0.6 * refs + 0.25 * shared4 + 0.15 * recency);
   const opens = normCount(components?.opens, OPENS_CAP);
-  return clamp014(0.5 * refs + 0.2 * shared5 + 0.15 * recency + 0.15 * opens);
+  return clamp014(0.5 * refs + 0.2 * shared4 + 0.15 * recency + 0.15 * opens);
 }
 function strokeFor(score) {
   const s = clamp014(score);
@@ -62230,7 +62233,7 @@ function countPhrase(value, one, many) {
 }
 function explain(components = {}) {
   const refs = countPhrase(components?.refs, "ref", "refs");
-  const shared5 = countPhrase(components?.shared, "shared board", "shared boards");
+  const shared4 = countPhrase(components?.shared, "shared board", "shared boards");
   const edit = components?.editTime ?? components?.edit;
   const now5 = Number.isFinite(components?.now) ? components.now : Date.now();
   let when = "not edited";
@@ -62238,7 +62241,7 @@ function explain(components = {}) {
     const part = ageParts(Math.max(0, now5 - edit));
     when = part.unit === "today" ? "edited today" : `edited ${part.n} ${part.n === 1 ? part.unit : `${part.unit}s`} ago`;
   }
-  return `${refs}, ${shared5}, ${when}`;
+  return `${refs}, ${shared4}, ${when}`;
 }
 function edgeOpens(store, from, to) {
   if (typeof store?.get !== "function") return 0;
@@ -66027,11 +66030,11 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
   }
   async function ocr({ bytes, sha256, pages, cells, signal, onChunk } = {}) {
     const sha = sha256 || await sha256Hex(bytes);
-    const aborted2 = () => signal?.aborted && (signal.reason ?? Object.assign(new Error("aborted"), { name: "AbortError" }));
+    const aborted = () => signal?.aborted && (signal.reason ?? Object.assign(new Error("aborted"), { name: "AbortError" }));
     if (cells && cells.length) {
       const parts2 = [];
       for (const slice of groups(cells, OCR_CELL_CAP)) {
-        if (aborted2()) throw aborted2();
+        if (aborted()) throw aborted();
         parts2.push(await ocrOnce({ bytes, sha, cells: slice, signal }));
       }
       return mergeBodies(parts2);
@@ -66039,7 +66042,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     if (!Array.isArray(pages) || !pages.length) throw helperError("ocr-pages", "ocr needs an explicit page list");
     const parts = [];
     for (const batch of groups(pages, OCR_BATCH)) {
-      if (aborted2()) throw aborted2();
+      if (aborted()) throw aborted();
       parts.push(await ocrOnce({ bytes, sha, pages: batch, signal }));
       try {
         onChunk?.({ done: Math.min(parts.length * OCR_BATCH, pages.length), total: pages.length });
@@ -66245,14 +66248,6 @@ var SWAPS = {
   s: ["a"]
 };
 var MULTI = [["rn", "m"], ["m", "rn"], ["cl", "d"], ["d", "cl"], ["ri", "n"], ["vv", "w"]];
-function parseLexicon(text4) {
-  const set = /* @__PURE__ */ new Set();
-  for (const line of String(text4 || "").split(/\r?\n/)) {
-    const w = line.trim().toLowerCase();
-    if (w) set.add(w);
-  }
-  return set;
-}
 function oddCase(word) {
   if (!LETTERS.test(word) || word.length < 2) return false;
   if (word === word.toUpperCase() || word === word.toLowerCase()) return false;
@@ -66372,237 +66367,10 @@ function splitJoined(token, lexicon, { low = false } = {}) {
 }
 
 // src/model/ocr/words-from-ctc.js
-var SPACE = /* @__PURE__ */ new Set([" ", "　", " "]);
-function round22(n3) {
-  return Math.round(n3 * 100) / 100;
-}
-function round3(n3) {
-  return Math.round(n3 * 1e3) / 1e3;
-}
-function softmaxAt(logits, row4, classes, index) {
-  let max = -Infinity;
-  for (let c = 0; c < classes; c++) max = Math.max(max, logits[row4 + c]);
-  let sum = 0;
-  for (let c = 0; c < classes; c++) sum += Math.exp(logits[row4 + c] - max);
-  return Math.exp(logits[row4 + index] - max) / sum;
-}
-function confidenceAt(logits, row4, classes, index) {
-  let sum = 0;
-  let min = Infinity;
-  let max = -Infinity;
-  for (let c = 0; c < classes; c++) {
-    const v = logits[row4 + c];
-    sum += v;
-    if (v < min) min = v;
-    if (v > max) max = v;
-  }
-  if (min >= -1e-4 && max <= 1.001 && sum > 0.95 && sum < 1.05) return Math.max(0, logits[row4 + index]);
-  return softmaxAt(logits, row4, classes, index);
-}
-function ctcDecode(logits, time, classes, dict) {
-  const chars = [];
-  let prev = -1;
-  for (let t = 0; t < time; t++) {
-    const row4 = t * classes;
-    let best = 0;
-    let bestV = -Infinity;
-    for (let c = 0; c < classes; c++) {
-      const v = logits[row4 + c];
-      if (v > bestV) {
-        bestV = v;
-        best = c;
-      }
-    }
-    if (best !== 0 && best !== prev) {
-      const ch = best <= dict.length ? dict[best - 1] : best === dict.length + 1 ? " " : null;
-      if (ch) chars.push({ ch, t, conf: confidenceAt(logits, row4, classes, best) });
-    }
-    prev = best;
-  }
-  return chars;
-}
 function bucketConf(mean) {
   if (mean >= 0.8) return 1;
   if (mean >= 0.5) return 0.5;
   return 0.3;
-}
-function softenPhrase(text4) {
-  return String(text4 || "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/,(\S)/g, ", $1").replace(/;(\S)/g, "; $1").replace(/(\S)\(/g, "$1 (").replace(/\)([A-Za-z])/g, ") $1");
-}
-function wordItem(text4, x0, x1, box2, conf) {
-  const width = Math.max(0.4, x1 - x0);
-  const size = Math.max(0.5, box2.y1 - box2.y0);
-  const base2 = box2.y1 - 0.2 * size;
-  const sized = round22(size);
-  return {
-    str: text4,
-    transform: [sized, 0, 0, sized, round22(x0), round22(base2)],
-    width: round22(width),
-    height: sized,
-    y0: round22(base2 - 0.8 * sized),
-    y1: round22(base2 + 0.22 * sized),
-    fontName: "ocr",
-    conf: bucketConf(conf),
-    mean: round3(conf)
-  };
-}
-function ctcText({ logits, time, classes, dict }) {
-  const chars = ctcDecode(logits, time, classes, dict);
-  if (!chars.length) return { text: "", conf: 0 };
-  let raw = "";
-  let conf = 0;
-  let n3 = 0;
-  for (const ch of chars) {
-    if (SPACE.has(ch.ch)) raw += " ";
-    else {
-      raw += ch.ch;
-      conf += ch.conf;
-      n3++;
-    }
-  }
-  raw = raw.replace(/\s+/g, " ").trim();
-  const text4 = /[A-Za-z]/.test(raw) ? softenPhrase(raw) : raw;
-  return { text: text4, conf: n3 ? Math.round(conf / n3 * 1e3) / 1e3 : 0 };
-}
-function wordsFromCtc({ logits, time, classes, dict, box: box2 }) {
-  const chars = ctcDecode(logits, time, classes, dict);
-  if (!chars.length || !box2) return [];
-  const span = Math.max(0.4, box2.x1 - box2.x0);
-  const groups2 = [];
-  let cur = [];
-  const flush = () => {
-    if (cur.length) groups2.push(cur);
-    cur = [];
-  };
-  for (const ch of chars) {
-    if (SPACE.has(ch.ch)) flush();
-    else cur.push(ch);
-  }
-  flush();
-  if (!groups2.length) return [];
-  if (groups2.length === 1 && !chars.some((ch) => SPACE.has(ch.ch))) {
-    const text4 = groups2[0].map((ch) => ch.ch).join("");
-    const parts = softenPhrase(text4).split(/\s+/).filter(Boolean);
-    if (parts.length <= 1) {
-      const conf2 = groups2[0].reduce((s, ch) => s + ch.conf, 0) / groups2[0].length;
-      return text4 ? [wordItem(text4, box2.x0, box2.x1, box2, conf2)] : [];
-    }
-    const total = parts.reduce((s, p) => s + p.length, 0);
-    let x = box2.x0;
-    const conf = groups2[0].reduce((s, ch) => s + ch.conf, 0) / groups2[0].length;
-    return parts.map((part) => {
-      const w = span * (part.length / total);
-      const item = wordItem(part, x, x + w, box2, conf);
-      x += w;
-      return item;
-    });
-  }
-  return groups2.map((group) => {
-    const text4 = group.map((ch) => ch.ch).join("");
-    const t0 = group[0].t;
-    const t1 = group[group.length - 1].t + 1;
-    const x0 = box2.x0 + t0 / time * span;
-    const x1 = box2.x0 + t1 / time * span;
-    const conf = group.reduce((s, ch) => s + ch.conf, 0) / group.length;
-    return wordItem(text4, x0, x1, box2, conf);
-  }).filter((item) => item.str);
-}
-var TALL_RE = /[A-Z0-9bdfhklt]/;
-var DESC_RE = /[gjpqy,;()[\]{}|/_@]/;
-var NUMBERISH_RE = /^[\d.,()%+\-–—OoDQBSslIZG|]+$/;
-var ECHO_RE = /^(?:c+|y[aeinm]{0,6}|ge|gae)$/i;
-function withoutEchoes(items) {
-  const kept = [];
-  for (const item of items) {
-    const mean = item.mean;
-    delete item.mean;
-    if (ECHO_RE.test(item.str) && !(mean >= 0.92)) continue;
-    kept.push(item);
-  }
-  return kept;
-}
-function bodySizeOf2(items) {
-  const wordy = items.filter((item) => item.str.length >= 3 || /\d/.test(item.str));
-  const source = wordy.length >= 4 ? wordy : items;
-  const plain2 = source.filter((item) => TALL_RE.test(item.str) && !DESC_RE.test(item.str));
-  const pool = (plain2.length ? plain2 : source).map((item) => item.transform[0]).sort((a, b) => a - b);
-  const median8 = pool[pool.length >> 1] || items[0].transform[0];
-  let body = median8;
-  const sorted3 = items.map((item) => item.transform[5]).sort((a, b) => a - b);
-  const bases = [];
-  for (const base2 of sorted3) {
-    if (!bases.length || base2 - bases[bases.length - 1] > 0.35 * median8) bases.push(base2);
-  }
-  const gaps = [];
-  for (let i = 1; i < bases.length; i++) {
-    const gap = bases[i] - bases[i - 1];
-    if (gap > 0.4 * median8 && gap < 2.5 * median8) gaps.push(gap);
-  }
-  if (gaps.length >= 4) {
-    gaps.sort((a, b) => a - b);
-    const pitch = gaps[gaps.length >> 1];
-    if (pitch < 0.7 * median8) body = pitch / 0.95;
-  }
-  return { body, median: median8 };
-}
-function baselineRows2(sorted3) {
-  const rows = [];
-  let row4 = null;
-  for (const item of sorted3) {
-    const base2 = item.transform[5];
-    const size = item.transform[0] || 1;
-    if (row4 && base2 - row4.last <= 0.3 * size && base2 - row4.first <= 0.45 * size) {
-      row4.items.push(item);
-      row4.last = base2;
-      continue;
-    }
-    row4 = { first: base2, last: base2, items: [item] };
-    rows.push(row4);
-  }
-  return rows.map((r) => r.items);
-}
-function rowBaseline(row4) {
-  const pairs = row4.map((item) => [item.transform[5], Math.max(0.1, item.width || 0)]).sort((a, b) => a[0] - b[0]);
-  const total = pairs.reduce((s, p) => s + p[1], 0);
-  let acc = 0;
-  for (const [base2, w] of pairs) {
-    acc += w;
-    if (acc >= total / 2) return base2;
-  }
-  return pairs[pairs.length - 1][0];
-}
-function snapOcrItems(items) {
-  if (!items.length) return [];
-  items = withoutEchoes(items);
-  if (!items.length) return [];
-  const { body, median: median8 } = bodySizeOf2(items);
-  const kept = [];
-  for (const item of items) {
-    const size = item.transform[0];
-    if (size < 0.45 * median8 && !(item.conf >= 1 && NUMBERISH_RE.test(item.str))) continue;
-    if (size >= 0.45 * median8 && size <= 1.5 * median8 && body > 0) {
-      const base2 = item.transform[5];
-      const sized = round22(body);
-      item.transform[0] = sized;
-      item.transform[3] = sized;
-      item.height = sized;
-      item.y0 = round22(base2 - 0.8 * sized);
-      item.y1 = round22(base2 + 0.22 * sized);
-    }
-    kept.push(item);
-  }
-  kept.sort((a, b) => a.transform[5] - b.transform[5] || a.transform[4] - b.transform[4]);
-  for (const row4 of baselineRows2(kept)) {
-    const anchor = rowBaseline(row4);
-    for (const item of row4) {
-      const shift = anchor - item.transform[5];
-      item.transform[5] = round22(anchor);
-      item.y0 = round22(item.y0 + shift);
-      item.y1 = round22(item.y1 + shift);
-    }
-  }
-  kept.sort((a, b) => a.transform[5] - b.transform[5] || a.transform[4] - b.transform[4]);
-  return kept;
 }
 
 // src/model/parse/ocr-lines.js
@@ -67058,7 +66826,7 @@ function rowKeys(words) {
   if (alpha2.length) return alpha2;
   return all.filter((token) => /\d/.test(token));
 }
-function baselineRows3(words) {
+function baselineRows2(words) {
   const sorted3 = [...words || []].sort((a, b) => (a.base ?? 0) - (b.base ?? 0) || (a.x0 ?? 0) - (b.x0 ?? 0));
   const rows = [];
   for (const word of sorted3) {
@@ -67388,7 +67156,7 @@ function evidenceFromRecords(records) {
 }
 function evidenceIn(page, box2) {
   const words = (page?.words || []).filter((word) => inside6(word, box2));
-  return { words, rows: baselineRows3(words), rules: page?.rules || [], box: box2 };
+  return { words, rows: baselineRows2(words), rules: page?.rules || [], box: box2 };
 }
 function scoreTable(table, evidence, { reading = false } = {}) {
   const rows = evidence?.rows || [];
@@ -68133,7 +67901,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
   const order = [...doc.order || []];
   const applied = [];
   const used = /* @__PURE__ */ new Set();
-  const shared5 = sharedHosts(doc, structures);
+  const shared4 = sharedHosts(doc, structures);
   let seq = 0;
   for (const structure of structures) {
     if (!structure?.cells?.length || !structure.bbox) continue;
@@ -68144,7 +67912,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
       const trimmed = dropCaptionRow(built, pageWords);
       if (trimmed !== built) Object.assign(built, { cells: trimmed.cells, rows: trimmed.rows, headerRows: trimmed.headerRows });
     }
-    const sharedHost = shared5.get(structure);
+    const sharedHost = shared4.get(structure);
     if (sharedHost) {
       const hostBlock = blocks[sharedHost.id];
       if (hostBlock) {
@@ -68524,11 +68292,11 @@ function pageReadSupport(text4, visionTexts) {
   const read2 = keysOf(text4).filter((key) => key.length >= 2);
   const seen = new Set(vision);
   const long = [...seen].filter((key) => key.length >= 5);
-  let supported2 = 0;
+  let supported = 0;
   for (const key of read2) {
-    if (seen.has(key) || key.length >= 5 && long.some((v) => matchWeight(key, v) > 0)) supported2 += 1;
+    if (seen.has(key) || key.length >= 5 && long.some((v) => matchWeight(key, v) > 0)) supported += 1;
   }
-  const share = read2.length ? supported2 / read2.length : 1;
+  const share = read2.length ? supported / read2.length : 1;
   return { visionWords: vision.length, readWords: read2.length, share, keep: vision.length < SUPPORT_MIN_WORDS || share >= SUPPORT_MIN_SHARE };
 }
 function sliceFits(vision, slice) {
@@ -69103,14 +68871,14 @@ async function readScan({ helper, bytes, sha256, base: base2, records, pages, nu
     tidyDocumentTables(base2);
     return { doc: base2, choices: [], rereads: [], pages: [] };
   }
-  const throwIfAborted3 = () => {
+  const throwIfAborted = () => {
     if (signal && signal.aborted) throw Object.assign(new Error("parse aborted"), { name: "AbortError" });
   };
   let got = null;
   if (wanted.length) {
     onPhase?.({ phase: "ocr", pages: wanted });
     const gotRaw = await helper.ocr({ bytes, sha256, pages: wanted, signal, onChunk: onProgress });
-    throwIfAborted3();
+    throwIfAborted();
     got = gotRaw;
   }
   if (wanted.length && alt && typeof alt.ocr === "function" && got?.pages) {
@@ -69120,7 +68888,7 @@ async function readScan({ helper, bytes, sha256, base: base2, records, pages, nu
     } catch {
       words = null;
     }
-    throwIfAborted3();
+    throwIfAborted();
     let otherPages = [];
     const doubtful = doubtfulOcrPages(got.pages, words instanceof Set ? words : null);
     const checked = (f) => onPhase?.({ phase: "check", done: Math.round(Math.max(0, Math.min(1, Number(f) || 0)) * doubtful.length), total: doubtful.length });
@@ -69131,7 +68899,7 @@ async function readScan({ helper, bytes, sha256, base: base2, records, pages, nu
     } catch (error) {
       if (error?.name === "AbortError") throw error;
     }
-    throwIfAborted3();
+    throwIfAborted();
     got = { ...got, pages: voteOcrBodies(got.pages, otherPages, words instanceof Set ? words : null) };
   }
   const ask2 = (req) => helper.ocr({ bytes, sha256, cells: req, signal });
@@ -69176,11 +68944,11 @@ async function readScan({ helper, bytes, sha256, base: base2, records, pages, nu
           });
         };
         const readTable = await askVlm(tableSend, explicitText, numericPages);
-        throwIfAborted3();
+        throwIfAborted();
         const readText = await askVlm(textSend, true, []);
-        throwIfAborted3();
+        throwIfAborted();
         const readOnly = await askVlm(layoutSend, false, [], true);
-        throwIfAborted3();
+        throwIfAborted();
         const readTables = [...readTable?.tables || [], ...readText?.tables || []];
         const readLines = [...explicitText ? readTable?.lines || [] : [], ...readText?.lines || []];
         const readLayout = [...readTable?.layout || [], ...readText?.layout || [], ...readOnly?.layout || []];
@@ -69213,7 +68981,7 @@ async function readScan({ helper, bytes, sha256, base: base2, records, pages, nu
       } else if (regions.length) {
         onPhase?.({ phase: "vlm", count: regions.length });
         const read2 = await helper.tables({ bytes, sha256, pages: wanted, tables: regions, signal });
-        throwIfAborted3();
+        throwIfAborted();
         const applied = applyVlmTables(doc, read2?.tables || [], { method: read2?.model || "vlm" });
         vlmApplied = applied.applied;
         if (applied.applied.length) Object.assign(doc, { blocks: applied.doc.blocks, order: applied.doc.order });
@@ -69232,7 +69000,7 @@ async function readScan({ helper, bytes, sha256, base: base2, records, pages, nu
 async function rereadLines({ doc, ocrPages, ocr, lexicon = null, signal, onPhase } = {}) {
   const pages = ocrPages || [];
   if (!doc || !linePages(pages).length) return { pages, applied: [] };
-  const throwIfAborted3 = () => {
+  const throwIfAborted = () => {
     if (signal && signal.aborted) throw Object.assign(new Error("parse aborted"), { name: "AbortError" });
   };
   let words = null;
@@ -69241,20 +69009,20 @@ async function rereadLines({ doc, ocrPages, ocr, lexicon = null, signal, onPhase
   } catch {
     words = null;
   }
-  throwIfAborted3();
+  throwIfAborted();
   const requests = linesToReread(doc, pages, { lexicon: words });
   if (!requests.length) return { pages, applied: [] };
   onPhase?.({ phase: "lines", count: requests.length });
   let results = [];
   if (typeof ocr === "function") {
     const answer = await ocr(requests);
-    throwIfAborted3();
+    throwIfAborted();
     results = answer?.cells || [];
   }
   return applyLineReads(pages, requests, results, { lexicon: words, doc });
 }
 async function rereadCells({ doc, ocr, signal, onPhase } = {}) {
-  const throwIfAborted3 = () => {
+  const throwIfAborted = () => {
     if (signal && signal.aborted) throw Object.assign(new Error("parse aborted"), { name: "AbortError" });
   };
   const tables = doc.order.map((id) => doc.blocks[id]).filter((b) => b && b.type === "table" && b.repairs && b.ocrSource !== "layer");
@@ -69263,7 +69031,7 @@ async function rereadCells({ doc, ocr, signal, onPhase } = {}) {
   if (!requests.length || typeof ocr !== "function") return rereads;
   onPhase?.({ phase: "cells", count: requests.length });
   const answer = await ocr(requests);
-  throwIfAborted3();
+  throwIfAborted();
   const results = (answer?.cells || []).map((c, i) => ({ ...requests[i], ...c }));
   for (const t of tables) {
     const applied = applyCellOcr(t, results.filter((r) => r.id === t.id));
@@ -72777,436 +72545,9 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
   return actions;
 }
 
-// assets/anydoc/anydoc_wasm.js
-function toMarkdownBytes(bytes, format) {
-  let deferred3_0;
-  let deferred3_1;
-  try {
-    const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export);
-    const len0 = WASM_VECTOR_LEN;
-    wasm.toMarkdownBytes(retptr, ptr0, len0, isLikeNone(format) ? 13 : (__wbindgen_enum_Format.indexOf(format) + 1 || 13) - 1);
-    var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-    var r12 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-    var r23 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-    var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-    var ptr2 = r0;
-    var len2 = r12;
-    if (r3) {
-      ptr2 = 0;
-      len2 = 0;
-      throw takeObject(r23);
-    }
-    deferred3_0 = ptr2;
-    deferred3_1 = len2;
-    return getStringFromWasm0(ptr2, len2);
-  } finally {
-    wasm.__wbindgen_add_to_stack_pointer(16);
-    wasm.__wbindgen_export4(deferred3_0, deferred3_1, 1);
-  }
-}
-function __wbg_get_imports() {
-  const import0 = {
-    __proto__: null,
-    __wbg_String_8564e559799eccda: function(arg0, arg1) {
-      const ret = String(getObject(arg1));
-      const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-      const len1 = WASM_VECTOR_LEN;
-      getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
-      getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
-    },
-    __wbg___wbindgen_throw_344f42d3211c4765: function(arg0, arg1) {
-      throw new Error(getStringFromWasm0(arg0, arg1));
-    },
-    __wbg_from_13e323c65fc8f464: function(arg0) {
-      const ret = Array.from(getObject(arg0));
-      return addHeapObject(ret);
-    },
-    __wbg_getRandomValues_cc7f052a444bb2ce: function() {
-      return handleError(function(arg0, arg1) {
-        globalThis.crypto.getRandomValues(getArrayU8FromWasm0(arg0, arg1));
-      }, arguments);
-    },
-    __wbg_new_32b398fb48b6d94a: function() {
-      const ret = new Array();
-      return addHeapObject(ret);
-    },
-    __wbg_new_b667d279fd5aa943: function(arg0, arg1) {
-      const ret = new Error(getStringFromWasm0(arg0, arg1));
-      return addHeapObject(ret);
-    },
-    __wbg_new_cd45aabdf6073e84: function(arg0) {
-      const ret = new Uint8Array(getObject(arg0));
-      return addHeapObject(ret);
-    },
-    __wbg_new_da52cf8fe3429cb2: function() {
-      const ret = new Object();
-      return addHeapObject(ret);
-    },
-    __wbg_push_d2ae3af0c1217ae6: function(arg0, arg1) {
-      const ret = getObject(arg0).push(getObject(arg1));
-      return ret;
-    },
-    __wbg_set_6be42768c690e380: function(arg0, arg1, arg2) {
-      getObject(arg0)[takeObject(arg1)] = takeObject(arg2);
-    },
-    __wbg_set_8535240470bf2500: function() {
-      return handleError(function(arg0, arg1, arg2) {
-        const ret = Reflect.set(getObject(arg0), getObject(arg1), getObject(arg2));
-        return ret;
-      }, arguments);
-    },
-    __wbg_set_8a16b38e4805b298: function(arg0, arg1, arg2) {
-      getObject(arg0)[arg1 >>> 0] = takeObject(arg2);
-    },
-    __wbindgen_cast_0000000000000001: function(arg0) {
-      const ret = arg0;
-      return addHeapObject(ret);
-    },
-    __wbindgen_cast_0000000000000002: function(arg0, arg1) {
-      const ret = getArrayU8FromWasm0(arg0, arg1);
-      return addHeapObject(ret);
-    },
-    __wbindgen_cast_0000000000000003: function(arg0, arg1) {
-      const ret = getStringFromWasm0(arg0, arg1);
-      return addHeapObject(ret);
-    },
-    __wbindgen_object_clone_ref: function(arg0) {
-      const ret = getObject(arg0);
-      return addHeapObject(ret);
-    },
-    __wbindgen_object_drop_ref: function(arg0) {
-      takeObject(arg0);
-    }
-  };
-  return {
-    __proto__: null,
-    "./anydoc_wasm_bg.js": import0
-  };
-}
-var __wbindgen_enum_Format = ["doc", "docx", "odt", "pdf", "ppt", "pptx", "rtf", "epub", "xlsx", "ods", "odp", "csv"];
-function addHeapObject(obj) {
-  if (heap_next === heap.length) heap.push(heap.length + 1);
-  const idx = heap_next;
-  heap_next = heap[idx];
-  heap[idx] = obj;
-  return idx;
-}
-function dropObject(idx) {
-  if (idx < 1028) return;
-  heap[idx] = heap_next;
-  heap_next = idx;
-}
-function getArrayU8FromWasm0(ptr, len) {
-  ptr = ptr >>> 0;
-  return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
-}
-var cachedDataViewMemory0 = null;
-function getDataViewMemory0() {
-  if (cachedDataViewMemory0 === null || cachedDataViewMemory0.buffer.detached === true || cachedDataViewMemory0.buffer.detached === void 0 && cachedDataViewMemory0.buffer !== wasm.memory.buffer) {
-    cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
-  }
-  return cachedDataViewMemory0;
-}
-function getStringFromWasm0(ptr, len) {
-  return decodeText(ptr >>> 0, len);
-}
-var cachedUint8ArrayMemory0 = null;
-function getUint8ArrayMemory0() {
-  if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
-    cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
-  }
-  return cachedUint8ArrayMemory0;
-}
-function getObject(idx) {
-  return heap[idx];
-}
-function handleError(f, args) {
-  try {
-    return f.apply(this, args);
-  } catch (e2) {
-    wasm.__wbindgen_export3(addHeapObject(e2));
-  }
-}
-var heap = new Array(1024).fill(void 0);
-heap.push(void 0, null, true, false);
-var heap_next = heap.length;
-function isLikeNone(x) {
-  return x === void 0 || x === null;
-}
-function passArray8ToWasm0(arg, malloc) {
-  const ptr = malloc(arg.length * 1, 1) >>> 0;
-  getUint8ArrayMemory0().set(arg, ptr / 1);
-  WASM_VECTOR_LEN = arg.length;
-  return ptr;
-}
-function passStringToWasm0(arg, malloc, realloc) {
-  if (realloc === void 0) {
-    const buf = cachedTextEncoder.encode(arg);
-    const ptr2 = malloc(buf.length, 1) >>> 0;
-    getUint8ArrayMemory0().subarray(ptr2, ptr2 + buf.length).set(buf);
-    WASM_VECTOR_LEN = buf.length;
-    return ptr2;
-  }
-  let len = arg.length;
-  let ptr = malloc(len, 1) >>> 0;
-  const mem = getUint8ArrayMemory0();
-  let offset = 0;
-  for (; offset < len; offset++) {
-    const code = arg.charCodeAt(offset);
-    if (code > 127) break;
-    mem[ptr + offset] = code;
-  }
-  if (offset !== len) {
-    if (offset !== 0) {
-      arg = arg.slice(offset);
-    }
-    ptr = realloc(ptr, len, len = offset + arg.length * 3, 1) >>> 0;
-    const view = getUint8ArrayMemory0().subarray(ptr + offset, ptr + len);
-    const ret = cachedTextEncoder.encodeInto(arg, view);
-    offset += ret.written;
-    ptr = realloc(ptr, len, offset, 1) >>> 0;
-  }
-  WASM_VECTOR_LEN = offset;
-  return ptr;
-}
-function takeObject(idx) {
-  const ret = getObject(idx);
-  dropObject(idx);
-  return ret;
-}
-var cachedTextDecoder = new TextDecoder("utf-8", { ignoreBOM: true, fatal: true });
-cachedTextDecoder.decode();
-var MAX_SAFARI_DECODE_BYTES = 2146435072;
-var numBytesDecoded = 0;
-function decodeText(ptr, len) {
-  numBytesDecoded += len;
-  if (numBytesDecoded >= MAX_SAFARI_DECODE_BYTES) {
-    cachedTextDecoder = new TextDecoder("utf-8", { ignoreBOM: true, fatal: true });
-    cachedTextDecoder.decode();
-    numBytesDecoded = len;
-  }
-  return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
-}
-var cachedTextEncoder = new TextEncoder();
-if (!("encodeInto" in cachedTextEncoder)) {
-  cachedTextEncoder.encodeInto = function(arg, view) {
-    const buf = cachedTextEncoder.encode(arg);
-    view.set(buf);
-    return {
-      read: arg.length,
-      written: buf.length
-    };
-  };
-}
-var WASM_VECTOR_LEN = 0;
-var wasmModule;
-var wasmInstance;
-var wasm;
-function __wbg_finalize_init(instance, module) {
-  wasmInstance = instance;
-  wasm = instance.exports;
-  wasmModule = module;
-  cachedDataViewMemory0 = null;
-  cachedUint8ArrayMemory0 = null;
-  return wasm;
-}
-async function __wbg_load(module, imports) {
-  if (typeof Response === "function" && module instanceof Response) {
-    if (typeof WebAssembly.instantiateStreaming === "function") {
-      try {
-        return await WebAssembly.instantiateStreaming(module, imports);
-      } catch (e2) {
-        const validResponse = module.ok && expectedResponseType(module.type);
-        if (validResponse && module.headers.get("Content-Type") !== "application/wasm") {
-          console.warn("`WebAssembly.instantiateStreaming` failed because your server does not serve Wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n", e2);
-        } else {
-          throw e2;
-        }
-      }
-    }
-    const bytes = await module.arrayBuffer();
-    return await WebAssembly.instantiate(bytes, imports);
-  } else {
-    const instance = await WebAssembly.instantiate(module, imports);
-    if (instance instanceof WebAssembly.Instance) {
-      return { instance, module };
-    } else {
-      return instance;
-    }
-  }
-  function expectedResponseType(type) {
-    switch (type) {
-      case "basic":
-      case "cors":
-      case "default":
-        return true;
-    }
-    return false;
-  }
-}
-async function __wbg_init(module_or_path) {
-  if (wasm !== void 0) return wasm;
-  if (module_or_path !== void 0) {
-    if (Object.getPrototypeOf(module_or_path) === Object.prototype) {
-      ({ module_or_path } = module_or_path);
-    } else {
-      console.warn("using deprecated parameters for the initialization function; pass a single object instead");
-    }
-  }
-  if (module_or_path === void 0) {
-    module_or_path = new URL("anydoc_wasm_bg.wasm", import.meta.url);
-  }
-  const imports = __wbg_get_imports();
-  if (typeof module_or_path === "string" || typeof Request === "function" && module_or_path instanceof Request || typeof URL === "function" && module_or_path instanceof URL) {
-    module_or_path = fetch(module_or_path);
-  }
-  const { instance, module } = await __wbg_load(await module_or_path, imports);
-  return __wbg_finalize_init(instance, module);
-}
-
-// src/host/anydoc.js
-init_parse_hash();
-
-// src/host/anydoc-manifest.js
-var ANYDOC_MANIFEST = Object.freeze({
-  name: "@firecrawl/anydoc-wasm",
-  version: "0.2.4",
-  files: Object.freeze({
-    "anydoc_wasm.js": Object.freeze({
-      sha256: "4860ad4c02c523593a5dae7698e186e8d7cf75a0e0bf3c2c294373de58eaee74",
-      bytes: 14366
-    }),
-    "anydoc_wasm_bg.wasm": Object.freeze({
-      sha256: "9f37cd53b17bf4028ac5ae6a2ac4cf625e9c53be511797168780bab495de1a9e",
-      bytes: 6691779
-    })
-  })
-});
-
-// src/host/anydoc.js
-var ANYDOC_CACHE = "plexus-diagram-models";
-var ANYDOC_ORIGIN = "https://svyk.github.io/plexus-diagram";
-function anydocAssetUrl(name, origin = ANYDOC_ORIGIN) {
-  const base2 = String(origin || ANYDOC_ORIGIN).replace(/\/$/, "");
-  return `${base2}/assets/anydoc/${name}`;
-}
-function asBytes(value) {
-  if (value instanceof Uint8Array) return value;
-  if (value instanceof ArrayBuffer) return new Uint8Array(value);
-  if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-  return new Uint8Array();
-}
-function createAnydocHost({
-  fetch: fetchImpl,
-  caches: cachesImpl,
-  origin = ANYDOC_ORIGIN,
-  now: now5,
-  engine
-} = {}) {
-  const fetchFn = fetchImpl || globalThis.fetch?.bind(globalThis);
-  const cachesApi = cachesImpl === void 0 ? globalThis.caches : cachesImpl;
-  const clock = typeof now5 === "function" ? now5 : () => typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
-  const glue = engine?.init || __wbg_init;
-  const convertBytes = engine?.toMarkdownBytes || toMarkdownBytes;
-  let ready = null;
-  let fetchCount = 0;
-  async function openCache() {
-    if (!cachesApi || typeof cachesApi.open !== "function") return null;
-    try {
-      return await cachesApi.open(ANYDOC_CACHE);
-    } catch {
-      return null;
-    }
-  }
-  async function loadAsset(name) {
-    const spec = ANYDOC_MANIFEST.files[name];
-    if (!spec) {
-      const err = new Error("hash");
-      err.code = "hash";
-      throw err;
-    }
-    const url = anydocAssetUrl(name, origin);
-    const cache = await openCache();
-    if (cache && typeof cache.match === "function") {
-      try {
-        const hit = await cache.match(url);
-        if (hit) {
-          const buf2 = asBytes(await hit.arrayBuffer());
-          const hex3 = await sha256Hex(buf2);
-          if (hex3 === spec.sha256 && buf2.byteLength === spec.bytes) return buf2;
-        }
-      } catch {
-      }
-    }
-    if (typeof fetchFn !== "function") {
-      const err = new Error("fetch");
-      err.code = "fetch";
-      throw err;
-    }
-    fetchCount += 1;
-    let res;
-    try {
-      res = await fetchFn(url, { mode: "cors", credentials: "omit" });
-    } catch (err) {
-      if (err && typeof err === "object" && !err.code) err.code = "fetch";
-      throw err;
-    }
-    if (!res || !res.ok) {
-      const err = new Error("fetch");
-      err.code = "fetch";
-      throw err;
-    }
-    const buf = asBytes(await res.arrayBuffer());
-    const hex = await sha256Hex(buf);
-    if (hex !== spec.sha256 || buf.byteLength !== spec.bytes) {
-      const err = new Error("hash");
-      err.code = "hash";
-      throw err;
-    }
-    if (cache && typeof cache.put === "function") {
-      try {
-        const type = name.endsWith(".wasm") ? "application/wasm" : "text/javascript";
-        await cache.put(url, new Response(buf, { headers: { "content-type": type } }));
-      } catch {
-      }
-    }
-    return buf;
-  }
-  async function ensure() {
-    if (ready) return ready;
-    const pending = (async () => {
-      await loadAsset("anydoc_wasm.js");
-      const wasm2 = await loadAsset("anydoc_wasm_bg.wasm");
-      await glue({ module_or_path: wasm2 });
-    })();
-    ready = pending;
-    try {
-      await pending;
-    } catch (err) {
-      if (ready === pending) ready = null;
-      throw err;
-    }
-  }
-  return {
-    get fetchCount() {
-      return fetchCount;
-    },
-    async convert(bytes, format) {
-      await ensure();
-      const t0 = clock();
-      const view = asBytes(bytes);
-      let markdown;
-      try {
-        markdown = convertBytes(view, format);
-      } catch (err) {
-        if (err && typeof err === "object" && !err.code) err.code = "convert";
-        throw err;
-      }
-      const text4 = typeof markdown === "string" ? markdown : new TextDecoder().decode(asBytes(markdown));
-      return { markdown: text4, ms: clock() - t0, format };
-    }
-  };
+// src/host/depot/anydoc.js
+function createAnydocHost() {
+  return null;
 }
 
 // src/view/parse-view.js
@@ -73505,7 +72846,7 @@ function statusError(status, body, name = "LlamaParse", response = null) {
   const message = body?.detail || body?.error || body?.message || `${name} ${status}`;
   return fail2("provider", String(message), status);
 }
-async function helperParse({ fetch: fetch2, transport, bytes, apiKey, region, tier, pages, signal, onProgress }) {
+async function helperParse({ fetch, transport, bytes, apiKey, region, tier, pages, signal, onProgress }) {
   const options = { region, tier, version: "latest" };
   const spec = pageSpec(pages);
   if (spec) options.pages = spec;
@@ -73518,7 +72859,7 @@ async function helperParse({ fetch: fetch2, transport, bytes, apiKey, region, ti
   let jobId = "";
   const onAbort = () => {
     if (!jobId) return;
-    Promise.resolve(fetch2(`${transport.url}${HELPER_PATH}/${encodeURIComponent(jobId)}`, {
+    Promise.resolve(fetch(`${transport.url}${HELPER_PATH}/${encodeURIComponent(jobId)}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${transport.token}` },
       targetAddressSpace: "loopback"
@@ -73528,7 +72869,7 @@ async function helperParse({ fetch: fetch2, transport, bytes, apiKey, region, ti
   signal?.addEventListener?.("abort", onAbort, { once: true });
   let response;
   try {
-    response = await fetch2(`${transport.url}${HELPER_PATH}`, {
+    response = await fetch(`${transport.url}${HELPER_PATH}`, {
       method: "POST",
       headers,
       body: bytes,
@@ -73568,7 +72909,7 @@ async function helperParse({ fetch: fetch2, transport, bytes, apiKey, region, ti
   if (!provider) throw fail2("bad-response", "cloud parse returned no result");
   return provider;
 }
-async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tier, pages, layout = true, signal, onProgress, sleep, now: now5, timeoutMs }) {
+async function relayParse({ fetch, transport, bytes, apiKey, region, tier, pages, layout = true, signal, onProgress, sleep, now: now5, timeoutMs }) {
   const headers = { Authorization: `Bearer ${apiKey}` };
   if (!transport.direct) headers["X-Pxd-Region"] = region === "eu" ? "eu" : "us";
   const clock = now5;
@@ -73578,7 +72919,7 @@ async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tie
   const blob = bytes instanceof Blob ? bytes : new Blob([bytes], { type: "application/pdf" });
   form.append("purpose", "parse");
   form.append("file", blob, "document.pdf");
-  const uploaded = await fetch2(`${transport.url}/api/v1/beta/files`, {
+  const uploaded = await fetch(`${transport.url}/api/v1/beta/files`, {
     method: "POST",
     headers,
     body: form,
@@ -73598,7 +72939,7 @@ async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tie
     output_options: output
   };
   if (spec) payload.page_ranges = { target_pages: spec };
-  const started = await fetch2(`${transport.url}/api/v2/parse`, {
+  const started = await fetch(`${transport.url}/api/v2/parse`, {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -73609,7 +72950,7 @@ async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tie
   const jobId = startBody?.id || startBody?.job?.id;
   if (!jobId) throw fail2("bad-response", "parse did not return a job id");
   const cancelRemote = () => {
-    Promise.resolve(fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}/cancel`, {
+    Promise.resolve(fetch(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}/cancel`, {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json" },
       body: "{}"
@@ -73625,7 +72966,7 @@ async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tie
     await pause(delay2, signal);
     delay2 = Math.min(delay2 * 2, 8e3);
     if (clock() >= deadline) throw fail2("timeout", "LlamaParse timed out", 504);
-    const polled = await fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}`, { headers, signal });
+    const polled = await fetch(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}`, { headers, signal });
     const body = await polled.json().catch(() => null);
     if (polled.status < 200 || polled.status >= 300) throw statusError(polled.status, body);
     status = body?.job?.status || body?.status || "";
@@ -73633,7 +72974,7 @@ async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tie
   }
   if (status === "CANCELLED") throw fail2("cancelled", "cancelled", 499);
   if (status !== "COMPLETED") throw fail2("failed", "LlamaParse failed the job", 502);
-  const done3 = await fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}?${LLAMA_EXPAND}`, {
+  const done3 = await fetch(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}?${LLAMA_EXPAND}`, {
     headers,
     signal
   });
@@ -74066,7 +73407,7 @@ function openCloudConfirm({
 init_anydoc_to_parse();
 init_parse_schema();
 var ENGINE = "cloud";
-function round5(n3) {
+function round3(n3) {
   return Math.round(Number(n3) * 100) / 100;
 }
 function oneBox(box2) {
@@ -74095,7 +73436,7 @@ function llamaBox(value) {
     if (Number.isFinite(c)) confidence = confidence == null ? c : Math.min(confidence, c);
   }
   return {
-    bbox: [round5(x0), round5(y0), round5(x1), round5(y1)],
+    bbox: [round3(x0), round3(y0), round3(x1), round3(y1)],
     confidence: confidence == null ? null : Math.max(0, Math.min(1, confidence))
   };
 }
@@ -74551,8 +73892,8 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
     const ok = page.success !== false;
     pages.push({
       n: pageNumber,
-      w: Number.isFinite(width) ? round5(width) : null,
-      h: Number.isFinite(height) ? round5(height) : null,
+      w: Number.isFinite(width) ? round3(width) : null,
+      h: Number.isFinite(height) ? round3(height) : null,
       parsed: ok
     });
     if (!ok || !Array.isArray(page.items)) continue;
@@ -74678,7 +74019,7 @@ function cornerBox(raw) {
   const x1 = Number(raw.bottom_right_x);
   const y1 = Number(raw.bottom_right_y);
   if (![x0, y0, x1, y1].every((n3) => Number.isFinite(n3))) return null;
-  return [round5(Math.min(x0, x1)), round5(Math.min(y0, y1)), round5(Math.max(x0, x1)), round5(Math.max(y0, y1))];
+  return [round3(Math.min(x0, x1)), round3(Math.min(y0, y1)), round3(Math.max(x0, x1)), round3(Math.max(y0, y1))];
 }
 function blockConfidence(raw) {
   const score = Number(raw?.confidence_scores?.average_content_confidence_score);
@@ -74844,8 +74185,8 @@ function mistralToParse(provider, { sha256 = null } = {}) {
     const height = Number(page?.dimensions?.height);
     pages.push({
       n: pageNumber,
-      w: Number.isFinite(width) ? round5(width) : null,
-      h: Number.isFinite(height) ? round5(height) : null,
+      w: Number.isFinite(width) ? round3(width) : null,
+      h: Number.isFinite(height) ? round3(height) : null,
       parsed: page?.error == null
     });
     if (page?.error != null) return;
@@ -80058,6 +79399,7 @@ function createParseView({
   altNote.textContent = "no tables guarantee";
   altBtn.setAttribute("aria-label", "Alternative read, no tables guarantee");
   altBtn.setAttribute("data-guarantee", "no tables guarantee");
+  setHidden(altBtn, !anydocHost);
   const cancelBtn = el2("button", "pxd-parse__cancel", enginePop);
   cancelBtn.type = "button";
   cancelBtn.textContent = "Cancel";
@@ -81441,7 +80783,7 @@ function createParseView({
     }
   }
   async function readAlternative() {
-    if (dead || phase === "running") return;
+    if (dead || phase === "running" || !anydocHost) return;
     const previous = parsed;
     const gen = targetGen;
     phase = "running";
@@ -82608,6 +81950,7 @@ init_relchips();
 init_avoid();
 
 // src/view/engines-panel.js
+init_build_flavor();
 var INSTALL_COMMAND = "curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh";
 var DOCLING_COMMAND = "curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh -s -- --docling";
 var RESTART_COMMAND = 'launchctl kickstart -k "gui/$(id -u)/com.plexus.parse-helper"';
@@ -82703,7 +82046,7 @@ function engineRows(state, { platform = "mac" } = {}) {
   void platform;
   return [
     { id: "device", name: "On this device", dot: "ok", text: "Built-in parser · ready", button: null, tip: "engines.builtin", tags: [TAG_ROAM] },
-    deviceOcrRow(state?.device),
+    ...DEPOT_BUILD ? [] : [deviceOcrRow(state?.device)],
     helperRow(state?.helper),
     cloudRow(state?.cloud, state?.helper)
   ];
@@ -90692,7 +90035,7 @@ function changelogEntry(markdown, version) {
 }
 
 // src/changelog-text.js
-var CHANGELOG_TEXT = '# Changelog\n\n## 3.38.0 — 2026-10-29\n\nBoards that follow a source, sections that write back to the graph, and a faster stress board.\n\n- **Follow a source.** A board can follow a block\'s children (or its whole tree), a `{{query}}`, the linked references of a page or block, a page by its H1–H3 headings (one section per heading), a rolling window of journals (the last 1–31 days or this week, optionally one column per day), this board\'s Inbox, or another board or one of its sections. Board menu Follow…, or the card menu on a block, query or page card. New items wait in the Following tray: Place, drag, or Place all. The board never adds cards by itself, never moves a placed card, and marks a card that left the source instead of deleting it. Stop following keeps the cards.\n- **A source per section.** Up to 8 sections can each follow their own source. The tray keeps one group per section, then the board\'s own.\n- **Inbox arrivals.** Following this board\'s Inbox shows new citing blocks in an Arrivals strip, 20 per visit.\n- **Typing stays smooth.** A followed source reads again about 1.5 s after a save in this window, waits while you type when its read is slow, and reads a slow query at most once a minute while saves go on.\n- **`{{diagram ((ref))}}` boards.** A diagram written with a block ref and no colon opens as a Plexus board that follows that block. Nothing is written until the first edit.\n- **Linked references as cards.** On a page or block card, Add linked references as cards, flat or grouped by page, placed clear of what is already there, in one undo step.\n- **Sections write back.** Bind to tag or attribute… makes a section write `#tag` or `Name:: value` on a card dropped in and remove it when the card leaves, in the move\'s own undo step. Write section to graph tags every member.\n- **Attribute lanes.** Sub-lanes by attribute splits a section into one band per value of a `Name::` attribute. Dropping a card in another band rewrites the value. Pull blocks with `Name::` places the graph\'s blocks that have it; Add sub-lanes for new values grows the lane without moving the bands under cards.\n- **Apply order to source.** Reorders a section\'s or selection\'s real blocks under their Roam parent to the board\'s reading order, in one undo step. Keep outline order re-tidies a section when its order changes in Roam.\n- **Query card as a filter.** Use as filter on a query card keeps cards in its results bright and dims the rest. A pill names the filter; Stop filtering ends it. Nothing is written.\n- **Ref arrows.** Refs in note cards and child rows to other cards on the board draw as faint arrows (Ref arrows in the board menu; off over 400 items). Pin ref arrows on a card\'s context bar turns up to 20 of them into connections.\n- **Drop a card on a child row.** Dragging a card onto another card\'s child row adds the card\'s ref under that row, in one undo step. Shift moves the card instead.\n- **Plexus tools for Roam AI agents.** On Roam builds that support extension tools, AI agents on Roam MCP can list and read boards, add cards and sections, connect cards and arrange a board. Their writes are credited to the AI, one undo step per call.\n- **Card properties.** Board menu, Card properties: pick up to six `Name::` attributes to show as read-only chips on cards at detail zoom. Only the board\'s own pick is written.\n- **Keep a static picture.** Board menu, Keep a static picture, saves the board as one image block, the first child of the board block, so readers without Plexus (public graphs, Roam Publish) see it. Off until you turn it on; it refreshes only by hand (Refresh static picture, the camera button, or Plexus: Refresh static picture).\n- **JSON Canvas.** Right-click the board, Import JSON Canvas…, to turn an Obsidian `.canvas` file into a nested board (text, file and link nodes become cards, groups sections, edges arrows). Export as JSON Canvas (More, or the palette) saves the open board as a `.canvas` file.\n- **Add to Desk.** The card menu adds a card to Roam\'s Desk, written the way Roam writes it. Plexus stays out of Roam\'s Sidecar window, and its fullscreen and PDF styles no longer leak into it.\n- **Contents panel.** The panel\'s Outline tab is now Contents: sections, landmarks, trails and saved views in outline order. Click a row to fly there.\n- **Parse helper token in this browser.** The token is kept in this browser, not in graph settings, so members of a shared graph cannot read it. An old value moves over once. Forget token in Engines turns the helper off.\n- **Growing sections push neighbours.** An auto-fit section that grows moves the sections in its way, in the same undo step. Pinned items never move.\n- **Arrows to rows keep clear.** An arrow to a child row no longer runs behind the row\'s card.\n- **Board backgrounds show again.** Lines, dots, grid and tones show again, and Flat grey no longer hides a board\'s own background.\n- **Faster big boards.** Typing in a card no longer restyles the board on every key (keydown to paint about 60–79 ms down to 32 ms on the stress board). Zooming, the first zoom-in of a session (page cards show rows, not empty boxes), the overview canvas, cold start and panning at map zoom are faster on big boards.\n- **Fixes.** Turning Plexus off on a fullscreen board no longer leaves the page covered. Cut then paste keeps the blocks\' uids, so refs to them still work. Kanban Group by no longer writes onto a diagram that was not enhanced. Dark custom themes get the dark board. Paste keeps text typed during an image upload. Region rename, fold, the query filter and lane reads recover from failed reads, and unloading the extension leaves no observer behind.\n\n## 3.37.0 — 2026-10-17\n\nArrows that reach a child block, and steadier fullscreen and zoom.\n\n- **Arrows to a child block.** An arrow to a child block ends on that row when the card is open, and shows a child mark and a badge dot when the card is folded. Click the mark or Alt-click the arrow to open that child.\n- **Fullscreen repaint.** Fullscreen boards keep Roam\'s page covered while they repaint.\n- **Zoom-out arrowheads.** Zooming out resizes arrowheads in place.\n- **Undo after the badge.** Cmd+Z works after clicking the Children badge.\n\n## 3.36.0 — 2026-10-17\n\nChild focus that works where you click, and steadier editing and zooming.\n\n- **Child focus from the bullet gutter.** Clicking anywhere in a child\'s bullet gutter focuses it, at every depth, and you can pick a child from the Children peek.\n- **Edit the focused block.** Editing a focused card edits the focused block under the crumb.\n- **Arrows onto folded cards.** An arrow held over a folded card unfolds it and can drop on a child row, stored as a block ref.\n- **Fold clears focus.** Fold and unfold clear a child focus and restore the folded size.\n- **Long editors scroll.** Long page and note editors stay inside the card and scroll, with the caret row kept in view.\n- **Reference Path line.** The Reference Path extension\'s line no longer reaches outside the card while editing.\n- **Page cards on zoom-in.** Page cards keep their last rows on zoom-in instead of empty boxes.\n\n## 3.35.0 — 2026-10-16\n\nCards that read and edit like Roam, and a faster board.\n\n- **Children look like Roam.** Cards with children show Roam\'s bullets and thread in display and in edit with the same row geometry, so entering edit no longer jumps.\n- **Full-length rows.** Page cards and child rows render links and bold at full length instead of plain cut text.\n- **Click a child to edit it.** Clicking a child row edits that block at the clicked letter.\n- **Focus a child while editing.** Clicking a child\'s bullet while editing focuses it on the card with the crumb.\n- **New children show at once.** A new child appears while you type.\n- **Faster search.** Board search is many times faster per key (about 350 ms down to about 20 ms) and dims arrows by layer.\n- **Smoother big boards.** Zoom-in, zoom-out and pan at fit are smoother on big boards (round 4: no :has() invalidation, bucketed layers, no zoom layer, main-thread fade, 12-at-a-time hand-back).\n- **One undo after a big drag.** One Cmd+Z after a big drag restores the layout.\n- **Child focus at any depth.** Cmd+. focuses a child at any depth.\n- **Table captions.** Double-click a table caption to edit it.\n- **Safe disable.** Disabling the extension no longer blanks Roam.\n- **Typing profile probe.** A probe for profiling typing latency.\n\n## 3.34.0 — 2026-10-16\n\nPDF sources, dark PDFs, searching inside PDFs, and Roam popups that stay on top.\n\n- **Copy with source, cleaner.** A copied figure pastes as one card: the image, the full caption, and the Source chip under it. A copied table pastes as a folded table card, not raw text. One undo removes it. Clicking Source opens the PDF at the page with Show parsed on and the part outlined: in the sidebar if the PDF is open there, else the card\'s reader, else Roam opens it. A PDF card with no parse loaded loads its kept parse first.\n- **PDF dark mode.** Settings → PDF reader → PDF dark mode: Off, Follow Roam (default) or On. Roam\'s PDF windows invert the page; photos on the page are painted back in their real colours. Highlights and parsed outlines keep their colours. The board\'s own reader keeps its own setting.\n- **Focus a child block.** Click a child\'s or grandchild\'s bullet (or Cmd+.) and the card focuses it, with a crumb (card › parent › child); Escape steps back. Zoom into that block in Roam and an "Open on board" button opens the board with the card unfolded and focused on it. Nothing is written.\n- **Roam popups stay above the board.** The calendar, Find or Create results, `[[` autocomplete, the slash menu, hover previews and dialog dropdowns now paint over the board, in fullscreen too. Menus inside a Roam dialog open above the dialog.\n- **Search inside PDFs and images.** Results are grouped into Cards, PDF text and Images, with the match marked and a p. N chip. PDFs you have not parsed are indexed in the background, a little at a time, so their words are found too. Enter or click opens the PDF at that page, even if it is not on the board; Shift+Enter or drag adds it as a card. Text in pictures stored on your Mac is read through the parse helper. The filters sit on two rows.\n- **Wider PDF reader.** The board\'s PDF reader can be dragged almost to the full window width (it stopped at 720 px).\n\n## 3.33.0 — 2026-10-15\n\nBoards inside boards, card children and sources feel like Roam.\n\n- **Board path.** A board inside other boards always shows the full path above it (Root › … › This board), however you opened it: search, a block ref, the sidebar or a page link. Each name opens that board. It no longer disappears after using the crumb menu.\n- **Board trail is a setting.** The row of unrelated boards you opened is now Settings → Show board trail, off by default. Cmd+1–9 still switch boards.\n- **Drop a card into a board.** The card shrinks into the board card, the board card pulses, and a toast says "Moved to …" with Undo. Arrows between cards you move together go with them. An arrow to a card you leave behind stays attached: on the outer board it runs into the board card, labelled with the card\'s name (click the label to open the board on that card), and inside the board the card shows ↗ 1 to jump back.\n- **Card children like Roam.** Shift+Enter in a card\'s text makes a child. Unfolding shows the children as a Roam outline and refolding shrinks the card back. Click a child\'s bullet (or Cmd+.) to focus it inside the card, with a small crumb to step back out. Hover a card that links to a block or page with children for about a second to peek at them.\n- **Copy with source** pastes one card with the source under it. Clicking the source opens the PDF at that exact spot.\n- **Steadier navigation.** Arrows wait for their cards, so a board no longer shows a web of lines before its cards appear.\n- **Fixes.** Selecting text in a PDF on a board no longer creates an empty card. A source jump closes the hover popup Roam left open.\n\n## 3.32.0 — 2026-10-14\n\nScanned forms read much better, especially with the Docling add-on.\n\n- **Docling keeps the whole form.** The Docling reader used to drop header fields (document number, version, dates), signature and review lines, checkbox labels and tables nested inside form areas: only about 60% of what Docling read reached the card. Now about 98% does. On scanned quality forms the overall form score went from 0.39 to 0.60, header fields from 0.09 to 0.94.\n- **Checkboxes and circled choices.** On scanned pages read with Docling, ticked and empty boxes show as `[x]` and `[ ]`, and a circled Pass/Fail or Y/N choice is marked. Nothing is added on papers or born-digital documents.\n- **Charts stay charts.** The Docling add-on now classifies pictures, so chart and diagram labels stay on the figure while form boxes Docling mistook for pictures come through as text. The classifier downloads with the add-on; without it Docling works as before.\n- **High accuracy no longer blanks or invents text.** It kept writing empty lines where it could not place a line, and on blank pages the page model could invent text. Empty lines are gone, blank and show-through pages skip the page model (about 1.5 s instead of a long run) and emit nothing.\n- **Mostly empty ruled tables keep their words.** The built-in scan reader dropped every word of a ruled grid it decided was not a table; those words now come back as text or a table.\n- Update the helper to get the Docling and High accuracy changes: `uv tool install --force --python 3.12 git+https://github.com/Svyk/plexus-diagram#subdirectory=tools/parse-helper`.\n\n## 3.31.0 — 2026-10-14\n\nBig boards open fast at any zoom.\n\n- **Zoomed-out boards are ready in about 0.6 s.** A big board opened at overview zoom used to wait until every card was built (about 2 s on the 1,560-card stress board, with a half-second stutter). Now it is usable as soon as the nearest cards are in; the rest show as simple boxes and fill in while you work. Clicking, searching for or editing a card that is not built yet builds it at once.\n- **Smoother first seconds.** The first frame keeps the saved picture until the board has drawn, connections are drawn in parts, and background work (PDF covers, card badges, linked references) runs in smaller slices. The longest pause after opening the stress board zoomed out went from about 0.45 s to about 0.15 s.\n- **Fixes.** Leaving a board while it is still building stops the building. A failed card-badge read is retried instead of showing zeros.\n- **Kill switch.** The hidden speed flag `overviewFast` turns the new overview opening off.\n\n## 3.30.0 — 2026-10-14\n\nBig boards are ready in about half a second when nothing changed.\n\n- **Instant reopen.** Plexus keeps a copy of each big board\'s layout with Roam\'s page stamp. When you open the board again and the page has not changed, the board is ready from that copy without reading every block first: on the 1,560-card stress board it responds in about 0.6 s instead of about 1.7 s.\n- **Checks itself.** Right after opening, Plexus re-reads the board in small background steps (pausing while you pan or zoom) and updates anything that changed while you were away, including folds and edits from other devices. Nothing is deleted or cleaned up until that check is done.\n- **Fewer pauses** after opening and when entering a nested board.\n- **Kill switch.** The hidden speed flag `trustSnapshot` turns the instant reopen off and opens boards exactly as 3.29.0 did.\n\n## 3.29.0 — 2026-10-13\n\nBig boards open fast. On the 1,560-card stress board the board now shows in about a third of a second, and the\nseconds of stutter after it opened are gone.\n\n- **Fold queries on this page** (Commands). Roam draws every open `{{query}}` on a page before anything else shows; on\n  the stress page 12 queries held the board back for 8–10 s. The command puts each query under a folded caption, like\n  Fold tables, so Roam only runs it when you open the caption. A preview lists the queries, and one undo puts them back.\n  When a page\'s queries slow a board down, Plexus offers this once for that page.\n- **The board shows at once.** A big board\'s saved picture appears in about 0.3 s (was about 1.2 s) and you can pan\n  while the board loads behind it. The load runs in short steps instead of one long freeze.\n- **No stutter after opening.** Background work after a board opens (links between cards, PDF titles and covers, card\n  badges, the saved picture) runs in small slices, stops while you pan or zoom, and pauses on boards you have left. The\n  longest pause after opening the stress board went from about 1.3 s to about 0.2 s.\n- **Links between cards** are worked out about 20× faster on big boards.\n- **Fixes.** Undo of Fold queries and Fold tables never deletes the query or table when Roam is slow to report where a\n  block is. A card folded or unfolded while a big board is loading shows the right way.\n- **Kill switch.** The step-by-step load can be turned off with the hidden speed flag `slicedMount`.\n\n## 3.28.0 — 2026-10-13\n\nBig boards. Plexus was stress-tested on a board with 1,560 cards, 2,114 connections, 24 nested boards and about 23,000 blocks, and every slow or unstable spot that turned up was fixed. Normal boards are as fast as 3.27.0 or faster.\n\n- **Smooth on big boards.** Panning the 1,560-card board at fit zoom takes one frame (about 20 ms, was about 240 ms), and zooming is 5–7× smoother. Only the cards near the view are kept on the page, and nothing is added in the middle of a gesture.\n- **Fast back and forth.** Going back to a big board from a nested board is live in about a third of a second; 3.27.0 could freeze for half a minute. Nested boards open from a snapshot.\n- **Edits on big boards** reach the board in about a quarter of a second instead of a second. Each section and the Connections block are watched on their own, and a board you leave keeps its watches for a minute, so moving between boards no longer runs into Roam\'s API limit.\n- **Memory stays flat.** A 20-minute session no longer grows memory. Leaving a page no longer keeps its board, card chips or PDF documents alive.\n- **Safer bulk writes.** Plexus asks before a change that writes 600 or more blocks and refuses one that writes 3,000 or more. Large writes wait while Roam is still saving (the sync dot says "Waiting for Roam"). Holding an arrow key writes one move, not one per repeat.\n- **Fold sections in the outline** (Commands): the board\'s outline then opens in about a second instead of rendering thousands of blocks. One undo unfolds.\n- **Search "Show more"** pages through every PDF and every filter result when the search box is empty.\n- **Fixes.** Boards with more than 1,000 connections show all of them (Roam\'s read stopped at 1,000). Export as PNG works on big boards. SVG export stays valid when card text holds control characters copied from PDFs. After an undo of Fold sections, Move PDFs to their own pages or Fold tables, the next undo no longer reaches into Roam\'s own undo history.\n- **Kill switches.** Every new big-board path can be turned off in the hidden speed flags: `splitWatch`, `virtualShells`, `virtualEdges`, `deferReveal`, `hitShield`, `parkInPlace`. The experimental `edgeFingerprint` watch ships off.\n\n## 3.27.0 — 2026-10-12\n\nThe rest of the bug hunt: every item on its Later list is fixed.\n\n- **A paid read wins its pages.** When you have a LlamaParse or Mistral read of some pages and a fuller free parse, the paid read is used for its pages and the free parse fills the rest. Saving never writes free pages over the paid record.\n- **Smoother reader scrolling.** Plexus\'s share of a reader scroll went from about 90 ms to about 15 ms over 40 steps: the outline follows the page once per frame instead of inside the scroll, and a page turn no longer makes the board refresh itself.\n- **Resizing the reader keeps your place.** Going full screen and back never changes the reading mode, and the page you were on is put back if the new width moved it.\n- **PDF names stay current.** A card or chat chip picks up a PDF\'s real name as soon as it is known, without redrawing the whole board; boards open in the main view and the sidebar no longer overwrite each other\'s names.\n- **Search.** A failing semantic search keeps the results you had and retries in 30 seconds; "Not on any board" refreshes as soon as a card is added; a closed panel no longer searches in the background.\n- **Chat.** Unloading Plexus closes the chat and stops a running answer; focus returns to the question after picking a style or thinking level; the More menu keeps keyboard focus; an input-method Enter no longer picks a suggestion; Stop stops the answer you meant; "Open in Live AI" only closes this chat once Live AI has opened.\n- **Parse motion** always follows the card that started the parse.\n- **Rust helper:** one-click Pair from Roam, with the same Allow dialog as the Python helper.\n\n## 3.26.0 — 2026-10-12\n\nFilters that browse your graph on their own, PDF filters on meaning results, chat tips, and eight bug fixes from a scored bug hunt.\n\n- **Filters work with an empty search box.** Days (created or edited), created or edited by, under a page, has linked references, has children, parsed PDFs, PDFs with highlights, on or not on this board now list matching pages and blocks straight from the graph, sorted as you choose. A filter with no natural limit shows the last 30 days and says so.\n- **PDF filters on Meaning results.** "Parsed PDFs" and "PDFs with highlights" apply to semantic results too; a hit on a PDF\'s Roam page counts as that PDF.\n- **Chat tips.** An empty chat shows "@ a part · [[ or # a page · (( a block · / a command"; click one to start typing it.\n- **Fixes.** PDF names no longer give up for a week when Roam\'s PDF viewer has not loaded yet, and stop reading when you leave the board. Ask AI from the reader names the paper, not the file. Switching PDFs in Read + Outline no longer shows the previous PDF\'s outline or saves a running parse under the wrong PDF, and cancelling a Docling run no longer resets the parse that replaced it. A failed send gives your question back; a chat closed while collapsed reopens whole; the first question is selected so typing replaces it.\n\n## 3.25.0 — 2026-10-11\n\nPoint at a part with @ in the chat, sort and filter search with what Roam knows, and PDF cards that resize and read sharp.\n\n- **@ parts in the chat.** Type `@` to pick a part, a figure, a whole PDF or a mentioned page (`@3`, `@fig`, `@spore` filter the list); clicking a chip inserts it too. The model is told exactly which part each `@Part N` means, and a removed part is flagged instead of sent as a dangling reference. Chips name the PDF by its real title.\n- **Sort search.** Best match, recently edited, recently created, oldest, most linked, most children, longest or A–Z, with the sort key on each row ("edited 2 h ago", "12 refs").\n- **Filter with Roam\'s data.** Created or edited by, created or edited within N days, under a page, has linked references, has children, parsed PDFs, PDFs with highlights, on this board.\n- **PDF cards resize** again, and the cover is redrawn sharp at the new size once you let go. **Image cards** scale their picture with the card.\n- **Real PDF names everywhere.** Letter-spaced banners such as "M A J O R  A R T I C L E" are no longer taken as a title; cards, the reader and chat chips use the paper\'s title.\n- **Roam\'s highlight toolbar** shows whenever a PDF is open in the reader, not only after opening the engine settings.\n- **Faster.** The first sorted search of a query is about twice as fast (one batched read instead of eight queries), browsing with an empty box is about ten times faster, and the "Under page" box waits for a pause before searching.\n\n## 3.24.0 — 2026-10-11\n\nFind a PDF by what it is, search your graph by meaning with Roam\'s semantic search, and talk to Live AI with its full composer.\n\n- **PDFs have names.** A PDF that only lives as a link on a daily page now shows its real title, authors\' journal and page count in search ("A Cumulative Spore Killing Approach… · Open Forum Infectious Diseases · 7 pages · on October 6th, 2026"). Plexus reads the first page once, in the background, only for PDFs the panel lists, and remembers it. Searching its title words, authors or journal finds it.\n- **Search by meaning.** With Roam\'s semantic search on (Settings → Graph), the panel\'s "Meaning" toggle adds results that match what you mean, not only the words, under "By meaning" a moment after the word matches. "Find related" on a card lists notes related to it, ready to drag onto the board.\n- **Live AI\'s composer in the chat.** Mention pages with `[[` or `#` and blocks with `((`; `/` opens Live AI\'s commands and your own `#liveai/prompt` prompts and `#liveai/style` styles; pick the context (this part, the page, linked references, sidebar, daily notes), a style and the thinking level. Tools and agents open Live AI\'s own chat with your conversation.\n- **Dark mode for the chat.** Proper light and dark colours (AA contrast), quiet icon buttons, and your question no longer scrolls under the context bar.\n- **Copy ▾ is back** on parsed parts: every copy format, plus Ask AI and Add to question. The copy menu closes on Esc and outside clicks.\n\n## 3.23.0 — 2026-10-11\n\nParsing shows what it finds as it reads, local engines just run (and say they are free), and Ask AI is a floating chat that looks like Live AI\'s own.\n\n- **Watch the parse.** While a PDF parses, a soft beam sweeps each page and every table, paragraph and figure outlines itself as it is found, on the reader and on the card. A live count ("15 tables · 371 paragraphs · 88 figures") turns into a summary with the time when it is done. With Reduce motion on, only the ring and the count show.\n- **Ask AI on any part.** Hover a parsed part: a small Ask button (a new speech-bubble icon, now used everywhere for Ask AI) sends it to Live AI with the rest of the PDF as context; Copy copies it, tables as a Roam table. Shift-click Ask adds the part to a multi-part question.\n- **A floating Live AI chat.** Ask AI opens a chat window styled after Live AI\'s: the parts you ask about as chips, message bubbles, follow-up questions with page citations, a model picker. Drag it, resize it, and it stays above a full-screen board without the board reacting to it. "Open in Live AI" hands the conversation to Live AI\'s own chat.\n- **Local is free, and it just runs.** Parse uses Docling first when the helper is paired, reads scanned pages in the same run, never asks to confirm, and has no page limits: long scans and long documents are read in batches. Engines are labelled "Free · on this Mac", "Free · in Roam" or "Cloud · uses your credits", and the chip after a run reads like "Docling · free · 110 pages".\n- **Faster scan reads.** The in-browser second reading only checks pages with doubtful words, so a 110-page scanned record reads in about 8 minutes instead of 22. "Read the scan" can be run again on a PDF already read.\n- **PDF fixes.** A PDF dropped on a board is no longer stored as a doubled `{{[[pdf]]: {{[[pdf]]: …}}}}` block (Roam could not show it and Docling got an empty file); blocks already doubled are repaired. An empty file or a rejected job now says so instead of "Nothing matches". A PDF on its own page is titled by its page, and reopening it brings back its fullest read.\n- Parse menus close on Esc and on a click outside; a full-screen board widens again after Live AI\'s docked chat closes.\n\n## 3.22.1 — 2026-10-11\n\n- **Open on board is instant again.** "Open on board" in a connection preview, "Show on board" in a block\'s menu and region links now open the page through Roam. Roam put back the page link these used when it came from a click, so the board waited about six seconds and then opened zoomed in, without the connection selected. It now opens in about 0.2 s with the connection selected.\n- **Pairing survives a reinstall.** The helper token is also kept on this device, so removing and re-adding Plexus in Roam Depot no longer leaves the helper "Running, not paired".\n- **Pair from Roam.** With helper 0.1.1, Pair shows an Allow dialog on the Mac, so there is no Terminal step. The Engines sheet now says what happened.\n\n## 3.22.0 — 2026-10-11\n\nBoards respond at once to zoom, hover, click, drag, edit and undo, and unfolding a board in the outline no longer draws every table.\n\n- **Smooth zoom and hover.** Zooming with the wheel or trackpad no longer stutters: a zoom burst is one gesture, and the board settles once at the end. Moving the mouse over cards no longer makes the page catch.\n- **Faster clicks.** Selecting, deselecting, dropping a dragged card, leaving a card\'s editor and opening or closing the Add panel each paint in about 25–100 ms, down from about 200–300 ms. Board state no longer changes classes on the whole board, which some other extensions\' styles (zotero-roam) turned into a full restyle, and the board ignores Reference Path\'s highlight colours on its own block.\n- **Tables fold under captions.** A table card is now a one-line caption ("Table · 7 rows") with the table folded under it, so unfolding a board in the outline shows one line per table instead of drawing every row (Parse Lab: 3.6 s → 0.24 s). New tables are made this way. "Fold tables under captions" in the board ⋯ menu converts the tables already on a board, with a preview first and one undo for the whole change.\n- **Lighter after zooming out.** Large tables swap back to their picture as soon as you zoom out to the map, instead of staying live for ten seconds.\n- **Faster undo.** Undo and redo repaint at once; badge counts refresh just after.\n- Comment counts on cards load with one small query whatever the size of the board.\n\n## 3.21.0 — 2026-10-11\n\nBoards open instantly, PDFs live on their own pages the way Roam keeps them, Ask AI reads charts and compares parts across PDFs, and images are searchable by colour and by the text inside them.\n\n- **Instant open.** A board paints from a saved snapshot in its first frame, then the live board takes over the same cards without flicker. Cold open in the right sidebar shows real content in about 66 ms (was about 760 ms) and in the main view about 100 ms (was about 850 ms), with no grey placeholder cards. Badges and graph links load right after. Large tables show a picture of their cells instead of a grey "Table · N rows" box.\n- **PDFs on their own pages.** A PDF card can now be a link to the PDF\'s page: the PDF and its highlights live together on that page, as in Roam\'s own PDF annotator, and unfolding a board in the outline no longer opens a PDF viewer for every PDF. New PDFs dropped on a board are placed this way. "Move PDFs to their own pages" (board ⋯ menu) moves the PDFs already on a board, with a preview first and one undo for the whole move.\n- **Ask AI across several parts.** "Add to question" on a table, paragraph, figure, highlight, image or whole PDF, then ask once about all of them from the "N parts · Ask" pill. Answers cite [Part N, p. M], tables come back as real tables, and an answer added to the board links to the cards it used.\n- **Ask AI sees figures.** Asking about a figure sends its picture to a model that can read images (the crop is uploaded to your graph once). **Chart → table** turns a chart into a table card, with the values marked as read from the chart.\n- **Whole-PDF answers find the right pages.** Asking about a whole PDF now picks the parts that match the question from every page, not just the opening pages.\n- **Default model.** Ask AI uses Claude Sonnet (or Gemini) by default and remembers the model you pick. A model that returns an empty answer says so and offers the next one.\n- **Search inside images.** Images and PDF figures can be found by colour ("red", "blue", a #hex value, or the colour swatches) and, with "Read text in images" turned on, by the words in them. "More like this" finds images with similar colours.\n- **Comments on cards.** "Comment…" on a card adds a Roam comment; cards with comments show a count that opens the thread in the sidebar.\n- **Changed since last visit.** Board ⋯ menu: outlines the cards edited since you last opened the board on this device and lists who changed them.\n- **Query cards.** A card holding a Roam query shows its results as a live list; drag a result onto the board as a card.\n- **Daily-note inbox.** Blocks on daily pages that mention a board appear in its "Inbox (N)" pill, ready to place.\n- **Board rule for your own queries.** `window.__plexusDiagram.rules.boardMember` finds the cards of a board in a Datalog query.\n- Newly parsed PDFs show up in search right away.\n\n## 3.20.0 — 2026-10-11\n\nFilter the search panel by type, search inside your parsed PDFs, and ask AI about one table or paragraph with the rest of the PDF as context.\n\n- **Type filter.** The Search tab\'s type list is now a Type button with toggles in two groups: Documents (Page, Block, Board, Daily, PDF, Image, Web link) and Inside PDFs (Paragraph, Table, Figure, Caption, Heading, Formula, Region, Pin), with Show all / Hide all. Your choice is kept per graph. PDF, image and web-link rows show a title, file name or thumbnail instead of the raw macro.\n- **Search inside parsed PDFs.** Tables, paragraphs, figures, captions, headings and formulas of every parsed PDF in the graph are searchable, with a page range ("p. 3-8"). Every word must match, in any order; "quotes" keep a phrase. Results show the part type, page and PDF title. Click opens the reader at that page when the PDF is on the board, otherwise adds the part as a card.\n- **Ask AI.** Ask about one part of a PDF from the reader\'s selection bar, a part\'s menu in the parsed view, a part in search results, or a whole PDF from its card menu. Plexus sends the part, its caption and section heading, the text around it and an outline of the PDF, and asks the model to answer about that part only. Answers stream, cite pages as [p. N] links that open the reader, and can be copied or added to the board as a card with a Source link back to the part. Uses the Live AI Assistant extension: turn on its "Enable Public API" setting. Plexus calls no AI service of its own.\n- The search panel sits above the tool palette, and long result lists keep each row readable.\n\n## 3.19.0 — 2026-10-10\n\nHigh accuracy reads every scanned page with the page model, a finished read follows you to your other computers, and old tables, photographed pages and figures read much closer to the page.\n\n- **Every scanned page through the page model.** High accuracy now reads each scanned page with Qwen3-VL by default (setting "High accuracy page reader": All, or Doubtful for the old behaviour). It is slower, about ten times per scanned page, and much better on photographed, handwritten and old printed pages: a photographed 1881 title page now matches the page 100% (was 3%), and a handwritten 1925 note 100% (was 36%).\n- **Reads are kept in the graph.** After a High accuracy, helper or LlamaParse read, Plexus uploads the read as one file to the graph and notes it on the PDF block, so your other computers load it instead of reading the PDF again. Setting "Keep reads in the graph" (on by default).\n- **Old tables.** Lists with leader dots and page numbers are read as whole tables, pages set in small capitals are no longer tilted before reading, side-by-side and stacked tables are kept apart, and printed leading zeros stay. An 1850 roster now scores 0.84 on cell content (was 0.08), a 1921 hydraulic table 0.94 (was 0.19).\n- **Figures.** The layout model\'s picture boxes are combined with the ink detector\'s: two photographs on one plate are two figures, a shadow over a photographed page is not a picture, and a drawing with one caption stays one figure.\n- **Tested on pages Plexus was not tuned on.** On 35 pages from libraries never used in development, High accuracy now scores 0.80 against LlamaParse\'s 0.82 (3.18.0 scored 0.73), and leads on handwritten pages (0.88 against 0.77).\n- **Rust helper 0.2.0.** The light helper\'s deskew check changed; re-run the helper install to get it.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.18.0 — 2026-10-10\n\nHandwritten letters read closer to the page, a wide old table reads whole, and High accuracy installs on a clean Mac.\n\n- **Handwritten letters.** The page reading now fills every text block on the page, including a stamp, a word in the margin and the signature, and the page is read at its full scan size. Three handwritten 1859–1914 letters now match the page 79–97% (were 64–90%). A handwritten letter takes about 30 seconds in High accuracy.\n- **Photographed lists.** When two readers see a photographed page at slightly different tilts, their words are lined up before they are compared, so a confident name is no longer swapped for a dictionary word. A photographed 1924 roster now matches the page 90% (was 83%).\n- **Wide tables.** A caption row that spans many columns no longer stops the High accuracy table reader early. A 1916 thirteen-column table now scores 0.95 on cell content (was 0.77).\n- **Install.** The High accuracy table reader now verifies against the files Hugging Face serves, so a clean install works (it failed its own checksum before). An existing install downloads the reader once more (about 1.9 GB).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.17.0 — 2026-10-10\n\nHandwritten letters, ledgers and photographed pages read much closer to the page in High accuracy.\n\n- **Handwriting and photos.** When Apple Vision is unsure of a page, High accuracy now reads that page\'s text with Qwen3-VL-8B (Apache-2.0) instead of PaddleOCR-VL, which still reads the tables. Pages of a handwritten dye-recipe book now match the page 92–96% (were 53–71%), and a photographed 1867 letter 89% (was 58%). A handwritten page takes about 15–30 seconds.\n- **Text in the right place.** The page reading is lined up word by word with what Vision saw in each region, so a date, a greeting, a paragraph and a signature each keep their own text, and table cells and figure labels are kept out of the paragraphs.\n- The first such read downloads the model once (about 5.8 GB, checked against pinned SHA-256 hashes). To get it, re-run the High accuracy helper install.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.16.0 — 2026-10-10\n\nLong rosters and old tables printed in pieces read as one table.\n\n- **Rosters and registers.** A roster printed as several pieces down the page, with a section line between them ("Harbor Commissioners for the Port of San Jose, 1913-1924."), is read as one table with that line as a row. Leader dots, a date split across two cells and a lone "Deceased." beside a name no longer become columns of their own. Three 1924 California Blue Book roster pages now score 0.96–0.99 on cell content (were 0.26–0.78).\n- **Old numeric tables.** Totals are matched to their rows after the table\'s shape is repaired, a lone "o" in a column of numbers is read as 0, and a numbered column with one unreadable number is filled from the run. A 1929 NACA viscosity table now scores 0.98 on cell content (was 0.78), and a 1916 Bureau of Mines gas table 1.00 (was 0.91).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.15.0 — 2026-10-10\n\nMore figures found in photographed pages and menus, and more old tables read exactly.\n\n- **Figures and captions.** Small labelled diagrams (a sketch with "G(s)" or "(k)" labels), pictures on a letter, hatched menu illustrations and plates split across two columns are found, and a caption is joined only from text inside the picture, so the next column\'s text no longer leaks in.\n- **Tables.** A section banner split across the width stays one table row, a scientific factor such as "9.806 65 E+00" stays one value, a footnote printed under the bottom rule stays a paragraph, and number formatting is tidied after High accuracy picks its reading. A 1932 NACA table now scores 0.95 on cell content (was 0.67), and NIST unit tables 0.94–1.00.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.14.0 — 2026-10-10\n\nOld printed text and old tables read closer to the page.\n\n- **Printed text on old scans.** Words that Vision reads glued together stay whole, plurals are not shortened to the dictionary singular, and the "Digitized by Google" / HathiTrust stamps are treated as page furniture, not text. On our 1916 Bureau of Mines pages the text now matches the page 97–100% (was 82–92%). A caption line under a wide plate is read and kept.\n- **Tables.** Unit lines under a header, blank leader cells, labels fused to the next word and fragments printed beside a row are put back in the right cells. A 1922 viscometer table now scores 0.96 on cell content (was 0.78), and a born-digital regression table 0.96 (was 0.63).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.13.0 — 2026-10-10\n\nHandwriting and photographed pages read much better in High accuracy, more old tables come out exactly, and every figure on our old-scan test pages is found.\n\n- **Handwriting and photos.** When Apple Vision is unsure of a page (handwriting, a photographed letter or menu), High accuracy keeps Vision\'s reading and also asks the page reader (PaddleOCR-VL) for that page\'s text. Letters, recipe books and field notes now read as prose; name lists and menus stay text instead of becoming tables. A handwritten letter takes about 10–20 seconds.\n- **Tables on old scans.** Rotated column heads sit in their own columns, brackets inside a formula cell are not grid lines, and subscripts, thousands marks, degree signs, group heads and totals are tidied. A 1960 typewritten NASA table now scores 0.98 on cell content (was 0.51).\n- **Figures and captions.** Apparatus drawings with labels, rotated plates with their title along the edge, and pages with two figures are found, and captions printed side by side are split by column. On our 27-page set of 1890–1920 scans every figure is now found with no extras, and 82% of captions are linked (was 55%).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.12.0 — 2026-10-10\n\nPhotographed and scanned pages: figures found inside the page, no invented tables, and more tables read right on old scans.\n\n- **Figures inside photos and scans.** A photographed or scanned page is one picture, so Plexus now finds the charts, plates, sketches and maps inside it from the ink, and links their captions, including chart titles without "Fig." and German "Abb." plates. On our set of 57 newer pages (photos, handwriting, modern documents, mixed layouts) figures are found at F1 0.85 (was 0.39) and half of the captions are linked (was 7%).\n- **No invented tables.** Letters, handwritten notes, photographed title pages, contents lists and the labels inside a chart are no longer turned into tables; a table needs real tabular content (a value column or a header over body rows).\n- **Tables on old scans.** Columns split by partial rules or a short right edge are kept, unit lines and lab-id rows are header rows, and when two readings disagree the one the page text supports wins. On our 27-page set of 1890–1920 scans, High accuracy now reads 74% of table cells exactly (was 39% in 3.11.0).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.11.0 — 2026-10-10\n\nScanned and born-digital PDFs read more accurately: fewer false figures, captions found, more tables right, and a High accuracy read that gives the same answer every time.\n\n- **Figures and captions on scans.** Library stamps, page-edge stripes, rules and text blocks are no longer taken for figures; a real drawing is never dropped, even when its caption runs across it. Captions that start with Fig., Figure, Plate, Abb. or Tafel are linked to their figure, including a caption set sideways beside a plate. On our set of 62 scanned technical pages (1900–1950), High accuracy now finds figures at F1 0.98 (was 0.92) and links 89% of captions (was 77%).\n- **Tables on old scans.** Narrow numeric columns that a spanning header had glued together are split again; contents lists under a plate stay lists; a numbered index or an equation is not turned into a table.\n- **Tables in born-digital PDFs.** Booktabs-style rows, leader-dot columns and regression tables stay tables. High accuracy also asks the layout model about tables on pages with a text layer, and keeps a table only when its words are on the page.\n- **High accuracy.** The same PDF gives the same reading every time (fixed decoding; the model weights are pinned and checked by SHA-256 on first use). The layout model and the reader run only on pages where they can change the result.\n- **Fixes:** a blank High accuracy cell no longer erases text the page shows; a running head is not taken for a plate title.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.10.0 — 2026-10-09\n\nDraw a region freehand, delete an arrow cleanly, read PDFs with LlamaParse, and read old scans far better on your own Mac.\n\n- **Image regions.** Regions sit exactly on the picture, even on a tall card with empty space below the image, and stay there after a redraw, resize or zoom. Draw around a part of an image with the pen (press P while marking, or pick Pen): the outline follows your hand and is saved in the freehand format Roam Plexus also reads. An arrow to a region enters the picture and stops on the region\'s edge, and hovering or selecting that arrow outlines its region in blue.\n- **Deleting an arrow cleans up.** Deleting an arrow (Delete, Backspace in its empty label, the toolbar trash, the right-click menu or Cut) also deletes the region it made, when nothing else uses that region. One ⌘Z brings both back.\n- **Arrow toolbar.** The toolbar for a selected arrow is about 290 px wide instead of 800: direction, colour, label and delete stay on the bar; style, width and the rest open from small menus. It sits clear of both cards the arrow connects.\n- **LlamaParse (cloud).** Read with LlamaParse sends a PDF to LlamaParse with your own key, after a confirm that shows the tier, the page count and the cost (Agentic is 10 credits, about $0.0125, a page; re-reading within 48 hours is free). Without a local helper it goes through a relay that stores nothing. Plexus keeps LlamaParse\'s tables and text and uses its own figure boxes where it has read the page, which scored better than LlamaParse alone in our tests. Mistral OCR is there as a second, no-install choice.\n- **Local helper.** The default helper is now a 15 MB program (was 1.1 GB) that reads scans with Apple Vision as well as the old one did. Docling stays available as an add-on (`install.sh --docling`). A beta High accuracy read (`install.sh --docling --vlm`, about 2 GB of models) adds a layout model and PaddleOCR-VL for tables.\n- **Old scans.** Typewritten and hand-ruled tables, hand-drawn plates and their captions, two-column pages, small-caps titles, patent drawing sheets and faded typewriting all read much better: on our set of 1900–1950 technical scans, figures found went from 0.49 to 0.98 and text errors from 6% to about 2%.\n- **Fixes:** the High accuracy read never replaces a table with a worse one; sideways margin titles are not headings; titles never fall back to "PDF" after a cloud read.\n\n## 3.9.0 — 2026-10-08\n\nLink back to the PDF, copy the way you mean it, and point arrows at anything: a cell, a row, a region of an image, a PDF pin, or another arrow.\n\n- **Source pins.** Turn on "With source" in a chip\'s ▾ menu (or hold ⌥ for one drag or click) and the card gets a pin to the exact spot in the PDF: a `{{[[plexus-pin]]}}` block under the PDF that shows the page crop wherever Roam renders it, plus `Source:: ((pin))` on the card. Click a pin for a larger crop, the surrounding paragraph, Open in reader (jumps and flashes the spot), Sidebar and the boards that cite it. One ⌘Z removes the whole gesture.\n- **Copy menu.** The copy button beside a parsed box now opens a menu (▾, right-click or long-press): Copy, Copy as plain text (⇧⌘C), Copy as card (⌥⌘C, pastes onto a board as a real card), Copy with source (⌥⇧⌘C, writes the pin), Copy crop as image, Copy link (opens the reader at the pin). Figures copy as an image with their caption.\n- **Arrows to anything.** Start an arrow on a Roam Grid or table cell (Connect) or a page-card row (⌥-drag). Point at part of an image: hold ⌥ when you release over it and drag a box, or ⌥-drag on the picture to start from a new region — a plain drop on an image still points at the card. Arrows can end on a PDF pin or on another arrow\'s label. Each end is a real block, so the connection reads `((cell)) → label → ((region))` in Roam, and the block shows a "⇢ N on <board>" chip elsewhere in Roam that opens the board centred on that arrow.\n- **Figures from complex PDFs.** Multi-panel figures become one figure with their caption; patent drawing sheets are found; a text page is never one giant figure; boxes stay on the page and inside their column; contents lines are not captions. Dragging a figure makes an image card sized to the crop, with the caption as alt text.\n- **Fixes:** cards move when dragged at high zoom (including table and grid cards); arrows start from grid-table cards; the arrow label editor is one field and no longer makes table cards flicker; paragraph copy works and says so when it cannot; the reader keeps your zoom when it jumps and fits the width again on current Roam.\n- **Docs:** a "Which engine" table compares the built-in parser, in-browser reading, the local helper and the coming cloud engine.\n\n## 3.8.0 — 2026-10-08\n\nPDFs on the board feel finished: clean cards with real titles, a proper Quick Look, a reader that opens where you expect, and scanned pages read in the browser without freezing Roam.\n\n- **PDF cards.** A small highlighter button with the highlight count replaces Roam\'s big white "Add highlights…" button; the title gets the room. Hover shows solid Open / Parse pills that stay readable over any cover and move above the dock and toolbar. "1 ref", not "1 refs"; one-page PDFs show no page arrows.\n- **Real titles.** Cards, the reader, the PDF switcher and Quick Look show the paper\'s title from the largest type on page 1 — not the journal banner ("Science of the Total Environment"), not a running date ("22.12.2005"), not a table note. Titles appear at rest, read in the background one PDF at a time, and saved titles show at once. Run-together words in a title are split when the word list is on this device ("Summaryofreportedcasesper" → "Summary of reported cases per").\n- **Quick Look (Q)** shows the card\'s title, opens at the card\'s page (page 1 by default), turns pages with a pill and the arrow keys, and falls back to Roam\'s reader when a PDF will not load.\n- **Open and Parse.** The reader keeps the board at least 360 px wide, centres the card in what is left, and themes its PDF switcher. Parse opens at the card\'s page with the parsed boxes; on a narrow reader the outline is a tab, starts at the top, and rows are one line. Copy buttons on parsed boxes show on hover beside the box (never under its chip) and confirm with "Copied"; a figure copies as an image with its caption; tiny marks get no box; and the dock and card toolbar fit a narrow board (extra tools behind "…") without covering the minimap.\n- **Reading order.** A sidebar column next to an abstract no longer interleaves with it line by line (the column gap is measured beside the column, and full-width rules separate bands).\n- **Superscripts.** Footnote marks land between the right words ("Kleshchev¹, Boyd¹˒²", "whole zone³" linked to its note); unit superscripts like cm² stay inline.\n- **Scans in the browser.** In-browser reading now runs in a background worker: a scan read no longer freezes Roam (longest pause 23 s → 0.3 s on a dense table page). Doubtful text lines are re-read up close and checked against a word list (the CDC 1980 title now reads exactly), centred cells in wrapped rows stay in their row, and the page is rendered the same way the reader shows it.\n- **Fixes:** covers never go blank after heavy zooming; a reopened scan keeps its read; PDFs parsed by an older version are re-parsed quietly on open (scans you read are kept); left/right docks keep their tools; the header highlight count updates; no repaint loop or per-frame layout work while panning with a selection.\n\n## 3.7.0 — 2026-10-08\n\nParsed text you can see and copy, scans read without installing anything, arrows to table cells, PDF footnotes that work in Roam, and typing that never drops a key.\n\n- **Parsed text shows on the page.** Every block the parser found gets a soft gray box with a copy button (tables copy as Markdown). Boxes now fit sideways tables exactly (the old outline was drawn in the wrong frame on rotated pages). "Show parsed" in the reader\'s mode bar turns them off.\n- **Read scans with nothing installed (beta).** Without the local helper, Read text reads a scanned page in the browser: 39 MB of models downloaded once from this site and cached, then about 20 s for a dense table page. Shaded table rows and slightly tilted scans are handled; doubtful cells are re-read up close. On a 1980 CDC table scan: cell F1 0.922 (the helper: 0.957). The helper stays first when it runs. A read scan reopens with its boxes, table chips and title.\n- **Click to place.** Insert from a chip (Roam Grid, Native, Flat, Card, Figure, Section) now attaches a preview to the pointer; click the board to place it, Esc to cancel. "Insert beside PDF" keeps the old behaviour. The preview stays readable when the board is zoomed far out, with a dashed outline showing the real size.\n- **Arrows to a table cell.** Point an arrow at one cell of a Roam table or a Roam Grid table, the way arrows already point at a block: the cell lights up while you connect, the end follows the cell through scroll and zoom, and clamps with a marker when the cell leaves view.\n- **PDF footnotes in the Footnotes extension\'s format.** Marks like ¹, ** or (3) become `#sup^^[(N)](((note)))^^` aliases with the notes under the page\'s `#footnotes` block, numbered after the ones already there — in paragraphs and in table cells (Roam Grid and native). Setting "PDF footnotes": Footnotes extension / plain / off.\n- **Roam Grid import.** With Roam Grid 0.18.5, "Roam Grid: Import from a PDF on this page…" turns a PDF table (born-digital or scanned) into a grid, through `PlexusDiagram.tablesFromPdf`.\n- **Fixes:** keys typed right after making a card are kept and land in order (they were lost for up to a second); the right-click menu opens at the pointer; the board never scrolls under the reader; the board bar and the card toolbar stay one row in a narrow board (extra tools move to "…"); folded cards are header-high and a folded table says "Table · N rows"; PDF titles skip junk metadata ("I", "Untitled") and fill the PDF switcher as they are found; copy buttons never stack.\n\n## 3.6.0 — 2026-10-07\n\nThe PDF page is the workspace: select, copy, highlight and drag text straight off the page — scans included — plus structure chips, a smoother drag, setup without dead ends, and office files on the board.\n\n- **Text on every page, scans too.** A scanned page gets an invisible text layer from the local helper\'s OCR. Select across the page image, copy it, or press a colour in Roam\'s own highlight tip: the highlight is a real Roam block, also on scans. A read scan reopens with its text in about a second, no new read.\n- **Selection bar**: Copy · Card · Quote · drag handle, placed beside Roam\'s tip, never over it.\n- **Card-shaped drag.** Dragging a selection, a highlight or an outline row shows a ghost of the card that will land, and drops exactly where the ghost is.\n- **Structure chips on the page.** Hover a table: "Table 7×7 · Roam Grid ▾" (Native, Flat, Copy as Markdown, Card). Figures, sections, lists and formulas get their own chip. Hold Shift to see the reading order.\n- **Read / Read + Outline.** The Parsed tab became an Outline: an index of headings, tables and figures with page numbers, filters and bulk actions. Every PDF is parsed quietly when it opens (no writes, no network), so chips and the title are there in Read mode.\n- **No dead ends.** A one-line strip under the reader says what is happening and always has a button. The Engines panel (pane ⚙) shows each reading engine with one action. The local helper installs with one copied command and pairs with one click — no token to paste.\n- **Word, Excel, PowerPoint, OpenDocument, EPUB and CSV on the board** (anydoc, WebAssembly, loaded from this site only when you convert, then cached): a document becomes section cards, a deck one card per slide, a sheet a Roam Grid table.\n- Roam Grid table cards grow with the card; the reader pill hides in the outline; titles come from the parse when the PDF has none.\n\n## 3.5.0 — 2026-10-07\n\nParse a PDF into clean blocks and real tables, on the board, with merged cells, and better than Heptabase on tables.\n\n- **Parse / Parsed / Both** in the reading pane. The built-in parser needs no install and reads a 30-page paper in under a second: headings with their levels, paragraphs in two-column reading order, lists, footnotes linked to their marks, figures and formulas as page crops, and tables, ruled or borderless, with merged cells and header rows. Running headers, footers and page numbers are removed and listed, never silently dropped. Results are cached on this device; nothing is written to your graph until you insert.\n- Hover a parsed block and its region lights up on the page; click to jump there. Each table shows the grid it found over the PDF with a confidence chip, and you can drag a column boundary to fix it.\n- **Insert, send, or drag.** Insert below the PDF, send sections to the board as cards, or drag any block or table onto the board. A table becomes a table card: with Roam Grid 0.18.3+ it keeps merged cells, header rows, alignment and column widths (one Roam write, one undo); without it, a native Roam table. Make highlight turns a parsed passage into a Roam PDF highlight.\n- **Optional local helper** (`tools/parse-helper`, Docling on your Mac): formulas as LaTeX, OCR, and **Read the scan** for scanned pages — Apple Vision word boxes and the scan\'s own ruling lines go through the same table engine, numbers misread by OCR are repaired and re-read cell by cell.\n- Measured on the ICDAR 2013 table benchmark (67 government PDFs): built-in table structure F1 0.979 and exact-cell F1 0.932, against Docling\'s 0.865 and 0.795, in 2.5 s for all 67 against 5 minutes. On a 1980 CDC table scanned as an image only: structure 1.000 and cell F1 0.957, against Docling\'s 0.082. Small scanned type can still misread words (e.g. disease names in 6 pt print); numbers are checked against their column.\n- Roam Grid tables in cards scale with the board and get the whole card (no Roam row spacer, no break-out padding); columns are sized from the text.\n- The reading pane title falls back to the parsed title; the tool dock stays left of the pane.\n\n## 3.4.0 — 2026-10-06\n\nBoards that wear your Roam theme, edits that hold still, wider PDFs, and Roam tables on the board.\n\n- Plexus follows the theme your graph is using: the canvas, cards, text, borders and links take Roam\'s own colours, light or dark, and change when the theme does. Setting **Theme**: Follow Roam (default) or Plexus. Pastel sections are stronger in light mode.\n- Editing in place holds still. In page cards the bullet and fold arrow stay in the gutter and nested rows keep their indent; note, block and task editors keep the resting line height; a sticky no longer shows a blue box while you type. Links keep the same colour at rest and in edit.\n- Roam tables on the board. A card holding a `{{[[table]]}}` shows Roam\'s table, scrolls sideways when it is wider than the card and is never clipped. Enter or a double-click edits a cell with Roam\'s editor; Tab, arrows, typing, the wheel and right-click stay with the table while you work in it. New **Table** tool (B) and a **Table** item in the canvas menu add a 3×3 table in one undo. With Roam Grid installed, an enhanced table works inside the card, and **Open grid** shows it at full size.\n- PDF cards can be as wide as you like (up to 4000 px), and a large card redraws page 1 sharp instead of stretching a small cover. The pane title uses the PDF\'s own title, never a storage path; a zero highlight count is hidden; the format bar no longer covers the pane; a slow PDF shows its cover until the first page paints.\n\n## 3.3.0 — 2026-10-06\n\nEdit in place without the card changing, PDFs you flip through on the board, PDF dark mode, and three Heptabase looks.\n\n- Editing a note, block, task or page card no longer changes how it looks: the text stays in the same place, at the same size, with the same line breaks, at every zoom. Roam\'s bullet, its spacer and the reference-count slot no longer squeeze the text into a narrow column, the editor grows with its text, and the card keeps its size. Double-click a word and the cursor lands on it. With Roam Caret installed, its caret follows the board\'s zoom inside the card.\n- Clicking a PDF card selects it, as in Heptabase: the card becomes a small reader you flip through with the wheel, ← and →, or the `‹ 3 / 9 ›` bar. The side pane opens only from **Open**, a double-click, Enter, the card menu, or a highlight.\n- PDF pages in dark mode (setting **PDF pages in dark mode**): Dim (default) softens white pages on a dark board, Invert turns them dark, Off keeps white paper. Highlights stay readable.\n- Three Heptabase looks, all off by default: **Canvas** flat grey instead of dots, **Section fill** pastel, **Highlight cards** tinted instead of a colour bar. In dark mode they show as coloured borders.\n\n## 3.2.0 — 2026-10-06\n\nPDF round 2: covers at every zoom, page 1 without opening the PDF, pages at reading width, one open per click.\n\n- Zoomed out, a PDF card is still its page. Map and overview paint the saved cover on the card itself, as in Heptabase at 11-17 %, with no image element, title or strip at those tiers.\n- A PDF you have never opened gets a cover in the background: a quiet board (1.5 s after first paint, idle, one at a time, at most three per visit, never while you move or read) draws page 1 with Roam\'s own PDF engine, so nothing is opened or written. A capture that comes out blank is thrown away. Setting **Prepare PDF covers in the background** (on).\n- The reading pane fills its width: Roam\'s reader no longer stops short of the pane\'s right edge (its block row kept a separator and a reference-count slot beside the PDF). After the first page paints, the page is set to page width (through the viewer when it is reachable, otherwise by stepping Roam\'s own zoom buttons until the page fills the pane). Your own zoom is kept; resizing the pane refits.\n- One click on a highlight card does one thing. A plain click opens it in the reader (setting **Highlight click opens**: Reader or Sidebar). Shift-click opens Roam\'s sidebar. The chip\'s **▾** lists Open in reader, Open in sidebar and Open page in main. Nothing opens twice.\n- Selecting a PDF card never mounts Roam\'s reader inside the card. **Read inside the card** in the card menu is the one way to the inline reader; **Show the cover** takes it back, and opening the pane does too.\n- The fullscreen tab strip shows only from two tabs up, is 28 px tall, and reserves nothing while hidden. Tabs, their persistence and Cmd+1..9 are unchanged.\n- The reader\'s pages float on a soft grey bed in light mode; dark keeps the chrome colour.\n\n## 3.1.0 — 2026-10-06\n\nPDFs that read like Heptabase, page cards that hold still while you edit, and tools that do what your hand expects.\n\n- PDF cards show the page itself: white paper, no text on the face. Hover for the title, highlight count and page chips, and an **Open** pill; double-click or Enter opens it too. A thin strip on the edge marks where the highlights are; click a mark to open that page. The cover is saved on this device the first time you read the PDF (nothing is written to your graph); until page 1 has been on screen, the card shows the last page you read. Setting **PDF card cover**: first page or last page read.\n- The PDF opens in a pane beside the board with one slim header (title, other PDFs on the board, highlights, Roam\'s tools, close) and the pages at reading width. A floating pill drives Roam\'s own zoom out, zoom in, fit width and search, and shows `3 / 9`. Roam\'s toolbar is still there behind the tools button. The card you are reading gets an outline until you close the pane.\n- Highlights moved into a drawer at the bottom of the pane: colour and page chips, search, and Note, Place and Locate on hover. A new highlight pulses in the list and offers **Place on board** for a few seconds. Hovering a highlight card flashes its mark in the reader, and hovering a row pulses its card.\n- Highlight cards are quote cards with a colour bar and a source chip (`title · p. 3`).\n- Editing a page card keeps the card exactly as it looked: same rows, same spacing, nothing rewraps or moves, and the cursor lands where you clicked. One click on an already selected page card starts editing there.\n- Hand tool: drag a card to move it, drag empty board to pan. In Select and Connect, dragging empty board pans too; Shift-drag draws the selection box and Alt-drag the lasso. Setting **Drag on empty canvas** brings the old box-select back.\n- With Roam Caret 0.6.6 installed, its caret now shows inside cards at every zoom (Plexus tells it when the board moves).\n- The board bar, tab strip, legend and Properties are solid, and an empty tab strip no longer shows.\n- New PDF cards are 240 × 320.\n\n## 3.0.0 — 2026-10-06\n\nPlexus 3.0: the 3.x roadmap is complete. This release makes large boards open fast, makes every new surface usable from the keyboard, caps every bulk gesture at what one Roam undo can take back, and documents the data model and module contracts as built.\n\n- Large boards open fast. A board with 300 cards, 20 sections and 150 connections shows its cards in about 360 ms and is idle by about 450 ms (it was about 1.3 s, with long pauses after the first paint). Card reference and board counts now come from one indexed read instead of four searches across the whole graph, and fullscreen no longer forces a page layout in the middle of opening.\n- Keyboard: trail stops in the panel take focus; Alt+↑ and Alt+↓ move a stop and Enter walks the trail from it. The region overlay nudges with the arrow keys (Shift for 10 px), Enter confirms and Esc cancels. The status, halo, why and task popovers take focus when they open, move with the arrow keys and give focus back on Esc. Trail strips, crops, PDF chips, timeline rows and the resurface panel open with Enter. Every button has a name, and focus rings show in light and dark even when another extension hides outlines. The `?` sheet lists the new keys.\n- Undo: every bulk gesture stops at 45 changes so one Roam undo takes it back, with a toast that says how many were added: adding cards to a trail, a new trail from a selection, landmarks on a selection, and Lay out by date. README, Limits has a table of writes and undo steps per gesture.\n- Fixed: moving a trail stop down (by keyboard or by dragging) did nothing.\n- Docs: `docs/spec-plexus-3.0.md` (every block kind and prop key, what is stored where, decorated macros, the public API, interop) and `docs/api-plexus-3.0.md` (module contracts). The README follows the 3.0 order and has an integrations table. `tools/spec-keys.mjs` and `tools/doc-check.mjs` fail when code and docs drift.\n\n## 2.21.0 — 2026-10-06\n\nTrails, landmarks, a timeline, strength and dust lenses, source chips, and an Integrations section in settings.\n\n- Trails: a named path through cards with a note at each stop. Add a card to a trail from its menu; Walk trail plays it stop by stop in present mode. A trail is a block under the board\'s collapsed `Trails` child, so `((trail))` pasted anywhere in Roam shows as a strip of stops you can click. The panel has a Trails tab.\n- Landmarks: make a card, sticky or section a landmark and it keeps a large glyph at every zoom, including the overview, and shows on the minimap. Walk the board tours landmarks left to right, then down, or along a trail.\n- Timeline in the Info tab: the daily pages that mention any card on the board, with a count per day; click a day to open it. Lay out by date can now place cards by the day they were first or last mentioned, not only by a date attribute.\n- Strength and Dust lenses (More menu). Strength draws a connection thicker when its two ends are referenced a lot, share other boards, and were edited recently; hover a line to see why. Dust dims cards untouched for 6 months, 1 year or 2 years. Both are views: nothing is written, and turning them off puts every line and card back.\n- Source chip: a highlight dragged from an `Articles/` or `Media Captures/` page shows the page title, and the author when the page has an `Author::` line. Click the chip to open the page in the sidebar. Renaming the author updates the chip.\n- Settings has an Integrations section: Better Tasks, Task Status Tags, Roam Plexus, Compass and the colour highlighter, each shown as detected (with its version) or not installed. It updates when one of them loads or unloads. Switches turn each integration off; with "Roam Plexus and Compass" off, Open in Compass is hidden and drawing cards stop asking Roam Plexus for thumbnails.\n- Kanban card titles no longer show the status tag, and lane counts have a space before them.\n- Fullscreen tabs drop boards that were deleted.\n\n## 2.20.0 — 2026-10-06\n\nStatuses, journal, fullscreen tabs, touch, and a round of reliability work.\n\n- Task statuses (with Roam Task Status Tags 0.9.0 or later loaded). A task card shows its status as the same glyph Task Status Tags draws on the checkbox (Active, Waiting, In Review, Holding, Incubating, Alert, Cancelled) and as a chip. A small ring left of the checkbox opens a status chooser; Shift-click removes the status. The card menu and a multi-selection have Status ▸ (up to 45 cards at a time). Every status change is written by Task Status Tags, not by Plexus. Without it, the glyphs still show from a built-in table and the ring is not there.\n- Kanban "Lanes: Status": one column per status, plus No status and Done. Dropping a card on a column sets that status; dropping on Done completes it the same way the checkbox does. `[` and `]` move a focused card one column.\n- Journal tab in the panel: the day\'s top-level blocks with a day stepper. Drag a row onto the board for a card. Looking and stepping write nothing.\n- Fullscreen board tabs: boards you open while fullscreen collect as tabs above the board bar (up to 9). Cmd+1 to Cmd+9 switch. The tabs come back the next time you go fullscreen in this graph.\n- Touch and tablet: pinch to zoom, two fingers to pan, long-press for the menu, larger resize grips under a coarse pointer.\n- PDF highlights: a Note button on a highlight card opens its note the way Roam\'s own note button does (in the sidebar, focused), creating the note block only when there is none; one undo removes it. The pane\'s PDF switcher names a PDF without highlights by its page, and the arrow keys and Enter move through the list.\n- New drawing (Roam Plexus) is one undo step with its card.\n- Fixed: Plexus no longer replaces Roam\'s global `pull` function. Since 2.14.0 it answered other extensions\' reads from its own cache. After updating, reload Roam once to clear the old copy\'s replacement.\n- Fixed: a board shown in its own linked references, or in the right sidebar, no longer goes fullscreen a second time on top of the main board (clicks and drops went to the hidden copy).\n- Developers: `node tools/live/smoke.mjs "Readwisenotes - "` runs a ten-step live check and cleans up only its own blocks; callback errors are counted and a callback that keeps failing is paused for a minute (Settings shows "N errors" when there are any); `npm run size` prints the bundle report.\n\n## 2.19.0 — 2026-10-06\n\n- Clicking into a page card no longer changes how it looks. The editor keeps the card\'s own text size, row spacing, indent and line wrapping. Roam\'s bullets, guide lines and extra scrollbar stay hidden, and the row you clicked stays where it was.\n- Drag a highlight straight out of the PDF onto the board, as in Heptabase. Hover a highlight in the reading pane (the cursor becomes a hand), then drag it onto the board: a card lands where you drop it. A highlight that is already on the board pulses instead of being added twice. A plain click on a highlight still opens Roam\'s highlight menu, and selecting text to make a new highlight works as before.\n- Clicking a highlight in the pane\'s list, or the page footer on a highlight card, scrolls the PDF to that highlight and flashes it, not just to the top of its page.\n- The PDF reader fills its part of the pane. There is no longer a second scrollbar around it, and Roam\'s toolbar (highlight tools, zoom, page number) stays in view.\n- The link legend (the chips that turn link types on and off) sits under the board bar, beside Properties, instead of on top of the bar\'s buttons.\n- While you edit a page card, hovering a row shows a faint bullet in the margin; drag it to move the block, click it for Roam\'s block menu.\n- A board that is open in the right sidebar while the main window is zoomed into the same board stays in the sidebar. Before, both copies went fullscreen and the sidebar copy covered the main board, so clicks and drops on the board did nothing.\n\n## 2.18.0 — 2026-10-06\n\nPDF highlights closer to Heptabase (roadmap P27), page cards you can edit in place, and two speed and freshness fixes:\n\n- Open reader on a PDF card opens a reading pane beside the board instead of inside the card. The card stays a cover. Drag the pane\'s edge to resize it; on a narrow board it sits below.\n- The pane lists every highlight in that PDF with its colour, page, and note. Filter by colour, page, or text. Place puts one card on the board; a highlight already on the board pulses instead of being added twice. Drag a row onto the board for a card at that spot.\n- A highlight card\'s footer opens the pane at that highlight\'s page and flashes the card. The page holds after Roam restores the last page it showed.\n- A note under a highlight (a child block) shows on its card and follows edits.\n- Clicking into a page card edits it in place. The card keeps its size and look; the row you clicked gets the cursor; Escape returns to the same view.\n- A `((ref))` card follows edits to its source, including edits made while the card was off screen or the board was closed.\n- Graph links are drawn after the board\'s first paint, so opening a board feels faster.\n- The colour tooltip on a highlight now says what changes: the card and the list follow the tag, the mark inside the PDF keeps the colour Roam painted.\n\n## 2.17.0 — 2026-10-06\n\nFeel instant (roadmap P26), after the claude.ai speed work:\n\n- Going back to a board you just left is instant: the last two boards stay ready (paused, nothing running) and come back as they were, fullscreen included, with no rebuild.\n- A board opens with a quick sketch of its last layout while the real board loads.\n- Hovering a board chip, a board card, a breadcrumb, or a link to a board quietly reads that board ahead of the click.\n- Cards load in small batches nearest the middle of the screen first, so a big board never freezes the page.\n- Selecting a card no longer touches every other card (the same cost on a 300-card board as on a 40-card one).\n- Faster text checks on every card (tags, regions, attributes, diagram detection).\n- Cards and page rows keep their size while their content loads, so nothing jumps.\n- Optional speed log in settings (off by default): open time, click time, pan smoothness, Plexus long tasks.\n- Developers: `npm run perf:ratchet` keeps measured counts from getting worse; a hidden `speed-flags` setting turns each speed feature off without a release.\n\n## 2.14.1 — 2026-10-06\n\n- Typing stays light while a board sits in an open right sidebar. Plexus read Roam\'s whole sidebar window list every 400 ms (about 6 ms each time with 140 windows); it now reads the window\'s own open/closed arrow instead.\n\n## 2.14.0 — 2026-10-06\n\n- PDFs, videos, tweets and other heavy embeds on a card, a page row or an outline row show a poster until you open them. Only one stays live per board.\n- A board you scroll away from, a collapsed sidebar window, or a board under a closed block stops working in the background and comes back where you left it.\n- Opening a board reads Roam about six times less (about 24 calls instead of 155 on a 39-card board), so other extensions keep their share of Roam\'s limit.\n- Typing in a card updates that card only. Typing on a page that is a page card updates the changed row only.\n- Typing outside a board keeps the board open instead of closing and reopening it.\n- Panning no longer measures every arrow handle on each mouse move.\n- Board chips at the top of a page are placed once per frame instead of scanning the whole page for every change.\n- A live speed check for developers: `node tools/live/perf-gate.mjs`.\n\n## 2.13.2 — 2026-10-05\n\n- A board in the right sidebar opens as the board. Outline is still in the mode bar, and the last choice is remembered on this device.\n- Outline rows render when they scroll near the window. A row that scrolls far away unmounts and keeps its height, so a PDF lower down does not stay open.\n- Clicking and panning a board stays fast in a window that has been open for days. Old copies of a board no longer keep listening after they close, and loading Plexus again cleans up an earlier copy that never unloaded. One click had been waking thousands of leftover copies.\n- A board that fails to open waits before trying again, instead of retrying every 400 ms.\n\n## 2.13.1 — 2026-10-05\n\n- An image card keeps its picture at map zoom. A collapsed or empty card still shows its title.\n- A card that cites part of an image shows that crop. A region inside the card still uses its own block.\n\n## 2.13.0 — 2026-10-05\n\n- Every diagram opens as a Plexus board by default. Nothing is saved until you change the board. Your first edit writes the board marker in the same undo step, and folds the outline when Collapse the outline is on.\n- A diagram that already has native shapes stays Roam\'s own. An Open as Plexus board button over it imports the shapes and arrows.\n- Settings has Every diagram is a Plexus board. Turn it off to open only diagrams you enhance or create with New whiteboard here. Turning it off gives the native diagram back to boards you have not changed.\n- Plexus: Restore native diagram now sticks, even with the setting on. Plexus: Enhance clears it.\n- Fixes from a review of 2.8 to 2.12:\n  - A page that is a card on a board no longer throws or loops when it opens. Its board chip sits under the page title.\n  - The references drawer lists top-level blocks again.\n  - Cutting or duplicating an image card keeps its regions. Deleting one asks first and shows how many regions it has.\n  - Clearing a connection\'s why no longer deletes a note that has children.\n  - An open PDF reader stays mounted while it is in view, and arrows meet its edge. Page chips refresh when highlight cards change.\n  - Encrypted-graph PDFs (`.enc`) show their highlights.\n  - Each image highlight reuses one regions block.\n  - Fewer reads on large boards: highlight watches are capped, block props are read only for highlights, and the Info panel counts references without pulling them all.\n  - Memory lane arrows follow the cards. Suggested lines follow a dragged card, and their menu sits at the line.\n  - Escape works on a full-screen board. Annotate is one undo step.\n  - Popovers close when the pointer leaves. Unload no longer removes Roam\'s own nodes.\n- The command palette stays two entries.\n\n## 2.12.1 — 2026-10-05\n\n- Double-click a connection label to edit the label and a why note. Enter saves both. The outline chip adds "because …". An empty why writes no child.\n- Shift+T opens a memory lane. Play fades cards that did not exist yet. A snapshot tick restores that layout and writes nothing.\n- The references button on a block card lists blocks that mention it, grouped by year.\n- The links menu can draw dotted lines for shared page references. Connect makes the connection. Link text wraps the mention.\n- Plexus Commands has Resurface here. It inserts a button that lists cards from a week, a month, or a year ago. The command palette stays two entries.\n\n## 2.12.0 — 2026-10-05\n\n- Hover the info button on a card or a connection to see when it was made, the board, the section, cards from the same day, and how often it is referenced. A block on a board shows one chip per board. Hover the chip for a map. Click the chip to open that card. Nothing here writes. The command palette stays two entries.\n\n## 2.11.4 — 2026-10-05\n\n- A PDF card shows one chip per page that has a highlight on the board. The badge is the count. A click pulses those cards. A double-click opens that page in the card reader. An arrow into a highlight shows the page at the tip. A highlight in the outline says On board when that highlight is a card. None of these write. The command palette stays two entries.\n\n## 2.11.3 — 2026-10-05\n\n- Open in reader on a highlight card opens that page in the PDF card on the same board. The mark stays in view. If that PDF card is not on the board, Roam opens the highlight and a note says to click it. The click does not write. The command palette stays two entries.\n\n## 2.11.2 — 2026-10-05\n\n- Add highlights on a PDF card places the ones you pick, as a grid or a column. One undo removes them. Dragging a highlight bullet onto the board makes one card. Dropping a date asks before adding only the highlights under that date.\n- An area highlight keeps the picture\'s shape. Mark region on that card stores a region under the highlight. The page mark keeps the colour Roam painted.\n- The tag lens can show one highlight colour. The command palette stays two entries.\n\n## 2.11.1 — 2026-10-05\n\n- A block ref of a PDF highlight is a card. It shows a colour bar, the passage or the area picture, and the page. Changing the colour tag updates the bar. A block that is not a highlight stays a normal ref. The command palette stays two entries.\n\n## 2.11.0 — 2026-10-05\n\n- A pdf block on the board is a card. The cover shows the file name and the highlight count. Open reader mounts Roam\'s own reader. Interact lets you use that reader. Escape or a board click puts the shield back. A second reader closes the first. Moving the card does not change the PDF settings. The command palette stays two entries.\n\n## 2.10.3 — 2026-10-05\n\n- With Compass loaded, a card menu can open Compass on that page. Compass can open the board that holds the card, and asks which board when there are two.\n- An image card can start an empty drawing beside it. The connection reads annotates. A note says to drop the image into the drawing, and it stays up after the drawing opens. The outline chip names the drawing. Without Roam Plexus that row stays hidden. The command palette stays two entries.\n\n## 2.10.2 — 2026-10-05\n\n- A block ref of a Roam drawing shows the drawing. Regions lists that drawing\'s regions, and picking one adds a reference on the board. New drawing here creates the drawing and a reference card. The drawing block is not rewritten. Without Roam Plexus the new drawing is still an ordinary drawing. The command palette stays two entries.\n\n## 2.10.1 — 2026-10-04\n\n- window.PlexusDiagram lists boards on a page, boards that show a block, and the cards and views on a board. It can open a card or a saved view, add one card, and return a small PNG of a board. Opening and the picture do not write. Adding a card writes that one block.\n- A block ref of a Roam Plexus region shows the caption, a crop, Open drawing, and Open in sidebar. Open drawing uses Roam Plexus. If Roam Plexus is missing, the card is an ordinary block ref. The command palette stays two entries.\n\n## 2.9.6 — 2026-10-04\n\n- An image card shows a small region count when it has regions. The card menu lists them: Go, Copy ref, Rename, and Delete. Rename changes only the caption. Delete asks when another block still references the region, and can open those mentions. Badges off hides the count. The command palette stays two entries.\n\n## 2.9.5 — 2026-10-04\n\n- Hover an image crop for a larger preview, the picture dimmed and the region lit. Click opens that image on its board, zoomed to the region, or scrolls the outline to the image and pulses the region. Shift-click opens the board in the sidebar. An inline view draws a small map. Hover enlarges it. Click opens the board at that view and pulses the highlighted cards. Shift-click opens the board in the sidebar. Neither click writes to the graph.\n\n## 2.9.4 — 2026-10-04\n\n- On an image block, the block menu item Plexus: Mark image region lets you drag a rectangle. Confirm stores the region under the image, copies a block ref, and toasts. Escape writes nothing. A plexus-region image button in the outline, a block ref, an embed, the sidebar, and linked references draws the crop at most 160px tall, with a 1px border and no shadow, and hides that button. A Roam Plexus region such as a rectangle is left alone. The command palette does not gain an entry.\n\n## 2.9.3 — 2026-10-04\n\n- On an image card, Mark region lets you drag a rectangle on the picture and add a short caption. Confirm stores that region under the image, copies a block ref, and toasts that it copied. The first undo removes the region. The next undo removes the empty container. The card stays put, and the image viewer does not open. The command palette stays two entries.\n\n## 2.9.2 — 2026-10-04\n\n- Save view, in More or with Shift+V, writes the current camera as one view block at the end of the board. A selection can save its own view from the context bar. The Boards tab lists those views, each with a 96px outline map. Go puts the camera back and writes nothing. Delete removes the view block, and undo puts that row back. The command palette stays two entries.\n\n## 2.9.1 — 2026-10-04\n\n- A new card is placed before the Connections list, snapshots, and a region container, so those stay at the end of the block. The library card count skips a region container the same way it skips Connections. Leaving a new empty card that only holds a region container no longer deletes that card.\n\n## 2.9.0 — 2026-10-04\n\n- A region container `{{[[plexus-regions]]}}` and its `{{[[plexus-region]]}}` children stay off the board. They are not cards. A card\'s child badge does not count them. Image regions and saved views can be stored in that shape. A Roam Plexus region is recognized and left as theirs. Nothing is drawn yet.\n\n## 2.8.0 — 2026-10-04\n\n- Better Tasks and the Task tool start off. Settings, Integrations, has four controls: Better Tasks integration, Task tool, Task chips, and Default project for new tasks. With both switches off, the dock has no Task button, K does nothing, and the ? sheet does not list K. A Task tool you already saved stays on. Turning Better Tasks on draws the light checkbox and the chips, and asks Better Tasks for attributes once. Turning it off puts Roam\'s own checkbox back. Opening, panning, and clicking a board does not call Better Tasks while the integration is off.\n- A card whose text has #bg-blue or #[[bg-blue]] takes that colour on the board when the colour highlighter\'s variables are on the page, in light and in dark. #c:red still colours bold text inside the card, and Plexus does not paint over it. A fill you set in the picker wins; clearing that fill brings the tag colour back. With no highlighter variables, named colours use a fixed palette and the tag stays visible in the card.\n- The colour picker\'s gear, Write as highlighter tag, is saved on that board. In that mode a named colour writes one #[[bg-name]] into the block and clears the card\'s fill. One undo restores the text and the fill together. Hex, darker, and lighter still change only the fill.\n- A key pressed outside the board no longer switches the tool or adds a card, while nothing on the board is selected. A selected card still receives the board\'s keys.\n- A card more than one screen outside the view keeps its size and skips layout. The card you are editing stays fully drawn. A card that stays outside the view for 10 seconds drops its live Roam body and draws it again when it comes back.\n\n\n## 2.7.1 — 2026-10-04\n\n- Dropping a repeating task on Done in the Kanban view now makes the next occurrence, the same as ticking its checkbox. Before, only a real checkbox click did, because Better Tasks starts the next occurrence from its own checkbox. The task is now finished through that same checkbox, out of sight, so you get the completed date and the next task together.\n- Popovers stay clear of the board\'s own controls. The task chip popovers, the children peek, the Background and tag popovers, the card colour picker and the right-click menu move aside or flip instead of opening under the dock, the top bar, the rail, the minimap or the Properties panel. When there is no room, they shrink and scroll.\n- Task cards are readable when you zoom out. At the map zoom the check box is at least 20 pixels on screen, with the due date under the title (teal today, red overdue). Zoomed far out, a task is one clear box: empty, checked or crossed, in the same colours.\n- The pill that shows a scrolled-out block arrow ("↓ the block\'s first words") stays inside its card. It is cut to the card\'s width less 16 pixels with an ellipsis and keeps the same size on screen at any zoom.\n- A board with many tasks no longer uses up Better Tasks\' limit of 100 decorated checkboxes. A task card now draws a light checkbox of its own instead of a real Roam block, so a 40-task board added 40 real checkboxes before and adds none now, and Better Tasks keeps decorating the rest of the page. Clicking the box still completes the task through Better Tasks.\n- Checked for a freeze when the bench is run back to back with a task board open: five runs and five load-and-unload cycles did not reproduce it.\n\n## 2.7.0 — 2026-10-03\n\n- Task cards. A card whose block is a Roam TODO now looks like a task: Roam\'s own checkbox, the title, and a row of chips under it for the due date, project, priority, repeat, status, waiting-for and GTD. Today\'s due date has a teal border, an overdue task a red one, a done task is dimmed and struck through, and a cancelled one is struck through. Better Tasks\' own pills are hidden inside the card so the chips are not doubled. At map zoom a task shows a check box, its title and its due date; zoomed far out it is a single check box.\n- New Task tool. Press K, or pick it in the dock or the canvas menu, then click the board: a TODO card appears and opens for typing. A task left with no text disappears when you click away, like an empty card. Cmd+Z right after makes one undo step. The card menu has Make task for a plain note.\n- Change a task from its chips. Click the due date, project, priority or repeat chip and pick from a small popover (today, tomorrow, next week or any date; a project from Better Tasks\' list; low, medium or high; a repeat rule). The change is made by Better Tasks itself, so the attribute blocks keep their uid and Plexus still never writes a `BT_attr` block. Cmd+Z after a chip change is Roam\'s undo, not the board\'s. Without Better Tasks the tool makes a plain TODO card and the chips are read-only.\n- Finishing a task works the way it does in Roam. Tick the checkbox on the card and Better Tasks writes the completed date and, for a repeating task, the next occurrence on its daily or project page. A toast tells you the date and offers Add to board. Dropping a card on Done in the Kanban view does the same through Better Tasks.\n- Drag a task card onto a daily-page card (or a section named for a day) and its due date becomes that day, in the same attribute block. Hold Shift to move the card without changing the date.\n- Better Tasks\' attribute blocks and its Activity log no longer count as children: they are never rows, never in the outline or the peek, and never a "▸ N" badge. Renamed attributes are read from Better Tasks.\n- Three new settings: Task tool (show it in the dock), Task chips (full, due only or none) and Default project for new tasks.\n\n## 2.6.0 — 2026-10-03\n\n- Editing a card no longer shrinks it. Opening a card or a sticky for editing used to let it collapse toward the height of one line, and its arrows came loose. The card now keeps its size for the whole edit, the editor fills it, and the text is no longer cut to one line when you start typing. Edges stay attached.\n- Sticky notes are rebuilt to work like the RoamJS sticky notes, and they stay saved. Each one has a coloured header bar you drag, with a short title, a colour dot and a minimize button. The body is the live Roam block: click once and type, with tags, images, links and the slash menu. Drag a corner or edge to resize. Minimize folds a note to its header and remembers it. There is no close button; Delete or the menu removes a sticky and Cmd+Z brings it back.\n- Page cards open faster. A card now shows all its rows as plain text at once, then turns the rows you can see into live Roam blocks a few at a time. Rows scrolled out of view, and heavy rows such as charts, embeds and images, wait until they are on screen. A page you pulled once is reused while the card is open. A 146-row page card used to block for about 150 ms while it drew; now it paints in about 20 ms.\n- Arrows to blocks now stay on their block. When a chart or an image above the target row loads late, or a row turns live, the card re-measures its rows and the arrow follows. Each linked row shows a small dot in its own arrow\'s colour, so two arrows into one card stay apart, and hovering one arrow lights only its row.\n- New tooltips for the sticky header: drag, minimize or expand, and the colour dot.\n\n## 2.5.0 — 2026-10-03\n\n- The connection preview is cleaner. The target block is now a highlighted bar inside its page card, at the block\'s real place in the page, with its text cut to the card\'s width, and the arrow runs into the bar with a head like the one on the board. Nothing spills over a neighbouring card any more.\n- The preview opens where it never covers the chip or the block line it belongs to: under it, else above, else beside it, shrinking and scrolling inside when the window is small. It follows the chip while you scroll or resize and closes when the chip leaves the screen.\n- Roam\'s breadcrumb above a connection block (in linked references and when you zoom into the block) now opens the same preview on a plain click, because Roam\'s own link there only led to "Board › Connections". A small ▦ marks it. Shift-click, Cmd-click and Ctrl-click still do what Roam does. Unloading removes the marks and the listeners.\n- Resize grips, connection dots and arrow-end handles keep the same size on screen at every zoom, so they are easy to grab on a zoomed-out board and no longer huge when zoomed in.\n- Light mode was checked on every new surface. Fixed: the connection chip could run past the edge of its block, and its teal was too pale on white.\n\n## 2.4.0 — 2026-10-03\n\n- The Add and Info panel now opens to the left of the control rail instead of covering it. The minimap steps left of an open panel. The rail keeps one fixed width, so the version badge no longer pushes it wider.\n- An arrow that ends on a block now visibly points at it. The line continues into the page card and its head stops beside the row\'s text. The row keeps a mark in the arrow\'s color (a left rule and a light tint; in the dark theme a border only, no fill). Hover the arrow and the row lights up; hover the row and the arrow thickens and a tooltip names the other card and the label. When the row has scrolled out of view, the arrow ends in a pill at the card edge with an arrow and the block\'s first words; click it to scroll the row back.\n- Connections now show up where Roam draws them. Under every connection block in the outline, the sidebar or a block\'s linked references, a small chip reads "A —label→ B · on Board" and names the block when the arrow ends on one. Click the chip to see a preview: a map of the two cards with the arrow and the target row, plus Open on board and Open in sidebar. Open on board opens the page, enters a nested board if needed, and selects the connection. Nothing is written, and unloading removes every chip.\n- The card\'s hover toolbar no longer disappears on the way to it. It waits 400 ms after the pointer leaves the card, so you can reach it and open its color picker. Moving to a different card switches the toolbar at once with no flicker. Escape, panning and zooming hide it immediately.\n- With the Hand tool you can now resize: a press on a resize grip resizes, anything else pans, and Space-drag still pans over grips. Page cards have a wider grip band on the right and bottom edges and a larger corner that sits above the scrollbar. The grips show when you hover a card in hand mode.\n\n## 2.3.0 — 2026-10-03\n\n- Board rows in page cards. A page card for a page that holds a board shows that board as a small map with its title and item count, not a grey box. After four maps on one card, the rest are one-line chips. The row for the board you are looking at says "this board". Click opens the board; Shift-click opens it in the right sidebar.\n- A row that Roam cannot render inside a card, such as an empty `{{[[roam/render]]}}`, now shows its raw text, muted, instead of "Failed to render". This also ends the Roam console errors the old page-card row caused.\n- Hover tooltips. Every control on the board bar, the dock, the rail, the card toolbar and the Properties panel shows its name, its shortcut and a one-line description after a short hover. Keyboard focus shows it at once. The tip sits below the board bar, above the dock, left of the rail, and stays inside the board. Settings, Hover tooltips, turns them off and hands the text back to the browser. Tooltip delay is instant, 350 ms or 800 ms.\n- A tooltip no longer stays on screen after the control it described is removed.\n- Ref cards and image cards show readable titles everywhere: Table, Kanban, Graph, Timeline, Gallery and Find use the first line of the referenced block or the image\'s alt text, never `((uid))` or a blank. Find matches the text a ref card shows.\n- Graph view draws a line for every connection, fits all cards inside its window and no longer scrolls them out of sight.\n- The end handles of a short arrow with a label can be grabbed. The label steps aside while the arrow is selected.\n- Gallery captions show the image\'s alt text, or nothing. They never show raw markdown.\n- The Escape that closes Search, a menu, or Gallery, Timeline and Graph no longer also leaves fullscreen.\n- Present mode hides the board bar, dock, Properties, rail, minimap and side panel, and brings them back on exit.\n- Shift-click only extends the selection. It no longer opens the Info panel.\n- Gallery, Timeline and Graph, the board bar and the Properties pill are opaque now, so nothing shows through. A collapsed Properties pill is only as wide as its label.\n- Section titles in the zoomed-out overview may run wider than a small frame before they are cut off.\n- Gallery, Timeline and Graph are also under More, Views, and under Views in the canvas menu. The template entry is now "Timeline template". An empty Timeline says that a date attribute or a daily-page reference makes a card dated.\n- The thin dotted curves that run across a board between cards are graph links, drawn for every shared page reference or attribute. They are not a stray line. Links, in the board bar or the L key, switches them off or to attributes only.\n\n## 2.2.0 — 2026-10-03\n\n- Board bar and tool dock. The top bar is now the board bar: breadcrumbs, Add, Info, links, views, background, present and More. The nine tools moved into a floating dock along the bottom. Settings, Toolbar layout, brings back the 2.1 look (Classic) or hides the top bar until the pointer nears the top edge (Dock only).\n- Dock settings: position (bottom, left or top), shape (pill or strip), tool names under the icons, and button size. A board can set its own dock position from the More menu, Dock position for this board; opening a board still writes nothing.\n- The active tool slides a highlight behind it. A locked tool (double-click) shows a padlock. In dark mode the active tool is a border and a dot, so it stays visible without a fill.\n- Dock options. With Card, Sticky, Section or Shape active, the dock shows that tool\'s colors, the block or card look, or the shape kinds. With nothing selected, a pick styles the next item you create with that tool and is forgotten when the board closes; with cards selected, it restyles them as before. One undo reverses it.\n- The last breadcrumb carries the board\'s own color, and the bar\'s bottom edge takes the same tone.\n- Overview zoom keeps Select, Hand and Board in the dock. A board narrower than 560 px gets smaller buttons and no options. A left dock no longer sits on the Properties panel.\n- The active and locked tool styles in the top bar lost to Roam\'s own button rules in dark mode. They hold now.\n\n## 2.1.0 — 2026-10-03\n\n- Enter in a card adds a line to the card\'s block, like a node in a native Roam diagram. Settings, Cards, "Enter in a card" set to Child brings back the old behavior of making a child block.\n- An empty white panel with a Close button no longer covers boards.\n- Pasting one image into a card inserted it twice. It now inserts once.\n- Dragging an image onto a card that is being edited works. Dropping an image on a card adds it after the card\'s text instead of replacing the text.\n- Whole-page cards: a page card shows the page title as a header and the whole outline, scrolls inside the card, and edits where you click. Add page… in the canvas menu adds a page by search. Dropping a page from the left sidebar makes a page card.\n- Arrows to a single block. Drag an arrow end over a page card and the row under the pointer lights up; dropping there connects to that block with a real `((ref))`, so it shows in Roam\'s backlinks. Dropping on the title connects to the page. Ends follow their row as the card scrolls and clamp to the edge with a marker when the row is out of view. A selected arrow has end handles to re-aim it, and the arrow menu has Connect to the page instead.\n- Card children. A note, block or ref card shows only its own block. A ▸ N badge opens the children as an editable outline inside the card, remembered per card, and hovering the badge peeks at them. Spread children as cards makes one card per child with an arrow back.\n- Note: note and ref cards now show only their own block until the badge is opened.\n- A selected arrow\'s end handle could only be grabbed on the half outside the card it ends on. The whole handle now grabs.\n\n## 2.0.0 — 2026-10-03\n\n- Card editing, outline navigation, templates, the table, snapshots, and the graph tools that landed after 1.3.0.\n- Gallery, timeline, and a read-only graph of the board. A section can lay cards out by date. Connections can bend or route around cards. Present shows a section\'s first child as notes, plus a laser and a pen that are dropped on exit.\n- A diagram in the right sidebar stays a gap until that window is on screen. Opening the sidebar parks the boards on the page.\n- A 300-card board shows its first shells in about 1 second and finishes the rest over the following frames. Detail and overview pan hold 60 fps. Zooming across the detail threshold is about 57 to 59 fps, and that switch no longer produces a long task.\n- The same board in two Roam windows kept the same 6 cards and 4 connections across 30 moves.\n\n## 1.3.0 — 2026-10-01\n\n- Native parity on an enhanced board: plain block cards, a node hover toolbar, a right-hand control rail, a properties panel, PNG export, outline in the sidebar, boards in the sidebar, edge styles, native embeds, style import on Enhance, per-card expand, minimap drag, keyboard parity, and Edit Block.\n\n## 1.2.0 — 2026-09-29\n\nFixes from the second round of testing on 1.1.0:\n\n- **Zoomed-out cards stay inside their box.** Map view is a clean title-only tile: three-line clamp, font capped by the tile height, nothing spills below the card. Ref titles are cut at 120 characters and header text at 160. The level of detail now switches while you zoom (with hysteresis, one class toggle), not only when the gesture ends. A third tier below 20% shows section titles only.\n- **Nested board thumbnails are real thumbnails.** A padded frame with mini cards (border, fill, title), sections as tinted frames, connections, and an "Empty board" state, instead of one white box.\n- **Sections auto-fit.** A card moved, resized, created, or pasted past a section edge grows the section to contain it (24 px padding), live during the drag and saved as one undo step. It cascades through nested sections, never shrinks by itself, and can be turned off per section or with the `auto-fit-sections` setting.\n- **Board backgrounds.** Dots, lines, grid, and plain patterns and paper or ten palette tones, chosen per board from the Background button (stored in the board block\'s props) with a default in Settings.\n\nAdded:\n\n- **Right-click menus** for the board, cards, sections, text, connections, multi-selection, and the More menu.\n- **Duplicate and clipboard.** Alt+drag and Cmd+D duplicate (Alt+Shift makes `((ref))` cards); copy and paste as refs or as copies, across boards; pasted text and images become cards. Send to board, Boards tab (every board in the graph), Outline tab.\n- **Keyboard.** Tab and Shift+Tab step through the outline, F focus mode, Q quick look, P presentation, M mind map from a card\'s child blocks, Cmd/Ctrl+Alt+Enter fold, double-click a bottom or corner grip to fit or reset height. Arrow keys nudge the selection 1 px (Shift for 10 px); Alt+Arrow selects the nearest card in that direction (Alt+Shift adds), as in Heptabase.\n- **Layout tools.** Tidy (row, column, grid, outline order), same size, fit height, reset size, fit section, fold all, optional space-out after a move, "Back to content" button.\n- **Pin.** Pinned items do not move, resize, or delete.\n- **Card badges.** References, boards, and open and done TODO counts, read from Roam (never written); a `((ref))` to a board renders its thumbnail; journal cards for today and this week.\n- **Export.** Export board as SVG and Copy board as text (commands and board menu).\n- **Review fixes.** Cut and paste now moves a note, text or section (the clipboard carries a snapshot; before, the paste was a dead `((ref))`). The Open button, double-click and Enter open a whiteboard-shortcut card. Settings changes reach open boards\' sessions live. A pinned section is never grown by auto-fit. Fit height can shrink a card. Fit / Reset size / Same size never leave a card outside its section. A pinned card no longer pushes other cards in space-out. Escape closes the Background popover first. Right-clicking a ref, tag, link or image inside a card keeps Roam\'s or the browser\'s menu. Tab is only taken while the board itself has focus. A tall menu scrolls inside a small board. Thumbnails title `((ref))` and image cards. The section grows live while you type in a card at its edge. Card badge queries run in idle slots and are cached for two minutes.\n- New settings: default board tone, map view threshold, auto-fit sections, space out cards, show card badges; grid accepts `grid`. API and build: see `docs/api-plexus-1.0.md` ("1.2 additions") and `docs/spec-plexus-1.2.md`; `src/css/*.css` is appended to the bundle.\n\nFixed after live testing in Roam Desktop:\n\n- **One Cmd+Z per operation.** Duplicate, Alt+drag, mind map, Tidy, and a drag that grows a section each took one Cmd+Z per block written; the Undo toast button undid one block. Writes of a transaction are now grouped, and Undo and Redo step over the whole group.\n- Map-view cards clamp to exactly three lines (no fourth-line sliver, no ellipsis in the middle of a tall card); section titles show an ellipsis; far zoom-out no longer paints a dot moire; colored cards read at overview zoom; whiteboard-shortcut cards keep their thumbnail at map zoom.\n- Ctrl-wheel zoom and paste use the board\'s current position after the Roam page scrolls (they were off by the scroll distance).\n- Pasted images are `![](url)`, not `![](![](url))`.\n- The section preview no longer snaps back while you type in a card at its edge.\n- Fit keeps content below the toolbar and left of an open panel (Outline click fits the visible area); the context bar no longer covers the toolbar or the panel; double-click on the middle of a card\'s bottom edge fits its height.\n- Mind map from a card that already has child cards on the board lays the rest out around them, and says when the 24-branch cap left nodes out. Add this week no longer stacks a card on an existing one. Duplicating a section says "section".\n- The OS dark-mode hint no longer darkens a board on a light Roam theme.\n- **Typing in a card: Enter no longer drops you out of the card.** Root cause: the card editor stopped the mouseup that Roam uses to end its block drag-select, so a new block created under the resting pointer turned the edit into a block selection. Mouseup now passes through.\n- **Undo limits.** Roam keeps only the last 50 changes, so one Cmd+Z sequence can undo an operation only if it fits. Mind maps cap at 24 branches ("Mind map: 24 of 45 branches (cap)") and bulk adds (large pastes, multi-drops, Add all) at 45 cards ("Added 45 of N (Roam undo holds 50 changes)").\n\n## 1.1.0 — 2026-09-29\n\nFrom the first round of testing on 1.0.0:\n\n- **Cards show their content.** Note and block-reference cards render the whole block (and its children) instead of a truncated first line over an empty body. A long single-line `((ref))` card is readable again.\n- **Drag blocks in from Roam.** Dragging a bullet from the outline or the right sidebar onto a board adds it as a `((ref))` card (a page becomes a `[[page]]` card). Multi-block drags stack. The source block is never moved.\n- **Typing in a card.** Enter adds lines inside the card and keeps the caret there; if Roam drops focus while it moves between blocks, the editor takes it back. The card header no longer repeats and lags behind what you type, and text items keep their heading size while editing.\n- **Nested boards (Heptabase sub-whiteboards).** New Board tool (W): click or drag to add a board card, or select cards and choose **Move into new board**. Board cards show a mini map, item count, and a name field. Double-click or Open goes into the board in place with a `Parent › Child` breadcrumb; click a crumb or press Esc to go back up. Drag a card onto a board card to move it inside (with Undo). Boards opened from their own page get crumbs for their parent boards.\n- **Collapsed board blocks.** The board block is collapsed once so Roam does not list its cards as bullets under an inline board; expand the bullet to see them. Turn it off with **Collapse board blocks in the outline**. A nested board no longer opens a second overlay from an expanded outline.\n- Import and Restore keep a nested board\'s marker; a board deleted while open closes cleanly (a nested one pops to its parent).\n\n## 1.0.0 — 2026-09-28\n\nRewrite. The 0.6 canvas (one 2,200-line closure) is replaced by a model / host / session / view split with 204 unit tests and a live CDP gate on Roam Desktop.\n\n- **Everything is a Roam object.** Card layout lives in each block\'s `:block/props` (`plexus` key), not on `[[plexus-diagram/metadata]]`. Sections are parent blocks of their cards. Connections are blocks under a collapsed **Connections** child that read `[[A]] → label → [[B]]`, so both ends get a backlink and notes live as children.\n- **Graph links.** References and attributes that already exist between cards are drawn as dashed arrows colored by relation (`causes`, `Detected by`, `mentions`). **Write to graph** turns a labelled connection into `label:: [[B]]` on the source.\n- **Heptabase features.** 10 colors for cards, sections, text, and connections; sections drawn by drag or Cmd+G around a selection, with titles above the frame; ports on every edge; curve / straight / elbow routes, direction, dash, weight; selection box, alignment guides, align / distribute; text headings; minimap; board search; Add panel with Search and Related; card editing with Roam\'s own editor (page cards open the whole page); zoomed-out map view with readable titles.\n- **Fast by construction.** Pan and zoom move one transform (p95 frame 4.5 ms on a 120-card board, no renders, no writes). Only on-screen cards render content; zoomed out, cards show titles only. Opening a board writes nothing; the viewport is per device.\n- **Fixed from 0.6.4:** Section tool made two frames per drag and one per click; sections did not hold cards and had no color; the connection inspector covered the connection; text typed into a new card was lost; the sync indicator went pending on pan and zoom; diagrams on normal (non-daily) pages were never discovered; `[[links]]` inside cards did not open; keyboard shortcuts were swallowed by the diagram block.\n- **Migration.** Boards enhanced with 0.6 upgrade once on first open (positions, colors, sections with their cards, connections with labels and styles). Native diagrams import on **Enhance** (positions, groups as sections, edges as connections). Diagrams you never enhance are never written.\n- Commands: Enhance this diagram, New whiteboard here, Restore native diagram, Fullscreen this diagram.\n\n## 0.6.4 — 2026-09-05\n\n- **Inspector Comment** — converts the edge label to native Roam comments (one-way → target, two-way → both) then clears the pill.\n\n## 0.6.3 — 2026-09-05\n\n- **Idle card children** — after click-away, idle cards `renderBlock` the card uid so child bullets stay visible; deep pull includes nested `:block/children`; empty placeholder only when string is blank and there are no children.\n- **Board background** — toolbar cycles Dots / Lines / Solid (`grid-style` persisted).\n\n## 0.6.2 — 2026-09-05\n\n- **Connect hit-test** — targets resolve from the painted card rects (`getBoundingClientRect`, 12px handle inflate) before `elementsFromPoint` and world-rect math, and the card hovered on the last pointermove is the fallback for a captured pointerup.\n- **Rubber-band** — the edge and temp-wire SVGs cover content ∪ viewport (2000px pad) so the dashed wire paints across a panned board.\n- **No junk cards** — a click-click that misses a card cancels the arm; only a real drag onto empty board creates a linked card.\n- **Version badge** — the toolbar stamps the package version, not Roam\'s `DEV` developer-extension version.\n\n## 0.6.1 — 2026-09-05\n\n- **Connect hit-test** — when Electron\'s `elementsFromPoint` misses cards under `.pxd-world`, resolve targets from world-space node rects (12px handle inflate). Click-click arms and drag-to-card both work.\n- **Delete cards** — Delete/Backspace on a selected card removes it from the diagram (adapter + metadata), not just edges.\n- **Scratch children** — `blankScratch` deletes scratch-host children so a new card editor never inherits the previous card\'s bullet tree.\n\n## 0.6.0 — 2026-09-05\n\n- **Visible arrows** — connector stroke and marker fill are resolved colors, not `var()` in SVG attributes. Marker ids are unique per canvas. Heads scale with zoom (`clamp(10 / zoom, 6, 24)`).\n- **Ports** — drag from a card handle stores `from::` / `to::` (`auto|top|right|bottom|left`). Click-click and connect-to-empty still work.\n- **Per-edge direction** — `direction::` `oneWay|twoWay|none` on `edge A->B`. Global Arrowheads is the default for new edges only.\n- **Inspector** — click a line for a floating cluster: direction, Flip (disabled if the reverse exists), Route, Label, color, Delete. Mutations `await flushLayout()`.\n- **Schema** — optional `from::` `to::` `direction::` `color::` children under the existing edge row. `[[plexus-diagram/metadata]]` only. No `:diagram/*` / `:harc/*`.\n\n## 0.5.0 — 2026-08-29\n\n- **Connect two-click + temp wire** — Connect stays on after an edge. Click-click or drag; the rubber-band lives on `.pxd-edges-temp` above the cards and follows the cursor immediately. Handles are a 12px disc with a larger hit target.\n- **In-place nested boards** — opening a nested diagram does not call `openBlock` / change the hash. The parent session stays loaded; crumbs sit on the toolbar and Esc pops one level.\n- **Section and card color** — toolbar swatches (eight Blueprint-ish ids plus default) write `color::` on nodes and sections. Dark mode uses the border as the signal.\n- **Section click-rename** — a single click on the section title starts rename; pointerdown on the label does not drag the frame.\n- **Review pack** — session swap flushes the outgoing board then cancels persist timers; unused parent pull-watches stop; Esc nest-pop only when the overlay owns the pointer; connect-to-empty rolls back a failed edge persist.\n\n## 0.4.2 — 2026-08-28\n\n- **Svy Beam caret** — overlay inputs use native `caret-color` and `cursor: text` (higher specificity than Beam\'s custom hotspot cursor). `focus({ preventScroll: true })` plus a capture-phase guard stop Roam from scrolling the outline copy of an editing card into view.\n- **Right sidebar inset** — fullscreen also ResizeObserves the right sidebar and re-places on the next two animation frames after the article class changes. When the article\'s right edge is within 8px of the viewport, the overlay `right` inset is 0.\n- **Library portal** — the drawer mounts on `document.body` (fixed, 320px, 14px) so it is not scaled by `.pxd-world`. Items are opaque `#f5f8fa` / `#182026`. Empty search hides `roam/js/` and `roam/css` pages.\n- **Nested crumbs** — opening a nested board pushes the parent onto a crumb stack (`Parent › Current`). Clicking a crumb opens that block (or page). Nested cards show the parsed name; unnamed boards get an inline "Name this board…" field.\n- **Connect to empty** — dragging a handle onto empty board creates a card at the drop point, links it, and enters edit (Heptabase pull-from-port). Handles are 14px. An existing edge is kept if you connect the same pair again.\n- **Review pack** — nested open passes parent uid explicitly; nest stack truncates on multi-level back; drop parsing no longer treats incidental 9-char tokens as block refs; connect failures do not leave dangling edges; nested name timers clear on repaint and dispose.\n\n## 0.4.1 — 2026-08-28\n\n- **Pending-changes patch** — layout persist no longer delete-all/recreates the metadata tree. Existing diagram blocks are patched in place: only changed `pos::` / `size::` / `color::` / edge / section rows are written, identical strings are skipped, and gone ids are the only deletes. Viewport persist is still the one-line `setViewport` path.\n- **Article-pane fullscreen** — fullscreen follows `.rm-article-wrapper` (below the topbar, inset with the left sidebar) instead of `sidebar.right`. ResizeObserver on the article and sidebar plus a class MutationObserver re-place the overlay when the sidebar opens or closes. Drop `[[page]]` / block uid from the sidebar onto the board to add a card.\n- **Visible sections** — sections use a 2px solid border, a light blue fill, `pointer-events: auto`, a default "Section" label, drag, corner resize, and double-click rename.\n- **Opaque library** — the drawer sets its own `#ffffff` / `#1c2127` background so it stays readable when mounted outside `.pxd-root`. Blank titles and `roam/js/` pages are hidden until you search.\n- **Nested overlay** — adding or opening a nested `{{[[diagram]]}}` card registers it as enhanced and opens our overlay fullscreen, not native Empty Roam Diagram. Nested cards show "Nested diagram" instead of the raw macro. Nested open no longer waits on the parent canvas.\n- **Connect hit-testing** — `cardFromPoint` walks `elementsFromPoint` and ignores edge-hit strokes; temp edges are `pointer-events: none`; connect-tool handles stay visible.\n\n## 0.4.0 — 2026-08-28\n\n- **Fullscreen vs breadcrumbs** — fullscreen hides `#roam-breadcrumbs-panel` / `.breadcrumbs-content` only while `body.pxd-has-fullscreen`. The overlay sits below the remaining topbar and to the right of the left sidebar (article fill, not the whole window). Resize recomputes the inset. Inline boards leave breadcrumbs alone.\n- **Scratch-host card editor** — double-click no longer `renderBlock`s the card uid (the hidden native diagram still owns it). Edit mounts on a `pxd:scratch` child of `[[plexus-diagram/metadata]]`, hydrates until MutationObserver-quiet, then a trusted mousedown/mouseup/click. Commit pulls the scratch string onto the card; empty pulls never overwrite known text.\n- **Connection notes** — labels live on the connector (`label::` under `edge A->B`), not as extra cards. Double-click the line or click the midpoint pill. `show-edge-labels` defaults on.\n- **Commands** — palette and slash keep Enhance, Restore, and Fullscreen only. Toolbar is a single nowrap row. `V` / `C` / `N` / `F` when the overlay owns the pointer.\n- **Sync silence on open** — remounting an already-enhanced diagram no longer rewrites `[[plexus-diagram/metadata]]` or `:rf-diagram` viewport props when the stored snapshot already matches.\n- **Viewport-only persist** — pan/zoom/fit writes only the `viewport::` metadata line; node/edge/section children are left intact.\n- **Dirty flags** — initial fit, fullscreen resize, and dispose no longer schedule Roam writes; persist runs only after real user gestures (pan, zoom, drag, Fit, etc.).\n\n## 0.3.2 — 2026-08-28\n\nDouble-clicking a card no longer blanks its text: `setBlockFocusAndSelection` was focusing the outline copy of the same uid (Roam then cleared the overlay mount), and a same-tick `focusout` committed an empty pull. Overlay editors now keep a text fallback until `renderBlock` hydrates, ignore focusout for 1s, and refuse to commit an empty pull over known text. Fullscreen sits below `.rm-topbar` so RoamJS breadcrumbs stay clickable and the Plexus toolbar is not hidden under it.\n\n## 0.3.1 — 2026-08-28\n\nHouse / daily-tab navigation left a `position:fixed` overlay covering the daily notes. Native Maximize unmounts on route change; our mount often survives because the diagram block is still in the outline. `hashchange` / `popstate` now exit fullscreen, drop `--zoomed`, and restore the inline height whenever the open page uid is no longer the diagram. The 250ms reconcile does not do this, so a Fullscreen click on an inline embed is not immediately undone.\n\n## 0.3.0 — 2026-08-28\n\nCanvas rewrite: the board is usable. Imported native React Flow nodes (165×83 on the live graph) are floored to real cards (min 240×140, default 280×160), and a viewport that paints any card under 140px, has zoom below 0.7, or shows no card at all is rejected and replaced by a fit once the root has a size (single card fits at zoom 1.5, centred; fitted viewport persisted once). Pan, wheel zoom, card drag and corner resize touch only CSS (`.pxd-world` transform, one card\'s box, the edges hanging off it) — no `innerHTML` rebuild, no Roam write per pixel; viewport/layout persist on pointer-up and wheel-end with a 150 ms debounce, serialized through one queue per session. Cards render with `renderString`; double-click swaps in the native block editor (`renderBlock`) and blur/Esc commits it back, so Roam chrome no longer paints into every card. `render()` reconciles card elements by uid, so a pull during editing never tears down the caret. Drag from a card\'s connect dots (or any card with the Connect tool) onto another card to link. Double-click empty board adds a card at that point; Card/Nested tool clicks still add. A hint pill explains pan/add/fullscreen on boards with ≤1 card until the first pointer down. Zoomed diagram pages open in fullscreen (`fullscreen-on-zoom`, default on; inline embeds stay inline). Grid lives outside the world and tracks pan/zoom; a live minimap replaces the empty box; toolbar buttons are grouped, high-contrast, with a zoom readout. Dark mode: card and toolbar backgrounds from `--bc-main` / `--bc-menu`, 1px visible borders, 2px `--cl-blue` ring for selection — no tinted fills. `applyPull` keeps in-memory positions, sizes, edges, sections, and viewport (a pull only refreshes content), so a debounced persist can no longer be undone by a concurrent add.\n\n## 0.2.1 — 2026-08-27\n\nFix dead board on zoomed block pages. Navigating to `#/app/<graph>/page/<uid>` destroys the overlay DOM and the MutationObserver never remounted it. A reconcile pass (hashchange/popstate + 250ms interval) now prunes detached views, finds the native canvas — via the dated `block-input-…-body-outline-MM-DD-YYYY-<uid>` suffix or the location hash when ancestors carry no `data-uid` — and remounts the overlay. The pre-paint guard uses `display: none` (React Flow nodes punch through `visibility: hidden` by re-setting `visibility: visible` on themselves) and also hides the native `.rm-diagram-title-panel` and `.react-flow` chrome. Zoomed mounts fill the article (`pxd-mount--zoomed`). Every mount is stamped `data-diagram-uid` and remounts are idempotent per uid.\n\n## 0.2.0 — 2026-08-27\n\nHeptabase-usable overlay: full-bleed board sizing from native diagram (min 560px), horizontal labeled toolbar with zoom/fit/**Fullscreen** (Esc exits; covers the window like native Maximize), empty-canvas pan and cursor-anchored wheel zoom, Roam bullet/ref-count chrome hidden on cards, searchable library drawer that toggles without covering the board, and card titles off by default.\n\n## 0.1.4 — 2026-08-27\n\nSlash/command Enhance was a no-op: typing `/enh` puts the diagram block in edit mode, which unmounts `.rm-diagram`. The command now remembers the uid and waits for the native canvas to remount before overlaying.\n\n## 0.1.3 — 2026-08-27\n\nSlash commands use the same labels as the command palette (Roam Grid pattern), so `/enh` lists **Plexus Diagram: Enhance this diagram**.\n\n## 0.1.2 — 2026-08-27\n\nMetadata writes now generate UIDs before `block.create` / `page.create`. Live roamAlphaAPI returns `undefined` from those calls, so the first enhance was dropping `schema-version::`, `enhanced::`, and node/edge lines. Nested-diagram open uses `roamAlphaAPI.ui.mainWindow.openBlock`.\n\n## 0.1.1 — 2026-08-27\n\nLive-wire fixes against roamAlphaAPI (CDP, Svy graph):\n\n- Fix native hide inversion: `.pxd-native-hidden` now sets `display: none`; pending state uses visibility\n- Use EDN string pull pattern for `data.pull`; strip keyword colons from pull results\n- Generate child block UIDs via `util.generateUID()`; default create order `"last"`\n- Viewport writes try `roamAlphaAPI.updateBlock` before `data.block.update`\n- Register slash/context commands via `addCommand`/`removeCommand` with live callback shapes\n- Auto-enhance and focus checks pull `[:block/string]` via `roamAlphaAPI.data.pull`\n- Find native diagram hosts via `diagramElForUid` (id suffix, data-uid, block-ref)\n- Library mounts as overlay drawer; queries `roamAlphaAPI.data.q`; filters daily pages by UID\n- Card/Section toolbar tools place items at click position; library uses viewport center\n- Default `restore-native-on-unload` to false; unload disposes sessions without deleting metadata\n\n## 0.1.0 — 2026-08-27\n\nInitial release of Plexus Diagram.\n\n- Hide native `.rm-diagram` React Flow renderer for enhanced diagrams and mount a vanilla DOM/SVG canvas overlay\n- Keep Roam diagram children as the canonical card store; persist layout on `[[plexus-diagram/metadata]]`\n- Writable viewport via native `:rf-diagram` props; import native node positions when metadata is absent\n- Heptabase-like toolbar, cards, connectors, sections, library sidebar, and fat settings panel\n- Command palette, slash command, and block context menu integration\n- GitHub Pages developer extension at https://svyk.github.io/plexus-diagram\n';
+var CHANGELOG_TEXT = '# Changelog\n\n## Unreleased\n\n- **Roam Depot build is lighter.** The build at the repo root leaves out In-browser reading (beta) and the document converter (Office and ebook files, Convert to cards, Alternative read), so it loads nothing from outside the extension. The GitHub Pages install keeps both.\n- **Every diagram is a Plexus board is off by default.** A diagram stays Roam\'s own until you run Plexus: Enhance this diagram or New whiteboard here. A choice you already saved is kept.\n\n## 3.38.0 — 2026-10-29\n\nBoards that follow a source, sections that write back to the graph, and a faster stress board.\n\n- **Follow a source.** A board can follow a block\'s children (or its whole tree), a `{{query}}`, the linked references of a page or block, a page by its H1–H3 headings (one section per heading), a rolling window of journals (the last 1–31 days or this week, optionally one column per day), this board\'s Inbox, or another board or one of its sections. Board menu Follow…, or the card menu on a block, query or page card. New items wait in the Following tray: Place, drag, or Place all. The board never adds cards by itself, never moves a placed card, and marks a card that left the source instead of deleting it. Stop following keeps the cards.\n- **A source per section.** Up to 8 sections can each follow their own source. The tray keeps one group per section, then the board\'s own.\n- **Inbox arrivals.** Following this board\'s Inbox shows new citing blocks in an Arrivals strip, 20 per visit.\n- **Typing stays smooth.** A followed source reads again about 1.5 s after a save in this window, waits while you type when its read is slow, and reads a slow query at most once a minute while saves go on.\n- **`{{diagram ((ref))}}` boards.** A diagram written with a block ref and no colon opens as a Plexus board that follows that block. Nothing is written until the first edit.\n- **Linked references as cards.** On a page or block card, Add linked references as cards, flat or grouped by page, placed clear of what is already there, in one undo step.\n- **Sections write back.** Bind to tag or attribute… makes a section write `#tag` or `Name:: value` on a card dropped in and remove it when the card leaves, in the move\'s own undo step. Write section to graph tags every member.\n- **Attribute lanes.** Sub-lanes by attribute splits a section into one band per value of a `Name::` attribute. Dropping a card in another band rewrites the value. Pull blocks with `Name::` places the graph\'s blocks that have it; Add sub-lanes for new values grows the lane without moving the bands under cards.\n- **Apply order to source.** Reorders a section\'s or selection\'s real blocks under their Roam parent to the board\'s reading order, in one undo step. Keep outline order re-tidies a section when its order changes in Roam.\n- **Query card as a filter.** Use as filter on a query card keeps cards in its results bright and dims the rest. A pill names the filter; Stop filtering ends it. Nothing is written.\n- **Ref arrows.** Refs in note cards and child rows to other cards on the board draw as faint arrows (Ref arrows in the board menu; off over 400 items). Pin ref arrows on a card\'s context bar turns up to 20 of them into connections.\n- **Drop a card on a child row.** Dragging a card onto another card\'s child row adds the card\'s ref under that row, in one undo step. Shift moves the card instead.\n- **Plexus tools for Roam AI agents.** On Roam builds that support extension tools, AI agents on Roam MCP can list and read boards, add cards and sections, connect cards and arrange a board. Their writes are credited to the AI, one undo step per call.\n- **Card properties.** Board menu, Card properties: pick up to six `Name::` attributes to show as read-only chips on cards at detail zoom. Only the board\'s own pick is written.\n- **Keep a static picture.** Board menu, Keep a static picture, saves the board as one image block, the first child of the board block, so readers without Plexus (public graphs, Roam Publish) see it. Off until you turn it on; it refreshes only by hand (Refresh static picture, the camera button, or Plexus: Refresh static picture).\n- **JSON Canvas.** Right-click the board, Import JSON Canvas…, to turn an Obsidian `.canvas` file into a nested board (text, file and link nodes become cards, groups sections, edges arrows). Export as JSON Canvas (More, or the palette) saves the open board as a `.canvas` file.\n- **Add to Desk.** The card menu adds a card to Roam\'s Desk, written the way Roam writes it. Plexus stays out of Roam\'s Sidecar window, and its fullscreen and PDF styles no longer leak into it.\n- **Contents panel.** The panel\'s Outline tab is now Contents: sections, landmarks, trails and saved views in outline order. Click a row to fly there.\n- **Parse helper token in this browser.** The token is kept in this browser, not in graph settings, so members of a shared graph cannot read it. An old value moves over once. Forget token in Engines turns the helper off.\n- **Growing sections push neighbours.** An auto-fit section that grows moves the sections in its way, in the same undo step. Pinned items never move.\n- **Arrows to rows keep clear.** An arrow to a child row no longer runs behind the row\'s card.\n- **Board backgrounds show again.** Lines, dots, grid and tones show again, and Flat grey no longer hides a board\'s own background.\n- **Faster big boards.** Typing in a card no longer restyles the board on every key (keydown to paint about 60–79 ms down to 32 ms on the stress board). Zooming, the first zoom-in of a session (page cards show rows, not empty boxes), the overview canvas, cold start and panning at map zoom are faster on big boards.\n- **Fixes.** Turning Plexus off on a fullscreen board no longer leaves the page covered. Cut then paste keeps the blocks\' uids, so refs to them still work. Kanban Group by no longer writes onto a diagram that was not enhanced. Dark custom themes get the dark board. Paste keeps text typed during an image upload. Region rename, fold, the query filter and lane reads recover from failed reads, and unloading the extension leaves no observer behind.\n\n## 3.37.0 — 2026-10-17\n\nArrows that reach a child block, and steadier fullscreen and zoom.\n\n- **Arrows to a child block.** An arrow to a child block ends on that row when the card is open, and shows a child mark and a badge dot when the card is folded. Click the mark or Alt-click the arrow to open that child.\n- **Fullscreen repaint.** Fullscreen boards keep Roam\'s page covered while they repaint.\n- **Zoom-out arrowheads.** Zooming out resizes arrowheads in place.\n- **Undo after the badge.** Cmd+Z works after clicking the Children badge.\n\n## 3.36.0 — 2026-10-17\n\nChild focus that works where you click, and steadier editing and zooming.\n\n- **Child focus from the bullet gutter.** Clicking anywhere in a child\'s bullet gutter focuses it, at every depth, and you can pick a child from the Children peek.\n- **Edit the focused block.** Editing a focused card edits the focused block under the crumb.\n- **Arrows onto folded cards.** An arrow held over a folded card unfolds it and can drop on a child row, stored as a block ref.\n- **Fold clears focus.** Fold and unfold clear a child focus and restore the folded size.\n- **Long editors scroll.** Long page and note editors stay inside the card and scroll, with the caret row kept in view.\n- **Reference Path line.** The Reference Path extension\'s line no longer reaches outside the card while editing.\n- **Page cards on zoom-in.** Page cards keep their last rows on zoom-in instead of empty boxes.\n\n## 3.35.0 — 2026-10-16\n\nCards that read and edit like Roam, and a faster board.\n\n- **Children look like Roam.** Cards with children show Roam\'s bullets and thread in display and in edit with the same row geometry, so entering edit no longer jumps.\n- **Full-length rows.** Page cards and child rows render links and bold at full length instead of plain cut text.\n- **Click a child to edit it.** Clicking a child row edits that block at the clicked letter.\n- **Focus a child while editing.** Clicking a child\'s bullet while editing focuses it on the card with the crumb.\n- **New children show at once.** A new child appears while you type.\n- **Faster search.** Board search is many times faster per key (about 350 ms down to about 20 ms) and dims arrows by layer.\n- **Smoother big boards.** Zoom-in, zoom-out and pan at fit are smoother on big boards (round 4: no :has() invalidation, bucketed layers, no zoom layer, main-thread fade, 12-at-a-time hand-back).\n- **One undo after a big drag.** One Cmd+Z after a big drag restores the layout.\n- **Child focus at any depth.** Cmd+. focuses a child at any depth.\n- **Table captions.** Double-click a table caption to edit it.\n- **Safe disable.** Disabling the extension no longer blanks Roam.\n- **Typing profile probe.** A probe for profiling typing latency.\n\n## 3.34.0 — 2026-10-16\n\nPDF sources, dark PDFs, searching inside PDFs, and Roam popups that stay on top.\n\n- **Copy with source, cleaner.** A copied figure pastes as one card: the image, the full caption, and the Source chip under it. A copied table pastes as a folded table card, not raw text. One undo removes it. Clicking Source opens the PDF at the page with Show parsed on and the part outlined: in the sidebar if the PDF is open there, else the card\'s reader, else Roam opens it. A PDF card with no parse loaded loads its kept parse first.\n- **PDF dark mode.** Settings → PDF reader → PDF dark mode: Off, Follow Roam (default) or On. Roam\'s PDF windows invert the page; photos on the page are painted back in their real colours. Highlights and parsed outlines keep their colours. The board\'s own reader keeps its own setting.\n- **Focus a child block.** Click a child\'s or grandchild\'s bullet (or Cmd+.) and the card focuses it, with a crumb (card › parent › child); Escape steps back. Zoom into that block in Roam and an "Open on board" button opens the board with the card unfolded and focused on it. Nothing is written.\n- **Roam popups stay above the board.** The calendar, Find or Create results, `[[` autocomplete, the slash menu, hover previews and dialog dropdowns now paint over the board, in fullscreen too. Menus inside a Roam dialog open above the dialog.\n- **Search inside PDFs and images.** Results are grouped into Cards, PDF text and Images, with the match marked and a p. N chip. PDFs you have not parsed are indexed in the background, a little at a time, so their words are found too. Enter or click opens the PDF at that page, even if it is not on the board; Shift+Enter or drag adds it as a card. Text in pictures stored on your Mac is read through the parse helper. The filters sit on two rows.\n- **Wider PDF reader.** The board\'s PDF reader can be dragged almost to the full window width (it stopped at 720 px).\n\n## 3.33.0 — 2026-10-15\n\nBoards inside boards, card children and sources feel like Roam.\n\n- **Board path.** A board inside other boards always shows the full path above it (Root › … › This board), however you opened it: search, a block ref, the sidebar or a page link. Each name opens that board. It no longer disappears after using the crumb menu.\n- **Board trail is a setting.** The row of unrelated boards you opened is now Settings → Show board trail, off by default. Cmd+1–9 still switch boards.\n- **Drop a card into a board.** The card shrinks into the board card, the board card pulses, and a toast says "Moved to …" with Undo. Arrows between cards you move together go with them. An arrow to a card you leave behind stays attached: on the outer board it runs into the board card, labelled with the card\'s name (click the label to open the board on that card), and inside the board the card shows ↗ 1 to jump back.\n- **Card children like Roam.** Shift+Enter in a card\'s text makes a child. Unfolding shows the children as a Roam outline and refolding shrinks the card back. Click a child\'s bullet (or Cmd+.) to focus it inside the card, with a small crumb to step back out. Hover a card that links to a block or page with children for about a second to peek at them.\n- **Copy with source** pastes one card with the source under it. Clicking the source opens the PDF at that exact spot.\n- **Steadier navigation.** Arrows wait for their cards, so a board no longer shows a web of lines before its cards appear.\n- **Fixes.** Selecting text in a PDF on a board no longer creates an empty card. A source jump closes the hover popup Roam left open.\n\n## 3.32.0 — 2026-10-14\n\nScanned forms read much better, especially with the Docling add-on.\n\n- **Docling keeps the whole form.** The Docling reader used to drop header fields (document number, version, dates), signature and review lines, checkbox labels and tables nested inside form areas: only about 60% of what Docling read reached the card. Now about 98% does. On scanned quality forms the overall form score went from 0.39 to 0.60, header fields from 0.09 to 0.94.\n- **Checkboxes and circled choices.** On scanned pages read with Docling, ticked and empty boxes show as `[x]` and `[ ]`, and a circled Pass/Fail or Y/N choice is marked. Nothing is added on papers or born-digital documents.\n- **Charts stay charts.** The Docling add-on now classifies pictures, so chart and diagram labels stay on the figure while form boxes Docling mistook for pictures come through as text. The classifier downloads with the add-on; without it Docling works as before.\n- **High accuracy no longer blanks or invents text.** It kept writing empty lines where it could not place a line, and on blank pages the page model could invent text. Empty lines are gone, blank and show-through pages skip the page model (about 1.5 s instead of a long run) and emit nothing.\n- **Mostly empty ruled tables keep their words.** The built-in scan reader dropped every word of a ruled grid it decided was not a table; those words now come back as text or a table.\n- Update the helper to get the Docling and High accuracy changes: `uv tool install --force --python 3.12 git+https://github.com/Svyk/plexus-diagram#subdirectory=tools/parse-helper`.\n\n## 3.31.0 — 2026-10-14\n\nBig boards open fast at any zoom.\n\n- **Zoomed-out boards are ready in about 0.6 s.** A big board opened at overview zoom used to wait until every card was built (about 2 s on the 1,560-card stress board, with a half-second stutter). Now it is usable as soon as the nearest cards are in; the rest show as simple boxes and fill in while you work. Clicking, searching for or editing a card that is not built yet builds it at once.\n- **Smoother first seconds.** The first frame keeps the saved picture until the board has drawn, connections are drawn in parts, and background work (PDF covers, card badges, linked references) runs in smaller slices. The longest pause after opening the stress board zoomed out went from about 0.45 s to about 0.15 s.\n- **Fixes.** Leaving a board while it is still building stops the building. A failed card-badge read is retried instead of showing zeros.\n- **Kill switch.** The hidden speed flag `overviewFast` turns the new overview opening off.\n\n## 3.30.0 — 2026-10-14\n\nBig boards are ready in about half a second when nothing changed.\n\n- **Instant reopen.** Plexus keeps a copy of each big board\'s layout with Roam\'s page stamp. When you open the board again and the page has not changed, the board is ready from that copy without reading every block first: on the 1,560-card stress board it responds in about 0.6 s instead of about 1.7 s.\n- **Checks itself.** Right after opening, Plexus re-reads the board in small background steps (pausing while you pan or zoom) and updates anything that changed while you were away, including folds and edits from other devices. Nothing is deleted or cleaned up until that check is done.\n- **Fewer pauses** after opening and when entering a nested board.\n- **Kill switch.** The hidden speed flag `trustSnapshot` turns the instant reopen off and opens boards exactly as 3.29.0 did.\n\n## 3.29.0 — 2026-10-13\n\nBig boards open fast. On the 1,560-card stress board the board now shows in about a third of a second, and the\nseconds of stutter after it opened are gone.\n\n- **Fold queries on this page** (Commands). Roam draws every open `{{query}}` on a page before anything else shows; on\n  the stress page 12 queries held the board back for 8–10 s. The command puts each query under a folded caption, like\n  Fold tables, so Roam only runs it when you open the caption. A preview lists the queries, and one undo puts them back.\n  When a page\'s queries slow a board down, Plexus offers this once for that page.\n- **The board shows at once.** A big board\'s saved picture appears in about 0.3 s (was about 1.2 s) and you can pan\n  while the board loads behind it. The load runs in short steps instead of one long freeze.\n- **No stutter after opening.** Background work after a board opens (links between cards, PDF titles and covers, card\n  badges, the saved picture) runs in small slices, stops while you pan or zoom, and pauses on boards you have left. The\n  longest pause after opening the stress board went from about 1.3 s to about 0.2 s.\n- **Links between cards** are worked out about 20× faster on big boards.\n- **Fixes.** Undo of Fold queries and Fold tables never deletes the query or table when Roam is slow to report where a\n  block is. A card folded or unfolded while a big board is loading shows the right way.\n- **Kill switch.** The step-by-step load can be turned off with the hidden speed flag `slicedMount`.\n\n## 3.28.0 — 2026-10-13\n\nBig boards. Plexus was stress-tested on a board with 1,560 cards, 2,114 connections, 24 nested boards and about 23,000 blocks, and every slow or unstable spot that turned up was fixed. Normal boards are as fast as 3.27.0 or faster.\n\n- **Smooth on big boards.** Panning the 1,560-card board at fit zoom takes one frame (about 20 ms, was about 240 ms), and zooming is 5–7× smoother. Only the cards near the view are kept on the page, and nothing is added in the middle of a gesture.\n- **Fast back and forth.** Going back to a big board from a nested board is live in about a third of a second; 3.27.0 could freeze for half a minute. Nested boards open from a snapshot.\n- **Edits on big boards** reach the board in about a quarter of a second instead of a second. Each section and the Connections block are watched on their own, and a board you leave keeps its watches for a minute, so moving between boards no longer runs into Roam\'s API limit.\n- **Memory stays flat.** A 20-minute session no longer grows memory. Leaving a page no longer keeps its board, card chips or PDF documents alive.\n- **Safer bulk writes.** Plexus asks before a change that writes 600 or more blocks and refuses one that writes 3,000 or more. Large writes wait while Roam is still saving (the sync dot says "Waiting for Roam"). Holding an arrow key writes one move, not one per repeat.\n- **Fold sections in the outline** (Commands): the board\'s outline then opens in about a second instead of rendering thousands of blocks. One undo unfolds.\n- **Search "Show more"** pages through every PDF and every filter result when the search box is empty.\n- **Fixes.** Boards with more than 1,000 connections show all of them (Roam\'s read stopped at 1,000). Export as PNG works on big boards. SVG export stays valid when card text holds control characters copied from PDFs. After an undo of Fold sections, Move PDFs to their own pages or Fold tables, the next undo no longer reaches into Roam\'s own undo history.\n- **Kill switches.** Every new big-board path can be turned off in the hidden speed flags: `splitWatch`, `virtualShells`, `virtualEdges`, `deferReveal`, `hitShield`, `parkInPlace`. The experimental `edgeFingerprint` watch ships off.\n\n## 3.27.0 — 2026-10-12\n\nThe rest of the bug hunt: every item on its Later list is fixed.\n\n- **A paid read wins its pages.** When you have a LlamaParse or Mistral read of some pages and a fuller free parse, the paid read is used for its pages and the free parse fills the rest. Saving never writes free pages over the paid record.\n- **Smoother reader scrolling.** Plexus\'s share of a reader scroll went from about 90 ms to about 15 ms over 40 steps: the outline follows the page once per frame instead of inside the scroll, and a page turn no longer makes the board refresh itself.\n- **Resizing the reader keeps your place.** Going full screen and back never changes the reading mode, and the page you were on is put back if the new width moved it.\n- **PDF names stay current.** A card or chat chip picks up a PDF\'s real name as soon as it is known, without redrawing the whole board; boards open in the main view and the sidebar no longer overwrite each other\'s names.\n- **Search.** A failing semantic search keeps the results you had and retries in 30 seconds; "Not on any board" refreshes as soon as a card is added; a closed panel no longer searches in the background.\n- **Chat.** Unloading Plexus closes the chat and stops a running answer; focus returns to the question after picking a style or thinking level; the More menu keeps keyboard focus; an input-method Enter no longer picks a suggestion; Stop stops the answer you meant; "Open in Live AI" only closes this chat once Live AI has opened.\n- **Parse motion** always follows the card that started the parse.\n- **Rust helper:** one-click Pair from Roam, with the same Allow dialog as the Python helper.\n\n## 3.26.0 — 2026-10-12\n\nFilters that browse your graph on their own, PDF filters on meaning results, chat tips, and eight bug fixes from a scored bug hunt.\n\n- **Filters work with an empty search box.** Days (created or edited), created or edited by, under a page, has linked references, has children, parsed PDFs, PDFs with highlights, on or not on this board now list matching pages and blocks straight from the graph, sorted as you choose. A filter with no natural limit shows the last 30 days and says so.\n- **PDF filters on Meaning results.** "Parsed PDFs" and "PDFs with highlights" apply to semantic results too; a hit on a PDF\'s Roam page counts as that PDF.\n- **Chat tips.** An empty chat shows "@ a part · [[ or # a page · (( a block · / a command"; click one to start typing it.\n- **Fixes.** PDF names no longer give up for a week when Roam\'s PDF viewer has not loaded yet, and stop reading when you leave the board. Ask AI from the reader names the paper, not the file. Switching PDFs in Read + Outline no longer shows the previous PDF\'s outline or saves a running parse under the wrong PDF, and cancelling a Docling run no longer resets the parse that replaced it. A failed send gives your question back; a chat closed while collapsed reopens whole; the first question is selected so typing replaces it.\n\n## 3.25.0 — 2026-10-11\n\nPoint at a part with @ in the chat, sort and filter search with what Roam knows, and PDF cards that resize and read sharp.\n\n- **@ parts in the chat.** Type `@` to pick a part, a figure, a whole PDF or a mentioned page (`@3`, `@fig`, `@spore` filter the list); clicking a chip inserts it too. The model is told exactly which part each `@Part N` means, and a removed part is flagged instead of sent as a dangling reference. Chips name the PDF by its real title.\n- **Sort search.** Best match, recently edited, recently created, oldest, most linked, most children, longest or A–Z, with the sort key on each row ("edited 2 h ago", "12 refs").\n- **Filter with Roam\'s data.** Created or edited by, created or edited within N days, under a page, has linked references, has children, parsed PDFs, PDFs with highlights, on this board.\n- **PDF cards resize** again, and the cover is redrawn sharp at the new size once you let go. **Image cards** scale their picture with the card.\n- **Real PDF names everywhere.** Letter-spaced banners such as "M A J O R  A R T I C L E" are no longer taken as a title; cards, the reader and chat chips use the paper\'s title.\n- **Roam\'s highlight toolbar** shows whenever a PDF is open in the reader, not only after opening the engine settings.\n- **Faster.** The first sorted search of a query is about twice as fast (one batched read instead of eight queries), browsing with an empty box is about ten times faster, and the "Under page" box waits for a pause before searching.\n\n## 3.24.0 — 2026-10-11\n\nFind a PDF by what it is, search your graph by meaning with Roam\'s semantic search, and talk to Live AI with its full composer.\n\n- **PDFs have names.** A PDF that only lives as a link on a daily page now shows its real title, authors\' journal and page count in search ("A Cumulative Spore Killing Approach… · Open Forum Infectious Diseases · 7 pages · on October 6th, 2026"). Plexus reads the first page once, in the background, only for PDFs the panel lists, and remembers it. Searching its title words, authors or journal finds it.\n- **Search by meaning.** With Roam\'s semantic search on (Settings → Graph), the panel\'s "Meaning" toggle adds results that match what you mean, not only the words, under "By meaning" a moment after the word matches. "Find related" on a card lists notes related to it, ready to drag onto the board.\n- **Live AI\'s composer in the chat.** Mention pages with `[[` or `#` and blocks with `((`; `/` opens Live AI\'s commands and your own `#liveai/prompt` prompts and `#liveai/style` styles; pick the context (this part, the page, linked references, sidebar, daily notes), a style and the thinking level. Tools and agents open Live AI\'s own chat with your conversation.\n- **Dark mode for the chat.** Proper light and dark colours (AA contrast), quiet icon buttons, and your question no longer scrolls under the context bar.\n- **Copy ▾ is back** on parsed parts: every copy format, plus Ask AI and Add to question. The copy menu closes on Esc and outside clicks.\n\n## 3.23.0 — 2026-10-11\n\nParsing shows what it finds as it reads, local engines just run (and say they are free), and Ask AI is a floating chat that looks like Live AI\'s own.\n\n- **Watch the parse.** While a PDF parses, a soft beam sweeps each page and every table, paragraph and figure outlines itself as it is found, on the reader and on the card. A live count ("15 tables · 371 paragraphs · 88 figures") turns into a summary with the time when it is done. With Reduce motion on, only the ring and the count show.\n- **Ask AI on any part.** Hover a parsed part: a small Ask button (a new speech-bubble icon, now used everywhere for Ask AI) sends it to Live AI with the rest of the PDF as context; Copy copies it, tables as a Roam table. Shift-click Ask adds the part to a multi-part question.\n- **A floating Live AI chat.** Ask AI opens a chat window styled after Live AI\'s: the parts you ask about as chips, message bubbles, follow-up questions with page citations, a model picker. Drag it, resize it, and it stays above a full-screen board without the board reacting to it. "Open in Live AI" hands the conversation to Live AI\'s own chat.\n- **Local is free, and it just runs.** Parse uses Docling first when the helper is paired, reads scanned pages in the same run, never asks to confirm, and has no page limits: long scans and long documents are read in batches. Engines are labelled "Free · on this Mac", "Free · in Roam" or "Cloud · uses your credits", and the chip after a run reads like "Docling · free · 110 pages".\n- **Faster scan reads.** The in-browser second reading only checks pages with doubtful words, so a 110-page scanned record reads in about 8 minutes instead of 22. "Read the scan" can be run again on a PDF already read.\n- **PDF fixes.** A PDF dropped on a board is no longer stored as a doubled `{{[[pdf]]: {{[[pdf]]: …}}}}` block (Roam could not show it and Docling got an empty file); blocks already doubled are repaired. An empty file or a rejected job now says so instead of "Nothing matches". A PDF on its own page is titled by its page, and reopening it brings back its fullest read.\n- Parse menus close on Esc and on a click outside; a full-screen board widens again after Live AI\'s docked chat closes.\n\n## 3.22.1 — 2026-10-11\n\n- **Open on board is instant again.** "Open on board" in a connection preview, "Show on board" in a block\'s menu and region links now open the page through Roam. Roam put back the page link these used when it came from a click, so the board waited about six seconds and then opened zoomed in, without the connection selected. It now opens in about 0.2 s with the connection selected.\n- **Pairing survives a reinstall.** The helper token is also kept on this device, so removing and re-adding Plexus in Roam Depot no longer leaves the helper "Running, not paired".\n- **Pair from Roam.** With helper 0.1.1, Pair shows an Allow dialog on the Mac, so there is no Terminal step. The Engines sheet now says what happened.\n\n## 3.22.0 — 2026-10-11\n\nBoards respond at once to zoom, hover, click, drag, edit and undo, and unfolding a board in the outline no longer draws every table.\n\n- **Smooth zoom and hover.** Zooming with the wheel or trackpad no longer stutters: a zoom burst is one gesture, and the board settles once at the end. Moving the mouse over cards no longer makes the page catch.\n- **Faster clicks.** Selecting, deselecting, dropping a dragged card, leaving a card\'s editor and opening or closing the Add panel each paint in about 25–100 ms, down from about 200–300 ms. Board state no longer changes classes on the whole board, which some other extensions\' styles (zotero-roam) turned into a full restyle, and the board ignores Reference Path\'s highlight colours on its own block.\n- **Tables fold under captions.** A table card is now a one-line caption ("Table · 7 rows") with the table folded under it, so unfolding a board in the outline shows one line per table instead of drawing every row (Parse Lab: 3.6 s → 0.24 s). New tables are made this way. "Fold tables under captions" in the board ⋯ menu converts the tables already on a board, with a preview first and one undo for the whole change.\n- **Lighter after zooming out.** Large tables swap back to their picture as soon as you zoom out to the map, instead of staying live for ten seconds.\n- **Faster undo.** Undo and redo repaint at once; badge counts refresh just after.\n- Comment counts on cards load with one small query whatever the size of the board.\n\n## 3.21.0 — 2026-10-11\n\nBoards open instantly, PDFs live on their own pages the way Roam keeps them, Ask AI reads charts and compares parts across PDFs, and images are searchable by colour and by the text inside them.\n\n- **Instant open.** A board paints from a saved snapshot in its first frame, then the live board takes over the same cards without flicker. Cold open in the right sidebar shows real content in about 66 ms (was about 760 ms) and in the main view about 100 ms (was about 850 ms), with no grey placeholder cards. Badges and graph links load right after. Large tables show a picture of their cells instead of a grey "Table · N rows" box.\n- **PDFs on their own pages.** A PDF card can now be a link to the PDF\'s page: the PDF and its highlights live together on that page, as in Roam\'s own PDF annotator, and unfolding a board in the outline no longer opens a PDF viewer for every PDF. New PDFs dropped on a board are placed this way. "Move PDFs to their own pages" (board ⋯ menu) moves the PDFs already on a board, with a preview first and one undo for the whole move.\n- **Ask AI across several parts.** "Add to question" on a table, paragraph, figure, highlight, image or whole PDF, then ask once about all of them from the "N parts · Ask" pill. Answers cite [Part N, p. M], tables come back as real tables, and an answer added to the board links to the cards it used.\n- **Ask AI sees figures.** Asking about a figure sends its picture to a model that can read images (the crop is uploaded to your graph once). **Chart → table** turns a chart into a table card, with the values marked as read from the chart.\n- **Whole-PDF answers find the right pages.** Asking about a whole PDF now picks the parts that match the question from every page, not just the opening pages.\n- **Default model.** Ask AI uses Claude Sonnet (or Gemini) by default and remembers the model you pick. A model that returns an empty answer says so and offers the next one.\n- **Search inside images.** Images and PDF figures can be found by colour ("red", "blue", a #hex value, or the colour swatches) and, with "Read text in images" turned on, by the words in them. "More like this" finds images with similar colours.\n- **Comments on cards.** "Comment…" on a card adds a Roam comment; cards with comments show a count that opens the thread in the sidebar.\n- **Changed since last visit.** Board ⋯ menu: outlines the cards edited since you last opened the board on this device and lists who changed them.\n- **Query cards.** A card holding a Roam query shows its results as a live list; drag a result onto the board as a card.\n- **Daily-note inbox.** Blocks on daily pages that mention a board appear in its "Inbox (N)" pill, ready to place.\n- **Board rule for your own queries.** `window.__plexusDiagram.rules.boardMember` finds the cards of a board in a Datalog query.\n- Newly parsed PDFs show up in search right away.\n\n## 3.20.0 — 2026-10-11\n\nFilter the search panel by type, search inside your parsed PDFs, and ask AI about one table or paragraph with the rest of the PDF as context.\n\n- **Type filter.** The Search tab\'s type list is now a Type button with toggles in two groups: Documents (Page, Block, Board, Daily, PDF, Image, Web link) and Inside PDFs (Paragraph, Table, Figure, Caption, Heading, Formula, Region, Pin), with Show all / Hide all. Your choice is kept per graph. PDF, image and web-link rows show a title, file name or thumbnail instead of the raw macro.\n- **Search inside parsed PDFs.** Tables, paragraphs, figures, captions, headings and formulas of every parsed PDF in the graph are searchable, with a page range ("p. 3-8"). Every word must match, in any order; "quotes" keep a phrase. Results show the part type, page and PDF title. Click opens the reader at that page when the PDF is on the board, otherwise adds the part as a card.\n- **Ask AI.** Ask about one part of a PDF from the reader\'s selection bar, a part\'s menu in the parsed view, a part in search results, or a whole PDF from its card menu. Plexus sends the part, its caption and section heading, the text around it and an outline of the PDF, and asks the model to answer about that part only. Answers stream, cite pages as [p. N] links that open the reader, and can be copied or added to the board as a card with a Source link back to the part. Uses the Live AI Assistant extension: turn on its "Enable Public API" setting. Plexus calls no AI service of its own.\n- The search panel sits above the tool palette, and long result lists keep each row readable.\n\n## 3.19.0 — 2026-10-10\n\nHigh accuracy reads every scanned page with the page model, a finished read follows you to your other computers, and old tables, photographed pages and figures read much closer to the page.\n\n- **Every scanned page through the page model.** High accuracy now reads each scanned page with Qwen3-VL by default (setting "High accuracy page reader": All, or Doubtful for the old behaviour). It is slower, about ten times per scanned page, and much better on photographed, handwritten and old printed pages: a photographed 1881 title page now matches the page 100% (was 3%), and a handwritten 1925 note 100% (was 36%).\n- **Reads are kept in the graph.** After a High accuracy, helper or LlamaParse read, Plexus uploads the read as one file to the graph and notes it on the PDF block, so your other computers load it instead of reading the PDF again. Setting "Keep reads in the graph" (on by default).\n- **Old tables.** Lists with leader dots and page numbers are read as whole tables, pages set in small capitals are no longer tilted before reading, side-by-side and stacked tables are kept apart, and printed leading zeros stay. An 1850 roster now scores 0.84 on cell content (was 0.08), a 1921 hydraulic table 0.94 (was 0.19).\n- **Figures.** The layout model\'s picture boxes are combined with the ink detector\'s: two photographs on one plate are two figures, a shadow over a photographed page is not a picture, and a drawing with one caption stays one figure.\n- **Tested on pages Plexus was not tuned on.** On 35 pages from libraries never used in development, High accuracy now scores 0.80 against LlamaParse\'s 0.82 (3.18.0 scored 0.73), and leads on handwritten pages (0.88 against 0.77).\n- **Rust helper 0.2.0.** The light helper\'s deskew check changed; re-run the helper install to get it.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.18.0 — 2026-10-10\n\nHandwritten letters read closer to the page, a wide old table reads whole, and High accuracy installs on a clean Mac.\n\n- **Handwritten letters.** The page reading now fills every text block on the page, including a stamp, a word in the margin and the signature, and the page is read at its full scan size. Three handwritten 1859–1914 letters now match the page 79–97% (were 64–90%). A handwritten letter takes about 30 seconds in High accuracy.\n- **Photographed lists.** When two readers see a photographed page at slightly different tilts, their words are lined up before they are compared, so a confident name is no longer swapped for a dictionary word. A photographed 1924 roster now matches the page 90% (was 83%).\n- **Wide tables.** A caption row that spans many columns no longer stops the High accuracy table reader early. A 1916 thirteen-column table now scores 0.95 on cell content (was 0.77).\n- **Install.** The High accuracy table reader now verifies against the files Hugging Face serves, so a clean install works (it failed its own checksum before). An existing install downloads the reader once more (about 1.9 GB).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.17.0 — 2026-10-10\n\nHandwritten letters, ledgers and photographed pages read much closer to the page in High accuracy.\n\n- **Handwriting and photos.** When Apple Vision is unsure of a page, High accuracy now reads that page\'s text with Qwen3-VL-8B (Apache-2.0) instead of PaddleOCR-VL, which still reads the tables. Pages of a handwritten dye-recipe book now match the page 92–96% (were 53–71%), and a photographed 1867 letter 89% (was 58%). A handwritten page takes about 15–30 seconds.\n- **Text in the right place.** The page reading is lined up word by word with what Vision saw in each region, so a date, a greeting, a paragraph and a signature each keep their own text, and table cells and figure labels are kept out of the paragraphs.\n- The first such read downloads the model once (about 5.8 GB, checked against pinned SHA-256 hashes). To get it, re-run the High accuracy helper install.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.16.0 — 2026-10-10\n\nLong rosters and old tables printed in pieces read as one table.\n\n- **Rosters and registers.** A roster printed as several pieces down the page, with a section line between them ("Harbor Commissioners for the Port of San Jose, 1913-1924."), is read as one table with that line as a row. Leader dots, a date split across two cells and a lone "Deceased." beside a name no longer become columns of their own. Three 1924 California Blue Book roster pages now score 0.96–0.99 on cell content (were 0.26–0.78).\n- **Old numeric tables.** Totals are matched to their rows after the table\'s shape is repaired, a lone "o" in a column of numbers is read as 0, and a numbered column with one unreadable number is filled from the run. A 1929 NACA viscosity table now scores 0.98 on cell content (was 0.78), and a 1916 Bureau of Mines gas table 1.00 (was 0.91).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.15.0 — 2026-10-10\n\nMore figures found in photographed pages and menus, and more old tables read exactly.\n\n- **Figures and captions.** Small labelled diagrams (a sketch with "G(s)" or "(k)" labels), pictures on a letter, hatched menu illustrations and plates split across two columns are found, and a caption is joined only from text inside the picture, so the next column\'s text no longer leaks in.\n- **Tables.** A section banner split across the width stays one table row, a scientific factor such as "9.806 65 E+00" stays one value, a footnote printed under the bottom rule stays a paragraph, and number formatting is tidied after High accuracy picks its reading. A 1932 NACA table now scores 0.95 on cell content (was 0.67), and NIST unit tables 0.94–1.00.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.14.0 — 2026-10-10\n\nOld printed text and old tables read closer to the page.\n\n- **Printed text on old scans.** Words that Vision reads glued together stay whole, plurals are not shortened to the dictionary singular, and the "Digitized by Google" / HathiTrust stamps are treated as page furniture, not text. On our 1916 Bureau of Mines pages the text now matches the page 97–100% (was 82–92%). A caption line under a wide plate is read and kept.\n- **Tables.** Unit lines under a header, blank leader cells, labels fused to the next word and fragments printed beside a row are put back in the right cells. A 1922 viscometer table now scores 0.96 on cell content (was 0.78), and a born-digital regression table 0.96 (was 0.63).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.13.0 — 2026-10-10\n\nHandwriting and photographed pages read much better in High accuracy, more old tables come out exactly, and every figure on our old-scan test pages is found.\n\n- **Handwriting and photos.** When Apple Vision is unsure of a page (handwriting, a photographed letter or menu), High accuracy keeps Vision\'s reading and also asks the page reader (PaddleOCR-VL) for that page\'s text. Letters, recipe books and field notes now read as prose; name lists and menus stay text instead of becoming tables. A handwritten letter takes about 10–20 seconds.\n- **Tables on old scans.** Rotated column heads sit in their own columns, brackets inside a formula cell are not grid lines, and subscripts, thousands marks, degree signs, group heads and totals are tidied. A 1960 typewritten NASA table now scores 0.98 on cell content (was 0.51).\n- **Figures and captions.** Apparatus drawings with labels, rotated plates with their title along the edge, and pages with two figures are found, and captions printed side by side are split by column. On our 27-page set of 1890–1920 scans every figure is now found with no extras, and 82% of captions are linked (was 55%).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.12.0 — 2026-10-10\n\nPhotographed and scanned pages: figures found inside the page, no invented tables, and more tables read right on old scans.\n\n- **Figures inside photos and scans.** A photographed or scanned page is one picture, so Plexus now finds the charts, plates, sketches and maps inside it from the ink, and links their captions, including chart titles without "Fig." and German "Abb." plates. On our set of 57 newer pages (photos, handwriting, modern documents, mixed layouts) figures are found at F1 0.85 (was 0.39) and half of the captions are linked (was 7%).\n- **No invented tables.** Letters, handwritten notes, photographed title pages, contents lists and the labels inside a chart are no longer turned into tables; a table needs real tabular content (a value column or a header over body rows).\n- **Tables on old scans.** Columns split by partial rules or a short right edge are kept, unit lines and lab-id rows are header rows, and when two readings disagree the one the page text supports wins. On our 27-page set of 1890–1920 scans, High accuracy now reads 74% of table cells exactly (was 39% in 3.11.0).\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.11.0 — 2026-10-10\n\nScanned and born-digital PDFs read more accurately: fewer false figures, captions found, more tables right, and a High accuracy read that gives the same answer every time.\n\n- **Figures and captions on scans.** Library stamps, page-edge stripes, rules and text blocks are no longer taken for figures; a real drawing is never dropped, even when its caption runs across it. Captions that start with Fig., Figure, Plate, Abb. or Tafel are linked to their figure, including a caption set sideways beside a plate. On our set of 62 scanned technical pages (1900–1950), High accuracy now finds figures at F1 0.98 (was 0.92) and links 89% of captions (was 77%).\n- **Tables on old scans.** Narrow numeric columns that a spanning header had glued together are split again; contents lists under a plate stay lists; a numbered index or an equation is not turned into a table.\n- **Tables in born-digital PDFs.** Booktabs-style rows, leader-dot columns and regression tables stay tables. High accuracy also asks the layout model about tables on pages with a text layer, and keeps a table only when its words are on the page.\n- **High accuracy.** The same PDF gives the same reading every time (fixed decoding; the model weights are pinned and checked by SHA-256 on first use). The layout model and the reader run only on pages where they can change the result.\n- **Fixes:** a blank High accuracy cell no longer erases text the page shows; a running head is not taken for a plate title.\n- Cached parses from earlier versions are refreshed automatically.\n\n## 3.10.0 — 2026-10-09\n\nDraw a region freehand, delete an arrow cleanly, read PDFs with LlamaParse, and read old scans far better on your own Mac.\n\n- **Image regions.** Regions sit exactly on the picture, even on a tall card with empty space below the image, and stay there after a redraw, resize or zoom. Draw around a part of an image with the pen (press P while marking, or pick Pen): the outline follows your hand and is saved in the freehand format Roam Plexus also reads. An arrow to a region enters the picture and stops on the region\'s edge, and hovering or selecting that arrow outlines its region in blue.\n- **Deleting an arrow cleans up.** Deleting an arrow (Delete, Backspace in its empty label, the toolbar trash, the right-click menu or Cut) also deletes the region it made, when nothing else uses that region. One ⌘Z brings both back.\n- **Arrow toolbar.** The toolbar for a selected arrow is about 290 px wide instead of 800: direction, colour, label and delete stay on the bar; style, width and the rest open from small menus. It sits clear of both cards the arrow connects.\n- **LlamaParse (cloud).** Read with LlamaParse sends a PDF to LlamaParse with your own key, after a confirm that shows the tier, the page count and the cost (Agentic is 10 credits, about $0.0125, a page; re-reading within 48 hours is free). Without a local helper it goes through a relay that stores nothing. Plexus keeps LlamaParse\'s tables and text and uses its own figure boxes where it has read the page, which scored better than LlamaParse alone in our tests. Mistral OCR is there as a second, no-install choice.\n- **Local helper.** The default helper is now a 15 MB program (was 1.1 GB) that reads scans with Apple Vision as well as the old one did. Docling stays available as an add-on (`install.sh --docling`). A beta High accuracy read (`install.sh --docling --vlm`, about 2 GB of models) adds a layout model and PaddleOCR-VL for tables.\n- **Old scans.** Typewritten and hand-ruled tables, hand-drawn plates and their captions, two-column pages, small-caps titles, patent drawing sheets and faded typewriting all read much better: on our set of 1900–1950 technical scans, figures found went from 0.49 to 0.98 and text errors from 6% to about 2%.\n- **Fixes:** the High accuracy read never replaces a table with a worse one; sideways margin titles are not headings; titles never fall back to "PDF" after a cloud read.\n\n## 3.9.0 — 2026-10-08\n\nLink back to the PDF, copy the way you mean it, and point arrows at anything: a cell, a row, a region of an image, a PDF pin, or another arrow.\n\n- **Source pins.** Turn on "With source" in a chip\'s ▾ menu (or hold ⌥ for one drag or click) and the card gets a pin to the exact spot in the PDF: a `{{[[plexus-pin]]}}` block under the PDF that shows the page crop wherever Roam renders it, plus `Source:: ((pin))` on the card. Click a pin for a larger crop, the surrounding paragraph, Open in reader (jumps and flashes the spot), Sidebar and the boards that cite it. One ⌘Z removes the whole gesture.\n- **Copy menu.** The copy button beside a parsed box now opens a menu (▾, right-click or long-press): Copy, Copy as plain text (⇧⌘C), Copy as card (⌥⌘C, pastes onto a board as a real card), Copy with source (⌥⇧⌘C, writes the pin), Copy crop as image, Copy link (opens the reader at the pin). Figures copy as an image with their caption.\n- **Arrows to anything.** Start an arrow on a Roam Grid or table cell (Connect) or a page-card row (⌥-drag). Point at part of an image: hold ⌥ when you release over it and drag a box, or ⌥-drag on the picture to start from a new region — a plain drop on an image still points at the card. Arrows can end on a PDF pin or on another arrow\'s label. Each end is a real block, so the connection reads `((cell)) → label → ((region))` in Roam, and the block shows a "⇢ N on <board>" chip elsewhere in Roam that opens the board centred on that arrow.\n- **Figures from complex PDFs.** Multi-panel figures become one figure with their caption; patent drawing sheets are found; a text page is never one giant figure; boxes stay on the page and inside their column; contents lines are not captions. Dragging a figure makes an image card sized to the crop, with the caption as alt text.\n- **Fixes:** cards move when dragged at high zoom (including table and grid cards); arrows start from grid-table cards; the arrow label editor is one field and no longer makes table cards flicker; paragraph copy works and says so when it cannot; the reader keeps your zoom when it jumps and fits the width again on current Roam.\n- **Docs:** a "Which engine" table compares the built-in parser, in-browser reading, the local helper and the coming cloud engine.\n\n## 3.8.0 — 2026-10-08\n\nPDFs on the board feel finished: clean cards with real titles, a proper Quick Look, a reader that opens where you expect, and scanned pages read in the browser without freezing Roam.\n\n- **PDF cards.** A small highlighter button with the highlight count replaces Roam\'s big white "Add highlights…" button; the title gets the room. Hover shows solid Open / Parse pills that stay readable over any cover and move above the dock and toolbar. "1 ref", not "1 refs"; one-page PDFs show no page arrows.\n- **Real titles.** Cards, the reader, the PDF switcher and Quick Look show the paper\'s title from the largest type on page 1 — not the journal banner ("Science of the Total Environment"), not a running date ("22.12.2005"), not a table note. Titles appear at rest, read in the background one PDF at a time, and saved titles show at once. Run-together words in a title are split when the word list is on this device ("Summaryofreportedcasesper" → "Summary of reported cases per").\n- **Quick Look (Q)** shows the card\'s title, opens at the card\'s page (page 1 by default), turns pages with a pill and the arrow keys, and falls back to Roam\'s reader when a PDF will not load.\n- **Open and Parse.** The reader keeps the board at least 360 px wide, centres the card in what is left, and themes its PDF switcher. Parse opens at the card\'s page with the parsed boxes; on a narrow reader the outline is a tab, starts at the top, and rows are one line. Copy buttons on parsed boxes show on hover beside the box (never under its chip) and confirm with "Copied"; a figure copies as an image with its caption; tiny marks get no box; and the dock and card toolbar fit a narrow board (extra tools behind "…") without covering the minimap.\n- **Reading order.** A sidebar column next to an abstract no longer interleaves with it line by line (the column gap is measured beside the column, and full-width rules separate bands).\n- **Superscripts.** Footnote marks land between the right words ("Kleshchev¹, Boyd¹˒²", "whole zone³" linked to its note); unit superscripts like cm² stay inline.\n- **Scans in the browser.** In-browser reading now runs in a background worker: a scan read no longer freezes Roam (longest pause 23 s → 0.3 s on a dense table page). Doubtful text lines are re-read up close and checked against a word list (the CDC 1980 title now reads exactly), centred cells in wrapped rows stay in their row, and the page is rendered the same way the reader shows it.\n- **Fixes:** covers never go blank after heavy zooming; a reopened scan keeps its read; PDFs parsed by an older version are re-parsed quietly on open (scans you read are kept); left/right docks keep their tools; the header highlight count updates; no repaint loop or per-frame layout work while panning with a selection.\n\n## 3.7.0 — 2026-10-08\n\nParsed text you can see and copy, scans read without installing anything, arrows to table cells, PDF footnotes that work in Roam, and typing that never drops a key.\n\n- **Parsed text shows on the page.** Every block the parser found gets a soft gray box with a copy button (tables copy as Markdown). Boxes now fit sideways tables exactly (the old outline was drawn in the wrong frame on rotated pages). "Show parsed" in the reader\'s mode bar turns them off.\n- **Read scans with nothing installed (beta).** Without the local helper, Read text reads a scanned page in the browser: 39 MB of models downloaded once from this site and cached, then about 20 s for a dense table page. Shaded table rows and slightly tilted scans are handled; doubtful cells are re-read up close. On a 1980 CDC table scan: cell F1 0.922 (the helper: 0.957). The helper stays first when it runs. A read scan reopens with its boxes, table chips and title.\n- **Click to place.** Insert from a chip (Roam Grid, Native, Flat, Card, Figure, Section) now attaches a preview to the pointer; click the board to place it, Esc to cancel. "Insert beside PDF" keeps the old behaviour. The preview stays readable when the board is zoomed far out, with a dashed outline showing the real size.\n- **Arrows to a table cell.** Point an arrow at one cell of a Roam table or a Roam Grid table, the way arrows already point at a block: the cell lights up while you connect, the end follows the cell through scroll and zoom, and clamps with a marker when the cell leaves view.\n- **PDF footnotes in the Footnotes extension\'s format.** Marks like ¹, ** or (3) become `#sup^^[(N)](((note)))^^` aliases with the notes under the page\'s `#footnotes` block, numbered after the ones already there — in paragraphs and in table cells (Roam Grid and native). Setting "PDF footnotes": Footnotes extension / plain / off.\n- **Roam Grid import.** With Roam Grid 0.18.5, "Roam Grid: Import from a PDF on this page…" turns a PDF table (born-digital or scanned) into a grid, through `PlexusDiagram.tablesFromPdf`.\n- **Fixes:** keys typed right after making a card are kept and land in order (they were lost for up to a second); the right-click menu opens at the pointer; the board never scrolls under the reader; the board bar and the card toolbar stay one row in a narrow board (extra tools move to "…"); folded cards are header-high and a folded table says "Table · N rows"; PDF titles skip junk metadata ("I", "Untitled") and fill the PDF switcher as they are found; copy buttons never stack.\n\n## 3.6.0 — 2026-10-07\n\nThe PDF page is the workspace: select, copy, highlight and drag text straight off the page — scans included — plus structure chips, a smoother drag, setup without dead ends, and office files on the board.\n\n- **Text on every page, scans too.** A scanned page gets an invisible text layer from the local helper\'s OCR. Select across the page image, copy it, or press a colour in Roam\'s own highlight tip: the highlight is a real Roam block, also on scans. A read scan reopens with its text in about a second, no new read.\n- **Selection bar**: Copy · Card · Quote · drag handle, placed beside Roam\'s tip, never over it.\n- **Card-shaped drag.** Dragging a selection, a highlight or an outline row shows a ghost of the card that will land, and drops exactly where the ghost is.\n- **Structure chips on the page.** Hover a table: "Table 7×7 · Roam Grid ▾" (Native, Flat, Copy as Markdown, Card). Figures, sections, lists and formulas get their own chip. Hold Shift to see the reading order.\n- **Read / Read + Outline.** The Parsed tab became an Outline: an index of headings, tables and figures with page numbers, filters and bulk actions. Every PDF is parsed quietly when it opens (no writes, no network), so chips and the title are there in Read mode.\n- **No dead ends.** A one-line strip under the reader says what is happening and always has a button. The Engines panel (pane ⚙) shows each reading engine with one action. The local helper installs with one copied command and pairs with one click — no token to paste.\n- **Word, Excel, PowerPoint, OpenDocument, EPUB and CSV on the board** (anydoc, WebAssembly, loaded from this site only when you convert, then cached): a document becomes section cards, a deck one card per slide, a sheet a Roam Grid table.\n- Roam Grid table cards grow with the card; the reader pill hides in the outline; titles come from the parse when the PDF has none.\n\n## 3.5.0 — 2026-10-07\n\nParse a PDF into clean blocks and real tables, on the board, with merged cells, and better than Heptabase on tables.\n\n- **Parse / Parsed / Both** in the reading pane. The built-in parser needs no install and reads a 30-page paper in under a second: headings with their levels, paragraphs in two-column reading order, lists, footnotes linked to their marks, figures and formulas as page crops, and tables, ruled or borderless, with merged cells and header rows. Running headers, footers and page numbers are removed and listed, never silently dropped. Results are cached on this device; nothing is written to your graph until you insert.\n- Hover a parsed block and its region lights up on the page; click to jump there. Each table shows the grid it found over the PDF with a confidence chip, and you can drag a column boundary to fix it.\n- **Insert, send, or drag.** Insert below the PDF, send sections to the board as cards, or drag any block or table onto the board. A table becomes a table card: with Roam Grid 0.18.3+ it keeps merged cells, header rows, alignment and column widths (one Roam write, one undo); without it, a native Roam table. Make highlight turns a parsed passage into a Roam PDF highlight.\n- **Optional local helper** (`tools/parse-helper`, Docling on your Mac): formulas as LaTeX, OCR, and **Read the scan** for scanned pages — Apple Vision word boxes and the scan\'s own ruling lines go through the same table engine, numbers misread by OCR are repaired and re-read cell by cell.\n- Measured on the ICDAR 2013 table benchmark (67 government PDFs): built-in table structure F1 0.979 and exact-cell F1 0.932, against Docling\'s 0.865 and 0.795, in 2.5 s for all 67 against 5 minutes. On a 1980 CDC table scanned as an image only: structure 1.000 and cell F1 0.957, against Docling\'s 0.082. Small scanned type can still misread words (e.g. disease names in 6 pt print); numbers are checked against their column.\n- Roam Grid tables in cards scale with the board and get the whole card (no Roam row spacer, no break-out padding); columns are sized from the text.\n- The reading pane title falls back to the parsed title; the tool dock stays left of the pane.\n\n## 3.4.0 — 2026-10-06\n\nBoards that wear your Roam theme, edits that hold still, wider PDFs, and Roam tables on the board.\n\n- Plexus follows the theme your graph is using: the canvas, cards, text, borders and links take Roam\'s own colours, light or dark, and change when the theme does. Setting **Theme**: Follow Roam (default) or Plexus. Pastel sections are stronger in light mode.\n- Editing in place holds still. In page cards the bullet and fold arrow stay in the gutter and nested rows keep their indent; note, block and task editors keep the resting line height; a sticky no longer shows a blue box while you type. Links keep the same colour at rest and in edit.\n- Roam tables on the board. A card holding a `{{[[table]]}}` shows Roam\'s table, scrolls sideways when it is wider than the card and is never clipped. Enter or a double-click edits a cell with Roam\'s editor; Tab, arrows, typing, the wheel and right-click stay with the table while you work in it. New **Table** tool (B) and a **Table** item in the canvas menu add a 3×3 table in one undo. With Roam Grid installed, an enhanced table works inside the card, and **Open grid** shows it at full size.\n- PDF cards can be as wide as you like (up to 4000 px), and a large card redraws page 1 sharp instead of stretching a small cover. The pane title uses the PDF\'s own title, never a storage path; a zero highlight count is hidden; the format bar no longer covers the pane; a slow PDF shows its cover until the first page paints.\n\n## 3.3.0 — 2026-10-06\n\nEdit in place without the card changing, PDFs you flip through on the board, PDF dark mode, and three Heptabase looks.\n\n- Editing a note, block, task or page card no longer changes how it looks: the text stays in the same place, at the same size, with the same line breaks, at every zoom. Roam\'s bullet, its spacer and the reference-count slot no longer squeeze the text into a narrow column, the editor grows with its text, and the card keeps its size. Double-click a word and the cursor lands on it. With Roam Caret installed, its caret follows the board\'s zoom inside the card.\n- Clicking a PDF card selects it, as in Heptabase: the card becomes a small reader you flip through with the wheel, ← and →, or the `‹ 3 / 9 ›` bar. The side pane opens only from **Open**, a double-click, Enter, the card menu, or a highlight.\n- PDF pages in dark mode (setting **PDF pages in dark mode**): Dim (default) softens white pages on a dark board, Invert turns them dark, Off keeps white paper. Highlights stay readable.\n- Three Heptabase looks, all off by default: **Canvas** flat grey instead of dots, **Section fill** pastel, **Highlight cards** tinted instead of a colour bar. In dark mode they show as coloured borders.\n\n## 3.2.0 — 2026-10-06\n\nPDF round 2: covers at every zoom, page 1 without opening the PDF, pages at reading width, one open per click.\n\n- Zoomed out, a PDF card is still its page. Map and overview paint the saved cover on the card itself, as in Heptabase at 11-17 %, with no image element, title or strip at those tiers.\n- A PDF you have never opened gets a cover in the background: a quiet board (1.5 s after first paint, idle, one at a time, at most three per visit, never while you move or read) draws page 1 with Roam\'s own PDF engine, so nothing is opened or written. A capture that comes out blank is thrown away. Setting **Prepare PDF covers in the background** (on).\n- The reading pane fills its width: Roam\'s reader no longer stops short of the pane\'s right edge (its block row kept a separator and a reference-count slot beside the PDF). After the first page paints, the page is set to page width (through the viewer when it is reachable, otherwise by stepping Roam\'s own zoom buttons until the page fills the pane). Your own zoom is kept; resizing the pane refits.\n- One click on a highlight card does one thing. A plain click opens it in the reader (setting **Highlight click opens**: Reader or Sidebar). Shift-click opens Roam\'s sidebar. The chip\'s **▾** lists Open in reader, Open in sidebar and Open page in main. Nothing opens twice.\n- Selecting a PDF card never mounts Roam\'s reader inside the card. **Read inside the card** in the card menu is the one way to the inline reader; **Show the cover** takes it back, and opening the pane does too.\n- The fullscreen tab strip shows only from two tabs up, is 28 px tall, and reserves nothing while hidden. Tabs, their persistence and Cmd+1..9 are unchanged.\n- The reader\'s pages float on a soft grey bed in light mode; dark keeps the chrome colour.\n\n## 3.1.0 — 2026-10-06\n\nPDFs that read like Heptabase, page cards that hold still while you edit, and tools that do what your hand expects.\n\n- PDF cards show the page itself: white paper, no text on the face. Hover for the title, highlight count and page chips, and an **Open** pill; double-click or Enter opens it too. A thin strip on the edge marks where the highlights are; click a mark to open that page. The cover is saved on this device the first time you read the PDF (nothing is written to your graph); until page 1 has been on screen, the card shows the last page you read. Setting **PDF card cover**: first page or last page read.\n- The PDF opens in a pane beside the board with one slim header (title, other PDFs on the board, highlights, Roam\'s tools, close) and the pages at reading width. A floating pill drives Roam\'s own zoom out, zoom in, fit width and search, and shows `3 / 9`. Roam\'s toolbar is still there behind the tools button. The card you are reading gets an outline until you close the pane.\n- Highlights moved into a drawer at the bottom of the pane: colour and page chips, search, and Note, Place and Locate on hover. A new highlight pulses in the list and offers **Place on board** for a few seconds. Hovering a highlight card flashes its mark in the reader, and hovering a row pulses its card.\n- Highlight cards are quote cards with a colour bar and a source chip (`title · p. 3`).\n- Editing a page card keeps the card exactly as it looked: same rows, same spacing, nothing rewraps or moves, and the cursor lands where you clicked. One click on an already selected page card starts editing there.\n- Hand tool: drag a card to move it, drag empty board to pan. In Select and Connect, dragging empty board pans too; Shift-drag draws the selection box and Alt-drag the lasso. Setting **Drag on empty canvas** brings the old box-select back.\n- With Roam Caret 0.6.6 installed, its caret now shows inside cards at every zoom (Plexus tells it when the board moves).\n- The board bar, tab strip, legend and Properties are solid, and an empty tab strip no longer shows.\n- New PDF cards are 240 × 320.\n\n## 3.0.0 — 2026-10-06\n\nPlexus 3.0: the 3.x roadmap is complete. This release makes large boards open fast, makes every new surface usable from the keyboard, caps every bulk gesture at what one Roam undo can take back, and documents the data model and module contracts as built.\n\n- Large boards open fast. A board with 300 cards, 20 sections and 150 connections shows its cards in about 360 ms and is idle by about 450 ms (it was about 1.3 s, with long pauses after the first paint). Card reference and board counts now come from one indexed read instead of four searches across the whole graph, and fullscreen no longer forces a page layout in the middle of opening.\n- Keyboard: trail stops in the panel take focus; Alt+↑ and Alt+↓ move a stop and Enter walks the trail from it. The region overlay nudges with the arrow keys (Shift for 10 px), Enter confirms and Esc cancels. The status, halo, why and task popovers take focus when they open, move with the arrow keys and give focus back on Esc. Trail strips, crops, PDF chips, timeline rows and the resurface panel open with Enter. Every button has a name, and focus rings show in light and dark even when another extension hides outlines. The `?` sheet lists the new keys.\n- Undo: every bulk gesture stops at 45 changes so one Roam undo takes it back, with a toast that says how many were added: adding cards to a trail, a new trail from a selection, landmarks on a selection, and Lay out by date. README, Limits has a table of writes and undo steps per gesture.\n- Fixed: moving a trail stop down (by keyboard or by dragging) did nothing.\n- Docs: `docs/spec-plexus-3.0.md` (every block kind and prop key, what is stored where, decorated macros, the public API, interop) and `docs/api-plexus-3.0.md` (module contracts). The README follows the 3.0 order and has an integrations table. `tools/spec-keys.mjs` and `tools/doc-check.mjs` fail when code and docs drift.\n\n## 2.21.0 — 2026-10-06\n\nTrails, landmarks, a timeline, strength and dust lenses, source chips, and an Integrations section in settings.\n\n- Trails: a named path through cards with a note at each stop. Add a card to a trail from its menu; Walk trail plays it stop by stop in present mode. A trail is a block under the board\'s collapsed `Trails` child, so `((trail))` pasted anywhere in Roam shows as a strip of stops you can click. The panel has a Trails tab.\n- Landmarks: make a card, sticky or section a landmark and it keeps a large glyph at every zoom, including the overview, and shows on the minimap. Walk the board tours landmarks left to right, then down, or along a trail.\n- Timeline in the Info tab: the daily pages that mention any card on the board, with a count per day; click a day to open it. Lay out by date can now place cards by the day they were first or last mentioned, not only by a date attribute.\n- Strength and Dust lenses (More menu). Strength draws a connection thicker when its two ends are referenced a lot, share other boards, and were edited recently; hover a line to see why. Dust dims cards untouched for 6 months, 1 year or 2 years. Both are views: nothing is written, and turning them off puts every line and card back.\n- Source chip: a highlight dragged from an `Articles/` or `Media Captures/` page shows the page title, and the author when the page has an `Author::` line. Click the chip to open the page in the sidebar. Renaming the author updates the chip.\n- Settings has an Integrations section: Better Tasks, Task Status Tags, Roam Plexus, Compass and the colour highlighter, each shown as detected (with its version) or not installed. It updates when one of them loads or unloads. Switches turn each integration off; with "Roam Plexus and Compass" off, Open in Compass is hidden and drawing cards stop asking Roam Plexus for thumbnails.\n- Kanban card titles no longer show the status tag, and lane counts have a space before them.\n- Fullscreen tabs drop boards that were deleted.\n\n## 2.20.0 — 2026-10-06\n\nStatuses, journal, fullscreen tabs, touch, and a round of reliability work.\n\n- Task statuses (with Roam Task Status Tags 0.9.0 or later loaded). A task card shows its status as the same glyph Task Status Tags draws on the checkbox (Active, Waiting, In Review, Holding, Incubating, Alert, Cancelled) and as a chip. A small ring left of the checkbox opens a status chooser; Shift-click removes the status. The card menu and a multi-selection have Status ▸ (up to 45 cards at a time). Every status change is written by Task Status Tags, not by Plexus. Without it, the glyphs still show from a built-in table and the ring is not there.\n- Kanban "Lanes: Status": one column per status, plus No status and Done. Dropping a card on a column sets that status; dropping on Done completes it the same way the checkbox does. `[` and `]` move a focused card one column.\n- Journal tab in the panel: the day\'s top-level blocks with a day stepper. Drag a row onto the board for a card. Looking and stepping write nothing.\n- Fullscreen board tabs: boards you open while fullscreen collect as tabs above the board bar (up to 9). Cmd+1 to Cmd+9 switch. The tabs come back the next time you go fullscreen in this graph.\n- Touch and tablet: pinch to zoom, two fingers to pan, long-press for the menu, larger resize grips under a coarse pointer.\n- PDF highlights: a Note button on a highlight card opens its note the way Roam\'s own note button does (in the sidebar, focused), creating the note block only when there is none; one undo removes it. The pane\'s PDF switcher names a PDF without highlights by its page, and the arrow keys and Enter move through the list.\n- New drawing (Roam Plexus) is one undo step with its card.\n- Fixed: Plexus no longer replaces Roam\'s global `pull` function. Since 2.14.0 it answered other extensions\' reads from its own cache. After updating, reload Roam once to clear the old copy\'s replacement.\n- Fixed: a board shown in its own linked references, or in the right sidebar, no longer goes fullscreen a second time on top of the main board (clicks and drops went to the hidden copy).\n- Developers: `node tools/live/smoke.mjs "Readwisenotes - "` runs a ten-step live check and cleans up only its own blocks; callback errors are counted and a callback that keeps failing is paused for a minute (Settings shows "N errors" when there are any); `npm run size` prints the bundle report.\n\n## 2.19.0 — 2026-10-06\n\n- Clicking into a page card no longer changes how it looks. The editor keeps the card\'s own text size, row spacing, indent and line wrapping. Roam\'s bullets, guide lines and extra scrollbar stay hidden, and the row you clicked stays where it was.\n- Drag a highlight straight out of the PDF onto the board, as in Heptabase. Hover a highlight in the reading pane (the cursor becomes a hand), then drag it onto the board: a card lands where you drop it. A highlight that is already on the board pulses instead of being added twice. A plain click on a highlight still opens Roam\'s highlight menu, and selecting text to make a new highlight works as before.\n- Clicking a highlight in the pane\'s list, or the page footer on a highlight card, scrolls the PDF to that highlight and flashes it, not just to the top of its page.\n- The PDF reader fills its part of the pane. There is no longer a second scrollbar around it, and Roam\'s toolbar (highlight tools, zoom, page number) stays in view.\n- The link legend (the chips that turn link types on and off) sits under the board bar, beside Properties, instead of on top of the bar\'s buttons.\n- While you edit a page card, hovering a row shows a faint bullet in the margin; drag it to move the block, click it for Roam\'s block menu.\n- A board that is open in the right sidebar while the main window is zoomed into the same board stays in the sidebar. Before, both copies went fullscreen and the sidebar copy covered the main board, so clicks and drops on the board did nothing.\n\n## 2.18.0 — 2026-10-06\n\nPDF highlights closer to Heptabase (roadmap P27), page cards you can edit in place, and two speed and freshness fixes:\n\n- Open reader on a PDF card opens a reading pane beside the board instead of inside the card. The card stays a cover. Drag the pane\'s edge to resize it; on a narrow board it sits below.\n- The pane lists every highlight in that PDF with its colour, page, and note. Filter by colour, page, or text. Place puts one card on the board; a highlight already on the board pulses instead of being added twice. Drag a row onto the board for a card at that spot.\n- A highlight card\'s footer opens the pane at that highlight\'s page and flashes the card. The page holds after Roam restores the last page it showed.\n- A note under a highlight (a child block) shows on its card and follows edits.\n- Clicking into a page card edits it in place. The card keeps its size and look; the row you clicked gets the cursor; Escape returns to the same view.\n- A `((ref))` card follows edits to its source, including edits made while the card was off screen or the board was closed.\n- Graph links are drawn after the board\'s first paint, so opening a board feels faster.\n- The colour tooltip on a highlight now says what changes: the card and the list follow the tag, the mark inside the PDF keeps the colour Roam painted.\n\n## 2.17.0 — 2026-10-06\n\nFeel instant (roadmap P26), after the claude.ai speed work:\n\n- Going back to a board you just left is instant: the last two boards stay ready (paused, nothing running) and come back as they were, fullscreen included, with no rebuild.\n- A board opens with a quick sketch of its last layout while the real board loads.\n- Hovering a board chip, a board card, a breadcrumb, or a link to a board quietly reads that board ahead of the click.\n- Cards load in small batches nearest the middle of the screen first, so a big board never freezes the page.\n- Selecting a card no longer touches every other card (the same cost on a 300-card board as on a 40-card one).\n- Faster text checks on every card (tags, regions, attributes, diagram detection).\n- Cards and page rows keep their size while their content loads, so nothing jumps.\n- Optional speed log in settings (off by default): open time, click time, pan smoothness, Plexus long tasks.\n- Developers: `npm run perf:ratchet` keeps measured counts from getting worse; a hidden `speed-flags` setting turns each speed feature off without a release.\n\n## 2.14.1 — 2026-10-06\n\n- Typing stays light while a board sits in an open right sidebar. Plexus read Roam\'s whole sidebar window list every 400 ms (about 6 ms each time with 140 windows); it now reads the window\'s own open/closed arrow instead.\n\n## 2.14.0 — 2026-10-06\n\n- PDFs, videos, tweets and other heavy embeds on a card, a page row or an outline row show a poster until you open them. Only one stays live per board.\n- A board you scroll away from, a collapsed sidebar window, or a board under a closed block stops working in the background and comes back where you left it.\n- Opening a board reads Roam about six times less (about 24 calls instead of 155 on a 39-card board), so other extensions keep their share of Roam\'s limit.\n- Typing in a card updates that card only. Typing on a page that is a page card updates the changed row only.\n- Typing outside a board keeps the board open instead of closing and reopening it.\n- Panning no longer measures every arrow handle on each mouse move.\n- Board chips at the top of a page are placed once per frame instead of scanning the whole page for every change.\n- A live speed check for developers: `node tools/live/perf-gate.mjs`.\n\n## 2.13.2 — 2026-10-05\n\n- A board in the right sidebar opens as the board. Outline is still in the mode bar, and the last choice is remembered on this device.\n- Outline rows render when they scroll near the window. A row that scrolls far away unmounts and keeps its height, so a PDF lower down does not stay open.\n- Clicking and panning a board stays fast in a window that has been open for days. Old copies of a board no longer keep listening after they close, and loading Plexus again cleans up an earlier copy that never unloaded. One click had been waking thousands of leftover copies.\n- A board that fails to open waits before trying again, instead of retrying every 400 ms.\n\n## 2.13.1 — 2026-10-05\n\n- An image card keeps its picture at map zoom. A collapsed or empty card still shows its title.\n- A card that cites part of an image shows that crop. A region inside the card still uses its own block.\n\n## 2.13.0 — 2026-10-05\n\n- Every diagram opens as a Plexus board by default. Nothing is saved until you change the board. Your first edit writes the board marker in the same undo step, and folds the outline when Collapse the outline is on.\n- A diagram that already has native shapes stays Roam\'s own. An Open as Plexus board button over it imports the shapes and arrows.\n- Settings has Every diagram is a Plexus board. Turn it off to open only diagrams you enhance or create with New whiteboard here. Turning it off gives the native diagram back to boards you have not changed.\n- Plexus: Restore native diagram now sticks, even with the setting on. Plexus: Enhance clears it.\n- Fixes from a review of 2.8 to 2.12:\n  - A page that is a card on a board no longer throws or loops when it opens. Its board chip sits under the page title.\n  - The references drawer lists top-level blocks again.\n  - Cutting or duplicating an image card keeps its regions. Deleting one asks first and shows how many regions it has.\n  - Clearing a connection\'s why no longer deletes a note that has children.\n  - An open PDF reader stays mounted while it is in view, and arrows meet its edge. Page chips refresh when highlight cards change.\n  - Encrypted-graph PDFs (`.enc`) show their highlights.\n  - Each image highlight reuses one regions block.\n  - Fewer reads on large boards: highlight watches are capped, block props are read only for highlights, and the Info panel counts references without pulling them all.\n  - Memory lane arrows follow the cards. Suggested lines follow a dragged card, and their menu sits at the line.\n  - Escape works on a full-screen board. Annotate is one undo step.\n  - Popovers close when the pointer leaves. Unload no longer removes Roam\'s own nodes.\n- The command palette stays two entries.\n\n## 2.12.1 — 2026-10-05\n\n- Double-click a connection label to edit the label and a why note. Enter saves both. The outline chip adds "because …". An empty why writes no child.\n- Shift+T opens a memory lane. Play fades cards that did not exist yet. A snapshot tick restores that layout and writes nothing.\n- The references button on a block card lists blocks that mention it, grouped by year.\n- The links menu can draw dotted lines for shared page references. Connect makes the connection. Link text wraps the mention.\n- Plexus Commands has Resurface here. It inserts a button that lists cards from a week, a month, or a year ago. The command palette stays two entries.\n\n## 2.12.0 — 2026-10-05\n\n- Hover the info button on a card or a connection to see when it was made, the board, the section, cards from the same day, and how often it is referenced. A block on a board shows one chip per board. Hover the chip for a map. Click the chip to open that card. Nothing here writes. The command palette stays two entries.\n\n## 2.11.4 — 2026-10-05\n\n- A PDF card shows one chip per page that has a highlight on the board. The badge is the count. A click pulses those cards. A double-click opens that page in the card reader. An arrow into a highlight shows the page at the tip. A highlight in the outline says On board when that highlight is a card. None of these write. The command palette stays two entries.\n\n## 2.11.3 — 2026-10-05\n\n- Open in reader on a highlight card opens that page in the PDF card on the same board. The mark stays in view. If that PDF card is not on the board, Roam opens the highlight and a note says to click it. The click does not write. The command palette stays two entries.\n\n## 2.11.2 — 2026-10-05\n\n- Add highlights on a PDF card places the ones you pick, as a grid or a column. One undo removes them. Dragging a highlight bullet onto the board makes one card. Dropping a date asks before adding only the highlights under that date.\n- An area highlight keeps the picture\'s shape. Mark region on that card stores a region under the highlight. The page mark keeps the colour Roam painted.\n- The tag lens can show one highlight colour. The command palette stays two entries.\n\n## 2.11.1 — 2026-10-05\n\n- A block ref of a PDF highlight is a card. It shows a colour bar, the passage or the area picture, and the page. Changing the colour tag updates the bar. A block that is not a highlight stays a normal ref. The command palette stays two entries.\n\n## 2.11.0 — 2026-10-05\n\n- A pdf block on the board is a card. The cover shows the file name and the highlight count. Open reader mounts Roam\'s own reader. Interact lets you use that reader. Escape or a board click puts the shield back. A second reader closes the first. Moving the card does not change the PDF settings. The command palette stays two entries.\n\n## 2.10.3 — 2026-10-05\n\n- With Compass loaded, a card menu can open Compass on that page. Compass can open the board that holds the card, and asks which board when there are two.\n- An image card can start an empty drawing beside it. The connection reads annotates. A note says to drop the image into the drawing, and it stays up after the drawing opens. The outline chip names the drawing. Without Roam Plexus that row stays hidden. The command palette stays two entries.\n\n## 2.10.2 — 2026-10-05\n\n- A block ref of a Roam drawing shows the drawing. Regions lists that drawing\'s regions, and picking one adds a reference on the board. New drawing here creates the drawing and a reference card. The drawing block is not rewritten. Without Roam Plexus the new drawing is still an ordinary drawing. The command palette stays two entries.\n\n## 2.10.1 — 2026-10-04\n\n- window.PlexusDiagram lists boards on a page, boards that show a block, and the cards and views on a board. It can open a card or a saved view, add one card, and return a small PNG of a board. Opening and the picture do not write. Adding a card writes that one block.\n- A block ref of a Roam Plexus region shows the caption, a crop, Open drawing, and Open in sidebar. Open drawing uses Roam Plexus. If Roam Plexus is missing, the card is an ordinary block ref. The command palette stays two entries.\n\n## 2.9.6 — 2026-10-04\n\n- An image card shows a small region count when it has regions. The card menu lists them: Go, Copy ref, Rename, and Delete. Rename changes only the caption. Delete asks when another block still references the region, and can open those mentions. Badges off hides the count. The command palette stays two entries.\n\n## 2.9.5 — 2026-10-04\n\n- Hover an image crop for a larger preview, the picture dimmed and the region lit. Click opens that image on its board, zoomed to the region, or scrolls the outline to the image and pulses the region. Shift-click opens the board in the sidebar. An inline view draws a small map. Hover enlarges it. Click opens the board at that view and pulses the highlighted cards. Shift-click opens the board in the sidebar. Neither click writes to the graph.\n\n## 2.9.4 — 2026-10-04\n\n- On an image block, the block menu item Plexus: Mark image region lets you drag a rectangle. Confirm stores the region under the image, copies a block ref, and toasts. Escape writes nothing. A plexus-region image button in the outline, a block ref, an embed, the sidebar, and linked references draws the crop at most 160px tall, with a 1px border and no shadow, and hides that button. A Roam Plexus region such as a rectangle is left alone. The command palette does not gain an entry.\n\n## 2.9.3 — 2026-10-04\n\n- On an image card, Mark region lets you drag a rectangle on the picture and add a short caption. Confirm stores that region under the image, copies a block ref, and toasts that it copied. The first undo removes the region. The next undo removes the empty container. The card stays put, and the image viewer does not open. The command palette stays two entries.\n\n## 2.9.2 — 2026-10-04\n\n- Save view, in More or with Shift+V, writes the current camera as one view block at the end of the board. A selection can save its own view from the context bar. The Boards tab lists those views, each with a 96px outline map. Go puts the camera back and writes nothing. Delete removes the view block, and undo puts that row back. The command palette stays two entries.\n\n## 2.9.1 — 2026-10-04\n\n- A new card is placed before the Connections list, snapshots, and a region container, so those stay at the end of the block. The library card count skips a region container the same way it skips Connections. Leaving a new empty card that only holds a region container no longer deletes that card.\n\n## 2.9.0 — 2026-10-04\n\n- A region container `{{[[plexus-regions]]}}` and its `{{[[plexus-region]]}}` children stay off the board. They are not cards. A card\'s child badge does not count them. Image regions and saved views can be stored in that shape. A Roam Plexus region is recognized and left as theirs. Nothing is drawn yet.\n\n## 2.8.0 — 2026-10-04\n\n- Better Tasks and the Task tool start off. Settings, Integrations, has four controls: Better Tasks integration, Task tool, Task chips, and Default project for new tasks. With both switches off, the dock has no Task button, K does nothing, and the ? sheet does not list K. A Task tool you already saved stays on. Turning Better Tasks on draws the light checkbox and the chips, and asks Better Tasks for attributes once. Turning it off puts Roam\'s own checkbox back. Opening, panning, and clicking a board does not call Better Tasks while the integration is off.\n- A card whose text has #bg-blue or #[[bg-blue]] takes that colour on the board when the colour highlighter\'s variables are on the page, in light and in dark. #c:red still colours bold text inside the card, and Plexus does not paint over it. A fill you set in the picker wins; clearing that fill brings the tag colour back. With no highlighter variables, named colours use a fixed palette and the tag stays visible in the card.\n- The colour picker\'s gear, Write as highlighter tag, is saved on that board. In that mode a named colour writes one #[[bg-name]] into the block and clears the card\'s fill. One undo restores the text and the fill together. Hex, darker, and lighter still change only the fill.\n- A key pressed outside the board no longer switches the tool or adds a card, while nothing on the board is selected. A selected card still receives the board\'s keys.\n- A card more than one screen outside the view keeps its size and skips layout. The card you are editing stays fully drawn. A card that stays outside the view for 10 seconds drops its live Roam body and draws it again when it comes back.\n\n\n## 2.7.1 — 2026-10-04\n\n- Dropping a repeating task on Done in the Kanban view now makes the next occurrence, the same as ticking its checkbox. Before, only a real checkbox click did, because Better Tasks starts the next occurrence from its own checkbox. The task is now finished through that same checkbox, out of sight, so you get the completed date and the next task together.\n- Popovers stay clear of the board\'s own controls. The task chip popovers, the children peek, the Background and tag popovers, the card colour picker and the right-click menu move aside or flip instead of opening under the dock, the top bar, the rail, the minimap or the Properties panel. When there is no room, they shrink and scroll.\n- Task cards are readable when you zoom out. At the map zoom the check box is at least 20 pixels on screen, with the due date under the title (teal today, red overdue). Zoomed far out, a task is one clear box: empty, checked or crossed, in the same colours.\n- The pill that shows a scrolled-out block arrow ("↓ the block\'s first words") stays inside its card. It is cut to the card\'s width less 16 pixels with an ellipsis and keeps the same size on screen at any zoom.\n- A board with many tasks no longer uses up Better Tasks\' limit of 100 decorated checkboxes. A task card now draws a light checkbox of its own instead of a real Roam block, so a 40-task board added 40 real checkboxes before and adds none now, and Better Tasks keeps decorating the rest of the page. Clicking the box still completes the task through Better Tasks.\n- Checked for a freeze when the bench is run back to back with a task board open: five runs and five load-and-unload cycles did not reproduce it.\n\n## 2.7.0 — 2026-10-03\n\n- Task cards. A card whose block is a Roam TODO now looks like a task: Roam\'s own checkbox, the title, and a row of chips under it for the due date, project, priority, repeat, status, waiting-for and GTD. Today\'s due date has a teal border, an overdue task a red one, a done task is dimmed and struck through, and a cancelled one is struck through. Better Tasks\' own pills are hidden inside the card so the chips are not doubled. At map zoom a task shows a check box, its title and its due date; zoomed far out it is a single check box.\n- New Task tool. Press K, or pick it in the dock or the canvas menu, then click the board: a TODO card appears and opens for typing. A task left with no text disappears when you click away, like an empty card. Cmd+Z right after makes one undo step. The card menu has Make task for a plain note.\n- Change a task from its chips. Click the due date, project, priority or repeat chip and pick from a small popover (today, tomorrow, next week or any date; a project from Better Tasks\' list; low, medium or high; a repeat rule). The change is made by Better Tasks itself, so the attribute blocks keep their uid and Plexus still never writes a `BT_attr` block. Cmd+Z after a chip change is Roam\'s undo, not the board\'s. Without Better Tasks the tool makes a plain TODO card and the chips are read-only.\n- Finishing a task works the way it does in Roam. Tick the checkbox on the card and Better Tasks writes the completed date and, for a repeating task, the next occurrence on its daily or project page. A toast tells you the date and offers Add to board. Dropping a card on Done in the Kanban view does the same through Better Tasks.\n- Drag a task card onto a daily-page card (or a section named for a day) and its due date becomes that day, in the same attribute block. Hold Shift to move the card without changing the date.\n- Better Tasks\' attribute blocks and its Activity log no longer count as children: they are never rows, never in the outline or the peek, and never a "▸ N" badge. Renamed attributes are read from Better Tasks.\n- Three new settings: Task tool (show it in the dock), Task chips (full, due only or none) and Default project for new tasks.\n\n## 2.6.0 — 2026-10-03\n\n- Editing a card no longer shrinks it. Opening a card or a sticky for editing used to let it collapse toward the height of one line, and its arrows came loose. The card now keeps its size for the whole edit, the editor fills it, and the text is no longer cut to one line when you start typing. Edges stay attached.\n- Sticky notes are rebuilt to work like the RoamJS sticky notes, and they stay saved. Each one has a coloured header bar you drag, with a short title, a colour dot and a minimize button. The body is the live Roam block: click once and type, with tags, images, links and the slash menu. Drag a corner or edge to resize. Minimize folds a note to its header and remembers it. There is no close button; Delete or the menu removes a sticky and Cmd+Z brings it back.\n- Page cards open faster. A card now shows all its rows as plain text at once, then turns the rows you can see into live Roam blocks a few at a time. Rows scrolled out of view, and heavy rows such as charts, embeds and images, wait until they are on screen. A page you pulled once is reused while the card is open. A 146-row page card used to block for about 150 ms while it drew; now it paints in about 20 ms.\n- Arrows to blocks now stay on their block. When a chart or an image above the target row loads late, or a row turns live, the card re-measures its rows and the arrow follows. Each linked row shows a small dot in its own arrow\'s colour, so two arrows into one card stay apart, and hovering one arrow lights only its row.\n- New tooltips for the sticky header: drag, minimize or expand, and the colour dot.\n\n## 2.5.0 — 2026-10-03\n\n- The connection preview is cleaner. The target block is now a highlighted bar inside its page card, at the block\'s real place in the page, with its text cut to the card\'s width, and the arrow runs into the bar with a head like the one on the board. Nothing spills over a neighbouring card any more.\n- The preview opens where it never covers the chip or the block line it belongs to: under it, else above, else beside it, shrinking and scrolling inside when the window is small. It follows the chip while you scroll or resize and closes when the chip leaves the screen.\n- Roam\'s breadcrumb above a connection block (in linked references and when you zoom into the block) now opens the same preview on a plain click, because Roam\'s own link there only led to "Board › Connections". A small ▦ marks it. Shift-click, Cmd-click and Ctrl-click still do what Roam does. Unloading removes the marks and the listeners.\n- Resize grips, connection dots and arrow-end handles keep the same size on screen at every zoom, so they are easy to grab on a zoomed-out board and no longer huge when zoomed in.\n- Light mode was checked on every new surface. Fixed: the connection chip could run past the edge of its block, and its teal was too pale on white.\n\n## 2.4.0 — 2026-10-03\n\n- The Add and Info panel now opens to the left of the control rail instead of covering it. The minimap steps left of an open panel. The rail keeps one fixed width, so the version badge no longer pushes it wider.\n- An arrow that ends on a block now visibly points at it. The line continues into the page card and its head stops beside the row\'s text. The row keeps a mark in the arrow\'s color (a left rule and a light tint; in the dark theme a border only, no fill). Hover the arrow and the row lights up; hover the row and the arrow thickens and a tooltip names the other card and the label. When the row has scrolled out of view, the arrow ends in a pill at the card edge with an arrow and the block\'s first words; click it to scroll the row back.\n- Connections now show up where Roam draws them. Under every connection block in the outline, the sidebar or a block\'s linked references, a small chip reads "A —label→ B · on Board" and names the block when the arrow ends on one. Click the chip to see a preview: a map of the two cards with the arrow and the target row, plus Open on board and Open in sidebar. Open on board opens the page, enters a nested board if needed, and selects the connection. Nothing is written, and unloading removes every chip.\n- The card\'s hover toolbar no longer disappears on the way to it. It waits 400 ms after the pointer leaves the card, so you can reach it and open its color picker. Moving to a different card switches the toolbar at once with no flicker. Escape, panning and zooming hide it immediately.\n- With the Hand tool you can now resize: a press on a resize grip resizes, anything else pans, and Space-drag still pans over grips. Page cards have a wider grip band on the right and bottom edges and a larger corner that sits above the scrollbar. The grips show when you hover a card in hand mode.\n\n## 2.3.0 — 2026-10-03\n\n- Board rows in page cards. A page card for a page that holds a board shows that board as a small map with its title and item count, not a grey box. After four maps on one card, the rest are one-line chips. The row for the board you are looking at says "this board". Click opens the board; Shift-click opens it in the right sidebar.\n- A row that Roam cannot render inside a card, such as an empty `{{[[roam/render]]}}`, now shows its raw text, muted, instead of "Failed to render". This also ends the Roam console errors the old page-card row caused.\n- Hover tooltips. Every control on the board bar, the dock, the rail, the card toolbar and the Properties panel shows its name, its shortcut and a one-line description after a short hover. Keyboard focus shows it at once. The tip sits below the board bar, above the dock, left of the rail, and stays inside the board. Settings, Hover tooltips, turns them off and hands the text back to the browser. Tooltip delay is instant, 350 ms or 800 ms.\n- A tooltip no longer stays on screen after the control it described is removed.\n- Ref cards and image cards show readable titles everywhere: Table, Kanban, Graph, Timeline, Gallery and Find use the first line of the referenced block or the image\'s alt text, never `((uid))` or a blank. Find matches the text a ref card shows.\n- Graph view draws a line for every connection, fits all cards inside its window and no longer scrolls them out of sight.\n- The end handles of a short arrow with a label can be grabbed. The label steps aside while the arrow is selected.\n- Gallery captions show the image\'s alt text, or nothing. They never show raw markdown.\n- The Escape that closes Search, a menu, or Gallery, Timeline and Graph no longer also leaves fullscreen.\n- Present mode hides the board bar, dock, Properties, rail, minimap and side panel, and brings them back on exit.\n- Shift-click only extends the selection. It no longer opens the Info panel.\n- Gallery, Timeline and Graph, the board bar and the Properties pill are opaque now, so nothing shows through. A collapsed Properties pill is only as wide as its label.\n- Section titles in the zoomed-out overview may run wider than a small frame before they are cut off.\n- Gallery, Timeline and Graph are also under More, Views, and under Views in the canvas menu. The template entry is now "Timeline template". An empty Timeline says that a date attribute or a daily-page reference makes a card dated.\n- The thin dotted curves that run across a board between cards are graph links, drawn for every shared page reference or attribute. They are not a stray line. Links, in the board bar or the L key, switches them off or to attributes only.\n\n## 2.2.0 — 2026-10-03\n\n- Board bar and tool dock. The top bar is now the board bar: breadcrumbs, Add, Info, links, views, background, present and More. The nine tools moved into a floating dock along the bottom. Settings, Toolbar layout, brings back the 2.1 look (Classic) or hides the top bar until the pointer nears the top edge (Dock only).\n- Dock settings: position (bottom, left or top), shape (pill or strip), tool names under the icons, and button size. A board can set its own dock position from the More menu, Dock position for this board; opening a board still writes nothing.\n- The active tool slides a highlight behind it. A locked tool (double-click) shows a padlock. In dark mode the active tool is a border and a dot, so it stays visible without a fill.\n- Dock options. With Card, Sticky, Section or Shape active, the dock shows that tool\'s colors, the block or card look, or the shape kinds. With nothing selected, a pick styles the next item you create with that tool and is forgotten when the board closes; with cards selected, it restyles them as before. One undo reverses it.\n- The last breadcrumb carries the board\'s own color, and the bar\'s bottom edge takes the same tone.\n- Overview zoom keeps Select, Hand and Board in the dock. A board narrower than 560 px gets smaller buttons and no options. A left dock no longer sits on the Properties panel.\n- The active and locked tool styles in the top bar lost to Roam\'s own button rules in dark mode. They hold now.\n\n## 2.1.0 — 2026-10-03\n\n- Enter in a card adds a line to the card\'s block, like a node in a native Roam diagram. Settings, Cards, "Enter in a card" set to Child brings back the old behavior of making a child block.\n- An empty white panel with a Close button no longer covers boards.\n- Pasting one image into a card inserted it twice. It now inserts once.\n- Dragging an image onto a card that is being edited works. Dropping an image on a card adds it after the card\'s text instead of replacing the text.\n- Whole-page cards: a page card shows the page title as a header and the whole outline, scrolls inside the card, and edits where you click. Add page… in the canvas menu adds a page by search. Dropping a page from the left sidebar makes a page card.\n- Arrows to a single block. Drag an arrow end over a page card and the row under the pointer lights up; dropping there connects to that block with a real `((ref))`, so it shows in Roam\'s backlinks. Dropping on the title connects to the page. Ends follow their row as the card scrolls and clamp to the edge with a marker when the row is out of view. A selected arrow has end handles to re-aim it, and the arrow menu has Connect to the page instead.\n- Card children. A note, block or ref card shows only its own block. A ▸ N badge opens the children as an editable outline inside the card, remembered per card, and hovering the badge peeks at them. Spread children as cards makes one card per child with an arrow back.\n- Note: note and ref cards now show only their own block until the badge is opened.\n- A selected arrow\'s end handle could only be grabbed on the half outside the card it ends on. The whole handle now grabs.\n\n## 2.0.0 — 2026-10-03\n\n- Card editing, outline navigation, templates, the table, snapshots, and the graph tools that landed after 1.3.0.\n- Gallery, timeline, and a read-only graph of the board. A section can lay cards out by date. Connections can bend or route around cards. Present shows a section\'s first child as notes, plus a laser and a pen that are dropped on exit.\n- A diagram in the right sidebar stays a gap until that window is on screen. Opening the sidebar parks the boards on the page.\n- A 300-card board shows its first shells in about 1 second and finishes the rest over the following frames. Detail and overview pan hold 60 fps. Zooming across the detail threshold is about 57 to 59 fps, and that switch no longer produces a long task.\n- The same board in two Roam windows kept the same 6 cards and 4 connections across 30 moves.\n\n## 1.3.0 — 2026-10-01\n\n- Native parity on an enhanced board: plain block cards, a node hover toolbar, a right-hand control rail, a properties panel, PNG export, outline in the sidebar, boards in the sidebar, edge styles, native embeds, style import on Enhance, per-card expand, minimap drag, keyboard parity, and Edit Block.\n\n## 1.2.0 — 2026-09-29\n\nFixes from the second round of testing on 1.1.0:\n\n- **Zoomed-out cards stay inside their box.** Map view is a clean title-only tile: three-line clamp, font capped by the tile height, nothing spills below the card. Ref titles are cut at 120 characters and header text at 160. The level of detail now switches while you zoom (with hysteresis, one class toggle), not only when the gesture ends. A third tier below 20% shows section titles only.\n- **Nested board thumbnails are real thumbnails.** A padded frame with mini cards (border, fill, title), sections as tinted frames, connections, and an "Empty board" state, instead of one white box.\n- **Sections auto-fit.** A card moved, resized, created, or pasted past a section edge grows the section to contain it (24 px padding), live during the drag and saved as one undo step. It cascades through nested sections, never shrinks by itself, and can be turned off per section or with the `auto-fit-sections` setting.\n- **Board backgrounds.** Dots, lines, grid, and plain patterns and paper or ten palette tones, chosen per board from the Background button (stored in the board block\'s props) with a default in Settings.\n\nAdded:\n\n- **Right-click menus** for the board, cards, sections, text, connections, multi-selection, and the More menu.\n- **Duplicate and clipboard.** Alt+drag and Cmd+D duplicate (Alt+Shift makes `((ref))` cards); copy and paste as refs or as copies, across boards; pasted text and images become cards. Send to board, Boards tab (every board in the graph), Outline tab.\n- **Keyboard.** Tab and Shift+Tab step through the outline, F focus mode, Q quick look, P presentation, M mind map from a card\'s child blocks, Cmd/Ctrl+Alt+Enter fold, double-click a bottom or corner grip to fit or reset height. Arrow keys nudge the selection 1 px (Shift for 10 px); Alt+Arrow selects the nearest card in that direction (Alt+Shift adds), as in Heptabase.\n- **Layout tools.** Tidy (row, column, grid, outline order), same size, fit height, reset size, fit section, fold all, optional space-out after a move, "Back to content" button.\n- **Pin.** Pinned items do not move, resize, or delete.\n- **Card badges.** References, boards, and open and done TODO counts, read from Roam (never written); a `((ref))` to a board renders its thumbnail; journal cards for today and this week.\n- **Export.** Export board as SVG and Copy board as text (commands and board menu).\n- **Review fixes.** Cut and paste now moves a note, text or section (the clipboard carries a snapshot; before, the paste was a dead `((ref))`). The Open button, double-click and Enter open a whiteboard-shortcut card. Settings changes reach open boards\' sessions live. A pinned section is never grown by auto-fit. Fit height can shrink a card. Fit / Reset size / Same size never leave a card outside its section. A pinned card no longer pushes other cards in space-out. Escape closes the Background popover first. Right-clicking a ref, tag, link or image inside a card keeps Roam\'s or the browser\'s menu. Tab is only taken while the board itself has focus. A tall menu scrolls inside a small board. Thumbnails title `((ref))` and image cards. The section grows live while you type in a card at its edge. Card badge queries run in idle slots and are cached for two minutes.\n- New settings: default board tone, map view threshold, auto-fit sections, space out cards, show card badges; grid accepts `grid`. API and build: see `docs/api-plexus-1.0.md` ("1.2 additions") and `docs/spec-plexus-1.2.md`; `src/css/*.css` is appended to the bundle.\n\nFixed after live testing in Roam Desktop:\n\n- **One Cmd+Z per operation.** Duplicate, Alt+drag, mind map, Tidy, and a drag that grows a section each took one Cmd+Z per block written; the Undo toast button undid one block. Writes of a transaction are now grouped, and Undo and Redo step over the whole group.\n- Map-view cards clamp to exactly three lines (no fourth-line sliver, no ellipsis in the middle of a tall card); section titles show an ellipsis; far zoom-out no longer paints a dot moire; colored cards read at overview zoom; whiteboard-shortcut cards keep their thumbnail at map zoom.\n- Ctrl-wheel zoom and paste use the board\'s current position after the Roam page scrolls (they were off by the scroll distance).\n- Pasted images are `![](url)`, not `![](![](url))`.\n- The section preview no longer snaps back while you type in a card at its edge.\n- Fit keeps content below the toolbar and left of an open panel (Outline click fits the visible area); the context bar no longer covers the toolbar or the panel; double-click on the middle of a card\'s bottom edge fits its height.\n- Mind map from a card that already has child cards on the board lays the rest out around them, and says when the 24-branch cap left nodes out. Add this week no longer stacks a card on an existing one. Duplicating a section says "section".\n- The OS dark-mode hint no longer darkens a board on a light Roam theme.\n- **Typing in a card: Enter no longer drops you out of the card.** Root cause: the card editor stopped the mouseup that Roam uses to end its block drag-select, so a new block created under the resting pointer turned the edit into a block selection. Mouseup now passes through.\n- **Undo limits.** Roam keeps only the last 50 changes, so one Cmd+Z sequence can undo an operation only if it fits. Mind maps cap at 24 branches ("Mind map: 24 of 45 branches (cap)") and bulk adds (large pastes, multi-drops, Add all) at 45 cards ("Added 45 of N (Roam undo holds 50 changes)").\n\n## 1.1.0 — 2026-09-29\n\nFrom the first round of testing on 1.0.0:\n\n- **Cards show their content.** Note and block-reference cards render the whole block (and its children) instead of a truncated first line over an empty body. A long single-line `((ref))` card is readable again.\n- **Drag blocks in from Roam.** Dragging a bullet from the outline or the right sidebar onto a board adds it as a `((ref))` card (a page becomes a `[[page]]` card). Multi-block drags stack. The source block is never moved.\n- **Typing in a card.** Enter adds lines inside the card and keeps the caret there; if Roam drops focus while it moves between blocks, the editor takes it back. The card header no longer repeats and lags behind what you type, and text items keep their heading size while editing.\n- **Nested boards (Heptabase sub-whiteboards).** New Board tool (W): click or drag to add a board card, or select cards and choose **Move into new board**. Board cards show a mini map, item count, and a name field. Double-click or Open goes into the board in place with a `Parent › Child` breadcrumb; click a crumb or press Esc to go back up. Drag a card onto a board card to move it inside (with Undo). Boards opened from their own page get crumbs for their parent boards.\n- **Collapsed board blocks.** The board block is collapsed once so Roam does not list its cards as bullets under an inline board; expand the bullet to see them. Turn it off with **Collapse board blocks in the outline**. A nested board no longer opens a second overlay from an expanded outline.\n- Import and Restore keep a nested board\'s marker; a board deleted while open closes cleanly (a nested one pops to its parent).\n\n## 1.0.0 — 2026-09-28\n\nRewrite. The 0.6 canvas (one 2,200-line closure) is replaced by a model / host / session / view split with 204 unit tests and a live CDP gate on Roam Desktop.\n\n- **Everything is a Roam object.** Card layout lives in each block\'s `:block/props` (`plexus` key), not on `[[plexus-diagram/metadata]]`. Sections are parent blocks of their cards. Connections are blocks under a collapsed **Connections** child that read `[[A]] → label → [[B]]`, so both ends get a backlink and notes live as children.\n- **Graph links.** References and attributes that already exist between cards are drawn as dashed arrows colored by relation (`causes`, `Detected by`, `mentions`). **Write to graph** turns a labelled connection into `label:: [[B]]` on the source.\n- **Heptabase features.** 10 colors for cards, sections, text, and connections; sections drawn by drag or Cmd+G around a selection, with titles above the frame; ports on every edge; curve / straight / elbow routes, direction, dash, weight; selection box, alignment guides, align / distribute; text headings; minimap; board search; Add panel with Search and Related; card editing with Roam\'s own editor (page cards open the whole page); zoomed-out map view with readable titles.\n- **Fast by construction.** Pan and zoom move one transform (p95 frame 4.5 ms on a 120-card board, no renders, no writes). Only on-screen cards render content; zoomed out, cards show titles only. Opening a board writes nothing; the viewport is per device.\n- **Fixed from 0.6.4:** Section tool made two frames per drag and one per click; sections did not hold cards and had no color; the connection inspector covered the connection; text typed into a new card was lost; the sync indicator went pending on pan and zoom; diagrams on normal (non-daily) pages were never discovered; `[[links]]` inside cards did not open; keyboard shortcuts were swallowed by the diagram block.\n- **Migration.** Boards enhanced with 0.6 upgrade once on first open (positions, colors, sections with their cards, connections with labels and styles). Native diagrams import on **Enhance** (positions, groups as sections, edges as connections). Diagrams you never enhance are never written.\n- Commands: Enhance this diagram, New whiteboard here, Restore native diagram, Fullscreen this diagram.\n\n## 0.6.4 — 2026-09-05\n\n- **Inspector Comment** — converts the edge label to native Roam comments (one-way → target, two-way → both) then clears the pill.\n\n## 0.6.3 — 2026-09-05\n\n- **Idle card children** — after click-away, idle cards `renderBlock` the card uid so child bullets stay visible; deep pull includes nested `:block/children`; empty placeholder only when string is blank and there are no children.\n- **Board background** — toolbar cycles Dots / Lines / Solid (`grid-style` persisted).\n\n## 0.6.2 — 2026-09-05\n\n- **Connect hit-test** — targets resolve from the painted card rects (`getBoundingClientRect`, 12px handle inflate) before `elementsFromPoint` and world-rect math, and the card hovered on the last pointermove is the fallback for a captured pointerup.\n- **Rubber-band** — the edge and temp-wire SVGs cover content ∪ viewport (2000px pad) so the dashed wire paints across a panned board.\n- **No junk cards** — a click-click that misses a card cancels the arm; only a real drag onto empty board creates a linked card.\n- **Version badge** — the toolbar stamps the package version, not Roam\'s `DEV` developer-extension version.\n\n## 0.6.1 — 2026-09-05\n\n- **Connect hit-test** — when Electron\'s `elementsFromPoint` misses cards under `.pxd-world`, resolve targets from world-space node rects (12px handle inflate). Click-click arms and drag-to-card both work.\n- **Delete cards** — Delete/Backspace on a selected card removes it from the diagram (adapter + metadata), not just edges.\n- **Scratch children** — `blankScratch` deletes scratch-host children so a new card editor never inherits the previous card\'s bullet tree.\n\n## 0.6.0 — 2026-09-05\n\n- **Visible arrows** — connector stroke and marker fill are resolved colors, not `var()` in SVG attributes. Marker ids are unique per canvas. Heads scale with zoom (`clamp(10 / zoom, 6, 24)`).\n- **Ports** — drag from a card handle stores `from::` / `to::` (`auto|top|right|bottom|left`). Click-click and connect-to-empty still work.\n- **Per-edge direction** — `direction::` `oneWay|twoWay|none` on `edge A->B`. Global Arrowheads is the default for new edges only.\n- **Inspector** — click a line for a floating cluster: direction, Flip (disabled if the reverse exists), Route, Label, color, Delete. Mutations `await flushLayout()`.\n- **Schema** — optional `from::` `to::` `direction::` `color::` children under the existing edge row. `[[plexus-diagram/metadata]]` only. No `:diagram/*` / `:harc/*`.\n\n## 0.5.0 — 2026-08-29\n\n- **Connect two-click + temp wire** — Connect stays on after an edge. Click-click or drag; the rubber-band lives on `.pxd-edges-temp` above the cards and follows the cursor immediately. Handles are a 12px disc with a larger hit target.\n- **In-place nested boards** — opening a nested diagram does not call `openBlock` / change the hash. The parent session stays loaded; crumbs sit on the toolbar and Esc pops one level.\n- **Section and card color** — toolbar swatches (eight Blueprint-ish ids plus default) write `color::` on nodes and sections. Dark mode uses the border as the signal.\n- **Section click-rename** — a single click on the section title starts rename; pointerdown on the label does not drag the frame.\n- **Review pack** — session swap flushes the outgoing board then cancels persist timers; unused parent pull-watches stop; Esc nest-pop only when the overlay owns the pointer; connect-to-empty rolls back a failed edge persist.\n\n## 0.4.2 — 2026-08-28\n\n- **Svy Beam caret** — overlay inputs use native `caret-color` and `cursor: text` (higher specificity than Beam\'s custom hotspot cursor). `focus({ preventScroll: true })` plus a capture-phase guard stop Roam from scrolling the outline copy of an editing card into view.\n- **Right sidebar inset** — fullscreen also ResizeObserves the right sidebar and re-places on the next two animation frames after the article class changes. When the article\'s right edge is within 8px of the viewport, the overlay `right` inset is 0.\n- **Library portal** — the drawer mounts on `document.body` (fixed, 320px, 14px) so it is not scaled by `.pxd-world`. Items are opaque `#f5f8fa` / `#182026`. Empty search hides `roam/js/` and `roam/css` pages.\n- **Nested crumbs** — opening a nested board pushes the parent onto a crumb stack (`Parent › Current`). Clicking a crumb opens that block (or page). Nested cards show the parsed name; unnamed boards get an inline "Name this board…" field.\n- **Connect to empty** — dragging a handle onto empty board creates a card at the drop point, links it, and enters edit (Heptabase pull-from-port). Handles are 14px. An existing edge is kept if you connect the same pair again.\n- **Review pack** — nested open passes parent uid explicitly; nest stack truncates on multi-level back; drop parsing no longer treats incidental 9-char tokens as block refs; connect failures do not leave dangling edges; nested name timers clear on repaint and dispose.\n\n## 0.4.1 — 2026-08-28\n\n- **Pending-changes patch** — layout persist no longer delete-all/recreates the metadata tree. Existing diagram blocks are patched in place: only changed `pos::` / `size::` / `color::` / edge / section rows are written, identical strings are skipped, and gone ids are the only deletes. Viewport persist is still the one-line `setViewport` path.\n- **Article-pane fullscreen** — fullscreen follows `.rm-article-wrapper` (below the topbar, inset with the left sidebar) instead of `sidebar.right`. ResizeObserver on the article and sidebar plus a class MutationObserver re-place the overlay when the sidebar opens or closes. Drop `[[page]]` / block uid from the sidebar onto the board to add a card.\n- **Visible sections** — sections use a 2px solid border, a light blue fill, `pointer-events: auto`, a default "Section" label, drag, corner resize, and double-click rename.\n- **Opaque library** — the drawer sets its own `#ffffff` / `#1c2127` background so it stays readable when mounted outside `.pxd-root`. Blank titles and `roam/js/` pages are hidden until you search.\n- **Nested overlay** — adding or opening a nested `{{[[diagram]]}}` card registers it as enhanced and opens our overlay fullscreen, not native Empty Roam Diagram. Nested cards show "Nested diagram" instead of the raw macro. Nested open no longer waits on the parent canvas.\n- **Connect hit-testing** — `cardFromPoint` walks `elementsFromPoint` and ignores edge-hit strokes; temp edges are `pointer-events: none`; connect-tool handles stay visible.\n\n## 0.4.0 — 2026-08-28\n\n- **Fullscreen vs breadcrumbs** — fullscreen hides `#roam-breadcrumbs-panel` / `.breadcrumbs-content` only while `body.pxd-has-fullscreen`. The overlay sits below the remaining topbar and to the right of the left sidebar (article fill, not the whole window). Resize recomputes the inset. Inline boards leave breadcrumbs alone.\n- **Scratch-host card editor** — double-click no longer `renderBlock`s the card uid (the hidden native diagram still owns it). Edit mounts on a `pxd:scratch` child of `[[plexus-diagram/metadata]]`, hydrates until MutationObserver-quiet, then a trusted mousedown/mouseup/click. Commit pulls the scratch string onto the card; empty pulls never overwrite known text.\n- **Connection notes** — labels live on the connector (`label::` under `edge A->B`), not as extra cards. Double-click the line or click the midpoint pill. `show-edge-labels` defaults on.\n- **Commands** — palette and slash keep Enhance, Restore, and Fullscreen only. Toolbar is a single nowrap row. `V` / `C` / `N` / `F` when the overlay owns the pointer.\n- **Sync silence on open** — remounting an already-enhanced diagram no longer rewrites `[[plexus-diagram/metadata]]` or `:rf-diagram` viewport props when the stored snapshot already matches.\n- **Viewport-only persist** — pan/zoom/fit writes only the `viewport::` metadata line; node/edge/section children are left intact.\n- **Dirty flags** — initial fit, fullscreen resize, and dispose no longer schedule Roam writes; persist runs only after real user gestures (pan, zoom, drag, Fit, etc.).\n\n## 0.3.2 — 2026-08-28\n\nDouble-clicking a card no longer blanks its text: `setBlockFocusAndSelection` was focusing the outline copy of the same uid (Roam then cleared the overlay mount), and a same-tick `focusout` committed an empty pull. Overlay editors now keep a text fallback until `renderBlock` hydrates, ignore focusout for 1s, and refuse to commit an empty pull over known text. Fullscreen sits below `.rm-topbar` so RoamJS breadcrumbs stay clickable and the Plexus toolbar is not hidden under it.\n\n## 0.3.1 — 2026-08-28\n\nHouse / daily-tab navigation left a `position:fixed` overlay covering the daily notes. Native Maximize unmounts on route change; our mount often survives because the diagram block is still in the outline. `hashchange` / `popstate` now exit fullscreen, drop `--zoomed`, and restore the inline height whenever the open page uid is no longer the diagram. The 250ms reconcile does not do this, so a Fullscreen click on an inline embed is not immediately undone.\n\n## 0.3.0 — 2026-08-28\n\nCanvas rewrite: the board is usable. Imported native React Flow nodes (165×83 on the live graph) are floored to real cards (min 240×140, default 280×160), and a viewport that paints any card under 140px, has zoom below 0.7, or shows no card at all is rejected and replaced by a fit once the root has a size (single card fits at zoom 1.5, centred; fitted viewport persisted once). Pan, wheel zoom, card drag and corner resize touch only CSS (`.pxd-world` transform, one card\'s box, the edges hanging off it) — no `innerHTML` rebuild, no Roam write per pixel; viewport/layout persist on pointer-up and wheel-end with a 150 ms debounce, serialized through one queue per session. Cards render with `renderString`; double-click swaps in the native block editor (`renderBlock`) and blur/Esc commits it back, so Roam chrome no longer paints into every card. `render()` reconciles card elements by uid, so a pull during editing never tears down the caret. Drag from a card\'s connect dots (or any card with the Connect tool) onto another card to link. Double-click empty board adds a card at that point; Card/Nested tool clicks still add. A hint pill explains pan/add/fullscreen on boards with ≤1 card until the first pointer down. Zoomed diagram pages open in fullscreen (`fullscreen-on-zoom`, default on; inline embeds stay inline). Grid lives outside the world and tracks pan/zoom; a live minimap replaces the empty box; toolbar buttons are grouped, high-contrast, with a zoom readout. Dark mode: card and toolbar backgrounds from `--bc-main` / `--bc-menu`, 1px visible borders, 2px `--cl-blue` ring for selection — no tinted fills. `applyPull` keeps in-memory positions, sizes, edges, sections, and viewport (a pull only refreshes content), so a debounced persist can no longer be undone by a concurrent add.\n\n## 0.2.1 — 2026-08-27\n\nFix dead board on zoomed block pages. Navigating to `#/app/<graph>/page/<uid>` destroys the overlay DOM and the MutationObserver never remounted it. A reconcile pass (hashchange/popstate + 250ms interval) now prunes detached views, finds the native canvas — via the dated `block-input-…-body-outline-MM-DD-YYYY-<uid>` suffix or the location hash when ancestors carry no `data-uid` — and remounts the overlay. The pre-paint guard uses `display: none` (React Flow nodes punch through `visibility: hidden` by re-setting `visibility: visible` on themselves) and also hides the native `.rm-diagram-title-panel` and `.react-flow` chrome. Zoomed mounts fill the article (`pxd-mount--zoomed`). Every mount is stamped `data-diagram-uid` and remounts are idempotent per uid.\n\n## 0.2.0 — 2026-08-27\n\nHeptabase-usable overlay: full-bleed board sizing from native diagram (min 560px), horizontal labeled toolbar with zoom/fit/**Fullscreen** (Esc exits; covers the window like native Maximize), empty-canvas pan and cursor-anchored wheel zoom, Roam bullet/ref-count chrome hidden on cards, searchable library drawer that toggles without covering the board, and card titles off by default.\n\n## 0.1.4 — 2026-08-27\n\nSlash/command Enhance was a no-op: typing `/enh` puts the diagram block in edit mode, which unmounts `.rm-diagram`. The command now remembers the uid and waits for the native canvas to remount before overlaying.\n\n## 0.1.3 — 2026-08-27\n\nSlash commands use the same labels as the command palette (Roam Grid pattern), so `/enh` lists **Plexus Diagram: Enhance this diagram**.\n\n## 0.1.2 — 2026-08-27\n\nMetadata writes now generate UIDs before `block.create` / `page.create`. Live roamAlphaAPI returns `undefined` from those calls, so the first enhance was dropping `schema-version::`, `enhanced::`, and node/edge lines. Nested-diagram open uses `roamAlphaAPI.ui.mainWindow.openBlock`.\n\n## 0.1.1 — 2026-08-27\n\nLive-wire fixes against roamAlphaAPI (CDP, Svy graph):\n\n- Fix native hide inversion: `.pxd-native-hidden` now sets `display: none`; pending state uses visibility\n- Use EDN string pull pattern for `data.pull`; strip keyword colons from pull results\n- Generate child block UIDs via `util.generateUID()`; default create order `"last"`\n- Viewport writes try `roamAlphaAPI.updateBlock` before `data.block.update`\n- Register slash/context commands via `addCommand`/`removeCommand` with live callback shapes\n- Auto-enhance and focus checks pull `[:block/string]` via `roamAlphaAPI.data.pull`\n- Find native diagram hosts via `diagramElForUid` (id suffix, data-uid, block-ref)\n- Library mounts as overlay drawer; queries `roamAlphaAPI.data.q`; filters daily pages by UID\n- Card/Section toolbar tools place items at click position; library uses viewport center\n- Default `restore-native-on-unload` to false; unload disposes sessions without deleting metadata\n\n## 0.1.0 — 2026-08-27\n\nInitial release of Plexus Diagram.\n\n- Hide native `.rm-diagram` React Flow renderer for enhanced diagrams and mount a vanilla DOM/SVG canvas overlay\n- Keep Roam diagram children as the canonical card store; persist layout on `[[plexus-diagram/metadata]]`\n- Writable viewport via native `:rf-diagram` props; import native node positions when metadata is absent\n- Heptabase-like toolbar, cards, connectors, sections, library sidebar, and fat settings panel\n- Command palette, slash command, and block context menu integration\n- GitHub Pages developer extension at https://svyk.github.io/plexus-diagram\n';
 
 // src/view/color-picker.js
 init_highlight();
@@ -97559,2503 +96902,9 @@ function openPdfPagesDialog(doc, { count = 0, lines = [], onApply, onCancel, lab
   };
 }
 
-// src/model/ocr/manifest.js
-var CACHE_NAME = "plexus-diagram-models";
-var SCHEMA3 = "pxd-ocr/1";
-var ENGINE2 = "ppocr-web";
-var PAGES_ORIGIN = "https://svyk.github.io/plexus-diagram/";
-var ORT_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/";
-var ORT_FILES = {
-  mjs: {
-    file: "ort.webgpu.bundle.min.mjs",
-    sha256: "0730816731ce2cdfb06f273da065d4a1c7091eb9d1756a83b2916c8a89d015e2",
-    bytes: 117732
-  },
-  wasmMjs: {
-    file: "ort-wasm-simd-threaded.jsep.mjs",
-    sha256: "709853412fd1ffc34247af1e73569227b5b79629c5ca3f59cc39cf7e500e4947",
-    bytes: 46851
-  },
-  wasm: {
-    file: "ort-wasm-simd-threaded.jsep.wasm",
-    sha256: "3ad23231b5bd6d9dda55a7f84606315e0bf35b6750c28ee993c987c54cacab0f",
-    bytes: 28312028
-  }
-};
-var MODEL_FILES = {
-  det: {
-    file: "ch_PP-OCRv5_det_mobile.onnx",
-    sha256: "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae",
-    bytes: 4819576,
-    url: "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx"
-  },
-  rec: {
-    file: "en_PP-OCRv5_rec_mobile.onnx",
-    sha256: "c3461add59bb4323ecba96a492ab75e06dda42467c9e3d0c18db5d1d21924be8",
-    bytes: 7872351,
-    url: "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/rec/en_PP-OCRv5_rec_mobile.onnx"
-  },
-  dict: {
-    file: "ppocrv5_en_dict.txt",
-    sha256: "e025a66d31f327ba0c232e03f407ae8d105e1e709e7ccb3f408aa778c24e70d6",
-    bytes: 1416,
-    url: "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/paddle/PP-OCRv5/rec/en_PP-OCRv5_rec_mobile/ppocrv5_en_dict.txt"
-  }
-};
-var LEXICON_FILE = {
-  file: "en-words.txt.gz",
-  sha256: "b754012207b309972024fbe5778525f8d39ffb3dd9c615244f943aa5676b7f60",
-  bytes: 115131
-};
-function dictLines(text4) {
-  return String(text4 || "").replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.length > 0);
-}
-function joinUrl(base2, path) {
-  return `${String(base2 || "").replace(/\/$/, "")}/${String(path || "").replace(/^\//, "")}`;
-}
-
-// src/model/ocr/components.js
-function labelComponents(mask, width, height) {
-  const n3 = width * height;
-  const labels = new Int32Array(n3);
-  const parent = [0];
-  let next = 1;
-  const find = (a) => {
-    let root = a;
-    while (parent[root] !== root) root = parent[root];
-    while (parent[a] !== a) {
-      const p = parent[a];
-      parent[a] = root;
-      a = p;
-    }
-    return root;
-  };
-  const unite = (a, b) => {
-    a = find(a);
-    b = find(b);
-    if (a !== b) parent[Math.max(a, b)] = Math.min(a, b);
-  };
-  for (let y = 0; y < height; y++) {
-    const row4 = y * width;
-    const up = row4 - width;
-    for (let x = 0; x < width; x++) {
-      const i = row4 + x;
-      if (!mask[i]) continue;
-      let best = 0;
-      const consider2 = (lab) => {
-        if (!lab) return;
-        lab = find(lab);
-        if (!best) best = lab;
-        else if (lab !== best) unite(best, lab);
-      };
-      if (x > 0) consider2(labels[i - 1]);
-      if (y > 0) {
-        consider2(labels[up + x]);
-        if (x > 0) consider2(labels[up + x - 1]);
-        if (x + 1 < width) consider2(labels[up + x + 1]);
-      }
-      if (!best) {
-        parent[next] = next;
-        labels[i] = next++;
-      } else labels[i] = find(best);
-    }
-  }
-  const acc = /* @__PURE__ */ new Map();
-  for (let y = 0; y < height; y++) {
-    const row4 = y * width;
-    for (let x = 0; x < width; x++) {
-      const lab = labels[row4 + x];
-      if (!lab) continue;
-      const root = find(lab);
-      labels[row4 + x] = root;
-      let c = acc.get(root);
-      if (!c) {
-        c = { area: 0, x0: x, y0: y, x1: x, y1: y, sx: 0, sy: 0, sxx: 0, syy: 0, sxy: 0 };
-        acc.set(root, c);
-      }
-      c.area++;
-      if (x < c.x0) c.x0 = x;
-      if (y < c.y0) c.y0 = y;
-      if (x > c.x1) c.x1 = x;
-      if (y > c.y1) c.y1 = y;
-      c.sx += x;
-      c.sy += y;
-      c.sxx += x * x;
-      c.syy += y * y;
-      c.sxy += x * y;
-    }
-  }
-  const out = [];
-  for (const c of acc.values()) {
-    const mx = c.sx / c.area;
-    const my = c.sy / c.area;
-    const cxx = c.sxx / c.area - mx * mx;
-    const cyy = c.syy / c.area - my * my;
-    const cxy = c.sxy / c.area - mx * my;
-    const angle = 0.5 * Math.atan2(2 * cxy, cxx - cyy) * 180 / Math.PI;
-    out.push({ ...c, angle });
-  }
-  return out;
-}
-
-// src/model/ocr/db-boxes.js
-function iou5(a, b) {
-  const x0 = Math.max(a.x0, b.x0);
-  const y0 = Math.max(a.y0, b.y0);
-  const x1 = Math.min(a.x1, b.x1);
-  const y1 = Math.min(a.y1, b.y1);
-  const w = x1 - x0;
-  const h = y1 - y0;
-  if (w <= 0 || h <= 0) return 0;
-  const inter = w * h;
-  const areaA = Math.max(0, a.x1 - a.x0) * Math.max(0, a.y1 - a.y0);
-  const areaB = Math.max(0, b.x1 - b.x0) * Math.max(0, b.y1 - b.y0);
-  const union = areaA + areaB - inter;
-  return union > 0 ? inter / union : 0;
-}
-function boxesFromProb(prob, mapW, mapH, srcW, srcH, opts = {}) {
-  const thresh = opts.thresh ?? 0.3;
-  const boxThresh = opts.boxThresh ?? 0.6;
-  const unclipRatio = opts.unclipRatio ?? 1.5;
-  const minSide = opts.minSide ?? 3;
-  const maxBoxes = opts.maxBoxes ?? 1e3;
-  if (!prob || mapW < 2 || mapH < 2) return [];
-  const mask = new Uint8Array(mapW * mapH);
-  for (let i = 0; i < mask.length; i++) if (prob[i] >= thresh) mask[i] = 1;
-  const sx = srcW / mapW;
-  const sy = srcH / mapH;
-  const raw = [];
-  for (const c of labelComponents(mask, mapW, mapH)) {
-    const bw = c.x1 - c.x0 + 1;
-    const bh = c.y1 - c.y0 + 1;
-    if (bw < minSide || bh < minSide) continue;
-    let sum = 0;
-    let n3 = 0;
-    for (let y = c.y0; y <= c.y1; y++) {
-      const row4 = y * mapW;
-      for (let x = c.x0; x <= c.x1; x++) {
-        sum += prob[row4 + x];
-        n3++;
-      }
-    }
-    const score = n3 ? sum / n3 : 0;
-    if (score < boxThresh) continue;
-    const peri = 2 * (bw + bh);
-    const d = peri > 0 ? bw * bh * unclipRatio / peri : 0;
-    let x0 = (c.x0 - d) * sx;
-    let y0 = (c.y0 - d) * sy;
-    let x1 = (c.x1 + 1 + d) * sx;
-    let y1 = (c.y1 + 1 + d) * sy;
-    x0 = Math.max(0, x0);
-    y0 = Math.max(0, y0);
-    x1 = Math.min(srcW, x1);
-    y1 = Math.min(srcH, y1);
-    if (x1 - x0 < minSide || y1 - y0 < minSide) continue;
-    if (x1 - x0 > 0.98 * srcW && y1 - y0 > 0.5 * srcH) continue;
-    raw.push({ x0, y0, x1, y1, score, angle: c.angle });
-  }
-  raw.sort((a, b) => b.score - a.score);
-  const kept = [];
-  for (const box2 of raw) {
-    if (kept.length >= maxBoxes) break;
-    if (kept.some((other) => iou5(other, box2) > 0.5)) continue;
-    kept.push(box2);
-  }
-  return kept;
-}
-function dominantAngle(boxes) {
-  const wide = [];
-  for (const box2 of boxes || []) {
-    const w = box2.x1 - box2.x0;
-    const h = box2.y1 - box2.y0;
-    if (w > 3 * h && w > 30 && Math.abs(box2.angle) <= 20) wide.push({ a: box2.angle, w });
-  }
-  if (!wide.length) return 0;
-  wide.sort((p, q2) => p.a - q2.a);
-  const total = wide.reduce((s, r) => s + r.w, 0);
-  let acc = 0;
-  for (const row4 of wide) {
-    acc += row4.w;
-    if (acc >= total / 2) return row4.a;
-  }
-  return wide[wide.length - 1].a;
-}
-
-// src/model/ocr/image.js
-function resizeRgb(rgb, sw, sh, dw, dh) {
-  if (sw === dw && sh === dh) return { rgb, w: dw, h: dh };
-  const out = new Uint8Array(dw * dh * 3);
-  const x0s = new Int32Array(dw);
-  const x1s = new Int32Array(dw);
-  const xw = new Float32Array(dw);
-  for (let x = 0; x < dw; x++) {
-    const fx = (x + 0.5) * sw / dw - 0.5;
-    const x0 = Math.max(0, Math.floor(fx));
-    x0s[x] = x0;
-    x1s[x] = Math.min(sw - 1, x0 + 1);
-    xw[x] = fx - x0;
-  }
-  for (let y = 0; y < dh; y++) {
-    const fy = (y + 0.5) * sh / dh - 0.5;
-    const y0 = Math.max(0, Math.floor(fy));
-    const y1 = Math.min(sh - 1, y0 + 1);
-    const wy = fy - y0;
-    const row0 = y0 * sw;
-    const row1 = y1 * sw;
-    const dest = y * dw;
-    for (let x = 0; x < dw; x++) {
-      const wx = xw[x];
-      const i = (dest + x) * 3;
-      const a = (row0 + x0s[x]) * 3;
-      const b = (row0 + x1s[x]) * 3;
-      const c = (row1 + x0s[x]) * 3;
-      const d = (row1 + x1s[x]) * 3;
-      const w00 = (1 - wx) * (1 - wy);
-      const w10 = wx * (1 - wy);
-      const w01 = (1 - wx) * wy;
-      const w11 = wx * wy;
-      out[i] = rgb[a] * w00 + rgb[b] * w10 + rgb[c] * w01 + rgb[d] * w11 + 0.5 | 0;
-      out[i + 1] = rgb[a + 1] * w00 + rgb[b + 1] * w10 + rgb[c + 1] * w01 + rgb[d + 1] * w11 + 0.5 | 0;
-      out[i + 2] = rgb[a + 2] * w00 + rgb[b + 2] * w10 + rgb[c + 2] * w01 + rgb[d + 2] * w11 + 0.5 | 0;
-    }
-  }
-  return { rgb: out, w: dw, h: dh };
-}
-function cropRgb(rgb, w, h, x0, y0, x1, y1) {
-  const xa = Math.max(0, Math.floor(x0));
-  const ya = Math.max(0, Math.floor(y0));
-  const xb = Math.min(w, Math.ceil(x1));
-  const yb = Math.min(h, Math.ceil(y1));
-  const cw = Math.max(0, xb - xa);
-  const ch = Math.max(0, yb - ya);
-  if (!cw || !ch) return { rgb: new Uint8Array(0), w: 0, h: 0 };
-  const out = new Uint8Array(cw * ch * 3);
-  for (let y = 0; y < ch; y++) {
-    const src = ((ya + y) * w + xa) * 3;
-    out.set(rgb.subarray(src, src + cw * 3), y * cw * 3);
-  }
-  return { rgb: out, w: cw, h: ch };
-}
-function grayFromRgb(rgb, w, h) {
-  const out = new Uint8Array(w * h);
-  for (let i = 0; i < out.length; i++) {
-    const o = i * 3;
-    out[i] = rgb[o] * 0.299 + rgb[o + 1] * 0.587 + rgb[o + 2] * 0.114 + 0.5 | 0;
-  }
-  return out;
-}
-function padWhite(rgb, w, h, pad2, padY = pad2) {
-  if (!pad2 && !padY) return { rgb, w, h };
-  const dw = w + pad2 * 2;
-  const dh = h + padY * 2;
-  const out = new Uint8Array(dw * dh * 3);
-  out.fill(255);
-  for (let y = 0; y < h; y++) {
-    const src = y * w * 3;
-    out.set(rgb.subarray(src, src + w * 3), ((y + padY) * dw + pad2) * 3);
-  }
-  return { rgb: out, w: dw, h: dh };
-}
-function nchwNormalize(rgb, w, h) {
-  const plane = w * h;
-  const out = new Float32Array(3 * plane);
-  for (let i = 0; i < plane; i++) {
-    const o = i * 3;
-    out[i] = (rgb[o] / 255 - 0.5) / 0.5;
-    out[plane + i] = (rgb[o + 1] / 255 - 0.5) / 0.5;
-    out[2 * plane + i] = (rgb[o + 2] / 255 - 0.5) / 0.5;
-  }
-  return out;
-}
-function round32(n3) {
-  return Math.max(32, Math.round(n3 / 32) * 32);
-}
-function detResize(rgb, w, h, limit = 960) {
-  const long = Math.max(w, h);
-  const ratio = long > limit ? limit / long : 1;
-  const dw = round32(w * ratio);
-  const dh = round32(h * ratio);
-  return resizeRgb(rgb, w, h, dw, dh);
-}
-function recResize(rgb, w, h, targetH = 48) {
-  const ratio = w / Math.max(1, h);
-  const contentW = Math.max(8, Math.ceil(targetH * ratio));
-  const resized = resizeRgb(rgb, w, h, contentW, targetH);
-  const pad2 = (8 - contentW % 8) % 8;
-  if (!pad2) return { rgb: resized.rgb, w: contentW, h: targetH, contentW };
-  const dw = contentW + pad2;
-  const out = new Uint8Array(targetH * dw * 3);
-  out.fill(255);
-  for (let y = 0; y < targetH; y++) {
-    out.set(resized.rgb.subarray(y * contentW * 3, (y + 1) * contentW * 3), y * dw * 3);
-  }
-  return { rgb: out, w: dw, h: targetH, contentW };
-}
-function rotateQuarter(rgb, w, h, turns) {
-  let src = rgb;
-  let sw = w;
-  let sh = h;
-  for (let t = 0; t < turns; t++) {
-    const dw = sh;
-    const dh = sw;
-    const out = new Uint8Array(dw * dh * 3);
-    for (let y = 0; y < sh; y++) {
-      for (let x = 0; x < sw; x++) {
-        const nx = y;
-        const ny = sw - 1 - x;
-        const s = (y * sw + x) * 3;
-        const d = (ny * dw + nx) * 3;
-        out[d] = src[s];
-        out[d + 1] = src[s + 1];
-        out[d + 2] = src[s + 2];
-      }
-    }
-    src = out;
-    sw = dw;
-    sh = dh;
-  }
-  return { rgb: src, w: sw, h: sh };
-}
-function rotateRgb(rgb, w, h, degreesCcw) {
-  if (!Number.isFinite(degreesCcw) || Math.abs(degreesCcw) < 0.05) return { rgb, w, h };
-  const quarter = Math.round(degreesCcw / 90);
-  if (Math.abs(degreesCcw - quarter * 90) < 0.05 && quarter % 4 !== 0) {
-    return rotateQuarter(rgb, w, h, (quarter % 4 + 4) % 4);
-  }
-  const rad = degreesCcw * Math.PI / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const cx = (w - 1) / 2;
-  const cy = (h - 1) / 2;
-  const out = new Uint8Array(w * h * 3);
-  out.fill(255);
-  for (let y = 0; y < h; y++) {
-    const dy = y - cy;
-    for (let x = 0; x < w; x++) {
-      const dx = x - cx;
-      const fx = cx + dx * cos - dy * sin;
-      const fy = cy + dx * sin + dy * cos;
-      if (fx < -0.5 || fy < -0.5 || fx > w - 0.5 || fy > h - 0.5) continue;
-      const x0 = Math.floor(fx);
-      const y0 = Math.floor(fy);
-      const wx = fx - x0;
-      const wy = fy - y0;
-      const xa = Math.max(0, x0);
-      const ya = Math.max(0, y0);
-      const x1 = Math.min(w - 1, x0 + 1);
-      const y1 = Math.min(h - 1, y0 + 1);
-      const i = (y * w + x) * 3;
-      const a = (ya * w + xa) * 3;
-      const b = (ya * w + x1) * 3;
-      const c = (y1 * w + xa) * 3;
-      const d = (y1 * w + x1) * 3;
-      const w00 = (1 - wx) * (1 - wy);
-      const w10 = wx * (1 - wy);
-      const w01 = (1 - wx) * wy;
-      const w11 = wx * wy;
-      out[i] = rgb[a] * w00 + rgb[b] * w10 + rgb[c] * w01 + rgb[d] * w11 + 0.5 | 0;
-      out[i + 1] = rgb[a + 1] * w00 + rgb[b + 1] * w10 + rgb[c + 1] * w01 + rgb[d + 1] * w11 + 0.5 | 0;
-      out[i + 2] = rgb[a + 2] * w00 + rgb[b + 2] * w10 + rgb[c + 2] * w01 + rgb[d + 2] * w11 + 0.5 | 0;
-    }
-  }
-  return { rgb: out, w, h };
-}
-
-// src/model/ocr/rules-from-canvas.js
-function otsuThreshold(gray) {
-  const hist = new Uint32Array(256);
-  for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
-  const total = gray.length;
-  let sum = 0;
-  for (let i = 0; i < 256; i++) sum += i * hist[i];
-  let sumB = 0;
-  let wB = 0;
-  let max = 0;
-  let thresh = 0;
-  for (let t = 0; t < 256; t++) {
-    wB += hist[t];
-    if (!wB) continue;
-    const wF = total - wB;
-    if (!wF) break;
-    sumB += t * hist[t];
-    const mB = sumB / wB;
-    const mF = (sum - sumB) / wF;
-    const between = wB * wF * (mB - mF) * (mB - mF);
-    if (between >= max) {
-      max = between;
-      thresh = t;
-    }
-  }
-  return thresh;
-}
-function inkMask(gray, width, height) {
-  const thresh = otsuThreshold(gray);
-  const mask = new Uint8Array(width * height);
-  for (let i = 0; i < mask.length; i++) if (gray[i] <= thresh) mask[i] = 1;
-  return mask;
-}
-function morph1d(mask, width, height, length, horizontal, dilate) {
-  const out = new Uint8Array(width * height);
-  if (length <= 1) {
-    out.set(mask);
-    return out;
-  }
-  const anchor = Math.floor((length - 1) / 2);
-  if (horizontal) {
-    const prefix2 = new Uint32Array(width + 1);
-    for (let y = 0; y < height; y++) {
-      const row4 = y * width;
-      for (let x = 0; x < width; x++) prefix2[x + 1] = prefix2[x] + mask[row4 + x];
-      for (let x = 0; x < width; x++) {
-        const a = x - anchor;
-        const b = a + length - 1;
-        if (a < 0 || b >= width) continue;
-        const count = prefix2[b + 1] - prefix2[a];
-        out[row4 + x] = dilate ? count > 0 ? 1 : 0 : count === length ? 1 : 0;
-      }
-    }
-    return out;
-  }
-  const prefix = new Uint32Array(height + 1);
-  for (let x = 0; x < width; x++) {
-    for (let y = 0; y < height; y++) prefix[y + 1] = prefix[y] + mask[y * width + x];
-    for (let y = 0; y < height; y++) {
-      const a = y - anchor;
-      const b = a + length - 1;
-      if (a < 0 || b >= height) continue;
-      const count = prefix[b + 1] - prefix[a];
-      out[y * width + x] = dilate ? count > 0 ? 1 : 0 : count === length ? 1 : 0;
-    }
-  }
-  return out;
-}
-function open1d(mask, width, height, length, horizontal) {
-  return morph1d(morph1d(mask, width, height, length, horizontal, false), width, height, length, horizontal, true);
-}
-function round23(n3) {
-  return Math.round(n3 * 100) / 100;
-}
-function rulesFromCanvas(gray, width, height, scale, { minLenPt = 18, fills = [] } = {}) {
-  if (!gray || width < 8 || height < 8 || !(scale > 0)) return [];
-  const ink = inkMask(gray, width, height);
-  const minLen = Math.max(8, Math.round(minLenPt * scale));
-  const maxThick = Math.max(6, 4 * scale);
-  const out = [];
-  const axes = [
-    ["h", Math.max(20, Math.floor(width / 60))],
-    ["v", Math.max(20, Math.floor(height / 60))]
-  ];
-  for (const [axis2, kernel] of axes) {
-    const horizontal = axis2 === "h";
-    let opened = open1d(ink, width, height, kernel, horizontal);
-    const bridge = Math.max(1, Math.floor(kernel / 2));
-    opened = morph1d(opened, width, height, bridge, horizontal, true);
-    opened = morph1d(opened, width, height, bridge, horizontal, false);
-    for (const c of labelComponents(opened, width, height)) {
-      const bw = c.x1 - c.x0 + 1;
-      const bh = c.y1 - c.y0 + 1;
-      const length = horizontal ? bw : bh;
-      const thick = horizontal ? bh : bw;
-      if (length < minLen || thick > maxThick) continue;
-      if (horizontal) {
-        out.push({
-          x0: round23(c.x0 / scale),
-          y0: round23((c.y0 + bh / 2) / scale),
-          x1: round23((c.x1 + 1) / scale),
-          y1: round23((c.y0 + bh / 2) / scale),
-          thick: round23(bh / scale)
-        });
-      } else {
-        out.push({
-          x0: round23((c.x0 + bw / 2) / scale),
-          y0: round23(c.y0 / scale),
-          x1: round23((c.x0 + bw / 2) / scale),
-          y1: round23((c.y1 + 1) / scale),
-          thick: round23(bw / scale)
-        });
-      }
-    }
-  }
-  out.sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
-  return fills.length ? out.filter((r) => !fills.some((f) => insideFill(r, f))) : out;
-}
-function inkBoxesFromCanvas(gray, width, height, scale, { words = [] } = {}) {
-  if (!gray || width < 8 || height < 8 || !(scale > 0)) return [];
-  const step = Math.max(1, Math.round(scale));
-  const sw = Math.floor(width / step);
-  const sh = Math.floor(height / step);
-  if (sw < 8 || sh < 8) return [];
-  const g = new Uint8Array(sw * sh);
-  for (let y = 0; y < sh; y++) {
-    const src = y * step * width;
-    const row4 = y * sw;
-    for (let x = 0; x < sw; x++) g[row4 + x] = gray[src + x * step];
-  }
-  const mask = inkMask(g, sw, sh);
-  const pt = step / scale;
-  for (const w of words) {
-    const x0 = w.transform ? w.transform[4] : w.x0;
-    const ww = w.width ?? (w.x1 ?? 0) - (w.x0 ?? 0);
-    const y0 = w.y0;
-    const y1 = w.y1;
-    if (!(ww > 0) || !(y1 > y0) || ww > 80 || y1 - y0 > 36) continue;
-    const a = Math.max(0, Math.floor((x0 - 0.6) / pt));
-    const b = Math.min(sw - 1, Math.ceil((x0 + ww + 0.6) / pt));
-    const c = Math.max(0, Math.floor((y0 - 0.4) / pt));
-    const d = Math.min(sh - 1, Math.ceil((y1 + 0.4) / pt));
-    for (let y = c; y <= d; y++) mask.fill(0, y * sw + a, y * sw + b + 1);
-  }
-  let closed = morph1d(mask, sw, sh, 3, true, true);
-  closed = morph1d(closed, sw, sh, 3, false, true);
-  closed = morph1d(closed, sw, sh, 3, true, false);
-  closed = morph1d(closed, sw, sh, 3, false, false);
-  const pageArea = sw * sh;
-  const out = [];
-  for (const comp of labelComponents(closed, sw, sh)) {
-    const bw = comp.x1 - comp.x0 + 1;
-    const bh = comp.y1 - comp.y0 + 1;
-    if (comp.area < 12) continue;
-    if (Math.max(bw, bh) < 8 && comp.area < 24) continue;
-    if (bw * bh >= 0.85 * pageArea) continue;
-    const bwPt = bw * pt;
-    const bhPt = bh * pt;
-    if (bwPt * bhPt < 48 && Math.max(bwPt, bhPt) < 16) continue;
-    out.push({
-      x0: round23(comp.x0 * pt),
-      y0: round23(comp.y0 * pt),
-      x1: round23((comp.x1 + 1) * pt),
-      y1: round23((comp.y1 + 1) * pt)
-    });
-  }
-  out.sort((a, b) => (b.x1 - b.x0) * (b.y1 - b.y0) - (a.x1 - a.x0) * (a.y1 - a.y0));
-  return out.slice(0, 400);
-}
-function insideFill(r, f, m = 1) {
-  if (r.y0 === r.y1) return r.y0 > f.y0 + m && r.y0 < f.y1 - m && r.x0 >= f.x0 - m && r.x1 <= f.x1 + m;
-  return r.x0 > f.x0 + m && r.x0 < f.x1 - m && r.y0 >= f.y0 - m && r.y1 <= f.y1 + m;
-}
-function inkGlyph(gray, width, height) {
-  if (!gray || width < 2 || height < 2) return null;
-  const ink = inkMask(gray, width, height);
-  const marks = [];
-  for (const c of labelComponents(ink, width, height)) {
-    const bw2 = c.x1 - c.x0 + 1;
-    const bh2 = c.y1 - c.y0 + 1;
-    if (bw2 >= 0.8 * width || bh2 >= 0.8 * height) continue;
-    if (c.area < 16 || bw2 <= 4 && bh2 <= 5) continue;
-    if (c.y1 >= height - 2 && bh2 <= 0.3 * height) continue;
-    marks.push({ bw: bw2, bh: bh2, area: c.area });
-  }
-  if (marks.length !== 1) return null;
-  const { bw, bh, area: area2 } = marks[0];
-  if (bw >= 3 * bh && bw >= 8 && bh <= 0.3 * height && area2 >= 0.6 * bw * bh) return "—";
-  if (bw / Math.max(1, bh) >= 0.6 && bw / Math.max(1, bh) <= 1.6 && bw <= 0.5 * height && bh <= 0.5 * height && bw >= 5) return "*";
-  return null;
-}
-function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, minHPt = 4, edge = 0.7, solid = 0.55, openPt = 2 } = {}) {
-  if (!gray || width < 8 || height < 8 || !(scale > 0)) return [];
-  const step = Math.max(1, Math.floor(scale / 2));
-  const sw = Math.floor(width / step);
-  const sh = Math.floor(height / step);
-  if (sw < 4 || sh < 4) return [];
-  const g = new Uint8Array(sw * sh);
-  for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) g[y * sw + x] = gray[y * step * width + x * step];
-  const hist = new Uint32Array(256);
-  for (let i = 0; i < g.length; i++) hist[g[i]]++;
-  const ink = otsuThreshold(g);
-  let paper = 255;
-  let best = -1;
-  for (let v = ink + 1; v < 256; v++) if (hist[v] > best) {
-    best = hist[v];
-    paper = v;
-  }
-  const seedMax = paper - 2 * tol;
-  if (seedMax <= 0) return [];
-  const per = scale / step;
-  const minW = minWPt * per;
-  const minH = minHPt * per;
-  const k = 2 * Math.floor(Math.max(3, Math.round(openPt * per)) / 2) + 1;
-  const label = new Int32Array(sw * sh);
-  const queue = new Int32Array(sw * sh);
-  const pageArea = sw * sh;
-  const out = [];
-  let next = 0;
-  for (let sy = 1; sy < sh - 1; sy++) {
-    for (let sx = 1; sx < sw - 1; sx++) {
-      const s = sy * sw + sx;
-      if (label[s] || g[s] > seedMax) continue;
-      let lo = 255;
-      let hi = 0;
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-        const v = g[s + dy * sw + dx];
-        if (v < lo) lo = v;
-        if (v > hi) hi = v;
-      }
-      if (hi - lo > 6) continue;
-      const id = ++next;
-      const seed = g[s];
-      let head = 0;
-      let tail = 0;
-      queue[tail++] = s;
-      label[s] = id;
-      let x0 = sx;
-      let x1 = sx;
-      let y0 = sy;
-      let y1 = sy;
-      while (head < tail) {
-        const i = queue[head++];
-        const x = i % sw;
-        const y = (i - x) / sw;
-        if (x < x0) x0 = x;
-        if (x > x1) x1 = x;
-        if (y < y0) y0 = y;
-        if (y > y1) y1 = y;
-        if (x > 0) {
-          const j = i - 1;
-          if (!label[j] && Math.abs(g[j] - seed) <= tol) {
-            label[j] = id;
-            queue[tail++] = j;
-          }
-        }
-        if (x + 1 < sw) {
-          const j = i + 1;
-          if (!label[j] && Math.abs(g[j] - seed) <= tol) {
-            label[j] = id;
-            queue[tail++] = j;
-          }
-        }
-        if (y > 0) {
-          const j = i - sw;
-          if (!label[j] && Math.abs(g[j] - seed) <= tol) {
-            label[j] = id;
-            queue[tail++] = j;
-          }
-        }
-        if (y + 1 < sh) {
-          const j = i + sw;
-          if (!label[j] && Math.abs(g[j] - seed) <= tol) {
-            label[j] = id;
-            queue[tail++] = j;
-          }
-        }
-      }
-      if (x1 - x0 + 1 < minW || y1 - y0 + 1 < minH || tail < 0.5 * minW * minH) continue;
-      const lw = x1 - x0 + 1 + 2 * k;
-      const lh = y1 - y0 + 1 + 2 * k;
-      const local = new Uint8Array(lw * lh);
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (label[y * sw + x] === id) local[(y - y0 + k) * lw + (x - x0 + k)] = 1;
-      let closed = morph1d(local, lw, lh, 3, true, true);
-      closed = morph1d(closed, lw, lh, 3, false, true);
-      closed = morph1d(closed, lw, lh, 3, true, false);
-      closed = morph1d(closed, lw, lh, 3, false, false);
-      let opened = morph1d(closed, lw, lh, k, true, false);
-      opened = morph1d(opened, lw, lh, k, false, false);
-      opened = morph1d(opened, lw, lh, k, true, true);
-      opened = morph1d(opened, lw, lh, k, false, true);
-      for (const part of rowMerged(flatParts(opened, lw, lh), lw, lh)) {
-        const bw = part.x1 - part.x0 + 1;
-        const bh = part.y1 - part.y0 + 1;
-        if (bw < minW || bh < minH) continue;
-        if (bw * bh >= 0.8 * pageArea || part.area < solid * bw * bh) continue;
-        const share = (ax, ay, bx, by2) => {
-          let hit = 0;
-          let n4 = 0;
-          for (let y = ay; y <= by2; y++) for (let x = ax; x <= bx; x++) {
-            n4++;
-            if (part.mask[y * lw + x]) hit++;
-          }
-          return n4 ? hit / n4 : 0;
-        };
-        const iy0 = Math.min(part.y1, part.y0 + 1);
-        const iy1 = Math.max(part.y0, part.y1 - 1);
-        const ix0 = Math.min(part.x1, part.x0 + 1);
-        const ix1 = Math.max(part.x0, part.x1 - 1);
-        if (share(part.x0, iy0, part.x1, iy0) < edge || share(part.x0, iy1, part.x1, iy1) < edge) continue;
-        if (share(ix0, part.y0, ix0, part.y1) < edge || share(ix1, part.y0, ix1, part.y1) < edge) continue;
-        const corners = part.mask[part.y0 * lw + part.x0] + part.mask[part.y0 * lw + part.x1] + part.mask[part.y1 * lw + part.x0] + part.mask[part.y1 * lw + part.x1];
-        if (corners < 3) continue;
-        let sum = 0;
-        let n3 = 0;
-        for (let y = part.y0; y <= part.y1; y++) for (let x = part.x0; x <= part.x1; x++) {
-          if (!part.mask[y * lw + x] || !local[y * lw + x]) continue;
-          sum += g[(y + y0 - k) * sw + (x + x0 - k)];
-          n3++;
-        }
-        const gx0 = part.x0 + x0 - k;
-        const gy0 = part.y0 + y0 - k;
-        out.push({
-          x0: round23(gx0 * step / scale),
-          y0: round23(gy0 * step / scale),
-          x1: round23((gx0 + bw) * step / scale),
-          y1: round23((gy0 + bh) * step / scale),
-          gray: Math.round(sum / n3 / 255 * 1e3) / 1e3
-        });
-      }
-    }
-  }
-  out.sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
-  return out;
-}
-function rowMerged(parts, w, h, tol = 2) {
-  const out = [];
-  for (const part of [...parts].sort((a, b) => a.x0 - b.x0)) {
-    const same5 = out.find((o) => Math.abs(o.y0 - part.y0) <= tol && Math.abs(o.y1 - part.y1) <= tol);
-    if (!same5) {
-      out.push(part);
-      continue;
-    }
-    for (let i = 0; i < w * h; i++) if (part.mask[i]) same5.mask[i] = 1;
-    same5.x0 = Math.min(same5.x0, part.x0);
-    same5.x1 = Math.max(same5.x1, part.x1);
-    same5.y0 = Math.min(same5.y0, part.y0);
-    same5.y1 = Math.max(same5.y1, part.y1);
-    same5.area += part.area;
-  }
-  return out;
-}
-function flatParts(mask, w, h) {
-  const seen = new Uint8Array(w * h);
-  const queue = new Int32Array(w * h);
-  const parts = [];
-  for (let s = 0; s < mask.length; s++) {
-    if (!mask[s] || seen[s]) continue;
-    const own2 = new Uint8Array(w * h);
-    let head = 0;
-    let tail = 0;
-    queue[tail++] = s;
-    seen[s] = 1;
-    let x0 = w;
-    let x1 = -1;
-    let y0 = h;
-    let y1 = -1;
-    while (head < tail) {
-      const i = queue[head++];
-      own2[i] = 1;
-      const x = i % w;
-      const y = (i - x) / w;
-      if (x < x0) x0 = x;
-      if (x > x1) x1 = x;
-      if (y < y0) y0 = y;
-      if (y > y1) y1 = y;
-      for (const j of [x > 0 ? i - 1 : -1, x + 1 < w ? i + 1 : -1, y > 0 ? i - w : -1, y + 1 < h ? i + w : -1]) {
-        if (j < 0 || seen[j] || !mask[j]) continue;
-        seen[j] = 1;
-        queue[tail++] = j;
-      }
-    }
-    parts.push({ x0, y0, x1, y1, area: tail, mask: own2 });
-  }
-  return parts;
-}
-
-// src/model/ocr/word-split.js
-function inkProjection(mask, pageW, pageH, box2) {
-  const x0 = Math.max(0, Math.floor(box2.x0));
-  const y0 = Math.max(0, Math.floor(box2.y0));
-  const x1 = Math.min(pageW, Math.ceil(box2.x1));
-  const y1 = Math.min(pageH, Math.ceil(box2.y1));
-  const w = x1 - x0;
-  const h = y1 - y0;
-  if (w < 2 || h < 2) return null;
-  const ruleRow = new Uint8Array(h);
-  for (let y = 0; y < h; y++) {
-    const row4 = (y0 + y) * pageW + x0;
-    let longest = 0;
-    let run = 0;
-    for (let x = 0; x < w; x++) {
-      if (mask[row4 + x]) {
-        run++;
-        if (run > longest) longest = run;
-      } else run = 0;
-    }
-    const through = mask[row4] && mask[row4 + w - 1] && longest >= 0.9 * w;
-    if (longest >= 0.6 * w && longest >= 3 * h || through) ruleRow[y] = 1;
-  }
-  const cols = new Uint16Array(w);
-  const rowInk = new Uint32Array(h);
-  for (let y = 0; y < h; y++) {
-    if (ruleRow[y]) continue;
-    const row4 = (y0 + y) * pageW + x0;
-    for (let x = 0; x < w; x++) {
-      if (mask[row4 + x]) {
-        cols[x]++;
-        rowInk[y]++;
-      }
-    }
-  }
-  const live2 = h - ruleRow.reduce((s, v) => s + v, 0);
-  for (let x = 0; x < w; x++) {
-    if (cols[x] >= 0.92 * live2 && live2 >= 6) {
-      const left = x > 0 ? cols[x - 1] : 0;
-      const right = x < w - 1 ? cols[x + 1] : 0;
-      if (left < 0.6 * live2 || right < 0.6 * live2) cols[x] = 0;
-    }
-  }
-  let top = -1;
-  let bottom = -1;
-  for (let y = 0; y < h; y++) {
-    if (rowInk[y]) {
-      if (top < 0) top = y;
-      bottom = y;
-    }
-  }
-  return { x0, y0, w, h, cols, rowInk, ruleRow, top, bottom };
-}
-function inkRuns(cols, minGap, minInk = 2) {
-  const runs = [];
-  let start2 = -1;
-  let last = -1;
-  let ink = 0;
-  for (let x = 0; x < cols.length; x++) {
-    if (!cols[x]) continue;
-    if (start2 >= 0 && x - last - 1 >= minGap) {
-      if (ink >= minInk) runs.push({ x0: start2, x1: last + 1, ink });
-      start2 = -1;
-      ink = 0;
-    }
-    if (start2 < 0) start2 = x;
-    last = x;
-    ink += cols[x];
-  }
-  if (start2 >= 0 && ink >= minInk) runs.push({ x0: start2, x1: last + 1, ink });
-  return runs;
-}
-function innerGaps(cols, from, to) {
-  const gaps = [];
-  let start2 = -1;
-  for (let x = from; x < to; x++) {
-    if (!cols[x]) {
-      if (start2 < 0) start2 = x;
-      continue;
-    }
-    if (start2 > from) gaps.push({ x0: start2, x1: x, w: x - start2 });
-    start2 = -1;
-  }
-  return gaps;
-}
-function inkRows(mask, pageW, proj, c0, c1) {
-  const rows = new Uint32Array(proj.h);
-  const span = c1 - c0;
-  let solid = 0;
-  let glyphRows = 0;
-  for (let y = 0; y < proj.h; y++) {
-    if (proj.ruleRow[y]) continue;
-    const row4 = (proj.y0 + y) * pageW + proj.x0;
-    let n3 = 0;
-    for (let x = c0; x < c1; x++) n3 += mask[row4 + x];
-    rows[y] = n3;
-    if (span >= 4 && n3 >= 0.85 * span) solid++;
-    else if (n3) glyphRows++;
-  }
-  if (solid && glyphRows) {
-    for (let y = 0; y < proj.h; y++) if (rows[y] >= 0.85 * span) rows[y] = 0;
-  }
-  let max = 0;
-  let peak = -1;
-  let bestScore = 0;
-  const mid = (proj.h - 1) / 2;
-  for (let y = 0; y < proj.h; y++) {
-    const score = rows[y] * (1 - 0.6 * Math.abs(y - mid) / Math.max(1, mid));
-    if (score > bestScore) {
-      bestScore = score;
-      peak = y;
-    }
-  }
-  if (peak < 0) return null;
-  max = rows[peak];
-  const edge = (step) => {
-    let y = peak;
-    let valley = peak;
-    let thin = false;
-    while (y + step >= 0 && y + step < proj.h && rows[y + step]) {
-      y += step;
-      if (!thin && rows[y] < 0.1 * max) {
-        thin = true;
-        valley = y;
-      }
-      if (thin && rows[y] < rows[valley]) valley = y;
-      if (thin && rows[y] >= 0.25 * max) return valley - step;
-    }
-    return y;
-  };
-  const top = edge(-1);
-  const bottom = edge(1);
-  for (let y = top; y <= bottom; y++) if (rows[y] > max) {
-    max = rows[y];
-  }
-  let base2 = peak;
-  for (let y = bottom; y >= peak; y--) {
-    if (rows[y] >= 0.25 * max) {
-      base2 = y;
-      break;
-    }
-  }
-  let capTop = peak;
-  for (let y = top; y <= peak; y++) {
-    if (rows[y] >= 0.25 * max) {
-      capTop = y;
-      break;
-    }
-  }
-  return { base: proj.y0 + base2 + 1, top: proj.y0 + top, bottom: proj.y0 + bottom + 1, capTop: proj.y0 + capTop };
-}
-function inkHeight(proj) {
-  if (proj.top < 0) return 0;
-  return proj.bottom - proj.top + 1;
-}
-function segmentLine(mask, pageW, pageH, box2, { gapRatio = 0.35, minGapPx = 2 } = {}) {
-  const proj = inkProjection(mask, pageW, pageH, box2);
-  if (!proj) return null;
-  const inkH = inkHeight(proj);
-  if (inkH < 3) return null;
-  const minGap = Math.max(minGapPx, Math.round(gapRatio * inkH));
-  const minInk = Math.max(2, Math.round(0.02 * inkH * inkH));
-  const runs = inkRuns(proj.cols, minGap, minInk);
-  if (!runs.length) return null;
-  const segments = runs.map((run) => ({
-    x0: proj.x0 + run.x0,
-    x1: proj.x0 + run.x1,
-    y0: proj.y0,
-    y1: proj.y0 + proj.h,
-    cols: [run.x0, run.x1],
-    ink: inkRows(mask, pageW, proj, run.x0, run.x1)
-  }));
-  return { proj, inkH, minGap, segments };
-}
-function snapWords(groups2, seg, proj) {
-  const [c0, c1] = seg.cols;
-  if (groups2.length <= 1) {
-    return groups2.map((g) => ({ text: g.text, x0: proj.x0 + c0, x1: proj.x0 + c1 }));
-  }
-  const span = c1 - c0;
-  const gaps = innerGaps(proj.cols, c0, c1);
-  const cuts = [];
-  const used = /* @__PURE__ */ new Set();
-  for (let i = 1; i < groups2.length; i++) {
-    const want = (groups2[i - 1].c1 + groups2[i].c0) / 2;
-    let best = -1;
-    let bestD = Infinity;
-    gaps.forEach((gap, k) => {
-      if (used.has(k)) return;
-      const mid = (gap.x0 + gap.x1) / 2;
-      const d = Math.abs(mid - want) - 0.25 * gap.w;
-      if (d < bestD) {
-        bestD = d;
-        best = k;
-      }
-    });
-    if (best >= 0 && bestD <= Math.max(6, 0.12 * span)) {
-      used.add(best);
-      cuts.push({ x0: gaps[best].x0, x1: gaps[best].x1 });
-    } else {
-      const x = Math.round(want);
-      cuts.push({ x0: x, x1: x });
-    }
-  }
-  cuts.sort((a, b) => a.x0 - b.x0);
-  const words = [];
-  let from = c0;
-  groups2.forEach((g, i) => {
-    const to = i < cuts.length ? cuts[i].x0 : c1;
-    words.push({ text: g.text, x0: proj.x0 + from, x1: proj.x0 + Math.max(from + 1, to) });
-    if (i < cuts.length) from = cuts[i].x1;
-  });
-  return words;
-}
-function sizeFromInk(text4, capH) {
-  if (!(capH > 0)) return null;
-  if (/[A-Z0-9bdfhklt]/.test(text4)) return capH / 0.64;
-  return null;
-}
-function dashRuns(mask, pageW, proj, c0, c1, base2, capH) {
-  if (!(capH > 4)) return [];
-  const lo = base2 - 0.65 * capH;
-  const hi = base2 - 0.15 * capH;
-  const kind = new Uint8Array(c1 - c0);
-  for (let x = c0; x < c1; x++) {
-    let top = -1;
-    let bottom = -1;
-    for (let y = 0; y < proj.h; y++) {
-      if (proj.ruleRow[y]) continue;
-      if (mask[(proj.y0 + y) * pageW + proj.x0 + x]) {
-        if (top < 0) top = y;
-        bottom = y;
-      }
-    }
-    if (top < 0) {
-      kind[x - c0] = 0;
-      continue;
-    }
-    const yTop = proj.y0 + top;
-    const yBot = proj.y0 + bottom + 1;
-    kind[x - c0] = yTop >= lo && yBot <= hi && yBot - yTop <= 0.25 * capH ? 2 : 1;
-  }
-  const runs = [];
-  let start2 = -1;
-  for (let i = 0; i <= kind.length; i++) {
-    if (i < kind.length && kind[i] === 2) {
-      if (start2 < 0) start2 = i;
-      continue;
-    }
-    if (start2 < 0) continue;
-    const end = i;
-    const apart = start2 > 0 && kind[start2 - 1] === 0 && end < kind.length && kind[end] === 0;
-    const left = kind.slice(Math.max(0, start2 - Math.ceil(0.4 * capH)), start2).some((k) => k === 1);
-    const right = kind.slice(end, end + Math.ceil(0.4 * capH)).some((k) => k === 1);
-    if (apart && end - start2 >= 0.3 * capH && left && right) runs.push({ c0: c0 + start2, c1: c0 + end });
-    start2 = -1;
-  }
-  return runs;
-}
-function joinNumberWords(words, maxGap) {
-  const out = [];
-  for (const word of words) {
-    const prev = out[out.length - 1];
-    if (prev && /\d[,.]$/.test(prev.text) && /^\d{3}(?:[,.]\d+)*,?$/.test(word.text) && /^[$€£(]?[\d,.]+$/.test(prev.text) && word.x0 - prev.x1 <= maxGap) {
-      prev.text += word.text;
-      prev.x1 = word.x1;
-      prev.conf = Math.min(prev.conf, word.conf);
-      continue;
-    }
-    out.push({ ...word });
-  }
-  return out;
-}
-function localMask(gray, mask, pageW, pageH, box2, minContrast = 60) {
-  const x0 = Math.max(0, Math.floor(box2.x0));
-  const y0 = Math.max(0, Math.floor(box2.y0));
-  const x1 = Math.min(pageW, Math.ceil(box2.x1));
-  const y1 = Math.min(pageH, Math.ceil(box2.y1));
-  if (x1 - x0 < 2 || y1 - y0 < 2) return false;
-  const hist = new Uint32Array(256);
-  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) hist[gray[y * pageW + x]]++;
-  const total = (x1 - x0) * (y1 - y0);
-  let sum = 0;
-  for (let i = 0; i < 256; i++) sum += i * hist[i];
-  let sumB = 0;
-  let wB = 0;
-  let best = -1;
-  let thresh = 0;
-  let meanDark = 0;
-  let meanLight = 0;
-  for (let t = 0; t < 256; t++) {
-    wB += hist[t];
-    if (!wB) continue;
-    const wF = total - wB;
-    if (!wF) break;
-    sumB += t * hist[t];
-    const mB = sumB / wB;
-    const mF = (sum - sumB) / wF;
-    const between = wB * wF * (mB - mF) * (mB - mF);
-    if (between > best) {
-      best = between;
-      thresh = t;
-      meanDark = mB;
-      meanLight = mF;
-    }
-  }
-  if (meanLight - meanDark < minContrast) return false;
-  let dark = 0;
-  for (let t = 0; t <= thresh; t++) dark += hist[t];
-  const inverted = dark > 0.6 * total;
-  for (let y = y0; y < y1; y++) {
-    const row4 = y * pageW;
-    for (let x = x0; x < x1; x++) mask[row4 + x] = gray[row4 + x] <= thresh !== inverted ? 1 : 0;
-  }
-  return true;
-}
-
-// src/model/ocr/orphans.js
-function coverMask(boxes, pageW, pageH, pad2 = 0) {
-  const mask = new Uint8Array(pageW * pageH);
-  for (const b of boxes || []) {
-    const x0 = Math.max(0, Math.floor(b.x0 - pad2));
-    const y0 = Math.max(0, Math.floor(b.y0 - pad2));
-    const x1 = Math.min(pageW, Math.ceil(b.x1 + pad2));
-    const y1 = Math.min(pageH, Math.ceil(b.y1 + pad2));
-    for (let y = y0; y < y1; y++) mask.fill(1, y * pageW + x0, y * pageW + x1);
-  }
-  return mask;
-}
-function orphanBlobs(components, covered, pageW, em) {
-  if (!(em > 0)) return [];
-  const minArea = Math.max(4, 0.01 * em * em);
-  const parts = [];
-  for (const c of components || []) {
-    const w = c.x1 - c.x0 + 1;
-    const h = c.y1 - c.y0 + 1;
-    if (c.area < minArea) continue;
-    if (h > 1.3 * em || w > 4 * em) continue;
-    if (w >= 2.5 * em && h <= 0.2 * em) continue;
-    const cx = Math.round((c.x0 + c.x1) / 2);
-    const cy = Math.round((c.y0 + c.y1) / 2);
-    if (covered[cy * pageW + cx]) continue;
-    parts.push({ x0: c.x0, y0: c.y0, x1: c.x1 + 1, y1: c.y1 + 1 });
-  }
-  parts.sort((a, b) => a.x0 - b.x0);
-  const blobs = [];
-  for (const p of parts) {
-    const pcy = (p.y0 + p.y1) / 2;
-    const host = blobs.find((b) => p.x0 - b.x1 <= 0.5 * em && p.x0 >= b.x0 - 0.5 * em && Math.abs(pcy - (b.y0 + b.y1) / 2) <= 0.6 * em && Math.max(b.y1, p.y1) - Math.min(b.y0, p.y0) <= 1.3 * em);
-    if (host) {
-      host.x0 = Math.min(host.x0, p.x0);
-      host.y0 = Math.min(host.y0, p.y0);
-      host.x1 = Math.max(host.x1, p.x1);
-      host.y1 = Math.max(host.y1, p.y1);
-      host.parts++;
-    } else blobs.push({ ...p, parts: 1 });
-  }
-  return blobs.filter((b) => b.x1 - b.x0 <= 8 * em);
-}
-function blobBaseline(blob, em) {
-  const h = blob.y1 - blob.y0;
-  if (h >= 0.45 * em) return blob.y1;
-  return (blob.y0 + blob.y1) / 2 + 0.25 * em;
-}
-var HALLUCINATION = /yanma|ianm|gent|cmyk/i;
-function acceptOrphanRead(text4, conf, blob, em) {
-  const t = String(text4 || "").trim();
-  if (!t) return false;
-  const w = blob.x1 - blob.x0;
-  const h = blob.y1 - blob.y0;
-  if (/^[-–—]$/.test(t)) return w >= 1.8 * h && h <= 0.2 * em;
-  if (conf < 0.6) return false;
-  if (HALLUCINATION.test(t)) return false;
-  if (!/[\p{L}\p{N}]/u.test(t)) return false;
-  const maxChars = Math.ceil((blob.x1 - blob.x0) / (0.25 * em)) + 2;
-  return t.replace(/\s+/g, "").length <= maxChars;
-}
-function dashFromShape(blob, em) {
-  const w = blob.x1 - blob.x0;
-  const h = blob.y1 - blob.y0;
-  if (blob.parts !== 1 || h > 0.2 * em || w < 3 * h || w < 0.2 * em || w > 1.6 * em) return null;
-  if (w < 0.45 * em) return "-";
-  if (w < 0.8 * em) return "–";
-  return "—";
-}
-
-// src/model/ocr/fine-skew.js
-function rowsOf(items) {
-  const sorted3 = [...items].sort((a, b) => a.transform[4] - b.transform[4]);
-  const rows = [];
-  for (const it of sorted3) {
-    const size = it.transform[0];
-    const base2 = it.transform[5];
-    let best = null;
-    for (const row4 of rows) {
-      const last = row4[row4.length - 1];
-      if (it.transform[4] < last.transform[4] + last.width - 0.5) continue;
-      const d = Math.abs(last.transform[5] - base2);
-      if (d <= 0.3 * Math.max(size, last.transform[0]) && (!best || d < best.d)) best = { row: row4, d };
-    }
-    if (best) best.row.push(it);
-    else rows.push([it]);
-  }
-  return rows;
-}
-function baselineSkew(items, { minSpan = 150, minWords = 3, minRows = 3 } = {}) {
-  const votes = [];
-  for (const row4 of rowsOf(items.filter((it) => it.str && it.str.trim()))) {
-    if (row4.length < minWords) continue;
-    const xs2 = row4.map((it) => it.transform[4] + it.width / 2);
-    const span = Math.max(...row4.map((it) => it.transform[4] + it.width)) - Math.min(...row4.map((it) => it.transform[4]));
-    if (span < minSpan) continue;
-    const ys2 = row4.map((it) => it.transform[5]);
-    const mx = xs2.reduce((s, v) => s + v, 0) / xs2.length;
-    const my = ys2.reduce((s, v) => s + v, 0) / ys2.length;
-    let sxx = 0;
-    let sxy = 0;
-    for (let i = 0; i < xs2.length; i++) {
-      sxx += (xs2[i] - mx) ** 2;
-      sxy += (xs2[i] - mx) * (ys2[i] - my);
-    }
-    if (!sxx) continue;
-    votes.push({ a: Math.atan(sxy / sxx) * 180 / Math.PI, w: span });
-  }
-  if (votes.length < minRows) return null;
-  votes.sort((p, q2) => p.a - q2.a);
-  const total = votes.reduce((s, v) => s + v.w, 0);
-  let acc = 0;
-  for (const v of votes) {
-    acc += v.w;
-    if (acc >= total / 2) return v.a;
-  }
-  return votes[votes.length - 1].a;
-}
-function rotateItems(items, degrees, w, h, scaleX, scaleY) {
-  const rad = degrees * Math.PI / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const cx = (w - 1) / 2;
-  const cy = (h - 1) / 2;
-  const r23 = (n3) => Math.round(n3 * 100) / 100;
-  for (const it of items) {
-    const dx = it.transform[4] * scaleX - cx;
-    const dy = it.transform[5] * scaleY - cy;
-    const x = (cx + dx * cos + dy * sin) / scaleX;
-    const base2 = (cy - dx * sin + dy * cos) / scaleY;
-    const shift = base2 - it.transform[5];
-    it.transform[4] = r23(x);
-    it.transform[5] = r23(base2);
-    if (Number.isFinite(it.y0)) it.y0 = r23(it.y0 + shift);
-    if (Number.isFinite(it.y1)) it.y1 = r23(it.y1 + shift);
-  }
-  return items;
-}
-
-// src/model/ocr/recognize.js
-var DET_LIMIT = "auto";
-var DET_PROBE = 1600;
-var DET_TARGET_H = 27;
-var DET_MIN = 960;
-var DET_MAX = 4096;
-var REC_H = 48;
-var BATCH = 8;
-var SEG_BATCH = 16;
-var SPACE_CH = /* @__PURE__ */ new Set([" ", "　", " "]);
-var CLEAN_NUM = /^\d{1,4}(?:\.\d+)?$/;
-var LONG_WORD = /^[A-Za-z][A-Za-z,.'()\-]{4,}$/;
-var CELL_PAD_PT = 1.5;
-var CELL_TIGHT_PT = 0.5;
-var CELL_SCALE = 3;
-var LINE_SCALES = [1, 2, 3];
-function aborted() {
-  const error = new Error("ocr aborted");
-  error.name = "AbortError";
-  return error;
-}
-function throwIfAborted(signal) {
-  if (signal?.aborted) throw aborted();
-}
-function pageRecord(n3, items, rules, w, h, dpi, deskew, fills = [], ink = []) {
-  return {
-    n: n3,
-    w: round22(w),
-    h: round22(h),
-    rotation: 0,
-    transform: [1, 0, 0, 1, 0, 0],
-    scan: true,
-    dpi,
-    deskew: round22(deskew),
-    fonts: { ocr: { name: "ocr" } },
-    items,
-    rules,
-    fills,
-    ink,
-    ops: { fnArray: [], argsArray: [] },
-    engine: "ppocr-web"
-  };
-}
-function detLimitFor(probeH, probeLimit, longSide, target = DET_TARGET_H) {
-  const probeScale = Math.min(1, probeLimit / longSide);
-  if (!(probeH > 0)) return Math.min(longSide, probeLimit);
-  const scale = Math.min(1, probeScale * target / probeH);
-  return Math.round(Math.max(DET_MIN, Math.min(DET_MAX, longSide * scale)));
-}
-function medianMapHeight(boxes, mapScale) {
-  const hs = boxes.map((b) => (b.y1 - b.y0) * mapScale).sort((a, b) => a - b);
-  return hs.length ? hs[hs.length >> 1] : 0;
-}
-async function detect(rgb, width, height, runDet, signal, opts = {}) {
-  const { detLimit = DET_LIMIT } = opts;
-  if (detLimit !== "auto") return detectAt(rgb, width, height, runDet, signal, opts);
-  const long = Math.max(width, height);
-  const probe = await detectAt(rgb, width, height, runDet, signal, { ...opts, detLimit: DET_PROBE });
-  const probeScale = Math.min(1, DET_PROBE / long);
-  const limit = detLimitFor(medianMapHeight(probe, probeScale), DET_PROBE, long);
-  opts.chosenLimit = limit;
-  if (Math.abs(Math.min(limit, long) - Math.min(DET_PROBE, long)) <= 0.12 * Math.min(DET_PROBE, long)) return probe;
-  return detectAt(rgb, width, height, runDet, signal, { ...opts, detLimit: limit });
-}
-async function detectAt(rgb, width, height, runDet, signal, { detLimit = DET_PROBE, unclipRatio = 1.5, boxThresh = 0.6 } = {}) {
-  throwIfAborted(signal);
-  const resized = detResize(rgb, width, height, detLimit);
-  const data = nchwNormalize(resized.rgb, resized.w, resized.h);
-  const prob = await runDet(data, [1, 3, resized.h, resized.w]);
-  throwIfAborted(signal);
-  const mapW = resized.w;
-  const mapH = prob.length / mapW;
-  if (!Number.isInteger(mapH)) throw new Error(`det map length ${prob.length} is not ${mapW} wide`);
-  return boxesFromProb(prob, mapW, mapH, width, height, { unclipRatio, boxThresh });
-}
-function prepareCrop(rgb, width, height, box2) {
-  const pad2 = 2;
-  let crop = cropRgb(rgb, width, height, box2.x0 - pad2, box2.y0 - pad2, box2.x1 + pad2, box2.y1 + pad2);
-  if (crop.w < 2 || crop.h < 2) return null;
-  if (crop.h > crop.w * 1.4) crop = rotateRgb(crop.rgb, crop.w, crop.h, 90);
-  const resized = recResize(crop.rgb, crop.w, crop.h, REC_H);
-  return { box: box2, resized };
-}
-function blitLeft(dest, batch, destW, src, srcW, height) {
-  const plane = height * destW;
-  const srcPlane = height * srcW;
-  const base2 = batch * 3 * plane;
-  for (let c = 0; c < 3; c++) {
-    const d0 = base2 + c * plane;
-    const s0 = c * srcPlane;
-    for (let y = 0; y < height; y++) {
-      dest.set(src.subarray(s0 + y * srcW, s0 + (y + 1) * srcW), d0 + y * destW);
-    }
-  }
-}
-async function readCrops(crops, scaleX, scaleY, runRec, dict, signal) {
-  const items = [];
-  for (let i = 0; i < crops.length; i += BATCH) {
-    throwIfAborted(signal);
-    const chunk2 = crops.slice(i, i + BATCH);
-    const maxW = Math.max(...chunk2.map((c) => c.resized.w));
-    const height = REC_H;
-    const data = new Float32Array(chunk2.length * 3 * height * maxW);
-    const normals = chunk2.map((c) => nchwNormalize(c.resized.rgb, c.resized.w, c.resized.h));
-    chunk2.forEach((c, b) => blitLeft(data, b, maxW, normals[b], c.resized.w, height));
-    const out = await runRec(data, [chunk2.length, 3, height, maxW]);
-    const time = out.time;
-    const classes = out.classes;
-    const logits = out.logits;
-    chunk2.forEach((c, b) => {
-      const contentT = Math.max(1, Math.min(time, Math.round(time * (c.resized.contentW || c.resized.w) / maxW)));
-      const start2 = b * time * classes;
-      const slice = logits.subarray(start2, start2 + contentT * classes);
-      const pageBox = {
-        x0: c.box.x0 / scaleX,
-        y0: c.box.y0 / scaleY,
-        x1: c.box.x1 / scaleX,
-        y1: c.box.y1 / scaleY
-      };
-      items.push(...wordsFromCtc({ logits: slice, time: contentT, classes, dict, box: pageBox }));
-    });
-  }
-  return items;
-}
-function widthBatches(widths, batchSize = SEG_BATCH, ratio = 1.3) {
-  const order = widths.map((_, i) => i).sort((a, b) => widths[a] - widths[b]);
-  const batches = [];
-  let cur = [];
-  for (const k of order) {
-    if (cur.length && (cur.length >= batchSize || widths[k] > ratio * widths[cur[0]] + 16)) {
-      batches.push(cur);
-      cur = [];
-    }
-    cur.push(k);
-  }
-  if (cur.length) batches.push(cur);
-  return batches;
-}
-async function recBatches(crops, runRec, signal, batchSize = SEG_BATCH) {
-  const out = new Array(crops.length);
-  for (const idx of widthBatches(crops.map((c) => c.resized.w), batchSize)) {
-    throwIfAborted(signal);
-    const maxW = Math.max(...idx.map((k) => crops[k].resized.w));
-    const data = new Float32Array(idx.length * 3 * REC_H * maxW);
-    idx.forEach((k, b) => {
-      const c = crops[k].resized;
-      blitLeft(data, b, maxW, nchwNormalize(c.rgb, c.w, c.h), c.w, REC_H);
-    });
-    const res = await runRec(data, [idx.length, 3, REC_H, maxW]);
-    idx.forEach((k, b) => {
-      const c = crops[k].resized;
-      const contentT = Math.max(1, Math.min(res.time, Math.round(res.time * (c.contentW || c.w) / maxW)));
-      const start2 = b * res.time * res.classes;
-      out[k] = { logits: res.logits.slice(start2, start2 + contentT * res.classes), time: contentT, classes: res.classes };
-    });
-  }
-  return out;
-}
-function pageMask(gray) {
-  const thresh = otsuThreshold(gray);
-  const mask = new Uint8Array(gray.length);
-  for (let i = 0; i < gray.length; i++) if (gray[i] <= thresh) mask[i] = 1;
-  return mask;
-}
-var DASHES2 = /* @__PURE__ */ new Set(["-", "–", "—", "−"]);
-function restoreDashes(chars, crop, time, mask, pageW) {
-  const ink = crop.seg.ink;
-  const capH = ink.base - ink.top;
-  const [c0, c1] = crop.seg.cols;
-  const runs = dashRuns(mask, pageW, crop.proj, c0, c1, ink.base, capH);
-  if (!runs.length) return;
-  const toT = (col2) => (col2 + crop.proj.x0 - crop.cropLeft) / crop.cropW * time;
-  for (const run of runs) {
-    const t0 = toT(run.c0) - 1;
-    const t1 = toT(run.c1) + 1;
-    if (chars.some((ch2) => DASHES2.has(ch2.ch) && ch2.t >= t0 && ch2.t <= t1)) continue;
-    const t = Math.round((toT(run.c0) + toT(run.c1)) / 2);
-    const at = chars.findIndex((ch2) => ch2.t > t);
-    const ch = { ch: run.c1 - run.c0 >= 1.2 * capH ? "—" : "–", t, conf: 0.9 };
-    if (at < 0) chars.push(ch);
-    else chars.splice(at, 0, ch);
-  }
-}
-async function readSegments(image, w, h, boxes, mask, scaleX, scaleY, runRec, dict, signal, opts) {
-  const crops = [];
-  const lineBoxes = [];
-  for (const box2 of boxes) {
-    const bw = box2.x1 - box2.x0;
-    const bh = box2.y1 - box2.y0;
-    const split = bh <= bw * 1.4 ? segmentLine(mask, w, h, box2, opts) : null;
-    if (!split) {
-      lineBoxes.push(box2);
-      continue;
-    }
-    const { segments, proj, inkH } = split;
-    const padX = Math.max(2, Math.round(opts.padRatio * inkH));
-    segments.forEach((seg, i) => {
-      const prev = segments[i - 1];
-      const next = segments[i + 1];
-      const left = Math.max(prev ? (prev.x1 + seg.x0) / 2 : -Infinity, seg.x0 - padX);
-      const right = Math.min(next ? (seg.x1 + next.x0) / 2 : Infinity, seg.x1 + padX);
-      const ink = seg.ink;
-      const padY = ink ? Math.max(2, Math.round(opts.padYRatio * (ink.bottom - ink.top))) : 2;
-      const top = ink ? Math.max(box2.y0 - 2, ink.top - padY) : box2.y0 - 2;
-      const bottom = ink ? Math.min(box2.y1 + 2, ink.bottom + padY) : box2.y1 + 2;
-      const crop = cropRgb(image, w, h, left, top, right, bottom);
-      if (crop.w < 2 || crop.h < 2) return;
-      const white = Math.round(opts.whiteRatio * crop.h);
-      const padded = padWhite(crop.rgb, crop.w, crop.h, white, white);
-      const cropLeft = Math.max(0, Math.floor(left)) - white;
-      crops.push({ box: box2, seg, proj, cropLeft, cropW: padded.w, resized: recResize(padded.rgb, padded.w, padded.h, REC_H) });
-    });
-  }
-  const reads = await recBatches(crops, runRec, signal);
-  const items = [];
-  crops.forEach((crop, k) => {
-    const read2 = reads[k];
-    const chars = ctcDecode(read2.logits, read2.time, read2.classes, dict);
-    if (crop.seg.ink && mask) restoreDashes(chars, crop, read2.time, mask, w);
-    const groups2 = [];
-    let cur = null;
-    for (const ch of chars) {
-      if (SPACE_CH.has(ch.ch)) {
-        cur = null;
-        continue;
-      }
-      if (!cur) {
-        cur = { chars: [] };
-        groups2.push(cur);
-      }
-      cur.chars.push(ch);
-    }
-    if (!groups2.length) return;
-    const toCol = (t) => crop.cropLeft + t / read2.time * crop.cropW - crop.proj.x0;
-    const named2 = groups2.map((g) => ({
-      text: g.chars.map((c) => c.ch).join(""),
-      c0: toCol(g.chars[0].t),
-      c1: toCol(g.chars[g.chars.length - 1].t + 1),
-      conf: g.chars.reduce((s, c) => s + c.conf, 0) / g.chars.length
-    }));
-    const snapped = snapWords(named2, crop.seg, crop.proj).map((word, i) => ({ ...word, conf: named2[i].conf }));
-    const capH = crop.seg.ink ? crop.seg.ink.base - crop.seg.ink.top : 0;
-    const words = capH ? joinNumberWords(snapped, 0.35 * capH) : snapped;
-    const boxPt = { x0: crop.box.x0 / scaleX, y0: crop.box.y0 / scaleY, x1: crop.box.x1 / scaleX, y1: crop.box.y1 / scaleY };
-    const ink = crop.seg.ink;
-    const size = ink ? sizeFromInk(named2.map((g) => g.text).join(""), (ink.base - ink.capTop) / scaleY) || boxPt.y1 - boxPt.y0 : 0;
-    for (const word of words) {
-      if (!word.text) continue;
-      let box2 = boxPt;
-      if (ink) {
-        const own2 = inkRows(mask, w, crop.proj, Math.max(0, word.x0 - crop.proj.x0), Math.min(crop.proj.w, word.x1 - crop.proj.x0));
-        const base2 = (own2 ? own2.base : ink.base) / scaleY;
-        box2 = { ...boxPt, y1: base2 + 0.2 * size, y0: base2 - 0.8 * size };
-      }
-      items.push(wordItem(word.text, word.x0 / scaleX, word.x1 / scaleX, box2, word.conf));
-    }
-  });
-  if (lineBoxes.length) {
-    const lineCrops = [];
-    for (const box2 of lineBoxes) {
-      const crop = prepareCrop(image, w, h, box2);
-      if (crop) lineCrops.push(crop);
-    }
-    items.push(...await readCrops(lineCrops, scaleX, scaleY, runRec, dict, signal));
-  }
-  return items;
-}
-function medianSize2(items) {
-  const sizes = items.filter((i) => /[A-Z0-9bdfhklt]/.test(i.str)).map((i) => i.transform[0]).sort((a, b) => a - b);
-  return sizes.length ? sizes[sizes.length >> 1] : 0;
-}
-async function readOrphans(image, w, h, boxes, mask, items, scaleX, scaleY, runRec, dict, signal) {
-  const emPt = medianSize2(items);
-  if (!emPt) return [];
-  const em = emPt * scaleY;
-  const covered = coverMask(boxes, w, h, Math.round(0.1 * em));
-  const blobs = orphanBlobs(labelComponents(mask, w, h), covered, w, em);
-  if (!blobs.length) return [];
-  const crops = [];
-  const out = [];
-  const place3 = (text4, blob, conf) => {
-    const base2 = blobBaseline(blob, em) / scaleY;
-    const box2 = { x0: blob.x0 / scaleX, x1: blob.x1 / scaleX, y1: base2 + 0.2 * emPt, y0: base2 - 0.8 * emPt };
-    out.push(wordItem(text4, box2.x0, box2.x1, box2, conf));
-  };
-  for (const blob of blobs) {
-    const dash = dashFromShape(blob, em);
-    if (dash) {
-      place3(dash, blob, 1);
-      continue;
-    }
-    const crop = cropRgb(image, w, h, blob.x0 - 1, blob.y0 - 1, blob.x1 + 1, blob.y1 + 1);
-    if (crop.w < 1 || crop.h < 1) continue;
-    const padY = Math.max(0, Math.round((1.2 * em - crop.h) / 2));
-    const padded = padWhite(crop.rgb, crop.w, crop.h, Math.round(0.35 * em), padY);
-    crops.push({ blob, resized: recResize(padded.rgb, padded.w, padded.h, REC_H) });
-  }
-  const reads = crops.length ? await recBatches(crops, runRec, signal) : [];
-  crops.forEach((crop, k) => {
-    const read2 = ctcText({ logits: reads[k].logits, time: reads[k].time, classes: reads[k].classes, dict });
-    if (acceptOrphanRead(read2.text, read2.conf, crop.blob, em)) place3(read2.text.replace(/\s+/g, ""), crop.blob, read2.conf);
-  });
-  return out;
-}
-async function preparePageImage({
-  rgb,
-  width,
-  height,
-  dpi = 300,
-  pointW = null,
-  pointH = null,
-  page = 1,
-  runDet,
-  runRec,
-  dict,
-  signal,
-  detLimit = DET_LIMIT,
-  unclipRatio = 1.5,
-  boxThresh = 0.5,
-  split = true,
-  gapRatio = 0.9,
-  padRatio = 0.2,
-  padYRatio = 0.1,
-  whiteRatio = 0,
-  orphans = true,
-  localInk = true,
-  fineSkew = true
-} = {}) {
-  throwIfAborted(signal);
-  const detOpts = { detLimit, unclipRatio, boxThresh };
-  let image = rgb;
-  let w = width;
-  let h = height;
-  let boxes = await detect(image, w, h, runDet, signal, detOpts);
-  let deskew = 0;
-  const tilt = dominantAngle(boxes);
-  if (Math.abs(tilt) >= 0.15 && Math.abs(tilt) <= 8) {
-    let bestResidual = Math.abs(tilt);
-    for (const applied of [-tilt, tilt]) {
-      const rotated = rotateRgb(image, w, h, applied);
-      const again = await detect(rotated.rgb, rotated.w, rotated.h, runDet, signal, detOpts.chosenLimit ? { ...detOpts, detLimit: detOpts.chosenLimit } : detOpts);
-      const residual2 = Math.abs(dominantAngle(again));
-      if (residual2 + 0.02 < bestResidual) {
-        bestResidual = residual2;
-        image = rotated.rgb;
-        w = rotated.w;
-        h = rotated.h;
-        boxes = again;
-        deskew = applied;
-      }
-    }
-  }
-  const scaleX = w / (pointW || w * 72 / dpi);
-  const scaleY = h / (pointH || h * 72 / dpi);
-  const ptW = pointW || w / (dpi / 72);
-  const ptH = pointH || h / (dpi / 72);
-  let gray = grayFromRgb(image, w, h);
-  const ordered = [...boxes].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
-  let raw;
-  if (split) {
-    const mask = pageMask(gray);
-    if (localInk) for (const box2 of ordered) localMask(gray, mask, w, h, box2);
-    raw = await readSegments(image, w, h, ordered, mask, scaleX, scaleY, runRec, dict, signal, { gapRatio, padRatio, padYRatio, whiteRatio });
-    if (orphans) raw.push(...await readOrphans(image, w, h, ordered, mask, raw, scaleX, scaleY, runRec, dict, signal));
-  } else {
-    const crops = [];
-    for (const box2 of ordered) {
-      const crop = prepareCrop(image, w, h, box2);
-      if (crop) crops.push(crop);
-    }
-    raw = await readCrops(crops, scaleX, scaleY, runRec, dict, signal);
-  }
-  const residual = fineSkew ? baselineSkew(raw) : null;
-  if (residual != null && Math.abs(residual) >= 0.05 && Math.abs(residual) <= 1) {
-    const turned = rotateRgb(image, w, h, residual);
-    if (turned.w === w && turned.h === h) {
-      rotateItems(raw, residual, w, h, scaleX, scaleY);
-      image = turned.rgb;
-      gray = grayFromRgb(image, w, h);
-      deskew += residual;
-    }
-  }
-  const fills = fillsFromCanvas(gray, w, h, scaleX);
-  const rules = rulesFromCanvas(gray, w, h, scaleX, { fills });
-  const items = snapOcrItems(raw);
-  const frame2 = { rgb: image, width: w, height: h, dpi };
-  await polishDirty(items, frame2, page, runRec, dict, signal);
-  const ink = inkBoxesFromCanvas(gray, w, h, scaleX, { words: items });
-  return { record: pageRecord(page, items, rules, ptW, ptH, dpi, deskew, fills, ink), rgb: image, width: w, height: h, dpi };
-}
-async function polishDirty(items, frame2, page, runRec, dict, signal) {
-  const dirty = items.filter((item) => {
-    const text4 = item.str.trim();
-    if (/^[-–—.•*·]+$/.test(text4)) return false;
-    return !CLEAN_NUM.test(text4) && !LONG_WORD.test(text4);
-  });
-  if (!dirty.length) return;
-  const read2 = await recognizeCells({
-    pages: /* @__PURE__ */ new Map([[page, frame2]]),
-    cells: dirty.map((item) => ({
-      page,
-      bbox: [item.transform[4], item.y0, item.transform[4] + item.width, item.y1]
-    })),
-    runRec,
-    dict,
-    signal
-  });
-  dirty.forEach((item, i) => {
-    const text4 = (read2.cells[i]?.text || "").trim();
-    if (!CLEAN_NUM.test(text4)) return;
-    item.str = text4;
-    item.conf = bucketConf(read2.cells[i].conf || 0);
-  });
-}
-async function readLine(prep, cell, runRec, dict, signal) {
-  const scale = prep.dpi / 72;
-  const [x0, y0, x1, y1] = cell.bbox;
-  const crop = cropRgb(prep.rgb, prep.width, prep.height, (x0 - CELL_PAD_PT) * scale, y0 * scale, (x1 + CELL_PAD_PT) * scale, y1 * scale);
-  let best = { page: cell.page, bbox: cell.bbox, text: "", conf: 0, confs: [], scale: 0, reads: [] };
-  if (crop.w < 2 || crop.h < 2) return best;
-  const reads = [];
-  for (const k of LINE_SCALES) {
-    throwIfAborted(signal);
-    const scaled = k === 1 ? crop : resizeRgb(crop.rgb, crop.w, crop.h, crop.w * k, crop.h * k);
-    const padded = padWhite(scaled.rgb, scaled.w, scaled.h, Math.max(3, Math.round(8 * k / CELL_SCALE)));
-    const resized = recResize(padded.rgb, padded.w, padded.h, REC_H);
-    const out = await runRec(nchwNormalize(resized.rgb, resized.w, resized.h), [1, 3, resized.h, resized.w]);
-    const contentT = Math.max(1, Math.min(out.time, Math.round(out.time * (resized.contentW || resized.w) / resized.w)));
-    const chars = ctcDecode(out.logits.subarray(0, contentT * out.classes), contentT, out.classes, dict);
-    let text4 = "";
-    const confs = [];
-    let sum = 0;
-    let n3 = 0;
-    for (const ch of chars) {
-      if (SPACE_CH.has(ch.ch)) {
-        if (text4 && !text4.endsWith(" ")) {
-          text4 += " ";
-          confs.push(1);
-        }
-        continue;
-      }
-      text4 += ch.ch;
-      confs.push(Math.round(ch.conf * 100) / 100);
-      sum += ch.conf;
-      n3++;
-    }
-    if (text4.endsWith(" ")) {
-      text4 = text4.slice(0, -1);
-      confs.pop();
-    }
-    const conf = n3 ? Math.round(sum / n3 * 1e3) / 1e3 : 0;
-    reads.push({ text: text4, conf, confs, scale: k });
-    if (conf > best.conf) best = { page: cell.page, bbox: cell.bbox, text: text4, conf, confs, scale: k };
-  }
-  return { ...best, reads };
-}
-async function readCell(prep, cell, runRec, dict, signal) {
-  throwIfAborted(signal);
-  if (cell.line) return readLine(prep, cell, runRec, dict, signal);
-  const scale = prep.dpi / 72;
-  const [x0, y0, x1, y1] = cell.bbox;
-  const crop = cropRgb(prep.rgb, prep.width, prep.height, (x0 - CELL_PAD_PT) * scale, (y0 - CELL_PAD_PT) * scale, (x1 + CELL_PAD_PT) * scale, (y1 + CELL_PAD_PT) * scale);
-  const tight = cropRgb(prep.rgb, prep.width, prep.height, (x0 - CELL_TIGHT_PT) * scale, (y0 - CELL_TIGHT_PT) * scale, (x1 + CELL_TIGHT_PT) * scale, (y1 + CELL_TIGHT_PT) * scale);
-  const glyph = tight.w >= 2 && tight.h >= 2 ? inkGlyph(grayFromRgb(tight.rgb, tight.w, tight.h), tight.w, tight.h) : null;
-  if (crop.w < 2 || crop.h < 2) return { page: cell.page, bbox: cell.bbox, text: "", conf: 0, glyph };
-  const scaled = resizeRgb(crop.rgb, crop.w, crop.h, crop.w * CELL_SCALE, crop.h * CELL_SCALE);
-  const padded = padWhite(scaled.rgb, scaled.w, scaled.h, 8);
-  const resized = recResize(padded.rgb, padded.w, padded.h, REC_H);
-  const data = nchwNormalize(resized.rgb, resized.w, resized.h);
-  const out = await runRec(data, [1, 3, resized.h, resized.w]);
-  const contentT = Math.max(1, Math.min(out.time, Math.round(out.time * (resized.contentW || resized.w) / resized.w)));
-  const slice = out.logits.subarray(0, contentT * out.classes);
-  const text4 = ctcText({ logits: slice, time: contentT, classes: out.classes, dict });
-  return { page: cell.page, bbox: cell.bbox, text: text4.text, conf: text4.conf, glyph };
-}
-async function recognizeCells({ pages, cells, runRec, dict, signal } = {}) {
-  const out = [];
-  for (const cell of cells || []) {
-    const prep = pages?.get?.(cell.page);
-    if (!prep) {
-      out.push({ page: cell.page, bbox: cell.bbox, text: "", conf: 0, glyph: null });
-      continue;
-    }
-    const read2 = await readCell(prep, cell, runRec, dict, signal);
-    out.push(read2);
-  }
-  return { cells: out };
-}
-
-// src/model/ocr/worker-asset.js
-var OCR_WORKER = { "file": "ocr-worker.js", "sha256": "028e40d397f4420c4de7647d44ae1cd505beaa4b4512418b623b012622fcfa2e", "bytes": 71116 };
-
-// src/host/ocr-ort.js
-async function openSession(ort, buffer) {
-  try {
-    return await ort.InferenceSession.create(buffer, { executionProviders: ["webgpu", "wasm"] });
-  } catch {
-    return await ort.InferenceSession.create(buffer, { executionProviders: ["wasm"] });
-  }
-}
-async function createOrtRunners(ort, detBuffer, recBuffer) {
-  const det = await openSession(ort, detBuffer);
-  const rec = await openSession(ort, recBuffer);
-  return {
-    async runDet(data, dims) {
-      const out = await det.run({ x: new ort.Tensor("float32", data, dims) });
-      return out.fetch_name_0.data;
-    },
-    async runRec(data, dims) {
-      const out = await rec.run({ x: new ort.Tensor("float32", data, dims) });
-      const tensor = out.fetch_name_0;
-      return { logits: tensor.data, batch: tensor.dims[0], time: tensor.dims[1], classes: tensor.dims[2] };
-    }
-  };
-}
-
-// src/host/ocr-web.js
-var GLOBAL_KEYS3 = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
-var DPI = 300;
-function abortError() {
-  const error = new Error("ocr aborted");
-  error.name = "AbortError";
-  return error;
-}
-function throwIfAborted2(signal) {
-  if (signal?.aborted) throw abortError();
-}
-function findPdfjs(explicit) {
-  if (explicit && typeof explicit.getDocument === "function") return explicit;
-  const root = globalThis;
-  for (const key of GLOBAL_KEYS3) {
-    const lib = root[key];
-    if (lib && typeof lib.getDocument === "function") return lib;
-  }
-  return null;
-}
-async function sha256Hex2(cryptoImpl, buffer) {
-  const digest = await cryptoImpl.subtle.digest("SHA-256", buffer);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-function yieldToPage() {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
-function yieldingRunners({ runDet, runRec }, pause = yieldToPage) {
-  return {
-    async runDet(data, dims) {
-      await pause();
-      return runDet(data, dims);
-    },
-    async runRec(data, dims) {
-      await pause();
-      return runRec(data, dims);
-    }
-  };
-}
-async function readBody(res, onBytes, signal) {
-  const reader = onBytes && res.body && typeof res.body.getReader === "function" ? res.body.getReader() : null;
-  if (!reader) {
-    const buf = await res.arrayBuffer();
-    onBytes?.(buf.byteLength);
-    return buf;
-  }
-  const parts = [];
-  let size = 0;
-  for (; ; ) {
-    throwIfAborted2(signal);
-    const { done: done3, value } = await reader.read();
-    if (done3) break;
-    parts.push(value);
-    size += value.byteLength;
-    onBytes(size);
-  }
-  const out = new Uint8Array(size);
-  let at = 0;
-  for (const part of parts) {
-    out.set(part, at);
-    at += part.byteLength;
-  }
-  return out.buffer;
-}
-function imageScaling(sw, sh, dw, dh) {
-  const kx = Math.abs(Number(dw) / Number(sw));
-  const ky = Math.abs(Number(dh) / Number(sh));
-  if (!(kx > 0) || !(ky > 0) || !Number.isFinite(kx) || !Number.isFinite(ky)) return null;
-  if (kx <= 1.01 && ky <= 1.01) return true;
-  const whole2 = (k) => k <= 1.01 || Math.abs(k - Math.round(k)) <= 0.02;
-  return !(whole2(kx) && whole2(ky));
-}
-function cropTopBand(rendered, fraction) {
-  const frac = Number(fraction);
-  if (!(frac > 0) || frac >= 1 || !rendered?.rgb) return rendered;
-  const height = rendered.height || 0;
-  const width = rendered.width || 0;
-  const cutH = Math.max(1, Math.min(height, Math.round(height * frac)));
-  if (!height || cutH >= height) return rendered;
-  const cut = cropRgb(rendered.rgb, width, height, 0, 0, width, cutH);
-  const scale = cut.h / height;
-  return {
-    ...rendered,
-    rgb: cut.rgb,
-    width: cut.w,
-    height: cut.h,
-    pointH: rendered.pointH != null ? rendered.pointH * scale : rendered.pointH
-  };
-}
-function steadyImageScaling(ctx) {
-  if (!ctx || typeof ctx.drawImage !== "function") return ctx;
-  const draw = ctx.drawImage;
-  try {
-    Object.defineProperty(ctx, "drawImage", {
-      configurable: true,
-      writable: true,
-      value(...args) {
-        if (args.length !== 9) return draw.apply(this, args);
-        let m = null;
-        try {
-          m = typeof this.getTransform === "function" ? this.getTransform() : null;
-        } catch {
-          m = null;
-        }
-        const sx = m ? Math.hypot(m.a, m.b) || 1 : 1;
-        const sy = m ? Math.hypot(m.c, m.d) || 1 : 1;
-        const smooth = imageScaling(args[3], args[4], args[7] * sx, args[8] * sy);
-        if (smooth == null) return draw.apply(this, args);
-        const was = this.imageSmoothingEnabled;
-        const quality = this.imageSmoothingQuality;
-        this.imageSmoothingEnabled = smooth;
-        if (smooth) this.imageSmoothingQuality = "low";
-        try {
-          return draw.apply(this, args);
-        } finally {
-          this.imageSmoothingEnabled = was;
-          if (quality !== void 0) this.imageSmoothingQuality = quality;
-        }
-      }
-    });
-  } catch {
-  }
-  return ctx;
-}
-async function renderPdfPage(pdfDoc, n3, dpi = DPI) {
-  const page = await pdfDoc.getPage(n3);
-  const viewport2 = page.getViewport({ scale: dpi / 72 });
-  const width = Math.ceil(viewport2.width);
-  const height = Math.ceil(viewport2.height);
-  const canvas = typeof OffscreenCanvas === "function" ? new OffscreenCanvas(width, height) : globalThis.document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = steadyImageScaling(canvas.getContext("2d", { willReadFrequently: true }));
-  await page.render({ canvasContext: ctx, viewport: viewport2 }).promise;
-  const pixels = ctx.getImageData(0, 0, width, height).data;
-  const rgb = new Uint8Array(width * height * 3);
-  for (let i = 0, j = 0; i < pixels.length; i += 4, j += 3) {
-    rgb[j] = pixels[i];
-    rgb[j + 1] = pixels[i + 1];
-    rgb[j + 2] = pixels[i + 2];
-  }
-  return {
-    rgb,
-    width,
-    height,
-    dpi,
-    pointW: viewport2.width * 72 / dpi,
-    pointH: viewport2.height * 72 / dpi,
-    pageCount: pdfDoc.numPages
-  };
-}
-function createOcrWeb({
-  assetBase = PAGES_ORIGIN,
-  ortBase = ORT_BASE,
-  fetch: fetchImpl = globalThis.fetch?.bind(globalThis),
-  caches: cachesImpl = globalThis.caches,
-  crypto: cryptoImpl = globalThis.crypto,
-  inline = null,
-  renderPage = null,
-  pdfjs = null,
-  workerUrl = null,
-  useWorker = true,
-  Worker: WorkerImpl = globalThis.Worker,
-  createObjectURL = (blob) => URL.createObjectURL(blob),
-  pause = yieldToPage,
-  importModule = (url) => import(url),
-  files = null,
-  dpi = DPI
-} = {}) {
-  const ortFiles = files?.ort || ORT_FILES;
-  const modelFiles = files?.models || MODEL_FILES;
-  const workerFile = files?.worker || OCR_WORKER;
-  let state = "cold";
-  const fetched = [];
-  const prepared2 = /* @__PURE__ */ new Map();
-  let engine = null;
-  async function openCache() {
-    if (!cachesImpl || typeof cachesImpl.open !== "function") return null;
-    try {
-      return await cachesImpl.open(CACHE_NAME);
-    } catch {
-      return null;
-    }
-  }
-  async function loadVerified(url, expect, signal, onBytes = null) {
-    throwIfAborted2(signal);
-    const cache = await openCache();
-    if (cache) {
-      const hit = await cache.match(url);
-      if (hit) {
-        const buf2 = await hit.arrayBuffer();
-        const hash2 = await sha256Hex2(cryptoImpl, buf2);
-        if (hash2 === expect.sha256 && buf2.byteLength === expect.bytes) {
-          onBytes?.(buf2.byteLength);
-          return buf2;
-        }
-      }
-    }
-    if (typeof fetchImpl !== "function") throw new Error("fetch is not available");
-    fetched.push(url);
-    const res = await fetchImpl(url, signal ? { signal } : void 0);
-    if (!res?.ok) throw new Error(`fetch failed ${res?.status || ""} ${url}`.trim());
-    const buf = await readBody(res, onBytes, signal);
-    const hash = await sha256Hex2(cryptoImpl, buf);
-    if (hash !== expect.sha256 || buf.byteLength !== expect.bytes) {
-      throw new Error(`sha256 mismatch for ${url}`);
-    }
-    if (cache) {
-      await cache.put(url, new Response(buf.slice(0), { headers: { "content-type": "application/octet-stream" } }));
-    }
-    return buf;
-  }
-  async function loadModel(spec, signal, onBytes = null) {
-    const own2 = joinUrl(assetBase, `assets/ocr/${spec.file}`);
-    try {
-      return await loadVerified(own2, spec, signal, onBytes);
-    } catch (error) {
-      if (error?.name === "AbortError" || !spec.url) throw error;
-      return loadVerified(spec.url, spec, signal, onBytes);
-    }
-  }
-  function assetList() {
-    return [
-      ...Object.values(ortFiles).map((spec) => ({ spec, model: false, urls: [joinUrl(ortBase, spec.file)] })),
-      ...Object.values(modelFiles).map((spec) => ({ spec, model: true, urls: [joinUrl(assetBase, `assets/ocr/${spec.file}`), ...spec.url ? [spec.url] : []] }))
-    ];
-  }
-  async function cached() {
-    if (engine) return true;
-    const cache = await openCache();
-    if (!cache) return false;
-    for (const { urls: urls2 } of assetList()) {
-      let hit = false;
-      for (const url of urls2) {
-        try {
-          if (await cache.match(url)) {
-            hit = true;
-            break;
-          }
-        } catch {
-        }
-      }
-      if (!hit) return false;
-    }
-    return true;
-  }
-  async function prefetch({ signal = null, onProgress = null } = {}) {
-    const list = assetList();
-    const total = list.reduce((n3, a) => n3 + a.spec.bytes, 0);
-    let done3 = 0;
-    for (const { spec, model, urls: urls2 } of list) {
-      const onBytes = (n3) => onProgress?.(done3 + Math.min(spec.bytes, n3), total);
-      if (model) await loadModel(spec, signal, onBytes);
-      else await loadVerified(urls2[0], spec, signal, onBytes);
-      done3 += spec.bytes;
-      onProgress?.(done3, total);
-    }
-    try {
-      await lexicon({ signal });
-    } catch (error) {
-      if (error?.name === "AbortError") throw error;
-    }
-    if (useWorker && !workerUrl) {
-      try {
-        await loadVerified(joinUrl(assetBase, `assets/ocr/${workerFile.file}`), workerFile, signal);
-      } catch (error) {
-        if (error?.name === "AbortError") throw error;
-      }
-    }
-    return { bytes: total };
-  }
-  let lexiconSet = null;
-  async function lexicon({ signal = null } = {}) {
-    if (lexiconSet) return lexiconSet;
-    const buf = await loadVerified(joinUrl(assetBase, `assets/ocr/${LEXICON_FILE.file}`), LEXICON_FILE, signal);
-    if (typeof DecompressionStream !== "function") return null;
-    const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
-    const text4 = await new Response(stream).text();
-    lexiconSet = parseLexicon(text4);
-    return lexiconSet;
-  }
-  async function cachedLexicon() {
-    if (lexiconSet) return lexiconSet;
-    if (typeof DecompressionStream !== "function") return null;
-    const cache = await openCache();
-    if (!cache) return null;
-    const hit = await cache.match(joinUrl(assetBase, `assets/ocr/${LEXICON_FILE.file}`));
-    if (!hit) return null;
-    const buf = await hit.arrayBuffer();
-    if (buf.byteLength !== LEXICON_FILE.bytes || await sha256Hex2(cryptoImpl, buf) !== LEXICON_FILE.sha256) return null;
-    const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
-    lexiconSet = parseLexicon(await new Response(stream).text());
-    return lexiconSet;
-  }
-  function localEngine(runDet, runRec, dict) {
-    return {
-      async page(n3, bytes, signal, band = 0) {
-        if (!(band > 0) && prepared2.has(n3)) return prepared2.get(n3).record;
-        const rendered = cropTopBand(await renderOne(bytes, n3, signal), band);
-        const prep = await preparePageImage({
-          ...rendered,
-          dpi: rendered.dpi || dpi,
-          page: n3,
-          runDet,
-          runRec,
-          dict,
-          signal
-        });
-        if (!(band > 0)) prepared2.set(n3, prep);
-        return prep.record;
-      },
-      async image(rendered, signal) {
-        const prep = await preparePageImage({ ...rendered, dpi: rendered.dpi || dpi, page: -1, runDet, runRec, dict, signal });
-        return prep.record;
-      },
-      async cells(list, bytes, signal) {
-        const need2 = [...new Set(list.map((c) => c.page))];
-        for (const n3 of need2) if (!prepared2.has(n3)) await this.page(n3, bytes, signal);
-        return (await recognizeCells({ pages: prepared2, cells: list, runRec, dict, signal })).cells;
-      }
-    };
-  }
-  async function renderOne(bytes, n3, signal) {
-    throwIfAborted2(signal);
-    if (typeof renderPage === "function") return renderPage({ bytes, page: n3, dpi, signal });
-    const lib = findPdfjs(pdfjs);
-    if (!lib) throw new Error("pdf.js is not available");
-    const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
-    const task = lib.getDocument({ data, isEvalSupported: false, verbosity: 0 });
-    const doc = await task.promise;
-    return renderPdfPage(doc, n3, dpi);
-  }
-  async function workerScriptUrl(signal) {
-    if (workerUrl) return workerUrl;
-    const text4 = await loadVerified(joinUrl(assetBase, `assets/ocr/${workerFile.file}`), workerFile, signal);
-    return createObjectURL(new Blob([text4], { type: "text/javascript" }));
-  }
-  async function bootWorker(signal) {
-    const ortMjs = await loadVerified(joinUrl(ortBase, ortFiles.mjs.file), ortFiles.mjs, signal);
-    const wasmMjs = await loadVerified(joinUrl(ortBase, ortFiles.wasmMjs.file), ortFiles.wasmMjs, signal);
-    const wasm2 = await loadVerified(joinUrl(ortBase, ortFiles.wasm.file), ortFiles.wasm, signal);
-    const det = await loadModel(modelFiles.det, signal);
-    const rec = await loadModel(modelFiles.rec, signal);
-    const dictBuf = await loadModel(modelFiles.dict, signal);
-    const dictText = new TextDecoder().decode(dictBuf);
-    const scriptUrl = await workerScriptUrl(signal);
-    const urls2 = {
-      ortUrl: createObjectURL(new Blob([ortMjs], { type: "text/javascript" })),
-      wasmMjsUrl: createObjectURL(new Blob([wasmMjs], { type: "text/javascript" })),
-      wasmUrl: createObjectURL(new Blob([wasm2], { type: "application/wasm" }))
-    };
-    const worker = new WorkerImpl(scriptUrl, { type: "module" });
-    const pending = /* @__PURE__ */ new Map();
-    let seq = 0;
-    const records = /* @__PURE__ */ new Map();
-    const rejectAll = (error) => {
-      for (const waiter of pending.values()) waiter.reject(error);
-      pending.clear();
-    };
-    worker.onmessage = (ev) => {
-      const msg = ev.data || {};
-      const waiter = pending.get(msg.id);
-      if (!waiter) return;
-      pending.delete(msg.id);
-      if (msg.type === "error") waiter.reject(msg.message === "ocr aborted" ? abortError() : new Error(msg.message));
-      else waiter.resolve(msg);
-    };
-    let dead = null;
-    let api3 = null;
-    worker.onerror = (ev) => {
-      dead = new Error(ev?.message || "ocr worker failed");
-      rejectAll(dead);
-      if (api3 && engine === api3) engine = null;
-    };
-    function call2(msg, transfers, signal2) {
-      if (signal2?.aborted) return Promise.reject(abortError());
-      if (dead) return Promise.reject(dead);
-      const id = ++seq;
-      return new Promise((resolve, reject) => {
-        const onAbort = () => {
-          if (!pending.has(id)) return;
-          pending.delete(id);
-          try {
-            worker.postMessage({ type: "abort" });
-          } catch {
-          }
-          reject(abortError());
-        };
-        const done3 = (fn) => (value) => {
-          signal2?.removeEventListener?.("abort", onAbort);
-          fn(value);
-        };
-        pending.set(id, { resolve: done3(resolve), reject: done3(reject) });
-        signal2?.addEventListener?.("abort", onAbort, { once: true });
-        try {
-          worker.postMessage({ ...msg, id }, transfers || []);
-        } catch (error) {
-          pending.delete(id);
-          signal2?.removeEventListener?.("abort", onAbort);
-          reject(error);
-        }
-      });
-    }
-    try {
-      await call2({ type: "init", ...urls2, det, rec, dictText }, [det, rec], signal);
-    } catch (error) {
-      try {
-        worker.terminate?.();
-      } catch {
-      }
-      throw error;
-    }
-    api3 = {
-      stop() {
-        try {
-          worker.postMessage({ type: "abort" });
-        } catch {
-        }
-      },
-      forget() {
-        records.clear();
-        try {
-          worker.postMessage({ type: "forget" });
-        } catch {
-        }
-      },
-      async page(n3, bytes, signal2, band = 0) {
-        throwIfAborted2(signal2);
-        if (!(band > 0) && records.has(n3)) return records.get(n3);
-        const rendered = cropTopBand(await renderOne(bytes, n3, signal2), band);
-        const rgb = rendered.rgb;
-        const msg = await call2({
-          type: "page",
-          n: n3,
-          width: rendered.width,
-          height: rendered.height,
-          dpi: rendered.dpi,
-          pointW: rendered.pointW,
-          pointH: rendered.pointH,
-          rgb
-        }, [rgb.buffer], signal2);
-        if (!(band > 0)) records.set(n3, msg.record);
-        return msg.record;
-      },
-      async image(rendered, signal2) {
-        const rgb = rendered.rgb;
-        const msg = await call2({
-          type: "page",
-          n: -1,
-          width: rendered.width,
-          height: rendered.height,
-          dpi: rendered.dpi,
-          pointW: rendered.pointW,
-          pointH: rendered.pointH,
-          rgb
-        }, [rgb.buffer], signal2);
-        return msg.record;
-      },
-      async cells(list, bytes, signal2) {
-        const need2 = [...new Set(list.map((c) => c.page))];
-        for (const n3 of need2) if (!records.has(n3)) await this.page(n3, bytes, signal2);
-        const msg = await call2({ type: "cells", cells: list }, void 0, signal2);
-        return msg.cells;
-      }
-    };
-    return api3;
-  }
-  async function ensure(signal) {
-    if (engine) return engine;
-    throwIfAborted2(signal);
-    if (inline?.runDet && inline?.runRec) {
-      state = "ready";
-      engine = localEngine(inline.runDet, inline.runRec, inline.dict || []);
-      return engine;
-    }
-    state = "loading";
-    if (useWorker && typeof WorkerImpl === "function") {
-      try {
-        engine = await bootWorker(signal);
-        state = "ready";
-        return engine;
-      } catch (error) {
-        if (error?.name === "AbortError") {
-          state = "cold";
-          throw error;
-        }
-        engine = null;
-      }
-    }
-    const ortMjs = await loadVerified(joinUrl(ortBase, ortFiles.mjs.file), ortFiles.mjs, signal);
-    const wasmMjs = await loadVerified(joinUrl(ortBase, ortFiles.wasmMjs.file), ortFiles.wasmMjs, signal);
-    const wasm2 = await loadVerified(joinUrl(ortBase, ortFiles.wasm.file), ortFiles.wasm, signal);
-    const det = await loadModel(modelFiles.det, signal);
-    const rec = await loadModel(modelFiles.rec, signal);
-    const dictBuf = await loadModel(modelFiles.dict, signal);
-    const ort = await importModule(createObjectURL(new Blob([ortMjs], { type: "text/javascript" })));
-    if (ort.env?.wasm) {
-      ort.env.wasm.wasmPaths = {
-        mjs: createObjectURL(new Blob([wasmMjs], { type: "text/javascript" })),
-        wasm: createObjectURL(new Blob([wasm2], { type: "application/wasm" }))
-      };
-      if (typeof crossOriginIsolated === "undefined" || !crossOriginIsolated) ort.env.wasm.numThreads = 1;
-    }
-    const runners = yieldingRunners(await createOrtRunners(ort, det, rec), pause);
-    engine = localEngine(runners.runDet, runners.runRec, dictLines(new TextDecoder().decode(dictBuf)));
-    state = "ready";
-    return engine;
-  }
-  async function health() {
-    return { state, schema: SCHEMA3, engine: ENGINE2 };
-  }
-  async function ocr({ bytes, sha256 = null, pages, cells, signal, band = 0 } = {}) {
-    const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
-    throwIfAborted2(signal);
-    const ready = await ensure(signal);
-    let body;
-    if (cells?.length) {
-      body = { cells: await ready.cells(cells, bytes, signal) };
-    } else {
-      const wanted = pages?.length ? pages : [1];
-      const out = [];
-      for (const n3 of wanted) out.push(await ready.page(n3, bytes, signal, band));
-      body = { pageCount: out.length, pages: out };
-    }
-    const elapsedMs = Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - t0);
-    return { schema: SCHEMA3, engine: ENGINE2, sha256, elapsedMs, ...body };
-  }
-  async function ocrImage({ rgb, width, height, signal } = {}) {
-    throwIfAborted2(signal);
-    const ready = await ensure(signal);
-    const record = await ready.image({
-      rgb,
-      width,
-      height,
-      dpi: DPI,
-      pointW: width * 72 / DPI,
-      pointH: height * 72 / DPI
-    }, signal);
-    return record;
-  }
-  function forget() {
-    prepared2.clear();
-    engine?.forget?.();
-  }
-  return {
-    health,
-    ocr,
-    ocrImage,
-    cached,
-    prefetch,
-    lexicon,
-    cachedLexicon,
-    forget,
-    schema: SCHEMA3,
-    engine: ENGINE2,
-    fetches: () => fetched.slice()
-  };
-}
-
-// src/host/device-ocr.js
-init_title_cap();
-init_lines();
-init_title();
-var DEVICE_OCR_BYTES = [...Object.values(ORT_FILES), ...Object.values(MODEL_FILES), LEXICON_FILE].reduce((n3, f) => n3 + f.bytes, 0);
-var MB = Math.round(DEVICE_OCR_BYTES / (1024 * 1024));
-function abortError2() {
-  const error = new Error("ocr aborted");
-  error.name = "AbortError";
-  return error;
-}
-function supported(env) {
-  return typeof env.WebAssembly === "object" && Boolean(env.caches) && typeof env.fetch === "function" && Boolean(env.crypto?.subtle);
-}
-function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSource = createOcrWeb } = {}) {
-  let currentPdf = null;
-  let ocrWeb = source;
-  const web = () => {
-    if (!ocrWeb) ocrWeb = createSource({ dpi, renderPage: ({ page }) => renderPdfPage(currentPdf, page, dpi) });
-    return ocrWeb;
-  };
-  let downloading = null;
-  let progress = 0;
-  let ready = false;
-  let docKey = "";
-  async function status() {
-    if (!source && !supported(env)) return { state: "unavailable", mb: MB };
-    if (downloading) return { state: "downloading", progress, mb: MB };
-    if (!ready) {
-      try {
-        ready = Boolean(await web().cached());
-      } catch {
-        ready = false;
-      }
-    }
-    return { state: ready ? "ready" : "not-downloaded", mb: MB };
-  }
-  async function download() {
-    if (downloading) return downloading.done;
-    const ctl = new AbortController();
-    progress = 0;
-    const done3 = (async () => {
-      try {
-        await web().prefetch({ signal: ctl.signal, onProgress: (got, total) => {
-          progress = total ? got / total : 0;
-        } });
-        ready = true;
-        return true;
-      } catch (error) {
-        if (error?.name === "AbortError" || ctl.signal.aborted) return false;
-        throw error;
-      } finally {
-        downloading = null;
-      }
-    })();
-    downloading = { ctl, done: done3 };
-    return done3;
-  }
-  function cancel() {
-    try {
-      downloading?.ctl.abort();
-    } catch {
-    }
-  }
-  async function openPdf({ url, getPdf, signal }) {
-    let pdf = typeof getPdf === "function" ? await getPdf() : null;
-    if (!pdf || typeof pdf.getPage !== "function") {
-      const lib = env.pdfjsLib;
-      if (!url || typeof env.fetch !== "function" || typeof lib?.getDocument !== "function") throw new Error("no PDF to read");
-      const res = await env.fetch(url, signal ? { signal } : void 0);
-      if (!res?.ok) throw new Error(`fetch failed ${res?.status || ""}`.trim());
-      pdf = await lib.getDocument({ data: new Uint8Array(await res.arrayBuffer()), isEvalSupported: false, verbosity: 0 }).promise;
-    }
-    return pdf;
-  }
-  async function read2({ pages = [], url = "", getPdf = null, signal = null, onProgress = null } = {}) {
-    if (signal?.aborted) throw abortError2();
-    const pdf = await openPdf({ url, getPdf, signal });
-    currentPdf = pdf;
-    const key = `${url}|${pdf?.fingerprints?.[0] || pdf?.numPages || ""}`;
-    const src = web();
-    if (key !== docKey) {
-      src.forget?.();
-      docKey = key;
-    }
-    const wanted = (pages || []).filter((n3) => Number.isFinite(Number(n3)) && Number(n3) > 0).map(Number);
-    const total = Number(pdf?.numPages) || 0;
-    const list = wanted.length ? wanted : total > 0 ? Array.from({ length: total }, (_, i) => i + 1) : [1];
-    const out = [];
-    for (let i = 0; i < list.length; i++) {
-      if (signal?.aborted) throw abortError2();
-      const got = await src.ocr({ pages: [list[i]], signal });
-      out.push(...got.pages || []);
-      onProgress?.((i + 1) / list.length);
-    }
-    ready = true;
-    return { schema: SCHEMA3, engine: ENGINE2, pages: out };
-  }
-  async function readBandTitle({ getPdf = null, signal = null, fraction = 0.18 } = {}) {
-    if (signal?.aborted) return "";
-    const st = await status();
-    if (st.state !== "ready") return "";
-    let pdf = null;
-    try {
-      pdf = typeof getPdf === "function" ? await getPdf() : null;
-    } catch {
-      return "";
-    }
-    if (!pdf || typeof pdf.getPage !== "function") return "";
-    currentPdf = pdf;
-    let got = null;
-    try {
-      got = await web().ocr({ pages: [1], signal, band: fraction });
-    } catch (error) {
-      if (error?.name === "AbortError") throw error;
-      return "";
-    }
-    const page = (got?.pages || [])[0];
-    if (!page?.items?.length) return "";
-    const { lines } = buildLines(page.items, { transform: page.transform || [1, 0, 0, 1, 0, 0], fonts: page.fonts || {} });
-    return titleFromBand(lines) || "";
-  }
-  async function readImageText({ rgb, width, height, signal = null } = {}) {
-    if (signal?.aborted) throw abortError2();
-    const st = await status();
-    if (st.state !== "ready") return null;
-    const src = web();
-    if (typeof src.ocrImage !== "function") return null;
-    const record = await src.ocrImage({ rgb, width, height, signal });
-    return (record?.items || []).map((item) => String(item.str || "").trim()).filter(Boolean).join(" ");
-  }
-  async function readCells({ cells = [], url = "", getPdf = null, signal = null } = {}) {
-    if (signal?.aborted) throw abortError2();
-    if (!cells.length) return { cells: [] };
-    const st = await status();
-    if (st.state !== "ready") return { cells: [] };
-    currentPdf = await openPdf({ url, getPdf, signal });
-    const got = await web().ocr({ cells, signal });
-    return { cells: got?.cells || [] };
-  }
-  let words = null;
-  async function lexicon({ signal = null } = {}) {
-    if (words) return words;
-    const st = await status();
-    if (st.state !== "ready") return null;
-    const src = web();
-    if (typeof src.lexicon !== "function") return null;
-    try {
-      words = await src.lexicon({ signal }) || null;
-    } catch {
-      words = null;
-    }
-    return words;
-  }
-  let warmJob = null;
-  function warmTitleLexicon() {
-    if (!warmJob) {
-      warmJob = (async () => {
-        try {
-          const set = typeof web().cachedLexicon === "function" ? await web().cachedLexicon() : null;
-          if (set) setTitleLexicon(set);
-          return Boolean(set);
-        } catch {
-          return false;
-        }
-      })();
-    }
-    return warmJob;
-  }
-  return { status, download, cancel, read: read2, readCells, readBandTitle, readImageText, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };
-}
-var shared4 = null;
+// src/host/depot/device-ocr.js
 function sharedDeviceOcr() {
-  if (!shared4) {
-    shared4 = createDeviceOcr();
-    if (supported(globalThis)) shared4.warmTitleLexicon();
-  }
-  return shared4;
+  return null;
 }
 
 // src/view/title-lexicon-warm.js
@@ -109038,6 +105887,7 @@ function buildBoardView(onFail, {
     }
   };
   const trailRows = (b) => (b?.trails || []).map((t) => ({ uid: t.uid, name: t.name }));
+  const anydocHost = createAnydocHost();
   const menuContext = (kind, uid) => {
     const b = board2();
     const item = uid ? b?.items.get(uid) : null;
@@ -109068,7 +105918,7 @@ function buildBoardView(onFail, {
           } catch {
           }
         }
-        const officeFile = officeTargetFromText(officeText);
+        const officeFile = anydocHost ? officeTargetFromText(officeText) : null;
         const followKeys = new Set(followCtl?.keys?.() || [session.followState?.()?.key || ""].filter(Boolean));
         const follow = item?.type === "card" ? {
           block: !isQueryString(queryText) && (item.kind === "note" || item.kind === "block" || item.kind === "page"),
@@ -109156,7 +106006,6 @@ function buildBoardView(onFail, {
   let contextLineFor = async () => "";
   let bindInfoHover = () => {
   };
-  const anydocHost = createAnydocHost();
   const showOffice = (res) => {
     if (disposed || !res) return;
     if (res.toast) toast(res.toast);
@@ -109174,7 +106023,7 @@ function buildBoardView(onFail, {
     });
   };
   const runOffice = (office, world2) => {
-    if (!office) return;
+    if (!office || !anydocHost) return;
     const point = world2 || viewCenterWorld();
     void handleOfficeDrop({
       office,
@@ -114251,7 +111100,7 @@ ${url}`;
       return;
     }
     const resolveUid = (u) => host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`;
-    const list = parseDropPayload(event.dataTransfer, { resolveUid, graph: host?.graph || "" });
+    const list = parseDropPayload(event.dataTransfer, { resolveUid, graph: host?.graph || "", office: Boolean(anydocHost) });
     if (!list.length) return;
     if (list.every((row4) => row4.office)) {
       list.forEach((row4, index) => runOffice(row4.office, { x: p.x, y: p.y + index * 184 }));
@@ -119261,7 +116110,7 @@ function boardUidOf(raw) {
   if (!s) throw new Error("Give a board uid");
   return s;
 }
-var round6 = (r) => ({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
+var round5 = (r) => ({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
 function boardArea(board2, rects) {
   let left = Infinity;
   let bottom = -Infinity;
@@ -119354,9 +116203,9 @@ function createAiTools(deps) {
         const r = rects.get(item.uid);
         if (!r) continue;
         if (item.type === "section") {
-          sections.push({ uid: item.uid, title: titleOf(item), parent: top(item), rect: round6(r) });
+          sections.push({ uid: item.uid, title: titleOf(item), parent: top(item), rect: round5(r) });
         } else if (cards.length < CARD_CAP2) {
-          cards.push({ uid: item.uid, title: titleOf(item), kind: item.kind, section: top(item), rect: round6(r) });
+          cards.push({ uid: item.uid, title: titleOf(item), kind: item.kind, section: top(item), rect: round5(r) });
         } else truncated = true;
       }
       const arrows = [...board2.edges.values()].filter((e2) => e2.valid).map((e2) => ({ uid: e2.uid, from: e2.from, to: e2.to, label: e2.label || "", direction: e2.dir }));

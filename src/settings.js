@@ -1,3 +1,4 @@
+import { DEPOT_BUILD } from "./host/build-flavor.js";
 import { onGuardCount } from "./guard.js";
 import { integrations, statusLine } from "./model/detect.js";
 import { bindPerfReadout, perfReadoutText, readHostPerf } from "./perf-log.js";
@@ -82,7 +83,7 @@ export const SETTING_IDS = Object.freeze({
 
 const DEFAULTS = Object.freeze({
   [SETTING_IDS.enabled]: true,
-  [SETTING_IDS.autoEnhance]: true,
+  [SETTING_IDS.autoEnhance]: false,
   [SETTING_IDS.fullscreenOnZoom]: true,
   [SETTING_IDS.graphLinks]: "all",
   [SETTING_IDS.attrStyles]: "",
@@ -563,7 +564,9 @@ const SETTING_ROWS = {
   [SETTING_IDS.parsePageReader]: () => selectRow(SETTING_IDS.parsePageReader, "High accuracy page reader", "All (default) reads every scanned page with the page model: better on photographed, handwritten and old printed pages, about ten times slower per scanned page. Doubtful reads only the scanned pages the recogniser is unsure of.", ["doubtful", "all"]),
   [SETTING_IDS.imageColors]: () => switchRow(SETTING_IDS.imageColors, "Index image colours", "On. While the board search panel lists Image or Figure cards, Plexus reads each picture once, in the background, to find its main colours so you can search by colour. Nothing leaves this device."),
   [SETTING_IDS.imageText]: () => switchRow(SETTING_IDS.imageText, "Read text in images", "Off. On lets the board search find words inside pictures, using the in-browser reading models. It only runs when those models are already on this device, never downloads them, and reads at most a few dozen pictures per session."),
-  [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
+  [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", DEPOT_BUILD
+    ? "Read the text of a scanned page as soon as you open it, once the local helper is ready. Off waits until you press Read text."
+    : "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
   [SETTING_IDS.keepReads]: () => switchRow(SETTING_IDS.keepReads, "Keep reads in the graph", "After a High accuracy, helper or cloud read, upload the read as one file to the graph and note it on the PDF block, so your other computers load it instead of reading again. The built-in parse is never kept. Off uploads nothing; reads already kept still load."),
   [SETTING_IDS.askFigureImages]: () => switchRow(SETTING_IDS.askFigureImages, "Send figure images to AI", "Uploads the figure's image to your graph as a file the first time you ask about it."),
   [SETTING_IDS.askModel]: () => inputRow(SETTING_IDS.askModel, "Ask AI model", "Auto picks Claude Sonnet 5.5, then Claude Opus 5.5, Claude Sonnet 5, Gemini 3.8 Flash, Gemini 3.1 Pro, then any Claude or Gemini, then your Live AI default. Or type a model name from Live AI Assistant. A model you pick in the Ask AI window is remembered for this graph and wins.", { placeholder: "auto" }),
@@ -611,8 +614,8 @@ const SETTING_GROUPS = [
     SETTING_IDS.parseHelperUrl, SETTING_IDS.parseEngineDefault, SETTING_IDS.parseFormula,
     SETTING_IDS.parseOcr, SETTING_IDS.parsePageReader, SETTING_IDS.parseAutoRead, SETTING_IDS.keepReads, SETTING_IDS.askFigureImages, SETTING_IDS.askModel, SETTING_IDS.linkAnswers, SETTING_IDS.parseLinkSafe, SETTING_IDS.parseNumbered, SETTING_IDS.parseFootnotes, SETTING_IDS.parseFootnoteFormat,
   ]],
-  ["group-images", "Image search", "Search inside pictures by colour and by the words in them.", [
-    SETTING_IDS.imageColors, SETTING_IDS.imageText,
+  ["group-images", "Image search", DEPOT_BUILD ? "Search inside pictures by colour." : "Search inside pictures by colour and by the words in them.", [
+    SETTING_IDS.imageColors, ...(DEPOT_BUILD ? [] : [SETTING_IDS.imageText]),
   ]],
 ];
 

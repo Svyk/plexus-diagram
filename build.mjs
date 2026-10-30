@@ -28,6 +28,21 @@ const anydocWasmExternal = {
   },
 };
 
+// Roam Depot flavour: the in-browser OCR and anydoc modules are swapped for stubs that return null.
+// The match is on the file name only, so anydoc-to-parse.js and assets/anydoc/* are untouched.
+const depotSwaps = {
+  name: "depot-swaps",
+  setup(build) {
+    build.onResolve({ filter: /\/(anydoc|device-ocr|build-flavor)\.js$/ }, async (args) => {
+      if (!args.importer) return undefined;
+      const importer = args.importer.split("\\").join("/");
+      if (!importer.includes("/src/") || importer.includes("/src/host/depot/")) return undefined;
+      const name = args.path.slice(args.path.lastIndexOf("/") + 1);
+      return build.resolve(`./${name}`, { kind: args.kind, resolveDir: resolve(build.initialOptions.absWorkingDir, "src/host/depot") });
+    });
+  },
+};
+
 export function artifactBanner(version) {
   return `/* Plexus Diagram v${version} | MIT | generated; edit src/ */`;
 }
@@ -39,6 +54,7 @@ export function bundleBuildOptions({
   entryPoint = "src/extension.js",
   banner = "",
   metafile = false,
+  depot = false,
 } = {}) {
   return {
     absWorkingDir: resolve(rootDirectory),
@@ -55,7 +71,7 @@ export function bundleBuildOptions({
     sourcemap: false,
     treeShaking: true,
     logLevel: "silent",
-    plugins: [rejectRemoteImports, anydocWasmExternal],
+    plugins: depot ? [rejectRemoteImports, anydocWasmExternal, depotSwaps] : [rejectRemoteImports, anydocWasmExternal],
     banner: banner ? { js: banner } : undefined,
     metafile: Boolean(metafile),
   };
@@ -66,12 +82,14 @@ export async function bundleEntry({
   entryPoint = "src/extension.js",
   banner = "",
   metafilePath,
+  depot = false,
 } = {}) {
   const result = await esbuild(bundleBuildOptions({
     rootDirectory,
     entryPoint,
     banner,
     metafile: Boolean(metafilePath),
+    depot,
   }));
   const output = result.outputFiles.find((file) => file.path.endsWith("extension.js"));
   if (!output) throw new Error("esbuild did not emit extension.js");
@@ -82,6 +100,17 @@ export async function bundleEntry({
     await writeFile(target, `${JSON.stringify(result.metafile)}\n`, "utf8");
   }
   return output.text;
+}
+
+// lexicon.js and words-from-ctc.js are plain text helpers the parse engine shares (ocr-lines.js); they carry no models or runtime.
+const DEPOT_SHARED_OCR = /^src\/model\/ocr\/(?:lexicon|words-from-ctc)\.js$/;
+const DEPOT_FORBIDDEN = /^(?:src\/host\/(?:anydoc|device-ocr|ocr-web|ocr-web-worker|ocr-ort)\.js|src\/model\/ocr\/|assets\/anydoc\/)/;
+
+// The Depot bundle must not carry the OCR or anydoc code. Checked on the real inputs: the
+// changelog text is bundled too, so a string search of extension.js would hit its words.
+export async function depotForbiddenInputs(rootDirectory = defaultRoot) {
+  const result = await esbuild({ ...bundleBuildOptions({ rootDirectory, metafile: true, depot: true }) });
+  return Object.keys(result.metafile.inputs).filter((path) => DEPOT_FORBIDDEN.test(path) && !DEPOT_SHARED_OCR.test(path));
 }
 
 // Served by Pages as /helper/install.sh. The source lives beside the helper it installs.
@@ -157,18 +186,21 @@ export async function renderArtifacts(rootDirectory = defaultRoot, options = {})
   const ocrWorker = await syncOcrWorkerAsset(rootDirectory);
   const packageMetadata = JSON.parse(await readFile(resolve(rootDirectory, "package.json"), "utf8"));
   const banner = artifactBanner(packageMetadata.version);
+  const forbidden = await depotForbiddenInputs(rootDirectory);
+  if (forbidden.length) throw new Error(`Depot build still bundles:\n- ${forbidden.join("\n- ")}`);
   return {
     javascript: await bundleEntry({ rootDirectory, banner, metafilePath: options.metafilePath }),
+    depotJavascript: await bundleEntry({ rootDirectory, banner, depot: true }),
     css: await readCss(rootDirectory),
     ocrWorker,
   };
 }
 
 export async function build(rootDirectory = defaultRoot, options = {}) {
-  const { javascript, css, ocrWorker } = await renderArtifacts(rootDirectory, options);
+  const { javascript, depotJavascript, css, ocrWorker } = await renderArtifacts(rootDirectory, options);
   const deployDir = resolve(rootDirectory, "deploy");
   await Promise.all([
-    writeFile(resolve(rootDirectory, "extension.js"), javascript, "utf8"),
+    writeFile(resolve(rootDirectory, "extension.js"), depotJavascript, "utf8"),
     writeFile(resolve(rootDirectory, "extension.css"), css, "utf8"),
   ]);
   await rm(deployDir, { recursive: true, force: true });
@@ -223,7 +255,7 @@ async function publishOcrAssets(rootDirectory, deployDir, ocrWorker) {
 export async function verifyGeneratedArtifacts(rootDirectory = defaultRoot) {
   const expected = await renderArtifacts(rootDirectory);
   const comparisons = [
-    ["extension.js", expected.javascript],
+    ["extension.js", expected.depotJavascript],
     ["extension.css", expected.css],
     ["deploy/extension.js", expected.javascript],
     ["deploy/extension.css", expected.css],

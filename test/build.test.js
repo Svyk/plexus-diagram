@@ -32,7 +32,7 @@ test("build emits deterministic, matching browser ESM artifacts with a default e
     readFile(new URL("../deploy/extension.css", import.meta.url), "utf8"),
   ]);
 
-  assert.equal(pagesJs, rootJs);
+  assert.notEqual(pagesJs, rootJs);
   assert.equal(pagesCss, rootCss);
   assert.doesNotMatch(rootJs, /sourceMappingURL/);
   assert.doesNotMatch(rootJs, /^import\s/m);
@@ -42,7 +42,13 @@ test("build emits deterministic, matching browser ESM artifacts with a default e
     rootDirectory: rootPath,
     banner: `/* Plexus Diagram v${version} | MIT | generated; edit src/ */`,
   });
-  assert.equal(rebuilt, rootJs);
+  assert.equal(rebuilt, pagesJs);
+  const rebuiltDepot = await bundleEntry({
+    rootDirectory: rootPath,
+    banner: `/* Plexus Diagram v${version} | MIT | generated; edit src/ */`,
+    depot: true,
+  });
+  assert.equal(rebuiltDepot, rootJs);
 
   await run(process.execPath, ["--check", resolve(rootPath, "extension.js")]);
   const loaded = await import(`${pathToFileURL(resolve(rootPath, "extension.js")).href}?test=${Date.now()}`);

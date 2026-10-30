@@ -29,7 +29,7 @@ const MAX_DROP = 50;
 const URL_LINE = /^(?:https?|roam):\/\//i;
 const APP_URL = /#\/app\/([^/?#]+)(?:\/page\/([\w-]+))?/;
 
-export function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
+export function parseDropPayload(dataTransfer, { resolveUid, graph = "", office: allowOffice = true } = {}) {
   if (!dataTransfer) return [];
   const take = (type) => {
     try { return String(dataTransfer.getData?.(type) || ""); } catch { return ""; }
@@ -45,7 +45,7 @@ export function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) 
   const resolve = typeof resolveUid === "function" ? resolveUid : (uid) => `((${uid}))`;
   const own = take(CARD_MIME).trim();
   if (own) return [{ string: own }];
-  const officeFiles = officeFilesFrom(dataTransfer);
+  const officeFiles = allowOffice ? officeFilesFrom(dataTransfer) : [];
   if (officeFiles.length) return officeFiles.map((office) => ({ office }));
   const tokens = (text) => text.split(/\s+/).filter((t) => /^[\w-]+$/.test(t));
   let uids = tokens(take("roam/block-uid-list-only-parents"));
@@ -75,7 +75,7 @@ export function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) 
       if (typeof string === "string" && string.trim()) out.push({ string });
     }
     if (out.length === 1) {
-      const office = officeTargetFromText(out[0].string);
+      const office = allowOffice ? officeTargetFromText(out[0].string) : null;
       if (office) return [{ office }];
     }
     if (out.length) return out;
@@ -85,7 +85,7 @@ export function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) 
     if (lines.length !== 1) return null;
     return officeTargetFromText(lines[0]);
   };
-  const droppedOffice = soleOffice(take("text/uri-list")) || soleOffice(take("text/plain")) || officeTargetFromText(take("text/html").trim());
+  const droppedOffice = !allowOffice ? null : soleOffice(take("text/uri-list")) || soleOffice(take("text/plain")) || officeTargetFromText(take("text/html").trim());
   if (droppedOffice) return [{ office: droppedOffice }];
   const chunks = [take("text/plain"), take("text/html")];
   const types = dataTransfer.types;

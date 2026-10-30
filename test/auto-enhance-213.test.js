@@ -11,10 +11,11 @@ afterEach(() => resetSessions());
 
 // ---- settings, schema, discovery ----
 
-test("AE-1 auto-enhance defaults to true, is a Board-group switch right after Enabled, and coerces", () => {
-  assert.equal(settingsDefaults()["auto-enhance"], true);
+test("AE-1 auto-enhance defaults to false, is a Board-group switch right after Enabled, and coerces", () => {
+  assert.equal(settingsDefaults()["auto-enhance"], false);
   assert.equal(normalizeSetting("auto-enhance", "false"), false);
-  assert.equal(normalizeSetting("auto-enhance", null), true);
+  assert.equal(normalizeSetting("auto-enhance", "true"), true);
+  assert.equal(normalizeSetting("auto-enhance", null), false);
   const rows = createSettingsPanel().settings.map((row) => row.id);
   assert.equal(rows[rows.indexOf("enabled") + 1], "auto-enhance");
   const row = createSettingsPanel().settings.find((r) => r.id === "auto-enhance");

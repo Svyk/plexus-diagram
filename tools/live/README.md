@@ -13,6 +13,8 @@ node tools/live/cdp-drag.mjs <targetIdPrefix> x1 y1 x2 y2             # real HTM
 node tools/live/cdp-logs.mjs "Svy - "                                 # stream plexus/pxd console lines
 ```
 
+The root `extension.js` is the Depot build (no OCR, no anydoc). To inject the Pages build, set `PXD_REPO=<repo>/deploy`.
+
 The second argument matches a target id prefix first, then a window title substring. List targets with `curl -s localhost:9223/json`.
 
 Input steps: `move {x,y}`, `down {x,y,mods?}`, `up {x,y,mods?}`, `click {x,y,count?,mods?}`, `drag {x1,y1,x2,y2,steps?,mods?}`, `key {key,code?,mods?}`, `text {text}`, `wait {ms}`, `wheel {x,y,dx,dy,mods?}`. `mods` is an array of `alt`, `ctrl`, `meta`, `shift`.

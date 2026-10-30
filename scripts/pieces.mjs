@@ -88,6 +88,11 @@ export const PIECES = {
 };
 
 // Exports that build a view at board mount. See pieceDefer in src/piece-loader.js.
+// Calls that only matter once the piece has run: before that they do nothing.
+export const PASSIVE = {
+  "src/view/ask-ai.js": ["closeAskAI", "askThemeChanged"],
+};
+
 export const DEFERRED = {
   "src/view/panel.js": {
     "createPanel": {
@@ -258,7 +263,7 @@ async function exportNames(root, path) {
 async function facadeSource(root, path, piece, runtimeImport, deferred) {
   const names = await exportNames(root, path);
   const live = await import(pathToFileURL(resolve(root, path)).href);
-  const lines = [`import { pieceDefer, pieceLoad } from ${JSON.stringify(runtimeImport)};`];
+  const lines = [`import { pieceDefer, pieceLoad, pieceRan } from ${JSON.stringify(runtimeImport)};`];
   const seen = [];
   for (const name of names) {
     const value = live[name];
@@ -266,6 +271,11 @@ async function facadeSource(root, path, piece, runtimeImport, deferred) {
     if (typeof value === "function") {
       if (/^class\b/.test(Function.prototype.toString.call(value))) {
         throw new Error(`${path}: ${name} is a class; a forwarder cannot stand in for it`);
+      }
+      if (PASSIVE[path]?.includes(name)) {
+        lines.push(`export const ${local} = function (...args) { if (pieceRan(${JSON.stringify(piece)})) return pieceLoad(${JSON.stringify(piece)}, ${JSON.stringify(path)}).${name}.apply(this, args); };`);
+        seen.push(name);
+        continue;
       }
       const idle = deferred?.[path]?.[name];
       if (idle) {
@@ -348,10 +358,11 @@ function ruleEnd(css, from) {
 // can create, so it cannot match anything on a board until the piece has run.
 export function splitCss(css, coreCode, pieceCodes) {
   const owners = new Map();
+  const pinned = new Set();
   const ownerOf = (token) => {
     if (owners.has(token)) return owners.get(token);
     let owner = null;
-    if (!spells(coreCode, token)) {
+    if (!pinned.has(token) && !spells(coreCode, token)) {
       const names = Object.keys(pieceCodes).filter((name) => spells(pieceCodes[name], token));
       if (names.length === 1) owner = names[0];
     }
@@ -393,7 +404,15 @@ export function splitCss(css, coreCode, pieceCodes) {
     }
     return { keep: keep.join(""), moved: Object.fromEntries(Object.entries(moved).map(([name, list]) => [name, list.join("")])), wrapOpen };
   };
-  const result = walk(css);
+  // Lazy styles come last, so a class an eager rule also names would change who wins a tie. It stays eager.
+  let result = walk(css);
+  for (;;) {
+    const named = [...result.keep.matchAll(CLASS_TOKEN)].map((match) => match[1]).filter((token) => owners.get(token));
+    if (!named.length) break;
+    for (const token of named) pinned.add(token);
+    owners.clear();
+    result = walk(css);
+  }
   put(eager, result.keep);
   Object.assign(lazy, result.moved);
   return { eager: eager.join(""), lazy };

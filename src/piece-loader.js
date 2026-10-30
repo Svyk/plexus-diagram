@@ -24,6 +24,8 @@ export function pieceTable(pieces, coreModules) {
   core = coreModules;
 }
 
+export const pieceRan = (name) => loaded.has(name);
+
 export function pieceLoad(name, path) {
   let piece = loaded.get(name);
   if (!piece) {

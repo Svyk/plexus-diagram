@@ -39,11 +39,11 @@ test("a module two pieces share stays in the core, and only imported modules get
 });
 
 test("a CSS rule moves only when every selector names a class of that piece alone", () => {
-  const css = ".pxd-read{color:red}.pxd-read,.pxd-card{top:0}@media(min-width:1px){.pxd-read__x{left:0}.pxd-card{left:1px}}@keyframes pxd-spin{0%{top:0}}.pxd-both{top:1px}.pxd-gone{top:2px}";
+  const css = ".pxd-read{color:red}.pxd-mix,.pxd-card{top:0}@media(min-width:1px){.pxd-read__x{left:0}.pxd-card{left:1px}}@keyframes pxd-spin{0%{top:0}}.pxd-both{top:1px}.pxd-gone{top:2px}";
   const core = 'x.className="pxd-card";';
-  const { eager, lazy } = splitCss(css, core, { read: '"pxd-read pxd-read__x pxd-both"', ai: '"pxd-both"' });
+  const { eager, lazy } = splitCss(css, core, { read: '"pxd-read pxd-read__x pxd-both pxd-mix"', ai: '"pxd-both"' });
   assert.equal(lazy.read, ".pxd-read{color:red}@media(min-width:1px){.pxd-read__x{left:0}}");
-  assert.equal(eager, ".pxd-read,.pxd-card{top:0}@media(min-width:1px){.pxd-card{left:1px}}@keyframes pxd-spin{0%{top:0}}.pxd-both{top:1px}.pxd-gone{top:2px}");
+  assert.equal(eager, ".pxd-mix,.pxd-card{top:0}@media(min-width:1px){.pxd-card{left:1px}}@keyframes pxd-spin{0%{top:0}}.pxd-both{top:1px}.pxd-gone{top:2px}");
 });
 
 test("a class the core glues together from a stem stays eager", () => {
@@ -69,4 +69,11 @@ test("a deferred view answers idle calls, then builds once and replays the last 
   assert.deepEqual(seen, [["select", "b"], ["open", "search"]]);
   assert.equal(view.isOpen(), true);
   assert.equal(view.el, "node");
+});
+
+test("a class an eager rule also names stays eager, so lazy order cannot change a tie", () => {
+  const css = ".a .pxd-look{top:0}.pxd-dark .pxd-card,.pxd-dark .pxd-look{top:1px}.pxd-read{top:2px}";
+  const { eager, lazy } = splitCss(css, '"pxd-dark pxd-card"', { read: '"pxd-look pxd-read"' });
+  assert.equal(eager, ".a .pxd-look{top:0}.pxd-dark .pxd-card,.pxd-dark .pxd-look{top:1px}");
+  assert.equal(lazy.read, ".pxd-read{top:2px}");
 });

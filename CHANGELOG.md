@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Smaller start-up.** `extension.js` drops from 4.8 MB to 2.2 MB and `extension.css` from 412 KB to 241 KB. The code is minified, and the parser, reader, Ask AI, the Add panel, Table, Kanban, Present and the changelog now load the first time you use them. Nothing was removed.
+- **Smaller start-up.** `extension.js` drops from 4.8 MB to 2.2 MB and `extension.css` from 412 KB to 245 KB. The code is minified, and the parser, reader, Ask AI, the Add panel, Table, Kanban, Present and the changelog now load the first time you use them. Nothing was removed.
 - **Roam Depot build is lighter.** The build at the repo root leaves out In-browser reading (beta) and the document converter (Office and ebook files, Convert to cards, Alternative read), so it loads nothing from outside the extension. The GitHub Pages install keeps both.
 - **Every diagram is a Plexus board is off by default.** A diagram stays Roam's own until you run Plexus: Enhance this diagram or New whiteboard here. A choice you already saved is kept.
 

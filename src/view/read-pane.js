@@ -34,8 +34,6 @@ import { pdfNameFor } from "../model/pdf-name-for.js";
 import { motionRouter } from "./card-parse-motion.js";
 import { createReadDrawer } from "./read-drawer.js";
 
-const liveDrawer = createReadDrawer;
-
 const PLACE_W = 300;
 const PLACE_H = 140;
 const FLASH_MS = 1600;
@@ -189,6 +187,7 @@ function sortRows(rows) {
 }
 
 export function createReadPane({
+  liveDrawer = createReadDrawer,
   doc = globalThis.document,
   root,
   host,

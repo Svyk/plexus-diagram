@@ -1882,6 +1882,7 @@ function buildBoardView(onFail, {
     },
     bt,
     onTaskChip: (uid, kind, anchor) => taskPop.open(uid, kind, anchor),
+    propChipsOf: (uid) => session.cardPropChips?.(uid) ?? [],
     onPageLayout: (uid) => { if (blockCards.has(uid)) scheduleAnchors(); },
     onToast: (message) => chrome.toast.show({ message }),
     pdfChips: (item) => pdfChipsFor(item),
@@ -6018,7 +6019,7 @@ function buildBoardView(onFail, {
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true, refs: session.cardRefs };
-      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, filtering: Boolean(filterCard), strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null, refs: session.cardRefs };
+      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, filtering: Boolean(filterCard), strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null, refs: session.cardRefs, chips: { picked: b?.chips || [], fields: session.chipFieldsFor?.() || [] } };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -6461,6 +6462,18 @@ function buildBoardView(onFail, {
         })).then((uid) => { if (uid && !disposed) ctl.select([uid]); }).catch(() => {});
         break;
       }
+      case "prop-chip":
+        if (arg) {
+          const was = b.chips || [];
+          void Promise.resolve(session.toggleBoardChip?.(arg)).then((ok) => {
+            if (disposed || ok !== false) return;
+            toast(!was.includes(arg) && was.length >= 6 ? "Up to 6 card properties" : "This board can't store card properties");
+          }).catch(() => {});
+        }
+        break;
+      case "prop-chip-clear":
+        void Promise.resolve(session.setBoardChips?.([])).then((ok) => { if (ok === false && !disposed) toast("This board can't store card properties"); }).catch(() => {});
+        break;
       case "lane-attr":
         if (item?.look === "lane" && arg) void session.bindLane?.(item.uid, arg);
         break;

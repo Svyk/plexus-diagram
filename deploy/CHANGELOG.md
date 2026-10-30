@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Card properties.** Board menu, Card properties: pick up to six Name:: attributes to show as read-only chips on cards at detail zoom. The pick is stored on the board block only, and a board with no picks reads nothing extra.
+
 ## 3.37.0 — 2026-10-17
 
 Arrows that reach a child block, and steadier fullscreen and zoom.

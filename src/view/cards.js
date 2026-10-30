@@ -701,6 +701,7 @@ export function createItemRenderer({
   onBadgeClick,
   onPageLayout,
   onTaskChip,
+  propChipsOf = null,
   onToast,
   bt = null,
   pdfChips = null,
@@ -913,6 +914,8 @@ export function createItemRenderer({
   let focusSet = null;
   let badgeMap = new Map();
   let showBadges = false;
+  const picksOn = () => (lastBoard?.chips?.length || 0) > 0;
+  const badgesOn = () => showBadges || picksOn();
   let trailBadgeMap = new Map();
   let taskChips = "full";
   let zoomCache = 1;
@@ -2175,7 +2178,7 @@ export function createItemRenderer({
     const rect = lastRects?.get(rec.uid);
     rec.el.style.display = rect ? "" : "none";
     if (rect) position(rec, rect);
-    if (showBadges) renderBadges(rec);
+    if (badgesOn()) renderBadges(rec);
   };
   // One shell into its layer at its board-order place.
   const attachShell = (rec) => {
@@ -2491,7 +2494,7 @@ export function createItemRenderer({
     noteRender(uid);
     paintShell(rec, item);
     if (rect) position(rec, rect);
-    if (showBadges) renderBadges(rec);
+    if (badgesOn()) renderBadges(rec);
     attachShell(rec);
     noteShells();
     return rec.el;
@@ -2500,6 +2503,7 @@ export function createItemRenderer({
   // rect a big board's shells attach within.
   const sync = ({ board, rects, dirty: changed = null, structural = false, view = null, attachView = null }) => {
     const prevBoardUid = lastBoard?.uid || "";
+    const prevChips = lastBoard?.chips || [];
     sourcePass += 1;
     pageKids = new Map();
     try { virtualOff = speedOf().virtualShells === false; } catch { virtualOff = false; }
@@ -2682,7 +2686,7 @@ export function createItemRenderer({
             rec.titleRendered = false;
             if (rec.type === "card") { rec.bare = true; rec.el.classList.add("pxd-item--bare"); }
           }
-          if (showBadges) renderBadges(rec);
+          if (badgesOn()) renderBadges(rec);
         }
       } else if (rect && (!rec.rect || rec.rect.x !== rect.x || rec.rect.y !== rect.y || rec.rect.w !== rect.w || rec.rect.h !== rect.h)) {
         position(rec, rect);
@@ -2703,6 +2707,10 @@ export function createItemRenderer({
     }
     if (shellQueue.length) noteOverviewQueue();
     if (shellQueue.length && shellsLive && !shellBg && !priorityFrame) armShellPump();
+    const chips = board?.chips || [];
+    if (chips.length !== prevChips.length || chips.some((n, i) => n !== prevChips[i])) {
+      for (const rec of shells.values()) renderBadges(rec);
+    }
   };
 
 
@@ -6194,6 +6202,12 @@ export function createItemRenderer({
         const r = drawnRect(uid, lastRects.get(uid));
         if (r && rectsIntersect(r, visibleRect)) next.add(uid);
       }
+      if (picksOn()) {
+        for (const uid of next) {
+          const rec = shells.get(uid);
+          if (rec?.propsLater) { rec.propsLater = false; renderBadges(rec); }
+        }
+      }
     } else {
       // map / overview LOD: section titles, text items and board thumbnails, including whiteboard-shortcut cards (plain divs) stay rendered; card bodies unmount later
       for (const [uid, rec] of shells) {
@@ -6383,7 +6397,7 @@ export function createItemRenderer({
       }
     }
     if (prev !== lod) for (const rec of shells.values()) if (rec.kidsBtn || rec.kidCount > 0) syncKidsBadge(rec);
-    if (showBadges && (prev === "detail") !== (lod === "detail")) {
+    if (badgesOn() && (prev === "detail") !== (lod === "detail")) {
       if (lod !== "detail") {
         const pending = [];
         for (const rec of shells.values()) if (rec.badgeEl) pending.push(rec);
@@ -6534,6 +6548,7 @@ export function createItemRenderer({
   // ---------------------------------------------------------------- badges and focus (read-only, never touch the model)
   const attrChipsOf = (rec, item) => {
     if (item.kind === "board") return [];
+    const picked = lastBoard?.chips;
     const lines = [];
     const own = item.kind === "block" ? rec.refString : item.string;
     if (typeof own === "string") lines.push(...own.split("\n"));
@@ -6542,7 +6557,7 @@ export function createItemRenderer({
     for (const line of lines) {
       if (out.length >= ATTR_CHIPS_MAX) break;
       const name = attrNameOf(line);
-      if (!name || skipChildString(line)) continue;
+      if (!name || skipChildString(line) || picked?.includes(name)) continue;
       const value = plainText(line.slice(line.indexOf("::") + 2), 40);
       if (value) out.push(`${plainText(name, 24)}: ${value}`);
     }
@@ -6578,11 +6593,23 @@ export function createItemRenderer({
       rec.el.classList.toggle("pxd-item--changed", changed);
     }
     const item = lastBoard?.items.get(rec.uid);
-    const visible = showBadges && lod === "detail" && rec.type === "card" && item && editing?.uid !== rec.uid;
+    const picked = picksOn();
+    const visible = (showBadges || picked) && lod === "detail" && rec.type === "card" && item && editing?.uid !== rec.uid;
     const clear = () => { if (rec.badgeEl) { rec.badgeEl.remove(); rec.badgeEl = null; } rec.badgeKey = null; };
     if (!visible) return clear();
-    const info = badgeMap?.get?.(rec.uid) || null;
     const chips = [];
+    let propChips = [];
+    if (picked) {
+      if (nearView(rec.uid)) {
+        rec.propsLater = false;
+        try { propChips = (typeof propChipsOf === "function" ? propChipsOf(rec.uid) : null) || []; } catch { propChips = []; }
+      } else rec.propsLater = true;
+    }
+    if (!showBadges) {
+      for (const c of propChips) chips.push({ cls: "prop", text: `${c.name}: ${c.text}`, title: `${c.name}:: ${c.text}` });
+      return paintBadges(rec, chips, clear);
+    }
+    const info = badgeMap?.get?.(rec.uid) || null;
     if (info?.refs > 0) chips.push({ cls: "refs", text: countText(info.refs, "ref", "refs"), title: `${countText(info.refs, "reference", "references")} to this card` });
     const regionCount = imageRegionRows(item.content).length;
     if (regionCount > 0) chips.push({ cls: "regions", text: regionBadge(regionCount), title: `${regionCount} ${regionCount === 1 ? "region" : "regions"}` });
@@ -6597,7 +6624,13 @@ export function createItemRenderer({
       const due = item.type === "card" ? dueChip(item.content) : null;
       if (due) chips.unshift({ cls: "due", text: due.text, title: "Due", overdue: due.overdue });
     }
+    let at = 0;
+    while (chips[at] && (chips[at].cls === "due" || chips[at].cls === "project" || chips[at].cls === "priority" || chips[at].cls === "repeat" || chips[at].cls === "status" || chips[at].cls === "waiting" || chips[at].cls === "gtd")) at += 1;
+    chips.splice(at, 0, ...propChips.map((c) => ({ cls: "prop", text: `${c.name}: ${c.text}`, title: `${c.name}:: ${c.text}` })));
     for (const text of attrChipsOf(rec, item)) chips.push({ cls: "attr", text });
+    return paintBadges(rec, chips, clear);
+  };
+  const paintBadges = (rec, chips, clear) => {
     if (!chips.length) return clear();
     const key = JSON.stringify(chips);
     if (rec.badgeEl && rec.badgeKey === key) return;
@@ -6663,7 +6696,7 @@ export function createItemRenderer({
   };
   const setBadges = (map) => {
     badgeMap = map instanceof Map ? map : new Map();
-    if (showBadges) for (const rec of shells.values()) renderBadges(rec);
+    if (badgesOn()) for (const rec of shells.values()) renderBadges(rec);
   };
   // The Task Status Tags list changed (ready, unload, rename, recolour): rebuild the palette and repaint tasks.
   const refreshStatuses = () => {

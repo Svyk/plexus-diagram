@@ -80068,7 +80068,7 @@ function createParseView({
   altNote.textContent = "no tables guarantee";
   altBtn.setAttribute("aria-label", "Alternative read, no tables guarantee");
   altBtn.setAttribute("data-guarantee", "no tables guarantee");
-  setHidden(altBtn, !anydocHost);
+  if (!anydocHost) altBtn.remove();
   const cancelBtn = el2("button", "pxd-parse__cancel", enginePop);
   cancelBtn.type = "button";
   cancelBtn.textContent = "Cancel";

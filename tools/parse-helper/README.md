@@ -17,7 +17,7 @@ The launcher uses `/opt/homebrew/opt/python@3.14/bin/python3.14` when `docling`,
 
 ```
 Token: …
-Paste this in Roam → Settings → Plexus Diagram → Parse helper token
+Paste this in Plexus → Engines → Advanced → Save token
 ```
 
 `install-agent` writes `~/Library/LaunchAgents/com.plexus.parse-helper.plist` (built in `agent.py`, pointing at the installed `plexus-parse-helper`), reloads the agent and starts it. Running it twice is safe. Do not run it from a work order.

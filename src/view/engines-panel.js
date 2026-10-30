@@ -12,7 +12,6 @@
 //   client,                 // createHelperClient(): status, pair, downloadModels, cancelModels, invalidate
 //   device?,                // { status(): { state: "ready"|"not-downloaded"|"downloading"|"unavailable", progress?, mb? },
 //                           //   download(), cancel() }  (injected: the in-browser OCR source)
-//   setSetting?(id, value), // for the manual token under Advanced
 //   copy?(text), toast?(text), onUpdate?(),
 //   setInterval?, clearInterval?, pollMs? (3000), platform? ("mac" | other)
 // }
@@ -174,7 +173,7 @@ function memoryStorage() {
 }
 
 export function renderEnginesPanel(doc, parent, deps = {}) {
-  const { client, device, setSetting, copy, toast, onUpdate } = deps;
+  const { client, device, copy, toast, onUpdate } = deps;
   const storage = deps.storage || memoryStorage();
   const platform = deps.platform || "mac";
   const pollMs = deps.pollMs > 0 ? deps.pollMs : DEFAULT_POLL_MS;
@@ -483,7 +482,18 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
     event.stopPropagation?.();
     void act("save-token");
   });
-  advanced.append(summary, tokenInput, tokenSave);
+  const tokenForget = doc.createElement("button");
+  tokenForget.type = "button";
+  tokenForget.setAttribute("type", "button");
+  tokenForget.className = "pxd-engines__btn";
+  tokenForget.setAttribute("data-action", "forget-token");
+  tokenForget.setAttribute("data-tip", "engines.token-forget");
+  tokenForget.textContent = "Forget token";
+  bindTo(heldStatic)(tokenForget, "click", (event) => {
+    event.stopPropagation?.();
+    void act("forget-token");
+  });
+  advanced.append(summary, tokenInput, tokenSave, tokenForget);
   el.append(advanced);
 
   async function act(id) {
@@ -530,6 +540,7 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
       else if (result?.reason === "timeout") sayHere("No answer from the Mac dialog. Click Pair to try again.");
       else if (result?.reason === "window-closed") sayHere("This helper is older. Run plexus-parse-helper pair in Terminal, then click Pair.");
       else if (result?.reason === "not-running") sayHere("The helper is not running.");
+      else if (result?.reason === "no-storage") sayHere("This browser blocks local storage, so the token cannot be kept.");
       else sayHere("Could not pair.");
     } else if (id === "download") {
       await client?.downloadModels?.();
@@ -543,11 +554,18 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
       onUpdate?.();
     } else if (id === "save-token") {
       const value = String(tokenInput.value || "").trim();
-      if (!value || typeof setSetting !== "function") return;
-      await setSetting("parse-helper-token", value);
+      if (!value || typeof client?.setToken !== "function") return;
+      if (client.setToken(value)) {
+        tokenInput.value = "";
+        say("Token saved on this device");
+      } else {
+        say("This browser blocks local storage, so the token cannot be kept.");
+      }
+    } else if (id === "forget-token") {
+      if (typeof client?.setToken !== "function") return;
+      client.setToken("");
       tokenInput.value = "";
-      client?.invalidate?.();
-      say("Token saved");
+      say("Token removed from this device. The helper is off until you pair again.");
     }
     await refresh();
   }

@@ -4,10 +4,10 @@ import test from "node:test";
 import { TIP_TEXT } from "../src/view/tooltip-text.js";
 import { createSettingsPanel, normalizeSetting, settingsDefaults } from "../src/settings.js";
 
-test("parse settings have defaults, rows, a password token, and tooltip strings", () => {
+test("parse settings have defaults, rows, no token row, and tooltip strings", () => {
   const defaults = settingsDefaults();
   assert.equal(defaults["parse-helper-url"], "http://127.0.0.1:48765");
-  assert.equal(defaults["parse-helper-token"], "");
+  assert.equal("parse-helper-token" in defaults, false);
   assert.equal(defaults["parse-engine-default"], "auto");
   assert.equal(defaults["parse-formula"], false);
   assert.equal(defaults["parse-ocr"], "auto");
@@ -30,8 +30,7 @@ test("parse settings have defaults, rows, a password token, and tooltip strings"
   const byId = Object.fromEntries(panel.settings.map((row) => [row.id, row]));
   assert.ok(ids.indexOf("parse-helper-url") > ids.indexOf("group-parse"));
   assert.equal(byId["parse-helper-url"].name, "Parse helper address");
-  assert.equal(byId["parse-helper-token"].action.type, "input");
-  assert.equal(byId["parse-helper-token"].action.inputType, "password");
+  assert.equal(ids.includes("parse-helper-token"), false);
   assert.deepEqual(byId["parse-engine-default"].action.items, ["auto", "builtin", "docling"]);
   assert.equal(byId["parse-formula"].action.type, "switch");
   assert.deepEqual(byId["parse-ocr"].action.items, ["auto", "on", "off"]);

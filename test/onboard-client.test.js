@@ -8,8 +8,17 @@ import { SCHEMA } from "../src/model/parse-schema.js";
 const ready = { helper: "plexus-parse-helper", version: "0.1.0", schema: SCHEMA, models: { layout: "ready", tableformer: "ready", ocr: "ready" }, busy: 0 };
 const missing = { ...ready, models: { layout: "missing", tableformer: "missing", ocr: "ready" } };
 
+const KEY = "plexus-diagram:parse-helper-token";
+
+function memoryStorage(initial) {
+  const local = new Map(initial ? [[KEY, initial]] : []);
+  const storage = { getItem: (k) => (local.has(k) ? local.get(k) : null), setItem: (k, v) => { local.set(k, String(v)); }, removeItem: (k) => { local.delete(k); } };
+  return { local, storage };
+}
+
 function make(handler, { token = "", clock = () => 0 } = {}) {
-  const store = { "parse-helper-token": token };
+  const { local, storage } = memoryStorage(token);
+  const store = { get "parse-helper-token"() { return local.get(KEY) ?? ""; } };
   const calls = [];
   const api = createHelperClient({
     fetch: async (url, init = {}) => {
@@ -17,8 +26,8 @@ function make(handler, { token = "", clock = () => 0 } = {}) {
       return handler(url, init, calls);
     },
     now: clock,
-    settings: () => store,
-    setSetting: async (id, value) => { store[id] = value; },
+    settings: () => ({}),
+    storage,
   });
   return { api, calls, store };
 }
@@ -117,7 +126,7 @@ test("pair stores the token and the next status is ready", async () => {
   assert.equal((await api.status()).state, "ready");
 });
 
-test("pair failure modes: window closed, not running, foreign answer, no setter", async () => {
+test("pair failure modes: window closed, not running, foreign answer, no storage", async () => {
   const closed = make(() => res(404, { error: "not found" }));
   assert.deepEqual(await closed.api.pair(), { ok: false, reason: "window-closed" });
   assert.equal(closed.store["parse-helper-token"], "");
@@ -130,7 +139,7 @@ test("pair failure modes: window closed, not running, foreign answer, no setter"
   assert.equal(foreign.store["parse-helper-token"], "");
 
   const bare = createHelperClient({ fetch: async () => res(200, { token: "x", helper: "plexus-parse-helper" }), settings: () => ({}) });
-  assert.deepEqual(await bare.pair(), { ok: false, reason: "no-settings" });
+  assert.deepEqual(await bare.pair(), { ok: false, reason: "no-storage" });
 });
 
 test("download and cancel hit /v1/models/download with the bearer token", async () => {
@@ -146,11 +155,10 @@ test("download and cancel hit /v1/models/download with the bearer token", async 
   assert.equal(none.calls.length, 0);
 });
 
-function makePair(handler, { token = "", backup = "", clock } = {}) {
+function makePair(handler, { token = "", backup = "", clock, storage: storageOverride } = {}) {
   const store = { "parse-helper-token": token };
   const sets = [];
-  const local = new Map(backup ? [["plexus-diagram:parse-helper-token", backup]] : []);
-  const storage = { getItem: (k) => (local.has(k) ? local.get(k) : null), setItem: (k, v) => { local.set(k, String(v)); }, removeItem: (k) => { local.delete(k); } };
+  const { local, storage } = memoryStorage(backup);
   let t = 0;
   const calls = [];
   const api = createHelperClient({
@@ -159,30 +167,33 @@ function makePair(handler, { token = "", backup = "", clock } = {}) {
     sleep: async (ms) => { t += ms; },
     settings: () => store,
     setSetting: async (id, value) => { sets.push([id, value]); store[id] = value; },
-    storage,
+    storage: storageOverride || storage,
   });
   return { api, calls, store, sets, local };
 }
 
-test("an empty settings token is restored from the storage backup, once", async () => {
-  const { api, sets, store } = makePair(() => res(401, { helper: "plexus-parse-helper" }), { backup: "kept" });
+test("a device-storage token is used and the settings are never written", async () => {
+  const { api, sets } = makePair(() => res(401, { helper: "plexus-parse-helper" }), { backup: "kept" });
   assert.equal(api.endpoint().token, "kept");
   assert.equal(api.endpoint().token, "kept");
   await Promise.resolve();
-  assert.deepEqual(sets, [["parse-helper-token", "kept"]]);
-  assert.equal(store["parse-helper-token"], "kept");
+  assert.deepEqual(sets, []);
 });
 
-test("a settings token that differs from the backup refreshes the backup", () => {
-  const { api, local } = makePair(() => res(200, {}), { token: "fresh", backup: "old" });
-  assert.equal(api.endpoint().token, "fresh");
-  assert.equal(local.get("plexus-diagram:parse-helper-token"), "fresh");
+test("a legacy settings token moves to device storage and the setting is cleared once", async () => {
+  const { api, sets, store, local } = makePair(() => res(200, {}), { token: "fresh", backup: "old" });
+  assert.equal(api.endpoint().token, "old");
+  assert.equal(api.endpoint().token, "old");
+  await Promise.resolve();
+  assert.deepEqual(sets, [["parse-helper-token", ""]]);
+  assert.equal(store["parse-helper-token"], "");
+  assert.equal(local.get(KEY), "old");
 });
 
 test("pair with no window asks the Mac, polls, and stores the token and the backup", async () => {
   let polls = 0;
   let waiting = 0;
-  const { api, calls, store, local } = makePair((url, init) => {
+  const { api, calls, sets, local } = makePair((url, init) => {
     if (url.endsWith("/v1/pair/request")) return res(202, { status: "asking" });
     if (url.endsWith("/v1/pair")) {
       polls += 1;
@@ -193,8 +204,8 @@ test("pair with no window asks the Mac, polls, and stores the token and the back
   const result = await api.pair({ onWaiting: () => { waiting += 1; } });
   assert.deepEqual(result, { ok: true, version: "0.1.1" });
   assert.equal(waiting, 1);
-  assert.equal(store["parse-helper-token"], "tok");
-  assert.equal(local.get("plexus-diagram:parse-helper-token"), "tok");
+  assert.equal(local.get(KEY), "tok");
+  assert.deepEqual(sets, []);
   const request = calls.find((c) => c.url.endsWith("/v1/pair/request"));
   assert.equal(request.method, "POST");
   assert.equal(request.headers, undefined);

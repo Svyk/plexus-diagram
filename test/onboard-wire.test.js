@@ -256,15 +256,16 @@ test("the gear opens the Engines panel and closes it again, and dispose leaves n
   }
 });
 
-test("Pair in the sheet saves the token through the setSetting path", async () => {
-  await rig(async ({ pane, root, saved }) => {
+test("Pair in the sheet keeps the token on this device and never writes settings", async () => {
+  await rig(async ({ pane, root, saved, stub }) => {
     pane.noteScan({ pages: [1], helperState: "not-running", readScan: async () => {} });
     await settle();
     root.querySelector('[data-action="setup-helper"]').click();
     await settle();
     root.querySelector('[data-action="pair"]').click();
     await settle();
-    assert.equal(saved["parse-helper-token"], "tok123");
+    assert.equal(stub.localStorage.getItem("plexus-diagram:parse-helper-token"), "tok123");
+    assert.equal(saved["parse-helper-token"], undefined);
   }, {
     fetchImpl: async (url) => (String(url).endsWith("/v1/pair")
       ? res(200, { helper: "plexus-parse-helper", token: "tok123", version: "0.1.0" })

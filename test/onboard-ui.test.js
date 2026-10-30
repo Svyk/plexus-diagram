@@ -277,6 +277,7 @@ function fakeClient(initial) {
     downloadModels: async () => { state.calls.push(["download"]); state.value = { state: "downloading", paired: true, progress: { fraction: 0.1 } }; return true; },
     cancelModels: async () => { state.calls.push(["cancel"]); state.value = { state: "models-missing", paired: true, progress: { bytes: 5e8 } }; return true; },
     invalidate: () => state.calls.push(["invalidate"]),
+    setToken: (value) => { state.calls.push(["setToken", value]); return state.stuck !== false; },
   };
   return api;
 }
@@ -423,19 +424,26 @@ test("the in-browser reading row uses the injected device source", async () => {
   assert.deepEqual(actionOf(panel, ocr()), ["download-device"]);
 });
 
-test("a manual token is saved through setSetting and clears the field", async () => {
-  const saved = [];
+test("a manual token is saved on this device through the client and clears the field", async () => {
   const client = fakeClient({ state: "not-paired", paired: false });
-  const { panel } = mount({ client, setSetting: async (id, v) => { saved.push([id, v]); }, toast: () => {} });
+  const { panel } = mount({ client, toast: () => {} });
   await tick();
   const input = panel.el.querySelector(".pxd-engines__token");
   assert.equal(input.getAttribute("type"), "password");
   input.value = "  hand-token ";
   panel.el.querySelector('[data-action="save-token"]').click();
   await tick();
-  assert.deepEqual(saved, [["parse-helper-token", "hand-token"]]);
+  assert.ok(client.state.calls.some((c) => c[0] === "setToken" && c[1] === "hand-token"));
   assert.equal(input.value, "");
-  assert.ok(client.state.calls.some((c) => c[0] === "invalidate"));
+});
+
+test("Forget token clears the token on this device, which turns the helper off", async () => {
+  const client = fakeClient({ state: "ready", paired: true });
+  const { panel } = mount({ client, toast: () => {} });
+  await tick();
+  panel.el.querySelector('[data-action="forget-token"]').click();
+  await tick();
+  assert.ok(client.state.calls.some((c) => c[0] === "setToken" && c[1] === ""));
 });
 
 test("rendering the panel and the strip fetches nothing by itself without a client", async () => {

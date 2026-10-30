@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   HEALTH_CACHE_MS,
   HEALTH_TIMEOUT_MS,
+  TOKEN_BACKUP_KEY,
+  TOKEN_SETTING,
   createHelperClient,
 } from "../src/host/parse-helper-client.js";
 import { optionsHash } from "../src/model/parse-hash.js";
@@ -38,6 +40,16 @@ function sse(frames) {
   };
 }
 
+const TOKEN_KEY = "plexus-diagram:parse-helper-token";
+function memStorage(initial, { throws = false } = {}) {
+  const map = new Map(initial ? [[TOKEN_KEY, initial]] : []);
+  return {
+    map,
+    getItem: (k) => { if (throws) throw new Error("blocked"); return map.has(k) ? map.get(k) : null; },
+    setItem: (k, v) => { if (throws) throw new Error("blocked"); map.set(k, String(v)); },
+  };
+}
+
 function client(handler, { clock = () => 0, token = "secret", timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
   const calls = [];
   const fetch = async (url, init = {}) => {
@@ -48,10 +60,8 @@ function client(handler, { clock = () => 0, token = "secret", timeoutMs = HEALTH
     fetch,
     now: clock,
     timeoutMs,
-    settings: () => ({
-      "parse-helper-url": "http://127.0.0.1:48765/",
-      "parse-helper-token": token,
-    }),
+    settings: () => ({ "parse-helper-url": "http://127.0.0.1:48765/" }),
+    storage: memStorage(token),
   });
   return { api, calls };
 }
@@ -476,4 +486,103 @@ test("tables: regions over the helper's region cap go in batches", async () => {
   const got = await client.tables({ bytes: new Uint8Array([1]), sha256: "abc", pages: tables.map((t) => t.page), tables });
   assert.deepEqual(sent.map((call) => call.opts.tables.length), [40, 40, 5]);
   assert.equal(got.tables.length, 85);
+});
+
+const healthOk = { helper: "plexus-parse-helper", schema: "pxd-parse/1", version: "0.1.0", models: { layout: "ready", tableformer: "ready", ocr: "ready" }, busy: 0 };
+
+function migrationClient({ legacy = "", stored = "", throws = false } = {}) {
+  const sets = [];
+  const auth = [];
+  const storage = memStorage(stored, { throws });
+  const api = createHelperClient({
+    fetch: async (url, init = {}) => { auth.push(init.headers?.Authorization); return { status: 200, json: async () => healthOk }; },
+    settings: () => ({ "parse-helper-token": legacy }),
+    setSetting: async (id, value) => { sets.push([id, value]); },
+    storage,
+  });
+  return { api, sets, auth, storage };
+}
+
+test("legacy setting token moves to device storage, the setting is cleared once", async () => {
+  const { api, sets, auth, storage } = migrationClient({ legacy: "old-tok" });
+  assert.equal(api.endpoint().token, "old-tok");
+  assert.equal(storage.map.get(TOKEN_KEY), "old-tok");
+  await api.health();
+  assert.equal(auth[0], "Bearer old-tok");
+  api.endpoint();
+  await Promise.resolve();
+  assert.deepEqual(sets, [["parse-helper-token", ""]]);
+});
+
+test("a device token wins over a legacy setting, which is still cleared", async () => {
+  const { api, sets, auth, storage } = migrationClient({ legacy: "old-tok", stored: "device-tok" });
+  await api.health();
+  assert.equal(auth[0], "Bearer device-tok");
+  assert.equal(storage.map.get(TOKEN_KEY), "device-tok");
+  assert.deepEqual(sets, [["parse-helper-token", ""]]);
+});
+
+test("blocked storage keeps the legacy token in use and does not clear the setting", async () => {
+  const { api, sets, auth } = migrationClient({ legacy: "old-tok", throws: true });
+  await api.health();
+  api.endpoint();
+  assert.equal(auth[0], "Bearer old-tok");
+  assert.deepEqual(sets, []);
+});
+
+test("pair writes device storage only and never the settings", async () => {
+  const sets = [];
+  const storage = memStorage("");
+  const api = createHelperClient({
+    fetch: async () => ({ status: 200, json: async () => ({ helper: "plexus-parse-helper", token: "paired", version: "0.1.0" }) }),
+    settings: () => ({}),
+    setSetting: async (id, value) => { sets.push([id, value]); },
+    storage,
+  });
+  assert.deepEqual(await api.pair(), { ok: true, version: "0.1.0" });
+  assert.equal(storage.map.get(TOKEN_KEY), "paired");
+  assert.deepEqual(sets, []);
+  const bare = createHelperClient({ fetch: async () => ({ status: 200, json: async () => ({}) }), settings: () => ({}) });
+  assert.deepEqual(await bare.pair(), { ok: false, reason: "no-storage" });
+});
+
+test("setToken stores a trimmed token and an empty one turns the helper off", async () => {
+  const storage = memStorage("");
+  const api = createHelperClient({ fetch: async () => ({ status: 200, json: async () => healthOk }), settings: () => ({}), storage });
+  assert.equal(api.setToken("  abc  "), true);
+  assert.equal(storage.map.get(TOKEN_KEY), "abc");
+  assert.equal((await api.health()).state, "ready");
+  assert.equal(api.setToken(""), true);
+  assert.deepEqual(await api.health(), { state: "not-running", reason: "disabled" });
+  const blocked = createHelperClient({ fetch: async () => ({}), settings: () => ({}), storage: memStorage("", { throws: true }) });
+  assert.equal(blocked.setToken("abc"), false);
+});
+
+test("migrateToken moves the old setting at load without a request", () => {
+  const mem = new Map();
+  const storage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)) };
+  const cleared = [];
+  let fetched = 0;
+  const api = createHelperClient({
+    settings: { "parse-helper-token": "old-tok" },
+    setSetting: (id, value) => cleared.push([id, value]),
+    storage,
+    fetch: async () => { fetched += 1; throw new Error("no fetch at load"); },
+  });
+  api.migrateToken();
+  assert.equal(mem.get(TOKEN_BACKUP_KEY), "old-tok");
+  assert.deepEqual(cleared, [[TOKEN_SETTING, ""]]);
+  assert.equal(fetched, 0);
+});
+
+test("setToken('') also clears a leftover old setting so Forget token sticks", () => {
+  const mem = new Map();
+  const storage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)) };
+  const sets = [];
+  const api = createHelperClient({ settings: {}, setSetting: (id, value) => sets.push([id, value]), storage });
+  api.setToken("tok");
+  assert.deepEqual(sets, []);
+  api.setToken("");
+  assert.deepEqual(sets, [[TOKEN_SETTING, ""]]);
+  assert.equal(mem.get(TOKEN_BACKUP_KEY), "");
 });

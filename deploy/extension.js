@@ -43297,6 +43297,28 @@ init_follow();
 init_discovery();
 init_arrow_home();
 
+// src/model/desk.js
+function deskTargetOf(item) {
+  if (!item) return null;
+  if (item.target?.kind === "page") return item.target.title ? { kind: "page", title: item.target.title } : null;
+  const uid = item.target?.uid || item.uid;
+  return uid ? { kind: "block", uid } : null;
+}
+function deskEntryString(target) {
+  if (!target) return "";
+  return target.kind === "page" ? `{{embed: [[${target.title}]]}}` : `{{embed-path: ((${target.uid})) closed}}`;
+}
+function deskEntryKey(string) {
+  const m = /^\{\{(?:\[\[)?(embed|embed-path)(?:\]\])?:\s*(\(\([^()\s]+\)\)|\[\[.+?\]\])(\s[^}]*)?\}\}$/.exec(String(string ?? "").trim());
+  if (!m || m[3] && m[1] === "embed") return null;
+  const x = m[2];
+  return x.startsWith("((") ? { kind: "block", uid: x.slice(2, -2) } : { kind: "page", title: x.slice(2, -2) };
+}
+function sameDeskEntry(a, b) {
+  if (!a || !b || a.kind !== b.kind) return false;
+  return a.kind === "page" ? a.title === b.title : a.uid === b.uid;
+}
+
 // src/host/roam.js
 init_deeplink();
 init_info();
@@ -49796,6 +49818,24 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     },
     openInSidebar(uid, type = "block") {
       return api3.ui.rightSidebar.addWindow({ window: { type, "block-uid": uid } });
+    },
+    // Roam binds the Desk page itself; an extension only adds the first-child embed Roam's own "Add to Desk" makes.
+    async addToDesk(target) {
+      if (!target) return { status: "no-desk" };
+      const me = api3.user?.uid?.();
+      const deskUid = me ? host.q("[:find ?d . :in $ ?me :where [?u :user/uid ?me] [?u :user/desk-page ?d]]", me) : null;
+      const desk = deskUid ? rawPull("[:node/title {(limit :block/children nil) [:block/string]}]", [":block/uid", deskUid]) : null;
+      if (!desk?.[":node/title"]) return { status: "no-desk" };
+      if (target.kind === "page" && target.title === desk[":node/title"]) return { status: "is-desk" };
+      if (target.kind === "block") {
+        const home = rawPull("[{:block/page [:block/uid]}]", [":block/uid", target.uid]);
+        if (home?.[":block/page"]?.[":block/uid"] === deskUid) return { status: "already" };
+      }
+      for (const child of desk[":block/children"] || []) {
+        if (sameDeskEntry(deskEntryKey(child[":block/string"]), target)) return { status: "already" };
+      }
+      const uid = await host.createBlock({ parentUid: deskUid, order: 0, string: deskEntryString(target) });
+      return { status: "added", uid };
     },
     openBlock(uid) {
       return api3.ui.mainWindow.openBlock({ block: { uid } });
@@ -100385,6 +100425,7 @@ function buildMenu(kind, ctx = {}) {
         make3("open", c.isBoard ? "Open board" : "Open"),
         ...c.isBoard ? [make3("open-own-page", "Open nested board in its own page")] : [],
         make3("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
+        ...c.canDesk ? [make3("add-to-desk", "Add to Desk")] : [],
         ...c.compass && c.interop !== false ? [make3("open-compass", "Open in Compass")] : [],
         ...c.isPdf ? [make3("read-inline", c.inlineReader ? "Show the cover" : "Read inside the card")] : [],
         ...c.isPdf ? [make3("parse-pdf", "Parse PDF…")] : [],
@@ -107259,6 +107300,23 @@ function buildBoardView(onFail, {
       host?.openInSidebar?.(uid, "block");
     }
   };
+  const DESK_MESSAGES = {
+    added: "Added to Desk",
+    already: "Already on your Desk",
+    "is-desk": "That is your Desk page",
+    "no-desk": "No Desk yet: add one block from Roam's block menu (Add to Desk) first"
+  };
+  const addItemToDesk = async (item) => {
+    const target = deskTargetOf(item);
+    if (!target || typeof host?.addToDesk !== "function") return;
+    let message;
+    try {
+      message = DESK_MESSAGES[(await host.addToDesk(target))?.status] || "Could not add to Desk";
+    } catch {
+      message = "Could not add to Desk";
+    }
+    if (!disposed) toast(message);
+  };
   const stackAt = (strings, x, y, h) => strings.map((string, i) => ({ string, x, y: y + i * (h + 24) }));
   const addStringsBeside = (strings) => {
     const b = board2();
@@ -108342,7 +108400,7 @@ function buildBoardView(onFail, {
           followed: Boolean(item.src) && followKeys.has(item.src),
           left: Boolean(followCtl?.left?.().includes(item.uid))
         } : null;
-        return { ...task ? { statusTags, status: task.status || "" } : {}, follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), filtering: Boolean(item) && filterCard === item.uid, canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        return { ...task ? { statusTags, status: task.status || "" } : {}, follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", canDesk: Boolean(deskTargetOf(item)) && typeof host?.addToDesk === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), filtering: Boolean(item) && filterCard === item.uid, canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -109181,6 +109239,9 @@ ${b.pageTitle || ""}`.toLowerCase().includes(words)) continue;
         break;
       case "open-sidebar":
         openItemInSidebar(item);
+        break;
+      case "add-to-desk":
+        void addItemToDesk(item);
         break;
       case "read-inline": {
         if (!item || item.kind !== "pdf") break;

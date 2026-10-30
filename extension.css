@@ -216,7 +216,9 @@ body.roam-body.dark .pxd-root,
   border-radius: 0;
 }
 
-body.pxd-has-fullscreen {
+/* Roam's Sidecar copies this stylesheet and mirrors body/html classes into its popup, where Plexus never runs:
+   page-chrome rules below must not match there. */
+html:not(.rm-sidecar) > body.pxd-has-fullscreen {
   overflow: hidden;
 }
 
@@ -230,7 +232,7 @@ body.pxd-has-fullscreen {
    above that floor. An overlay inside a card is not moved: the card rises
    above its siblings. .pxd-root overflow:clip still cuts that popover at the
    board edge. */
-body.pxd-has-board .rm-topbar {
+html:not(.rm-sidecar) > body.pxd-has-board .rm-topbar {
   z-index: 80;
 }
 
@@ -238,27 +240,27 @@ body.pxd-has-board .rm-topbar {
   z-index: 6;
 }
 
-body.pxd-has-board > .bp3-portal {
+html:not(.rm-sidecar) > body.pxd-has-board > .bp3-portal {
   z-index: 2500;
 }
 
-body.pxd-has-board > .bp3-portal:has(.bp3-dialog),
-body.pxd-has-board > .bp3-portal:has(.bp3-alert) {
+html:not(.rm-sidecar) > body.pxd-has-board > .bp3-portal:has(.bp3-dialog),
+html:not(.rm-sidecar) > body.pxd-has-board > .bp3-portal:has(.bp3-alert) {
   z-index: 400000 !important;
 }
 
-body.pxd-has-board > .bp3-portal:has(.bp3-menu),
-body.pxd-has-board > .bp3-portal:has(.bp3-datepicker),
-body.pxd-has-board > .bp3-portal:has(.bp3-select-popover),
-body.pxd-has-board > .bp3-portal:has(.rm-date-picker),
-body.pxd-has-board > .bp3-portal:has(.bp3-context-menu),
-body.pxd-has-board > .bp3-portal:has(.rm-autocomplete__results) {
+html:not(.rm-sidecar) > body.pxd-has-board > .bp3-portal:has(.bp3-menu),
+html:not(.rm-sidecar) > body.pxd-has-board > .bp3-portal:has(.bp3-datepicker),
+html:not(.rm-sidecar) > body.pxd-has-board > .bp3-portal:has(.bp3-select-popover),
+html:not(.rm-sidecar) > body.pxd-has-board > .bp3-portal:has(.rm-date-picker),
+html:not(.rm-sidecar) > body.pxd-has-board > .bp3-portal:has(.bp3-context-menu),
+html:not(.rm-sidecar) > body.pxd-has-board > .bp3-portal:has(.rm-autocomplete__results) {
   z-index: 400010 !important;
 }
 
 /* RoamJS breadcrumbs live in .rm-topbar; hide them only while a board is fullscreen. */
-body.pxd-has-fullscreen #roam-breadcrumbs-panel,
-body.pxd-has-fullscreen .breadcrumbs-content {
+html:not(.rm-sidecar) > body.pxd-has-fullscreen #roam-breadcrumbs-panel,
+html:not(.rm-sidecar) > body.pxd-has-fullscreen .breadcrumbs-content {
   display: none !important;
 }
 
@@ -281,12 +283,12 @@ button.rm-xparser-default-diagram.pxd-native-hidden {
    renders the zoomed board block's children there; on the big board they showed through for about a second while
    the board's layer was not painted during a zoom. The mounts stay visible: an explicit value on them, so their
    subtree keeps its computed style and the class toggle restyles only these few elements. */
-body.pxd-fs-cover .roam-article {
+html:not(.rm-sidecar) > body.pxd-fs-cover .roam-article {
   visibility: hidden;
 }
 
-body.pxd-fs-cover .roam-article .pxd-mount,
-body.pxd-fs-cover .roam-article .pxd-mount--fullscreen {
+html:not(.rm-sidecar) > body.pxd-fs-cover .roam-article .pxd-mount,
+html:not(.rm-sidecar) > body.pxd-fs-cover .roam-article .pxd-mount--fullscreen {
   visibility: visible;
 }
 
@@ -12094,8 +12096,8 @@ body.bt-theme-dark .pxd-read-drawer .pxd-pdf-chip--on,
 
 /* R4: a class on <html> (sidebar-pdf.js), not .roam-app:has(): an anchor above the board re-ran its invalidation
    on every DOM change in the board. :not(#pxd-none) keeps the old rule's id weight. */
-:root.pxd-sidebar-pdf .roam-app:not(#pxd-none) .roam-main,
-:root.pxd-sidebar-pdf .roam-app:not(#pxd-none) .roam-article {
+:root.pxd-sidebar-pdf:not(.rm-sidecar) .roam-app:not(#pxd-none) .roam-main,
+:root.pxd-sidebar-pdf:not(.rm-sidecar) .roam-app:not(#pxd-none) .roam-article {
   min-width: 48px !important;
   max-width: none !important;
 }

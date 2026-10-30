@@ -119002,8 +119002,8 @@ function createAiTools(deps) {
     async handler(args, context) {
       const { board: board2 } = load(args?.board);
       const area2 = boardArea(board2, worldRects(board2));
-      const num9 = (v, d) => Number.isFinite(v) ? v : d;
-      const rect = { x: num9(args.x, area2.x), y: num9(args.y, area2.y), w: num9(args.w, 640), h: num9(args.h, 400) };
+      const num10 = (v, d) => Number.isFinite(v) ? v : d;
+      const rect = { x: num10(args.x, area2.x), y: num10(args.y, area2.y), w: num10(args.w, 640), h: num10(args.h, 400) };
       const uid = await run(context, args.board, (session) => session.createSection({ rect, title: String(args.title ?? "").trim() || "Section" }));
       return { uid };
     }

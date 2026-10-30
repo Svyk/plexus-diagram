@@ -2801,6 +2801,7 @@ export function createItemRenderer({
     rec.kidsOffs = [];
     rec.kidsBtn.remove();
     rec.kidsBtn = null;
+    rec.el.classList.remove("pxd-item--kidpill");
   };
   const toggleKids = (uid) => {
     const item = lastBoard?.items.get(uid);
@@ -2849,6 +2850,8 @@ export function createItemRenderer({
         closePeek();
       });
       rec.kidsBtn = btn;
+      // The badge row starts right of the pill, so a chip's text is not under it.
+      rec.el.classList.add("pxd-item--kidpill");
     }
     rec.kidsBtn.textContent = text;
     rec.kidsBtn.setAttribute("aria-expanded", item.kids ? "true" : "false");
@@ -6600,7 +6603,8 @@ export function createItemRenderer({
     const chips = [];
     let propChips = [];
     if (picked) {
-      if (nearView(rec.uid)) {
+      // No view rect yet (first sync): wait for the content pass, which knows what is on screen.
+      if (cullRect && nearView(rec.uid)) {
         rec.propsLater = false;
         try { propChips = (typeof propChipsOf === "function" ? propChipsOf(rec.uid) : null) || []; } catch { propChips = []; }
       } else rec.propsLater = true;

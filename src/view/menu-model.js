@@ -199,7 +199,7 @@ function propChipItems(chips) {
     ? names.map((name) => make(`prop-chip:${name}`, name, { checked: picked.includes(name) }))
     : [make("prop-chip-hint", "No Name:: attributes on this board", { disabled: true })];
   if (picked.length) children.push({ id: "sep-prop-chips", separator: true }, make("prop-chip-clear", "Hide all"));
-  return [make("prop-chips", "Card properties ▸", { children })];
+  return [make("prop-chips", "Card properties", { children })];
 }
 
 // Optional keys are only written when set, so items compare cleanly and carry no undefined noise.

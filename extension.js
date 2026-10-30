@@ -34521,6 +34521,7 @@ function createItemRenderer({
     rec.kidsOffs = [];
     rec.kidsBtn.remove();
     rec.kidsBtn = null;
+    rec.el.classList.remove("pxd-item--kidpill");
   };
   const toggleKids = (uid) => {
     const item = lastBoard?.items.get(uid);
@@ -34580,6 +34581,7 @@ function createItemRenderer({
         closePeek();
       });
       rec.kidsBtn = btn2;
+      rec.el.classList.add("pxd-item--kidpill");
     }
     rec.kidsBtn.textContent = text4;
     rec.kidsBtn.setAttribute("aria-expanded", item.kids ? "true" : "false");
@@ -38574,7 +38576,7 @@ function createItemRenderer({
     const chips = [];
     let propChips = [];
     if (picked) {
-      if (nearView(rec.uid)) {
+      if (cullRect && nearView(rec.uid)) {
         rec.propsLater = false;
         try {
           propChips = (typeof propChipsOf2 === "function" ? propChipsOf2(rec.uid) : null) || [];
@@ -100421,7 +100423,7 @@ function propChipItems(chips) {
   for (const name of picked) if (!names.includes(name)) names.push(name);
   const children = names.length ? names.map((name) => make3(`prop-chip:${name}`, name, { checked: picked.includes(name) })) : [make3("prop-chip-hint", "No Name:: attributes on this board", { disabled: true })];
   if (picked.length) children.push({ id: "sep-prop-chips", separator: true }, make3("prop-chip-clear", "Hide all"));
-  return [make3("prop-chips", "Card properties ▸", { children })];
+  return [make3("prop-chips", "Card properties", { children })];
 }
 var make3 = (id, label, extra = {}) => {
   const out = { id, label };

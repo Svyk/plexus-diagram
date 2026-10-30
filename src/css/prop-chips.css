@@ -2,3 +2,7 @@
   max-width: 160px;
   color: var(--pxd-text);
 }
+
+.pxd-root .pxd-item.pxd-item--kidpill > .pxd-item__badges {
+  left: 64px;
+}

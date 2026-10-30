@@ -175,7 +175,7 @@ function sortedKids(node) {
 
 export function planSubtreeClone(node, { genUid, parentUid, order = "last", plexusPatch = null, uidMap = new Map() } = {}) {
   const assign = (n) => {
-    uidMap.set(n[":block/uid"], genUid());
+    uidMap.set(n[":block/uid"], genUid(n[":block/uid"]));
     for (const c of sortedKids(n)) assign(c);
   };
   assign(node);

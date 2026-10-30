@@ -581,7 +581,8 @@ html:not(.rm-sidecar) > body.pxd-fs-cover .roam-article .pxd-mount--fullscreen {
 }
 
 .pxd-refs { margin-top: 8px; }
-.pxd-refs__toggle {
+/* Two classes: Blueprint's `.bp3-dark button` beats one and paints this near the card colour. */
+.pxd-root .pxd-refs__toggle {
   display: block;
   width: 100%;
   margin: 0;

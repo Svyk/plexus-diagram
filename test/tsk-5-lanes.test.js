@@ -71,7 +71,8 @@ function mount(stub, cards, extra = {}) {
   const writes = [];
   const toasts = [];
   const host = {
-    pullProps() { return extra.pullProps === undefined ? {} : extra.pullProps; },
+    // An enhanced board's block carries plexus.v 2; the view writes only onto one.
+    pullProps() { return extra.pullProps === undefined ? { plexus: { ...board.plexus, v: 2 } } : extra.pullProps; },
     updateProps(uid, plexus) { writes.push({ uid, plexus }); },
     updateString(uid, string) {
       const entry = { op: "string", uid, string };
@@ -110,7 +111,7 @@ test("opening does not write; picking Lanes: Status writes the whole plexus once
   assert.ok(!options.includes("Lanes: Status") || options.filter((name) => name === "Lanes: Status").length === 1);
   select.value = "Lanes: Status";
   select.dispatchEvent({ type: "change" });
-  assert.deepEqual(writes, [{ uid: "board", plexus: { x: 12, y: 34, type: "board", kanban: "Lanes: Status" } }]);
+  assert.deepEqual(writes, [{ uid: "board", plexus: { x: 12, y: 34, type: "board", v: 2, kanban: "Lanes: Status" } }]);
   view.dispose();
 });
 

@@ -9,6 +9,7 @@ import { build as esbuild } from "esbuild";
 import { bundleBuildOptions, depotForbiddenInputs } from "../build.mjs";
 import { parseDropPayload } from "../src/model/drop.js";
 import { initializeSettings, normalizeSetting, settingsDefaults } from "../src/settings.js";
+import { inflateBase64 } from "../src/piece-loader.js";
 
 const rootPath = fileURLToPath(new URL("../", import.meta.url));
 const MARKERS = ["ortUrl", "module_or_path", "anydoc_wasm_bg", "ORT_BASE"];
@@ -35,10 +36,12 @@ test("the Depot bundle has no OCR or anydoc module inputs", async () => {
 });
 
 test("root extension.js (Depot) lacks the OCR and anydoc code, deploy/extension.js (Pages) has it", async () => {
-  const [depot, pages] = await Promise.all([
+  const withPieces = (text) => [text, ...[...text.matchAll(/code:"([A-Za-z0-9+/=]+)"/g)]
+    .map((match) => Buffer.from(inflateBase64(match[1])).toString("utf8"))].join("\n");
+  const [depot, pages] = (await Promise.all([
     readFile(resolve(rootPath, "extension.js"), "utf8"),
     readFile(resolve(rootPath, "deploy/extension.js"), "utf8"),
-  ]);
+  ])).map(withPieces);
   for (const marker of MARKERS) {
     assert.equal(depot.includes(marker), false, `${marker} in Depot build`);
   }

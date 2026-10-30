@@ -8,8 +8,9 @@ import { buildBoard, worldRects } from "../src/model/board.js";
 import { createItemRenderer } from "../src/view/cards.js";
 import { createInteractions } from "../src/view/interactions.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
+import { sourceCss } from "./css-source.js";
 
-const css = readFileSync(new URL("../extension.css", import.meta.url), "utf8");
+const css = sourceCss();
 
 // ---------------------------------------------------------------- CSS shield
 test("the board root declares every Reference Path custom property so ancestor writes stop there", () => {

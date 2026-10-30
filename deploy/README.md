@@ -9,7 +9,7 @@ A Heptabase-style whiteboard for Roam `{{[[diagram]]}}` blocks. Cards, colored s
 - **Read and parse PDFs.** Roam's own PDF reader beside the board, highlights as cards, and a parser that turns a PDF into headings, lists and tables you can insert.
 - **Big boards stay quick.** Boards of more than a thousand cards open from a snapshot and pan and zoom smoothly.
 
-![The fixture board in the light theme](docs/img/board-light.png)
+![A reading-map board: sections, page cards and labeled connections](docs/img/board-light.png)
 
 ## Install
 
@@ -35,7 +35,7 @@ Boards enhanced with 0.6 upgrade to the 1.0 format once, the first time they are
 
 An enhanced board keeps Roam's diagram controls and adds to them (the 1.3 native set: the rail, Edit Block, the Properties panel, and the note-card hover).
 
-![The same board with the dark token set](docs/img/board-dark.png)
+![The same board in a dark Roam theme](docs/img/board-dark.png)
 
 - **Rail.** The vertical stack on the right (Settings can switch it to a horizontal bar): zoom in, zoom out, fit view, Toggle Minimap, Save PNG, Open outline in sidebar, Edit Block, Maximize, the zoom percent, and the version badge. Edit Block opens the diagram block's text. Esc returns to the board. The badge opens this version's changelog from the bundle. No network.
 - **Properties.** The panel on the canvas. It edits the selection: text, title size, title color, title fill, area fill, fill, border, edges, and sections. Reset default clears that selection's overrides. Background, on the board, sets this board's pattern and tone.
@@ -45,7 +45,7 @@ An enhanced board keeps Roam's diagram controls and adds to them (the 1.3 native
 - **Tool dock.** The floating bar along the bottom, above the minimap: Select (V), Hand (H), Card (N), Text (T), Sticky (S), Shape (R), Section (G), Board (W), Table (B), Connect (C). The active tool has a sliding highlight; double-click a tool to lock it (padlock). With Card, Sticky, Section or Shape active the dock shows that tool's options: with nothing selected a color, look or shape sets the next item you create (kept in memory only); with a selection it restyles the selection. Position, shape, labels and size are in Settings; a board can pick its own position from More, Dock position for this board. Below zoom 0.2 the dock keeps Select, Hand and Board. Hide it with Show tool palette.
 - A note card is a plain block. Hover shows Color, Expand, and References.
 
-![The tool palette above the minimap](docs/img/palette.png)
+![The tool dock with the Card tool active: colors and the Block or Card look](docs/img/palette.png)
 
 ## Using the board
 

@@ -1,3 +1,4 @@
+import { deskEntryKey, deskEntryString, sameDeskEntry } from "../model/desk.js";
 import { isShowableCard, locateShowTarget } from "../model/deeplink.js";
 import { attributeRows, boardsFromRows, tagNames } from "../model/info.js";
 import {
@@ -3502,6 +3503,24 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     openInSidebar(uid, type = "block") {
       return api.ui.rightSidebar.addWindow({ window: { type, "block-uid": uid } });
+    },
+    // Roam binds the Desk page itself; an extension only adds the first-child embed Roam's own "Add to Desk" makes.
+    async addToDesk(target) {
+      if (!target) return { status: "no-desk" };
+      const me = api.user?.uid?.();
+      const deskUid = me ? host.q("[:find ?d . :in $ ?me :where [?u :user/uid ?me] [?u :user/desk-page ?d]]", me) : null;
+      const desk = deskUid ? rawPull("[:node/title {(limit :block/children nil) [:block/string]}]", [":block/uid", deskUid]) : null;
+      if (!desk?.[":node/title"]) return { status: "no-desk" };
+      if (target.kind === "page" && target.title === desk[":node/title"]) return { status: "is-desk" };
+      if (target.kind === "block") {
+        const home = rawPull("[{:block/page [:block/uid]}]", [":block/uid", target.uid]);
+        if (home?.[":block/page"]?.[":block/uid"] === deskUid) return { status: "already" };
+      }
+      for (const child of desk[":block/children"] || []) {
+        if (sameDeskEntry(deskEntryKey(child[":block/string"]), target)) return { status: "already" };
+      }
+      const uid = await host.createBlock({ parentUid: deskUid, order: 0, string: deskEntryString(target) });
+      return { status: "added", uid };
     },
     openBlock(uid) { return api.ui.mainWindow.openBlock({ block: { uid } }); },
     openPage(uid) { return api.ui.mainWindow.openPage({ page: { uid } }); },

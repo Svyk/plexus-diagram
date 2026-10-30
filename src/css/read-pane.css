@@ -97,8 +97,8 @@
 
 /* R4: a class on <html> (sidebar-pdf.js), not .roam-app:has(): an anchor above the board re-ran its invalidation
    on every DOM change in the board. :not(#pxd-none) keeps the old rule's id weight. */
-:root.pxd-sidebar-pdf .roam-app:not(#pxd-none) .roam-main,
-:root.pxd-sidebar-pdf .roam-app:not(#pxd-none) .roam-article {
+:root.pxd-sidebar-pdf:not(.rm-sidecar) .roam-app:not(#pxd-none) .roam-main,
+:root.pxd-sidebar-pdf:not(.rm-sidecar) .roam-app:not(#pxd-none) .roam-article {
   min-width: 48px !important;
   max-width: none !important;
 }
@@ -724,20 +724,20 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert {
    drawn on the page invert with the text. A sibling canvas paints those pictures back
    when pdf.js reports their place. Highlight marks, the text layer, and parsed outlines
    are not filtered. The reader beside the board is left alone. */
-html.pxd-pdf-reader-dark .rm-pdf-container .page > canvas:not(.pxd-pdf-photo),
-html.pxd-pdf-reader-dark .rm-pdf-container .page > .canvasWrapper > canvas:not(.pxd-pdf-photo) {
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .rm-pdf-container .page > canvas:not(.pxd-pdf-photo),
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .rm-pdf-container .page > .canvasWrapper > canvas:not(.pxd-pdf-photo) {
   filter: invert(1) hue-rotate(180deg);
 }
 
-html.pxd-pdf-reader-dark .pxd-read .rm-pdf-container .page > canvas,
-html.pxd-pdf-reader-dark .pxd-read .rm-pdf-container .page > .canvasWrapper > canvas,
-html.pxd-pdf-reader-dark .pxd-root .rm-pdf-container .page > canvas,
-html.pxd-pdf-reader-dark .pxd-root .rm-pdf-container .page > .canvasWrapper > canvas {
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .pxd-read .rm-pdf-container .page > canvas,
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .pxd-read .rm-pdf-container .page > .canvasWrapper > canvas,
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .pxd-root .rm-pdf-container .page > canvas,
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .pxd-root .rm-pdf-container .page > .canvasWrapper > canvas {
   filter: none;
 }
 
-html.pxd-pdf-reader-dark .rm-pdf-container .page > canvas.pxd-pdf-photo,
-html.pxd-pdf-reader-dark .rm-pdf-container .page > .canvasWrapper > canvas.pxd-pdf-photo {
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .rm-pdf-container .page > canvas.pxd-pdf-photo,
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .rm-pdf-container .page > .canvasWrapper > canvas.pxd-pdf-photo {
   position: absolute;
   left: 0;
   top: 0;
@@ -747,26 +747,26 @@ html.pxd-pdf-reader-dark .rm-pdf-container .page > .canvasWrapper > canvas.pxd-p
   filter: none;
 }
 
-html.pxd-pdf-reader-dark .rm-pdf-toolbar {
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .rm-pdf-toolbar {
   background: #252a31;
   color: #e7e8ea;
 }
 
-html.pxd-pdf-reader-dark .pxd-read .rm-pdf-toolbar,
-html.pxd-pdf-reader-dark .pxd-root .rm-pdf-toolbar {
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .pxd-read .rm-pdf-toolbar,
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .pxd-root .rm-pdf-toolbar {
   background: unset;
   color: unset;
 }
 
-html.pxd-pdf-reader-dark .rm-pdf-container,
-html.pxd-pdf-reader-dark .PdfHighlighter {
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .rm-pdf-container,
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .PdfHighlighter {
   background: #14171b;
 }
 
-html.pxd-pdf-reader-dark .pxd-read .rm-pdf-container,
-html.pxd-pdf-reader-dark .pxd-read .PdfHighlighter,
-html.pxd-pdf-reader-dark .pxd-root .rm-pdf-container,
-html.pxd-pdf-reader-dark .pxd-root .PdfHighlighter {
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .pxd-read .rm-pdf-container,
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .pxd-read .PdfHighlighter,
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .pxd-root .rm-pdf-container,
+html.pxd-pdf-reader-dark:not(.rm-sidecar) .pxd-root .PdfHighlighter {
   background: unset;
 }
 

@@ -660,3 +660,49 @@ The shipped 0.9B pin names the MLX re-save of `model.safetensors` (1 811 260 812
 revision (1 917 255 968 bytes, `pt` format), so `ensure_reader` on a fresh machine downloads the Hub file and fails its own SHA-256
 check. Not fixed in this round; the pin should be re-measured from a real `hf_hub_download` at that revision. The 1.6 files at
 `c5630abae1d940eafe0697512a0325494b02ab42` match the Hub exactly and were downloaded that way, should a later round want them.
+
+## Tables moved from the README (3.38.0)
+
+These were in the README until 3.38.0.
+
+### In-browser reading
+
+Measured in node with onnxruntime-node and the same model files (browser speed is not measured here).
+
+| Test | In-browser (beta) | Local helper (Apple Vision) |
+|---|---|---|
+| Scanned CDC 1980 table (image only), structure F1 | 0.983 | 1.000 |
+| Scanned CDC 1980 table, cell F1 | 0.922 | 0.957 |
+| Scanned 3-page report, cell F1 per table | 0.947 / 0.976 / 0.952 | 0.974 / 0.952 / 1.000 |
+| ICDAR 2013 rasterised at 300 dpi, adjacency F1 / cell F1 | 0.876 / 0.787 | not measured |
+| ICDAR 2013 rasterised at 150 dpi, adjacency F1 / cell F1 | 0.850 / 0.792 | not measured |
+
+Expect more misread letters in small scanned labels than with the helper. For comparison, the built-in parser on the same 67 files' own text layers reads 0.979 / 0.932.
+
+### Built-in parser and Docling
+
+Measured on the 67 government PDFs of ICDAR 2013 and on a scanned CDC table.
+
+| Test | Built-in | Docling |
+|---|---|---|
+| ICDAR 2013, adjacency F1 | 0.979 | 0.865 |
+| ICDAR 2013, cell F1 | 0.932 | 0.795 |
+| ICDAR 2013, all 67 files | 2.5 s | 5 min |
+| Scanned CDC 1980 table (image only), structure F1 | 1.000 | 0.821 |
+| Scanned CDC 1980 table, cell F1 | 0.957 | 0.082 |
+
+Label words in small scanned type can still be misread, so check a scanned table before you insert it.
+
+### Every engine
+
+Seven ways to read a PDF. The first five stay on this device. Cloud sends the PDF out only after you confirm the cost. Bench numbers are from the tables above or from `docs/parse-bench.md`. LlamaParse prices are its published credits, $1.25 per 1,000. Agentic was 10 credits per page on 2026-10-09, with or without layout images (measured on two pages both ways). Mistral OCR is $4 per 1,000 pages on the model card checked 2026-10-09. LlamaParse was live-tested in Roam on 2026-10-09 through the hosted relay, including the confirm sheet. Mistral OCR is not live-tested yet.
+
+| Engine | What it reads | Install | Speed | Stays on this device? | Accuracy | Best for | When to use |
+|---|---|---|---|---|---|---|---|
+| Built-in parser | Born-digital text, headings, lists, and ruled or borderless tables. Figures and formulas come back as crops. A page with no text layer stays a scan. | None. pdf.js, inside Roam. | About 10 ms a page on ICDAR 2013 (median 9.1 ms US, 10.1 ms EU). | Yes. The file is not sent. | ICDAR 2013, 67 government PDFs: table structure F1 0.979, cell F1 0.932. | A PDF that already has text. | You can select the text. |
+| In-browser reading (beta) | Scans. PP-OCRv5 reads the page in a Web Worker, then the same table engine runs. Doubtful text lines are read again and checked against a word list. Not a formula reader. | Download in Engines. onnxruntime-web and the PP-OCRv5 mobile models, about 39 MB once, hash-checked and cached in this browser. Nothing is fetched when a board or the reader opens. | About 25 s for a dense scanned page in the browser (the CDC 1980 page, live). | Yes. The page stays in the browser. The download is the models, not the PDF. | CDC 1980 scan: structure F1 0.983. Cell F1 0.922 on the bench raster, 0.932 on the browser's own raster and live. | A scan, with nothing to install. | The local helper is not ready. |
+| Local helper | Scans, through Apple Vision word boxes and the same table engine. macOS. Not a formula reader. | One command, then Pair. In Engines, press Set up, paste the command in Terminal, and press Pair. The program is `tools/parse-helper-rs`. It starts at login. About 15 MB (8.2 MB binary + 7.0 MB libpdfium, 15.2 MB together, after the LlamaParse client). | Round 1, M1 Max, macOS 26: CDC image-only page 10.87 s (651 words, 34 rules); report-scan 7.73 s (2.58 s/page). Cold start to the first health response 0.43 s, 27 MB RSS. | Yes. It listens on this Mac only. | Round 1, same pages: CDC cell F1 0.957 (structure F1 was 1.000). report-scan cell F1 0.974 / 1.000 / 1.000. The Python helper on the same run scored CDC 0.957 and report-scan 0.974 / 0.952 / 1.000. | A scan you care about. | You are on a Mac and can install about 15 MB. |
+| Docling add-on | Layout, TableFormer tables, and formulas as LaTeX. The Python helper. Scans still go through Apple Vision when you use it for OCR. | `install.sh --docling`, then Pair, then Download. About 1.1 GB (the uv tool measured in round 1). | Formula enrichment is the slow part (one 15-page paper took 180 s). An earlier live figure for the CDC 1980 scan was 14.3 s. Round 1 measured the Python OCR path at 11.19 s for that image-only page, and 7.92 s (2.64 s/page) for report-scan. Cold start 0.42 s, 74 MB RSS. | Yes. It listens on this Mac only. | Docling on the CDC scan: cell F1 0.082. Docling on the 67 ICDAR files: structure F1 0.865, cell F1 0.795. Apple Vision on that scan, through either helper, is the 0.957 above. | A formula as LaTeX, or a Docling layout pass. | You want more than scan reading. |
+| High accuracy (local) | Scans, photographed and handwritten pages, and old tables. Apple Vision words, then a layout model, a table reader and a page-text model. Figures are boxed with their captions. | `install.sh --docling --vlm`, then Pair. Nothing downloads at install. The first read downloads PaddleOCR-VL-0.9B (about 1.9 GB), Qwen3-VL-8B-Instruct-4bit (about 5.8 GB) and PP-DocLayoutV2 (about 204 MB), each checked against a pinned SHA-256 hash. All Apache-2.0. | About 5–12 s a printed scanned page, about 30 s a handwritten page read by the page model (M1 Max). | Yes. It listens on this Mac only. | On 35 unseen test pages from libraries never used in development (2026-10-11), 0.80 against LlamaParse Agentic's 0.82 on the same pages; ahead on handwritten pages (0.88 against 0.77), level on old printed scans, behind on photographed pages. The difference is not statistically significant. | Rough scans, photographed and handwritten pages. | You will wait and not pay, and the file must stay on the Mac. |
+| Cloud, LlamaParse (main) | Headings, paragraphs, lists, tables with cells and spans, and figures with a box and a caption. A layout chart is a figure crop; when LlamaParse also returns the numbers, the table stays and is marked `fromChart`. Per-cell boxes when the local helper downloads the result sidecar. A relay parse still has the table box and the spans. | A LlamaParse key saved in Engines on this device. The route is a paired helper that lists the cloud engine, then a relay URL you set, then the hosted relay (`https://plexus-cloud-relay.svyk.workers.dev`). Roam cannot call LlamaParse itself. | One hosted-relay read of the CDC 1980 scan finished in 2.5 s (2026-10-09). | No. After you confirm, the PDF is sent to LlamaParse (US or EU). The key stays in this browser. It is not written to the graph. | Not measured. | A rough scan, a real table, or a figure. | You accept the cost and that the file leaves the device. The default tier is Agentic. Per 1,000 pages: Fast $1.25, Cost-effective $3.75, Agentic $12.50, Agentic Plus $56.25. Agentic was 10 credits per page on 2026-10-09, with or without layout images (measured on two pages both ways). |
+| Cloud, Mistral OCR | Headings, paragraphs, lists, and figures with a box and the caption line beside the image. Tables come from markdown, or from HTML when Mistral returns HTML, including spans. Cell boxes are not part of this read. | A Mistral key saved in Engines on this device (`pxd-cloud-mistral-key`). No helper and no relay. The browser calls `https://api.mistral.ai/v1/ocr`. | Not measured. Not live-tested yet. | No. After you confirm, the PDF is sent to Mistral. The key stays in this browser. It is not written to the graph. | Not measured. Not live-tested yet. | A scan when you will not install anything and you can accept weaker tables. | You accept $4 / 1,000 pages (model card checked 2026-10-09) and that the file leaves the device. LlamaParse stays the default. |

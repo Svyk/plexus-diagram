@@ -75,3 +75,31 @@ test("TP-3: dropping a To do card on Done writes the marker once", async () => {
   view.dispose();
   assert.equal(root.querySelector(".pxd-kanban"), null);
 });
+
+test("PXD-3: the Group by choice writes to an enhanced board, never to a diagram that was not enhanced", () => {
+  for (const [stored, expectWrite] of [[{ v: 2 }, true], [null, false], [{ x: 1 }, false]]) {
+    const stub = createDomStub();
+    const root = stub.document.createElement("div");
+    const board = {
+      uid: "brd",
+      plexus: { v: 2 },
+      order: ["c1"],
+      items: new Map([["c1", { uid: "c1", type: "card", kind: "note", parentUid: "brd", string: "Status:: Doing", title: "x", content: [], attrs: [{ name: "Status", value: "Doing" }] }]]),
+    };
+    const writes = [];
+    const host = {
+      pullProps: () => (stored ? { plexus: stored } : null),
+      updateProps: (uid, plexus) => { writes.push([uid, plexus]); },
+    };
+    const view = mountKanban({ doc: stub.document, root, host, getBoard: () => board });
+    view.open();
+    const select = root.querySelector(".pxd-kanban__field");
+    const other = [...select.querySelectorAll("option")].map((o) => o.value).find((v) => v && v !== select.value);
+    assert.ok(other, "a second field to pick");
+    select.value = other;
+    select.dispatchEvent({ type: "change" });
+    assert.equal(writes.length, expectWrite ? 1 : 0, JSON.stringify(stored));
+    if (expectWrite) assert.equal(writes[0][1].v, 2);
+    view.dispose();
+  }
+});

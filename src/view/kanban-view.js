@@ -124,10 +124,11 @@ export function mountKanban({
     if (typeof host.pullProps === "function") {
       try { base = readPlexus(host.pullProps(uid)); } catch { base = null; }
     }
-    if (!base || typeof base !== "object") base = board?.plexus && typeof board.plexus === "object" ? board.plexus : null;
-    if (!base || base.kanban === next) return;
-    const copy = { ...base, kanban: next };
     if (board?.plexus && typeof board.plexus === "object") board.plexus.kanban = next;
+    // Only the stored props say the board is enhanced. A diagram that was never enhanced keeps its props: the
+    // pick lives for this view only.
+    if (!base || typeof base !== "object" || base.v !== 2 || base.kanban === next) return;
+    const copy = { ...base, kanban: next };
     try {
       const write = host.updateProps(uid, copy);
       if (write && typeof write.then === "function") void write.catch(() => {});

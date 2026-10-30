@@ -5,8 +5,6 @@ import { createHost } from "../src/host/roam.js";
 import { createModelStore } from "../src/host/model-store.js";
 import { acquireSession, resetSessions } from "../src/session.js";
 import { noteSpeedFlags } from "../src/settings.js";
-import { mountBoardView } from "../src/view/board-view.js";
-import { createDomStub } from "./fixtures/dom-stub.js";
 import { createFakeIDB } from "./fixtures/fake-idb.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { resetSharedBgBudget } from "../src/bg-budget.js";

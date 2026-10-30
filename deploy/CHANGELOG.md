@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Card properties.** Board menu, Card properties: pick up to six Name:: attributes to show as read-only chips on cards at detail zoom. The pick is stored on the board block only, and a board with no picks reads nothing extra.
+- **Card properties.** Board menu, Card properties: pick up to six Name:: attributes to show as read-only chips on cards at detail zoom. The pick is stored on the board block only, cards read their values only when on screen at detail zoom, and a board with no picks reads nothing while you look around.
 
 ## 3.37.0 — 2026-10-17
 

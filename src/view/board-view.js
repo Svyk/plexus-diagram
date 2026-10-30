@@ -6019,7 +6019,7 @@ function buildBoardView(onFail, {
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true, refs: session.cardRefs };
-      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, filtering: Boolean(filterCard), strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null, refs: session.cardRefs, chips: { picked: b?.chips || [], fields: session.chipFieldsFor?.() || [] } };
+      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, filtering: Boolean(filterCard), strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null, refs: session.cardRefs, ...(b?.enhanced ? { chips: { picked: b.chips || [], fields: session.chipFieldsFor?.() || [] } } : {}) };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {

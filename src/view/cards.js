@@ -6560,7 +6560,8 @@ export function createItemRenderer({
     for (const line of lines) {
       if (out.length >= ATTR_CHIPS_MAX) break;
       const name = attrNameOf(line);
-      if (!name || skipChildString(line) || picked?.includes(name)) continue;
+      // A pick still waiting for its read keeps its plain attr chip, so the value does not blink out.
+      if (!name || skipChildString(line) || (!rec.propsLater && picked?.includes(name))) continue;
       const value = plainText(line.slice(line.indexOf("::") + 2), 40);
       if (value) out.push(`${plainText(name, 24)}: ${value}`);
     }

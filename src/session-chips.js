@@ -13,6 +13,8 @@ extendSession((session, api) => {
   const boardUid = session.uid;
   let memoBoard = null;
   let memo = new Map();
+  let fieldsBoard = null;
+  let fields = [];
 
   function rowOf(uid) {
     const board = api.board();
@@ -60,20 +62,26 @@ extendSession((session, api) => {
       return session.setBoardChips(next);
     },
 
+    // The names the menu offers. One scan per board build (opening the menu again reads nothing), and only when the
+    // menu opens, never on paint.
     chipFieldsFor() {
       const board = api.board();
       const picked = board?.chips || [];
-      const rows = [];
-      let n = 0;
-      for (const uid of board?.order || []) {
-        if (n >= FIELD_SCAN_CAP) break;
-        if (!isTableRow(board.items.get(uid))) continue;
-        n += 1;
-        const row = rowOf(uid);
-        if (row) rows.push(row);
-      }
-      const found = laneFields(rows).filter((name) => !picked.includes(name));
-      return [...picked, ...found];
+      if (fieldsBoard !== board) { fieldsBoard = board; fields = scanFields(board); }
+      return [...picked, ...fields.filter((name) => !picked.includes(name))];
     },
   });
+
+  function scanFields(board) {
+    const rows = [];
+    let n = 0;
+    for (const uid of board?.order || []) {
+      if (n >= FIELD_SCAN_CAP) break;
+      if (!isTableRow(board.items.get(uid))) continue;
+      n += 1;
+      const row = rowOf(uid);
+      if (row) rows.push(row);
+    }
+    return laneFields(rows);
+  }
 });

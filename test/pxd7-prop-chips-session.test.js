@@ -130,6 +130,16 @@ test("PXD-7 chipFieldsFor: picked names first, then names on cards, no BT_attr",
   assert.ok(!fields.includes("BT_attrDue"));
 });
 
+test("PXD-7 chipFieldsFor: one scan per board build, so opening the menu again reads nothing", () => {
+  const { session, pulls } = setup([card("r", "((T))", 20, 40), ...cards()], { v: 2 }, { pages: [{ title: "Src", uid: "SRC", children: [{ uid: "T", string: "Target", children: [{ uid: "T1", string: "Kind:: Review" }] }] }] });
+  const first = session.chipFieldsFor();
+  assert.ok(first.includes("Kind"));
+  const after = pulls();
+  assert.ok(after > 0);
+  assert.deepEqual(session.chipFieldsFor(), first);
+  assert.equal(pulls(), after);
+});
+
 test("PXD-7 menu: Card properties shows checked names, Hide all only when something is picked", () => {
   const ids = (items) => items.flatMap((i) => [i.id, ...(i.children || []).map((c) => c.id)]);
   const find = (items, id) => items.find((i) => i.id === id);

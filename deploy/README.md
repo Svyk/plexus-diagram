@@ -19,12 +19,16 @@ Once it is listed: in Roam, **Settings → Roam Depot → Browse**, search for *
 
 Then type `{{[[diagram]]}}` in any block, or run **Plexus: New whiteboard here** from the command palette.
 
+## Roam Depot build
+
+The build Roam Depot installs (`extension.js` at the repo root) leaves out In-browser reading (beta) and the anydoc converter, so it has no Office or ebook files, no Convert to cards for them, and no Alternative read. Scans are read by the local helper. The GitHub Pages URL install (`https://svyk.github.io/plexus-diagram`) has both.
+
 ## Start a board
 
-- **Every diagram opens as a Plexus board by default.** A new `{{[[diagram]]}}` block shows the board at once. Nothing is saved to the graph until you change the board; your first edit writes the board marker in the same undo step. A diagram that already has native shapes stays Roam's own, with an **Open as Plexus board** button over it that imports the shapes and arrows. **Plexus: Restore native diagram** now sticks, even with this on. Turn it off under Settings, **Every diagram is a Plexus board**, to open only diagrams you enhance or create with New whiteboard here.
+- **A diagram stays Roam's own until you enhance it.** Every diagram is a Plexus board is off by default, so a `{{[[diagram]]}}` block opens as a Roam diagram until you run **Plexus: Enhance this diagram** or **Plexus: New whiteboard here**. Turn the setting on (Settings, **Every diagram is a Plexus board**) and every `{{[[diagram]]}}` block shows the board at once. Nothing is saved to the graph until you change the board; your first edit writes the board marker in the same undo step. With it on, a diagram that already has native shapes stays Roam's own, with an **Open as Plexus board** button over it that imports the shapes and arrows. **Plexus: Restore native diagram** sticks, even with this on. A choice you saved earlier is kept; only a new install starts with it off.
 - **Plexus: New whiteboard here** (palette or slash) creates `{{[[diagram]]:Untitled board}}` under the focused block and opens it.
 - **Plexus: Commands…** (palette) lists every action and keeps the block that was focused: Enhance, Restore, Fullscreen, Export board as SVG, Export board as JSON Canvas, and Copy board as text. Slash still runs each action by its **Plexus:** name.
-- **Plexus: Enhance this diagram** turns an existing native diagram into a board. Native node positions, groups (become sections), and edges (become connections) are imported. With Every diagram is a Plexus board off, native diagrams you never enhance are never touched.
+- **Plexus: Enhance this diagram** turns an existing native diagram into a board. Native node positions, groups (become sections), and edges (become connections) are imported. With Every diagram is a Plexus board off (the default), native diagrams you never enhance are never touched.
 - **Keep a static picture** (board menu) is opt-in per board. It writes the PNG export as the first child of the board block, so readers without Plexus (public graphs, Roam Publish) see the board when they expand that block (Roam shows them an empty native diagram above it). It refreshes only by hand: **Refresh static picture** in the menu, the camera button in the toolbar, or **Plexus: Refresh static picture**. The picture is light, at most 4096 px on its longest side, and the old file stays in Roam's storage, as it does when you delete any image block, so undo still shows it. It is not Snapshots, which save layouts.
 - **Plexus: Restore native diagram** gives the block back to Roam's React Flow view. Content is not deleted.
 - Opening a board's block page (zoomed in) shows it full screen. **Plexus: Fullscreen this diagram** does the same from anywhere.
@@ -227,7 +231,7 @@ The local helper reads scans with Apple Vision. On a Mac the default install is 
 
 ### In-browser reading (beta)
 
-Without the helper, a scanned page can be read inside Roam. Engines has an In-browser reading (beta) row with Download: onnxruntime-web and the PP-OCRv5 mobile models, about 39 MB once, hash-checked and kept in this browser's Cache Storage. Read text on a scanned page downloads them first if they are not there yet; Cancel stops the download. Nothing is fetched when a board or the reader opens, and automatic reading never starts a download. When the local helper is ready, Read text uses the helper instead, because it reads more accurately.
+Not in the Roam Depot build (see Roam Depot build below); the GitHub Pages install has it. Without the helper, a scanned page can be read inside Roam. Engines has an In-browser reading (beta) row with Download: onnxruntime-web and the PP-OCRv5 mobile models, about 39 MB once, hash-checked and kept in this browser's Cache Storage. Read text on a scanned page downloads them first if they are not there yet; Cancel stops the download. Nothing is fetched when a board or the reader opens, and automatic reading never starts a download. When the local helper is ready, Read text uses the helper instead, because it reads more accurately.
 
 Scanned tables are read less accurately than text layers, and small scanned labels can be misread, so check a scanned table before you insert it.
 
@@ -240,7 +244,7 @@ Seven ways to read a PDF. The first five stay on this device. Cloud sends the PD
 | Engine | Reads | Install | Stays on this device? |
 |---|---|---|---|
 | Built-in parser | Born-digital text, headings, lists, ruled and borderless tables; figures and formulas as crops | None | Yes |
-| In-browser reading (beta) | Scans, in a Web Worker | Download in Engines, about 39 MB once | Yes |
+| In-browser reading (beta) (Pages install only) | Scans, in a Web Worker | Download in Engines, about 39 MB once | Yes |
 | Local helper | Scans, through Apple Vision (macOS) | One command, then Pair; about 15 MB | Yes, it listens on this Mac only |
 | Docling add-on | Layout, tables, formulas as LaTeX | `install.sh --docling`; about 1.1 GB | Yes |
 | High accuracy (local) | Photographed, handwritten and old printed scans | `install.sh --docling --vlm`; about 8 GB of models on the first read | Yes |
@@ -250,7 +254,7 @@ Seven ways to read a PDF. The first five stay on this device. Cloud sends the PD
 Which one should I use?
 
 - The PDF has real text, and you can select it. Use the built-in parser.
-- It is a scan, and you do not want to install anything. Use in-browser reading.
+- It is a scan, and you do not want to install anything. Use in-browser reading (Pages install only; the Depot build has no in-browser reading).
 - It is a scan you care about, and you are on a Mac. Use the local helper (the light one, about 15 MB).
 - You want a formula as LaTeX, or Docling's layout and tables. Add the Docling add-on (Python, about 1.1 GB).
 - It is a rough, photographed or handwritten scan, you will wait rather than pay, and it must stay on the Mac. Use High accuracy (local). Install with `--docling --vlm`. It is slower than the plain helper and needs about 8 GB of models.
@@ -259,7 +263,7 @@ Which one should I use?
 
 ## Office files and ebooks
 
-Drop a Word, PowerPoint, Excel, OpenDocument, CSV, or EPUB file on the board, or choose Convert to cards on a file-link card. Plexus fetches that file only after the drop or the menu choice. Nothing is fetched when the board opens.
+Not in the Roam Depot build; the GitHub Pages install has it. Drop a Word, PowerPoint, Excel, OpenDocument, CSV, or EPUB file on the board, or choose Convert to cards on a file-link card. Plexus fetches that file only after the drop or the menu choice. Nothing is fetched when the board opens.
 
 | File | What happens |
 |---|---|
@@ -453,7 +457,7 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Connections | Attribute styles | One JSON object. Each attribute name gets a palette color and a line: solid, dashed, or dotted. |
 | Connections | Ask why on a new connection | After you draw a connection, open the why field. |
 | Board | Enabled | Turn the diagram overlay on or off. |
-| Board | Every diagram is a Plexus board | On: every `{{[[diagram]]}}` opens as a Plexus board. Nothing is saved until you change the board. Off: only diagrams you enhance (Plexus: Enhance) or create with New whiteboard open in Plexus. |
+| Board | Every diagram is a Plexus board | Off by default. On: every `{{[[diagram]]}}` opens as a Plexus board, and a diagram with native shapes gets an Open as Plexus board button. Nothing is saved until you change the board. Off: only diagrams you enhance (Plexus: Enhance) or create with New whiteboard open in Plexus. |
 | Board | Fullscreen on zoom | Open a diagram full screen when you zoom into its block. Esc leaves it. |
 | Board | Mouse wheel | Pan or zoom. Pinch still zooms. |
 | Board | Drag on empty canvas | Pan moves the board when you drag empty space. Shift-drag draws a selection box. Select draws the box on every empty drag. |
@@ -500,7 +504,7 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | PDF parse | Footnotes | Inline places each note after the paragraph that cites it. End places every note after the insert. |
 | PDF parse | PDF footnotes | Extension writes each note under the page's #footnotes block and links it with an alias, the format of the Footnotes extension (it works without the extension). Plain keeps (N) in the text with the notes as lines. Off keeps the PDF's own marks. |
 | Image search | Index image colours | On. While the board search panel lists Image or Figure cards, Plexus reads each picture once, in the background, to find its main colours so you can search by colour. Nothing leaves this device. |
-| Image search | Read text in images | Off. On lets the board search find words inside pictures, using the in-browser reading models. It only runs when those models are already on this device, never downloads them, and reads at most a few dozen pictures per session. |
+| Image search | Read text in images | Pages install only (the Depot build has no such row). Off. On lets the board search find words inside pictures, using the in-browser reading models. It only runs when those models are already on this device, never downloads them, and reads at most a few dozen pictures per session. |
 | Performance | speed-flags | Hidden. Not a panel row. A JSON object, parsed by parseSpeedFlags. |
 
 ## Privacy
@@ -520,8 +524,8 @@ Each request below happens only in the case named, and goes only to the address 
 | Files in your graph | The file's own address, usually Roam's file storage | A PDF on the board is downloaded (by Plexus or Roam's PDF reader) when an open board shows it without a cover, to draw one (Settings, Prepare PDF covers in the background, on); when a PDF source pin scrolls into view, to draw its crop (Settings, Inline region crops, on); when you open the Add panel, to search the board's PDFs by name and text (no setting turns this off); and when you open it in Quick Look, flip its card, open it in the reading pane, parse it or read its tables; a file-link card when you choose Convert to cards; a picture once to index its colours while board search lists Image or Figure cards (Settings, Index image colours, on) |
 | Uploads to your graph | Roam's file storage, through Roam's own upload | Pasting or dropping an image; turning on or refreshing Keep a static picture; after a helper, High accuracy or cloud read (Settings, Keep reads in the graph, on); the first time you ask AI about a figure with a model that can see images (Settings, Send figure images to AI, on) |
 | Local parse helper | `http://127.0.0.1:48765` on this computer, or the address in Settings | Only once you install and pair the helper: Set up and Pair in Engines, opening Parse, and parsing or reading a scan. The PDF goes to the helper on this computer |
-| Document converter | `svyk.github.io/plexus-diagram` (this extension's own site) | The first time you drop a Word, PowerPoint, Excel, OpenDocument, CSV or EPUB file, choose Convert to cards, or pick Alternative read. Plexus downloads the converter, checks it against a pinned hash and keeps it in this browser. Your file is not sent |
-| In-browser reading (beta) | `cdn.jsdelivr.net` (onnxruntime-web) and `www.modelscope.cn` (PP-OCRv5 models), plus `svyk.github.io/plexus-diagram` | Only when you press Download in Engines, or Read text on a scanned page before the models are here. About 39 MB once, hash-checked and kept in this browser. Pages are read in the browser and not sent |
+| Document converter (Pages install only) | `svyk.github.io/plexus-diagram` (this extension's own site) | The first time you drop a Word, PowerPoint, Excel, OpenDocument, CSV or EPUB file, choose Convert to cards, or pick Alternative read. Plexus downloads the converter, checks it against a pinned hash and keeps it in this browser. Your file is not sent |
+| In-browser reading (beta) (Pages install only) | `cdn.jsdelivr.net` (onnxruntime-web) and `www.modelscope.cn` (PP-OCRv5 models), plus `svyk.github.io/plexus-diagram` | Only when you press Download in Engines, or Read text on a scanned page before the models are here. About 39 MB once, hash-checked and kept in this browser. Pages are read in the browser and not sent |
 | LlamaParse | Your paired helper, your relay URL, or the hosted relay `plexus-cloud-relay.svyk.workers.dev`, then LlamaParse (US or EU) | Only after you save a LlamaParse key and confirm the cost sheet for one read. The PDF and your key go to LlamaParse for that read |
 | Mistral OCR | `api.mistral.ai` | Only after you save a Mistral key and confirm the cost sheet for one read. The PDF and your key go to Mistral |
 | Helper install | `svyk.github.io/plexus-diagram/helper/install.sh` | Only when you run the install command yourself in Terminal. High accuracy then downloads its page models on its first read, on your Mac |

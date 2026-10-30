@@ -6034,6 +6034,7 @@ function buildBoardView(onFail, {
     try { return await api.setStatus(uid, name); } catch { return { status: "unknown", reason: "set-status-failed" }; }
   };
   const trailRows = (b) => (b?.trails || []).map((t) => ({ uid: t.uid, name: t.name }));
+  const anydocHost = createAnydocHost();
   const menuContext = (kind, uid) => {
     const b = board();
     const item = uid ? b?.items.get(uid) : null;
@@ -6057,7 +6058,7 @@ function buildBoardView(onFail, {
             if (blockText) officeText = blockText;
           } catch { /* keep the card string */ }
         }
-        const officeFile = officeTargetFromText(officeText);
+        const officeFile = anydocHost ? officeTargetFromText(officeText) : null;
         // PXD-13: a card from any owner's source (the board's or a section's) is a followed card.
         const followKeys = new Set(followCtl?.keys?.() || [session.followState?.()?.key || ""].filter(Boolean));
         const follow = item?.type === "card" ? {
@@ -6132,7 +6133,6 @@ function buildBoardView(onFail, {
   let closeHalo = () => {};
   let contextLineFor = async () => "";
   let bindInfoHover = () => {};
-  const anydocHost = createAnydocHost();
   const showOffice = (res) => {
     if (disposed || !res) return;
     if (res.toast) toast(res.toast);
@@ -6150,7 +6150,7 @@ function buildBoardView(onFail, {
     });
   };
   const runOffice = (office, world) => {
-    if (!office) return;
+    if (!office || !anydocHost) return;
     const point = world || viewCenterWorld();
     void handleOfficeDrop({
       office,
@@ -10208,7 +10208,7 @@ function buildBoardView(onFail, {
       return;
     }
     const resolveUid = (u) => (host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`);
-    const list = parseDropPayload(event.dataTransfer, { resolveUid, graph: host?.graph || "" });
+    const list = parseDropPayload(event.dataTransfer, { resolveUid, graph: host?.graph || "", office: Boolean(anydocHost) });
     if (!list.length) return;
     if (list.every((row) => row.office)) {
       list.forEach((row, index) => runOffice(row.office, { x: p.x, y: p.y + index * 184 }));

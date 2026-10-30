@@ -54,7 +54,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 6. **Never stop `mouseup`** in a `renderBlock` editor (Roam's drag-select disarm; this was the 1.1 Enter focus-loss bug). Keyboard listeners stay in the window capture phase. No `setPointerCapture`.
 7. **Speed.** Typing in a normal Roam page with the extension loaded: at most +0.1 ms per key against the extension unloaded. Roam charges about 0.055 ms per keystroke for every command-palette entry, so palette entries are a budget (PF-1). No global CSS that restyles Roam outside `.pxd-*` roots. No MutationObserver on `document` subtrees beyond what 1.2 has. Pull watches: one per mounted board.
 8. **Encrypted graphs.** Svy is encrypted. Images and files go through `roamAlphaAPI.file.get` / `file.upload`; nothing rendered is persisted.
-9. **Zero runtime dependencies.** Plain JS, esbuild bundle, no dynamically loaded scripts (Roam Depot rule).
+9. **Zero runtime dependencies.** Plain JS, esbuild bundle, no scripts loaded from the network (Roam Depot rule). Rarely used code ships inside extension.js as deflated text and is evaluated on first use (scripts/pieces.mjs).
 10. **Theme.** Follow Roam's theme (`bp3-dark` on body or measured background luminance, not `prefers-color-scheme`). In dark mode, borders carry the meaning; avoid tinted fills as the only signal.
 11. **Tests.** Every new pure module gets a `test/*.test.js`. Every view change gets a DOM test where the existing suites do (`node --test`, with the same fake-DOM helpers as `test/view-12.test.js` and `test/cards-12.test.js`).
 

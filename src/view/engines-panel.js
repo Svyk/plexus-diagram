@@ -29,6 +29,7 @@ import {
   MISTRAL_PRICE_CHECKED,
 } from "../host/cloud-parse.js";
 
+import { DEPOT_BUILD } from "../host/build-flavor.js";
 import { TAG_LLAMA, TAG_MAC, TAG_MISTRAL, TAG_ROAM, tagKind } from "./engine-tags.js";
 
 export const INSTALL_COMMAND = "curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh";
@@ -131,7 +132,7 @@ export function engineRows(state, { platform = "mac" } = {}) {
   void platform;
   return [
     { id: "device", name: "On this device", dot: "ok", text: "Built-in parser · ready", button: null, tip: "engines.builtin", tags: [TAG_ROAM] },
-    deviceOcrRow(state?.device),
+    ...(DEPOT_BUILD ? [] : [deviceOcrRow(state?.device)]),
     helperRow(state?.helper),
     cloudRow(state?.cloud, state?.helper),
   ];

@@ -56,9 +56,13 @@ Fork `Roam-Research/roam-depot`, copy the JSON to `extensions/Svyk/plexus-diagra
 
 ## Open before submitting
 
-From the 2026-10-29 Depot research, still open at 3.38.0:
+From the 2026-10-29 Depot research:
 
-- The OCR beta loads onnxruntime-web from cdn.jsdelivr.net, and the anydoc converter fetches its wasm from svyk.github.io. Both are hash-pinned but outside the reviewed bundle. Expect Roam's eval warning, which blocks install for a whole graph, or a rejection. Leaving both out of the Depot build avoids it.
+- The repo-root `extension.js` is the Depot build: no In-browser reading (beta) and no anydoc converter, so nothing is fetched from outside the bundle. `deploy/extension.js` is the GitHub Pages build and keeps both.
+- `source_commit` `d7b48d6` still ships the OCR beta and Every diagram is a Plexus board on. Move it to a commit at or after this change before any pull request.
 - `extension.js` is about 4.6 MiB. Depot sets no limit, but Roam asks that heavy dependencies load lazily.
-- Every diagram is a Plexus board is on by default. A reviewer may read that as replacing a native feature.
 - README images use relative paths. Other Depot READMEs use absolute `raw.githubusercontent.com` URLs; whether Roam resolves relative ones is unchecked.
+
+## Note for the reviewer
+
+`extension.js` holds rarely used code as deflated, base64 text and runs it with `new Function` on first use. The text is built from this repository by `build.sh` (`scripts/pieces.mjs`, `src/piece-loader.js`); nothing is fetched. Depot publishes only `extension.js` and `extension.css`, so this is how the extension starts light without loading remote code. If a reviewer objects, listing no pieces in `scripts/pieces.mjs` gives one plain minified bundle with the same features.

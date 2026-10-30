@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -53,4 +53,11 @@ test("readCss handles an empty src/css directory", async () => {
   try {
     assert.equal(await readCss(dir), "base{}");
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("linked references toggle out-ranks Blueprint's .bp3-dark button colour", async () => {
+  const css = await readFile(resolve(import.meta.dirname, "../src/extension.css"), "utf8");
+  // Live 2026-10-30: `.bp3-dark button { color: var(--dark-bg) }` (0,1,1) beat `.pxd-refs__toggle` (0,1,0): 1.12:1 on the card.
+  assert.match(css, /(^|\n)\.pxd-root \.pxd-refs__toggle \{[^}]*color: inherit;/);
+  assert.doesNotMatch(css, /(^|\n)\.pxd-refs__toggle \{/);
 });

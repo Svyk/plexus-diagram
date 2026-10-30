@@ -2,6 +2,7 @@
 // Registers with extendSession. Creates stay in chunks of 45. Undo deletes the new root.
 import { containerAt, toRelative } from "./model/board.js";
 import { DEFAULT_BOARD_CARD } from "./model/schema.js";
+import { canvasTitle, canvasToTree, parseCanvas } from "./model/json-canvas.js";
 import { TEMPLATE_PAGE, planCopy, planTemplate, starterById } from "./model/templates.js";
 import { extendSession } from "./session.js";
 
@@ -46,6 +47,53 @@ extendSession((session, api) => {
     }), (message) => api.emit("toast", { message })).then(() => {
       api.emit("toast", {
         message: `Inserted ${starter.title}`,
+        action: { label: "Undo", run: () => api.txn((t) => t.del(rootUid)) },
+      });
+      return rootUid;
+    });
+  };
+
+  session.importCanvas = (text, rect, fileName = "") => {
+    const parsed = parseCanvas(text);
+    if (parsed.error) {
+      api.emit("toast", { message: parsed.error });
+      return Promise.resolve(null);
+    }
+    if (!parsed.nodes?.length) {
+      api.emit("toast", { message: "This canvas is empty." });
+      return Promise.resolve(null);
+    }
+    const board = api.board();
+    if (!board) return Promise.resolve(null);
+    const title = canvasTitle(fileName);
+    const { tree, counts } = canvasToTree(parsed, { title });
+    const d = DEFAULT_BOARD_CARD;
+    const r = { x: rect?.x ?? 0, y: rect?.y ?? 0, w: rect?.w ?? d.w, h: rect?.h ?? d.h };
+    const parent = containerAt(board, { x: r.x + r.w / 2, y: r.y + r.h / 2 }, { rects: api.rects() });
+    const rel = toRelative(board, parent, { x: r.x, y: r.y }, api.rects());
+    const plan = planCopy(tree, {
+      genUid: () => host.generateUid(),
+      parentUid: parent,
+      plexusPatch: { x: round1(rel.x), y: round1(rel.y), w: r.w, h: r.h, v: 2 },
+    });
+    if (!plan.creates.length) return Promise.resolve(null);
+    if (api.bulkAllowed && !api.bulkAllowed(plan.creates.length)) return Promise.resolve(null);
+    const rootUid = plan.rootUid;
+    return writeChunks(plan.chunks, (chunk) => api.txn((t) => {
+      for (const op of chunk) {
+        t.create({
+          uid: op.uid,
+          parent: op.parent,
+          order: op.order,
+          string: op.string,
+          plexus: op.props?.plexus,
+          open: op.open,
+        });
+      }
+    }), (message) => api.emit("toast", { message })).then(() => {
+      const skipped = parsed.skipped > 0 ? `, ${parsed.skipped} skipped` : "";
+      api.emit("toast", {
+        message: `Imported ${title}: ${counts.cards} cards, ${counts.sections} sections, ${counts.arrows} arrows${skipped}`,
         action: { label: "Undo", run: () => api.txn((t) => t.del(rootUid)) },
       });
       return rootUid;

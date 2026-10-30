@@ -1111,15 +1111,15 @@ function mergePropsForWrite(props, plexus) {
 }
 function normalizeItemLayout(plexus) {
   const p = isObject(plexus) ? plexus : {};
-  const num9 = (v) => isNum(v) ? v : void 0;
+  const num10 = (v) => isNum(v) ? v : void 0;
   const type = ITEM_TYPES.includes(p.type) ? p.type : "card";
   const section2 = type === "section";
   return {
     type,
-    x: num9(p.x),
-    y: num9(p.y),
-    w: num9(p.w),
-    h: num9(p.h),
+    x: num10(p.x),
+    y: num10(p.y),
+    w: num10(p.w),
+    h: num10(p.h),
     color: styleColor(p.color),
     collapsed: p.collapsed === true ? true : p.collapsed === false ? false : void 0,
     // Sections use titleSize. Cards and text take an integer 10–48 (text used to be the four steps only).
@@ -8641,7 +8641,7 @@ function headingLevel(line, { bodySize, classes, nextIsBody = true, isolated = f
     return Math.min(4, classes.length + 1);
   }
   const depth = numberedDepth(text4);
-  const rest = depth ? text4.replace(NUMBERED_RE, (m, num9, a, b, ...r) => m.slice(m.length - 1)) : "";
+  const rest = depth ? text4.replace(NUMBERED_RE, (m, num10, a, b, ...r) => m.slice(m.length - 1)) : "";
   const wordy = depth && /^[A-Z][A-Za-z]{2,}/.test(rest) && (line.mathShare || 0) < 0.1 && !line.words.some((w) => w.sup || w.sub);
   if (wordy && bodySized && wordCount(text4) <= 14 && !/[.?!,;:]$/.test(text4) && (line.bold || line.italic || isolated) && nextIsBody) {
     return Math.min(6, classes.length + depth);
@@ -10208,9 +10208,9 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeG
         if (!run.length && tokens2.length === 1) {
           const nxt2 = rows[j + 1];
           const nt = nxt2 ? tokensOf2(nxt2) : [];
-          const num9 = nt.find((t) => /^\d{1,4}$/.test(t.text));
-          const label = nt.find((t) => /[A-Za-z]/.test(t.text || "") && num9 && t.x1 < num9.x0 - 4);
-          if (num9 && label && tokens2[0].x0 > label.x1 && Math.abs(tokens2[0].x0 - num9.x0) <= 24) {
+          const num10 = nt.find((t) => /^\d{1,4}$/.test(t.text));
+          const label = nt.find((t) => /[A-Za-z]/.test(t.text || "") && num10 && t.x1 < num10.x0 - 4);
+          if (num10 && label && tokens2[0].x0 > label.x1 && Math.abs(tokens2[0].x0 - num10.x0) <= 24) {
             run.push({ row: row4, tokens: tokens2 });
             headerRowsHint = Math.max(headerRowsHint, 1);
             lastBase = row4.base;
@@ -11836,7 +11836,7 @@ function normalizeFigSpelling(text4) {
   t = t.replace(/\bfigu[nr]e\b/gi, (m) => m[0] === "f" ? "figure" : "Figure");
   t = t.replace(/\b([A-Za-z]{2,})\s*,\s*(?=\d)/g, "$1. ");
   t = t.replace(/\b((?:fig(?:ure)?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s+)[lI|](?=\s|$|[.:])/gi, "$11");
-  t = t.replace(/\b((?:fig(?:ure)?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s+)(II)(?=\s|$|[.:—–-])/gi, (full, pre, num9) => num9 === "II" ? `${pre}11` : full);
+  t = t.replace(/\b((?:fig(?:ure)?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s+)(II)(?=\s|$|[.:—–-])/gi, (full, pre, num10) => num10 === "II" ? `${pre}11` : full);
   return t;
 }
 function figCaptionKey(text4) {
@@ -12116,11 +12116,11 @@ function labelSpan(words, i) {
 }
 function orderedLabelWords(group) {
   const fig = group.find((w) => FIG_TOKEN.test(String(w.text || "").trim()));
-  const num9 = group.find((w) => FIG_NUM.test(String(w.text || "").trim()));
+  const num10 = group.find((w) => FIG_NUM.test(String(w.text || "").trim()));
   const dots = group.filter((w) => /^[.:]$/.test(String(w.text || "").trim()));
-  if (!fig || !num9 || !(num9.x0 <= fig.x0 + 2 && fig.x0 - num9.x1 < 8)) return group;
+  if (!fig || !num10 || !(num10.x0 <= fig.x0 + 2 && fig.x0 - num10.x1 < 8)) return group;
   const figWord = { ...fig, text: String(fig.text || "").replace(/\.?$/, ".") };
-  return [figWord, { ...num9 }];
+  return [figWord, { ...num10 }];
 }
 function normalizeFigWord(w) {
   const m = /^(\d+[A-Za-z]?)\.fig(?:ure)?\.?$/i.exec(String(w.text || "").trim());
@@ -13809,8 +13809,8 @@ function moveStubTotal(table) {
   const label = table.cells.find((k) => k.r === r && k.c === 0 && (k.colSpan || 1) === 1);
   const value = table.cells.find((k) => k.r === r && k.c === table.cols - 1 && (k.colSpan || 1) === 1);
   if (!label || !value || String(value.text || "").trim()) return null;
-  const num9 = String(label.text || "").trim();
-  if (!isNumericText(num9)) return null;
+  const num10 = String(label.text || "").trim();
+  if (!isNumericText(num10)) return null;
   let valueNums = 0;
   let labelNums = 0;
   const samples = [];
@@ -13823,12 +13823,12 @@ function moveStubTotal(table) {
     }
     if (lab && isNumericText(lab.text)) labelNums++;
   }
-  if (valueNums < 2 || labelNums > 0 || !fitsColumn(num9, samples)) return null;
-  value.text = num9;
+  if (valueNums < 2 || labelNums > 0 || !fitsColumn(num10, samples)) return null;
+  value.text = num10;
   value.numeric = true;
   label.text = "";
   label.numeric = false;
-  return { r, text: num9 };
+  return { r, text: num10 };
 }
 function deleteRow(table, r) {
   table.cells = table.cells.filter((c) => c.r !== r);
@@ -25987,7 +25987,7 @@ function createQueryBackend(host) {
     hits(leaf) {
       const { where: where2, input } = entityClause(leaf);
       const refs = `${where2} [?r :block/refs ?p]`;
-      const direct = num5(q2(`[:find (count ?r) :in $ ?k :where ${refs}]`, input));
+      const direct = num6(q2(`[:find (count ?r) :in $ ?k :where ${refs}]`, input));
       const uids = /* @__PURE__ */ new Set();
       let partial = false;
       if (direct > DIRECT_CAP) {
@@ -25998,7 +25998,7 @@ function createQueryBackend(host) {
         for (const u of col(q2(`[:find ?u :in $ ?k :where ${refs} [?b :block/parents ?r] [?b :block/uid ?u]]`, input))) uids.add(u);
       } else partial = true;
       if (leaf.op === "page") {
-        const onPage = num5(q2("[:find (count ?b) :in $ ?k :where [?p :node/title ?k] [?b :block/page ?p]]", input));
+        const onPage = num6(q2("[:find (count ?b) :in $ ?k :where [?p :node/title ?k] [?b :block/page ?p]]", input));
         if (onPage <= PAGE_LIMIT) {
           for (const u of col(q2("[:find ?u :in $ ?k :where [?p :node/title ?k] [?b :block/page ?p] [?b :block/uid ?u]]", input))) uids.add(u);
         } else partial = true;
@@ -26035,7 +26035,7 @@ function createQueryBackend(host) {
     }
   };
 }
-var DIRECT_CAP, WIDE_LIMIT, PAGE_LIMIT, CHUNK, DETAIL_CHUNK, col, num5;
+var DIRECT_CAP, WIDE_LIMIT, PAGE_LIMIT, CHUNK, DETAIL_CHUNK, col, num6;
 var init_query_backend = __esm({
   "src/host/query-backend.js"() {
     DIRECT_CAP = 3e3;
@@ -26044,7 +26044,7 @@ var init_query_backend = __esm({
     CHUNK = 200;
     DETAIL_CHUNK = 50;
     col = (rows) => Array.isArray(rows) ? rows.map((r) => r?.[0]).filter((u) => typeof u === "string") : [];
-    num5 = (rows) => Number(rows?.[0]?.[0]) || 0;
+    num6 = (rows) => Number(rows?.[0]?.[0]) || 0;
   }
 });
 
@@ -31773,25 +31773,25 @@ function measureCell({ card: card2, host, body, uid, zoom = 1, pullTree } = {}) 
   const bodyRect = rectOf4(body);
   if (!cardRect || !bodyRect) return null;
   const z = zoom || 1;
-  const out = { bodyTop: round16((bodyRect.top - cardRect.top) / z), bodyBottom: round16((bodyRect.bottom - cardRect.top) / z) };
+  const out = { bodyTop: round17((bodyRect.top - cardRect.top) / z), bodyBottom: round17((bodyRect.bottom - cardRect.top) / z) };
   const cell = findCell(host, uid, { pullTree });
   const r = cell ? rectOf4(cell) : null;
   if (!r || !r.width && !r.height) return { ...out, rowTop: null, rowHeight: 0, rendered: false };
   const clip7 = visibleClip(cell, host, body);
-  const rowHeight = round16(r.height / z);
-  let rowTop = round16((r.top - cardRect.top) / z);
+  const rowHeight = round17(r.height / z);
+  let rowTop = round17((r.top - cardRect.top) / z);
   if (clip7) {
     const cx = (r.left + r.right) / 2;
-    if (cx < clip7.left || cx > clip7.right) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
+    if (cx < clip7.left || cx > clip7.right) rowTop = round17(out.bodyTop - rowHeight * 2 - 1);
     else {
       const cy = (r.top + r.bottom) / 2;
-      if (cy < clip7.top) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
-      else if (cy > clip7.bottom) rowTop = round16(out.bodyBottom + 1);
+      if (cy < clip7.top) rowTop = round17(out.bodyTop - rowHeight * 2 - 1);
+      else if (cy > clip7.bottom) rowTop = round17(out.bodyBottom + 1);
     }
   }
   const left = clip7 ? Math.max(r.left, clip7.left) : r.left;
   const right = clip7 ? Math.min(r.right, clip7.right) : r.right;
-  return { ...out, rowTop, rowHeight, rowLeft: round16((left - cardRect.left) / z), rowRight: round16((right - cardRect.left) / z), rendered: true, cell: true };
+  return { ...out, rowTop, rowHeight, rowLeft: round17((left - cardRect.left) / z), rowRight: round17((right - cardRect.left) / z), rendered: true, cell: true };
 }
 function revealCell(cell, body) {
   if (!cell) return false;
@@ -31837,7 +31837,7 @@ function watchTable({ host, body, onChange, doc } = {}) {
     if (body && body !== host) body.removeEventListener?.("scroll", onChange, opts);
   };
 }
-var UID_AT_END, UID_RE7, hasClass, NATIVE_CELL_BASE, GRID_DEPTH, GRID_LIMIT, CACHE_MS, tableCache, forgetTableCells, plain, nowMs, tableUidOf2, attrInt, rectOf4, round16, isTableCard;
+var UID_AT_END, UID_RE7, hasClass, NATIVE_CELL_BASE, GRID_DEPTH, GRID_LIMIT, CACHE_MS, tableCache, forgetTableCells, plain, nowMs, tableUidOf2, attrInt, rectOf4, round17, isTableCard;
 var init_table_cells = __esm({
   "src/view/table-cells.js"() {
     UID_AT_END = /-([\w-]{9})$/;
@@ -31865,7 +31865,7 @@ var init_table_cells = __esm({
       if (!r) return null;
       return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width ?? r.right - r.left, height: r.height ?? r.bottom - r.top };
     };
-    round16 = (n3) => Math.round(n3 * 10) / 10;
+    round17 = (n3) => Math.round(n3 * 10) / 10;
     isTableCard = (card2) => hasClass(card2, "pxd-item--roam-table");
   }
 });
@@ -33445,7 +33445,7 @@ function createItemRenderer({
   };
   const buildPorts = (parent, cls = "pxd-ports") => {
     const wrap = el2("div", cls, parent);
-    for (const side2 of SIDES3) {
+    for (const side2 of SIDES4) {
       const p = el2("div", `pxd-port pxd-port--${side2}`, wrap);
       p.dataset.side = side2;
       p.setAttribute("data-side", side2);
@@ -36154,7 +36154,7 @@ function createItemRenderer({
     onPageLayout?.(rec.uid);
     return b.roots;
   };
-  const round17 = (n3) => Math.round(n3 * 10) / 10;
+  const round18 = (n3) => Math.round(n3 * 10) / 10;
   const fracParts3 = (frac) => {
     if (!frac) return null;
     const v = Array.isArray(frac) ? frac : [frac.rx, frac.ry, frac.rw, frac.rh];
@@ -36454,19 +36454,19 @@ function createItemRenderer({
       const z2 = zoomCache || 1;
       const card3 = rec.el.getBoundingClientRect();
       const body2 = rec.body.getBoundingClientRect();
-      return { bodyTop: round17((body2.top - card3.top) / z2), bodyBottom: round17((body2.bottom - card3.top) / z2), rowTop: round17((r3.top - card3.top) / z2), rowHeight: round17(r3.height / z2), rowLeft: round17((r3.left - card3.left) / z2), rowRight: round17((r3.right - card3.left) / z2), rendered: true };
+      return { bodyTop: round18((body2.top - card3.top) / z2), bodyBottom: round18((body2.bottom - card3.top) / z2), rowTop: round18((r3.top - card3.top) / z2), rowHeight: round18(r3.height / z2), rowLeft: round18((r3.left - card3.left) / z2), rowRight: round18((r3.right - card3.left) / z2), rendered: true };
     }
     const holder = rec?.pageHolder;
     if (!rec?.body || !holder || holder.isConnected === false || editing?.uid === uid || !rec.pageKey) return null;
     const z = zoomCache || 1;
     const card2 = rec.el.getBoundingClientRect();
     const body = rec.body.getBoundingClientRect();
-    const out = { bodyTop: round17((body.top - card2.top) / z), bodyBottom: round17((body.bottom - card2.top) / z) };
+    const out = { bodyTop: round18((body.top - card2.top) / z), bodyBottom: round18((body.bottom - card2.top) / z) };
     const row4 = holder.querySelector?.(`[data-pxd-row="${rowUid}"]`);
     const r = row4 ? row4.getBoundingClientRect() : null;
     if (!r || !r.width && !r.height) return { ...out, rowTop: null, rowHeight: 0, rendered: false };
     const cardLeft = card2.left;
-    return { ...out, rowTop: round17((r.top - card2.top) / z), rowHeight: round17(r.height / z), rowLeft: round17((r.left - cardLeft) / z), rowRight: round17((r.right - cardLeft) / z), rendered: true };
+    return { ...out, rowTop: round18((r.top - card2.top) / z), rowHeight: round18(r.height / z), rowLeft: round18((r.left - cardLeft) / z), rowRight: round18((r.right - cardLeft) / z), rendered: true };
   };
   const markedRows = /* @__PURE__ */ new Set();
   const rowOf = (uid, rowUid) => {
@@ -40458,7 +40458,7 @@ function createItemRenderer({
     dispose
   };
 }
-var SIDES3, CHUNK_MS, LRU_CAP, SLOW_BODY_MS, slowBodies, noteBodyMs, UNMOUNT_AFTER_MS, HYDRATE_CAP_MS, CONTENT_LIMIT, CONTENT_DEPTH, CONTENT_NODES, OUTLINE_CAP, OUTLINE_FETCH, PAGE_WATCH_MAX, PAGE_REFRESH_MS, BLOCK_REFRESH_MS, GROW_CAP, HEADER_H, META_H, REF_TITLE_MAX, HEADER_TEXT_MAX, TINY_MINI_PX, ATTR_CHIPS_MAX, SVG_NS4, ROW_BOARD_W, ROW_BOARD_H, ROW_BOARD_THUMBS, BOARD_KEY_DEPTH, BOARD_KEY_NODES, KID_ROW_H, PEEK_DELAY_MS, DROP_PEEK_MS, PEEK_TOP, PEEK_SUB, PEEK_TEXT_MAX, now2, HL_NAMES2, NOTE_CARET_SKIP, childString5, childKids, childUid, childProps, KIDS_KINDS, isKidsCard, isSticky, STICKY_TITLE_MAX, stickyTitleOf, isTaskAttrString, skipChildString, visibleKids, taskBlockOn, statusSig, TASK_MARK, isTaskCard, regionHubs;
+var SIDES4, CHUNK_MS, LRU_CAP, SLOW_BODY_MS, slowBodies, noteBodyMs, UNMOUNT_AFTER_MS, HYDRATE_CAP_MS, CONTENT_LIMIT, CONTENT_DEPTH, CONTENT_NODES, OUTLINE_CAP, OUTLINE_FETCH, PAGE_WATCH_MAX, PAGE_REFRESH_MS, BLOCK_REFRESH_MS, GROW_CAP, HEADER_H, META_H, REF_TITLE_MAX, HEADER_TEXT_MAX, TINY_MINI_PX, ATTR_CHIPS_MAX, SVG_NS4, ROW_BOARD_W, ROW_BOARD_H, ROW_BOARD_THUMBS, BOARD_KEY_DEPTH, BOARD_KEY_NODES, KID_ROW_H, PEEK_DELAY_MS, DROP_PEEK_MS, PEEK_TOP, PEEK_SUB, PEEK_TEXT_MAX, now2, HL_NAMES2, NOTE_CARET_SKIP, childString5, childKids, childUid, childProps, KIDS_KINDS, isKidsCard, isSticky, STICKY_TITLE_MAX, stickyTitleOf, isTaskAttrString, skipChildString, visibleKids, taskBlockOn, statusSig, TASK_MARK, isTaskCard, regionHubs;
 var init_cards = __esm({
   "src/view/cards.js"() {
     init_card_face();
@@ -40505,7 +40505,7 @@ var init_cards = __esm({
     init_quiet_textarea();
     init_card_refs();
     init_card_children();
-    SIDES3 = ["top", "right", "bottom", "left"];
+    SIDES4 = ["top", "right", "bottom", "left"];
     CHUNK_MS = 8;
     LRU_CAP = 80;
     SLOW_BODY_MS = 50;
@@ -58591,6 +58591,346 @@ extendSession((session, api3) => {
 init_board();
 init_schema();
 
+// src/model/json-canvas.js
+init_schema();
+var CANVAS_MAX_NODES = 2e3;
+var CANVAS_MAX_EDGES = 4e3;
+var PRESETS = { 1: "red", 2: "orange", 3: "yellow", 4: "green", 5: "teal", 6: "purple" };
+var PRESET_OF = Object.fromEntries(Object.entries(PRESETS).map(([k, v]) => [v, k]));
+var PALETTE_HEX = {
+  gray: "#6b7280",
+  red: "#dc2626",
+  orange: "#ea580c",
+  yellow: "#ca8a04",
+  green: "#16a34a",
+  teal: "#0d9488",
+  blue: "#2563eb",
+  indigo: "#4f46e5",
+  purple: "#9333ea",
+  pink: "#db2777"
+};
+var SIDES3 = ["top", "right", "bottom", "left"];
+var URL_RE = /^https?:\/\/\S+$/i;
+var isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+var num5 = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
+var round15 = (n3) => Math.round(n3 * 10) / 10;
+function colorIn(v) {
+  if (typeof v !== "string") return void 0;
+  const s = v.trim().toLowerCase();
+  if (PRESETS[s]) return PRESETS[s];
+  if (/^#[0-9a-f]{6}$/.test(s)) return s;
+  if (/^#[0-9a-f]{3}$/.test(s)) return `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`;
+  return void 0;
+}
+function colorOut(v) {
+  if (!v) return void 0;
+  if (PRESET_OF[v]) return PRESET_OF[v];
+  if (PALETTE.includes(v)) return PALETTE_HEX[v];
+  return /^#[0-9a-f]{6}$/.test(v) ? v : void 0;
+}
+var KEEP = /(`[^`\n]*`|https?:\/\/[^\s)\]]+)/;
+var outsideKept = (s, fn) => String(s ?? "").split(KEEP).map((part, i) => i % 2 ? part : fn(part)).join("");
+function mdToRoam(s) {
+  return outsideKept(s, (t) => t.replace(/\[\[([^\]|\n]+)\|([^\]\n]+)\]\]/g, (m, page, alias) => `[${alias}]([[${page}]])`).replace(/==([^=\n]+)==/g, "^^$1^^").replace(/(^|[^_\w])__(?!\s)([^_\n]*?[^_\s])__(?![_\w])/g, "$1**$2**").replace(/(^|[^_\w])_(?![_\s])([^_\n]*?[^_\s])_(?![_\w])/g, "$1__$2__").replace(/(^|[^*\w])\*(?![*\s])([^*\n]*?[^*\s])\*(?![*\w])/g, "$1__$2__").replace(/^\[ \]\s+/, "{{[[TODO]]}} ").replace(/^\[[xX]\]\s+/, "{{[[DONE]]}} "));
+}
+function roamToMd(s, resolve = null, depth = 0) {
+  const refs = (t) => t.replace(/\(\(([\w-]{1,64})\)\)/g, (m, uid) => {
+    let text4 = null;
+    if (typeof resolve === "function" && depth < 2) {
+      try {
+        text4 = resolve(uid);
+      } catch {
+        text4 = null;
+      }
+    }
+    return typeof text4 === "string" ? roamToMd(text4.replace(/\s*\n\s*/g, " "), resolve, depth + 1) : m;
+  });
+  const pdfs = String(s ?? "").replace(/\{\{\s*(?:\[\[pdf\]\]|pdf)\s*:\s*([^}]*?)\s*\}\}/g, "$1");
+  return outsideKept(pdfs, (t) => refs(t).replace(/\{\{\s*(?:\[\[)?TODO(?:\]\])?\s*\}\}\s*/g, "[ ] ").replace(/\{\{\s*(?:\[\[)?DONE(?:\]\])?\s*\}\}\s*/g, "[x] ").replace(/\[([^\]\n]+)\]\(\[\[([^\]\n]+)\]\]\)/g, (m, alias, page) => `[[${page}|${alias}]]`).replace(/\^\^([^^\n]+)\^\^/g, "==$1==").replace(/(^|[^_\w])__(?!\s)([^_\n]*?[^_\s])__(?![_\w])/g, "$1*$2*"));
+}
+function textToBlocks(text4) {
+  const lines = String(text4 ?? "").replace(/\r\n?/g, "\n").split("\n");
+  let i = 0;
+  while (i < lines.length && !lines[i].trim()) i += 1;
+  const head = i < lines.length ? lines[i].trim().replace(/^#{1,6}\s+/, "").replace(/^[-*+]\s+/, "") : "";
+  const root = { string: mdToRoam(head), children: [] };
+  const stack = [{ indent: -1, node: root }];
+  for (i += 1; i < lines.length; i += 1) {
+    const raw = lines[i].replace(/\t/g, "  ");
+    if (!raw.trim()) continue;
+    if (/^\s*```[\w+-]*\s*$/.test(raw)) {
+      const fence = [raw.trim()];
+      for (i += 1; i < lines.length; i += 1) {
+        fence.push(lines[i]);
+        if (/^\s*```\s*$/.test(lines[i])) break;
+      }
+      stack.length = 1;
+      root.children.push({ string: fence.join("\n").replace(/\n\s*```\s*$/, "\n```"), children: [] });
+      continue;
+    }
+    const m = /^(\s*)(?:[-*+]|\d+[.)])\s+(.*)$/.exec(raw);
+    const indent = m ? m[1].length : 0;
+    const string = mdToRoam(m ? m[2].trim() : raw.trim().replace(/^#{1,6}\s+/, ""));
+    if (!m) stack.length = 1;
+    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) stack.pop();
+    const node2 = { string, children: [] };
+    stack[stack.length - 1].node.children.push(node2);
+    if (m) stack.push({ indent, node: node2 });
+  }
+  return root;
+}
+function blocksToText(string, children, resolve = null) {
+  const out = [roamToMd(string, resolve)];
+  const walk3 = (kids, depth) => {
+    const sorted3 = [...kids ?? []].sort((a, b) => (a?.[":block/order"] ?? 0) - (b?.[":block/order"] ?? 0));
+    for (const c of sorted3) {
+      const raw = String(c?.[":block/string"] ?? "");
+      const pad2 = "  ".repeat(depth);
+      if (raw.trim().startsWith("```")) out.push(raw.trim().split("\n").map((l) => `${pad2}${l}`).join("\n"));
+      else out.push(`${pad2}- ${roamToMd(raw.replace(/\s*\n\s*/g, " "), resolve)}`);
+      walk3(c?.[":block/children"], depth + 1);
+    }
+  };
+  walk3(children, 0);
+  return out.join("\n");
+}
+function parseCanvas(text4) {
+  let data;
+  try {
+    data = JSON.parse(String(text4 ?? ""));
+  } catch {
+    return { error: "This file is not JSON." };
+  }
+  if (!isObj(data)) return { error: "This file is not a JSON Canvas." };
+  const rawNodes = data.nodes ?? [];
+  const rawEdges = data.edges ?? [];
+  if (!Array.isArray(rawNodes) || !Array.isArray(rawEdges)) return { error: "This file is not a JSON Canvas." };
+  if (rawNodes.length > CANVAS_MAX_NODES) return { error: `This canvas has ${rawNodes.length} nodes; the limit is ${CANVAS_MAX_NODES}.` };
+  const nodes = [];
+  const ids = /* @__PURE__ */ new Set();
+  let skipped = 0;
+  for (const n3 of rawNodes) {
+    const id = isObj(n3) && typeof n3.id === "string" && n3.id ? n3.id : null;
+    const x = num5(n3?.x);
+    const y = num5(n3?.y);
+    const w = num5(n3?.width);
+    const h = num5(n3?.height);
+    const type = n3?.type;
+    if (!id || ids.has(id) || x == null || y == null || w == null || h == null || w <= 0 || h <= 0 || !["text", "file", "link", "group"].includes(type) || type === "link" && !(typeof n3.url === "string" && n3.url.trim()) || type === "file" && !(typeof n3.file === "string" && n3.file.trim())) {
+      skipped += 1;
+      continue;
+    }
+    ids.add(id);
+    nodes.push({
+      id,
+      type,
+      x,
+      y,
+      w,
+      h,
+      color: colorIn(n3.color),
+      text: typeof n3.text === "string" ? n3.text : "",
+      file: typeof n3.file === "string" ? n3.file : "",
+      subpath: typeof n3.subpath === "string" ? n3.subpath : "",
+      url: typeof n3.url === "string" ? n3.url : "",
+      label: typeof n3.label === "string" ? n3.label : ""
+    });
+  }
+  const edges = [];
+  for (const e2 of rawEdges.slice(0, CANVAS_MAX_EDGES)) {
+    if (!isObj(e2) || !ids.has(e2.fromNode) || !ids.has(e2.toNode) || e2.fromNode === e2.toNode) {
+      skipped += 1;
+      continue;
+    }
+    edges.push({
+      id: typeof e2.id === "string" ? e2.id : "",
+      from: e2.fromNode,
+      to: e2.toNode,
+      fromSide: SIDES3.includes(e2.fromSide) ? e2.fromSide : void 0,
+      toSide: SIDES3.includes(e2.toSide) ? e2.toSide : void 0,
+      fromEnd: e2.fromEnd === "arrow" ? "arrow" : "none",
+      toEnd: e2.toEnd === "none" ? "none" : "arrow",
+      color: colorIn(e2.color),
+      label: typeof e2.label === "string" ? e2.label.replace(/\s*\n\s*/g, " ").trim() : ""
+    });
+  }
+  skipped += Math.max(0, rawEdges.length - CANVAS_MAX_EDGES);
+  return { nodes, edges, skipped };
+}
+function fileString(file, subpath) {
+  const path = file.trim();
+  if (/\.md$/i.test(path)) return `[[${path.slice(0, -3)}]]`;
+  if (/\.canvas$/i.test(path)) return `[[${path}]]`;
+  return `${path}${subpath}`;
+}
+var contains2 = (outer, inner) => {
+  const cx = inner.x + inner.w / 2;
+  const cy = inner.y + inner.h / 2;
+  return outer !== inner && cx >= outer.x && cy >= outer.y && cx <= outer.x + outer.w && cy <= outer.y + outer.h;
+};
+function canvasToTree(parsed, { title = UNTITLED_BOARD } = {}) {
+  const { nodes = [], edges = [] } = parsed ?? {};
+  const local = new Map(nodes.map((n3, i) => [n3.id, `jc${i}`]));
+  const groups2 = nodes.filter((n3) => n3.type === "group");
+  const parentOf = /* @__PURE__ */ new Map();
+  for (const n3 of nodes) {
+    let best = null;
+    for (const g of groups2) {
+      if (!contains2(g, n3)) continue;
+      if (n3.type === "group" && g.w * g.h <= n3.w * n3.h) continue;
+      if (!best || g.w * g.h < best.w * best.h) best = g;
+    }
+    parentOf.set(n3.id, best?.id ?? null);
+  }
+  const block = (n3) => {
+    if (n3.type === "group") return { string: n3.label.trim() || "Group", children: [] };
+    if (n3.type === "link") return { string: n3.url.trim(), children: [] };
+    if (n3.type === "file") return { string: fileString(n3.file, n3.subpath), children: [] };
+    return textToBlocks(n3.text);
+  };
+  const toNode = (uid, b) => ({
+    ":block/uid": uid,
+    ":block/string": b.string,
+    ":block/open": true,
+    ":block/children": b.children.map((c, i) => toNode(`${uid}-${i}`, c))
+  });
+  const built = /* @__PURE__ */ new Map();
+  for (const n3 of nodes) {
+    const b = block(n3);
+    const node2 = toNode(local.get(n3.id), b);
+    if (n3.type !== "group") node2[":block/open"] = false;
+    built.set(n3.id, { node: node2, string: b.string });
+  }
+  const rootKids = [];
+  const counts = { cards: 0, sections: 0, arrows: 0 };
+  for (const n3 of nodes) {
+    const parentId = parentOf.get(n3.id);
+    const p = parentId ? nodes.find((g) => g.id === parentId) : null;
+    const { node: node2 } = built.get(n3.id);
+    const plexus = {
+      type: n3.type === "group" ? "section" : "card",
+      x: round15(n3.x - (p?.x ?? 0)),
+      y: round15(n3.y - (p?.y ?? 0)),
+      w: round15(n3.w),
+      h: round15(n3.h),
+      v: 2
+    };
+    if (n3.color) plexus.color = n3.color;
+    node2[":block/props"] = { plexus };
+    if (n3.type === "group") counts.sections += 1;
+    else counts.cards += 1;
+    if (p) built.get(p.id).node[":block/children"].push(node2);
+    else rootKids.push(node2);
+  }
+  const refOf2 = (id) => {
+    const cls = classifyString(built.get(id).string);
+    return cls.kind === "page" && nodes.find((n3) => n3.id === id)?.type !== "group" ? `[[${cls.title}]]` : `((${local.get(id)}))`;
+  };
+  const arrows = edges.map((e2, i) => {
+    const flip = e2.fromEnd === "arrow" && e2.toEnd === "none";
+    const from = flip ? e2.to : e2.from;
+    const to = flip ? e2.from : e2.to;
+    const fromSide = flip ? e2.toSide : e2.fromSide;
+    const toSide = flip ? e2.fromSide : e2.toSide;
+    const dir = e2.fromEnd === "arrow" && e2.toEnd === "arrow" ? "two" : e2.fromEnd === "none" && e2.toEnd === "none" ? "none" : "one";
+    const plexus = { type: "edge", from: local.get(from), to: local.get(to) };
+    if (dir !== "one") plexus.dir = dir;
+    if (fromSide) plexus.fromSide = fromSide;
+    if (toSide) plexus.toSide = toSide;
+    if (e2.color) plexus.color = e2.color;
+    counts.arrows += 1;
+    return {
+      ":block/uid": `jce${i}`,
+      ":block/string": edgeString({ srcRef: refOf2(from), dstRef: refOf2(to), dir, label: e2.label }),
+      ":block/props": { plexus },
+      ":block/children": [],
+      ":block/open": true
+    };
+  });
+  if (arrows.length) {
+    rootKids.push({
+      ":block/uid": "jcedges",
+      ":block/string": "Connections",
+      ":block/props": { plexus: { type: "edges" } },
+      ":block/children": arrows,
+      ":block/open": false
+    });
+  }
+  return {
+    tree: {
+      ":block/uid": "jcroot",
+      ":block/string": boardString(title),
+      ":block/props": { plexus: { v: 2 } },
+      ":block/children": rootKids,
+      ":block/open": false
+    },
+    counts
+  };
+}
+function canvasTitle(fileName2) {
+  const base2 = String(fileName2 ?? "").split(/[\\/]/).pop().replace(/\.canvas$/i, "").replace(/\.json$/i, "").trim();
+  return base2 || UNTITLED_BOARD;
+}
+function canvasFileName(title) {
+  const name = String(title || UNTITLED_BOARD).replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim() || "board";
+  return `${name}.canvas`;
+}
+function nodeOf(item, r, resolve) {
+  const base2 = { id: item.uid, x: Math.round(r.x), y: Math.round(r.y), width: Math.max(1, Math.round(r.w)), height: Math.max(1, Math.round(r.h)) };
+  const color = colorOut(item.color);
+  if (color) base2.color = color;
+  if (item.type === "section") return { ...base2, type: "group", label: roamToMd(String(item.string || item.title || "").trim(), resolve) };
+  const string = String(item.string ?? "").trim();
+  const cls = classifyString(string);
+  if (item.type === "card" && cls.kind === "page" && !item.content?.length) {
+    return { ...base2, type: "file", file: /\.canvas$/i.test(cls.title) ? cls.title : `${cls.title}.md` };
+  }
+  if (URL_RE.test(string) && !item.content?.length) return { ...base2, type: "link", url: string };
+  const pdf = /^\{\{\s*(?:\[\[pdf\]\]|pdf)\s*:\s*(https?:\/\/[^\s}]+)\s*\}\}$/.exec(string);
+  if (pdf && !item.content?.length) return { ...base2, type: "link", url: pdf[1] };
+  let text4;
+  if (item.kind === "board") text4 = item.title || "Board";
+  else if (item.tableUid) text4 = blocksToText(string, [{ ":block/string": "{{[[table]]}}", ":block/children": item.content }], resolve);
+  else if (cls.kind === "block") text4 = blocksToText(item.title || string, item.content, resolve);
+  else text4 = blocksToText(string, item.type === "card" ? item.content : [], resolve);
+  return { ...base2, type: "text", text: text4 };
+}
+function exportCanvas(board2, rects, { resolve = null } = {}) {
+  const groups2 = [];
+  const rest = [];
+  const kept = /* @__PURE__ */ new Set();
+  for (const uid of board2?.order ?? []) {
+    const item = board2.items.get(uid);
+    const r = rects?.get(uid);
+    if (!item || !r) continue;
+    const node2 = nodeOf(item, r, resolve);
+    if (!node2) continue;
+    kept.add(uid);
+    (node2.type === "group" ? groups2 : rest).push({ node: node2, depth: item.depth ?? 0 });
+  }
+  groups2.sort((a, b) => a.depth - b.depth);
+  const nodes = [...groups2, ...rest].map((e2) => e2.node);
+  const edges = [];
+  let leftOut = 0;
+  for (const [uid, e2] of board2?.edges ?? []) {
+    if (!e2?.valid) continue;
+    if (!kept.has(e2.from) || !kept.has(e2.to)) {
+      if (board2.edges.has(e2.from) || board2.edges.has(e2.to)) leftOut += 1;
+      continue;
+    }
+    const out = { id: uid, fromNode: e2.from, toNode: e2.to };
+    if (SIDES3.includes(e2.fromSide)) out.fromSide = e2.fromSide;
+    if (SIDES3.includes(e2.toSide)) out.toSide = e2.toSide;
+    if (e2.dir === "two") out.fromEnd = "arrow";
+    if (e2.dir === "none") out.toEnd = "none";
+    const color = colorOut(e2.color);
+    if (color) out.color = color;
+    if (e2.label) out.label = e2.label;
+    edges.push(out);
+  }
+  return { canvas: { nodes, edges }, leftOut };
+}
+
 // src/model/templates.js
 init_schema();
 var TEMPLATE_PAGE = "Plexus Diagram/Templates";
@@ -58692,7 +59032,7 @@ function planTemplate(id, opts) {
 }
 
 // src/templates.js
-var round15 = (n3) => Math.round(n3 * 10) / 10;
+var round16 = (n3) => Math.round(n3 * 10) / 10;
 async function writeChunks(chunks, write, toast) {
   for (let i = 0; i < chunks.length; i += 1) {
     await write(chunks[i]);
@@ -58712,7 +59052,7 @@ extendSession((session, api3) => {
     const plan = planTemplate(id, {
       genUid: () => host.generateUid(),
       parentUid: parent,
-      plexusPatch: { x: round15(rel.x), y: round15(rel.y), w: r.w, h: r.h, v: 2 }
+      plexusPatch: { x: round16(rel.x), y: round16(rel.y), w: r.w, h: r.h, v: 2 }
     });
     if (!plan?.creates.length) return Promise.resolve(null);
     const rootUid = plan.rootUid;
@@ -58730,6 +59070,52 @@ extendSession((session, api3) => {
     }), (message) => api3.emit("toast", { message })).then(() => {
       api3.emit("toast", {
         message: `Inserted ${starter.title}`,
+        action: { label: "Undo", run: () => api3.txn((t) => t.del(rootUid)) }
+      });
+      return rootUid;
+    });
+  };
+  session.importCanvas = (text4, rect, fileName2 = "") => {
+    const parsed = parseCanvas(text4);
+    if (parsed.error) {
+      api3.emit("toast", { message: parsed.error });
+      return Promise.resolve(null);
+    }
+    if (!parsed.nodes?.length) {
+      api3.emit("toast", { message: "This canvas is empty." });
+      return Promise.resolve(null);
+    }
+    const board2 = api3.board();
+    if (!board2) return Promise.resolve(null);
+    const title = canvasTitle(fileName2);
+    const { tree, counts } = canvasToTree(parsed, { title });
+    const d = DEFAULT_BOARD_CARD;
+    const r = { x: rect?.x ?? 0, y: rect?.y ?? 0, w: rect?.w ?? d.w, h: rect?.h ?? d.h };
+    const parent = containerAt(board2, { x: r.x + r.w / 2, y: r.y + r.h / 2 }, { rects: api3.rects() });
+    const rel = toRelative(board2, parent, { x: r.x, y: r.y }, api3.rects());
+    const plan = planCopy(tree, {
+      genUid: () => host.generateUid(),
+      parentUid: parent,
+      plexusPatch: { x: round16(rel.x), y: round16(rel.y), w: r.w, h: r.h, v: 2 }
+    });
+    if (!plan.creates.length) return Promise.resolve(null);
+    if (api3.bulkAllowed && !api3.bulkAllowed(plan.creates.length)) return Promise.resolve(null);
+    const rootUid = plan.rootUid;
+    return writeChunks(plan.chunks, (chunk2) => api3.txn((t) => {
+      for (const op of chunk2) {
+        t.create({
+          uid: op.uid,
+          parent: op.parent,
+          order: op.order,
+          string: op.string,
+          plexus: op.props?.plexus,
+          open: op.open
+        });
+      }
+    }), (message) => api3.emit("toast", { message })).then(() => {
+      const skipped = parsed.skipped > 0 ? `, ${parsed.skipped} skipped` : "";
+      api3.emit("toast", {
+        message: `Imported ${title}: ${counts.cards} cards, ${counts.sections} sections, ${counts.arrows} arrows${skipped}`,
         action: { label: "Undo", run: () => api3.txn((t) => t.del(rootUid)) }
       });
       return rootUid;
@@ -70784,7 +71170,7 @@ var PLACE_PREVIEW_MIN = 0.6;
 var PREVIEW_VIEW_FRACTION = 0.9;
 var MIN_SCALE = 0.05;
 var MAX_SCALE = 4;
-var num6 = (value, fallback = 0) => {
+var num7 = (value, fallback = 0) => {
   const n3 = Number(value);
   return Number.isFinite(n3) ? n3 : fallback;
 };
@@ -70822,14 +71208,14 @@ function zoneAt(x, y, { rootRect = null, paneRect = null, blocked: blocked3 = []
   return "board";
 }
 function zoneScale(zone, zoom) {
-  if (zone === "board") return clamp3(num6(zoom, 1) || 1, MIN_SCALE, MAX_SCALE);
+  if (zone === "board") return clamp3(num7(zoom, 1) || 1, MIN_SCALE, MAX_SCALE);
   return PANE_SCALE;
 }
 function ghostContent(source = {}) {
   const kind = ["text", "table", "figure", "highlight", "blocks"].includes(source.kind) ? source.kind : "text";
   const text4 = String(source.text ?? "").replace(/\s+/g, " ").trim();
-  const rowCap = clamp3(Math.round(num6(source.rowCap, 3)) || 3, 1, 12);
-  const colCap = clamp3(Math.round(num6(source.colCap, 6)) || 6, 1, 12);
+  const rowCap = clamp3(Math.round(num7(source.rowCap, 3)) || 3, 1, 12);
+  const colCap = clamp3(Math.round(num7(source.colCap, 6)) || 6, 1, 12);
   const rows = Array.isArray(source.rows) ? source.rows.slice(0, rowCap).map((row4) => Array.isArray(row4) ? row4.slice(0, colCap).map((cell) => String(cell ?? "")) : []) : [];
   const src = typeof source.src === "string" ? source.src : "";
   const color = typeof source.color === "string" ? source.color : "";
@@ -70888,7 +71274,7 @@ function createDragGhost({
   const host = root || doc?.body;
   const look = ghostContent(content);
   const node2 = buildGhost(doc, look);
-  const ghostW = clamp3(num6(width, GHOST_W) || GHOST_W, 120, 1200);
+  const ghostW = clamp3(num7(width, GHOST_W) || GHOST_W, 120, 1200);
   node2.style.width = `${ghostW}px`;
   if (ghostW !== GHOST_W) node2.style.maxWidth = "none";
   node2.style.transform = "translate3d(-10000px, -10000px, 0)";
@@ -70898,8 +71284,8 @@ function createDragGhost({
   try {
     node2.style.transform = "translate3d(0px, 0px, 0)";
     const box2 = node2.getBoundingClientRect?.();
-    if (box2) origin = { x: num6(box2.left), y: num6(box2.top) };
-    height = num6(node2.offsetHeight, 0) || num6(box2?.height, 0) || 120;
+    if (box2) origin = { x: num7(box2.left), y: num7(box2.top) };
+    height = num7(node2.offsetHeight, 0) || num7(box2?.height, 0) || 120;
   } catch {
   }
   const size = { w: ghostW, h: height };
@@ -70909,23 +71295,23 @@ function createDragGhost({
     blocked: blocked3 || chromeObstacles(root, { win: win2 })
   };
   if (rects.rootRect && !(rects.rootRect.right > rects.rootRect.left)) rects.rootRect = null;
-  const zoomNow = zoom != null ? num6(zoom, 1) : boardZoom(root, win2);
-  const start2 = { x: num6(pointer?.x), y: num6(pointer?.y) };
-  const src = from && num6(from.width) > 0 && num6(from.height) > 0 ? from : { left: start2.x - 8, top: start2.y - 8, width: 16, height: 16 };
-  const grab = grabAt ? { fx: clamp3(num6(grabAt.fx, 0.5), 0, 1), fy: clamp3(num6(grabAt.fy, 0.5), 0, 1) } : {
-    fx: clamp3((start2.x - num6(src.left)) / num6(src.width, 1), 0, 1),
-    fy: clamp3((start2.y - num6(src.top)) / num6(src.height, 1), 0, 1)
+  const zoomNow = zoom != null ? num7(zoom, 1) : boardZoom(root, win2);
+  const start2 = { x: num7(pointer?.x), y: num7(pointer?.y) };
+  const src = from && num7(from.width) > 0 && num7(from.height) > 0 ? from : { left: start2.x - 8, top: start2.y - 8, width: 16, height: 16 };
+  const grab = grabAt ? { fx: clamp3(num7(grabAt.fx, 0.5), 0, 1), fy: clamp3(num7(grabAt.fy, 0.5), 0, 1) } : {
+    fx: clamp3((start2.x - num7(src.left)) / num7(src.width, 1), 0, 1),
+    fy: clamp3((start2.y - num7(src.top)) / num7(src.height, 1), 0, 1)
   };
   let current3 = { x: start2.x, y: start2.y };
   let zone = rects.rootRect ? zoneAt(start2.x, start2.y, rects) : "pane";
-  let sx = clamp3(num6(src.width) / size.w, MIN_SCALE, MAX_SCALE);
-  let sy = clamp3(num6(src.height) / size.h, MIN_SCALE, MAX_SCALE);
-  const footSize = { w: clamp3(num6(footprint?.w, ghostW) || ghostW, 1, 4e3), h: clamp3(num6(footprint?.h, size.h) || size.h, 1, 4e3) };
+  let sx = clamp3(num7(src.width) / size.w, MIN_SCALE, MAX_SCALE);
+  let sy = clamp3(num7(src.height) / size.h, MIN_SCALE, MAX_SCALE);
+  const footSize = { w: clamp3(num7(footprint?.w, ghostW) || ghostW, 1, 4e3), h: clamp3(num7(footprint?.h, size.h) || size.h, 1, 4e3) };
   const targetScale = (z) => {
     if (z !== "board") return PANE_SCALE;
     const zoomScale = zoneScale(z, zoomNow);
     if (!(previewMin > 0) || zoomScale >= previewMin) return zoomScale;
-    const room = num6(rects.rootRect?.right) - num6(rects.rootRect?.left) || num6(win2?.innerWidth, 0) || 0;
+    const room = num7(rects.rootRect?.right) - num7(rects.rootRect?.left) || num7(win2?.innerWidth, 0) || 0;
     const cap4 = room > 0 ? room * PREVIEW_VIEW_FRACTION / size.w : previewMin;
     return Math.max(zoomScale, Math.min(previewMin, cap4));
   };
@@ -71044,7 +71430,7 @@ function createDragGhost({
     element: () => node2,
     move(x, y) {
       if (ended) return;
-      current3 = { x: num6(x, current3.x), y: num6(y, current3.y) };
+      current3 = { x: num7(x, current3.x), y: num7(y, current3.y) };
       const next = rects.rootRect ? zoneAt(current3.x, current3.y, rects) : zone;
       if (next !== zone) {
         zone = next;
@@ -71079,10 +71465,10 @@ function createDragGhost({
 }
 function dispatchDrop({ doc = globalThis.document, root, pointer, at, entries = [], altKey = false } = {}) {
   const win2 = doc?.defaultView || globalThis;
-  const target = doc?.elementFromPoint?.(num6(pointer?.x), num6(pointer?.y)) || null;
+  const target = doc?.elementFromPoint?.(num7(pointer?.x), num7(pointer?.y)) || null;
   if (!target || root && !root.contains?.(target) || target.closest?.(".pxd-read")) return false;
-  const x = num6(at?.x, num6(pointer?.x));
-  const y = num6(at?.y, num6(pointer?.y));
+  const x = num7(at?.x, num7(pointer?.x));
+  const y = num7(at?.y, num7(pointer?.y));
   const Transfer = win2.DataTransfer;
   const Drag = win2.DragEvent;
   if (typeof Transfer === "function" && typeof Drag === "function") {
@@ -78451,16 +78837,16 @@ var GUTTER = Object.freeze({ button: 24, gap: 6, pad: 2, intentMs: 120, hideMs: 
 var GUTTER_CARET = 12;
 var GUTTER_W = GUTTER.button + 4;
 var GUTTER_H = GUTTER.button * 2 + GUTTER_CARET + 8;
-var num7 = (v, d = 0) => Number.isFinite(Number(v)) ? Number(v) : d;
+var num8 = (v, d = 0) => Number.isFinite(Number(v)) ? Number(v) : d;
 function gutterSpot(box2, host, { w = GUTTER_W, h = GUTTER_H, gap = GUTTER.gap, pad: pad2 = GUTTER.pad, side: side2 = "left" } = {}) {
-  const left = num7(box2?.left);
-  const top = num7(box2?.top);
-  const right = num7(box2?.right, left + num7(box2?.width));
-  const bottom = num7(box2?.bottom, top + num7(box2?.height));
-  const hl = num7(host?.left);
-  const ht = num7(host?.top);
-  const hr = num7(host?.right, hl + num7(host?.width));
-  const hb = num7(host?.bottom, ht + num7(host?.height));
+  const left = num8(box2?.left);
+  const top = num8(box2?.top);
+  const right = num8(box2?.right, left + num8(box2?.width));
+  const bottom = num8(box2?.bottom, top + num8(box2?.height));
+  const hl = num8(host?.left);
+  const ht = num8(host?.top);
+  const hr = num8(host?.right, hl + num8(host?.width));
+  const hb = num8(host?.bottom, ht + num8(host?.height));
   let x = side2 === "right" ? right - w - gap : left - gap - w;
   let inside8 = side2 === "right";
   const minX = hl + pad2;
@@ -78654,10 +79040,10 @@ function createPartGutter({
     } catch {
       origin = null;
     }
-    const x = Math.round(spot.x - num7(origin?.left));
-    const y = Math.round(spot.y - num7(origin?.top));
+    const x = Math.round(spot.x - num8(origin?.left));
+    const y = Math.round(spot.y - num8(origin?.top));
     pill.style.transform = `translate(${x}px, ${y}px)`;
-    placedKey = `${Math.round(num7(rect.left))},${Math.round(num7(rect.top))},${Math.round(num7(rect.right))},${Math.round(num7(rect.bottom))}`;
+    placedKey = `${Math.round(num8(rect.left))},${Math.round(num8(rect.top))},${Math.round(num8(rect.right))},${Math.round(num8(rect.bottom))}`;
     pill.classList.toggle("pxd-pgutter--inside", spot.inside);
     return true;
   };
@@ -78708,7 +79094,7 @@ function createPartGutter({
       if (disposed || !target || !rect) return;
       stopHide();
       if (shown && block?.id === target.id) {
-        const key = `${Math.round(num7(rect.left))},${Math.round(num7(rect.top))},${Math.round(num7(rect.right))},${Math.round(num7(rect.bottom))}`;
+        const key = `${Math.round(num8(rect.left))},${Math.round(num8(rect.top))},${Math.round(num8(rect.right))},${Math.round(num8(rect.bottom))}`;
         if (key !== placedKey) {
           placedKey = key;
           place3(rect, opts);
@@ -83022,7 +83408,7 @@ var NEAR_EMPTY_CHARS = 8;
 var FONT_PX = 100;
 var FALLBACK_EM = 0.52;
 var ASCENT = 0.8;
-var num8 = (value, fallback = 0) => {
+var num9 = (value, fallback = 0) => {
   const n3 = Number(value);
   return Number.isFinite(n3) ? n3 : fallback;
 };
@@ -83033,9 +83419,9 @@ function ocrWords(record) {
     for (const box2 of record.boxes) {
       if (!Array.isArray(box2)) continue;
       const text4 = String(box2[0] ?? "").trim();
-      const w = num8(box2[3]);
-      const h = num8(box2[4]);
-      if (text4 && w > 0 && h > 0) out.push({ text: text4, x: num8(box2[1]), y: num8(box2[2]), w, h });
+      const w = num9(box2[3]);
+      const h = num9(box2[4]);
+      if (text4 && w > 0 && h > 0) out.push({ text: text4, x: num9(box2[1]), y: num9(box2[2]), w, h });
     }
     return out;
   }
@@ -83044,13 +83430,13 @@ function ocrWords(record) {
       const text4 = String(item?.str ?? "").trim();
       if (!text4) continue;
       const m = Array.isArray(item.transform) ? item.transform : [0, 0, 0, 0, 0, 0];
-      const height = num8(item.height, Math.hypot(num8(m[2]), num8(m[3])));
-      const y0 = Number.isFinite(Number(item.y0)) ? Number(item.y0) : num8(m[5]) - height;
-      const y1 = Number.isFinite(Number(item.y1)) ? Number(item.y1) : num8(m[5]);
+      const height = num9(item.height, Math.hypot(num9(m[2]), num9(m[3])));
+      const y0 = Number.isFinite(Number(item.y0)) ? Number(item.y0) : num9(m[5]) - height;
+      const y1 = Number.isFinite(Number(item.y1)) ? Number(item.y1) : num9(m[5]);
       const h = y1 - y0 > 0 ? y1 - y0 : height;
-      const w = num8(item.width);
+      const w = num9(item.width);
       if (!(h > 0) || !(w > 0)) continue;
-      out.push({ text: text4, x: num8(m[4]), y: y0, w, h });
+      out.push({ text: text4, x: num9(m[4]), y: y0, w, h });
     }
     return out;
   }
@@ -83058,10 +83444,10 @@ function ocrWords(record) {
   for (const word of words) {
     const text4 = String(word?.text ?? "").trim();
     if (!text4 || word.rotated) continue;
-    const size = num8(word.size);
-    const w = num8(word.x1) - num8(word.x0);
+    const size = num9(word.size);
+    const w = num9(word.x1) - num9(word.x0);
     if (!(size > 0) || !(w > 0)) continue;
-    out.push({ text: text4, x: num8(word.x0), y: num8(word.base) - size * ASCENT, w, h: size });
+    out.push({ text: text4, x: num9(word.x0), y: num9(word.base) - size * ASCENT, w, h: size });
   }
   return out;
 }
@@ -83129,7 +83515,7 @@ function createMeasure(doc) {
 }
 function wordStyle(word, scale, naturalAt100) {
   const font = word.h * scale;
-  const natural = num8(naturalAt100) * font / FONT_PX;
+  const natural = num9(naturalAt100) * font / FONT_PX;
   const target = word.w * scale;
   const sx = natural > 0 ? target / natural : 1;
   return `left:${(word.x * scale).toFixed(2)}px;top:${(word.y * scale).toFixed(2)}px;font-size:${font.toFixed(2)}px;transform:scaleX(${sx.toFixed(4)})`;
@@ -83139,7 +83525,7 @@ function prepared(record) {
   let hit = prepCache.get(record);
   if (!hit) {
     const ordered = orderWords(ocrWords(record));
-    hit = { w: num8(record?.w, 612) || 612, words: ordered.words, breaks: ordered.breaks };
+    hit = { w: num9(record?.w, 612) || 612, words: ordered.words, breaks: ordered.breaks };
     prepCache.set(record, hit);
   }
   return hit;
@@ -83190,8 +83576,8 @@ function compactPage(record) {
   const r23 = (v) => Math.round(v * 100) / 100;
   return {
     n: Number(record?.n),
-    w: num8(record?.w, 612) || 612,
-    h: num8(record?.h, 792) || 792,
+    w: num9(record?.w, 612) || 612,
+    h: num9(record?.h, 792) || 792,
     boxes: ocrWords(record).map((word) => [word.text, r23(word.x), r23(word.y), r23(word.w), r23(word.h)])
   };
 }
@@ -83259,7 +83645,7 @@ function createTextLayer({ doc = globalThis.document, readerEl = null, measure =
       if (!record) continue;
       const layer = pageEl.querySelector?.(".textLayer");
       if (!layer) continue;
-      const widthPx = num8(pageEl.clientWidth);
+      const widthPx = num9(pageEl.clientWidth);
       const key = `${n3}:${Math.round(widthPx)}`;
       const ours = layer.querySelector?.(`[${WORD_ATTR}]`);
       if (ours && layer.getAttribute?.(MARK_ATTR) === key) continue;
@@ -100679,6 +101065,7 @@ function buildMenu(kind, ctx = {}) {
         make3("new-table", "Table", { hint: "B" }),
         templateMenu(),
         make3("save-template", "Save board as template"),
+        make3("import-canvas", "Import JSON Canvas…"),
         ...snapshotMenus(),
         sep(),
         make3("paste", "Paste", { hint: "Cmd V", disabled: !c.canPaste }),
@@ -100701,6 +101088,7 @@ function buildMenu(kind, ctx = {}) {
         make3("highlights", "Highlight marks"),
         make3("export-svg", "Export as SVG"),
         make3("export-png", "Export as PNG"),
+        make3("export-canvas", "Export as JSON Canvas"),
         make3("copy-outline", "Copy as outline")
       ];
     case "card": {
@@ -100954,6 +101342,7 @@ function buildMenu(kind, ctx = {}) {
         sep(),
         make3("export-svg", "Export as SVG"),
         make3("export-png", "Export as PNG"),
+        make3("export-canvas", "Export as JSON Canvas"),
         make3("copy-outline", "Copy as outline"),
         make3("sort-outline", "Sort outline by position"),
         ...followMenu(c.follow),
@@ -102510,9 +102899,9 @@ function pdfHighlightButton(doc, onClick, count = 0) {
     svg.append(path);
     btn2.append(svg);
   }
-  const num9 = doc.createElement("span");
-  num9.className = "pxd-pdf-highlights__count";
-  btn2.append(num9);
+  const num10 = doc.createElement("span");
+  num10.className = "pxd-pdf-highlights__count";
+  btn2.append(num10);
   setHighlightCount(btn2, count);
   const stop3 = (event) => {
     event.preventDefault?.();
@@ -102530,11 +102919,11 @@ function pdfHighlightButton(doc, onClick, count = 0) {
 function setHighlightCount(btn2, count) {
   const n3 = Number(count);
   const text4 = Number.isFinite(n3) && n3 > 0 ? String(Math.floor(n3)) : "";
-  const num9 = btn2?.querySelector?.(".pxd-pdf-highlights__count");
-  if (num9 && num9.textContent !== text4) num9.textContent = text4;
-  if (num9) {
-    if (text4) num9.removeAttribute?.("hidden");
-    else num9.setAttribute?.("hidden", "");
+  const num10 = btn2?.querySelector?.(".pxd-pdf-highlights__count");
+  if (num10 && num10.textContent !== text4) num10.textContent = text4;
+  if (num10) {
+    if (text4) num10.removeAttribute?.("hidden");
+    else num10.setAttribute?.("hidden", "");
   }
   btn2?.setAttribute?.("data-count", text4 || "0");
   return text4;
@@ -109287,6 +109676,33 @@ ${b.pageTitle || ""}`.toLowerCase().includes(words)) continue;
         });
         break;
       }
+      case "export-canvas":
+        void view.exportCanvas({ download: true });
+        break;
+      case "import-canvas": {
+        const input = doc.createElement("input");
+        input.type = "file";
+        input.accept = ".canvas,.json,application/json";
+        input.style.display = "none";
+        const done3 = () => input.remove();
+        input.addEventListener("cancel", done3);
+        input.addEventListener("change", () => {
+          const file = input.files?.[0];
+          if (!file || disposed) {
+            done3();
+            return;
+          }
+          const d = DEFAULT_BOARD_CARD;
+          const rect = { x: world2.x - d.w / 2, y: world2.y - d.h / 2, w: d.w, h: d.h };
+          Promise.resolve(file.text()).then((text4) => disposed ? null : session.importCanvas?.(text4, rect, file.name)).then((uid) => {
+            if (uid && !disposed) ctl.select([uid]);
+          }).catch(() => {
+          }).finally(done3);
+        });
+        doc.body.append(input);
+        input.click();
+        break;
+      }
       case "save-template":
         Promise.resolve(session.saveAsTemplate?.()).catch(() => {
         });
@@ -115626,6 +116042,38 @@ ${url}`;
       }
       return text4;
     },
+    // Serializes the board to JSON Canvas text; with download it also offers a .canvas file.
+    async exportCanvas({ download = true } = {}) {
+      const b = board2();
+      if (!b) return "";
+      const resolve = (id) => {
+        try {
+          const s = host?.blockString?.(id);
+          return typeof s === "string" ? s : null;
+        } catch {
+          return null;
+        }
+      };
+      const { canvas, leftOut } = exportCanvas(b, rects(), { resolve });
+      const text4 = `${JSON.stringify(canvas, null, "	")}
+`;
+      if (download && leftOut && !disposed) toast(`${leftOut} ${leftOut === 1 ? "arrow" : "arrows"} to an arrow left out: JSON Canvas has none`);
+      if (download) {
+        try {
+          const blob = new Blob([text4], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = doc.createElement("a");
+          a.href = url;
+          a.download = canvasFileName(b.title);
+          doc.body.append(a);
+          a.click();
+          a.remove();
+          timers.later(() => URL.revokeObjectURL(url), 4e3);
+        } catch {
+        }
+      }
+      return text4;
+    },
     async exportPng() {
       return exportPng();
     },
@@ -119002,8 +119450,8 @@ function createAiTools(deps) {
     async handler(args, context) {
       const { board: board2 } = load(args?.board);
       const area2 = boardArea(board2, worldRects(board2));
-      const num9 = (v, d) => Number.isFinite(v) ? v : d;
-      const rect = { x: num9(args.x, area2.x), y: num9(args.y, area2.y), w: num9(args.w, 640), h: num9(args.h, 400) };
+      const num10 = (v, d) => Number.isFinite(v) ? v : d;
+      const rect = { x: num10(args.x, area2.x), y: num10(args.y, area2.y), w: num10(args.w, 640), h: num10(args.h, 400) };
       const uid = await run(context, args.board, (session) => session.createSection({ rect, title: String(args.title ?? "").trim() || "Section" }));
       return { uid };
     }
@@ -123530,6 +123978,9 @@ async function installPlexusDiagram({
   function exportSvgCommand(context) {
     return targetView(context)?.exportSvg?.({ download: true });
   }
+  function exportCanvasCommand(context) {
+    return targetView(context)?.exportCanvas?.({ download: true });
+  }
   function copyOutlineCommand(context) {
     return targetView(context)?.copyOutline?.();
   }
@@ -123575,6 +124026,7 @@ async function installPlexusDiagram({
     ["Plexus: Restore native diagram", restoreCommand],
     ["Plexus: Fullscreen this diagram", fullscreenCommand],
     ["Plexus: Export board as SVG", exportSvgCommand],
+    ["Plexus: Export board as JSON Canvas", exportCanvasCommand],
     ["Plexus: Refresh static picture", refreshPictureCommand],
     ["Plexus: Copy board as text", copyOutlineCommand]
   ];

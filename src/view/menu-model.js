@@ -315,6 +315,7 @@ export function buildMenu(kind, ctx = {}) {
         make("new-table", "Table", { hint: "B" }),
         templateMenu(),
         make("save-template", "Save board as template"),
+        make("import-canvas", "Import JSON Canvas…"),
         ...snapshotMenus(),
         sep(),
         make("paste", "Paste", { hint: "Cmd V", disabled: !c.canPaste }),
@@ -337,6 +338,7 @@ export function buildMenu(kind, ctx = {}) {
         make("highlights", "Highlight marks"),
         make("export-svg", "Export as SVG"),
         make("export-png", "Export as PNG"),
+        make("export-canvas", "Export as JSON Canvas"),
         make("copy-outline", "Copy as outline"),
       ];
 
@@ -596,6 +598,7 @@ export function buildMenu(kind, ctx = {}) {
         sep(),
         make("export-svg", "Export as SVG"),
         make("export-png", "Export as PNG"),
+        make("export-canvas", "Export as JSON Canvas"),
         make("copy-outline", "Copy as outline"),
         make("sort-outline", "Sort outline by position"),
         ...followMenu(c.follow),

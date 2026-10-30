@@ -229,7 +229,7 @@ test("extension exports the Roam lifecycle contract and survives repeated unload
   await extension.onunload();
   await extension.onunload();
 
-  const slashLabels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram", "Plexus: Export board as SVG", "Plexus: Refresh static picture", "Plexus: Copy board as text"];
+  const slashLabels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram", "Plexus: Export board as SVG", "Plexus: Export board as JSON Canvas", "Plexus: Refresh static picture", "Plexus: Copy board as text"];
   const paletteLabels = ["Plexus: Commands…", "Plexus: New whiteboard here"];
   for (const label of paletteLabels) {
     assert.ok(api.calls.some(([name, l]) => name === "command:add" && l === label), `command:add ${label}`);

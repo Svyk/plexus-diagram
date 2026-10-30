@@ -7,6 +7,7 @@ import { buildFocusContext, isGenericQuestion } from "../src/model/ai-context.js
 import { PARSE_REV } from "../src/model/parse/index.js";
 import { openAskAI } from "../src/view/ask-ai.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
+import { budgetMessage, measureBudget } from "./fixtures/speed.js";
 
 const URL_A = "https://x/a.pdf";
 
@@ -138,15 +139,8 @@ test("L2 generic and empty questions fall back to a spread over the sections", (
 test("L2 retrieval over a 300-page document takes under 30 ms", () => {
   const doc = bigDoc(300);
   buildFocusContext(doc, { wholeDoc: true }, { question: "warm up" });
-  // Best of five, with headroom on CI: shared Linux runners pause for GC and other jobs.
-  let ms = Infinity;
-  for (let i = 0; i < 5; i += 1) {
-    const t0 = performance.now();
-    buildFocusContext(doc, { wholeDoc: true }, { question: "zirconium sensor drift calibration" });
-    ms = Math.min(ms, performance.now() - t0);
-  }
-  const limit = process.env.CI ? 90 : 30;
-  assert.ok(ms < limit, `retrieval took ${ms.toFixed(1)} ms`);
+  const verdict = measureBudget(() => buildFocusContext(doc, { wholeDoc: true }, { question: "zirconium sensor drift calibration" }), 30);
+  assert.ok(verdict.ok, budgetMessage("retrieval", verdict));
 });
 
 test("L2 the dialog rebuilds the context from the current question on Send and in the preview", async () => {

@@ -8,8 +8,8 @@ import { buildBoard, worldRects } from "../src/model/board.js";
 import { HAY_SLICE_MS, createHayIndex, findOnBoard, scheduleHayIndex } from "../src/model/find.js";
 import { noteSpeedFlags } from "../src/settings.js";
 import { mountBoardView } from "../src/view/board-view.js";
-import { cpuNow } from "./fixtures/cpu-clock.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
+import { budgetMessage, measureBudget } from "./fixtures/speed.js";
 
 const blk = (uid, string, plexus, order, children = []) => ({
   ":block/uid": uid,
@@ -225,11 +225,10 @@ test("a 1564-card keystroke stays under 5 ms and matches findOnBoard", () => {
   ix.note(board, []);
   finish(ix);
   const before = calls;
-  const t0 = cpuNow();
-  const hit = ix.find(board, "needle");
-  const ms = cpuNow() - t0;
+  let hit;
+  const keystroke = measureBudget(() => { hit = ix.find(board, "needle"); }, 5, { runs: 1 });
   assert.deepEqual(hit.map((row) => row.uid), ["c42"]);
-  assert.ok(ms < 5, `keystroke took ${ms} ms`);
+  assert.ok(keystroke.ok, budgetMessage("keystroke", keystroke));
   assert.equal(calls, before, "find() called resolve");
 
   const { board: snap, nested, deeper, child } = snapshotBoard();

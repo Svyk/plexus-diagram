@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { gritsCon, gritsTop, gritsPage, matchTable, toGrid } from "../tools/parse-bench/grits.mjs";
 import { tableCounts } from "../tools/parse-bench/scan-score.mjs";
+import { budgetMessage, measureBudget } from "./fixtures/speed.js";
 
 const cell = (r, c, text, extra = {}) => ({ r, c, rowSpan: 1, colSpan: 1, text, header: false, ...extra });
 const table = (rows) => rows.flatMap((row, r) => row.map((text, c) => cell(r, c, text)));
@@ -74,12 +75,11 @@ test("60x15 against 60x15 stays well under two seconds", () => {
   const txt = (r, c) => (c === 0 ? `Item ${r}` : String((((r * 15 + c) * 7919) % 100000) / 10));
   const big = Array.from({ length: 60 }, (_, r) => Array.from({ length: 15 }, (_, c) => txt(r, c)));
   const noisy = big.map((row, r) => row.map((t, c) => (r % 7 === 0 && c % 3 === 0 ? t + "x" : t)));
-  let t0 = performance.now();
-  const s = gritsCon(table(noisy), table(big));
-  assert.ok(performance.now() - t0 < 2000, `con ${performance.now() - t0} ms`);
-  t0 = performance.now();
-  gritsTop(table(noisy), table(big));
-  assert.ok(performance.now() - t0 < 2000, `top ${performance.now() - t0} ms`);
+  let s;
+  const con = measureBudget(() => { s = gritsCon(table(noisy), table(big)); }, 2000, { runs: 1 });
+  assert.ok(con.ok, budgetMessage("gritsCon", con));
+  const top = measureBudget(() => gritsTop(table(noisy), table(big)), 2000, { runs: 1 });
+  assert.ok(top.ok, budgetMessage("gritsTop", top));
   assert.ok(s.score > 0.95);
 });
 

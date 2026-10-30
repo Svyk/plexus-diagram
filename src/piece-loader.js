@@ -14,6 +14,11 @@ const log = [];
 // Which pieces ran in this window, and how long each took to inflate and evaluate.
 export const pieceLog = () => log.slice();
 
+export function pieceLoadAll() {
+  for (const [name, entry] of Object.entries(table)) pieceLoad(name, Object.keys(entry.roots)[0]);
+  return Object.keys(table);
+}
+
 export function pieceTable(pieces, coreModules) {
   table = pieces;
   core = coreModules;

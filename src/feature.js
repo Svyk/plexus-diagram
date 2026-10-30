@@ -57,7 +57,7 @@ import { createHelperClient } from "./host/parse-helper-client.js";
 import { closeDiagramDb } from "./host/diagram-db.js";
 import { createDocCache } from "./host/doc-cache.js";
 import { createParseStore } from "./host/parse-store.js";
-import { pieceLog } from "./piece-loader.js";
+import { pieceLoadAll, pieceLog } from "./piece-loader.js";
 import { createPdfTables } from "./host/pdf-tables.js";
 import { PDF_TABLES_CAPABILITIES } from "./model/pdf-capabilities.js";
 import { createAiTools, installAiTools } from "./model/ai-tools.js";
@@ -4527,6 +4527,7 @@ export async function installPlexusDiagram({
     // INSTANT-1. Open timings: { snap, firstPaintMs, liveMs, queriesBeforePaint } per open.
     perf: openPerf,
     pieces: pieceLog,
+    loadPieces: pieceLoadAll,
     bgOverruns: () => sharedBgBudget().overruns.slice(),
     snapshots: {
       size: () => snapStore.size(),

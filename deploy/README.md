@@ -490,8 +490,10 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 Plexus reads and writes your graph through Roam's extension API. Opening a board, panning, zooming and reading a followed source send nothing out of your graph. A few things on screen download your graph's own files (usually from Roam's file storage) without a click, all on by default:
 
 - a visible PDF card with no cover yet, to draw one (Settings, Prepare PDF covers in the background);
-- the PDF behind a PDF source pin or region crop shown in the outline, to draw the crop (Settings, Inline region crops);
-- each Image or Figure card's picture, once, while board search lists them, to index its colours (Settings, Index image colours). Keys you save in Engines (LlamaParse, Mistral) and the Parse helper token stay in this browser and are never written to the graph or its settings.
+- the PDF behind a PDF source pin shown on screen, to draw its crop (Settings, Inline region crops);
+- each Image or Figure card's picture, once, while board search lists them, to index its colours (Settings, Index image colours).
+
+Keys you save in Engines (LlamaParse, Mistral) and the Parse helper token stay in this browser and are never written to the graph or its settings.
 
 Each request below happens only in the case named, and goes only to the address named.
 

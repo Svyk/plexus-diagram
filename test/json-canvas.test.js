@@ -251,3 +251,9 @@ test("JC-13: link and file nodes with nothing to point at are skipped", () => {
   ] }));
   assert.deepEqual([parsed.nodes.length, parsed.skipped], [0, 2]);
 });
+
+test("JC-14: a PDF macro inside text goes out as its url; a one-line fence stays one line", () => {
+  assert.equal(roamToMd("see {{[[pdf]]: https://x.org/a.pdf}} now"), "see https://x.org/a.pdf now");
+  const blocks = textToBlocks("T\n```x``` note\n- a\n- b");
+  assert.deepEqual(blocks.children.map((c) => c.string), ["```x``` note", "a", "b"]);
+});

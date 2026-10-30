@@ -63,10 +63,10 @@ export function roamToMd(s, resolve = null, depth = 0) {
     }
     return typeof text === "string" ? roamToMd(text.replace(/\s*\n\s*/g, " "), resolve, depth + 1) : m;
   });
-  return outsideKept(s, (t) => refs(t)
+  const pdfs = String(s ?? "").replace(/\{\{\s*(?:\[\[pdf\]\]|pdf)\s*:\s*([^}]*?)\s*\}\}/g, "$1");
+  return outsideKept(pdfs, (t) => refs(t)
     .replace(/\{\{\s*(?:\[\[)?TODO(?:\]\])?\s*\}\}\s*/g, "[ ] ")
     .replace(/\{\{\s*(?:\[\[)?DONE(?:\]\])?\s*\}\}\s*/g, "[x] ")
-    .replace(/\{\{\s*(?:\[\[pdf\]\]|pdf)\s*:\s*([^}]*?)\s*\}\}/g, "$1")
     .replace(/\[([^\]\n]+)\]\(\[\[([^\]\n]+)\]\]\)/g, (m, alias, page) => `[[${page}|${alias}]]`)
     .replace(/\^\^([^^\n]+)\^\^/g, "==$1==")
     .replace(/(^|[^_\w])__(?!\s)([^_\n]*?[^_\s])__(?![_\w])/g, "$1*$2*"));
@@ -85,7 +85,7 @@ export function textToBlocks(text) {
   for (i += 1; i < lines.length; i += 1) {
     const raw = lines[i].replace(/\t/g, "  ");
     if (!raw.trim()) continue;
-    if (/^\s*```/.test(raw)) {
+    if (/^\s*```[\w+-]*\s*$/.test(raw)) {
       const fence = [raw.trim()];
       for (i += 1; i < lines.length; i += 1) {
         fence.push(lines[i]);
@@ -312,7 +312,7 @@ function nodeOf(item, r, resolve) {
   const base = { id: item.uid, x: Math.round(r.x), y: Math.round(r.y), width: Math.max(1, Math.round(r.w)), height: Math.max(1, Math.round(r.h)) };
   const color = colorOut(item.color);
   if (color) base.color = color;
-  if (item.type === "section") return { ...base, type: "group", label: String(item.string || item.title || "").trim() };
+  if (item.type === "section") return { ...base, type: "group", label: roamToMd(String(item.string || item.title || "").trim(), resolve) };
   const string = String(item.string ?? "").trim();
   const cls = classifyString(string);
   if (item.type === "card" && cls.kind === "page" && !item.content?.length) {

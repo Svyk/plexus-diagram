@@ -21091,7 +21091,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: true, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, zoomVarScope: true, handlesWrap: true, seedRows: true, canvasPrebuild: true, cardRowDrop: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: true, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, zoomVarScope: true, handlesWrap: true, seedRows: true, canvasPrebuild: true, cardRowDrop: true, slicedCards: true };
 }
 function parseSpeedFlags(raw) {
   const base2 = defaultSpeedFlags();
@@ -21545,7 +21545,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "zoomVarScope", "handlesWrap", "seedRows", "canvasPrebuild", "cardRowDrop"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "zoomVarScope", "handlesWrap", "seedRows", "canvasPrebuild", "cardRowDrop", "slicedCards"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -104894,7 +104894,7 @@ function buildBoardView(onFail, {
       loadCover(key);
       return null;
     }
-    const src = face.state !== "loading" ? presentFace(key, face)?.src : null;
+    const src = face.state !== "loading" ? sharpOf(key, { state: face.state, src: face.src || "", w: face.w ?? null })?.src : null;
     if (!src) return null;
     let img = canvasCovers.get(src);
     if (!img) {
@@ -118793,9 +118793,7 @@ async function installPlexusDiagram({
     boardChips.scan(doc?.body);
     cardChips.scan(doc?.body);
   };
-  function refreshCardCache() {
-    const started = Date.now();
-    const uids = [...guardUids];
+  const readCardStamps = (uids) => {
     let edits = [];
     try {
       edits = uids.length && typeof host.q === "function" ? host.q("[:find ?u ?t :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/time ?t]]", uids) || [] : [];
@@ -118806,33 +118804,98 @@ async function installPlexusDiagram({
     for (const row4 of edits) {
       if (Array.isArray(row4) && row4.length >= 2) next.set(row4[0], row4[1]);
     }
-    const due = [];
-    for (const uid of uids) {
-      const stamp2 = next.has(uid) ? next.get(uid) : null;
-      if (editSeen.has(uid) && editSeen.get(uid) === stamp2) continue;
-      due.push(uid);
+    return next;
+  };
+  const cardsDue = (uids, next) => uids.filter((uid) => !(editSeen.has(uid) && editSeen.get(uid) === (next.has(uid) ? next.get(uid) : null)));
+  const pullCards = (uid, next) => {
+    let board2 = null;
+    let read2 = true;
+    try {
+      const pulled = host.pullBoard?.(uid, { prime: false });
+      board2 = pulled ? buildBoard(pulled) : null;
+    } catch {
+      board2 = null;
+      read2 = false;
     }
-    for (const uid of due) {
-      let board2 = null;
-      let read2 = true;
-      try {
-        const pulled = host.pullBoard?.(uid, { prime: false });
-        board2 = pulled ? buildBoard(pulled) : null;
-      } catch {
-        board2 = null;
-        read2 = false;
-      }
-      if (read2) editSeen.set(uid, next.has(uid) ? next.get(uid) : null);
-      previewBoards.delete(uid);
-      if (board2?.uid) noteCards(board2);
-      else cardCache.setBoard(uid, "", []);
-    }
+    if (read2) editSeen.set(uid, next.has(uid) ? next.get(uid) : null);
+    previewBoards.delete(uid);
+    if (board2?.uid) noteCards(board2);
+    else cardCache.setBoard(uid, "", []);
+  };
+  const finishCards = (started) => {
     for (const rec of mounts.values()) {
       if (rec.session?.board) noteCards(rec.session.board);
     }
     if (cacheLoadMs == null) cacheLoadMs = Date.now() - started;
     boardChips.scan(doc?.body);
     cardChips.scan(doc?.body);
+  };
+  let cardJob = null;
+  lifecycle.add(() => {
+    cardJob?.();
+    cardJob = null;
+  });
+  const shownBoards = () => {
+    const shown = /* @__PURE__ */ new Map();
+    for (const rec of mounts.values()) {
+      let uid = null;
+      try {
+        uid = currentUid(rec);
+      } catch {
+        uid = null;
+      }
+      if (!uid) continue;
+      const board2 = rec.session?.board?.uid === uid ? rec.session.board : null;
+      if (board2 || !shown.has(uid)) shown.set(uid, board2);
+    }
+    return shown;
+  };
+  function refreshCardCache() {
+    const started = Date.now();
+    if (speedFlags().slicedCards === false) {
+      const uids = [...guardUids];
+      const next2 = readCardStamps(uids);
+      for (const uid of cardsDue(uids, next2)) pullCards(uid, next2);
+      finishCards(started);
+      return;
+    }
+    if (cardJob) return;
+    let next = null;
+    let due = null;
+    let i = 0;
+    const done3 = () => {
+      cardJob = null;
+      finishCards(started);
+      return true;
+    };
+    cardJob = sharedBgBudget().run(() => {
+      if (stopped) {
+        cardJob = null;
+        return true;
+      }
+      if (!next) {
+        const uids = [...guardUids];
+        next = readCardStamps(uids);
+        due = cardsDue(uids, next);
+        return due.length ? false : done3();
+      }
+      const shown = shownBoards();
+      while (i < due.length) {
+        const uid = due[i++];
+        if (editSeen.has(uid) && editSeen.get(uid) === (next.has(uid) ? next.get(uid) : null)) continue;
+        if (shown.has(uid)) {
+          const board2 = shown.get(uid);
+          if (board2) {
+            editSeen.set(uid, next.has(uid) ? next.get(uid) : null);
+            noteCards(board2);
+          }
+          continue;
+        }
+        pullCards(uid, next);
+        return i >= due.length ? done3() : false;
+      }
+      return done3();
+    }, { label: "cards", partMs: 4 });
   }
   function chipPreview(boardUid, cardUid) {
     let board2 = null;

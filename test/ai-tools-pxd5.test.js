@@ -242,3 +242,58 @@ test("installAiTools: no ai api, one throwing tool, and dispose", () => {
   } finally { console.warn = warn; }
   assert.deepEqual(removed, ["a", "c"]);
 });
+
+test("arrange_board over 45 writes is refused and writes nothing", async () => {
+  const { fake, host, tool, seen } = setup();
+  fake.seedBoard({
+    uid: "big",
+    props: { "rf-diagram": { keep: 1 }, plexus: { v: 2 } },
+    children: Array.from({ length: 60 }, (_, i) => ({
+      uid: `k${i}`, string: `[[K${i}]]`, props: { plexus: { x: 7, y: i * 200, w: 280, h: 160 } },
+    })),
+  });
+  const before = buildBoard(host.pullBoard("big"));
+  seen.length = 0;
+  await assert.rejects(tool("arrange_board").handler({ board: "big", mode: "row" }, ctx()), /one undo step holds 45/);
+  await sleep(20);
+  assert.equal(seen.length, 0);
+  const after = buildBoard(host.pullBoard("big"));
+  for (const [uid, it] of before.items) {
+    assert.equal(after.items.get(uid).x, it.x);
+    assert.equal(after.items.get(uid).y, it.y);
+  }
+});
+
+test("add_cards that grows an auto-fit section past 45 writes is refused; 10 cards succeed", async () => {
+  const { host, tool, seen } = setup();
+  // Each card sits inside s1 (centre in) but sticks out past its right edge, so the auto-fit section grows too.
+  const many = Array.from({ length: 45 }, (_, i) => ({ text: `n${i}`, x: 300, y: 450 }));
+  seen.length = 0;
+  await assert.rejects(tool("add_cards").handler({ board: "b1", cards: many }, ctx()), /one undo step holds 45/);
+  await sleep(20);
+  assert.equal(seen.filter((e) => e.fn === "create").length, 0);
+  const out = await tool("add_cards").handler({ board: "b1", cards: many.slice(0, 10) }, ctx());
+  assert.equal(out.count, 10);
+  assert.equal(buildBoard(host.pullBoard("b1")).items.get(out.added[0]).parentUid, "s1");
+});
+
+test("asUser maxWrites is restored after fn, nests, and a plain txn is never limited", async () => {
+  const { host } = setup();
+  const session = acquireSession("b1", { host, linkDelay: 0 });
+  const cards = (n, y0) => Array.from({ length: n }, (_, i) => ({ string: `[[L${y0}-${i}]]`, x: i * 300, y: y0 }));
+  let inner;
+  const outer = session.asUser("ai", () => {
+    inner = session.asUser("ai", () => session.addRefCards(cards(5, 1000)), { maxWrites: 3 });
+    return session.addRefCards(cards(5, 1400));
+  }, { maxWrites: 100 });
+  await assert.rejects(inner, /one undo step holds 3/);
+  assert.equal((await outer).length, 5);
+  const plain = await session.addRefCards(cards(40, 2000).concat(cards(5, 2400)));
+  assert.equal(plain.length, 45);
+  session.release();
+});
+
+test("a tool whose asTokenUser never runs the write rejects", async () => {
+  const { tool } = setup();
+  await assert.rejects(tool("add_section").handler({ board: "b1", title: "T" }, { tokenUserUid: "ai-user", asTokenUser: () => {} }), /did not run/);
+});

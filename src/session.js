@@ -1449,14 +1449,21 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   // The AI user a synchronous asUser(...) block is acting for (PXD-5). commit() reads it before any await, so every
   // op of that transaction carries it; undo and redo run the plain list and stay the human's.
   let actingUser = null;
+  // The most writes one asUser(...) transaction may make (one undo step); null is unlimited.
+  let actingLimit = null;
 
   function commit(ops, result, custom = null) {
     if (!ops.length) return Promise.resolve(result);
     const user = actingUser;
+    const limit = actingLimit;
     stampBoard(ops);
     const list = coalesce(ops);
     const runList = user ? list.map((op) => (op.op === "keep" ? op : { ...op, user })) : list;
     const writes = list.filter((op) => op.op !== "keep").length;
+    if (limit && writes > limit) {
+      repull();
+      return Promise.reject(new Error(`This change needs ${writes} writes, but one undo step holds ${limit}. Split it into smaller calls.`));
+    }
     if (!bulkAllowed(writes)) {
       // The optimistic model already holds the change: read the board back from Roam.
       repull();
@@ -2302,10 +2309,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     settings,
     get board() { return board; },
     get gone() { return gone; },
-    asUser(userUid, fn) {
+    asUser(userUid, fn, { maxWrites } = {}) {
       const prev = actingUser;
+      const prevLimit = actingLimit;
       actingUser = typeof userUid === "string" && userUid ? userUid : null;
-      try { return fn(session); } finally { actingUser = prev; }
+      actingLimit = Number.isFinite(maxWrites) && maxWrites > 0 ? maxWrites : null;
+      try { return fn(session); } finally { actingUser = prev; actingLimit = prevLimit; }
     },
     get rects() { return rects; },
     get links() { return visibleLinks; },

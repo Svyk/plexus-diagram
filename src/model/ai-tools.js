@@ -4,6 +4,7 @@ import { buildBoard, worldRects } from "./board.js";
 import { boardToMarkdown, titleOf } from "./export.js";
 import { boardVersion } from "./public-api.js";
 import { DIRS } from "./schema.js";
+import { MAX_GROUP_WRITES } from "../host/roam.js";
 
 const MAX_TOOLS = 25;
 const LIST_CAP = 200;
@@ -63,8 +64,14 @@ export function createAiTools(deps) {
     return withSession(uid, async (session) => {
       if (!session?.board) throw new Error("Board not loaded");
       let pending;
-      const go = () => { pending = session.asUser(context?.tokenUserUid, () => fn(session)); return pending; };
+      let ran = false;
+      const go = () => {
+        ran = true;
+        pending = session.asUser(context?.tokenUserUid, () => fn(session), { maxWrites: MAX_GROUP_WRITES });
+        return pending;
+      };
       if (typeof context?.asTokenUser === "function") context.asTokenUser(go); else go();
+      if (!ran) throw new Error("Roam did not run the write");
       return pending;
     });
   };
@@ -160,7 +167,7 @@ export function createAiTools(deps) {
       let area = boardArea(board, rects);
       let cols = 4;
       if (args?.section) {
-        const sec = board.items.get(String(args.section).trim().replace(/^\(\(|\)\)$/g, ""));
+        const sec = board.items.get(boardUidOf(args.section));
         if (!sec || sec.type !== "section") throw new Error(`Not a section on this board: ${args.section}`);
         const r = rects.get(sec.uid);
         area = { x: r.x + 24, y: r.y + 60 };

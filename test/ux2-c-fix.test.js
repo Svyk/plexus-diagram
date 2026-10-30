@@ -459,8 +459,8 @@ test("PDF dark mode leaves the board reader alone and paints page photos back", 
   assert.match(readme, /\| PDF reader \| PDF dark mode \|/);
   const css = readFileSync(new URL("../src/css/read-pane.css", import.meta.url), "utf8");
   assert.match(css, /canvas:not\(\.pxd-pdf-photo\)/);
-  const paneAt = css.indexOf("html.pxd-pdf-reader-dark .pxd-read .rm-pdf-container .page > canvas");
-  assert.ok(paneAt > css.indexOf("html.pxd-pdf-reader-dark .rm-pdf-container .page > canvas"));
+  const paneAt = css.indexOf("html.pxd-pdf-reader-dark:not(.rm-sidecar) .pxd-read .rm-pdf-container .page > canvas");
+  assert.ok(paneAt > css.indexOf("html.pxd-pdf-reader-dark:not(.rm-sidecar) .rm-pdf-container .page > canvas"));
   assert.match(css.slice(paneAt, css.indexOf("}", paneAt)), /filter:\s*none/);
 
   const stub = createDomStub();

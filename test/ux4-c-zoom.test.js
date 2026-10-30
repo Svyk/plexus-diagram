@@ -45,8 +45,8 @@ test("C2: a zoom across both tier flips on the big fullscreen board keeps the ro
 
 test("C2: the cover rule hides the article and keeps the mounts visible; no :has()", () => {
   const rule = (sel) => new RegExp(`${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{[^}]*visibility:\\s*(\\w+)`).exec(css)?.[1];
-  assert.equal(rule(`body.${FS_COVER_CLASS} .roam-article`), "hidden");
-  assert.equal(rule(`body.${FS_COVER_CLASS} .roam-article .pxd-mount,\nbody.${FS_COVER_CLASS} .roam-article .pxd-mount--fullscreen`), "visible");
+  assert.equal(rule(`html:not(.rm-sidecar) > body.${FS_COVER_CLASS} .roam-article`), "hidden");
+  assert.equal(rule(`html:not(.rm-sidecar) > body.${FS_COVER_CLASS} .roam-article .pxd-mount,\nhtml:not(.rm-sidecar) > body.${FS_COVER_CLASS} .roam-article .pxd-mount--fullscreen`), "visible");
   for (const line of css.split("\n")) if (line.includes(FS_COVER_CLASS)) assert.ok(!line.includes(":has("), line);
 });
 

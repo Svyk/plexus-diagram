@@ -16,6 +16,9 @@ Boards that follow a source, sections that write back to the graph, and a faster
 - **Query card as a filter.** Use as filter on a query card keeps cards in its results bright and dims the rest. A pill names the filter; Stop filtering ends it. Nothing is written.
 - **Ref arrows.** Refs in note cards and child rows to other cards on the board draw as faint arrows (Ref arrows in the board menu; off over 400 items). Pin ref arrows on a card's context bar turns up to 20 of them into connections.
 - **Drop a card on a child row.** Dragging a card onto another card's child row adds the card's ref under that row, in one undo step. Shift moves the card instead.
+- **Plexus tools for Roam AI agents.** On Roam builds that support extension tools, AI agents on Roam MCP can list and read boards, add cards and sections, connect cards and arrange a board. Their writes are credited to the AI, one undo step per call.
+- **Card properties.** Board menu, Card properties: pick up to six `Name::` attributes to show as read-only chips on cards at detail zoom. Only the board's own pick is written.
+- **Add to Desk.** The card menu adds a card to Roam's Desk, written the way Roam writes it. Plexus stays out of Roam's Sidecar window, and its fullscreen and PDF styles no longer leak into it.
 - **Contents panel.** The panel's Outline tab is now Contents: sections, landmarks, trails and saved views in outline order. Click a row to fly there.
 - **Parse helper token in this browser.** The token is kept in this browser, not in graph settings, so members of a shared graph cannot read it. An old value moves over once. Forget token in Engines turns the helper off.
 - **Growing sections push neighbours.** An auto-fit section that grows moves the sections in its way, in the same undo step. Pinned items never move.

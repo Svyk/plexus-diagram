@@ -189,6 +189,19 @@ function laneItems(lane) {
   return out;
 }
 
+// PXD-7. `chips` is { picked, fields }: Name:: attributes shown as chips on this board's cards.
+function propChipItems(chips) {
+  if (!chips) return [];
+  const picked = Array.isArray(chips?.picked) ? chips.picked : [];
+  const names = Array.isArray(chips?.fields) ? chips.fields.slice() : [];
+  for (const name of picked) if (!names.includes(name)) names.push(name);
+  const children = names.length
+    ? names.map((name) => make(`prop-chip:${name}`, name, { checked: picked.includes(name) }))
+    : [make("prop-chip-hint", "No Name:: attributes on this board", { disabled: true })];
+  if (picked.length) children.push({ id: "sep-prop-chips", separator: true }, make("prop-chip-clear", "Hide all"));
+  return [make("prop-chips", "Card properties", { children })];
+}
+
 // Optional keys are only written when set, so items compare cleanly and carry no undefined noise.
 const make = (id, label, extra = {}) => {
   const out = { id, label };
@@ -334,6 +347,7 @@ export function buildMenu(kind, ctx = {}) {
         make("open", c.isBoard ? "Open board" : "Open"),
         ...(c.isBoard ? [make("open-own-page", "Open nested board in its own page")] : []),
         make("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
+        ...(c.canDesk ? [make("add-to-desk", "Add to Desk")] : []),
         ...(c.compass && c.interop !== false ? [make("open-compass", "Open in Compass")] : []),
         ...(c.isPdf ? [make("read-inline", c.inlineReader ? "Show the cover" : "Read inside the card")] : []),
         ...(c.isPdf ? [make("parse-pdf", "Parse PDF…")] : []),
@@ -595,6 +609,7 @@ export function buildMenu(kind, ctx = {}) {
         make("add-week", "Add this week's journals"),
         sep(),
         make("background", "Background…"),
+        ...propChipItems(c.chips),
         refArrowsItem(c.refs),
         ...(c.readOpen ? [
           make("bar-table", "Table view"),

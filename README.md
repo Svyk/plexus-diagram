@@ -5,6 +5,7 @@ A Heptabase-style whiteboard for Roam `{{[[diagram]]}}` blocks. Cards, colored s
 - **Think on a canvas, keep it in your graph.** Cards are blocks, pages, block refs, images, tables, PDFs and nested boards. Moving a card into a section moves its block; an arrow writes a block that links both ends, so it shows in backlinks.
 - **Boards that follow your graph.** A board or a section can follow a block's children, a query, linked references, a page's headings, your recent journals, its Inbox, or another board. New items wait in a tray until you place them.
 - **Sections that write back.** Bind a section to a tag or an attribute, or split it into lanes by an attribute's value, and dropping a card writes the change on its block. Apply a board's order back to the outline.
+- **Works with Roam AI.** AI agents on Roam MCP can read boards, add cards and sections, connect and arrange them.
 - **Read and parse PDFs.** Roam's own PDF reader beside the board, highlights as cards, and a parser that turns a PDF into headings, lists and tables you can insert.
 - **Big boards stay quick.** Boards of more than a thousand cards open from a snapshot and pan and zoom smoothly.
 
@@ -66,6 +67,8 @@ An enhanced board keeps Roam's diagram controls and adds to them (the 1.3 native
 | Arrows to blocks | Drag an arrow end over a page card: the row under the pointer lights up and the arrow connects to that block with a `((ref))` (so it shows in Roam's backlinks); the title connects to the page. The end follows the row when the card scrolls and shows a marker at the edge when the row is out of view (click it to scroll there). Select an arrow to drag its end handles; the arrow menu has Connect to the page instead. The arrow continues into the card and its head stops beside the row; the row keeps a mark in the arrow's color. Hover either one and both light up; a row scrolled out of view becomes a pill at the card edge (click it to scroll back). |
 | Drop on a child row | Drag a card over another card's child row (a folded card unfolds after half a second). The row lights up and the dragged cards turn see-through; drop to add each card's ref as the row's last child: `((uid))` for a note or block card, `[[Page]]` for a page card. The cards snap back. One undo step. Hold Shift to move the card instead |
 | Ref arrows | `[[page]]`, `#tag`, `((block))` and `Attr::` refs in note cards and child rows to other cards on the board draw as faint arrows; a followed tree draws parent-to-child lines the same way. Toggle Ref arrows in the board menu. Boards over 400 items draw none. Pin ref arrows on a card's context bar turns up to 20 of them into connections, in one undo step. Drawing them writes nothing |
+| Card properties | Board menu, Card properties: pick up to six `Name::` attributes to show as read-only chips on cards at detail zoom. Only the board's own pick is written; values are read only for cards on screen |
+| Add to Desk | Card menu, Add to Desk puts the card's page or block on Roam's Desk, the same way Roam does. Roam must have made the Desk page once |
 | Query filter | Use as filter on a query card keeps the cards whose block or page is in the query's results bright and dims the rest. It reads again after a save in this window. A pill names the filtering card; Stop filtering ends it. One filter at a time. Nothing is written |
 | Journal | Panel tab Journal: the top-level blocks of a daily page, a day stepper and Today. Drag a row onto the board for a card. Viewing and stepping write nothing |
 | Fullscreen tabs | Boards opened while fullscreen become tabs above the board bar, up to 9. Cmd/Ctrl+1 to 9 switch tabs; the list returns next time, per graph, stored on this device only |
@@ -273,6 +276,19 @@ The Task tool and Better Tasks start off. Turn them on under Settings → Integr
 |---|---|
 | Tasks on the board | The Task tool and Better Tasks start off. Turn them on under Settings, Integrations. A Task tool you already saved stays on. With both off, the dock has no Task button and K does nothing. With them on, K, then click the board, makes a task card: a Roam `{{[[TODO]]}}` block. With Better Tasks loaded, the card shows its checkbox, its title and chips for due date, project, priority, repeat, status, waiting-for and GTD. Click the due, project, priority or repeat chip to change it from a small popover; the change is made by Better Tasks, so Plexus never writes a `BT_attr` block itself, and Cmd+Z after a chip change is Roam's undo, not the board's. Cmd+Z right after K removes the new block in one step. Today's due date gets a teal border, an overdue task a red one, a done task is dimmed and struck through. Tick the checkbox on the card (it is a light checkbox of Plexus's own, so a board of many tasks stays under Better Tasks' 100-checkbox limit) and Better Tasks writes the completed date and, for a repeating task, the next occurrence on its daily or project page; a toast offers Add to board. Zoomed out, a task is a check box of at least 20 screen pixels with its due date. Dragging a task card onto a daily-page card (or a section named for a day) sets that day as its due date, the same attribute block keeps its uid; hold Shift to move the card only. A Kanban drop on Done goes through the same Better Tasks checkbox, so a repeating task also makes its next occurrence. Popovers, the children peek and the card menu open clear of the dock, top bar, rail, minimap and panels. The card menu has Make task for a plain note card. Better Tasks' own attribute blocks and its activity log never show as rows, badges or children on a card. Without Better Tasks the tool still makes a plain TODO card and the chips are read-only |
 | Task statuses | With Roam Task Status Tags 0.9.0+ loaded, a task card shows its status glyph on the checkbox and a status chip. The ring left of the checkbox opens the status chooser (Shift-click removes). Card menu and multi-select: Status ▸, at most 45 cards. Task Status Tags writes the tag; Plexus writes nothing. Kanban has Lanes: Status (columns per status, No status, Done; `[` `]` move a focused card) |
+
+## AI agents (Roam MCP)
+
+On Roam builds that support extension tools, Plexus registers six tools that Roam AI agents can call. The graph must be open in a Roam client. Blocks a tool call writes are credited to the AI's user (Roam's user-uid); Plexus's own later upkeep writes are not. Each call is one undo step, so a call that would need more than 45 writes is refused with an error: split it into smaller calls.
+
+- `list_boards` (read): boards in the graph, optionally filtered by page title.
+- `read_board` (read): a board as text, plus sections, cards and arrows with positions.
+- `add_cards` (edit): up to 45 cards per call, auto-placed unless given x and y.
+- `add_section` (append): an empty titled section.
+- `connect_cards` (append): an arrow between two items, with an optional label.
+- `arrange_board` (edit): grid, row, column or outline layout.
+
+Only boards that were enhanced in Roam are touched.
 
 ## Remembering
 

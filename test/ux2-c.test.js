@@ -121,7 +121,7 @@ test("PDF dark mode follows Roam, inverts native page canvases, and leaves highl
   const src = readFileSync(new URL("../src/view/pdf-reader-dark.js", import.meta.url), "utf8");
   assert.equal(src.includes("prefers-color-scheme"), false);
   const css = readFileSync(new URL("../src/css/read-pane.css", import.meta.url), "utf8");
-  const start = css.indexOf("html.pxd-pdf-reader-dark .rm-pdf-container .page > canvas");
+  const start = css.indexOf("html.pxd-pdf-reader-dark:not(.rm-sidecar) .rm-pdf-container .page > canvas");
   assert.ok(start > 0);
   const rule = css.slice(start, css.indexOf("}", start));
   assert.match(rule, /filter:\s*invert\(1\) hue-rotate\(180deg\)/);

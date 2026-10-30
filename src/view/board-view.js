@@ -6,6 +6,7 @@
 // 1.2 wiring: three-tier LOD flipped by class during a gesture, board backgrounds (pattern + tone), live
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
+import { deskTargetOf } from "../model/desk.js";
 import { notedSpeedFlags } from "../settings.js";
 import { createPartSizer } from "../part-sizer.js";
 import { sharedBgBudget } from "../bg-budget.js";
@@ -115,6 +116,7 @@ import { applyMotionClasses, motionProfile, resolveMotion } from "./motion.js";
 import { mountTable } from "./table-view.js";
 import { mountKanban } from "./kanban-view.js";
 import { laneFields } from "../model/attr-lanes.js";
+import { PROP_CHIPS_CAP } from "../model/prop-chips.js";
 import { tableRows } from "../model/table.js";
 import { createPropsPanel } from "./props-panel.js";
 import { PANEL_WIDTH_DEFAULT, nextPanelWidth } from "../model/info.js";
@@ -1882,6 +1884,7 @@ function buildBoardView(onFail, {
     },
     bt,
     onTaskChip: (uid, kind, anchor) => taskPop.open(uid, kind, anchor),
+    propChipsOf: (uid) => session.cardPropChips?.(uid) ?? [],
     onPageLayout: (uid) => { if (blockCards.has(uid)) scheduleAnchors(); },
     onToast: (message) => chrome.toast.show({ message }),
     pdfChips: (item) => pdfChipsFor(item),
@@ -5114,6 +5117,19 @@ function buildBoardView(onFail, {
       host?.openInSidebar?.(uid, "block");
     }
   };
+  const DESK_MESSAGES = {
+    added: "Added to Desk",
+    already: "Already on your Desk",
+    "is-desk": "That is your Desk page",
+    "no-desk": "No Desk yet: add one block from Roam's block menu (Add to Desk) first",
+  };
+  const addItemToDesk = async (item) => {
+    const target = deskTargetOf(item);
+    if (!target || typeof host?.addToDesk !== "function") return;
+    let message;
+    try { message = DESK_MESSAGES[(await host.addToDesk(target))?.status] || "Could not add to Desk"; } catch { message = "Could not add to Desk"; }
+    if (!disposed) toast(message);
+  };
   const stackAt = (strings, x, y, h) => strings.map((string, i) => ({ string, x, y: y + i * (h + 24) }));
   const addStringsBeside = (strings) => {
     const b = board();
@@ -6018,7 +6034,7 @@ function buildBoardView(onFail, {
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true, refs: session.cardRefs };
-      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, filtering: Boolean(filterCard), strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null, refs: session.cardRefs };
+      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, filtering: Boolean(filterCard), strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn, follow: followCtl?.menuState?.() || null, refs: session.cardRefs, ...(b?.enhanced ? { chips: { picked: b.chips || [], fields: session.chipFieldsFor?.() || [] } } : {}) };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -6048,7 +6064,7 @@ function buildBoardView(onFail, {
           followed: Boolean(item.src) && followKeys.has(item.src),
           left: Boolean(followCtl?.left?.().includes(item.uid)),
         } : null;
-        return { ...(task ? { statusTags, status: task.status || "" } : {}), follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), filtering: Boolean(item) && filterCard === item.uid, canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        return { ...(task ? { statusTags, status: task.status || "" } : {}), follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", canDesk: Boolean(deskTargetOf(item)) && typeof host?.addToDesk === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), filtering: Boolean(item) && filterCard === item.uid, canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -6461,6 +6477,18 @@ function buildBoardView(onFail, {
         })).then((uid) => { if (uid && !disposed) ctl.select([uid]); }).catch(() => {});
         break;
       }
+      case "prop-chip":
+        if (arg) {
+          const was = b.chips || [];
+          void Promise.resolve(session.toggleBoardChip?.(arg)).then((ok) => {
+            if (disposed || ok !== false) return;
+            toast(!was.includes(arg) && was.length >= PROP_CHIPS_CAP ? `Up to ${PROP_CHIPS_CAP} card properties` : "This board can't store card properties");
+          }).catch(() => {});
+        }
+        break;
+      case "prop-chip-clear":
+        void Promise.resolve(session.setBoardChips?.([])).then((ok) => { if (ok === false && !disposed) toast("This board can't store card properties"); }).catch(() => {});
+        break;
       case "lane-attr":
         if (item?.look === "lane" && arg) void session.bindLane?.(item.uid, arg);
         break;
@@ -6683,6 +6711,7 @@ function buildBoardView(onFail, {
         break;
       case "open-own-page": openOwnPage(item); break;
       case "open-sidebar": openItemInSidebar(item); break;
+      case "add-to-desk": void addItemToDesk(item); break;
       case "read-inline": {
         if (!item || item.kind !== "pdf") break;
         if (itemsR.inlineUid?.() === item.uid) itemsR.closeInline?.();

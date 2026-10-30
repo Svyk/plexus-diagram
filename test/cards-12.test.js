@@ -675,3 +675,57 @@ test("a cold board whose camera sees nothing still paints only a first handful",
     restore();
   }
 });
+
+test("PXD-7 prop chips: only picked names show at detail, none at map, far cards defer their reads", () => {
+  const children = [
+    blk("cardAAAA1", "Task\nStatus:: open", CARD, 0),
+    blk("cardBBBB2", "Bare", { ":x": 300, ":y": 0, ":w": 200, ":h": 100 }, 1),
+    blk("cardFAR01", "Far", { ":x": 9000, ":y": 9000, ":w": 200, ":h": 100 }, 2),
+  ];
+  const reads = [];
+  const h = harness({
+    children,
+    rendererOptions: {
+      propChipsOf: (uid) => { reads.push(uid); return uid === "cardAAAA1" || uid === "cardFAR01" ? [{ name: "Status", text: "open" }] : []; },
+    },
+  });
+  try {
+    h.r.setLod("detail", 1);
+    h.r.scheduleContent({ visibleRect: { x: -50, y: -50, w: 700, h: 400 }, zoom: 1, tier: "detail" });
+    h.flush();
+    assert.deepEqual(reads, [], "no picks: nothing is read");
+    const raw = rawBoard(children);
+    raw[":block/props"] = { ":plexus": { ":v": 2, ":chips": ["Status"] } };
+    h.load(raw, { dirty: null, structural: true });
+    assert.deepEqual(h.board.chips, ["Status"]);
+    const chip = (uid) => h.shell(uid)?.querySelectorAll?.(".pxd-badge-chip--prop").map((n) => n.textContent) || [];
+    assert.deepEqual(chip("cardAAAA1"), ["Status: open"], "showBadges is off: only the prop chip shows");
+    assert.equal(h.shell("cardAAAA1").querySelector(".pxd-badge-chip--attr"), null, "a picked name is not repeated as an attr chip");
+    assert.equal(h.shell("cardBBBB2").querySelector(".pxd-item__badges"), null);
+    assert.ok(!reads.includes("cardFAR01"), "a far card is not read");
+    h.r.scheduleContent({ visibleRect: { x: 8900, y: 8900, w: 700, h: 400 }, zoom: 1, tier: "detail" });
+    h.flush();
+    assert.ok(reads.includes("cardFAR01"), "read once it nears the view");
+    assert.deepEqual(chip("cardFAR01"), ["Status: open"]);
+    h.r.setLod("map", 0.3);
+    assert.deepEqual(chip("cardAAAA1"), [], "no chips at map zoom");
+    h.r.setLod("detail", 1);
+    assert.deepEqual(chip("cardAAAA1"), [], "the view is still on the far card, so the near one waits");
+    h.r.scheduleContent({ visibleRect: { x: -50, y: -50, w: 700, h: 400 }, zoom: 1, tier: "detail" });
+    h.flush();
+    assert.deepEqual(chip("cardAAAA1"), ["Status: open"], "back near the view at detail the chip returns");
+    h.r.setShowBadges(true);
+    const attrs = (uid) => h.shell(uid)?.querySelectorAll?.(".pxd-badge-chip--attr").map((n) => n.textContent) || [];
+    assert.deepEqual(chip("cardAAAA1"), ["Status: open"], "badges on: the prop chip stays");
+    assert.deepEqual(attrs("cardAAAA1"), [], "badges on: the same name is not repeated as an attr chip");
+    assert.deepEqual(attrs("cardFAR01"), [], "the far card has no attr lines");
+    reads.length = 0;
+    h.load(rawBoard(children), { dirty: null, structural: true });
+    assert.deepEqual(attrs("cardAAAA1"), ["Status: open"], "with the pick gone the attr chip is back");
+    h.r.setShowBadges(false);
+    assert.deepEqual(chip("cardAAAA1"), [], "clearing the pick removes the chips");
+    assert.deepEqual(reads, []);
+  } finally {
+    h.done();
+  }
+});

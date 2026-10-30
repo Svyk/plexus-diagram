@@ -1,5 +1,6 @@
 import { inflate } from "./geometry.js";
 import { readLaneBind } from "./attr-lanes.js";
+import { readPropChips } from "./prop-chips.js";
 import {
   BOARD_PATTERNS,
   BOARD_TONES,
@@ -411,6 +412,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
     title: typeof resolve === "function" && String(string).includes("((") ? boardLabel(string, resolve) : parseBoardTitle(string),
     plexus,
     enhanced: plexus?.v === 2,
+    chips: readPropChips(plexus),
     native: plexus?.native === true,
     background: {
       pattern: BOARD_PATTERNS.includes(plexus?.bg) ? plexus.bg : null,

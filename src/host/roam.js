@@ -1,3 +1,4 @@
+import { deskEntryKey, deskEntryString, sameDeskEntry } from "../model/desk.js";
 import { isShowableCard, locateShowTarget } from "../model/deeplink.js";
 import { attributeRows, boardsFromRows, tagNames } from "../model/info.js";
 import {
@@ -3195,9 +3196,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     generateUid() { return api.util.generateUID(); },
 
-    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType, heading, textAlign } = {}) {
+    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType, heading, textAlign, user } = {}) {
       const id = uid ?? api.util.generateUID();
       const block = { uid: id, string };
+      if (user && typeof user === "string") block["user-uid"] = user;
       if (props !== undefined) block.props = plainKeys(props);
       if (open !== undefined) block.open = open;
       if (heading) block.heading = heading;
@@ -3315,18 +3317,22 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return { parentUid, order };
     },
 
-    async updateString(uid, string) {
+    async updateString(uid, string, user) {
       stats.writes++;
-      await mutate(() => data.block.update({ block: { uid, string } }));
+      const block = { uid, string };
+      if (user && typeof user === "string") block["user-uid"] = user;
+      await mutate(() => data.block.update({ block }));
       noteWrite("update");
       forgetUid(uid);
     },
 
-    async updateProps(uid, plexus) {
+    async updateProps(uid, plexus, user) {
       forgetUid(uid);
       const merged = mergePropsForWrite(host.pullProps(uid), plexus);
       stats.writes++;
-      await mutate(() => data.block.update({ block: { uid, props: merged } }));
+      const block = { uid, props: merged };
+      if (user && typeof user === "string") block["user-uid"] = user;
+      await mutate(() => data.block.update({ block }));
       noteWrite("update");
     },
 
@@ -3339,23 +3345,29 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       noteWrite("update");
     },
 
-    async moveBlock(uid, parentUid, order = "last") {
+    async moveBlock(uid, parentUid, order = "last", user) {
       stats.writes++;
-      await mutate(() => data.block.move({ location: { "parent-uid": parentUid, order }, block: { uid } }));
+      const block = { uid };
+      if (user && typeof user === "string") block["user-uid"] = user;
+      await mutate(() => data.block.move({ location: { "parent-uid": parentUid, order }, block }));
       noteWrite("move");
       forgetUid(uid);
     },
 
-    async deleteBlock(uid) {
+    async deleteBlock(uid, user) {
       stats.writes++;
-      await mutate(() => data.block.delete({ block: { uid } }));
+      const block = { uid };
+      if (user && typeof user === "string") block["user-uid"] = user;
+      await mutate(() => data.block.delete({ block }));
       noteWrite("delete");
       forgetUid(uid);
     },
 
-    async setOpen(uid, open) {
+    async setOpen(uid, open, user) {
       stats.writes++;
-      await mutate(() => data.block.update({ block: { uid, open } }));
+      const block = { uid, open };
+      if (user && typeof user === "string") block["user-uid"] = user;
+      await mutate(() => data.block.update({ block }));
       noteWrite("update");
       forgetUid(uid);
     },
@@ -3491,6 +3503,24 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     openInSidebar(uid, type = "block") {
       return api.ui.rightSidebar.addWindow({ window: { type, "block-uid": uid } });
+    },
+    // Roam binds the Desk page itself; an extension only adds the first-child embed Roam's own "Add to Desk" makes.
+    async addToDesk(target) {
+      if (!target) return { status: "no-desk" };
+      const me = api.user?.uid?.();
+      const deskUid = me ? host.q("[:find ?d . :in $ ?me :where [?u :user/uid ?me] [?u :user/desk-page ?d]]", me) : null;
+      const desk = deskUid ? rawPull("[:node/title {(limit :block/children nil) [:block/string]}]", [":block/uid", deskUid]) : null;
+      if (!desk?.[":node/title"]) return { status: "no-desk" };
+      if (target.kind === "page" && target.title === desk[":node/title"]) return { status: "is-desk" };
+      if (target.kind === "block") {
+        const home = rawPull("[{:block/page [:block/uid]}]", [":block/uid", target.uid]);
+        if (home?.[":block/page"]?.[":block/uid"] === deskUid) return { status: "already" };
+      }
+      for (const child of desk[":block/children"] || []) {
+        if (sameDeskEntry(deskEntryKey(child[":block/string"]), target)) return { status: "already" };
+      }
+      const uid = await host.createBlock({ parentUid: deskUid, order: 0, string: deskEntryString(target) });
+      return { status: "added", uid };
     },
     openBlock(uid) { return api.ui.mainWindow.openBlock({ block: { uid } }); },
     openPage(uid) { return api.ui.mainWindow.openPage({ page: { uid } }); },
@@ -3681,11 +3711,12 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     },
 
     // A new page with a known uid, so later writes in the same group can target it.
-    async createPage({ uid, title } = {}) {
+    async createPage({ uid, title, user } = {}) {
       const name = String(title ?? "").trim();
       if (!name) throw new Error("createPage: no title");
       const page = { title: name };
       if (typeof uid === "string" && uid) page.uid = uid;
+      if (user && typeof user === "string") page["user-uid"] = user;
       stats.writes++;
       await mutate(() => data.page.create({ page }));
       noteWrite("create");

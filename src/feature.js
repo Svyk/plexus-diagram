@@ -554,8 +554,9 @@ export async function installPlexusDiagram({
     let next = null;
     let due = null;
     let i = 0;
+    let scannedAt = Date.now();
     const done = () => { cardJob = null; finishCards(started); return true; };
-    cardJob = sharedBgBudget().run(() => {
+    const part = () => {
       if (stopped) { cardJob = null; return true; }
       if (!next) {
         const uids = [...guardUids];
@@ -579,9 +580,20 @@ export async function installPlexusDiagram({
           continue;
         }
         pullCards(uid, next);
-        return i >= due.length ? done() : false;
+        if (i >= due.length) return done();
+        // Chips for the boards read so far, at most every 2 s, not only when the whole sweep ends.
+        if (Date.now() - scannedAt > 2000) {
+          scannedAt = Date.now();
+          boardChips.scan(doc?.body);
+          cardChips.scan(doc?.body);
+        }
+        return false;
       }
       return done();
+    };
+    // A thrown part ends the job (bg-budget logs it): clear it so the next minute's tick runs again.
+    cardJob = sharedBgBudget().run(() => {
+      try { return part(); } catch (error) { cardJob = null; throw error; }
     }, { label: "cards", partMs: 4 });
   }
   function chipPreview(boardUid, cardUid) {

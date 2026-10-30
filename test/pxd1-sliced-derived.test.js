@@ -142,11 +142,11 @@ async function checked(flags) {
   return { host, store, idb, session, calls };
 }
 
-test("slicedDerived on: an unchanged board's check refreshes badges in parts of at most 20 and verifies at the end", { timeout: 60000 }, async () => {
+test("slicedDerived on: an unchanged board is verified when its check lands, then badges refresh in parts of at most 20", { timeout: 60000 }, async () => {
   const { host, store, idb, session, calls } = await checked(null);
   assert.ok(calls.length > 3, `cardStats ran in several parts, got ${calls.length}`);
   for (const c of calls) assert.ok(c.n >= 1 && c.n <= 20, `part of ${c.n} targets`);
-  assert.ok(calls.every((c) => c.unverified === true), "the board stays unverified until the last part ran");
+  assert.ok(calls.every((c) => c.unverified === false), "the board is verified before the first refresh part");
   assert.equal(host.boardUnverified("sb1"), false);
   assert.equal(session.links.some((l) => l.key === "c0_0->c2_0"), false, "the ghost link is gone");
   assert.equal(JSON.stringify(rowOf(idb).derived).includes("srcGhost"), false);
@@ -166,7 +166,7 @@ test("slicedDerived off: the check recomputes in the check callback and still ve
   await store.dispose();
 });
 
-test("dispose during the sliced refresh cancels it: the board is never verified", { timeout: 60000 }, async () => {
+test("dispose during the sliced refresh cancels it: no part runs after dispose", { timeout: 60000 }, async () => {
   const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
   seed(fake);
   const idb = await storedBoard(fake);
@@ -181,7 +181,53 @@ test("dispose during the sliced refresh cancels it: the board is never verified"
   const seen = calls.length;
   await tick(300);
   assert.equal(calls.length, seen, "no part runs after dispose");
-  assert.equal(host.boardUnverified("sb1"), true);
   session.release?.();
+  await store.dispose();
+});
+
+test("an edit on the board's page during the sliced refresh: the old tree's result is dropped", { timeout: 60000 }, async () => {
+  const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
+  seed(fake);
+  const idb = await storedBoard(fake);
+  plant(idb, GHOST);
+  const { host, store } = hostOver(fake, idb);
+  await store.ready;
+  const calls = watchStats(host);
+  await preread(host);
+  const session = acquireSession("sb1", { host, settings: { get: () => undefined } });
+  let told = 0;
+  const off = host.onDerivedRefreshed("sb1", () => { told += 1; });
+  await until(() => calls.length > 0);
+  const before = host.storedDerived("sb1");
+  await fake.api.data.block.update({ block: { uid: "c1_7", string: "edited during the refresh" } });
+  const seen = () => calls.length;
+  let last = -1;
+  await until(() => { const n = seen(); const still = n === last; last = n; return still; });
+  await tick(300);
+  assert.equal(told, 0, "listeners are not told about a result read from the old tree");
+  assert.equal(JSON.stringify(host.storedDerived("sb1")?.links ?? null), JSON.stringify(before?.links ?? null), "the seeded links stay");
+  off();
+  session.release?.();
+  host.dispose();
+  await store.dispose();
+});
+
+test("the sliced refresh tells onDerivedRefreshed listeners once its result is in", { timeout: 60000 }, async () => {
+  const fake = createFakeRoam({ pullMany: true, stamps: true, echoDelay: 0 });
+  seed(fake);
+  const idb = await storedBoard(fake);
+  plant(idb, GHOST);
+  const { host, store } = hostOver(fake, idb);
+  await store.ready;
+  await preread(host);
+  const session = acquireSession("sb1", { host, settings: { get: () => undefined } });
+  let told = 0;
+  const off = host.onDerivedRefreshed("sb1", () => { told += 1; });
+  await until(() => told > 0);
+  assert.equal(JSON.stringify(host.storedDerived("sb1").links).includes("srcGhost"), false);
+  assert.equal(session.links.some((l) => l.key === "c0_0->c2_0"), false, "the session took the fresh links");
+  off();
+  session.release?.();
+  host.dispose();
   await store.dispose();
 });

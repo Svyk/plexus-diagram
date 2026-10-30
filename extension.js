@@ -47204,43 +47204,60 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     let at = 0;
     let links = null;
     const badges = /* @__PURE__ */ new Map();
-    const cancel = sharedBgBudget().run(() => {
-      if (!found) {
-        try {
-          found = collectTargets(tree);
-        } catch {
-          found = { stats: [] };
-        }
-        return false;
-      }
-      if (at < found.stats.length) {
-        try {
-          const res = host.cardStats(found.stats.slice(at, at + STATS_PART), { boardUid: uid });
-          if (res instanceof Map) for (const [key, stat] of res) badges.set(key, stat);
-        } catch {
-        }
-        at += STATS_PART;
-        return false;
-      }
-      if (links == null) {
-        try {
-          links = linksFromTree(uid, tree) || [];
-        } catch {
-          links = [];
-        }
-        return false;
-      }
+    let cancel = null;
+    const end = () => {
       if (rederives.get(uid) === cancel) rederives.delete(uid);
-      derivedLive.set(uid, { stamp: null, badges, links });
-      let packed = null;
-      try {
-        packed = packDerived(badges, links);
-      } catch {
-        packed = null;
-      }
-      if (modelStore?.stampOf(uid) === stamp2) void modelStore.putDerived(uid, stamp2, packed);
-      markVerified(uid);
       return true;
+    };
+    cancel = sharedBgBudget().run(() => {
+      try {
+        if (!found) {
+          try {
+            found = collectTargets(tree);
+          } catch {
+            found = { stats: [] };
+          }
+          return false;
+        }
+        if (at < found.stats.length) {
+          try {
+            const res = host.cardStats(found.stats.slice(at, at + STATS_PART), { boardUid: uid });
+            if (res instanceof Map) for (const [key, stat] of res) badges.set(key, stat);
+          } catch {
+          }
+          at += STATS_PART;
+          return false;
+        }
+        if (links == null) {
+          try {
+            links = linksFromTree(uid, tree) || [];
+          } catch {
+            links = [];
+          }
+          return false;
+        }
+        end();
+        if (pageStampOf(uid) !== stamp2) return true;
+        derivedLive.set(uid, { stamp: null, badges, links });
+        let packed = null;
+        try {
+          packed = packDerived(badges, links);
+        } catch {
+          packed = null;
+        }
+        if (modelStore?.stampOf(uid) === stamp2) void modelStore.putDerived(uid, stamp2, packed);
+        for (const fn of [...derivedListeners.get(uid) || []]) {
+          try {
+            fn();
+          } catch (error) {
+            console.warn("[plexus-diagram] derived listener failed", error);
+          }
+        }
+        return true;
+      } catch (error) {
+        end();
+        throw error;
+      }
     }, { label: "derived", partMs: 4 });
     rederives.set(uid, cancel);
   };
@@ -47254,6 +47271,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const keeps = /* @__PURE__ */ new Map();
   const refreshes = /* @__PURE__ */ new Map();
   const rederives = /* @__PURE__ */ new Map();
+  const derivedListeners = /* @__PURE__ */ new Map();
   const CHECK_QUIET_MS = 1500;
   const CHECK_SLICE_MS = 20;
   const CHECK_BATCH = 250;
@@ -47390,7 +47408,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     checkTimers.delete(uid);
   };
   const retryCheck = (uid) => {
-    if (checkTimers.has(uid) || checks.has(uid) || rederives.has(uid) || !unverified.has(uid)) return;
+    if (checkTimers.has(uid) || checks.has(uid) || !unverified.has(uid)) return;
     const split = splitWatches.get(uid);
     if (!split || split.disposed) return;
     if (split.held) {
@@ -47418,7 +47436,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   };
   const scheduleCheck = (uid) => {
     clearCheckTimer(uid);
-    if (checks.has(uid) || rederives.has(uid) || !unverified.has(uid)) return;
+    if (checks.has(uid) || !unverified.has(uid)) return;
     let stopped = false;
     const cancel = backgroundRead(uid, "check", (tree, stamp2) => {
       checks.delete(uid);
@@ -47436,6 +47454,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       stats.checks = (stats.checks || 0) + 1;
       if (changed2) stats.checkChanges = (stats.checkChanges || 0) + 1;
       if (!changed2 && derivedOn() && slicedDerivedOn() && modelStore?.stampOf(uid) === stamp2) {
+        markVerified(uid);
         refreshDerived(uid, tree, stamp2);
         return;
       }
@@ -48872,6 +48891,20 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         set.delete(fn);
       };
     },
+    // PXD-1: fn runs each time a sliced refresh replaced the board's derived badges and links. Returns off().
+    onDerivedRefreshed(uid, fn) {
+      const id = String(uid ?? "");
+      let set = derivedListeners.get(id);
+      if (!set) {
+        set = /* @__PURE__ */ new Set();
+        derivedListeners.set(id, set);
+      }
+      set.add(fn);
+      return () => {
+        set.delete(fn);
+        if (!set.size && derivedListeners.get(id) === set) derivedListeners.delete(id);
+      };
+    },
     // After a change settled (the snapshot capture): a big board whose stored model is older than its page is read
     // again in background slices and stored. Not while it is unverified or parked.
     refreshModel(uid) {
@@ -48908,6 +48941,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         jobs.clear();
       }
       verifyListeners.clear();
+      derivedListeners.clear();
       for (const h of idleHandles.values()) {
         if (h.timer != null) clearTimeout(h.timer);
         else if (h.cancel) h.cancel();
@@ -55916,6 +55950,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      offDerived?.();
       try {
         editStringOff();
       } catch {
@@ -56029,16 +56064,19 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
     return sectionUid;
   }
+  let offDerived = null;
   const stored = host.storedDerived?.(uid);
   if (stored?.links && linkMode !== "off" && board2) {
     allLinks = stored.links;
     recomputeLinks(true);
-    host.onBoardVerified?.(uid, () => {
+    const takeDerived = () => {
       const next = host.storedDerived?.(uid);
       if (destroyed || !next?.links) return;
       allLinks = next.links;
       recomputeLinks(false);
-    });
+    };
+    host.onBoardVerified?.(uid, takeDerived);
+    offDerived = host.onDerivedRefreshed?.(uid, takeDerived) || null;
   } else if (linkMode !== "off" && board2) refreshLinks();
   const api3 = {
     uid,
@@ -114470,6 +114508,14 @@ ${url}`;
     });
   } catch {
   }
+  let offDerived = null;
+  try {
+    offDerived = host.onDerivedRefreshed?.(boardUid, () => {
+      if (!disposed) seedStoredBadges();
+    }) || null;
+  } catch {
+    offDerived = null;
+  }
   dirty.viewport = true;
   markAll();
   consumeDeepLink();
@@ -115089,6 +115135,10 @@ ${url}`;
       if (disposing) return;
       disposing = true;
       disposed = true;
+      try {
+        offDerived?.();
+      } catch {
+      }
       inputProfile?.dispose();
       inputProfile = null;
       try {
@@ -118947,12 +118997,13 @@ async function installPlexusDiagram({
     let next = null;
     let due = null;
     let i = 0;
+    let scannedAt = Date.now();
     const done3 = () => {
       cardJob = null;
       finishCards(started);
       return true;
     };
-    cardJob = sharedBgBudget().run(() => {
+    const part = () => {
       if (stopped) {
         cardJob = null;
         return true;
@@ -118982,9 +119033,23 @@ async function installPlexusDiagram({
           continue;
         }
         pullCards(uid, next);
-        return i >= due.length ? done3() : false;
+        if (i >= due.length) return done3();
+        if (Date.now() - scannedAt > 2e3) {
+          scannedAt = Date.now();
+          boardChips.scan(doc?.body);
+          cardChips.scan(doc?.body);
+        }
+        return false;
       }
       return done3();
+    };
+    cardJob = sharedBgBudget().run(() => {
+      try {
+        return part();
+      } catch (error) {
+        cardJob = null;
+        throw error;
+      }
     }, { label: "cards", partMs: 4 });
   }
   function chipPreview(boardUid, cardUid) {

@@ -11258,6 +11258,8 @@ function buildBoardView(onFail, {
   seedSnapshotBadges();
   seedStoredBadges();
   try { host.onBoardVerified?.(boardUid, () => { if (!disposed) seedStoredBadges(); }); } catch { /* listener */ }
+  let offDerived = null;
+  try { offDerived = host.onDerivedRefreshed?.(boardUid, () => { if (!disposed) seedStoredBadges(); }) || null; } catch { offDerived = null; }
   dirty.viewport = true;
   markAll();
   consumeDeepLink();
@@ -11762,6 +11764,7 @@ function buildBoardView(onFail, {
       if (disposing) return;
       disposing = true;
       disposed = true;
+      try { offDerived?.(); } catch { /* gone */ }
       inputProfile?.dispose();
       inputProfile = null;
       try { sharedBgBudget().hold(bgHoldKey, false); } catch { /* budget */ }

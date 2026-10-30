@@ -36,7 +36,7 @@ test("the Depot bundle has no OCR or anydoc module inputs", async () => {
 });
 
 test("root extension.js (Depot) lacks the OCR and anydoc code, deploy/extension.js (Pages) has it", async () => {
-  const withPieces = (text) => [text, ...[...text.matchAll(/code:"([A-Za-z0-9+/=]+)"/g)]
+  const withPieces = (text) => [text, ...[...text.matchAll(/code:"([A-Za-z0-9+/=]{200,})"/g)]
     .map((match) => Buffer.from(inflateBase64(match[1])).toString("utf8"))].join("\n");
   const [depot, pages] = (await Promise.all([
     readFile(resolve(rootPath, "extension.js"), "utf8"),

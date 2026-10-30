@@ -30,10 +30,10 @@ const BOARDS = [
   { uid: "b3", title: "Scratch", page: "Daily", count: 0 },
 ];
 
-test("the panel has Search, Related, Boards, Outline, Journal and Info tabs in that order", (t) => {
+test("the panel has Search, Related, Boards, Contents, Journal and Info tabs in that order", (t) => {
   const f = setup();
   t.after(f.restore);
-  assert.deepEqual(tabs(f).map((b) => b.getAttribute("aria-label")), ["Search", "Related", "Boards", "Outline", "Journal", "Info", "Trails", "Changed"]);
+  assert.deepEqual(tabs(f).map((b) => b.getAttribute("aria-label")), ["Search", "Related", "Boards", "Contents", "Journal", "Info", "Trails", "Changed"]);
   assert.deepEqual([...tabs(f)].map((b) => b.querySelector(".bp3-icon")?.className), [
     "bp3-icon bp3-icon-search",
     "bp3-icon bp3-icon-diagram-tree",
@@ -151,6 +151,57 @@ test("Outline renders an indented tree with color and count, and clicks call on.
   rows[2].click();
   q(rows[0], ".pxd-panel__outline-title").click();
   assert.deepEqual(clicks, ["o3", "o1"]);
+});
+
+test("Contents groups rows under headers, shows landmark glyphs, and routes clicks and Enter to contentsClick", (t) => {
+  const got = [];
+  const rows = [
+    { kind: "section", uid: "s1", title: "Sec", depth: 0, count: 2, color: null },
+    { kind: "landmark", uid: "l1", title: "Pin", depth: 1, glyph: "*" },
+    { kind: "landmark", uid: "l2", title: "Bare", depth: 0, glyph: "" },
+    { kind: "section", uid: "s2", title: "Mark", depth: 0, count: 0, glyph: "!" },
+    { kind: "trail", uid: "t1", title: "Tour", count: 3 },
+    { kind: "view", uid: "v1", title: "Corner" },
+  ];
+  const f = setup({ getOutline: () => ({ rows, sig: "a" }), contentsClick: (x) => got.push(x), outlineClick: () => got.push("old") });
+  t.after(f.restore);
+  f.panel.open("outline");
+  assert.deepEqual(f.root.querySelectorAll(".pxd-panel__outline-head").map((h) => h.textContent), ["Sections", "Trails", "Views"]);
+  const els = f.root.querySelectorAll(".pxd-panel__outline-row");
+  assert.deepEqual(els.map((r) => r.dataset.kind), ["section", "landmark", "landmark", "section", "trail", "view"]);
+  assert.ok(els.every((r) => r.getAttribute("tabindex") === "0" && r.getAttribute("role") === "button"));
+  assert.equal(q(els[1], ".pxd-panel__outline-glyph").textContent, "*");
+  assert.equal(q(els[1], ".pxd-panel__outline-dot"), null);
+  assert.equal(q(els[2], ".pxd-panel__outline-glyph").textContent, "\u25c6");
+  assert.ok(q(els[3], ".pxd-panel__outline-dot") && q(els[3], ".pxd-panel__outline-glyph").textContent === "!");
+  assert.equal(q(els[4], ".pxd-panel__outline-count").textContent, "3");
+  assert.equal(q(els[5], ".pxd-panel__outline-count"), null);
+  assert.ok(classes(els[4]).includes("pxd-panel__outline-row--trail"));
+  els[4].click();
+  f.stub.dispatch(els[1], "keydown", { key: "Enter", button: 0 });
+  f.stub.dispatch(els[5], "keydown", { key: " ", button: 0 });
+  assert.deepEqual(got, [{ kind: "trail", uid: "t1" }, { kind: "landmark", uid: "l1" }, { kind: "view", uid: "v1" }]);
+});
+
+test("refreshOutline with an unchanged sig keeps the row nodes; array rows still work", (t) => {
+  let sig = "a";
+  const f = setup({ getOutline: () => ({ rows: [{ kind: "section", uid: "s1", title: "S", depth: 0 }], sig }) });
+  t.after(f.restore);
+  f.panel.open("outline");
+  const before = f.root.querySelector(".pxd-panel__outline-row");
+  f.panel.refreshOutline();
+  assert.equal(f.root.querySelector(".pxd-panel__outline-row"), before);
+  sig = "b";
+  f.panel.refreshOutline();
+  assert.notEqual(f.root.querySelector(".pxd-panel__outline-row"), before);
+  const arr = [{ uid: "o1", title: "One", depth: 0 }];
+  const g = setup({ getOutline: () => arr });
+  t.after(g.restore);
+  g.panel.open("outline");
+  const node = g.root.querySelector(".pxd-panel__outline-row");
+  g.panel.refreshOutline();
+  assert.equal(g.root.querySelector(".pxd-panel__outline-row"), node);
+  assert.equal(node.dataset.kind, "section");
 });
 
 test("refreshOutline re-renders only while the Outline tab is open", (t) => {

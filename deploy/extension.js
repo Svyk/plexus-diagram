@@ -22055,6 +22055,42 @@ var init_highlighter = __esm({
   }
 });
 
+// src/model/contents.js
+function boardContents(board2) {
+  const rows = [];
+  if (!board2?.items) return { rows, sig: "" };
+  for (const uid of outlineOrder(board2)) {
+    const it = board2.items.get(uid);
+    if (!it) continue;
+    const depth = Number.isFinite(it.depth) ? it.depth : 0;
+    if (it.type === "section") {
+      const row4 = { kind: "section", uid, title: plainText(it.title || it.string, 80) || "Section", depth, count: it.members.length, color: it.color || null };
+      if (it.landmark === true) row4.glyph = it.glyph || "";
+      rows.push(row4);
+    } else if (it.landmark === true) {
+      rows.push({ kind: "landmark", uid, title: plainText(it.title || it.string, 80) || "Card", depth, glyph: it.glyph || "" });
+    }
+  }
+  for (const trail of board2.trails || []) {
+    let count = 0;
+    for (const stop3 of trail?.stops || []) if (stop3?.ref && board2.items.has(stop3.ref)) count += 1;
+    rows.push({ kind: "trail", uid: trail.uid, title: trail.name || "Trail", count });
+  }
+  for (const view of board2.views || []) rows.push({ kind: "view", uid: view.uid, title: view.caption || "View" });
+  return { rows, sig: rowsSig(rows) };
+}
+function rowsSig(rows) {
+  let out = "";
+  for (const r of rows) out += `${r.kind || "section"}${r.uid}${r.title ?? ""}${r.depth ?? 0}${r.count ?? ""}${r.color ?? ""}${r.glyph ?? ""}`;
+  return out;
+}
+var init_contents2 = __esm({
+  "src/model/contents.js"() {
+    init_board();
+    init_schema();
+  }
+});
+
 // src/model/highlight-pick.js
 function isObject4(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -27289,7 +27325,10 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
         searchClick(event);
       } else if (type === "keyup") underKey(event);
       else if (type === "pointerdown") trailPointerDown(event);
-      else if (type === "keydown") trailKey(event);
+      else if (type === "keydown") {
+        trailKey(event);
+        contentsKey(event);
+      }
     });
   }
   let resizing = null;
@@ -27334,7 +27373,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   const tabSearch = tabBtn("search", "Search", "search", true);
   const tabRelated = tabBtn("related", "Related", "diagram-tree");
   const tabBoards = tabBtn("boards", "Boards", "applications");
-  const tabOutline = tabBtn("outline", "Outline", "list");
+  const tabOutline = tabBtn("outline", "Contents", "list");
   const tabJournal = tabBtn("journal", "Journal", "calendar");
   const tabInfo = tabBtn("info", "Info", "info-sign");
   const tabTrails = tabBtn("trails", "Trails", "flows");
@@ -29028,38 +29067,73 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q2));
       api3.close();
     }
   });
+  let outlineSig = null;
+  const GROUPS2 = [["Sections", (k) => k === "section" || k === "landmark"], ["Trails", (k) => k === "trail"], ["Views", (k) => k === "view"]];
   const renderOutline = () => {
-    outlineList.replaceChildren();
-    let rows = [];
+    let data = [];
     try {
-      rows = on.getOutline?.() || [];
+      data = on.getOutline?.() || [];
     } catch {
-      rows = [];
+      data = [];
     }
-    if (!Array.isArray(rows) || !rows.length) {
+    const rows = Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
+    const sig = Array.isArray(data) ? rowsSig(rows) : typeof data?.sig === "string" ? data.sig : rowsSig(rows);
+    if (sig === outlineSig && outlineList.childNodes?.length) return;
+    outlineSig = sig;
+    outlineList.replaceChildren();
+    if (!rows.length) {
       el2("div", "pxd-panel__empty", outlineList, "Nothing on this board yet");
       return;
     }
-    for (const o of rows) {
-      const depth = Math.max(0, Number(o.depth) || 0);
-      const r = el2("div", "pxd-panel__outline-row", outlineList);
-      r.dataset.uid = o.uid;
-      r.setAttribute("data-uid", o.uid);
-      r.dataset.depth = String(depth);
-      r.setAttribute("data-depth", String(depth));
-      r.style.paddingLeft = `${8 + depth * 14}px`;
-      const dot = el2("span", `pxd-panel__outline-dot${o.color ? ` pxd-c-${o.color}` : ""}`, r);
-      dot.setAttribute("aria-hidden", "true");
-      el2("span", "pxd-panel__outline-title", r, o.title || "Untitled");
-      if (Number.isFinite(o.count) && o.count > 0) el2("span", "pxd-panel__outline-count", r, String(o.count));
+    for (const [label, take] of GROUPS2) {
+      const group = rows.filter((o) => take(o.kind || "section"));
+      if (!group.length) continue;
+      el2("div", "pxd-panel__outline-head", outlineList, label);
+      for (const o of group) {
+        const kind = o.kind || "section";
+        const depth = kind === "trail" || kind === "view" ? 0 : Math.max(0, Number(o.depth) || 0);
+        const r = el2("div", `pxd-panel__outline-row pxd-panel__outline-row--${kind}`, outlineList);
+        r.dataset.uid = o.uid;
+        r.setAttribute("data-uid", o.uid);
+        r.dataset.kind = kind;
+        r.setAttribute("data-kind", kind);
+        r.dataset.depth = String(depth);
+        r.setAttribute("data-depth", String(depth));
+        r.setAttribute("tabindex", "0");
+        r.setAttribute("role", "button");
+        r.style.paddingLeft = `${8 + depth * 14}px`;
+        if (kind !== "landmark") {
+          const dot = el2("span", `pxd-panel__outline-dot${o.color ? ` pxd-c-${o.color}` : ""}`, r);
+          dot.setAttribute("aria-hidden", "true");
+        }
+        if (kind === "landmark" || kind === "section" && o.glyph !== void 0) {
+          const g = el2("span", "pxd-panel__outline-glyph", r, o.glyph || "◆");
+          g.setAttribute("aria-hidden", "true");
+        }
+        el2("span", "pxd-panel__outline-title", r, o.title || "Untitled");
+        if (kind !== "view" && Number.isFinite(o.count) && o.count > 0) el2("span", "pxd-panel__outline-count", r, String(o.count));
+      }
     }
+  };
+  const contentsActivate = (row5) => {
+    const uid = row5?.dataset?.uid ?? row5?.getAttribute?.("data-uid");
+    if (!uid) return false;
+    const kind = row5.dataset?.kind ?? row5.getAttribute?.("data-kind") ?? "section";
+    if (on.contentsClick) on.contentsClick({ kind, uid });
+    else if (kind === "section" || kind === "landmark") on.outlineClick?.(uid);
+    return true;
+  };
+  const contentsKey = (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const row5 = event.target?.closest?.(".pxd-panel__outline-row");
+    if (!row5 || !contentsActivate(row5)) return;
+    event.preventDefault?.();
   };
   listen(outlineList, "click", (event) => {
     const row5 = event.target?.closest?.(".pxd-panel__outline-row");
-    const uid = row5?.dataset?.uid ?? row5?.getAttribute?.("data-uid");
-    if (!uid) return;
+    if (!row5) return;
     event.stopPropagation();
-    on.outlineClick?.(uid);
+    contentsActivate(row5);
   });
   let cardTabs = [];
   const cardItems = /* @__PURE__ */ new Map();
@@ -29439,6 +29513,7 @@ var init_panel = __esm({
     init_timeline2();
     init_library();
     init_pdf_ident();
+    init_contents2();
     init_semantic();
     init_parts_search();
     init_pdf_text_search();
@@ -59276,6 +59351,7 @@ function annotatePlan(image, boardUid) {
 
 // src/view/board-view.js
 init_highlighter();
+init_contents2();
 init_board();
 init_trails();
 
@@ -107917,17 +107993,6 @@ function buildBoardView(onFail, {
     });
     pagePicker = picker;
   };
-  const outline = () => {
-    const b = board2();
-    const out = [];
-    if (!b) return out;
-    for (const uid of outlineOrder(b)) {
-      const it = b.items.get(uid);
-      if (!it || it.type !== "section") continue;
-      out.push({ uid, title: plainText(it.title || it.string, 80) || "Section", depth: it.depth, count: it.members.length, color: it.color || null });
-    }
-    return out;
-  };
   const pastePoint = () => {
     measure();
     const screen = pointerInside && lastPointer ? { x: lastPointer.x - rootRect.left, y: lastPointer.y - rootRect.top } : { x: size.width / 2, y: size.height / 2 };
@@ -110882,10 +110947,28 @@ ${url}`;
         host?.openBlock?.(uid);
       },
       addBoardCard: (uid) => addStringsBeside([`((${uid}))`]),
-      getOutline: () => outline(),
+      getOutline: () => boardContents(board2()),
       outlineClick: (uid) => {
         fitSelection([uid]);
         ctl.select([uid]);
+      },
+      contentsClick: ({ kind, uid }) => {
+        if (kind === "trail") {
+          activeTrailUid = uid;
+          const b = board2();
+          syncTrailPaint(b);
+          const trail = b?.trails?.find((t) => t.uid === uid);
+          const refs = (trail?.stops || []).map((st) => st?.ref).filter((ref) => ref && b.items.has(ref));
+          if (refs.length) fitSelection(refs);
+        } else if (kind === "view") {
+          const view2 = board2()?.views?.find((row4) => row4.uid === uid);
+          if (!view2?.v) return;
+          const next = viewportFromWorldRect({ x: view2.v[0], y: view2.v[1], w: view2.v[2], h: view2.v[3] }, viewSize());
+          if (next) animateViewport(next);
+        } else {
+          fitSelection([uid]);
+          ctl.select([uid]);
+        }
       },
       isFullscreen: () => isFullscreen,
       openSidebarEditor: (item) => openItemInSidebar(item),

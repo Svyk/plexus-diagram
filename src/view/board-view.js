@@ -19,7 +19,8 @@ import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../mod
 import { annotatePlan } from "../model/annotate.js";
 import { bindingLabel, parseBinding } from "../model/bucket.js";
 import { rewriteBgTag } from "../model/highlighter.js";
-import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, hitTest, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
+import { boardContents } from "../model/contents.js";
+import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, hitTest, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
 import { trailBadges, trailPoints } from "../model/trails.js";
 import { landmarkDots, landmarkUids, walkStops } from "../model/landmarks.js";
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
@@ -5805,18 +5806,6 @@ function buildBoardView(onFail, {
     });
     pagePicker = picker;
   };
-  const outline = () => {
-    const b = board();
-    const out = [];
-    if (!b) return out;
-    for (const uid of outlineOrder(b)) {
-      const it = b.items.get(uid);
-      if (!it || it.type !== "section") continue;
-      out.push({ uid, title: plainText(it.title || it.string, 80) || "Section", depth: it.depth, count: it.members.length, color: it.color || null });
-    }
-    return out;
-  };
-
   // ------------------------------------------------------------ clipboard actions
   const pastePoint = () => {
     measure(); // the Roam page may have scrolled since the last measure
@@ -7977,8 +7966,23 @@ function buildBoardView(onFail, {
         host?.openBlock?.(uid);
       },
       addBoardCard: (uid) => addStringsBeside([`((${uid}))`]),
-      getOutline: () => outline(),
+      getOutline: () => boardContents(board()),
       outlineClick: (uid) => { fitSelection([uid]); ctl.select([uid]); },
+      contentsClick: ({ kind, uid }) => {
+        if (kind === "trail") {
+          activeTrailUid = uid;
+          const b = board();
+          syncTrailPaint(b);
+          const trail = b?.trails?.find((t) => t.uid === uid);
+          const refs = (trail?.stops || []).map((st) => st?.ref).filter((ref) => ref && b.items.has(ref));
+          if (refs.length) fitSelection(refs);
+        } else if (kind === "view") {
+          const view = board()?.views?.find((row) => row.uid === uid);
+          if (!view?.v) return;
+          const next = viewportFromWorldRect({ x: view.v[0], y: view.v[1], w: view.v[2], h: view.v[3] }, viewSize());
+          if (next) animateViewport(next);
+        } else { fitSelection([uid]); ctl.select([uid]); }
+      },
       isFullscreen: () => isFullscreen,
       openSidebarEditor: (item) => openItemInSidebar(item),
       openRef: (uid) => host?.openInSidebar?.(uid, "block"),

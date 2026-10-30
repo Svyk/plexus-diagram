@@ -1673,6 +1673,31 @@ test("panel: the Boards tab lists host boards, adds a board shortcut as a ((uid)
   }
 });
 
+test("PXD-8: Contents rows fly the camera to a section and make a trail active", async () => {
+  const f = mountFixture({ extra: secondSection() });
+  try {
+    await f.flush();
+    f.board.trails = [{ uid: "trailEMPT", name: "Empty", stops: [] }, { uid: "trailAAA1", name: "Tour", stops: [{ uid: "stopAAA1", ref: "sectGGGG7", note: "" }] }];
+    f.root.querySelector(".pxd-toolbar__add").click();
+    f.root.querySelectorAll(".pxd-panel__tab").find((b) => b.dataset.tab === "outline").click();
+    const heads = f.root.querySelectorAll(".pxd-panel__outline-head").map((h) => h.textContent);
+    assert.deepEqual(heads, ["Sections", "Trails"]);
+    const world = f.root.querySelector(".pxd-world");
+    const before = world.style.transform;
+    const row = (uid) => f.root.querySelectorAll(".pxd-panel__outline-row").find((r) => r.dataset.uid === uid);
+    f.stub.dispatch(row("sectGGGG7"), "click", { button: 0 });
+    f.stub.flushFrames();
+    assert.deepEqual(f.view.state().selection, ["sectGGGG7"]);
+    assert.notEqual(world.style.transform, before);
+    f.stub.dispatch(row("trailAAA1"), "click", { button: 0 });
+    f.stub.flushFrames();
+    assert.ok(shell(f, "sectGGGG7").querySelector(".pxd-trail-badge"), "the clicked trail is the active one");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("opening search creates the PDF text database without waiting for an idle slice", async () => {
   const f = mountFixture();
   const names = [];

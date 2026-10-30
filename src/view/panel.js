@@ -1,5 +1,5 @@
 // Add panel (spec 3.5): Search (pages + blocks), Related (for the selected card), Boards (every diagram
-// board in the graph) and Outline (the board's cards as an indented tree).
+// board in the graph) and Contents (sections, landmarks, trails and saved views in outline order).
 // Rows click-add beside the selection and drag onto the board with a custom MIME.
 
 import { askAiIcon } from "./ask-icon.js";
@@ -7,6 +7,7 @@ import { closeInfoTab, infoTabList, nextPanelWidth, PANEL_WIDTH_DEFAULT } from "
 import { mountTimeline } from "./timeline.js";
 import { LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, PARSE_PART_TYPES, libraryCard, libraryFilterActive, queryTerms } from "../model/library.js";
 import { markTerms } from "../model/pdf-ident.js";
+import { rowsSig } from "../model/contents.js";
 import { mergeSemantic } from "../model/semantic.js";
 import { PART_LABELS, partSnippet } from "../model/parts-search.js";
 import { PDF_TEXT_OPEN_TIP } from "../model/pdf-text-search.js";
@@ -76,7 +77,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       if (type === "click") { trailClick(event); changedClick(event); searchClick(event); }
       else if (type === "keyup") underKey(event);
       else if (type === "pointerdown") trailPointerDown(event);
-      else if (type === "keydown") trailKey(event);
+      else if (type === "keydown") { trailKey(event); contentsKey(event); }
     });
   }
   let resizing = null;
@@ -118,7 +119,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const tabSearch = tabBtn("search", "Search", "search", true);
   const tabRelated = tabBtn("related", "Related", "diagram-tree");
   const tabBoards = tabBtn("boards", "Boards", "applications");
-  const tabOutline = tabBtn("outline", "Outline", "list");
+  const tabOutline = tabBtn("outline", "Contents", "list");
   const tabJournal = tabBtn("journal", "Journal", "calendar");
   const tabInfo = tabBtn("info", "Info", "info-sign");
   const tabTrails = tabBtn("trails", "Trails", "flows");
@@ -1546,32 +1547,67 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     if (event.key === "Escape") { event.preventDefault(); api.close(); }
   });
 
-  // ---- Outline: the board's cards as an indented tree, in reading order.
+  // ---- Contents: sections and landmarks (outline order), trails and saved views. Rebuilt only when the sig moves.
+  let outlineSig = null;
+  const GROUPS = [["Sections", (k) => k === "section" || k === "landmark"], ["Trails", (k) => k === "trail"], ["Views", (k) => k === "view"]];
   const renderOutline = () => {
+    let data = [];
+    try { data = on.getOutline?.() || []; } catch { data = []; }
+    const rows = Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
+    const sig = Array.isArray(data) ? rowsSig(rows) : (typeof data?.sig === "string" ? data.sig : rowsSig(rows));
+    if (sig === outlineSig && outlineList.childNodes?.length) return;
+    outlineSig = sig;
     outlineList.replaceChildren();
-    let rows = [];
-    try { rows = on.getOutline?.() || []; } catch { rows = []; }
-    if (!Array.isArray(rows) || !rows.length) { el("div", "pxd-panel__empty", outlineList, "Nothing on this board yet"); return; }
-    for (const o of rows) {
-      const depth = Math.max(0, Number(o.depth) || 0);
-      const r = el("div", "pxd-panel__outline-row", outlineList);
-      r.dataset.uid = o.uid;
-      r.setAttribute("data-uid", o.uid);
-      r.dataset.depth = String(depth);
-      r.setAttribute("data-depth", String(depth));
-      r.style.paddingLeft = `${8 + depth * 14}px`;
-      const dot = el("span", `pxd-panel__outline-dot${o.color ? ` pxd-c-${o.color}` : ""}`, r);
-      dot.setAttribute("aria-hidden", "true");
-      el("span", "pxd-panel__outline-title", r, o.title || "Untitled");
-      if (Number.isFinite(o.count) && o.count > 0) el("span", "pxd-panel__outline-count", r, String(o.count));
+    if (!rows.length) { el("div", "pxd-panel__empty", outlineList, "Nothing on this board yet"); return; }
+    for (const [label, take] of GROUPS) {
+      const group = rows.filter((o) => take(o.kind || "section"));
+      if (!group.length) continue;
+      el("div", "pxd-panel__outline-head", outlineList, label);
+      for (const o of group) {
+        const kind = o.kind || "section";
+        const depth = kind === "trail" || kind === "view" ? 0 : Math.max(0, Number(o.depth) || 0);
+        const r = el("div", `pxd-panel__outline-row pxd-panel__outline-row--${kind}`, outlineList);
+        r.dataset.uid = o.uid;
+        r.setAttribute("data-uid", o.uid);
+        r.dataset.kind = kind;
+        r.setAttribute("data-kind", kind);
+        r.dataset.depth = String(depth);
+        r.setAttribute("data-depth", String(depth));
+        r.setAttribute("tabindex", "0");
+        r.setAttribute("role", "button");
+        r.style.paddingLeft = `${8 + depth * 14}px`;
+        if (kind !== "landmark") {
+          const dot = el("span", `pxd-panel__outline-dot${o.color ? ` pxd-c-${o.color}` : ""}`, r);
+          dot.setAttribute("aria-hidden", "true");
+        }
+        if (kind === "landmark" || (kind === "section" && o.glyph !== undefined)) {
+          const g = el("span", "pxd-panel__outline-glyph", r, o.glyph || "\u25c6");
+          g.setAttribute("aria-hidden", "true");
+        }
+        el("span", "pxd-panel__outline-title", r, o.title || "Untitled");
+        if (kind !== "view" && Number.isFinite(o.count) && o.count > 0) el("span", "pxd-panel__outline-count", r, String(o.count));
+      }
     }
+  };
+  const contentsActivate = (row) => {
+    const uid = row?.dataset?.uid ?? row?.getAttribute?.("data-uid");
+    if (!uid) return false;
+    const kind = row.dataset?.kind ?? row.getAttribute?.("data-kind") ?? "section";
+    if (on.contentsClick) on.contentsClick({ kind, uid });
+    else if (kind === "section" || kind === "landmark") on.outlineClick?.(uid);
+    return true;
+  };
+  const contentsKey = (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const row = event.target?.closest?.(".pxd-panel__outline-row");
+    if (!row || !contentsActivate(row)) return;
+    event.preventDefault?.();
   };
   listen(outlineList, "click", (event) => {
     const row = event.target?.closest?.(".pxd-panel__outline-row");
-    const uid = row?.dataset?.uid ?? row?.getAttribute?.("data-uid");
-    if (!uid) return;
+    if (!row) return;
     event.stopPropagation();
-    on.outlineClick?.(uid);
+    contentsActivate(row);
   });
 
   // Card tabs are session state. A new panel starts empty; only the width is remembered.

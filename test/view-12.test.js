@@ -13,7 +13,7 @@ import { PLEXUS_MIME } from "../src/model/clipboard.js";
 import { neighborLayout } from "../src/model/neighbors.js";
 import { queryResultLayout } from "../src/model/query.js";
 import { linkedRefCard, linkedRefLabel } from "../src/model/refs.js";
-import { isLightHost, mountBoardView } from "../src/view/board-view.js";
+import { isDarkLookingHost, isLightHost, mountBoardView } from "../src/view/board-view.js";
 import { SHORTCUTS } from "../src/view/shortcuts.js";
 import { CARD_MIME } from "../src/view/panel.js";
 import { resetSharedBgBudget } from "../src/bg-budget.js";
@@ -2175,6 +2175,17 @@ test("isLightHost: a measurably light host opts out of the OS color-scheme rules
   assert.equal(isLightHost(node("rgba(0, 0, 0, 0)", node("rgb(255, 255, 255)", null, ["bp3-dark"])), doc, win), false, "a dark marker wins over the measured color");
   assert.equal(isLightHost(node("rgba(0, 0, 0, 0)", node("color(srgb 1 1 1)")), doc, win), false, "unparseable colors assert nothing");
   assert.equal(isLightHost(node("rgb(255, 255, 255)"), doc, {}), false, "no getComputedStyle asserts nothing");
+});
+
+test("PXD-3 isDarkLookingHost: a dark custom theme with no Roam dark marker gets the dark board", () => {
+  const node = (bg, parent = null, classes = []) => ({ bg, parentElement: parent, classList: { contains: (c) => classes.includes(c) } });
+  const win = { getComputedStyle: (n) => ({ backgroundColor: n.bg }) };
+  const doc = { body: null, documentElement: null };
+  assert.equal(isDarkLookingHost(node("rgba(0, 0, 0, 0)", node("rgb(30, 42, 53)")), doc, win), true, "measured dark body");
+  assert.equal(isDarkLookingHost(node("rgba(0, 0, 0, 0)", node("rgb(255, 255, 255)")), doc, win), false, "light body");
+  assert.equal(isDarkLookingHost(node("rgba(0, 0, 0, 0)", node("rgb(128, 128, 128)")), doc, win), false, "mid grey is not dark");
+  assert.equal(isDarkLookingHost(node("rgba(0, 0, 0, 0)", node("rgb(255, 255, 255)", null, ["bp3-dark"])), doc, win), true, "a marker still wins");
+  assert.equal(isDarkLookingHost(node("rgb(0, 0, 0)"), doc, {}), false, "no getComputedStyle asserts nothing");
 });
 
 test("CSS contract: every prefers-color-scheme dark rule skips a confirmed-light host", async () => {

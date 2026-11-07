@@ -6,6 +6,10 @@
 - **Roam Depot build is lighter.** The build at the repo root leaves out In-browser reading (beta) and the document converter (Office and ebook files, Convert to cards, Alternative read), so it loads nothing from outside the extension. The GitHub Pages install keeps both.
 - **Every diagram is a Plexus board is off by default.** A diagram stays Roam's own until you run Plexus: Enhance this diagram or New whiteboard here. A choice you already saved is kept.
 
+- **Undo keeps Roam's history.** Undoing a fold, Fold tables, Fold queries or another one-step change that fits Roam's own undo now uses Roam's undo: Roam's Cmd+Z afterwards reaches your earlier edits instead of redoing part of the change, and Plexus undo keeps going past it.
+- **Toast Undo undoes that change.** The Undo on a toast reverts the change it reports. If that change was undone already or something came after it, it says so instead of undoing something else.
+- **PDFs in the right sidebar.** Roam's PDF toolbar wraps onto two rows in the sidebar, so the page number, search, fullscreen and the menu are all there, and in dark mode the reader takes the theme's own colour.
+
 ## 3.38.0 — 2026-10-29
 
 Boards that follow a source, sections that write back to the graph, and a faster stress board.

@@ -121,7 +121,9 @@ export async function runBlockParse({
       pages,
       signal,
       fetchBytes,
-      onPage: ({ page, from, to }) => onProgress({ phase: "read", page, index: page - from + 1, total: to - from + 1 }),
+      onPage: ({ phase, pages: scans, page, from, to }) => (phase === "ocr"
+        ? onProgress({ phase: "ocr", total: scans?.length || 0 })
+        : onProgress({ phase: "read", page, index: page - from + 1, total: to - from + 1 })),
     });
   } catch (error) {
     if (error?.name === "AbortError" || signal?.aborted) return failedWith("aborted-read");
@@ -279,10 +281,12 @@ export function openBlockParse({ doc = globalThis.document, host, pdfTables, blo
   };
 
   let rows = [];
+  let coverTitle = "";
   if (source.kind === "pdf") {
     try {
-      const pageUid = host.pdfCover?.(string)?.pageUid;
-      if (pageUid) rows = highlightRows(host.pdfHighlightTree?.(pageUid) || []).filter((row) => row.uid);
+      const cover = host.pdfCover?.(string);
+      coverTitle = typeof cover?.title === "string" && cover.title !== "PDF" ? cover.title : "";
+      if (cover?.pageUid) rows = highlightRows(host.pdfHighlightTree?.(cover.pageUid) || []).filter((row) => row.uid);
     } catch { rows = []; }
   }
   const existing = findParsedKid(host, blockUid);
@@ -291,7 +295,7 @@ export function openBlockParse({ doc = globalThis.document, host, pdfTables, blo
   box.setAttribute("role", "dialog");
   box.setAttribute("aria-label", "Parse PDF");
   el("div", "pxd-blockparse__title", box, "Parse PDF");
-  el("div", "pxd-blockparse__file", box, pdfFileTitle(source.url) || source.url);
+  el("div", "pxd-blockparse__file", box, coverTitle || pdfFileTitle(source.url) || "PDF file");
   const stage = el("div", "pxd-blockparse__stage", box);
   const form = el("div", "pxd-blockparse__form", stage);
 
@@ -390,7 +394,10 @@ export function openBlockParse({ doc = globalThis.document, host, pdfTables, blo
     bar.value = 0;
     const onProgress = (p) => {
       if (closed) return;
-      if (p.phase === "read") {
+      if (p.phase === "ocr") {
+        status.textContent = `Reading ${p.total === 1 ? "1 scanned page" : `${p.total} scanned pages`} with the Plexus helper (OCR)…`;
+        bar.removeAttribute("value");
+      } else if (p.phase === "read") {
         status.textContent = `Reading page ${p.index} of ${p.total}`;
         bar.value = (p.index - 1) / Math.max(1, p.total);
       } else {
@@ -407,7 +414,11 @@ export function openBlockParse({ doc = globalThis.document, host, pdfTables, blo
         resultToast({ doc, host, text, undoUid: result.container, linger: result.note ? 20000 : 12000 });
       } else if (result.reason === "aborted-read") say("Parse cancelled. Nothing was written.");
       else if (result.reason === "aborted-write") say("Parse cancelled. Nothing was kept.");
-      else if (result.reason === "all-scans") say(result.note || ERRORS.empty);
+      else if (result.reason === "all-scans") {
+        // Nothing is written when every page in the range is a scan, so the note says that instead of "placeholders".
+        const text = String(result.note || ERRORS.empty).replace(/, so (?:it was|they were) left as (?:a placeholder|placeholders)\./, ". Nothing was written.");
+        resultToast({ doc, host, text, linger: 20000 });
+      }
       else say(ERRORS[result.reason] || ERRORS["write-failed"]);
     });
   };

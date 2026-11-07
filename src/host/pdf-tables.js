@@ -145,6 +145,7 @@ export function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes
       if (source && typeof source.ocr === "function") {
         ocr = { source: source === helper ? "helper" : "injected", state: "ready" };
         if (!ctx) ctx = await builtin(url, null, signal, onPage, fetchOverride);
+        onPage?.({ phase: "ocr", pages: scanPages });
         const read = await readScan({ helper: source, bytes: ctx.bytes, sha256: ctx.sha256, base: ctx.doc, records: ctx.records, pages: scanPages, numPages: ctx.numPages, info: ctx.info, options: OPTIONS, signal });
         doc = read.doc;
         engine = doc.engine;

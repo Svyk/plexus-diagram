@@ -251,10 +251,13 @@ export function normalizeSetting(id, value) {
 // PXD-5: cardRowDrop off moves a card dropped on another card's child row like any other move, with no lit row (3.37.0).
 // PXD-1: slicedCards off reads every enhanced board for the card cache in one task again; slicedDerived off recomputes
 // a verified board's stored badges and links in one task (3.37.0).
-const SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "zoomVarScope", "handlesWrap", "seedRows", "canvasPrebuild", "cardRowDrop", "slicedCards", "slicedDerived"];
+// PXD-20: lateDetect off reads every stylesheet for the colour highlighter at install, before the board paints (about
+// 80 ms per read on the PhD graph, twice); lateChips off runs the connection-chip query (300 ms) right as the board
+// goes live instead of in the first quiet idle slice (3.38.0).
+const SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint", "slicedMount", "bgBudget", "trustSnapshot", "overviewFast", "slicedSettle", "overviewCanvas", "steadyCamera", "keepFullscreen", "styledUnderlay", "gestureQuiet", "dragLayer", "editQuiet", "slicedResume", "searchHay", "tableCaptionEdit", "storedDerived", "idlePark", "quietBodies", "adaptiveSlices", "bucketLayers", "zoomNoLayer", "mainFade", "canvasCovers", "roamOutline", "richRows", "childCaret", "editBulletFocus", "searchLayerDim", "sliceGrow", "foldResets", "peekPick", "editFocus", "childDrop", "editClip", "refPathContain", "steadyRows", "fsCover", "zoomHeads", "childEndMark", "quietTextarea", "zoomVarScope", "handlesWrap", "seedRows", "canvasPrebuild", "cardRowDrop", "slicedCards", "slicedDerived", "lateDetect", "lateChips"];
 
 export function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: true, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, zoomVarScope: true, handlesWrap: true, seedRows: true, canvasPrebuild: true, cardRowDrop: true, slicedCards: true, slicedDerived: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: false, slicedMount: true, bgBudget: true, trustSnapshot: true, overviewFast: true, slicedSettle: true, overviewCanvas: true, steadyCamera: true, keepFullscreen: true, styledUnderlay: true, gestureQuiet: true, dragLayer: true, editQuiet: true, slicedResume: true, searchHay: true, tableCaptionEdit: true, storedDerived: true, idlePark: false, quietBodies: false, adaptiveSlices: true, bucketLayers: true, zoomNoLayer: true, mainFade: true, canvasCovers: true, roamOutline: true, richRows: true, childCaret: true, editBulletFocus: true, searchLayerDim: true, sliceGrow: false, foldResets: true, peekPick: true, editFocus: true, childDrop: true, editClip: true, refPathContain: true, steadyRows: true, fsCover: true, zoomHeads: true, childEndMark: true, quietTextarea: true, zoomVarScope: true, handlesWrap: true, seedRows: true, canvasPrebuild: true, cardRowDrop: true, slicedCards: true, slicedDerived: true, lateDetect: true, lateChips: true };
 }
 
 export function parseSpeedFlags(raw) {
@@ -447,8 +450,8 @@ function switchOn(detectId) {
   return normalizeSetting(settingId, raw) === true;
 }
 
-function syncIntegrationText(win) {
-  for (const found of integrations(integrationHost(win))) {
+function syncIntegrationText(win, opts) {
+  for (const found of integrations(integrationHost(win), opts)) {
     const statusId = Object.keys(STATUS_FOR).find((id) => STATUS_FOR[id] === found.id);
     if (!statusId) continue;
     integrationText.set(statusId, statusLine(found, switchOn(found.id)));
@@ -490,8 +493,8 @@ function paintIntegrationRows() {
 }
 
 // Re-reads detection. feature.js calls this on INTEGRATION_EVENTS (ready/unload).
-export function refreshIntegrations(win) {
-  syncIntegrationText(win);
+export function refreshIntegrations(win, opts) {
+  syncIntegrationText(win, opts);
   paintIntegrationRows();
 }
 
@@ -675,7 +678,8 @@ function performanceGroupRow(id, name, description) {
 }
 
 export function createSettingsPanel({ stats } = {}) {
-  syncIntegrationText();
+  // PXD-20. No stylesheet read here: the install refreshes the rows with the full detection right after.
+  syncIntegrationText(undefined, { styles: false });
   const settings = [];
   for (const [id, name, description, members] of SETTING_GROUPS) {
     settings.push(id === "group-performance" ? performanceGroupRow(id, name, description) : groupRow(id, name, description));

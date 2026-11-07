@@ -4552,7 +4552,13 @@ export async function installPlexusDiagram({
   // Read the connection-block uids once the page has settled, off the install path.
   lifecycle.timeout(() => {
     if (stopped || !active()) return;
-    relChips.start();
+    // PXD-20 (speed flag lateChips). The connection-block query is one ~300 ms task on the PhD graph; at 600 ms it
+    // landed right as the open board went live. It now waits for the first quiet idle slice.
+    if (speedFlags().lateChips === false) relChips.start();
+    else {
+      const cancelChips = sharedBgBudget().idle(() => { if (!stopped && active()) relChips.start(); }, { timeout: 5000, label: "chips" });
+      lifecycle.add(cancelChips);
+    }
     refreshCardCache();
     if (settings[SETTING_IDS.resurface] !== false) resurface.scan(doc.body);
   }, 600);
@@ -4676,7 +4682,17 @@ export async function installPlexusDiagram({
     if (wakeTimer) clearTimeout(wakeTimer);
     if (quietTimer) clearTimeout(quietTimer);
   });
-  try { refreshIntegrations(win); } catch { /* settings panel may be absent */ }
+  // PXD-20 (speed flag lateDetect). The full detection reads every stylesheet's rules; it waits for the first quiet
+  // idle slice instead of running before the board paints. The panel rows show the cheap detection until then.
+  if (speedFlags().lateDetect === false) {
+    try { refreshIntegrations(win); } catch { /* settings panel may be absent */ }
+  } else {
+    const cancelDetect = sharedBgBudget().idle(() => {
+      if (stopped) return;
+      try { refreshIntegrations(win); } catch { /* settings panel may be absent */ }
+    }, { timeout: 5000, label: "detect" });
+    lifecycle.add(cancelDetect);
+  }
   if (typeof win.addEventListener === "function") {
     for (const name of INTEGRATION_EVENTS) {
       lifecycle.event(win, name, () => {

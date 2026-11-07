@@ -112,12 +112,13 @@ function highlighterVars(win) {
   return false;
 }
 
-function highlighterMarker(win) {
+function highlighterMarker(win, styles = true) {
   const doc = win?.document;
   if (!doc) return false;
   try {
     if (typeof doc.querySelector === "function" && doc.querySelector('[id*="roam-extension-color-highlighter"]')) return true;
   } catch { /* keep looking */ }
+  if (!styles) return false;
   const text = styleText(doc);
   return text.includes('[data-tag^=".bg-"]') || text.includes("--cl-lh-");
 }
@@ -133,16 +134,17 @@ function highlighterGlobal(win) {
 // The published colour highlighter has no JS API. Detection is its stylesheet
 // (--cl-lh-* / --cl-dk-* on body, or a [data-tag^=".bg-"] rule). A global is
 // accepted when a build exposes RoamColorHighlighter or colorHighlighter.
-export function highlighter(win) {
+// `styles: false` skips the stylesheet text (every rule of every sheet, ~80 ms on a big graph).
+export function highlighter(win, { styles = true } = {}) {
   const global = highlighterGlobal(win);
   let marked = false;
-  try { marked = highlighterVars(win) || highlighterMarker(win); } catch { marked = false; }
+  try { marked = highlighterVars(win) || highlighterMarker(win, styles); } catch { marked = false; }
   if (!global && !marked) return missing("highlighter", "Colour highlighter");
   return row("highlighter", "Colour highlighter", FOUND, plainVersion(global?.version));
 }
 
-export function integrations(win) {
-  return [betterTasks(win), taskStatusTags(win), roamPlexus(win), compass(win), highlighter(win)];
+export function integrations(win, opts) {
+  return [betterTasks(win), taskStatusTags(win), roamPlexus(win), compass(win), highlighter(win, opts)];
 }
 
 // "Better Tasks: detected 1.3 · off". switchOn omitted leaves the switch off the line.

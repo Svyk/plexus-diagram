@@ -75,12 +75,13 @@ export function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes
     return null;
   }
 
-  async function builtin(url, wanted, signal) {
+  async function builtin(url, wanted, signal, onPage, fetchOverride) {
     const pdfjsLib = lib();
     if (!pdfjsLib) throw fail("no-pdfjs", "pdf.js is not available");
-    if (typeof fetchBytes !== "function") throw fail("no-fetch", "no way to read the PDF bytes");
+    const read = fetchOverride || fetchBytes;
+    if (typeof read !== "function") throw fail("no-fetch", "no way to read the PDF bytes");
     let bytes;
-    try { bytes = await fetchBytes(url); } catch (error) { throw fail("fetch-failed", `Could not read the PDF: ${error?.message || error}`); }
+    try { bytes = await read(url); } catch (error) { throw fail("fetch-failed", `Could not read the PDF: ${error?.message || error}`); }
     const sha = await sha256(bytes);
     const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes).slice() }).promise;
     const numPages = pdf.numPages;
@@ -92,6 +93,7 @@ export function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes
     const records = [];
     for (let n = from; n <= to; n += 1) {
       if (signal?.aborted) throw Object.assign(new Error("aborted"), { name: "AbortError" });
+      onPage?.({ page: n, from, to });
       const page = await pdf.getPage(n);
       records.push(parsePageGeometry(await loadPageData(page), n));
       try { page.cleanup?.(); } catch { /* ignore */ }
@@ -111,7 +113,7 @@ export function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes
     return { source: null, state: "none" };
   }
 
-  async function tablesFromPdf({ url, pages, scan = "auto", ocrSource: injected = null, signal } = {}) {
+  async function resolve({ url, pages, scan = "auto", ocrSource: injected = null, signal, onPage, fetchBytes: fetchOverride } = {}) {
     if (!url || typeof url !== "string") throw fail("bad-url", "url is required");
     let wanted = pageSet(pages, 0);
     let hit = await cached(url);
@@ -120,7 +122,7 @@ export function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes
     let ctx = null;
     let from = hit ? "cache" : "parse";
     if (!doc) {
-      ctx = await builtin(url, wanted, signal);
+      ctx = await builtin(url, wanted, signal, onPage, fetchOverride);
       doc = ctx.doc;
       if (store && ctx.full) {
         try {
@@ -142,7 +144,7 @@ export function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes
       }
       if (source && typeof source.ocr === "function") {
         ocr = { source: source === helper ? "helper" : "injected", state: "ready" };
-        if (!ctx) ctx = await builtin(url, null, signal);
+        if (!ctx) ctx = await builtin(url, null, signal, onPage, fetchOverride);
         const read = await readScan({ helper: source, bytes: ctx.bytes, sha256: ctx.sha256, base: ctx.doc, records: ctx.records, pages: scanPages, numPages: ctx.numPages, info: ctx.info, options: OPTIONS, signal });
         doc = read.doc;
         engine = doc.engine;
@@ -153,6 +155,11 @@ export function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes
       }
     }
     const needsOcr = scanPagesOf(doc).filter((n) => !wanted || wanted.has(n));
+    return { doc, wanted, engine, scanPages, needsOcr, ocr, from, scan };
+  }
+
+  async function tablesFromPdf(opts = {}) {
+    const { doc, wanted, engine, scanPages, needsOcr, ocr, from, scan } = await resolve({ ...opts, onPage: undefined, fetchBytes: undefined });
     return {
       tables: tablesOfDoc(doc, wanted),
       engine,
@@ -166,5 +173,26 @@ export function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes
     };
   }
 
-  return { tablesFromPdf, capabilities: PDF_TABLES_CAPABILITIES };
+  // The whole parsed document for a block parse. Only the cache, the built-in engine and the helper
+  // or an injected source: no in-browser OCR, so the Depot build and the Pages build behave alike.
+  async function docFromPdf(opts = {}) {
+    const { doc, wanted, engine, scanPages, needsOcr, ocr, from } = await resolve(opts);
+    return {
+      doc,
+      engine,
+      from,
+      scanPages,
+      ocrPages: (doc.pages || []).filter((p) => p.ocr && (!wanted || wanted.has(p.n))).map((p) => p.n),
+      needsOcr,
+      ocr,
+      pageCount: doc.pageCount ?? null,
+    };
+  }
+
+  async function pageCountOf(url) {
+    if (!store || typeof store.findByUrl !== "function") return null;
+    try { return (await store.findByUrl(url))?.pageCount ?? null; } catch { return null; }
+  }
+
+  return { tablesFromPdf, docFromPdf, pageCountOf, capabilities: PDF_TABLES_CAPABILITIES };
 }

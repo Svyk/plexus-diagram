@@ -29,6 +29,8 @@ import { zoomBoardTarget } from "./model/zoom-board.js";
 import { revealZoomedBlock } from "./model/zoom-open.js";
 import { hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
+import { openBlockParse, closeBlockParse } from "./view/block-parse.js";
+import { BLOCK_PARSE_LABEL, pdfSourceOf } from "./model/block-parse.js";
 import { createRelChips } from "./relchips.js";
 import { createBoardChips } from "./boardchips.js";
 import { createCardChips } from "./cardchips.js";
@@ -4025,6 +4027,29 @@ export async function installPlexusDiagram({
     };
   }
 
+  function startBlockParse(blockUid, string) {
+    if (!blockUid || !pdfSourceOf(string)) {
+      say("Parse PDF needs a block with a PDF in it.");
+      return;
+    }
+    openBlockParse({
+      doc,
+      host,
+      pdfTables,
+      blockUid,
+      string,
+      say,
+      // Encrypted graphs and Roam uploads only decrypt through file.get.
+      fetchBytes: async (url) => {
+        const file = await host.getFile?.(url);
+        if (file && typeof file.arrayBuffer === "function") return new Uint8Array(await file.arrayBuffer());
+        const res = await win.fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return new Uint8Array(await res.arrayBuffer());
+      },
+    });
+  }
+
   async function registerCommands() {
     await lifecycle.command(extensionAPI.ui.commandPalette, {
       label: "Plexus: Commands…",
@@ -4156,8 +4181,27 @@ export async function installPlexusDiagram({
           });
         },
       });
+      await lifecycle.command(extensionAPI.ui.blockContextMenu, {
+        label: BLOCK_PARSE_LABEL,
+        "display-conditional": (event) => active() && Boolean(pdfSourceOf(event?.["block-string"])),
+        callback: (event) => {
+          if (!active()) return;
+          startBlockParse(event?.["block-uid"], event?.["block-string"]);
+        },
+      });
       lifecycle.add(() => closeAddToBoard());
     }
+    if (extensionAPI.ui?.slashCommand?.addCommand) {
+      await lifecycle.command(extensionAPI.ui.slashCommand, {
+        label: BLOCK_PARSE_LABEL,
+        callback: (context) => {
+          if (!active()) return;
+          const uid = focusedUid(context);
+          startBlockParse(uid, uid ? host.blockString?.(uid) : "");
+        },
+      });
+    }
+    lifecycle.add(() => closeBlockParse());
     lifecycle.add(() => closeCommandSheet());
   }
 

@@ -508,10 +508,10 @@ test("commands register in palette and slash, the context menu gets Enhance, and
   const t = setup();
   try {
     await t.install();
-    const labels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram", "Plexus: Export board as SVG", "Plexus: Export board as JSON Canvas", "Plexus: Refresh static picture", "Plexus: Copy board as text"];
+    const labels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram", "Plexus: Export board as SVG", "Plexus: Export board as JSON Canvas", "Plexus: Refresh static picture", "Plexus: Copy board as text", "Plexus: Parse PDF"];
     assert.deepEqual([...t.commands.palette.keys()], ["Plexus: Commands…", "Plexus: New whiteboard here"]);
     assert.deepEqual([...t.commands.slash.keys()], labels);
-    assert.deepEqual([...t.commands.context.keys()], ["Plexus: Enhance", "Show on board", "Add to board…", "Plexus: Mark image region"]);
+    assert.deepEqual([...t.commands.context.keys()], ["Plexus: Enhance", "Show on board", "Add to board…", "Plexus: Mark image region", "Plexus: Parse PDF"]);
     const context = t.commands.context.get("Plexus: Enhance");
     assert.equal(context["display-conditional"]({ "block-string": "{{[[diagram]]}}" }), true);
     assert.equal(context["display-conditional"]({ "block-string": "plain" }), false);
@@ -521,9 +521,12 @@ test("commands register in palette and slash, the context menu gets Enhance, and
     assert.equal(add["display-conditional"]({}), false);
     assert.equal(t.commands.palette.has("Add to board…"), false);
     assert.equal(t.commands.slash.has("Add to board…"), false);
+    const parse = t.commands.context.get("Plexus: Parse PDF");
+    assert.equal(parse["display-conditional"]({ "block-string": "{{[[pdf]]: https://x.org/a.pdf}}" }), true);
+    assert.equal(parse["display-conditional"]({ "block-string": "plain" }), false);
     await t.lifecycle.dispose();
     assert.equal(t.commands.palette.size + t.commands.slash.size + t.commands.context.size, 0);
-    assert.equal(t.commands.removed.length, 14);
+    assert.equal(t.commands.removed.length, 16);
   } finally {
     t.restore();
   }

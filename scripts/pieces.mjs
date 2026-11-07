@@ -42,7 +42,8 @@ export const PIECES = {
     "src/view/parse-status.js",
     "src/view/engine-tags.js",
     "src/view/cloud-confirm.js",
-    "src/host/pdf-tables.js"
+    "src/host/pdf-tables.js",
+    "src/view/block-parse.js"
   ],
   "read": [
     "src/view/read-pane.js",

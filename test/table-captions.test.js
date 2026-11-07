@@ -343,6 +343,10 @@ test("undo: one undo restores every table, its props and order and the edges; re
 test("undo: an unreadable table location never deletes a caption that still holds its table", { timeout: 20000 }, async () => {
   const { fake, host, session } = seeded();
   fake.trackUndo = true;
+  // PXD-21: a fold this small undoes with Roam's own undo. Keep the recorded inverse here (what a fold past 45
+  // writes, or one holding a page, still runs) to test its guard.
+  const setCustom = host.setCustomUndo;
+  host.setCustomUndo = (e) => setCustom.call(host, e && { ...e, native: false });
   const plan = planFor(session, host);
   await session.foldTableCaptions(plan);
   const a = plan.folds.find((f) => f.tableUid === "tA");
@@ -388,4 +392,19 @@ test("insertParsedTable: chart -> table and a captioned parse both land as a fol
   const named = await session.insertParsedTable({ x: 4000, y: 600, table: t, mode: "native", caption: "Table 4. Results" });
   assert.equal(fake.block(named.uid).string, "Table 4. Results");
   assert.equal(session.board.items.get(named.uid).tableUid, named.tableUid);
+});
+
+test("PXD-21: a small fold undoes with Roam's own undo, even when a location read fails", async () => {
+  const { fake, host, session } = seeded();
+  fake.trackUndo = true;
+  const plan = planFor(session, host);
+  await session.foldTableCaptions(plan);
+  const loc = host.blockLocation;
+  host.blockLocation = () => null;
+  fake.calls.length = 0;
+  await session.undo();
+  host.blockLocation = loc;
+  assert.ok(fake.has("tA"));
+  assert.ok(plan.folds.every((f) => !fake.has(f.captionUid)), "every caption gone");
+  assert.equal(fake.calls.filter((c) => c[0] !== "undo").length, 0, "no inverse writes on Roam's stack");
 });

@@ -1,4 +1,4 @@
-// F5: "Fold sections in the outline" / "Unfold sections": :block/open on SECTION blocks only, one custom undo,
+// F5: "Fold sections in the outline" / "Unfold sections": :block/open on SECTION blocks only, one undo step,
 // gated on the collapse-outline setting.
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
@@ -13,6 +13,8 @@ function open({ settings = null, sections = 5 } = {}) {
   const stub = createDomStub();
   const restore = stub.install();
   const fake = createFakeRoam({ echoDelay: 0 });
+  // PXD-21: a fold that fits Roam's own undo is walked back with Roam's undo, so the fake keeps a real undo stack.
+  fake.trackUndo = true;
   const secs = Array.from({ length: sections }, (_, i) => ({
     uid: `s${i}`,
     string: `Section ${i}`,
@@ -63,7 +65,9 @@ test("fold writes :block/open false on the sections only, and one Cmd+Z brings t
     fake.calls.length = 0;
     await session.undo();
     for (const id of plan.uids) assert.equal(openOf(fake, id), true, `${id} unfolded by one undo`);
-    assert.equal(fake.calls.filter((c) => c[0] === "undo").length, 0, "no native Roam undo");
+    // PXD-21: six writes fit Roam's undo: six native undo steps, no inverse writes on Roam's stack.
+    assert.equal(fake.calls.filter((c) => c[0] === "undo").length, 6, "Roam's own undo, once per write");
+    assert.equal(fake.calls.filter((c) => c[0] !== "undo").length, 0, "no inverse writes");
     await session.redo();
     for (const id of plan.uids) assert.equal(openOf(fake, id), false);
   } finally {

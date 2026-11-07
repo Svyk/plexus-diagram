@@ -95,6 +95,35 @@
   max-width: calc(100vw - 48px) !important;
 }
 
+/* PXD-21: Roam's own PDF reader (sidebar and main view, not the readers inside a board). Its toolbar needs about
+   540 px and scrolled sideways in the sidebar, hiding the page number, search, fullscreen and the menu. Below 560 px it
+   takes two rows and the pages start under them. */
+.rm-pdf-container:not(.pxd-root .rm-pdf-container):not(.pxd-read .rm-pdf-container) {
+  container: pxd-roam-pdf / inline-size;
+}
+
+@container pxd-roam-pdf (max-width: 559px) {
+  .rm-pdf-toolbar {
+    flex-wrap: wrap;
+    align-content: center;
+    justify-content: center;
+    height: 72px;
+    overflow: hidden;
+  }
+
+  .rm-pdf-toolbar > .rm-spacer {
+    display: none;
+  }
+
+  .rm-pdf-toolbar > .bp3-button-group {
+    display: contents;
+  }
+
+  .rm-pdf-viewer-container {
+    top: 72px !important;
+  }
+}
+
 /* R4: a class on <html> (sidebar-pdf.js), not .roam-app:has(): an anchor above the board re-ran its invalidation
    on every DOM change in the board. :not(#pxd-none) keeps the old rule's id weight. */
 :root.pxd-sidebar-pdf:not(.rm-sidecar) .roam-app:not(#pxd-none) .roam-main,
@@ -747,8 +776,10 @@ html.pxd-pdf-reader-dark:not(.rm-sidecar) .rm-pdf-container .page > .canvasWrapp
   filter: none;
 }
 
+/* PXD-21: the toolbar and the space around the pages take the theme's own surface (sidebar or page), not a fixed
+   near-black, so the reader matches the window in any dark theme. */
 html.pxd-pdf-reader-dark:not(.rm-sidecar) .rm-pdf-toolbar {
-  background: #252a31;
+  background: transparent;
   color: #e7e8ea;
 }
 
@@ -760,7 +791,7 @@ html.pxd-pdf-reader-dark:not(.rm-sidecar) .pxd-root .rm-pdf-toolbar {
 
 html.pxd-pdf-reader-dark:not(.rm-sidecar) .rm-pdf-container,
 html.pxd-pdf-reader-dark:not(.rm-sidecar) .PdfHighlighter {
-  background: #14171b;
+  background: transparent;
 }
 
 html.pxd-pdf-reader-dark:not(.rm-sidecar) .pxd-read .rm-pdf-container,

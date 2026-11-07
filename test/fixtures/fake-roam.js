@@ -688,6 +688,8 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   fake.api = api;
   fake.onFromMarkdown = null;
   fake.pushUndo = (fn) => { if (typeof fn === "function") undoStack.push(fn); };
+  // trackUndo: how many entries Roam's own undo and redo stacks hold now (PXD-21).
+  fake.nativeDepth = () => ({ undo: history.length, redo: redoStack.length });
   fake.dropTree = (uid) => dropTree(uid);
   fake.stampProps = (uid, props) => {
     const b = blocks.get(uid);

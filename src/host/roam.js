@@ -958,11 +958,15 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // A custom entry's undo/redo writes land on Roam's native stack, so the native entries below it in the log no longer
   // match that stack. They are dropped and this floor stops undo/redo from falling back to a blind data.undo().
   let nativeFloor = false;
+  // PXD-21: every group (or single write outside one) gets an id; a group split into chunks keeps one id for all of
+  // them. A toast's Undo names the id of the change it reports, so it never undoes a different one.
+  let changeSeq = 0;
   let lastWriteAt = -Infinity;
   let dropBurst = () => {};
   // Debug only. The undo group that just closed, and how many create/update/move/delete writes it held.
   const closeChunk = (chunk) => {
     if (!(chunk.n || chunk.created?.length)) return;
+    if (!chunk.change) chunk.change = ++changeSeq;
     undoLog.push(chunk);
     if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
     const named = typeof chunk.label === "string" && chunk.label ? chunk.label : (chunk.kinds || []).join("+");
@@ -979,7 +983,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     if (openGroup) {
       if (openGroup.n >= MAX_GROUP_WRITES && !openGroup.custom) {
         const done = openGroup;
-        openGroup = { n: 0, kinds: [], label: done.label || "" };
+        if (!done.change) done.change = ++changeSeq;
+        openGroup = { n: 0, kinds: [], label: done.label || "", change: done.change };
         closeChunk(done);
       }
       openGroup.n++;
@@ -990,6 +995,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   };
   // Host writes plus blocks adopted from outside this host (one Roam entry each).
   const groupSpan = (entry) => (entry.n || 0) + (entry.created?.length || 0);
+  // PXD-21: a write whose count of Roam undo entries is not known to be exactly one (a page, an upload, a Roam Grid
+  // table). A custom entry holding one keeps its own inverse; any other undoes natively (see undo()).
+  const markInexact = () => { if (openGroup) openGroup.inexact = true; };
+  // A custom entry whose writes all sit on Roam's stack as one entry each, within Roam's depth, still on top of the
+  // log: one Cmd+Z can walk them back with data.undo() like any native group. Roam's own history stays as it was, no
+  // inverse writes land on it, and the entries below stay undoable.
+  const nativeCustom = (entry) => Boolean(entry?.custom) && entry.custom.native !== false && !entry.inexact
+    && groupSpan(entry) > 0 && groupSpan(entry) <= MAX_GROUP_WRITES;
   const cache = createCardCache();
   const warm = new Set();
   // P8 U3: sliced reads waiting for their pullBoard, by board uid: { tree, stamp, at }. An offer is for the open that
@@ -2999,6 +3012,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (existing) return existing;
       stats.writes++;
       await mutate(() => data.page.create({ page: { title: name } }));
+      markInexact();
       noteWrite("create");
       return host.pageUid(name);
     },
@@ -3243,6 +3257,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!uid) return null;
       const reported = Number.isInteger(info.writes) && info.writes > 0 ? info.writes : 1;
       const meta = args.enhance === false ? 0 : GRID_METADATA_UNDOS;
+      markInexact();
       const undos = reported + meta;
       for (let i = 0; i < undos; i += 1) {
         stats.writes++;
@@ -3399,7 +3414,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!done) return () => {};
       openGroup = null;
       closeChunk(done);
-      return () => { if (!openGroup) openGroup = { n: 0, kinds: [], label: done.label || "" }; };
+      return () => { if (!openGroup) openGroup = { n: 0, kinds: [], label: done.label || "", change: done.change }; };
     },
 
     // The open group becomes ONE entry that undoes and redoes through its own callbacks ({ undo, redo }, async),
@@ -3415,6 +3430,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     // A file upload does not pass through noteWrite. A group that only uploaded would be dropped.
     noteGroupedWrite(kind) {
+      markInexact();
       noteWrite(typeof kind === "string" && kind ? kind : "upload");
     },
 
@@ -3439,12 +3455,25 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       redoLog.length = 0; // a new write drops Roam's redo stack; keep the log in step
     },
 
+    // PXD-21: the id of the change on top of the undo log (0 when the log is empty). A toast's Undo keeps it and
+    // undoes only while that change is still on top (undoTopIs).
+    undoMark() {
+      return undoLog.length ? undoLog[undoLog.length - 1].change || 0 : 0;
+    },
+    // The newest change id handed out so far. Taken before a change starts, a later mark must be above it.
+    undoSeq() {
+      return changeSeq;
+    },
+    undoTopIs(mark) {
+      return Boolean(mark) && undoLog.length > 0 && undoLog[undoLog.length - 1].change === mark;
+    },
+
     // Undo/redo step over a whole recorded group; with nothing recorded (or after invalidateUndo) it is Roam's single step.
     async undo() {
       lastWriteAt = Date.now();
       const entry = undoLog.pop();
       if (!entry && nativeFloor) return;
-      if (entry?.custom) {
+      if (entry?.custom && !nativeCustom(entry)) {
         silent = true;
         try { await entry.custom.undo(); } catch (err) { undoLog.push(entry); throw err; } finally { silent = false; lastWriteAt = Date.now(); }
         undoLog.length = 0;
@@ -3472,7 +3501,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       lastWriteAt = Date.now();
       const entry = redoLog.pop();
       if (!entry && nativeFloor) return;
-      if (entry?.custom) {
+      if (entry?.custom && !nativeCustom(entry)) {
         silent = true;
         try { await entry.custom.redo(); } catch (err) { redoLog.push(entry); throw err; } finally { silent = false; lastWriteAt = Date.now(); }
         undoLog.length = 0;
@@ -3719,6 +3748,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (user && typeof user === "string") page["user-uid"] = user;
       stats.writes++;
       await mutate(() => data.page.create({ page }));
+      markInexact();
       noteWrite("create");
       return page.uid || host.pageUid(name);
     },

@@ -1113,19 +1113,25 @@ export function createInteractions({ actions, settings } = {}) {
     call("animateViewport", zoomAt(v, { x: s.width / 2, y: s.height / 2 }, z / (v.zoom || 1)));
   };
 
+  // PXD-21: the toast's Undo reverts this delete only (the view's changeUndo); a plain Cmd+Z without a view.
+  // `after` is the undo seq taken before a delete that is still queued when its toast shows.
+  const undoAction = (after) => call("changeUndo", after) || { label: "Undo", run: () => call("undo") };
+
   const deleteSelection = (withContents) => {
     if (state.region?.uid) {
       const uid = state.region.uid;
       selectItems([]);
+      const after = call("undoSeq");
       call("deleteRegion", uid);
-      call("toast", { message: "Region deleted", action: { label: "Undo", run: () => call("undo") } });
+      call("toast", { message: "Region deleted", action: undoAction(after) });
       return true;
     }
     if (state.edge) {
       const uid = state.edge;
       selectItems([]);
+      const after = call("undoSeq");
       call("deleteEdges", [uid]);
-      call("toast", { message: "Connection deleted", action: { label: "Undo", run: () => call("undo") } });
+      call("toast", { message: "Connection deleted", action: undoAction(after) });
       return true;
     }
     if (!state.selection.size) return false;
@@ -1138,9 +1144,10 @@ export function createInteractions({ actions, settings } = {}) {
     if (!uids.length) return true;
     selectItems(kept);
     // The region-count dialog can cancel the delete (null): the toast follows the delete, not the keypress.
+    const after = call("undoSeq");
     Promise.resolve(call("deleteItems", uids, { withContents: Boolean(withContents) })).then((done) => {
       if (done === null) return;
-      call("toast", { message: "Deleted", action: { label: "Undo", run: () => call("undo") } });
+      call("toast", { message: "Deleted", action: undoAction(after) });
     }, () => {});
     return true;
   };

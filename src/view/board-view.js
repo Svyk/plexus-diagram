@@ -5254,7 +5254,22 @@ function buildBoardView(onFail, {
   };
 
   // ------------------------------------------------------------ 1.2 helpers
-  const toast = (message, undo = false) => chrome.toast.show({ message, action: undo ? { label: "Undo", run: () => { ctl.flush?.(); session.undo?.(); } } : undefined });
+  // PXD-21: a toast's Undo reverts the change it reports, not whatever Cmd+Z would undo next. The mark is taken when
+  // the toast shows; a change that was undone already or has a later change above it is left alone and says so.
+  const UNDO_GONE = "Can't undo that: it was undone already or a later change came after it.";
+  const changeUndo = (after) => {
+    const s = session;
+    if (typeof s?.undoMark !== "function" || typeof s?.undoChange !== "function") return { label: "Undo", run: () => { ctl.flush?.(); s?.undo?.(); } };
+    const mark = s.undoMark(after);
+    return {
+      label: "Undo",
+      run: () => {
+        ctl.flush?.();
+        Promise.resolve(s.undoChange(mark)).then((ok) => { if (ok === false && !disposed) chrome.toast.show({ message: UNDO_GONE }); }, () => {});
+      },
+    };
+  };
+  const toast = (message, undo = false) => chrome.toast.show({ message, action: undo ? changeUndo() : undefined });
   const toggleRefArrows = () => {
     const refs = session.cardRefs;
     if (!refs) return false;
@@ -9123,6 +9138,8 @@ function buildBoardView(onFail, {
     connectHint: (text, screen) => showConnectHint(text, screen),
     undo: () => { ctl.flush?.(); return session.undo?.(); },
     redo: () => { ctl.flush?.(); return session.redo?.(); },
+    changeUndo: (after) => changeUndo(after),
+    undoSeq: () => session.undoSeq?.(),
     enterEdit: (uid, opts) => enterEdit(uid, opts),
     openPage: (uid, { sidebar = false } = {}) => {
       const item = board()?.items.get(uid);

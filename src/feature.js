@@ -4074,8 +4074,10 @@ export async function installPlexusDiagram({
         await lifecycle.command(extensionAPI.ui.slashCommand, { label, callback: runCommand(label, fn) });
       }
     }
-    if (extensionAPI.ui?.blockContextMenu?.addCommand) {
-      await lifecycle.command(extensionAPI.ui.blockContextMenu, {
+    // A Roam Depot install's extensionAPI.ui has no block menu: use Roam's own.
+    const blockMenu = extensionAPI.ui?.blockContextMenu?.addCommand ? extensionAPI.ui.blockContextMenu : win?.roamAlphaAPI?.ui?.blockContextMenu;
+    if (blockMenu?.addCommand) {
+      await lifecycle.command(blockMenu, {
         label: "Plexus: Enhance",
         "display-conditional": (event) => isDiagramString(event?.["block-string"]),
         callback: (event) => {
@@ -4083,7 +4085,7 @@ export async function installPlexusDiagram({
           enhanceCommand(event).catch((error) => console.warn("[plexus-diagram] Enhance failed", error));
         },
       });
-      await lifecycle.command(extensionAPI.ui.blockContextMenu, {
+      await lifecycle.command(blockMenu, {
         label: "Show on board",
         "display-conditional": (event) => {
           if (!active()) return false;
@@ -4105,7 +4107,7 @@ export async function installPlexusDiagram({
           openNestedConnection(hit.boardUid || hit.cardUid, hit.cardUid, hit.pageUid);
         },
       });
-      await lifecycle.command(extensionAPI.ui.blockContextMenu, {
+      await lifecycle.command(blockMenu, {
         label: "Add to board…",
         "display-conditional": (event) => active() && Boolean(event?.["block-uid"]),
         callback: (event) => {
@@ -4135,7 +4137,7 @@ export async function installPlexusDiagram({
           closeAddToBoard = () => { picker.close(); closeAddToBoard = () => {}; };
         },
       });
-      await lifecycle.command(extensionAPI.ui.blockContextMenu, {
+      await lifecycle.command(blockMenu, {
         label: "Plexus: Mark image region",
         "display-conditional": (event) => active() && classifyString(event?.["block-string"]).kind === "image",
         callback: (event) => {
@@ -4185,7 +4187,7 @@ export async function installPlexusDiagram({
           });
         },
       });
-      await lifecycle.command(extensionAPI.ui.blockContextMenu, {
+      await lifecycle.command(blockMenu, {
         label: BLOCK_PARSE_LABEL,
         "display-conditional": (event) => active() && Boolean(pdfSourceOf(event?.["block-string"])),
         callback: (event) => {

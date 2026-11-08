@@ -46,7 +46,7 @@ function bulletCount(markdown) {
 function nativeTableMarkdown(table) {
   const id = typeof table?.id === "string" && table.id ? table.id : "t1";
   const block = { ...table, id, type: table?.type || "table" };
-  return toRoamMarkdown({ blocks: { [id]: block }, order: [id] }, [id], { footnoteFormat: "plain" }).markdown;
+  return toRoamMarkdown({ blocks: { [id]: block }, order: [id] }, [id]).markdown;
 }
 
 // The parsed child of a block, if an earlier run left one. Read only when the dialog opens.
@@ -150,10 +150,11 @@ export async function runBlockParse({
   const steps = plan.steps.length + (refLines ? 1 : 0);
   let blocks = 1;
   let created = false;
-  const throttle = async (index) => {
+  // Waits when this step would push the minute past WINDOW_LIMIT (Roam allows 1500 writes a minute).
+  const throttle = async (index, next) => {
     const t = now();
     if (t - limit.start >= WINDOW_MS) { limit.start = t; limit.written = 0; }
-    if (limit.written <= WINDOW_LIMIT) return;
+    if (limit.written === 0 || limit.written + next <= WINDOW_LIMIT) return;
     onProgress({ phase: "write", index, total: steps, waiting: true });
     await sleep(Math.max(0, limit.start + WINDOW_MS - t), signal);
     limit.start = now();
@@ -186,7 +187,7 @@ export async function runBlockParse({
     for (const step of plan.steps) {
       if (signal?.aborted) { await undo(); return failedWith("aborted-write"); }
       index += 1;
-      await throttle(index);
+      await throttle(index, step.kind === "md" ? bulletCount(step.markdown) : (Number(step.table.rows) || 0) * (Number(step.table.cols) || 0) + 2);
       if (signal?.aborted) { await undo(); return failedWith("aborted-write"); }
       onProgress({ phase: "write", index, total: steps });
       if (step.kind === "md") {
@@ -203,7 +204,7 @@ export async function runBlockParse({
     }
     if (refLines) {
       if (signal?.aborted) { await undo(); return failedWith("aborted-write"); }
-      await throttle(steps);
+      await throttle(steps, bulletCount(refLines));
       onProgress({ phase: "write", index: steps, total: steps });
       await host.fromMarkdown({ parentUid: container, order: "last", markdown: refLines });
       blocks += bulletCount(refLines);
@@ -348,6 +349,7 @@ export function openBlockParse({ doc = globalThis.document, host, pdfTables, blo
   const close = () => {
     if (closed) return;
     closed = true;
+    controller?.abort();
     if (current === api) current = null;
     for (const off of offs) off();
     box.remove();

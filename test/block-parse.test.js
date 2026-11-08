@@ -273,3 +273,25 @@ test("the dialog opens without writing, finds an earlier parse, and Escape close
     restore();
   }
 });
+
+test("runner waits before a step that would pass 1200 writes in the minute", async () => {
+  const blocks = {};
+  const order = [];
+  for (let i = 0; i < 1500; i += 1) {
+    const id = `p${i}`;
+    blocks[id] = { id, type: "para", text: `Line ${i}`, page: 1 };
+    order.push(id);
+  }
+  const doc = { blocks, order, pageCount: 1, pages: [{ n: 1 }] };
+  const pdfTables = { docFromPdf: async () => ({ doc, pageCount: 1, needsOcr: [], scanPages: [], ocr: { state: "none" } }) };
+  const host = fakeHost();
+  const waits = [];
+  const written = [];
+  const origMd = host.fromMarkdown;
+  host.fromMarkdown = async (a) => { written.push(waits.length); return origMd(a); };
+  const res = await runBlockParse({ host, pdfTables, blockUid: "blk", source: { url: "u", kind: "link" }, range: { ok: true, whole: true, from: 1, to: null }, now: () => 0, sleep: async (ms) => { waits.push(ms); } });
+  assert.equal(res.ok, true);
+  // Chunks of 400, 400, 400, 300 after the container: the third would make 1201, so it waits first.
+  assert.deepEqual(written, [0, 0, 1, 1]);
+  assert.equal(waits[0], 60000);
+});

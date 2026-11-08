@@ -4195,9 +4195,15 @@ export async function installPlexusDiagram({
       await lifecycle.command(extensionAPI.ui.slashCommand, {
         label: BLOCK_PARSE_LABEL,
         callback: (context) => {
-          if (!active()) return;
+          if (!active()) return undefined;
           const uid = focusedUid(context);
-          startBlockParse(uid, uid ? host.blockString?.(uid) : "");
+          // Roam keeps the typed "/Plexus: Parse" unless the callback returns a string. The block is read
+          // now (Roam rewrites it right after) and the dialog opens a tick later, once Roam has done that.
+          const string = uid ? host.blockString?.(uid) : "";
+          setTimeout(() => {
+            if (active()) startBlockParse(uid, string);
+          }, 0);
+          return "";
         },
       });
     }

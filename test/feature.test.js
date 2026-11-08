@@ -524,6 +524,8 @@ test("commands register in palette and slash, the context menu gets Enhance, and
     const parse = t.commands.context.get("Plexus: Parse PDF");
     assert.equal(parse["display-conditional"]({ "block-string": "{{[[pdf]]: https://x.org/a.pdf}}" }), true);
     assert.equal(parse["display-conditional"]({ "block-string": "plain" }), false);
+    // Roam removes the typed "/Plexus: Parse" only when the slash callback returns a string.
+    assert.equal(t.commands.slash.get("Plexus: Parse PDF").callback({ "block-uid": "plain" }), "");
     await t.lifecycle.dispose();
     assert.equal(t.commands.palette.size + t.commands.slash.size + t.commands.context.size, 0);
     assert.equal(t.commands.removed.length, 16);

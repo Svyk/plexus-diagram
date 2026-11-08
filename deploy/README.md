@@ -13,11 +13,26 @@ A Heptabase-style whiteboard for Roam `{{[[diagram]]}}` blocks. Cards, colored s
 
 ## Install
 
-Plexus Diagram is not listed in Roam Depot yet. Until it is, install the [developer build](#developer-build).
+1. In Roam, open **Roam Depot** from the left sidebar. **Settings → Roam Depot → Browse** and the command palette's **Roam Depot Marketplace** open the same place.
+2. Search for **Plexus Diagram** and press **Install**. It starts at once, with no reload.
+3. Run **Plexus: New whiteboard here** from the command palette, or type `{{[[diagram]]}}` in a block and run **Plexus: Enhance this diagram**. The [Quick start](#quick-start) takes it from there.
 
-Once it is listed: in Roam, **Settings → Roam Depot → Browse**, search for **Plexus Diagram**, and press **Install**. Roam Depot installs updates for you.
+- **Yours, in this graph.** An install is per person and per graph, so install it in each graph where you want boards. You need edit access to the graph.
+- **Updates.** Roam Depot installs updates for you: it checks when the graph loads and about every 12 hours, and **Update all** in the Roam Depot tab checks now.
+- **Settings and hotkeys.** In Roam's **Settings**, Plexus Diagram has its own tab under **Extension Settings**, where you can also set hotkeys for its commands. See [Settings](#settings).
+- **For the whole graph.** A graph admin can install it for everyone with the globe button in the Roam Depot tab. Members confirm it first, use the admin's settings (they can still set their own hotkeys), and can opt out. Plexus keeps parse keys and the parse helper token in each browser, never in its settings, so a whole-graph install shares none of them.
+- **People without Plexus** see Roam's own diagram over the same blocks, and every card, section and connection is still a block they can read. Turn on **Keep a static picture** on a board when they should see its picture too.
 
-Then type `{{[[diagram]]}}` in any block, or run **Plexus: New whiteboard here** from the command palette.
+To try a build before it reaches Roam Depot, see [Developer build](#developer-build).
+
+## Quick start
+
+1. Run **Plexus: New whiteboard here** in a block. A new board opens under it.
+2. Double-click the empty board, or press N, and type to make a note card. Drag a page from the left sidebar, or any bullet from the outline, to add it as a card.
+3. Press G and drag to make a section, then drop cards into it. In the outline, those cards are now the section's child blocks.
+4. Drag from the dots on a card's edge to another card. The connection is a block that links both ends, so it shows in both pages' linked references.
+5. Press `?` on the board for every shortcut, and run **Plexus: Commands…** for every action.
+6. Cmd+Z (Ctrl+Z) undoes any of it. It is Roam's own undo.
 
 ## Roam Depot build
 
@@ -34,6 +49,56 @@ The build Roam Depot installs (`extension.js` at the repo root) leaves out In-br
 - Opening a board's block page (zoomed in) shows it full screen. **Plexus: Fullscreen this diagram** does the same from anywhere.
 
 Boards enhanced with 0.6 upgrade to the 1.0 format once, the first time they are opened.
+
+## Commands
+
+Every command starts with **Plexus:**, and most act on the board you are on, so open the board or focus a block on its page first.
+
+**Command palette** (Cmd+P or Ctrl+P) has two entries, so the palette stays short:
+
+| Command | What it does |
+|---|---|
+| Plexus: Commands… | Opens a sheet with every command below and keeps the block you had focused |
+| Plexus: New whiteboard here | Creates `{{[[diagram]]:Untitled board}}` under the focused block and opens it |
+
+**Slash menu and the Commands sheet.** Type `/` in a block and then the name, or pick it in Plexus: Commands…:
+
+| Command | What it does |
+|---|---|
+| Plexus: Enhance this diagram | Turns a native diagram into a board. Its nodes become cards, groups become sections, and edges become connections |
+| Plexus: New whiteboard here | The same as the palette entry |
+| Plexus: Restore native diagram | Gives the block back to Roam's own diagram view. Nothing is deleted, and the choice sticks |
+| Plexus: Fullscreen this diagram | Opens the board full screen, or leaves full screen. Esc also leaves |
+| Plexus: Export board as SVG | Downloads the board as an SVG picture |
+| Plexus: Export board as JSON Canvas | Downloads the board as an Obsidian `.canvas` file |
+| Plexus: Refresh static picture | Writes a new static picture for a board that has Keep a static picture on |
+| Plexus: Copy board as text | Copies the board to the clipboard as a Markdown outline |
+| Plexus: Parse PDF | Parses the PDF in the block into headings, lists and tables you can insert. See [Parse a PDF](#parse-a-pdf) |
+
+**Commands sheet only:**
+
+| Command | What it does |
+|---|---|
+| Plexus: Add page… | Searches for a page and adds it to the board as a page card |
+| Plexus: New drawing here | Creates a Roam drawing and a card on the board that refers to it |
+| Plexus: Resurface here | Inserts the resurface button, `{{[[plexus-resurface]]}}`, under the focused block. On a daily page it lists cards from earlier days. Needs Settings, Resurface |
+| Plexus: Move PDFs to their own pages | Moves each PDF card's block to a page of its own and leaves a link to that page on the board. It shows what it will move first, works on this board only, and is one undo step |
+| Plexus: Fold tables under captions | Puts each table card under a folded caption block |
+| Plexus: Fold queries on this page | Puts each `{{query}}` on the board's page under a folded caption block. Queries inside diagrams are left alone |
+| Plexus: Fold sections in the outline | Folds the section blocks in Roam's outline, so it does not list every card. It shows a count first, works on this board only, and is one undo step |
+| Plexus: Unfold sections | Opens those section blocks again |
+| Plexus: Find related to the selected card | Runs Roam's search on the selected card's text and shows the results in the Add panel |
+| Plexus: Toggle ref arrows | Shows or hides the faint arrows that references between cards draw |
+
+**Block menu.** Right-click a block's bullet. Each row shows only on the blocks it fits:
+
+| Command | What it does |
+|---|---|
+| Plexus: Enhance | On a diagram block, the same as Enhance this diagram |
+| Show on board | On a block that is a card on a board, opens that board with the card selected |
+| Add to board… | Adds the block to a board you pick, as a `((ref))` card |
+| Plexus: Parse PDF | On a block with a PDF, the same as the slash command |
+| Plexus: Mark image region | On an image block, marks a region of the picture that a card or an arrow can point to. See [Regions and views](#regions-and-views) |
 
 ## Surfaces
 
@@ -97,8 +162,8 @@ An enhanced board keeps Roam's diagram controls and adds to them (the 1.3 native
 | Add | The Add panel searches pages and blocks, and its Related tab lists what the selected card links to and is linked from |
 | Linked references as cards | On a page or block card, the menu's Add linked references as cards turns every block that references it into a `((ref))` card, so you can sort the backlinks on the board. Flat puts them in one grid beside the card; Grouped by page makes one section per page, titled with the page name. The new cards go to the right of anything already beside the card. When the card is in a section, they go into that section, which grows to hold them, unless growing would cover something beside it or the section does not grow (fit off); then they go outside it and keep clear of it. Blocks already on the board and blocks inside it are skipped. Up to 22 cards and sections in one undo step (fewer if auto-fit must also move cards in a crowded section); the toast says how many were left out |
 | Save view | More → Save view…, or Shift+V, stores the camera as one view block. With cards selected, the context bar saves a view of that selection. The Boards tab lists the views. Go restores the camera and writes nothing |
-| Connection why | Double-click a label to set the label and a why note. Enter saves both. The outline chip adds because. Shift+T opens a memory lane. The links menu can suggest shared references. Plexus Commands can insert a resurface button. The command palette stays two entries |
-| Public API | `window.PlexusDiagram` lists boards, opens a card or a saved view, adds one card, and returns a small PNG of a board. The command palette stays two entries |
+| Connection why | Double-click a label to set the label and a why note. Enter saves both. The outline chip adds because. Shift+T opens a memory lane. The links menu can suggest shared references. Plexus Commands can insert a resurface button. |
+| Public API | `window.PlexusDiagram` lists boards, opens a card or a saved view, adds one card, and returns a small PNG of a board. |
 | Roam Plexus on a board | A block ref of a Roam Plexus region shows the caption, a crop, Open drawing, and Open in sidebar. Without Roam Plexus the card is an ordinary block ref |
 | Drawing on a board | A block ref of a Roam drawing shows the picture. Regions lists its regions and adds a reference. New drawing here creates the drawing and the reference. The drawing block stays where it is |
 
@@ -181,9 +246,9 @@ The card cover is the page image, first page or the last page you read, with a t
 
 | Do | How |
 |---|---|
-| PDF on a board | A pdf block is a card. The cover shows the file name and the highlight count. Open reader mounts Roam's reader. Interact uses that reader. One reader is open at a time. The command palette stays two entries |
+| PDF on a board | A pdf block is a card. The cover shows the file name and the highlight count. Open reader mounts Roam's reader. Interact uses that reader. One reader is open at a time. |
 | Highlight on a board | A block ref of a PDF highlight shows a colour bar, the passage or the area picture, and the page. Changing the colour tag updates the bar. A block that is not a highlight stays a normal ref. A child block under the highlight shows as its note |
-| Open in reader | Opens a reading pane beside the board with Roam's reader and a list of the PDF's highlights (colour, page, note). Filter by colour, page or text. Place or drag a row to make a card, or drag a highlight straight out of the PDF onto the board; a highlight already on the board pulses. Clicking a row or a highlight card's footer scrolls the PDF to that highlight and flashes it. Closing the pane leaves the cards. The command palette stays two entries |
+| Open in reader | Opens a reading pane beside the board with Roam's reader and a list of the PDF's highlights (colour, page, note). Filter by colour, page or text. Place or drag a row to make a card, or drag a highlight straight out of the PDF onto the board; a highlight already on the board pulses. Clicking a row or a highlight card's footer scrolls the PDF to that highlight and flashes it. Closing the pane leaves the cards. |
 | Page chips | A PDF card has one chip per page. Click pulses the cards from that page. Double-click opens the page. An arrow into a highlight shows the page. The outline says On board. These do not write |
 | Add highlights | On a PDF card, Add highlights lists that page's highlights by date, with a colour bar and a page number. Place as grid or column. One undo removes those cards. Drag a highlight's bullet onto the board for one card. Drop a date and confirm to add only its highlights. Paste of a highlight ref is unchanged |
 | Highlight colour | The tag lens can keep one highlight colour bright. An area picture uses its saved width and height. Mark region on an area card stores the region under that highlight. The page mark keeps the colour Roam painted |
@@ -433,7 +498,7 @@ Each row is the most writes one gesture makes, measured by `test/pol-2-writes.te
 
 ## Settings
 
-Settings → Extensions → Plexus Diagram. Each change applies on the open board. **Reset Plexus settings** puts every value back to its default.
+In Roam's **Settings**, open the **Plexus Diagram** tab under **Extension Settings**. Each change applies on the open board. **Reset Plexus settings** puts every value back to its default.
 
 | Group | Setting | What it does |
 |---|---|---|
@@ -521,6 +586,8 @@ Plexus reads and writes your graph through Roam's extension API. Opening a board
 
 Keys you save in Engines (LlamaParse, Mistral) and the Parse helper token stay in this browser and are never written to the graph or its settings.
 
+On an encrypted graph, Roam gives extensions the decrypted data in your browser, as it does for every Roam Depot extension. Plexus sends it nowhere except in the cases below. Ask AI about a figure sends text only on an encrypted graph.
+
 Each request below happens only in the case named, and goes only to the address named.
 
 | Request | Goes to | When |
@@ -536,6 +603,29 @@ Each request below happens only in the case named, and goes only to the address 
 
 Ask AI questions go through the Live AI Assistant extension, not through Plexus. Card thumbnails from Roam Plexus and Compass are calls to those extensions; Settings, Roam Plexus and Compass turns them off.
 
+## Turn it off or remove it
+
+- **Pause it.** Turn off Plexus Diagram's switch in the Roam Depot tab, or turn off Settings, **Enabled**. Boards show as Roam diagrams until you turn it back on.
+- **One board.** **Plexus: Restore native diagram** hands that block back to Roam's own diagram view for good, with nothing deleted. Enhance it again to bring the board back.
+- **Remove it.** Uninstall it in the Roam Depot tab. Nothing in your graph is deleted. Each board stays a `{{[[diagram]]}}` block, and its cards, sections and connections stay child blocks with their links and backlinks. Roam shows its own empty diagram for the board block, and a board's static picture, if you kept one, stays as its first child. The layout stays in the blocks' hidden properties, so reinstalling brings each board back as it was.
+
+## Troubleshooting
+
+- **A `{{[[diagram]]}}` block shows Roam's diagram, not a board.** That is the default. Run **Plexus: Enhance this diagram** on it, or turn on Settings, **Every diagram is a Plexus board**. A board you restored stays Roam's own until you enhance it again.
+- **A command does nothing.** Most commands act on the open board or the focused block. Open the board, or click into a block on its page, and run it again. Check that the extension is on, both the switch in the Roam Depot tab and Settings, **Enabled**.
+- **A block menu row is missing.** Each row shows only on blocks it fits: Enhance on diagram blocks, Show on board on blocks that are cards, Parse PDF on blocks with a PDF, and Mark image region on image blocks.
+- **Nothing opens on a phone.** Settings, **Disable on mobile** is on.
+- **Add to Desk does nothing.** Roam must have made its Desk page once. Open the Desk in Roam first.
+- **Ask AI does nothing.** Ask AI goes through the Live AI Assistant extension, so install that first.
+- **A scanned PDF reads no text.** The Roam Depot build reads scans with the local parse helper. See [Set up PDF reading](#set-up-pdf-reading).
+- **Undo did not reach a big change.** Roam's undo holds 50 changes. See [Limits](#limits).
+- **Something looks wrong after an update.** Reload the graph. To see whether another extension or custom CSS is the cause, use Roam's **Temporarily disable all extensions and css** button, then turn Plexus back on by itself.
+- **A board is slow.** In your report, say about how many cards the board has and what you were doing. Settings, **Speed log** records timings in this tab, and sends nothing.
+
+## Feedback and issues
+
+Report a bug or ask for a feature at [github.com/Svyk/plexus-diagram/issues](https://github.com/Svyk/plexus-diagram/issues). Include your Plexus version (the badge on the board opens its changelog), your browser, and the steps that show the problem.
+
 ## Development
 
 ```bash
@@ -547,7 +637,7 @@ Design: `docs/spec-plexus-1.0.md`, `docs/spec-plexus-1.2.md`, and `docs/spec-ple
 
 ### Developer build
 
-GitHub Pages serves the latest build from `main` at `https://svyk.github.io/plexus-diagram`. To run it before it reaches Roam Depot, uninstall the Roam Depot copy, then in Roam: **Settings → Roam Depot → Developer extensions → Load extension → URL** and paste that address. To update, remove the URL and add it again; an open tab keeps the old bundle until you do.
+GitHub Pages serves the latest build from `main` at `https://svyk.github.io/plexus-diagram`. To run it before it reaches Roam Depot, uninstall the Roam Depot copy, then in Roam open **Settings → Roam Depot**, turn on developer mode, and choose **Developer extensions → Load extension → URL** and paste that address. To update, remove the URL and add it again; an open tab keeps the old bundle until you do.
 
 ## License
 

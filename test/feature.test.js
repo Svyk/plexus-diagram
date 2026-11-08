@@ -534,6 +534,27 @@ test("commands register in palette and slash, the context menu gets Enhance, and
   }
 });
 
+test("a Roam Depot extensionAPI without blockContextMenu registers the block menu on roamAlphaAPI and removes it", async () => {
+  const t = setup();
+  try {
+    delete t.extensionAPI.ui.blockContextMenu;
+    const menu = new Map();
+    const removed = [];
+    t.env.win.roamAlphaAPI = { ui: { blockContextMenu: {
+      addCommand: async (config) => { menu.set(config.label, config); },
+      removeCommand: async ({ label }) => { menu.delete(label); removed.push(label); },
+    } } };
+    await t.install();
+    assert.deepEqual([...menu.keys()], ["Plexus: Enhance", "Show on board", "Add to board…", "Plexus: Mark image region", "Plexus: Parse PDF"]);
+    assert.equal(menu.get("Plexus: Parse PDF")["display-conditional"]({ "block-string": "{{[[pdf]]: https://x.org/a.pdf}}" }), true);
+    await t.lifecycle.dispose();
+    assert.equal(menu.size, 0);
+    assert.equal(removed.length, 5);
+  } finally {
+    t.restore();
+  }
+});
+
 test("RG-7: Add to board acquires the picked board with the live host and places the ref", async () => {
   const dom = createDomStub();
   dom.document.head = dom.document.createElement("head");

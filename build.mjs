@@ -35,7 +35,7 @@ const anydocWasmExternal = {
 const depotSwaps = {
   name: "depot-swaps",
   setup(build) {
-    build.onResolve({ filter: /\/(anydoc|device-ocr|build-flavor|lexicon-cache)\.js$/ }, async (args) => {
+    build.onResolve({ filter: /\/(anydoc|device-ocr|build-flavor|lexicon-cache|piece-loader)\.js$/ }, async (args) => {
       if (!args.importer) return undefined;
       const importer = args.importer.split("\\").join("/");
       if (!importer.includes("/src/") || importer.includes("/src/host/depot/")) return undefined;
@@ -84,7 +84,15 @@ export async function renderBundle({ rootDirectory = defaultRoot, banner = "", m
   const rawCss = await readCss(rootDirectory);
   const { code: css } = await esbuildTransform(rawCss, { loader: "css", minify: true, charset: "utf8", legalComments: "none", logLevel: "silent" });
   const options = bundleBuildOptions({ rootDirectory, banner, depot });
-  const out = await buildPieces({ root: await realpath(resolve(rootDirectory)), options, css });
+  let out;
+  if (depot) {
+    const result = await esbuild({ ...options, metafile: true });
+    const file = result.outputFiles.find((entry) => entry.path.endsWith("extension.js"));
+    if (!file) throw new Error("esbuild did not emit extension.js");
+    out = { javascript: file.text, css, metafile: result.metafile };
+  } else {
+    out = await buildPieces({ root: await realpath(resolve(rootDirectory)), options, css });
+  }
   if (metafilePath) {
     const target = resolve(metafilePath);
     await mkdir(dirname(target), { recursive: true });
@@ -129,6 +137,9 @@ export async function depotForbiddenInputs(rootDirectory = defaultRoot) {
   const result = await esbuild({ ...bundleBuildOptions({ rootDirectory, metafile: true, depot: true }) });
   return Object.keys(result.metafile.inputs).filter((path) => DEPOT_FORBIDDEN.test(path) && !DEPOT_SHARED_OCR.test(path));
 }
+
+// Roam Depot flags extensions that evaluate code at run time, so the Depot bundle must not.
+const DEPOT_EVAL = ["new Function", "eval("];
 
 // Served by Pages as /helper/install.sh. The source lives beside the helper it installs.
 const HELPER_INSTALLER = "tools/parse-helper/install.sh";
@@ -207,6 +218,8 @@ export async function renderArtifacts(rootDirectory = defaultRoot, options = {})
   if (forbidden.length) throw new Error(`Depot build still bundles:\n- ${forbidden.join("\n- ")}`);
   const pages = await renderBundle({ rootDirectory, banner, metafilePath: options.metafilePath });
   const depot = await renderBundle({ rootDirectory, banner, depot: true });
+  const evaled = DEPOT_EVAL.filter((pattern) => depot.javascript.includes(pattern));
+  if (evaled.length) throw new Error(`Depot build contains ${evaled.join(", ")}`);
   return {
     javascript: pages.javascript,
     depotJavascript: depot.javascript,

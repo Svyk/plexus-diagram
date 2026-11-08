@@ -49,6 +49,19 @@ test("root extension.js (Depot) lacks the OCR and anydoc code, deploy/extension.
   assert.ok(pages.includes("ortUrl") || pages.includes("ORT_BASE"));
 });
 
+test("root extension.js (Depot) is one plain bundle with no eval or pieces; deploy/extension.js keeps pieces", async () => {
+  const [depot, pages] = await Promise.all([
+    readFile(resolve(rootPath, "extension.js"), "utf8"),
+    readFile(resolve(rootPath, "deploy/extension.js"), "utf8"),
+  ]);
+  for (const text of ["new Function", "eval(", "import(", "importScripts", "new Worker(", "__piece"]) {
+    assert.equal(depot.includes(text), false, `${text} in Depot build`);
+  }
+  assert.equal(/code:"[A-Za-z0-9+/=]{200,}"/.test(depot), false, "piece table in Depot build");
+  assert.ok(pages.includes("new Function"));
+  assert.ok(/code:"[A-Za-z0-9+/=]{200,}"/.test(pages));
+});
+
 test("the swap gives a null anydoc host, a null OCR source, and DEPOT_BUILD true only in the Depot flavour", async () => {
   const source = [
     'import { createAnydocHost } from "./host/anydoc.js";',

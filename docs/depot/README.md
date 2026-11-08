@@ -57,9 +57,9 @@ Fork `Roam-Research/roam-depot`, copy the JSON to `extensions/Svyk/plexus-diagra
 From the 2026-10-29 Depot research:
 
 - The repo-root `extension.js` is the Depot build: no In-browser reading (beta) and no anydoc converter, so nothing is fetched from outside the bundle. `deploy/extension.js` is the GitHub Pages build and keeps both.
-- `extension.js` is about 2.1 MiB and `extension.css` about 240 KiB. Depot sets no limit, but Roam asks that heavy dependencies load lazily. Rarely used code is carried lazily inside `extension.js` (see Note for the reviewer).
+- `extension.js` is about 2.1 MiB and `extension.css` about 240 KiB. Depot sets no limit, but `extension.js` is one plain minified bundle (see Note for the reviewer).
 - README images use relative paths. Other Depot READMEs use absolute `raw.githubusercontent.com` URLs; whether Roam resolves relative ones is unchecked.
 
 ## Note for the reviewer
 
-`extension.js` holds rarely used code as deflated, base64 text and runs it with `new Function` on first use. The text is built from this repository by `build.sh` (`scripts/pieces.mjs`, `src/piece-loader.js`); nothing is fetched. Depot publishes only `extension.js` and `extension.css`, so this is how the extension starts light without loading remote code. If a reviewer objects, listing no pieces in `scripts/pieces.mjs` gives one plain minified bundle with the same features.
+`extension.js` is one plain minified bundle built from this repository by `build.sh`. It does not use `eval`, `new Function`, dynamic `import()` or workers, and nothing is fetched. The GitHub Pages build (`deploy/extension.js`) keeps rarely used code as lazy pieces; the Depot build does not.

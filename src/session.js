@@ -946,6 +946,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     if (destroyed) return;
     const fresh = host.pullBoard(uid, { light: true });
     if (!fresh) { markGone(); return; }
+    // A watch snapshot still waiting for its frame was taken before this read: applied after it, it would put back
+    // what an undo just took away (the cards of an undone Place all came back until Roam's next echo).
+    latest = null;
     raw = clone(fresh);
     propsCache.clear();
     publish();

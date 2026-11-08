@@ -53,7 +53,9 @@ function inboxQ(cites, calls = [], state = { fail: false }) {
   };
 }
 
-function mount({ plexus = INBOX, children, cites = { Lab: [] }, storage, undo = false } = {}) {
+// `frames: true`: the session's board-watch frames wait in `f.frames` until the test runs them (f.settle), instead of
+// a real 0 ms timer that a loaded runner may not have fired yet.
+function mount({ plexus = INBOX, children, cites = { Lab: [] }, storage, undo = false, frames: ownFrames = false } = {}) {
   const fake = createFakeRoam();
   fake.trackUndo = undo;
   const base = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
@@ -63,7 +65,8 @@ function mount({ plexus = INBOX, children, cites = { Lab: [] }, storage, undo = 
   const host = Object.create(base);
   host.q = inboxQ(cites, calls, state);
   host.pageTitleOf = (uid) => (uid === "b1" ? "Lab" : "");
-  const session = acquireSession("b1", { host, linkDelay: 0 });
+  const frames = [];
+  const session = acquireSession("b1", { host, linkDelay: 0, ...(ownFrames ? { raf: (fn) => frames.push(fn) } : {}) });
   fake.clearLog();
   const dom = createDomStub();
   const root = dom.document.createElement("div");
@@ -82,7 +85,17 @@ function mount({ plexus = INBOX, children, cites = { Lab: [] }, storage, undo = 
     onSource: (kind, was) => sources.push([kind, was]),
     now: () => 0,
   });
-  return { fake, host, session, dom, root, timers, tray: make(), make, calls, state, sources };
+  // Roam's echoes and the frames they schedule, until neither has anything left; bounded by turns, not time.
+  const settle = async () => {
+    for (let turn = 0; turn < 50; turn += 1) {
+      await fake.flush();
+      await flush();
+      if (!frames.length) return;
+      for (const fn of frames.splice(0)) fn();
+    }
+    throw new Error("the board did not settle in 50 turns");
+  };
+  return { fake, host, session, dom, root, timers, tray: make(), make, calls, state, sources, frames, settle };
 }
 
 const many = (n, from = 1) => Array.from({ length: n }, (_, i) => row(`d${String(from + i).padStart(8, "0")}`, 1 + ((from + i) % 28)));
@@ -307,22 +320,40 @@ test("PXD-18 tray: a dragged arrival (the drop's placeFollowed) uses the visit's
 });
 
 test("PXD-18 tray: undoing Place all gives the visit its room back", async () => {
-  const f = mount({ cites: { Lab: many(25) }, undo: true });
+  const f = mount({ cites: { Lab: many(25) }, undo: true, frames: true });
   await f.timers.run();
   f.root.querySelector(".pxd-follow").click();
   f.root.querySelector(".pxd-follow__all").click();
-  await flush();
-  await f.fake.flush();
+  await f.settle();
   assert.equal(f.tray.arrivals().rows.length, 0);
   await f.session.undo();
-  await f.fake.flush();
-  await flush();
+  await f.settle();
   assert.equal([...f.session.board.items.values()].filter((i) => i.src === "inbox:b1").length, 0, "the cards are gone");
   assert.equal(f.tray.arrivals().rows.length, ARRIVALS_CAP);
   assert.equal(f.tray.arrivals().waiting, 5);
   assert.equal(f.root.querySelectorAll(".pxd-follow__row").length, ARRIVALS_CAP, "the panel shows them again");
   assert.equal(f.root.querySelector(".pxd-follow__all").disabled, false);
   assert.match(f.root.querySelector(".pxd-follow__count").textContent, /^20 arrivals · 5 more wait · 0 on the board/);
+  f.tray.dispose();
+});
+
+// PXD-23: CI order. Roam's echo of the Place all writes is still waiting for its frame when Cmd+Z runs; that frame
+// must not put the undone cards back.
+test("PXD-18 tray: an echo still waiting when Place all is undone does not bring the cards back", async () => {
+  const f = mount({ cites: { Lab: many(25) }, undo: true, frames: true });
+  await f.timers.run();
+  f.root.querySelector(".pxd-follow").click();
+  f.root.querySelector(".pxd-follow__all").click();
+  await f.fake.flush();
+  assert.ok(f.frames.length > 0, "the echo waits for a frame");
+  await f.session.undo();
+  const onBoard = () => [...f.session.board.items.values()].filter((i) => i.src === "inbox:b1").length;
+  assert.equal(onBoard(), 0, "the undo read the board back");
+  for (const fn of f.frames.splice(0)) fn();
+  assert.equal(onBoard(), 0, "the older echo does not undo the undo");
+  await f.settle();
+  assert.equal(onBoard(), 0);
+  assert.equal(f.tray.arrivals().rows.length, ARRIVALS_CAP);
   f.tray.dispose();
 });
 

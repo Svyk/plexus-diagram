@@ -1,0 +1,154 @@
+/* Parse PDF dialog and result toast. Mounted on document.body, outside .pxd-root, because
+   .pxd-root uses contain:layout and would trap a fixed layer inside the board. */
+
+.pxd-blockparse.pxd-blockparse {
+  --pxd-surface: #ffffff;
+  --pxd-border: #d0d7de;
+  --pxd-text: #1f2937;
+  --pxd-muted: #5f6b7c;
+  --pxd-accent: hsl(175 80% 30%);
+  --pxd-accent-soft: hsl(175 70% 42% / 0.18);
+  --pxd-danger: #b42318;
+  --pxd-shadow: 0 1px 2px rgba(17, 20, 24, 0.10), 0 8px 24px rgba(17, 20, 24, 0.16);
+  position: fixed;
+  z-index: 31;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-surface);
+  color: var(--pxd-text);
+  box-shadow: var(--pxd-shadow);
+  font-size: 13px;
+}
+
+.pxd-blockparse-toast.pxd-blockparse-toast {
+  --pxd-surface: #ffffff;
+  --pxd-border: #d0d7de;
+  --pxd-text: #1f2937;
+  --pxd-accent: hsl(175 80% 30%);
+  --pxd-accent-soft: hsl(175 70% 42% / 0.18);
+  --pxd-shadow: 0 1px 2px rgba(17, 20, 24, 0.10), 0 8px 24px rgba(17, 20, 24, 0.16);
+  position: fixed;
+  z-index: 90;
+  left: 16px;
+  bottom: 16px;
+  box-sizing: border-box;
+  max-width: min(420px, calc(100vw - 32px));
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-surface);
+  color: var(--pxd-text);
+  box-shadow: var(--pxd-shadow);
+  font-size: 13px;
+}
+
+.bp3-dark .pxd-blockparse.pxd-blockparse,
+body.bt-theme-dark .pxd-blockparse.pxd-blockparse,
+.rm-dark-theme .pxd-blockparse.pxd-blockparse,
+body.roam-body.dark .pxd-blockparse.pxd-blockparse,
+.bp3-dark .pxd-blockparse-toast.pxd-blockparse-toast,
+body.bt-theme-dark .pxd-blockparse-toast.pxd-blockparse-toast,
+.rm-dark-theme .pxd-blockparse-toast.pxd-blockparse-toast,
+body.roam-body.dark .pxd-blockparse-toast.pxd-blockparse-toast {
+  --pxd-surface: #26333f;
+  --pxd-border: #3b4b58;
+  --pxd-text: #e6edf3;
+  --pxd-muted: #a7b6c2;
+  --pxd-accent: hsl(175 60% 55%);
+  --pxd-accent-soft: hsl(175 60% 55% / 0.22);
+  --pxd-danger: #ff8a80;
+  --pxd-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.pxd-blockparse__title.pxd-blockparse__title {
+  font-weight: 600;
+}
+
+.pxd-blockparse__file.pxd-blockparse__file,
+.pxd-blockparse__prior.pxd-blockparse__prior,
+.pxd-blockparse__of.pxd-blockparse__of {
+  color: var(--pxd-muted);
+}
+
+.pxd-blockparse__file.pxd-blockparse__file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pxd-blockparse__stage.pxd-blockparse__stage,
+.pxd-blockparse__form.pxd-blockparse__form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pxd-blockparse__row.pxd-blockparse__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.pxd-blockparse__page.pxd-blockparse__page {
+  box-sizing: border-box;
+  width: 56px;
+  padding: 2px 6px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+}
+
+.pxd-blockparse__error.pxd-blockparse__error {
+  min-height: 0;
+  color: var(--pxd-danger);
+}
+
+.pxd-blockparse__bar.pxd-blockparse__bar {
+  width: 100%;
+  accent-color: var(--pxd-accent);
+}
+
+.pxd-blockparse__buttons.pxd-blockparse__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pxd-blockparse__cancel.pxd-blockparse__cancel,
+.pxd-blockparse__go.pxd-blockparse__go,
+.pxd-blockparse-toast__undo.pxd-blockparse-toast__undo {
+  padding: 4px 10px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pxd-blockparse__go.pxd-blockparse__go,
+.pxd-blockparse-toast__undo.pxd-blockparse-toast__undo {
+  border-color: var(--pxd-accent);
+  color: var(--pxd-accent);
+}
+
+.pxd-blockparse__go.pxd-blockparse__go:hover,
+.pxd-blockparse__cancel.pxd-blockparse__cancel:hover,
+.pxd-blockparse-toast__undo.pxd-blockparse-toast__undo:hover {
+  background: var(--pxd-accent-soft);
+}

@@ -192,6 +192,10 @@ The card cover is the page image, first page or the last page you read, with a t
 
 Parse turns a PDF into text, headings, lists, tables and figures you can insert into Roam. Open the reading pane, then pick Parse. Read shows the PDF; Read + Outline puts the outline beside it (a narrow pane stacks them). The outline lists headings, tables, figures and formulas with their pages; search also finds paragraphs, and a heading row stands for its whole section when you insert, send, copy or drag. Nothing is written until you insert. The one exception is a read that cost time or money (High accuracy, the helper, or cloud): once it finishes, Plexus keeps it in the graph so your other computers can load it (Settings, Keep reads in the graph).
 
+### Parse a PDF on any block
+
+Right-click a block that holds a PDF and pick Plexus: Parse PDF, or type /Plexus: Parse PDF in the block. The block can hold a `{{[[pdf]]: …}}` PDF, a PDF upload, or a plain link to a `.pdf` file. Choose the whole PDF or a page range, and tick Also bring in highlights if the PDF has any in Roam. Plexus reads the PDF with the built-in parser and writes the result as child blocks under a "Parsed PDF · pages …" block. Nothing is written until you click Parse. Run it again and the new parse replaces the old one, including any edits you made under it. The toast after a parse has an Undo button that removes what that run wrote. A scanned page needs OCR from the Plexus helper, in the Roam Depot build too. Without the helper, scanned pages stay as placeholders and the toast says so.
+
 ### Set up PDF reading
 
 Start at step 1 and stop when the reads are good enough. Each step adds to the one before.

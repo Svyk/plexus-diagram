@@ -1,5 +1,7 @@
 // After a custom undo entry (fold sections, PDF pages, table captions) has written its inverse, the native entries
 // below it no longer match Roam's stack: undo must stop there instead of calling data.undo().
+// PXD-21: a custom entry that fits Roam's own undo (45 writes or fewer, one Roam entry per write) undoes natively and
+// sets no floor (undo-native-custom.test.js). These tests fold more sections than that, so the inverse still runs.
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { createHost } from "../src/host/roam.js";
@@ -20,6 +22,7 @@ function open() {
     children: [
       { uid: "s0", string: "S0", props: { plexus: { type: "section", x: 0, y: 0, w: 480, h: 300 } }, children: [{ uid: "s0c", string: "card", props: { plexus: { x: 10, y: 40, w: 200, h: 100 } } }] },
       { uid: "s1", string: "S1", props: { plexus: { type: "section", x: 500, y: 0, w: 480, h: 300 } } },
+      ...Array.from({ length: 50 }, (_, i) => ({ uid: `x${i}`, string: `X${i}`, props: { plexus: { type: "section", x: 1000 + i * 500, y: 0, w: 480, h: 300 } } })),
       { uid: "c0", string: "loose", props: { plexus: { x: 0, y: 900, w: 200, h: 100 } } },
     ],
   });

@@ -177,6 +177,10 @@ test("undo: one undo restores the page exactly (captions gone, queries back in p
 test("undo: an unreadable query location never deletes a caption that still holds its query", { timeout: 20000 }, async () => {
   const { fake, host, session } = seeded();
   fake.trackUndo = true;
+  // PXD-21: a fold this small undoes with Roam's own undo. Keep the recorded inverse here (what a fold past 45
+  // writes, or one holding a page, still runs) to test its guard.
+  const setCustom = host.setCustomUndo;
+  host.setCustomUndo = (e) => setCustom.call(host, e && { ...e, native: false });
   const plan = session.queryFoldPlan();
   await session.foldPageQueries(plan);
   const [c1] = plan.folds.map((f) => f.captionUid);
@@ -251,4 +255,19 @@ test("view nudge: one toast per page per device with a Fold them action; never f
   } finally {
     restore();
   }
+});
+
+test("PXD-21: a small fold undoes with Roam's own undo, even when a location read fails", async () => {
+  const { fake, host, session } = seeded();
+  fake.trackUndo = true;
+  const plan = session.queryFoldPlan();
+  await session.foldPageQueries(plan);
+  const loc = host.blockLocation;
+  host.blockLocation = () => null;
+  fake.calls.length = 0;
+  await session.undo();
+  host.blockLocation = loc;
+  assert.ok(fake.has("q1"));
+  assert.ok(plan.folds.every((f) => !fake.has(f.captionUid)), "every caption gone");
+  assert.equal(fake.calls.filter((c) => c[0] !== "undo").length, 0, "no inverse writes on Roam's stack");
 });

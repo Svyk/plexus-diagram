@@ -194,10 +194,11 @@ extendSession((session, api) => {
       // Past one chunk Roam's own undo (50 entries) cannot walk back every move. Each chunk then carries a custom entry
       // that plans from the live children back to the original order (and forward again on redo): one Cmd+Z undoes the
       // whole apply, or what ran of it. The host clears its log after a custom undo, so the earlier chunks' entries go.
+      // native: false keeps that inverse even for a chunk that would fit Roam's own undo.
       const walk = async (state) => {
         for (const m of planSourceOrder(kidsOf(parentUid), state).moves) await host.moveBlock(m.uid, parentUid, m.order);
       };
-      const customFor = (i) => (chunks.length > 1 ? { undo: () => walk(plan.current), redo: () => walk(states[i]) } : null);
+      const customFor = (i) => (chunks.length > 1 ? { native: false, undo: () => walk(plan.current), redo: () => walk(states[i]) } : null);
       applying.add(parentUid);
       try {
         for (let i = 0; i < chunks.length; i++) {

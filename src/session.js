@@ -4258,6 +4258,38 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       } catch (err) { handleFailure(err); }
     },
 
+    // PXD-21: a toast's Undo. undoMark() resolves, once the writes already queued have run, to the id of the change
+    // now on top of the undo log; undoChange(mark) undoes that change only while it is still on top (every chunk of
+    // it), and resolves false when it is not: undone already, or a later change sits above it.
+    // `after` (an undoSeq() taken before the change was asked for) makes a change that wrote nothing mark 0, not the
+    // older change below it.
+    undoMark(after) {
+      return queue.idle().then(() => {
+        const top = host.undoMark?.() || 0;
+        return Number.isFinite(after) && top <= after ? 0 : top;
+      }, () => 0);
+    },
+
+    undoSeq() {
+      return host.undoSeq?.() ?? 0;
+    },
+
+    async undoChange(mark) {
+      try {
+        const id = await mark;
+        const undone = await queue.run(async () => {
+          if (!host.undoTopIs?.(id)) return false;
+          ledger.clear();
+          for (let i = 0; i < 64 && host.undoTopIs(id); i++) await host.undo();
+          return true;
+        });
+        if (!undone) return false;
+        repull();
+        republishOutline();
+        return true;
+      } catch (err) { handleFailure(err); return false; }
+    },
+
     async redo() {
       try {
         await queue.run(async () => { ledger.clear(); await host.redo(); });

@@ -281,6 +281,10 @@ export async function installPlexusDiagram({
   const snapParts = new Map(); // rec -> the parts of that capture once it started
   const SNAP_SETTLE_MS = 1000;
   const SNAP_WARM_WAIT_MS = 50;
+  // PXD-20 (speed flag warmWait). On a cold start the warm read (IndexedDB open, up to 20 boards parsed) often missed
+  // the 50 ms: the board then mounted live in one ~1 s task with no snapshot paint. Wait up to this long instead; the
+  // read resolves at once when the store is empty, so a board with no snapshot waits only as long as the read.
+  const SNAP_WARM_WAIT_LONG_MS = 800;
   const openPerf = { lastOpen: null, opens: [] };
   const QUERY_NUDGE_DELAY_MS = 4000;
 
@@ -4602,7 +4606,13 @@ export async function installPlexusDiagram({
   // Read the connection-block uids once the page has settled, off the install path.
   lifecycle.timeout(() => {
     if (stopped || !active()) return;
-    relChips.start();
+    // PXD-20 (speed flag lateChips). The connection-block query is one ~300 ms task on the PhD graph; at 600 ms it
+    // landed right as the open board went live. It now waits for the first quiet idle slice.
+    if (speedFlags().lateChips === false) relChips.start();
+    else {
+      const cancelChips = sharedBgBudget().idle(() => { if (!stopped && active()) relChips.start(); }, { timeout: 5000, label: "chips" });
+      lifecycle.add(cancelChips);
+    }
     refreshCardCache();
     if (settings[SETTING_IDS.resurface] !== false) resurface.scan(doc.body);
   }, 600);
@@ -4726,7 +4736,17 @@ export async function installPlexusDiagram({
     if (wakeTimer) clearTimeout(wakeTimer);
     if (quietTimer) clearTimeout(quietTimer);
   });
-  try { refreshIntegrations(win); } catch { /* settings panel may be absent */ }
+  // PXD-20 (speed flag lateDetect). The full detection reads every stylesheet's rules; it waits for the first quiet
+  // idle slice instead of running before the board paints. The panel rows show the cheap detection until then.
+  if (speedFlags().lateDetect === false) {
+    try { refreshIntegrations(win); } catch { /* settings panel may be absent */ }
+  } else {
+    const cancelDetect = sharedBgBudget().idle(() => {
+      if (stopped) return;
+      try { refreshIntegrations(win); } catch { /* settings panel may be absent */ }
+    }, { timeout: 5000, label: "detect" });
+    lifecycle.add(cancelDetect);
+  }
   if (typeof win.addEventListener === "function") {
     for (const name of INTEGRATION_EVENTS) {
       lifecycle.event(win, name, () => {
@@ -4773,11 +4793,14 @@ export async function installPlexusDiagram({
   // Boards already on the page paint from their snapshots when the warm read is quick.
   if (snapAllowed()) {
     let cap = null;
+    let warmed = false;
+    const waitFrom = perfNow();
     await Promise.race([
-      snapStore.ready.catch(() => 0),
-      new Promise((resolve) => { cap = setTimeout(resolve, SNAP_WARM_WAIT_MS); cap?.unref?.(); }),
+      snapStore.ready.catch(() => 0).then(() => { warmed = true; }),
+      new Promise((resolve) => { cap = setTimeout(resolve, speedFlags().warmWait === false ? SNAP_WARM_WAIT_MS : SNAP_WARM_WAIT_LONG_MS); cap?.unref?.(); }),
     ]);
     if (cap) clearTimeout(cap);
+    openPerf.warm = { waitedMs: Math.round(perfNow() - waitFrom), warmed };
     if (stopped) return;
   }
   reconcile();

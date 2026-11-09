@@ -10,7 +10,7 @@ The product page Roam renders is the repository `README.md` at `source_commit`. 
 
 ## Screenshots
 
-Taken on 3.38.0 in Roam Desktop (the board UI is unchanged in 3.39.0), on a scratch board in a test graph, with the light and the dark Roam theme. They are the README images in `docs/img/`. The README links them by full `raw.githubusercontent.com` address at the `v3.39.0` tag, because Roam Depot publishes only the README text, not the images beside it.
+Taken on 3.38.0 in Roam Desktop (the board UI is unchanged in 3.39.1), on a scratch board in a test graph, with the light and the dark Roam theme. They are the README images in `docs/img/`. The README links them by full `raw.githubusercontent.com` address at the `v3.39.1` tag, because Roam Depot publishes only the README text, not the images beside it.
 
 ![A reading-map board in the light theme](../img/board-light.png)
 
@@ -28,10 +28,10 @@ Taken on 3.38.0 in Roam Desktop (the board UI is unchanged in 3.39.0), on a scra
 | author | Svyatoslav Kleshchev |
 | source_url | https://github.com/Svyk/plexus-diagram |
 | source_repo | https://github.com/Svyk/plexus-diagram.git |
-| source_commit | `659f5b7eb341a40109008696ad6f22f7f03db060` |
+| source_commit | `d5c09c3294ca346b3a51ad828b306a27706a705c` |
 | tags | diagram, whiteboard, canvas, blocks |
 
-`source_commit` is `659f5b7`, the 3.39.0 release commit, tagged `v3.39.0` and kept on the branch `release/v3.39.0`. `main` holds the same code in the PXD-22 merge commit. It has Parse PDF on any block, the Depot build as one plain bundle with no eval, block menu items that show in a real install, and README images by full address.
+`source_commit` is `d5c09c3`, the 3.39.1 release commit, tagged `v3.39.1` and kept on the branch `release/v3.39.1`. `main` holds the same code in the PXD-24 merge commit. On top of 3.39.0 it has the Inbox Place-all undo fix and the fuller README. 3.39.0 brought Parse PDF on any block, the Depot build as one plain bundle with no eval, block menu items that show in a real install, and README images by full address.
 
 ## Pull request
 
@@ -43,14 +43,14 @@ Body:
 Add extensions/Svyk/plexus-diagram.json.
 
 Source: https://github.com/Svyk/plexus-diagram
-Commit: 659f5b7eb341a40109008696ad6f22f7f03db060
+Commit: d5c09c3294ca346b3a51ad828b306a27706a705c
 ```
 
 Fork `Roam-Research/roam-depot`, copy the JSON to `extensions/Svyk/plexus-diagram.json`, and open that pull request only when you decide to. This draft does not do that.
 
 ## What the reviewer will build
 
-`build.sh` runs `npm ci --ignore-scripts --no-audit --no-fund` and then `node build.mjs`. The repo root has `README.md`, `extension.js`, `extension.css`, `CHANGELOG.md`, and `LICENSE` (MIT). The package version is 3.39.0.
+`build.sh` runs `npm ci --ignore-scripts --no-audit --no-fund` and then `node build.mjs`. The repo root has `README.md`, `extension.js`, `extension.css`, `CHANGELOG.md`, and `LICENSE` (MIT). The package version is 3.39.1.
 
 ## Readiness check (3.39.0, 2026-11-07)
 

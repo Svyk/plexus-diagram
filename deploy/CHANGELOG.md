@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.39.1 — 2026-11-08
+
+The build for the Roam Depot submission.
+
+- **Undoing Inbox Place all keeps the cards off the board.** A late Roam update no longer put the placed cards back after Undo.
+- **Fuller README.** The README, which Roam Depot shows as the extension's page, now covers each feature and its settings.
+
 ## 3.39.0 — 2026-11-07
 
 Parse a PDF on any block, quicker big boards, and a Roam Depot build ready to submit.

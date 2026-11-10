@@ -65,8 +65,17 @@ const COST = { level: 0.08, field: 0.1, open: 0.005, target: 0.01, under: 0.04, 
 function chargeReads(fake) {
   const data = fake.api.data;
   const many = data.pull_many.bind(data);
-  const calls = { stats: [], holders: [], refs: [], status: 0, n: 0 };
+  const calls = { stats: [], holders: [], refs: [], status: 0, n: 0, byJobs: 0 };
   calls.derived = () => calls.stats.length + calls.holders.length + calls.refs.length;
+  // The derived reads a background-budget job made (the store, the refresh read, the derived refresh). The host also
+  // primes the rest of a big board's stats in idle slices, which in Node run on a real 250 ms timer the test clock does
+  // not compress, so on a slow machine those reads land mid-test and are not a job's.
+  const jobRead = () => {
+    const limit = Error.stackTraceLimit;
+    Error.stackTraceLimit = 60;
+    try { if (String(new Error().stack).includes("bg-budget.js")) calls.byJobs += 1; } finally { Error.stackTraceLimit = limit; }
+  };
+  calls.jobs = () => calls.byJobs;
   const quietly = (fn) => { const log = fake.pullLog; fake.pullLog = null; try { return fn(); } finally { fake.pullLog = log; } };
   const eids = new Map();
   const uidOf = new Map();
@@ -148,6 +157,7 @@ function chargeReads(fake) {
     calls.n += 1;
     if (p.includes(":block/_refs") && p.includes(":block/_parents")) {
       calls.stats.push(entities.length);
+      jobRead();
       const below = descendants();
       let cost = 0.5;
       const out = entities.map((e) => {
@@ -163,11 +173,13 @@ function chargeReads(fake) {
     }
     if (p.includes(":block/page [:block/uid :node/title]")) {
       calls.holders.push(entities.length);
+      jobRead();
       own.advance(0.2 + COST.own * entities.length);
       return entities.map((e) => holdersOf(e));
     }
     if (p.includes(":block/_refs")) {
       calls.refs.push(entities.length);
+      jobRead();
       let cost = 0.2;
       const out = entities.map((entity) => {
         const e = typeof entity === "number" ? entity : eidOf(entity);
@@ -179,8 +191,8 @@ function chargeReads(fake) {
       own.advance(cost);
       return out;
     }
-    // The first level pull after calls.mark is armed: a new board read began (how many derived reads came before it).
-    if (p.includes(":block/children") && calls.mark === "armed") calls.mark = calls.derived();
+    // The first level pull after calls.mark is armed: a new board read began (how many derived reads by jobs came before it).
+    if (p.includes(":block/children") && calls.mark === "armed") calls.mark = calls.jobs();
     const per = p.includes(":block/children") ? COST.level : p === "[:db/id :block/open]" ? COST.open : p.includes(":block/props") ? COST.field : COST.other;
     own.advance(per * entities.length);
     return many(pattern, entities);
@@ -369,12 +381,12 @@ test("an edit during the store job stops it: nothing is stored for the old page,
   const off = S.host.watchBoard(UID, () => {});
   const old = S.pageStamp();
   // The first store is in its stats parts.
-  await untilTurns(own, () => S.reads.derived() >= 2, 20000);
+  await untilTurns(own, () => S.reads.jobs() >= 2, 20000);
   assert.equal(S.store.stampOf(UID), null);
   await S.fake.api.data.block.update({ block: { uid: "bc00003", string: "edited during the store" } });
   const stamp = S.pageStamp();
   assert.notEqual(stamp, old);
-  const seen = S.reads.derived();
+  const seen = S.reads.jobs();
   S.reads.mark = "armed";
   await untilTurns(own, () => (S.host.stats.keepsDropped || 0) >= 1, 20000);
   // The retry's read is the next thing that reads the board: the stopped job read nothing more before it.

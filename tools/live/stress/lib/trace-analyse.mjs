@@ -35,17 +35,19 @@ async function loadEvents(file) {
 
 const r3 = (x) => Math.round(x * 1000) / 1000;
 
-export async function analyseTrace(file, { names = {}, from, to } = {}) {
+export async function analyseTrace(file, { names = {}, from, to, plexusUrl } = {}) {
   let events = await loadEvents(file);
 
   // pass 1: find the main thread, collect profile events and selector stats
-  const threadName = new Map(), runTask = new Map(), marks = [], profiles = [], selAgg = new Map();
+  const threadName = new Map(), runTask = new Map(), marks = [], profiles = [], selAgg = new Map(), scriptUrls = new Map();
   for (const e of events) {
     const k = e.pid + ":" + e.tid;
     if (e.ph === "M") { if (e.name === "thread_name") threadName.set(k, e.args && e.args.name); continue; }
     if (isTask(e.name) && e.ph === "X") runTask.set(k, (runTask.get(k) || 0) + (e.dur || 0));
     if (e.name === "pxd-stress-trace") marks.push(e);
     if (e.name === "Profile" || e.name === "ProfileChunk") profiles.push(e);
+    const ad = e.args && e.args.data;
+    if (ad && ad.scriptId != null) { const u = ad.url || ad.scriptName; if (u && typeof u === "string") scriptUrls.set(e.pid + ":" + ad.scriptId, u); }
     const st = e.args && e.args.selector_stats && e.args.selector_stats.selector_timings;
     if (st) for (const s of st) {
       const a = selAgg.get(s.selector) || { us: 0, att: 0, mc: 0 };
@@ -77,9 +79,6 @@ export async function analyseTrace(file, { names = {}, from, to } = {}) {
     if (end > tEnd) tEnd = end;
     if (e.ph === "X" && e.dur != null) ev.push(e);
   }
-  const profEvents = profiles.filter((p) => p.pid === mpid);
-  const profMain = profEvents.filter((p) => p.tid === mtid);
-  const profUse = profMain.length ? profMain : profEvents;
   events = null;
 
   const S = from != null ? t0 + from * 1000 : t0;
@@ -153,8 +152,8 @@ export async function analyseTrace(file, { names = {}, from, to } = {}) {
   const spanMs = (E - S) / 1000;
 
   // script by owner
-  const prof = ownersFromProfile(profUse, S, E, names);
-  const owners = prof && prof.owners;
+  const prof = ownersFromProfile(profiles, mpid, mtid, S, E, names, scriptUrls, plexusUrl);
+  const owners = prof && prof.sampledMs > 0 ? prof.owners : null;
   const script = { plexus: 0, roam: 0, other: {}, unknown: 0 };
   const put = (o, ms) => {
     if (o === "plexus") script.plexus += ms;
@@ -174,72 +173,104 @@ export async function analyseTrace(file, { names = {}, from, to } = {}) {
     style: r3(sums.style), layout: r3(sums.layout), paint: r3(sums.paint), gc: r3(sums.gc), other: r3(sums.other),
     idle: r3(spanMs - taskTotal / 1000),
     hitTest: r3(hitTest), restyled, recalcs, layouts, forcedMs: r3(forced),
-    tasks, scriptMs: r3(sums.script), ownerSource: owners ? "profile" : "events",
+    tasks, scriptMs: r3(sums.script), ownerSource: prof && prof.sampledMs > 0 ? "profile" : "events",
+    profile: { samples: prof ? prof.samples : 0, sampledMs: prof ? r3(prof.sampledMs) : 0, mainTidMatched: prof ? prof.mainTidMatched : false },
   };
   // functions: raw sampled ms, not scaled to the event-walk script time
   split.functions = { self: [], plexus: [] };
   if (prof) {
     const fnName = (cf) => cf.functionName || "(anonymous)";
-    split.functions.self = [...prof.selfM.values()].sort((a, b) => b.ms - a.ms).slice(0, 25).map((a) => ({ owner: a.owner, fn: fnName(a.cf), line: a.cf.lineNumber, pos: a.cf.columnNumber, url6: (a.cf.url || "").slice(-6), ms: r3(a.ms) }));
-    split.functions.plexus = [...prof.inclM.values()].sort((a, b) => b.ms - a.ms).slice(0, 25).map((a) => ({ fn: fnName(a.cf), line: a.cf.lineNumber, pos: a.cf.columnNumber, ms: r3(a.ms), selfMs: r3(a.self) }));
+    const u6 = (a) => (a.url || "").slice(-6);
+    split.functions.self = [...prof.selfM.values()].sort((a, b) => b.ms - a.ms).slice(0, 25).map((a) => ({ owner: a.owner, fn: fnName(a.cf), line: a.cf.lineNumber, pos: a.cf.columnNumber, scriptId: a.cf.scriptId, url6: u6(a), ms: r3(a.ms) }));
+    split.functions.plexus = [...prof.inclM.values()].sort((a, b) => b.ms - a.ms).slice(0, 25).map((a) => ({ fn: fnName(a.cf), line: a.cf.lineNumber, pos: a.cf.columnNumber, scriptId: a.cf.scriptId, url6: u6(a), ms: r3(a.ms), selfMs: r3(a.self) }));
+    split.profile.topBlob = prof.topBlob;
+    split.profile.plexusUrl = prof.plexusUrl;
   }
   if (selAgg.size) split.selectors = [...selAgg].sort((a, b) => b[1].us - a[1].us).slice(0, 30).map(([selector, a]) => ({ selector, ms: r3(a.us / 1000), attempts: a.att, matches: a.mc }));
   return split;
 }
 
-const fkey = (cf) => (cf.url || "") + "|" + (cf.functionName || "") + "|" + cf.lineNumber + "|" + cf.columnNumber;
+const HEUR = ["sharedBgBudget", "createTaskProbe", "armSettle", "recomputeDerived", "keepModel"];
 
-// owner shares (ms) plus per-function self and plexus-inclusive time from CPU profile samples inside [S, E]; null when the trace has none
-function ownersFromProfile(profEvents, S, E, names) {
+// Raw sampled ms (never scaled): owner shares, per-function self time, and plexus-inclusive time, from the CPU profile of the main thread
+// inside [S, E]. Chunks are linked to their Profile by id and are emitted on other tids, so chunk tids are never used. Returns null without profile data.
+function ownersFromProfile(profEvents, mpid, mtid, S, E, names, scriptUrls, plexusUrl) {
+  const key = (e) => e.pid + ":" + String(e.id ?? (e.id2 && (e.id2.local ?? e.id2.global)) ?? "0");
   const byId = new Map();
-  const key = (e) => String(e.id ?? (e.id2 && (e.id2.local ?? e.id2.global)) ?? "0");
   for (const p of profEvents) {
     const k = key(p);
     let pr = byId.get(k);
-    if (!pr) byId.set(k, (pr = { start: null, chunks: [] }));
-    if (p.name === "Profile") pr.start = p.args && p.args.data && p.args.data.startTime != null ? p.args.data.startTime : p.ts;
-    else pr.chunks.push(p);
+    if (!pr) byId.set(k, (pr = { pid: p.pid, tid: null, start: null, chunks: [], samples: 0 }));
+    if (p.name === "Profile") { pr.tid = p.tid; pr.start = p.args && p.args.data && p.args.data.startTime != null ? p.args.data.startTime : p.ts; }
+    else { pr.chunks.push(p); const cp = p.args && p.args.data && p.args.data.cpuProfile; pr.samples += (cp && cp.samples ? cp.samples.length : 0); }
   }
-  const out = new Map(), selfM = new Map(), inclM = new Map();
-  let any = false;
-  for (const pr of byId.values()) {
-    pr.chunks.sort((a, b) => a.ts - b.ts);
-    const nodes = new Map();
-    let t = pr.start != null ? pr.start : pr.chunks.length ? pr.chunks[0].ts : 0;
-    for (const ch of pr.chunks) {
-      const d = ch.args && ch.args.data;
-      if (!d) continue;
-      const cp = d.cpuProfile || {};
-      for (const n of cp.nodes || []) nodes.set(n.id, { parent: n.parent, cf: n.callFrame || {}, kids: n.children });
-      for (const n of cp.nodes || []) for (const c of n.children || []) { const cn = nodes.get(c); if (cn && cn.parent == null) cn.parent = n.id; }
-      const samples = cp.samples || [], deltas = d.timeDeltas || [];
-      for (let i = 0; i < samples.length; i++) {
-        t += deltas[i] || 0;
-        if (t < S || t > E) continue;
-        const leaf = nodes.get(samples[i]);
-        if (!leaf) continue;
-        if (/^\((idle|program|garbage collector)\)$/.test(leaf.cf.functionName || "")) continue;
-        let outer = null, roam = false;
-        const dt = (deltas[i] || 0) / 1000, seen = new Set();
-        for (let n = leaf, g = 0; n && g < 4000; n = n.parent != null ? nodes.get(n.parent) : null, g++) {
-          const u = n.cf.url || "";
-          if (u.startsWith("blob:")) outer = u;
-          else if (u.includes("roamresearch.com")) roam = true;
-          if (ownerOf(u, names) === "plexus") {
-            const k = fkey(n.cf);
-            if (!seen.has(k)) { seen.add(k); const a = inclM.get(k) || { cf: n.cf, ms: 0, self: 0 }; a.ms += dt; if (n === leaf) a.self += dt; inclM.set(k, a); }
-          }
-        }
-        const o = outer ? ownerOf(outer, names) : roam ? "roam" : "unknown";
-        // time until the next sample is not known across chunks, so bill this sample its own delta
-        out.set(o, (out.get(o) || 0) + dt);
-        const sk = fkey(leaf.cf), sa = selfM.get(sk) || { cf: leaf.cf, owner: o, ms: 0 };
-        sa.ms += dt; selfM.set(sk, sa);
-        any = true;
-      }
+  const cands = [...byId.values()].filter((x) => x.pid === mpid && x.chunks.length);
+  if (!cands.length) return null;
+  const exact = cands.filter((x) => x.tid === mtid);
+  const pool = exact.length ? exact : cands;
+  const pr = pool.sort((a, b) => b.samples - a.samples)[0];
+  const mainTidMatched = exact.length > 0;
+
+  pr.chunks.sort((a, b) => a.ts - b.ts);
+  const nodes = new Map(), scriptOf = new Map(), smp = [];
+  let t = pr.start != null ? pr.start : pr.chunks[0].ts;
+  for (const ch of pr.chunks) {
+    const d = ch.args && ch.args.data;
+    if (!d) continue;
+    const cp = d.cpuProfile || {};
+    for (const n of cp.nodes || []) {
+      const cf = n.callFrame || {};
+      nodes.set(n.id, { parent: n.parent, cf });
+      if (cf.url && cf.scriptId != null) scriptOf.set(String(cf.scriptId), cf.url);
+    }
+    for (const n of cp.nodes || []) for (const c of n.children || []) { const cn = nodes.get(c); if (cn && cn.parent == null) cn.parent = n.id; }
+    const samples = cp.samples || [], deltas = d.timeDeltas || [];
+    for (let i = 0; i < samples.length; i++) {
+      t += deltas[i] || 0;
+      if (t >= S && t <= E) smp.push([samples[i], (deltas[i] || 0) / 1000]);
     }
   }
-  return any ? { owners: out, selfM, inclM } : null;
+  // frames often carry only a scriptId: resolve through the trace-wide map, then the profile's own frames
+  for (const n of nodes.values()) {
+    const cf = n.cf;
+    n.url = cf.url || (cf.scriptId != null && (scriptUrls.get(mpid + ":" + cf.scriptId) || scriptOf.get(String(cf.scriptId)))) || "";
+  }
+  let nm = names || {};
+  let plexusU = plexusUrl || null;
+  if (plexusU) nm = { ...nm, [plexusU]: { name: "plexus-diagram" } };
+  else if (!Object.keys(nm).length) {
+    const per = new Map();
+    for (const n of nodes.values()) if (n.url.startsWith("blob:") && HEUR.includes(n.cf.functionName)) { const st = per.get(n.url) || new Set(); st.add(n.cf.functionName); per.set(n.url, st); }
+    const hit = [...per].filter(([, st]) => st.size >= 2);
+    if (hit.length === 1) { plexusU = hit[0][0]; nm = { [plexusU]: { name: "plexus-diagram" } }; }
+  }
+  const fkey = (n) => n.url + "|" + (n.cf.functionName || "") + "|" + n.cf.lineNumber + "|" + n.cf.columnNumber + "|" + n.cf.scriptId;
+  const out = new Map(), selfM = new Map(), inclM = new Map(), blobMs = new Map();
+  let sampledMs = 0, count = 0;
+  for (const [id, dt] of smp) {
+    const leaf = nodes.get(id);
+    if (!leaf) continue;
+    if (/^\((idle|program|garbage collector)\)$/.test(leaf.cf.functionName || "")) continue;
+    let outer = null, roam = false;
+    const seen = new Set();
+    for (let n = leaf, g = 0; n && g < 4000; n = n.parent != null ? nodes.get(n.parent) : null, g++) {
+      const u = n.url;
+      if (u.startsWith("blob:")) outer = u;
+      else if (u.includes("roamresearch.com")) roam = true;
+      if (u && ownerOf(u, nm) === "plexus") {
+        const k = fkey(n);
+        if (!seen.has(k)) { seen.add(k); const a = inclM.get(k) || { cf: n.cf, url: u, ms: 0, self: 0 }; a.ms += dt; if (n === leaf) a.self += dt; inclM.set(k, a); }
+      }
+    }
+    const o = outer ? ownerOf(outer, nm) : roam ? "roam" : "unknown";
+    if (outer) blobMs.set(outer, (blobMs.get(outer) || 0) + dt);
+    out.set(o, (out.get(o) || 0) + dt);
+    const sk = fkey(leaf), sa = selfM.get(sk) || { cf: leaf.cf, url: leaf.url, owner: o, ms: 0 };
+    sa.ms += dt; selfM.set(sk, sa);
+    sampledMs += dt; count++;
+  }
+  const top = [...blobMs].sort((a, b) => b[1] - a[1])[0];
+  return { owners: out, selfM, inclM, sampledMs, samples: count, mainTidMatched, topBlob: top ? { url: top[0], ms: r3(top[1]) } : null, plexusUrl: plexusU };
 }
 
 // ---- CLI
@@ -255,6 +286,10 @@ function table(s, file) {
   row("gc", s.gc); row("other", s.other); row("idle", s.idle);
   lines.push("", `restyled ${s.restyled} elements in ${s.recalcs} recalcs, ${s.layouts} layouts, forced style/layout ${s.forcedMs} ms`);
   if (s.tasks.length) { lines.push("", "tasks >= 50 ms:"); for (const t of s.tasks) lines.push(`  at ${String(t.st).padStart(9)}  ${String(t.d).padStart(8)} ms  ` + t.top.map(([l, v]) => `${l} ${v}`).join(", ")); }
+  if (s.profile) {
+    lines.push("", `profile: ${s.profile.samples} samples, ${s.profile.sampledMs} ms sampled, main tid matched: ${s.profile.mainTidMatched}`);
+    if (s.profile.topBlob) lines.push(`  blob with most sampled time: ${s.profile.topBlob.url} (${s.profile.topBlob.ms} ms)${s.profile.plexusUrl ? "; plexus: " + s.profile.plexusUrl : "; pass --plexus-url <url> if that is plexus"}`);
+  }
   if (s.functions && s.functions.self.length) {
     lines.push("", "functions by self time (raw sampled ms):");
     for (const x of s.functions.self.slice(0, 15)) lines.push(`  ${String(x.ms).padStart(9)}  ${x.owner.padEnd(10)} ${x.fn.slice(0, 40)}  pos ${x.pos} (line ${x.line}, ${x.url6})`);
@@ -344,6 +379,29 @@ async function selftest() {
     assert.ok(!fs.self.some((x) => x.fn === "(idle)")); assert.strictEqual(fs.self.length, 3);
     assert.deepStrictEqual((await analyseTrace(plain, { names, from: 0, to: 13 })).functions.plexus.length, 1);
     assert.deepStrictEqual((await analyseTrace(join(dir, "np.json"), { names })).functions, { self: [], plexus: [] });
+    // real-trace shape: Profile on the main tid, chunks on another tid with the same id, frames with a scriptId and no url
+    const bf = (id, parent, functionName, scriptId, col) => ({ id, parent, callFrame: { codeType: "JS", functionName, scriptId, lineNumber: 0, columnNumber: col } });
+    const rt = [...meta, { ph: "M", name: "thread_name", pid: 1, tid: 7, args: { name: "ProfilerThread" } },
+      { ph: "R", cat: "blink.user_timing", name: "pxd-stress-trace", pid: 1, tid: 1, ts: 500, args: {} },
+      X("RunTask", 1000, 20000), X("FunctionCall", 1500, 100, { data: { scriptId: 77, url: blobA } }), X("EvaluateScript", 1600, 50, { data: { scriptId: 88, url: "https://roamresearch.com/app.js" } }),
+      { ph: "P", name: "Profile", pid: 1, tid: 1, ts: 900, id: "0x5", args: { data: { startTime: 900 } } },
+      { ph: "P", name: "Profile", pid: 1, tid: 9, ts: 900, id: "0x6", args: { data: { startTime: 900 } } },
+      { ph: "P", name: "ProfileChunk", pid: 1, tid: 7, ts: 3000, id: "0x5", args: { data: { cpuProfile: { nodes: [bf(1, null, "(root)", 0, 0), bf(2, 1, "sharedBgBudget", 77, 10), bf(3, 2, "armSettle", 77, 20), bf(4, 3, "domWork", 88, 30), bf(5, 1, "(idle)", 0, 0)], samples: [2, 3, 4, 5] }, timeDeltas: [1100, 1000, 2000, 5000] } } },
+      { ph: "P", name: "ProfileChunk", pid: 1, tid: 7, ts: 3500, id: "0x6", args: { data: { cpuProfile: { nodes: [bf(1, null, "(root)", 0, 0), bf(2, 1, "other", 88, 1)], samples: [2] }, timeDeltas: [1000] } } }];
+    await writeFile(join(dir, "rt.json"), JSON.stringify(rt));
+    const rr = await analyseTrace(join(dir, "rt.json"));
+    assert.strictEqual(rr.ownerSource, "profile"); assert.strictEqual(rr.profile.mainTidMatched, true); assert.strictEqual(rr.profile.samples, 3); near(rr.profile.sampledMs, 4.1, "sampled");
+    assert.strictEqual(rr.profile.plexusUrl, blobA); // heuristic: two named functions in the one blob
+    const pf = rr.functions.plexus.find((x) => x.fn === "sharedBgBudget"); near(pf.ms, 4.1, "heur incl"); near(pf.selfMs, 1.1, "heur self"); assert.strictEqual(pf.scriptId, 77); assert.strictEqual(pf.url6, blobA.slice(-6));
+    const dw = rr.functions.self.find((x) => x.fn === "domWork"); assert.strictEqual(dw.owner, "plexus"); assert.strictEqual(dw.pos, 30); assert.ok(!rr.functions.self.some((x) => x.fn === "other"));
+    near(rr.script.plexus, rr.scriptMs, "all script is plexus");
+    // explicit plexusUrl, and unknown owner when nothing resolves
+    const ex = await analyseTrace(join(dir, "rt.json"), { plexusUrl: blobA }); assert.strictEqual(ex.profile.plexusUrl, blobA);
+    const nx = await analyseTrace(join(dir, "rt.json"), { names: { [blobB]: { name: "x" } } }); assert.ok(nx.script.other["ext:" + blobA.slice(-6)] > 0);
+    // no Profile on the main tid: pick the main pid's profile with the most samples
+    const rt2 = rt.map((e) => (e.name === "Profile" && e.id === "0x5" ? { ...e, tid: 8 } : e));
+    await writeFile(join(dir, "rt2.json"), JSON.stringify(rt2));
+    const r2x = await analyseTrace(join(dir, "rt2.json")); assert.strictEqual(r2x.profile.mainTidMatched, false); assert.strictEqual(r2x.profile.samples, 3);
   } finally { await rm(dir, { recursive: true, force: true }); }
   console.log("synthetic ok");
   const real = join(homedir(), "wo/pxd-20/tr-nm1.json");
@@ -360,9 +418,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   if (args.includes("--selftest")) await selftest();
   else {
-    const file = args.find((a) => !a.startsWith("--"));
-    if (!file) { console.error("usage: trace-analyse.mjs <file.json[.gz]> [--json] | --selftest"); process.exit(2); }
-    const s = await analyseTrace(file);
+    const opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
+    const file = args.find((a, i) => !a.startsWith("--") && args[i - 1] !== "--plexus-url" && args[i - 1] !== "--names");
+    if (!file) { console.error("usage: trace-analyse.mjs <file.json[.gz]> [--json] [--plexus-url <url>] [--names <file.json>] | --selftest"); process.exit(2); }
+    const names = opt("--names") ? JSON.parse(await readFile(opt("--names"), "utf8")) : {};
+    const s = await analyseTrace(file, { names, plexusUrl: opt("--plexus-url") });
     console.log(args.includes("--json") ? JSON.stringify(s) : table(s, file));
   }
 }

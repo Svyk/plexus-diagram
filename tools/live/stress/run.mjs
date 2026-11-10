@@ -1,6 +1,6 @@
 // Suite runner for the stress board (PXD-25). Bench window only.
 //   node tools/live/stress/run.mjs [--group move,open,build,type,idle] [--scenario a,b] [--n 3] [--label base]
-//        [--build <dir>] [--trace] [--trace-only] [--selectors] [--quick] [--soak-min 30] [--target <idPrefix>] [--out <dir>]
+//        [--build <dir>] [--trace] [--trace-only] [--reanalyse] [--selectors] [--quick] [--soak-min 30] [--target <idPrefix>] [--out <dir>]
 //        [--list] [--dry] [--cleanup] [--keep-going] [--inline] [--chain a,b]
 // --list and --dry never connect. Everything else drives the marked bench window over CDP.
 import { readFile, appendFile, mkdir } from "node:fs/promises";
@@ -20,10 +20,10 @@ const SCENARIO_FILES = ["move", "open", "edit", "idle"];
 const PX = "window.__pxdStress";
 
 const VALUE_FLAGS = new Set(["group", "scenario", "n", "label", "build", "soak-min", "target", "out", "chain", "timeout"]);
-const BOOL_FLAGS = new Set(["trace", "trace-only", "selectors", "quick", "list", "dry", "cleanup", "keep-going", "inline"]);
+const BOOL_FLAGS = new Set(["trace", "trace-only", "reanalyse", "selectors", "quick", "list", "dry", "cleanup", "keep-going", "inline"]);
 
 export function parseArgs(argv) {
-  const a = { group: null, scenario: null, n: 3, label: "base", build: null, trace: false, traceOnly: false, selectors: false, quick: false, soakMin: 30, target: null, out: null, list: false, dry: false, cleanup: false, keepGoing: false, inline: false, chain: null, timeoutMs: 240000 };
+  const a = { group: null, scenario: null, n: 3, label: "base", build: null, trace: false, traceOnly: false, reanalyse: false, selectors: false, quick: false, soakMin: 30, target: null, out: null, list: false, dry: false, cleanup: false, keepGoing: false, inline: false, chain: null, timeoutMs: 240000 };
   const camel = (k) => k.replace(/-(\w)/g, (_, c) => c.toUpperCase());
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
@@ -106,6 +106,32 @@ export async function main(argv, deps = {}) {
     if (!a.traceOnly) for (let i = 0; i < a.n; i++) for (const s of selected) console.log(`  run ${i + 1}/${a.n}  ${s.group}/${s.name}  needs ${s.needs}${s.leaves ? "  (40 s pacer)" : ""}${s.heavy ? "  [heavy]" : ""}`);
     if (a.trace) for (const s of selected) console.log(`  trace pass  ${s.group}/${s.name}${a.selectors ? "  (selectors)" : ""}`);
     console.log(`${a.traceOnly ? 0 : selected.length * a.n} timed runs${a.trace ? ` + ${selected.length} traced` : ""}`);
+    return 0;
+  }
+  if (a.reanalyse) {
+    // no CDP: run the analyser again over the saved traces of this label and append the new split
+    const bw = await import("./lib/bench-window.mjs");
+    const file = join(bw.OUT_DIR, "results.jsonl");
+    const rows = (await readFile(file, "utf8")).split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    const inferUrl = (run) => {
+      const sum = new Map();
+      for (const l of rows) if (l.run === run) for (const st of (l.stalls && l.stalls.list) || []) for (const sc of st.scripts || []) if (sc.u && sc.u.startsWith("blob:")) sum.set(sc.u, (sum.get(sc.u) || 0) + (sc.d || 0));
+      return [...sum].sort((p, q) => q[1] - p[1]).map((x) => x[0])[0] || null;
+    };
+    let n = 0;
+    for (const l of rows.filter((r) => r.label === a.label && r.traced === true && r.trace && r.trace.file && existsSync(r.trace.file))) {
+      const plexusUrl = l.trace.plexusUrl || inferUrl(l.run);
+      const names = { ...(l.trace.names || {}) };
+      for (const k of Object.keys(names)) if (typeof names[k] === "string") names[k] = { name: names[k] };
+      if (plexusUrl) names[plexusUrl] = { name: "plexus-diagram" };
+      const split = await (deps.analyse || analyseTrace)(l.trace.file, { names, plexusUrl });
+      const tasks = (split.tasks || []).slice().sort((p, q) => q.d - p.d).slice(0, 12);
+      const nl = { ...l, at: new Date().toISOString(), reanalysed: true, trace: { file: l.trace.file, ...split, tasks, names: Object.fromEntries(Object.entries(names).map(([k, v]) => [k, v.name])), plexusUrl } };
+      await appendFile(file, JSON.stringify(nl) + "\n");
+      n++;
+      console.log(`reanalysed ${l.group}/${l.scenario}  script ${f1(split.script && split.script.plexus)}/${f1(split.script && split.script.roam)}  plexusUrl ${plexusUrl ? "yes" : "no"}  file ${String(l.trace.file).split("/").pop()}`);
+    }
+    console.log(`${n} traced lines reanalysed for label ${a.label}`);
     return 0;
   }
   if (!selected.length && !a.cleanup) { console.error("no scenarios selected"); return 2; }
@@ -211,6 +237,34 @@ export async function main(argv, deps = {}) {
       console.log("reconnected to the bench window");
     };
 
+    // The Plexus bundle's URL: Debugger.scriptParsed gives scriptId -> url, a function Plexus registered gives the scriptId.
+    // Done between scenarios only: Debugger.enable is work the measured windows must not carry.
+    let plexusStale = true;
+    const refreshPlexusUrl = async () => {
+      plexusStale = false;
+      const byId = new Map();
+      const off = c.on((m) => { if (m.method === "Debugger.scriptParsed" && m.params.url) byId.set(String(m.params.scriptId), m.params.url); });
+      let url = null;
+      try {
+        await c.send("Debugger.enable");
+        await sleep(1200);
+        const r = await c.send("Runtime.evaluate", { expression: "window.__plexusDiagram && window.__plexusDiagram.views", returnByValue: false });
+        const oid = r && r.result && r.result.result && r.result.result.objectId;
+        if (oid) {
+          try {
+            const pr = await c.send("Runtime.getProperties", { objectId: oid, ownProperties: false });
+            const fl = ((pr && pr.result && pr.result.internalProperties) || []).find((x) => x.name === "[[FunctionLocation]]");
+            const sid = fl && fl.value && fl.value.value && fl.value.value.scriptId;
+            url = sid != null ? byId.get(String(sid)) || null : null;
+          } finally { try { await c.send("Runtime.releaseObject", { objectId: oid }); } catch { /* gone */ } }
+        }
+      } catch (e) { console.error(`plexus url lookup failed: ${String((e && e.message) || e).slice(0, 120)}`); }
+      finally { off(); try { await c.send("Debugger.disable"); } catch { /* closed */ } }
+      ctx.plexusUrl = url;
+      if (url) names[url] = { name: "plexus-diagram" };
+      return url;
+    };
+
     let names = {}, origin = await c.ev(`performance.timeOrigin`);
     const ctx = {
       c, input, opts: { quick: a.quick, soakMin: a.soakMin, chain: a.chain || NESTED.split(","), timeoutMs: a.timeoutMs, selectors: a.selectors, inline: a.inline },
@@ -229,6 +283,8 @@ export async function main(argv, deps = {}) {
       await bw.saveCamera(c);
       for (const k of Object.keys(names)) delete names[k];
       origin = await c.ev(`performance.timeOrigin`);
+      plexusStale = true;
+      ctx.plexusUrl = null;
     };
     ctx.findBtns = async (re) => c.evJson(`(() => { const v = ${VIEW_JS}; if (!v) return "[]"; const re = new RegExp(${J(re.source)}, ${J(re.flags)}); const out = [];
       for (const b of v.root.querySelectorAll(".pxd-rail .pxd-btn, .pxd-btn")) { const t = (b.getAttribute("title") || "") + " | " + (b.getAttribute("aria-label") || ""); if (!re.test(t)) continue;
@@ -457,6 +513,7 @@ export async function main(argv, deps = {}) {
     await ctx.computeHome();
     await ctx.cam.restore();
     await ctx.show(ctx.at(1.07));
+    await refreshPlexusUrl();
     const version = (await probe.info()).version || win.version;
 
     // ---- one scenario run
@@ -500,6 +557,7 @@ export async function main(argv, deps = {}) {
         try { info1 = await probe.info(); } catch { /* ignore */ }
         const o = await c.ev(`performance.timeOrigin`);
         if (o !== origin) await ctx.afterReload();
+        if (plexusStale) await refreshPlexusUrl();
         const sum = res.summary || null;
         if (res.skip) line.skip = String(res.skip);
         if (sum) {
@@ -514,9 +572,9 @@ export async function main(argv, deps = {}) {
         }
         line.ctx = { board: info0 && info0.board, zoom0: info0 && info0.zoom, zoom1: info1 && info1.zoom, lod0: info0 && info0.lod, lod1: info1 && info1.lod, items: info0 && info0.items, camera: info0 ? { x: info0.x, y: info0.y, zoom: info0.zoom } : null, fullscreen: fs0, size: size0 };
         if (traceFile) {
-          const split = await (deps.analyse || analyseTrace)(traceFile.file, { names });
+          const split = await (deps.analyse || analyseTrace)(traceFile.file, { names, plexusUrl: ctx.plexusUrl });
           const tasks = (split.tasks || []).slice().sort((p, q) => q.d - p.d).slice(0, 12);
-          line.trace = { file: traceFile.file, ...split, tasks };
+          line.trace = { file: traceFile.file, ...split, tasks, names: Object.fromEntries(Object.entries(names).filter(([k]) => k.startsWith("blob:")).map(([k, v]) => [k, v.name])), plexusUrl: ctx.plexusUrl || null };
         }
         recFails.n = 0;
       } catch (e) {
@@ -551,7 +609,7 @@ export async function main(argv, deps = {}) {
       console.log(`${s.group}/${s.name} ${i + 1}${traced ? " traced" : ""}  ttnp ${f1(sm.ttnp)}  stalls ${sm.stalls ? `${sm.stalls.n}/${f1(sm.stalls.total)}/${f1(sm.stalls.worst)}` : "-"}  frames ${sm.frames ? `${f1(sm.frames.p95)}/${f1(sm.frames.max)}` : "-"}  content ${sm.content ? `${f1(sm.content.readable.p95)}/${f1(sm.content.live.p95)}` : "-"}  owner ${sm.owner ? `${f1(sm.owner.plexus)}/${f1(sm.owner.roam)}/${f1(oth)}/${f1(sm.owner.render)}` : "-"}${sm.skip ? `  skip: ${sm.skip}` : ""}${sm.err ? `  ERR ${sm.err}` : ""}`);
       if (sm.trace && sm.trace.script) {
         const t = sm.trace, oth = Object.values(t.script.other || {}).reduce((p, q) => p + q, 0) + (t.script.unknown || 0);
-        console.log(`trace ${s.group}/${s.name}  script ${f1(t.script.plexus)}/${f1(t.script.roam)}/${f1(oth)}  style ${f1(t.style)}  layout ${f1(t.layout)}  paint ${f1(t.paint)}  gc ${f1(t.gc)}  restyled ${t.restyled}  file ${String(t.file).split("/").pop()}`);
+        console.log(`trace ${s.group}/${s.name}  script ${f1(t.script.plexus)}/${f1(t.script.roam)}/${f1(oth)}  style ${f1(t.style)}  layout ${f1(t.layout)}  paint ${f1(t.paint)}  gc ${f1(t.gc)}  restyled ${t.restyled}${t.profile ? `  profile ${f1(t.profile.sampledMs != null ? t.profile.sampledMs : t.profile)} ms` : ""}  file ${String(t.file).split("/").pop()}`);
       }
       return !line.fatal;
     }

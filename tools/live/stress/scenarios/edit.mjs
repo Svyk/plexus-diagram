@@ -458,6 +458,14 @@ export async function leftovers(ctx) {
 
 // ---- the scratch section
 async function onBoard(ctx, uid) { return !!(uid && (await page(ctx, `rectOf(${J(uid)})`))); }
+// poll until the view shows a uid created by API (a loaded machine can take seconds)
+async function waitOnBoard(ctx, uid, ms = 5000) {
+  for (const t0 = Date.now(); ; ) {
+    if (await onBoard(ctx, uid)) return true;
+    if (Date.now() - t0 >= ms) return false;
+    await sleep(250);
+  }
+}
 
 // `around(fn)` lets build-setup put the createSection call inside its measured window.
 async function ensureScratch(ctx, { around = null, selfClean = false } = {}) {
@@ -498,7 +506,7 @@ async function ensureScratch(ctx, { around = null, selfClean = false } = {}) {
     return uid;
   };
   const uid = around ? await around(create) : await create();
-  if (!(await onBoard(ctx, uid))) { await sleep(1000); if (!(await onBoard(ctx, uid))) throw new Error("the scratch section is not on the board after createSection"); }
+  if (!(await waitOnBoard(ctx, uid, 8000))) throw new Error("the scratch section is not on the board after createSection");
   // top-left of the section 90 px below and right of the board's corner, clear of the toolbar
   await ctx.show({ x: 90 - (S.origin.x + 40), y: 90 - (S.origin.y + 40), zoom: 1 });
   await install(ctx);
@@ -685,6 +693,7 @@ async function connect(ctx) {
   if (!bUid) return { skip: "card B was not created" };
   await ledger(bUid, "card");
   S.cards.b = bUid;
+  await waitOnBoard(ctx, bUid);
   await look(ctx, (ra.x + bx) / 2 + 130, by + 30);
   await ctx.probe.quiet({ gap: 800, max: 8000 });
   const ownB = (t) => t.kind === "item" && t.uid === bUid && t.plain;
@@ -829,7 +838,8 @@ async function apiCreate50(ctx) {
     }
   }, { wait: 600 });
   S.grid = created.slice();
-  const snap = await readSnap(ctx);
+  let snap = await readSnap(ctx);
+  for (const t0 = Date.now(); created.some((u) => snap.items.get(u)?.parentUid !== S.section) && Date.now() - t0 < 5000; ) { await sleep(250); snap = await readSnap(ctx); }
   const inSection = created.filter((u) => snap.items.get(u)?.parentUid === S.section).length;
   return finish(sum, { ok: created.length === 50 && inSection === 50, why: created.length !== 50 ? `${created.length} created` : inSection !== 50 ? `${50 - inSection} grid cards are not in the scratch section` : null, created: created.length, inSection }, sum.ttnp);
 }
@@ -1006,6 +1016,7 @@ async function typeCard(ctx) {
     const uid = await sess(ctx, `const u = await s.createCard({ x: ${at.x}, y: ${at.y}, string: ${J(MARK + " type")} }); await s.idle(); return u;`);
     if (!uid) throw new Error("typing card was not created");
     await ledger(uid, "card");
+    await waitOnBoard(ctx, uid);
     await ctx.probe.quiet({ gap: 800, max: 8000 });
     const p = await page(ctx, `cardPoint(${J(uid)})`);
     const own = (t) => t.kind === "item" && t.uid === uid && t.plain;
@@ -1160,6 +1171,7 @@ export async function soakEdit(ctx) {
     step = "create";
     uid = await sess(ctx, `const u = await s.createCard({ x: ${x}, y: ${y}, w: 130, h: 60, string: ${J(`${MARK} soak ${n}`)} }); await s.idle(); return u;`);
     if (uid) await ledger(uid, "card");
+    if (uid) await waitOnBoard(ctx, uid);
     step = "move";
     if (uid) await sess(ctx, `await s.commitMove([${J(uid)}], 30, 20); await s.idle();`);
     step = "delete previous";

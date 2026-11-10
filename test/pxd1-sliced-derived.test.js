@@ -112,12 +112,20 @@ function watchCalls(host) {
 
 
 
-function watchStats(host) {
+function watchStats(host, fake) {
   const calls = [];
   const cardStats = host.cardStats.bind(host);
   host.cardStats = (targets, ...rest) => {
     calls.push({ n: Array.isArray(targets) ? targets.length : -1, unverified: host.boardUnverified("sb1") });
     return cardStats(targets, ...rest);
+  };
+  // PXD-26: with slicedKeep on, the refs to a block of the board are read by pull_many, not through cardStats.
+  const data = fake.api.data;
+  const many = data.pull_many.bind(data);
+  data.pull_many = (pattern, entities) => {
+    const p = String(pattern);
+    if (p.includes(":block/_refs") && !p.includes(":block/_parents")) calls.push({ n: entities.length, unverified: host.boardUnverified("sb1") });
+    return many(pattern, entities);
   };
   return calls;
 }
@@ -130,7 +138,7 @@ async function checked(flags) {
   if (flags) noteSpeedFlags(flags);
   const { host, store } = hostOver(fake, idb);
   await store.ready;
-  const calls = watchStats(host);
+  const calls = watchStats(host, fake);
   await preread(host);
   const session = acquireSession("sb1", { host, settings: { get: () => undefined } });
   assert.equal(host.boardUnverified("sb1"), true);
@@ -142,12 +150,26 @@ async function checked(flags) {
   return { host, store, idb, session, calls };
 }
 
-test("slicedDerived on: an unchanged board is verified when its check lands, then badges refresh in parts of at most 20", { timeout: 60000 }, async () => {
+// PXD-26: with slicedKeep on the refresh uses the store job's parts (sized by what the last one cost, at most 1,000
+// blocks of the board per read); off, it is PXD-1's fixed parts of 20.
+test("slicedDerived on: an unchanged board is verified when its check lands, then badges refresh in parts", { timeout: 60000 }, async () => {
   const { host, store, idb, session, calls } = await checked(null);
+  assert.ok(calls.length > 3, `cardStats ran in several parts, got ${calls.length}`);
+  for (const c of calls) assert.ok(c.n >= 1 && c.n <= 1000, `part of ${c.n} targets`);
+  assert.ok(calls.every((c) => c.unverified === false), "the board is verified before the first refresh part");
+  assert.equal(host.boardUnverified("sb1"), false);
+  assert.equal(session.links.some((l) => l.key === "c0_0->c2_0"), false, "the ghost link is gone");
+  assert.equal(JSON.stringify(rowOf(idb).derived).includes("srcGhost"), false);
+  session.release?.();
+  host.dispose();
+  await store.dispose();
+});
+
+test("slicedDerived on, slicedKeep off: the refresh runs in parts of at most 20", { timeout: 60000 }, async () => {
+  const { host, store, idb, session, calls } = await checked({ slicedKeep: false });
   assert.ok(calls.length > 3, `cardStats ran in several parts, got ${calls.length}`);
   for (const c of calls) assert.ok(c.n >= 1 && c.n <= 20, `part of ${c.n} targets`);
   assert.ok(calls.every((c) => c.unverified === false), "the board is verified before the first refresh part");
-  assert.equal(host.boardUnverified("sb1"), false);
   assert.equal(session.links.some((l) => l.key === "c0_0->c2_0"), false, "the ghost link is gone");
   assert.equal(JSON.stringify(rowOf(idb).derived).includes("srcGhost"), false);
   session.release?.();
@@ -173,7 +195,7 @@ test("dispose during the sliced refresh cancels it: no part runs after dispose",
   plant(idb, GHOST);
   const { host, store } = hostOver(fake, idb);
   await store.ready;
-  const calls = watchStats(host);
+  const calls = watchStats(host, fake);
   await preread(host);
   const session = acquireSession("sb1", { host, settings: { get: () => undefined } });
   await until(() => calls.length > 0);
@@ -192,7 +214,7 @@ test("an edit on the board's page during the sliced refresh: the old tree's resu
   plant(idb, GHOST);
   const { host, store } = hostOver(fake, idb);
   await store.ready;
-  const calls = watchStats(host);
+  const calls = watchStats(host, fake);
   await preread(host);
   const session = acquireSession("sb1", { host, settings: { get: () => undefined } });
   let told = 0;

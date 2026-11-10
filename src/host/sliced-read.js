@@ -18,7 +18,11 @@ export const SLICED_LINK_BATCH = 4000;
 export const SLICED_SLICE_MS = 70;
 
 // deps: pullMany(pattern, eids) -> nodes (null for a missing eid), stamp() -> string|null, clock() -> ms.
-export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.now(), sliceMs = SLICED_SLICE_MS, batch = SLICED_BATCH, openBatch = SLICED_OPEN_BATCH, linkBatch = SLICED_LINK_BATCH } = {}) {
+// softOpen (PXD-26): the fold compare before the stamp compare runs one batch per part instead of all in one task
+// (about 60 ms for the PhD main board's 11k folded-or-not parents), and the field snapshot is a part of its own. For
+// a read whose accept already spans tasks (the refresh read behind a stored model): a fold toggled between two
+// batches is not seen here, exactly as one toggled during the field compares is not; the open check reads it again.
+export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.now(), sliceMs = SLICED_SLICE_MS, batch = SLICED_BATCH, openBatch = SLICED_OPEN_BATCH, linkBatch = SLICED_LINK_BATCH, softOpen = false } = {}) {
   const nodes = new Map();
   // The output objects, made as each block is read; their children are linked in parts after the folds.
   const outs = new Map();
@@ -139,19 +143,54 @@ export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.
     return true;
   }
 
-  function assemble() {
-    openIds = withKids;
-    openVals = withKids.map((id) => outs.get(id)[":block/open"]);
-    // A fold toggled after the fold pass does not move the stamp: read them again before the stamp compare.
-    if (!openMatches()) return fail();
-    let last = null;
-    try { last = stamp(); } catch { last = null; }
-    if (last == null || last !== first) return fail();
-    snapshotFields();
+  // One batch of the fold compare: "more", "ok" (every row is there and the same) or "bad".
+  let openPartAt = 0;
+  function openMatchesPart() {
+    const ids = openIds.slice(openPartAt, openPartAt + openBatch);
+    if (ids.length) {
+      const res = pullMany(SLICED_OPEN_PATTERN, ids);
+      calls += 1;
+      if (!Array.isArray(res) || res.length !== ids.length) { openPartAt = 0; return "bad"; }
+      for (let j = 0; j < ids.length; j += 1) {
+        const now = res[j];
+        if (!now || now[":db/id"] !== ids[j] || now[":block/open"] !== openVals[openPartAt + j]) { openPartAt = 0; return "bad"; }
+      }
+      openPartAt += ids.length;
+    }
+    if (openPartAt < openIds.length) return "more";
+    openPartAt = 0;
+    return "ok";
+  }
+
+  function finishAssemble() {
     tree = outs.get(rootEid);
     nodes.clear();
     outs.clear();
     phase = "done";
+  }
+
+  function assemble() {
+    if (phase === "snapshot") {
+      snapshotFields();
+      return finishAssemble();
+    }
+    if (phase === "assemble") {
+      openIds = withKids;
+      openVals = withKids.map((id) => outs.get(id)[":block/open"]);
+      if (softOpen) { openPartAt = 0; phase = "recheck"; return undefined; }
+    }
+    // A fold toggled after the fold pass does not move the stamp: read them again before the stamp compare.
+    if (softOpen) {
+      const got = openMatchesPart();
+      if (got === "more") return undefined;
+      if (got !== "ok") return fail();
+    } else if (!openMatches()) return fail();
+    let last = null;
+    try { last = stamp(); } catch { last = null; }
+    if (last == null || last !== first) return fail();
+    if (softOpen) { phase = "snapshot"; return undefined; }
+    snapshotFields();
+    return finishAssemble();
   }
 
   // One batch of the blocks already copied. "more" when some remain, "ok" when every string, order, heading and
@@ -180,7 +219,7 @@ export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.
         if (phase === "read") readPart();
         else if (phase === "folds") foldPart();
         else if (phase === "link") linkPart();
-        else if (phase === "assemble") assemble();
+        else if (phase === "assemble" || phase === "recheck" || phase === "snapshot") assemble();
         else break;
       } while (phase !== "done" && phase !== "failed" && clock() - t0 < sliceMs);
     } catch {
@@ -207,6 +246,11 @@ export function createSlicedRead({ rootEid, pullMany, stamp, clock = () => Date.
     verifyOpen() {
       if (phase !== "done") return false;
       try { return openMatches(); } catch { return false; }
+    },
+    // PXD-26: the same compare one batch per call: "more", "ok" or "bad".
+    verifyOpenPart() {
+      if (phase !== "done") return "bad";
+      try { return openMatchesPart(); } catch { openPartAt = 0; return "bad"; }
     },
     // Re-read string, order, heading and props of the blocks already copied. One batch per call.
     verifyFieldsPart() {

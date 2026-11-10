@@ -41,7 +41,7 @@ function spanLog() {
   const probe = sharedTaskProbe();
   const log = [];
   const drain = () => {
-    for (const s of probe.spans()) if (s.name === "bg:model-keep" || s.name === "bg:refresh") log.push({ name: s.name, ms: s.ms });
+    for (const s of probe.spans()) if (s.name === "bg:model-keep" || s.name === "bg:refresh" || s.name === "bg:derived") log.push({ name: s.name, ms: s.ms });
     probe.clear();
   };
   return { log, drain, max: (name) => log.filter((s) => s.name === name).reduce((m, s) => Math.max(m, s.ms), 0) };
@@ -50,20 +50,89 @@ function spanLog() {
 const toSeed = (n) => ({ uid: n[":block/uid"], string: n[":block/string"], props: n[":block/props"] ? { plexus: n[":block/props"].plexus } : undefined, heading: n[":block/heading"], open: n[":block/open"], children: (n[":block/children"] || []).map(toSeed) });
 
 // What a read costs on the live PhD main board, per entity: the level pull 250 blocks in ~20 ms, the field compare
-// 250 in ~25 ms, the fold compare ~11k in ~58 ms, the stats pull 28k targets in ~2.2 s.
-const COST = { level: 0.08, field: 0.1, open: 0.005, stats: 0.08, other: 0.02 };
+// 250 in ~25 ms, the fold compare ~11k in ~58 ms. The stats pull brings every descendant of each target (2.2 s for
+// the board's 28k targets in one call), so it costs by what it returns.
+const COST = { level: 0.08, field: 0.1, open: 0.005, target: 0.01, under: 0.04, ref: 0.02, own: 0.008, other: 0.02 };
+// The fake answers the stats reads from one made-up graph, whichever pattern asks: a block has eid % 4 refs from
+// outside the board (one more from under it when eid % 5 is 0, one from another board when eid % 7 is 0), and is a
+// TODO when eid % 11 is 0 and DONE when eid % 13 is 0.
 function chargeReads(fake) {
   const data = fake.api.data;
   const many = data.pull_many.bind(data);
-  const calls = { stats: [], n: 0 };
+  const calls = { stats: [], own: [], refs: [], n: 0 };
+  calls.derived = () => calls.stats.length + calls.own.length + calls.refs.length;
+  const quietly = (fn) => { const log = fake.pullLog; fake.pullLog = null; try { return fn(); } finally { fake.pullLog = log; } };
+  const eids = new Map();
+  const eidOf = (entity) => {
+    const key = JSON.stringify(entity);
+    if (!eids.has(key)) eids.set(key, quietly(() => data.pull("[:db/id]", entity))?.[":db/id"] ?? null);
+    return eids.get(key);
+  };
+  const todoEid = eidOf([":node/title", "TODO"]);
+  const doneEid = eidOf([":node/title", "DONE"]);
+  assert.ok(todoEid != null && doneEid != null, "the TODO and DONE pages are seeded");
+  const statusRefs = (e) => [...(e % 11 === 0 ? [{ ":db/id": todoEid }] : []), ...(e % 13 === 0 ? [{ ":db/id": doneEid }] : [])];
+  const refsTo = (e) => {
+    const boardEid = eidOf([":block/uid", UID]);
+    const out = Array.from({ length: e % 4 }, (_, i) => ({ ":db/id": 9_000_000 + e * 8 + i }));
+    if (e % 5 === 0) out.push({ ":db/id": 9_000_000 + e * 8 + 5, ":block/parents": [{ ":db/id": boardEid, ":block/string": "{{[[diagram]]}}" }] });
+    if (e % 7 === 0) out.push({ ":db/id": 9_000_000 + e * 8 + 6, ":block/parents": [{ ":db/id": 8_000_000 + (e % 3), ":block/string": "{{[[diagram]]}}" }] });
+    return out;
+  };
+  // eid -> the eids under it, for the board as it is now.
+  let under = null;
+  let underAt = null;
+  const descendants = () => quietly(() => {
+    const p = data.pull("[:page/edit-time :page/edit-nonce]", [":block/uid", "bpage"]);
+    const at = `${p?.[":page/edit-time"]}|${p?.[":page/edit-nonce"]}`;
+    if (under && at === underAt) return under;
+    under = new Map();
+    underAt = at;
+    const walk = (node) => {
+      const mine = [];
+      for (const kid of node[":block/children"] || []) {
+        mine.push(eidOf([":block/uid", kid[":block/uid"]]));
+        for (const d of walk(kid)) mine.push(d);
+      }
+      under.set(eidOf([":block/uid", node[":block/uid"]]), mine);
+      return mine;
+    };
+    walk(data.pull(String(BOARD_PATTERN), [":block/uid", UID]));
+    return under;
+  });
   data.pull_many = (pattern, entities) => {
     const p = String(pattern);
     calls.n += 1;
     if (p.includes(":block/_refs") && p.includes(":block/_parents")) {
       calls.stats.push(entities.length);
-      own.advance(0.5 + COST.stats * entities.length);
-      // Refs from outside the board: eid % 4 of them, so the badges are not all zero.
-      return entities.map((eid) => ({ ":db/id": eid, ":block/_refs": Array.from({ length: Number(eid) % 4 }, (_, i) => ({ ":db/id": 9_000_000 + Number(eid) * 8 + i })) }));
+      const below = descendants();
+      let cost = 0.5;
+      const out = entities.map((e) => {
+        const kids = below.get(e) || [];
+        const refs = refsTo(Number(e));
+        cost += COST.target + COST.under * kids.length + COST.ref * refs.length;
+        return { ":db/id": e, ":block/_refs": refs, ":block/_parents": kids.map((d) => ({ ":db/id": d, ":block/refs": statusRefs(d) })) };
+      });
+      own.advance(cost);
+      return out;
+    }
+    if (p === "[:db/id {:block/refs [:db/id]}]") {
+      calls.own.push(entities.length);
+      own.advance(0.2 + COST.own * entities.length);
+      return entities.map((entity) => { const e = eidOf(entity); return e == null ? null : { ":db/id": e, ":block/refs": statusRefs(e) }; });
+    }
+    if (p.includes(":block/_refs")) {
+      calls.refs.push(entities.length);
+      let cost = 0.2;
+      const out = entities.map((entity) => {
+        const e = eidOf(entity);
+        if (e == null) return null;
+        const refs = refsTo(e);
+        cost += COST.target + COST.ref * refs.length;
+        return { ":db/id": e, ":block/_refs": refs };
+      });
+      own.advance(cost);
+      return out;
     }
     const per = p.includes(":block/children") ? COST.level : p === "[:db/id :block/open]" ? COST.open : p.includes(":block/props") ? COST.field : COST.other;
     own.advance(per * entities.length);
@@ -101,6 +170,12 @@ function setup(flags, shape) {
   const tree = bigBoardTree(shape);
   const seed = toSeed(tree);
   fake.seedBoard({ uid: seed.uid, string: seed.string, props: seed.props, children: seed.children, parent: "bpage" });
+  // Two targets outside the board: a page card and a card that shows a block of another page.
+  fake.seedPage({ title: "TODO", uid: "todopage", children: [] });
+  fake.seedPage({ title: "DONE", uid: "donepage", children: [] });
+  fake.seedPage({ title: "Page A", uid: "pagea", children: [{ uid: "outside1", string: "a block outside the board" }] });
+  fake.quiet("bc00001", { string: "[[Page A]]" });
+  fake.quiet("bc00002", { string: "((outside1))" });
   const reads = chargeReads(fake);
   if (flags) noteSpeedFlags(flags);
   const idb = createFakeIDB();
@@ -135,7 +210,7 @@ async function openEditStore(flags, shape, spans) {
   S.host.pullBoard(UID);
   const off = S.host.watchBoard(UID, () => {});
   await turn(() => rowOf(S.idb)?.stamp != null && S.store.stampOf(UID) != null, 20000);
-  const first = { row: structuredClone(rowOf(S.idb)), live: liveOf(S.host), statCalls: S.reads.stats.length, stats: { ...S.host.stats } };
+  const first = { row: structuredClone(rowOf(S.idb)), live: liveOf(S.host), statCalls: S.reads.derived(), stats: { ...S.host.stats } };
   const statsAt = S.reads.stats.length;
   await S.fake.api.data.block.create({ location: { "parent-uid": "bs0", order: "last" }, block: { uid: "pxd26new", string: "A new card", props: { plexus: { type: "card", x: 10, y: 10, w: 200, h: 120, v: 2 } } } });
   const stamp = S.pageStamp();
@@ -173,8 +248,9 @@ test("on the PhD-shaped board no part of the store job or its refresh read runs 
   assert.ok(spans.log.some((s) => s.name === "bg:model-keep"), "the store job ran");
   assert.ok(keepMax <= BUDGET_MS, `longest store part ${keepMax.toFixed(1)} ms (budget ${BUDGET_MS})`);
   assert.ok(readMax <= BUDGET_MS, `longest refresh read part ${readMax.toFixed(1)} ms (budget ${BUDGET_MS})`);
-  assert.ok(run.reads.stats.length > 20, `the stats were read in ${run.reads.stats.length} pulls`);
-  assert.ok(Math.max(...run.reads.stats) <= 240, `largest stats pull: ${Math.max(...run.reads.stats)} targets`);
+  assert.ok(run.reads.own.length > 5 && run.reads.refs.length > 5, `the board's blocks were read in ${run.reads.own.length} status pulls and ${run.reads.refs.length} ref pulls`);
+  assert.ok(Math.max(...run.reads.own) <= 2000 && Math.max(...run.reads.refs) <= 1000, "bounded pulls");
+  assert.ok(run.reads.stats.length >= 1 && Math.max(...run.reads.stats) <= 240, `targets outside the board go through cardStats, a few at a time: ${run.reads.stats}`);
   assert.ok(Math.max(...run.links) <= 240, `largest link read: ${Math.max(...run.links)} targets`);
   // The second store follows the first within the stats cache's two minutes: only the new card is read.
   assert.ok(run.second.stats.keepStatsPulled <= 4, `stats pulled for the edit: ${run.second.stats.keepStatsPulled}`);
@@ -185,7 +261,7 @@ test("on the PhD-shaped board no part of the store job or its refresh read runs 
 test("slicedKeep off: the same edit is followed by one store part of seconds", { timeout: 240000 }, async () => {
   const { run, spans } = await bigRun(true);
   const keepMax = spans.max("bg:model-keep");
-  assert.ok(keepMax >= 1000, `the one-task recompute is one part: ${keepMax.toFixed(0)} ms`);
+  assert.ok(keepMax >= 500, `the one-task recompute is one part: ${keepMax.toFixed(0)} ms`);
   assert.ok(Math.max(...run.second.statCalls) > 20000, "one stats pull for every target, because one card is new");
   assert.equal(run.second.stats.keepStatsPulled, undefined);
 });
@@ -199,6 +275,8 @@ test("the stored model and derived data equal the one-task result, after the ope
     const b = off[when];
     assert.ok(a.row?.derived, `${when}: derived data is stored`);
     assert.ok(a.row.derived.b.some((r) => r[2] > 0), `${when}: badges are not all zero`);
+    assert.ok(a.row.derived.b.some((r) => r[3] > 0) && a.row.derived.b.some((r) => r[4] > 0) && a.row.derived.b.some((r) => r[5] > 0), `${when}: boards, open and done counts too`);
+    assert.ok(a.row.derived.b.some((r) => r[0] === "p" && r[1] === "Page A"), `${when}: the page card's badge`);
     assert.ok(a.row.derived.l.length > 20, `${when}: links are stored (${a.row.derived.l.length})`);
     assert.ok(a.row.derived.l.some((r) => r[2] === 1), `${when}: attribute links too`);
     assert.equal(JSON.stringify(a.row.derived), JSON.stringify(b.row.derived), `${when}: stored derived data`);
@@ -231,14 +309,14 @@ test("an edit during the store job stops it: nothing is stored for the old page,
   const off = S.host.watchBoard(UID, () => {});
   const old = S.pageStamp();
   // The first store is in its stats parts.
-  await untilTurns(own, () => S.reads.stats.length >= 2, 20000);
+  await untilTurns(own, () => S.reads.derived() >= 2, 20000);
   assert.equal(S.store.stampOf(UID), null);
   await S.fake.api.data.block.update({ block: { uid: "bc00003", string: "edited during the store" } });
   const stamp = S.pageStamp();
   assert.notEqual(stamp, old);
-  const seen = S.reads.stats.length;
+  const seen = S.reads.derived();
   await untilTurns(own, () => (S.host.stats.keepsDropped || 0) >= 1, 20000);
-  assert.ok(S.reads.stats.length - seen <= 1, "no stats part after the one that found the page moved");
+  assert.ok(S.reads.derived() - seen <= 1, "no stats part after the one that found the page moved");
   assert.equal(S.puts.includes(old), false, "nothing was stored under the old stamp");
   // The retry reads the newer page and stores it.
   await untilTurns(own, () => S.store.stampOf(UID) === stamp && rowOf(S.idb)?.stamp === stamp, 20000);
@@ -314,6 +392,8 @@ function seedSmall(fake, n = 230) {
     sections.push({ uid: `sec${s}`, string: `Section ${s}`, open: true, props: { plexus: { type: "section", x: 0, y: s * 500, w: 2000, h: 400 } }, children: cards });
   }
   fake.seedPage({ title: "Board page", uid: "bpage", children: [] });
+  fake.seedPage({ title: "TODO", uid: "todopage", children: [] });
+  fake.seedPage({ title: "DONE", uid: "donepage", children: [] });
   fake.seedBoard({ uid: UID, parent: "bpage", props: { plexus: { v: 2 } }, children: sections });
 }
 
@@ -355,18 +435,18 @@ async function changedTrustedOpen(flags) {
   host.useModelStore(store);
   stubLinks(host);
   await store.ready;
-  const statsAt = reads.stats.length;
+  const statsAt = reads.derived();
   await prereadAll(host);
   const session = acquireSession(UID, { host, settings: { get: () => undefined } });
   assert.equal(host.boardUnverified(UID), true, "a trusted open");
   let told = 0;
   let statsAtVerify = null;
   const offTold = host.onDerivedRefreshed(UID, () => { told += 1; });
-  host.onBoardVerified(UID, () => { statsAtVerify = reads.stats.length - statsAt; });
+  host.onBoardVerified(UID, () => { statsAtVerify = reads.derived() - statsAt; });
   await until(() => host.boardUnverified(UID) === false);
   await until(() => rowOf(idb)?.parts?.join("").includes("changed quietly"));
   await tick(20);
-  const out = { told, statsAtVerify, live: liveOf(host), derived: JSON.stringify(rowOf(idb).derived), stats: { ...host.stats }, statCalls: reads.stats.slice(statsAt) };
+  const out = { told, statsAtVerify, live: liveOf(host), derived: JSON.stringify(rowOf(idb).derived), stats: { ...host.stats }, biggest: Math.max(0, ...reads.stats, ...reads.refs) };
   offTold();
   session.release?.();
   host.dispose();
@@ -383,11 +463,56 @@ test("a trusted open of a board that changed: verified before any stats read, it
   assert.equal(on.stats.checkChanges, 1, "the check found the change");
   assert.equal(on.statsAtVerify, 0, "sliced: verified before the stats are read");
   assert.ok(on.told >= 1, "derived listeners are told when the store lands");
-  assert.ok(Math.max(...on.statCalls) <= 240);
+  assert.ok(on.biggest <= 1000, `largest stats read: ${on.biggest}`);
   assert.ok(off.statsAtVerify >= 1, "one task: the stats are read before the board is verified");
   assert.equal(on.derived, off.derived, "stored derived data");
   assert.equal(on.live.badges, off.live.badges);
   assert.equal(on.live.links, off.live.links);
+});
+
+// A trusted open of the PhD-shaped board as stored: the check finds it unchanged and refreshes its badges and links.
+async function unchangedTrustedOpen(flags) {
+  // The first store in one task (flag off): only the open after it is measured.
+  const S = setup({ slicedKeep: false });
+  await S.store.ready;
+  await prereadAll(S.host);
+  S.host.pullBoard(UID, { light: true });
+  await untilTurns(own, () => S.store.stampOf(UID) != null && rowOf(S.idb)?.stamp != null, 20000);
+  S.host.dispose();
+  await S.store.dispose();
+  noteSpeedFlags(flags);
+  resetSharedTaskProbe();
+  const spans = spanLog();
+  const host = createHost({ api: S.fake.api, storage: S.fake.storage, graph: "g" });
+  host.blockPageUid = (u) => (String(u).length ? "bpage" : "");
+  const store = createModelStore({ indexedDB: S.idb, graph: "g" });
+  host.useModelStore(store);
+  stubLinks(host);
+  await store.ready;
+  await prereadAll(host);
+  const session = acquireSession(UID, { host, settings: { get: () => undefined } });
+  assert.equal(host.boardUnverified(UID), true, "a trusted open");
+  let told = 0;
+  const offTold = host.onDerivedRefreshed(UID, () => { told += 1; });
+  await untilTurns(own, () => { spans.drain(); return told > 0; }, 40000);
+  const out = { max: spans.max("bg:derived"), live: liveOf(host) };
+  offTold();
+  session.release?.();
+  host.dispose();
+  await store.dispose();
+  resetSessions();
+  resetSharedBgBudget();
+  noteSpeedFlags(null);
+  return out;
+}
+
+test("after a trusted open of the PhD-shaped board the derived refresh runs no part past 50 ms; with slicedKeep off its links read is one long part", { timeout: 240000 }, async () => {
+  const on = await unchangedTrustedOpen(null);
+  const off = await unchangedTrustedOpen({ slicedKeep: false });
+  assert.ok(on.max > 0 && on.max <= BUDGET_MS, `longest refresh part ${on.max.toFixed(1)} ms (budget ${BUDGET_MS})`);
+  assert.ok(off.max >= 200, `the old refresh reads every card's links in one part: ${off.max.toFixed(0)} ms`);
+  assert.equal(on.live.badges, off.live.badges, "the same badges");
+  assert.equal(on.live.links, off.live.links, "the same links");
 });
 
 test("packDerived with search gives the linear result, under and over the cap", () => {

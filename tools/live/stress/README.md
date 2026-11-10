@@ -58,6 +58,7 @@ node tools/live/stress/ab.mjs --a ../base/deploy --b deploy --scenario zoom-btn 
 # round report
 node tools/live/stress/report.mjs --label base --rec rec/real-1.analysis.json --out ~/wo/pxd-fast/round0.md
 node tools/live/stress/report.mjs --label base --write-budgets
+node tools/live/stress/report.mjs --label base --findings round0-findings.jsonl --notes notes.jsonl   # ranked list with evidence check, closing notes
 
 # split a trace into script / style / layout / paint / gc
 node tools/live/stress/lib/trace-analyse.mjs ~/wo/pxd-fast/traces/<file>.json.gz [--json]
@@ -66,6 +67,8 @@ node tools/live/stress/lib/trace-analyse.mjs ~/wo/pxd-fast/traces/<file>.json.gz
 `run.mjs` flags: `--group a,b`, `--scenario a,b`, `--n 3`, `--label base`, `--build <dir>`, `--trace` (one extra traced pass per scenario), `--selectors` (selector stats in traces), `--quick` (n 1, short variants), `--soak-min 30`, `--target <idPrefix>`, `--out <dir>`, `--list`, `--dry` (print the plan, never connect), `--cleanup`, `--keep-going`, `--inline` (stay out of fullscreen), `--chain a,b`, `--timeout <ms>`. Heavy scenarios (`idle-2min`, `soak`) run only when named.
 
 `ab.mjs` runs `n` rounds (at least 5 unless `--force`). In even rounds the order is A then B, in odd rounds B then A. Each arm is one `run.mjs` call with `--build <dir> --n 1 --label <label>:<arm>`. It waits 40 s between arms (`--wait <s>`). `--aa` serves the same build as arms `A1` and `A2` and appends one line per scenario and metric to `noise.jsonl`. An A/B run reads the newest floor for each scenario and metric from there; a difference is only called better when it is larger than the floor. Lower is better for every metric. Metrics: `ttnp`, `stalls.total`, `stalls.worst`, `stalls.n`, `frames.max`, `content.live.p95`, `long.total`, plus numeric leaves under a scenario's `extra.metrics`.
+
+`--findings` takes JSON lines `{rank, title, cost, owner, evidence[], fix, code[], belongs}`; each evidence entry starts with a path under OUT_DIR (one `*` per segment allowed), and the report lists which files exist and warns on stderr about missing ones. `--notes` takes JSON lines `{title, text}` and prints them as the last section.
 
 `budgets.json` holds the plan's goals under `targets` and per-scenario limits under `scenarios`. `report.mjs --write-budgets` sets `ttnp`, `stalls.total` and `stalls.worst` limits to the baseline median rounded up to the next 10. It never raises a limit.
 

@@ -171,6 +171,7 @@ body.bt-theme-dark .pxd-root .pxd-highlight-chip,
 }
 
 .pxd-root .pxd-item:hover .pxd-highlight-chip__more,
+.pxd-root .pxd-item[data-pxd-hover] .pxd-highlight-chip__more,
 .pxd-root .pxd-item:focus-within .pxd-highlight-chip__more,
 .pxd-root .pxd-item--selected .pxd-highlight-chip__more {
   opacity: 1;

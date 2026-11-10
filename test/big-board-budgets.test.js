@@ -14,6 +14,9 @@ import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 import { BIG_BUDGETS_PATH, checkBigCeilings, lowerBigCeilings, readBigBudgets } from "../tools/live/big-board-budgets.mjs";
 import { dragSelection, mountBig, settledIn, zoomBurst, tick } from "./fixtures/big-mount.js";
+import { noteSpeedFlags } from "../src/settings.js";
+import { gestureIdle } from "../src/view/query-card.js";
+import { continueAfterBlob } from "../src/view/blob-yield.js";
 
 const counts = {};
 
@@ -237,6 +240,205 @@ test("a ceiling may only go down", () => {
     assert.throws(() => checkBigCeilings({ [key]: before[key] }, readBigBudgets(file)), /over ceiling/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("PXD-31: a cold search scans on the key only when gestureJobs is off", () => {
+  const type = (m, value) => {
+    const input = m.view.root.querySelector(".pxd-search__input");
+    assert.ok(input, "search input");
+    input.value = value;
+    m.stub.dispatch(input, "input");
+  };
+  const off = mountBig({ x: 0, y: 0, zoom: 1 }, { flags: { gestureJobs: false } });
+  try {
+    for (const value of ["a", "ab", "abc", "abcd"]) type(off, value);
+    const stats = off.view.searchStats();
+    assert.equal(stats.keys, 4);
+    assert.equal(stats.scans, stats.keys);
+  } finally {
+    off.done();
+  }
+  const on = mountBig({ x: 0, y: 0, zoom: 1 });
+  try {
+    for (const value of ["a", "ab", "abc", "abcd"]) type(on, value);
+    const stats = on.view.searchStats();
+    assert.equal(stats.scans, 0);
+    assert.equal(stats.keys, 4);
+  } finally {
+    on.done();
+  }
+});
+
+test("PXD-31: gestureIdle skips a spent deadline only when the flag is on", () => {
+  let queued = null;
+  const win = { requestIdleCallback(fn) { queued = fn; return 1; } };
+  noteSpeedFlags({ gestureJobs: false });
+  try {
+    let ran = false;
+    gestureIdle(() => { ran = true; }, win);
+    queued({ timeRemaining: () => 0, didTimeout: false });
+    assert.equal(ran, true);
+    noteSpeedFlags({ gestureJobs: true });
+    ran = false;
+    gestureIdle(() => { ran = true; }, win);
+    queued({ timeRemaining: () => 0, didTimeout: false });
+    assert.equal(ran, false);
+    queued();
+    assert.equal(ran, true);
+  } finally {
+    noteSpeedFlags(null);
+  }
+});
+
+test("PXD-31: continueAfterBlob yields while a hold is up and runs at once when the flag is off", () => {
+  noteSpeedFlags({ gestureJobs: false });
+  try {
+    let ran = false;
+    continueAfterBlob(() => { ran = true; });
+    assert.equal(ran, true);
+    noteSpeedFlags({ gestureJobs: true });
+    ran = false;
+    const delays = [];
+    continueAfterBlob(() => { ran = true; }, {
+      setTimer(fn, ms) { delays.push(ms); },
+      held: () => false,
+    });
+    assert.equal(ran, false);
+    assert.deepEqual(delays, [0]);
+    ran = false;
+    let t = 0;
+    const armed = [];
+    continueAfterBlob(() => { ran = true; }, {
+      setTimer(fn, ms) { armed.push({ fn, ms }); },
+      held: () => true,
+      now: () => t,
+    });
+    assert.equal(armed[0].ms, 0);
+    armed[0].fn();
+    assert.equal(ran, false);
+    assert.equal(armed[1].ms, 32);
+    t = 1999;
+    armed[1].fn();
+    assert.equal(ran, false);
+    assert.equal(armed.at(-1).ms, 32);
+    t = 2000;
+    armed.at(-1).fn();
+    assert.equal(ran, true);
+  } finally {
+    noteSpeedFlags(null);
+  }
+});
+
+function cardsUnderCamera(m) {
+  const v = m.view.viewport();
+  const out = [];
+  for (const el of m.view.root.querySelectorAll(".pxd-item--card")) {
+    const uid = el.getAttribute("data-uid");
+    const r = m.session.rects.get(uid);
+    if (!r) continue;
+    const cx = v.x + (r.x + r.w / 2) * v.zoom;
+    const cy = v.y + (r.y + r.h / 2) * v.zoom;
+    if (cx >= 0 && cy >= 0 && cx <= 1400 && cy <= 900) out.push({ el, uid, cx, cy });
+  }
+  return out;
+}
+
+test("PXD-31: a big-board sweep hovers by attribute and does not remeasure", () => {
+  const m = mountBig({ x: 0, y: 0, zoom: 1 }, { flags: { gestureJobs: true } });
+  try {
+    m.mountEl.className = "pxd-mount";
+    for (let i = 0; i < 40; i += 1) m.stub.flushFrames();
+    const cards = cardsUnderCamera(m);
+    assert.ok(cards.length >= 2, `cards in the stub: ${cards.length}`);
+    const root = m.view.root;
+    let rects = 0;
+    const orig = root.getBoundingClientRect;
+    root.getBoundingClientRect = () => { rects += 1; return orig(); };
+    const move = (card) => m.stub.dispatch(root, "pointermove", { clientX: card.cx, clientY: card.cy, buttons: 0 });
+    move(cards[0]);
+    const afterFirst = rects;
+    move(cards[1]);
+    move(cards[0]);
+    move(cards[1]);
+    assert.equal(rects, afterFirst, "later moves read the root rect");
+    const hovered = [...root.querySelectorAll("[data-pxd-hover]")];
+    assert.equal(hovered.length, 1);
+    assert.equal(hovered[0].getAttribute("data-uid"), cards[1].uid);
+    assert.equal(root.querySelectorAll(".pxd-item--drop").length, 0);
+    assert.ok(m.stub.document.querySelector(".pxd-hit-shield"));
+  } finally {
+    m.done();
+  }
+  const off = mountBig({ x: 0, y: 0, zoom: 1 }, { flags: { gestureJobs: false } });
+  try {
+    for (let i = 0; i < 40; i += 1) off.stub.flushFrames();
+    const cards = cardsUnderCamera(off);
+    assert.ok(cards.length >= 2, `cards in the stub: ${cards.length}`);
+    const move = (card) => off.stub.dispatch(card.el, "pointermove", { clientX: card.cx, clientY: card.cy, buttons: 0 });
+    move(cards[0]);
+    move(cards[1]);
+    assert.equal(cards[1].el.classList.contains("pxd-item--drop"), false);
+    assert.equal(cards[1].el.hasAttribute("data-pxd-hover"), false);
+  } finally {
+    off.done();
+  }
+});
+
+test("PXD-31: twelve cards do not raise the hit shield", () => {
+  noteSpeedFlags({ gestureJobs: true });
+  const stub = createDomStub({ width: 1400, height: 900 });
+  const restore = stub.install();
+  const blk = (uid, string, plexus, order) => ({
+    ":block/uid": uid,
+    ":block/string": string,
+    ":block/order": order,
+    ":block/props": plexus ? { ":plexus": plexus } : {},
+    ":block/children": [],
+  });
+  const children = [];
+  for (let i = 0; i < 12; i += 1) {
+    children.push(blk(`c${String(i).padStart(7, "0")}`, `Card ${i}`, { ":x": 40 + (i % 4) * 220, ":y": 40 + Math.floor(i / 4) * 180, ":w": 160, ":h": 100 }, i));
+  }
+  const raw = {
+    ":block/uid": "board0001",
+    ":block/string": "{{[[diagram]]:Test}}",
+    ":block/props": { ":plexus": { ":v": 2 } },
+    ":block/children": children,
+  };
+  const board = buildBoard(raw);
+  const host = {
+    stats: {}, graph: "Svy",
+    renderString(el, string) { el.textContent = string; },
+    renderBlock(el, uid) { el.textContent = uid; },
+    unmount() {},
+    pagePreview: () => ({ exists: false, blocks: [] }), pullTree: () => [], blockString: () => null,
+    openBlock() {}, openInSidebar() {}, searchPages: () => [], searchBlocks: () => [], related: () => [],
+  };
+  const session = { uid: board.uid, board, rects: worldRects(board), links: [], coveredEdges: new Set(), on() { return () => {}; }, release() {}, setLinkMode() {} };
+  const mountEl = stub.document.createElement("div");
+  mountEl.className = "pxd-mount";
+  stub.document.body.append(mountEl);
+  stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify({ x: 0, y: 0, zoom: 1 }));
+  const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "1.0.0" });
+  try {
+    for (let i = 0; i < 8; i += 1) stub.flushFrames();
+    const el = view.root.querySelector(".pxd-item--card");
+    assert.ok(el);
+    const uid = el.getAttribute("data-uid");
+    const r = session.rects.get(uid);
+    const v = view.viewport();
+    stub.dispatch(view.root, "pointermove", {
+      clientX: v.x + (r.x + r.w / 2) * v.zoom,
+      clientY: v.y + (r.y + r.h / 2) * v.zoom,
+      buttons: 0,
+    });
+    assert.equal(stub.document.querySelector(".pxd-hit-shield"), null);
+    assert.equal(el.classList.contains("pxd-item--drop"), false);
+  } finally {
+    view.dispose();
+    restore();
+    noteSpeedFlags(null);
   }
 });
 

@@ -6,6 +6,7 @@
 // 1.2 wiring: three-tier LOD flipped by class during a gesture, board backgrounds (pattern + tone), live
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
+import { CARD_REFS_MAX } from "../model/card-refs.js";
 import { deskTargetOf } from "../model/desk.js";
 import { notedSpeedFlags } from "../settings.js";
 import { createPartSizer } from "../part-sizer.js";
@@ -4432,6 +4433,14 @@ function buildBoardView(onFail, {
     edgesR.endDrag(b ? { board: b, rects: paintRects(), zoom: vp.zoom } : null);
   };
   const bgHoldKey = {};
+  const gestureJobsOn = () => {
+    try { return notedSpeedFlags().gestureJobs !== false; } catch { return true; }
+  };
+  // isBig waits for the first sync. A cold key still has the session board.
+  const gestureBoardBig = () => {
+    try { if (itemsR.isBig?.()) return true; } catch { /* renderer */ }
+    return (board()?.items?.size || 0) > CARD_REFS_MAX;
+  };
   const syncShellHold = () => {
     const hold = deferReveal();
     if (hold) cancelSlice();
@@ -8508,6 +8517,10 @@ function buildBoardView(onFail, {
     edgesR.setSearch(edges);
   };
   let hay = null;
+  let searchScan = null;
+  let searchScans = 0;
+  let searchKeys = 0;
+  const SEARCH_DEBOUNCE_MS = 120;
   let hayStop = null;
   let hayNoted = false;
   let hayNestsReady = false;
@@ -8589,24 +8602,83 @@ function buildBoardView(onFail, {
       return done;
     }, { partMs: 1e6, label: "search-hay" });
   };
+  const cancelSearchScan = () => {
+    if (!searchScan) return;
+    const cancel = searchScan;
+    searchScan = null;
+    cancel();
+  };
+  const writeSearchCount = (text) => {
+    const countEl = root.querySelector(".pxd-search__count");
+    const node = countEl?.firstChild;
+    if (node?.nodeType === 3) { if (node.textContent !== text) node.textContent = text; }
+    else if (countEl) countEl.textContent = text;
+  };
+  const runSearchScan = () => {
+    const cancel = searchScan;
+    searchScan = null;
+    if (cancel) cancel();
+    if (disposed) return;
+    const b = board();
+    const q = searchQuery;
+    if (!b || !q) return;
+    if (notedSpeedFlags().searchHay !== false) {
+      const ix = ensureHay();
+      if (ix.ready()) searchMatches = ix.find(b, q);
+      else {
+        searchMatches = findOnBoard(b, q, nestedBoards(b), blockResolve);
+        searchScans += 1;
+      }
+    } else {
+      searchMatches = findOnBoard(b, q, nestedBoards(b), blockResolve);
+      searchScans += 1;
+    }
+    paintSearch(b, searchMatches, q);
+    writeSearchCount(String(searchMatches.length));
+  };
   const searchFilter = (text) => {
     const b = board();
     const q = String(text || "").trim().toLowerCase();
     searchQuery = q;
     searchIndex = -1;
     setRootFlag("searching", Boolean(q));
-    if (!b || !q) searchMatches = [];
-    else if (notedSpeedFlags().searchHay !== false) {
-      const ix = ensureHay();
-      if (!ix.ready()) armHay();
-      searchMatches = ix.ready() ? ix.find(b, q) : findOnBoard(b, q, nestedBoards(b), blockResolve);
-    } else {
-      searchMatches = findOnBoard(b, q, nestedBoards(b), blockResolve);
+    if (!q) {
+      cancelSearchScan();
+      searchMatches = [];
+      paintSearch(b, searchMatches, q);
+      return 0;
     }
+    searchKeys += 1;
+    if (notedSpeedFlags().searchHay !== false && b) {
+      const ix = ensureHay();
+      if (ix.ready()) {
+        cancelSearchScan();
+        searchMatches = ix.find(b, q);
+        paintSearch(b, searchMatches, q);
+        return searchMatches.length;
+      }
+      armHay();
+      // A 1,500-card cold scan is the 280 ms key. A normal board still answers on the key.
+      if (gestureJobsOn() && gestureBoardBig()) {
+        cancelSearchScan();
+        const prev = searchMatches.length;
+        // The board window, so a test clock can flush this wait. No window: the shared timer.
+        const view = root.ownerDocument?.defaultView || globalThis.window;
+        if (view && typeof view.setTimeout === "function") {
+          const id = view.setTimeout(() => runSearchScan(), SEARCH_DEBOUNCE_MS);
+          searchScan = () => { view.clearTimeout(id); };
+        } else searchScan = timers.later(() => runSearchScan(), SEARCH_DEBOUNCE_MS);
+        return prev;
+      }
+    }
+    cancelSearchScan();
+    searchMatches = b ? findOnBoard(b, q, nestedBoards(b), blockResolve) : [];
+    searchScans += 1;
     paintSearch(b, searchMatches, q);
     return searchMatches.length;
   };
   const searchNext = (dir = 1) => {
+    if (searchScan) runSearchScan();
     if (!searchMatches.length) return;
     searchIndex = (searchIndex + dir + searchMatches.length) % searchMatches.length;
     const hit = searchMatches[searchIndex];
@@ -10050,12 +10122,19 @@ function buildBoardView(onFail, {
     ctl.handle(normalize(event, "dblclick"));
   });
   // A press that lands on the shield is handed to the element under it (the board reads presses from pointerdown).
+  let sweepPointer = () => false;
+  const sweepHoldKey = {};
+  let sweepRects = null;
+  let sweepKey = "";
+  let sweepRest = null;
+  const HOVER_REST_MS = 80;
   const hitShield = createHitShield({
     doc,
     root,
     // Big boards only: on a normal board the raise and drop cost a 55-80 ms frame per pan and save nothing.
     enabled: () => { try { return notedSpeedFlags().hitShield !== false && Boolean(itemsR.isBig?.() ?? itemsR.isVirtual?.()); } catch { return false; } },
     later: (fn, ms) => timers.later(fn, ms),
+    onSweep: (event) => sweepPointer(event),
     onWheel: (event) => (disposed || suspended ? false : wheelBurst(event)),
     onPress: (target, event) => {
       const Ctor = doc.defaultView?.PointerEvent || globalThis.PointerEvent;
@@ -10182,17 +10261,58 @@ function buildBoardView(onFail, {
     if (!it) { if (hoverUid) { hoverUid = null; chrome.ctx.hide(); } return; }
     openHover(it);
   };
+  const sweepMove = (event) => {
+    let big = false;
+    try { big = notedSpeedFlags().hitShield !== false && Boolean(itemsR.isBig?.()); } catch { big = false; }
+    if (big) hitShield.raise();
+    try { sharedBgBudget().hold(sweepHoldKey, true); } catch { /* budget */ }
+    const b = board();
+    const itemCount = b?.items?.size || 0;
+    const key = `${vp.zoom}|${vp.x}|${vp.y}|${itemCount}`;
+    if (!sweepRects || sweepKey !== key) {
+      sweepKey = key;
+      sweepRects = paintRects();
+    }
+    const screen = { x: (event.clientX || 0) - (rootRect.left || 0), y: (event.clientY || 0) - (rootRect.top || 0) };
+    const hit = b ? hitTest(b, screenToWorld(vp, screen), sweepRects) : null;
+    const item = hit?.part === "body" ? b.items.get(hit.uid) : null;
+    const uid = item?.type === "card" ? hit.uid : null;
+    itemsR.setHover(uid);
+    if (sweepRest) { sweepRest(); sweepRest = null; }
+    sweepRest = timers.later(() => {
+      sweepRest = null;
+      if (disposed) return;
+      try { sharedBgBudget().hold(sweepHoldKey, false); } catch { /* budget */ }
+      hitShield.drop();
+      const card = uid ? board()?.items.get(uid) : null;
+      const nextLift = card?.kind === "pdf" ? uid : "";
+      if (nextLift !== liftHoverUid) { liftHoverUid = nextLift; scheduleLift(); }
+      showHover(uid);
+    }, HOVER_REST_MS);
+  };
+  sweepPointer = (event) => {
+    if (!gestureJobsOn() || event?.buttons) return false;
+    sweepMove(event);
+    return true;
+  };
   listen(root, "pointermove", (event) => {
     tablePointer = inRoamTable(event.target) ? event.target : null;
     lastPointer = { x: event.clientX || 0, y: event.clientY || 0 };
-    const pdfNode = event.target?.closest?.(".pxd-item--pdf");
-    const pdfUnder = pdfNode?.getAttribute?.("data-uid") || "";
-    if (pdfUnder !== liftHoverUid) { liftHoverUid = pdfUnder; scheduleLift(); }
     if (event.target?.closest?.(".pxd-chrome")) {
       // The bar, its bridge and its popovers count as the card: hovering them keeps the toolbar.
       if (hoverPending && event.target.closest(".pxd-ctx")) cancelHoverGrace();
       return;
     }
+    // The sweep is the big-board cost. A normal board still builds the card and shows the toolbar on this move.
+    if (gestureJobsOn() && !event.buttons && gestureBoardBig()) {
+      sweepMove(event);
+      return;
+    }
+    if (sweepRest) { sweepRest(); sweepRest = null; }
+    try { sharedBgBudget().hold(sweepHoldKey, false); } catch { /* budget */ }
+    const pdfNode = event.target?.closest?.(".pxd-item--pdf");
+    const pdfUnder = pdfNode?.getAttribute?.("data-uid") || "";
+    if (pdfUnder !== liftHoverUid) { liftHoverUid = pdfUnder; scheduleLift(); }
     const node = event.target?.closest?.(".pxd-item--card");
     let uid = node?.getAttribute?.("data-uid") || node?.dataset?.uid || null;
     if (!uid && queuedOverview() && !overviewCanvasOn() && !event.target?.closest?.(".pxd-item, .pxd-section")) {
@@ -12055,6 +12175,7 @@ function buildBoardView(onFail, {
     stats() {
       return { timers: timers.count(), listeners: listeners.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount(), edgePlacements: edgesR.placements?.() ?? 0, edgesAttached: edgesR.attachedCount?.() ?? 0, coverRepaints: coverRepaintUids.length, coverRepaintUids: coverRepaintUids.slice(), coverRepaintCalls };
     },
+    searchStats() { return { scans: searchScans, keys: searchKeys }; },
     // E probe (perf2): what the view shows for the cards in the camera right now. A card is painted by its attached
     // shell or by a box on the underlay; `missing` cards show nothing (a blank or partial frame when > 0).
     paintAudit() {
@@ -12110,6 +12231,7 @@ function buildBoardView(onFail, {
       inputProfile?.dispose();
       inputProfile = null;
       try { sharedBgBudget().hold(bgHoldKey, false); } catch { /* budget */ }
+      try { sharedBgBudget().hold(sweepHoldKey, false); } catch { /* budget */ }
       if (pdfTitleJob) { const stop = pdfTitleJob; pdfTitleJob = null; stop(); }
       if (coverJob) { const stop = coverJob; coverJob = null; stop(); }
       hitShield.drop();

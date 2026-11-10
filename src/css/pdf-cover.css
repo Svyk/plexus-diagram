@@ -43,7 +43,8 @@ body.bt-theme-dark .pxd-root,
   box-shadow: var(--pxd-pdf-shadow, none);
 }
 
-.pxd-root .pxd-item:hover > .pxd-item__body > .pxd-pdf-cover {
+.pxd-root .pxd-item:hover > .pxd-item__body > .pxd-pdf-cover,
+.pxd-root .pxd-item[data-pxd-hover] > .pxd-item__body > .pxd-pdf-cover {
   box-shadow: var(--pxd-pdf-shadow-hover, none);
 }
 
@@ -167,6 +168,7 @@ body.bt-theme-dark .pxd-root .pxd-pdf-paper,
 }
 
 .pxd-root .pxd-item:hover .pxd-pdf-hover:not([hidden]),
+.pxd-root .pxd-item[data-pxd-hover] .pxd-pdf-hover:not([hidden]),
 .pxd-root .pxd-item:focus-within .pxd-pdf-hover:not([hidden]) {
   opacity: 1;
   pointer-events: auto;
@@ -238,6 +240,7 @@ body.bt-theme-dark .pxd-root .pxd-pdf-hover,
 }
 
 .pxd-root .pxd-item:hover .pxd-pdf-pills,
+.pxd-root .pxd-item[data-pxd-hover] .pxd-pdf-pills,
 .pxd-root .pxd-item:focus-within .pxd-pdf-pills {
   opacity: 1;
   transition-delay: var(--pxd-pdf-hover-delay, 120ms);
@@ -265,6 +268,7 @@ body.bt-theme-dark .pxd-root .pxd-pdf-hover,
 }
 
 .pxd-root .pxd-item:hover .pxd-pdf-pill,
+.pxd-root .pxd-item[data-pxd-hover] .pxd-pdf-pill,
 .pxd-root .pxd-item:focus-within .pxd-pdf-pill {
   pointer-events: auto;
 }

@@ -6,7 +6,7 @@
 export const SHIELD_CLASS = "pxd-hit-shield";
 const SAFETY_MS = 1500;
 
-export function createHitShield({ doc, root, onWheel, onPress, enabled = () => true, later } = {}) {
+export function createHitShield({ doc, root, onWheel, onPress, onSweep, enabled = () => true, later } = {}) {
   let el = null;
   let up = false;
   let safety = null;
@@ -64,7 +64,13 @@ export function createHitShield({ doc, root, onWheel, onPress, enabled = () => t
     }, { passive: false });
     // The cursor moved: the next events must reach what is under it. A drag (a button held) keeps the shield: the
     // board raises it on every drag move, and dropping it here rebuilt it per move.
-    el.addEventListener("pointermove", (event) => { if (!event?.buttons) drop(); });
+    el.addEventListener("pointermove", (event) => {
+      if (event?.buttons) return;
+      let swept = false;
+      try { swept = onSweep?.(event) === true; } catch { swept = false; }
+      if (swept) { armSafety(); return; }
+      drop();
+    });
     // A press during the burst goes to the element under it. Board presses are read from pointerdown; the
     // compatibility mousedown that went to the shield is the one the board cancels anyway.
     el.addEventListener("pointerdown", (event) => {

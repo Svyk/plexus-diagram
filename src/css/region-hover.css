@@ -75,6 +75,7 @@ body.roam-body.dark .pxd-root.pxd-region-pop button,
 }
 
 .pxd-item:hover .pxd-region-hit,
+.pxd-item[data-pxd-hover] .pxd-region-hit,
 .pxd-item--selected .pxd-region-hit,
 .pxd-region-hit--hot,
 .pxd-region-hit--flash,

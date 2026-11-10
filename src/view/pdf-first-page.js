@@ -4,6 +4,7 @@
 
 import { COVER_MAX_W, isBlankCanvas, scaleBox, sharpBox } from "../model/pdf-cover.js";
 import { parsePageGeometry, quickPageTitle } from "../model/parse/index.js";
+import { continueAfterBlob } from "./blob-yield.js";
 import { loadPageData } from "./parse-engine.js";
 
 export const FIRST_PAGE_TIMEOUT_MS = 8000;
@@ -50,7 +51,7 @@ function blobFrom(canvas, timers) {
       if (done) return;
       done = true;
       if (timer != null) { try { timers.clear(timer); } catch { /* cleared */ } }
-      resolve(blob || null);
+      continueAfterBlob(() => resolve(blob || null));
     };
     try {
       if (!canvas || typeof canvas.toBlob !== "function") { finish(null); return; }

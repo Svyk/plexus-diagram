@@ -31,6 +31,7 @@ import { paintedRectOfElement, polygonClipInBox } from "../model/image-region.js
 import { regionRefModel } from "../model/region-card.js";
 import { imageRegionRows, regionBadge } from "../model/region-menu.js";
 import { renderRegionCard, thumbRequest } from "./region-card.js";
+import { continueAfterBlob } from "./blob-yield.js";
 import { copyDrawingPixels, renderDrawingCard } from "./drawing-card.js";
 import { clampPdfCard, coverModel, coverOuterBox, embedSplit, pdfMacroUrl, readerRule, writeReaderPage } from "../model/pdf.js";
 import { paintPdfChipStrip } from "./pdf-chip-strip.js";
@@ -1838,7 +1839,7 @@ export function createItemRenderer({
     else if (isSticky(item)) cls.push("pxd-item--sticky");
     else if (item.type === "text" && (item.fill || item.border)) cls.push("pxd-text-paint");
     if (rec.selected) cls.push(item.type === "section" ? "pxd-section--selected" : "pxd-item--selected");
-    if (rec.hover) cls.push("pxd-item--drop");
+    if (rec.hover && speedOf().gestureJobs === false) cls.push("pxd-item--drop");
     if (editing?.uid === item.uid) cls.push(editing.sticky ? "pxd-item--typing" : "pxd-item--editing");
     if (isSticky(item) && item.min) cls.push("pxd-item--min");
     if (item.pinned) cls.push(item.type === "section" ? "pxd-section--pinned" : "pxd-item--pinned");
@@ -1886,6 +1887,8 @@ export function createItemRenderer({
     // Classes other code toggles on the shell (offscreen shell, memory lane, pulse) survive the re-sync.
     for (const keep of TRANSIENT_CLASSES) if (node.classList?.contains(keep)) cls.push(keep);
     node.className = cls.join(" ");
+    if (speedOf().gestureJobs !== false && rec.hover) node.setAttribute("data-pxd-hover", "");
+    else node.removeAttribute("data-pxd-hover");
     if (item.type !== "section") paintMoved(node, item.uid);
     {
       const dueShort = item.type === "card" && cls.includes("pxd-item--task") ? taskMeta(item.string, item.content)?.due?.short : "";
@@ -5715,7 +5718,7 @@ export function createItemRenderer({
   };
   const canvasBlob = (canvas) => new Promise((resolve) => {
     if (!canvas || typeof canvas.toBlob !== "function") { resolve(null); return; }
-    try { canvas.toBlob((blob) => resolve(blob || null), "image/png"); } catch { resolve(null); }
+    try { canvas.toBlob((blob) => continueAfterBlob(() => resolve(blob || null)), "image/png"); } catch { resolve(null); }
   });
   const snapshots = new Set(); // { holder, mount, stop, done } while a fallback thumbnail renders
   const waitDrawingImg = (holder, snap) => new Promise((resolve) => {
@@ -6826,12 +6829,20 @@ export function createItemRenderer({
     if (heavy) openEmbed(heavy, { implicit: true });
   };
   const setHover = (uid) => {
+    const jobs = speedOf().gestureJobs !== false;
     for (const [u, rec] of shells) {
       const on = u === uid;
       // Unset hover is not hovered. Clearing hover must not touch every shell.
       if (Boolean(rec.hover) === on) continue;
       rec.hover = on;
-      rec.el.classList.toggle("pxd-item--drop", on);
+      if (jobs) {
+        if (on) rec.el.setAttribute("data-pxd-hover", "");
+        else rec.el.removeAttribute("data-pxd-hover");
+        rec.el.classList.remove("pxd-item--drop");
+      } else {
+        rec.el.classList.toggle("pxd-item--drop", on);
+        rec.el.removeAttribute("data-pxd-hover");
+      }
     }
   };
 

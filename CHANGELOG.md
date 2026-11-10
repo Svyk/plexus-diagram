@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.40.0 — 2026-11-09
+
+No more freeze after an edit on very large boards.
+
+- **No freeze after an edit on very large boards.** After each edit, a very large board stopped responding for about 3 s while it refreshed its stored copy. That work now runs in short steps. On the stress test board the longest step went from 3.3–3.6 s to about 40 ms, and memory growth in the 15 s after an edit fell from about 240 MB to about 70 MB. The same holds when the edit comes from another window or device that has the board open.
+- **Kill switch.** The hidden speed flag `slicedKeep` turns the stepped refresh off and stores the board as 3.39.1 did.
+- **Stress bench tools.** `tools/live/stress/` holds the scenarios, an A/B runner and a report for measuring a large board in a live Roam window. They are for development and change nothing in the extension.
+
 ## 3.39.1 — 2026-11-08
 
 The build for the Roam Depot submission.

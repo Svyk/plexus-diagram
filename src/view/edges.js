@@ -871,12 +871,15 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     return fresh;
   };
   // skipLinks: a continuation frame of a sliced settle; the links were placed with the first slice.
-  const render = ({ board, rects, links = [], coveredEdges = new Set(), selection = {}, zoom = 1, dirty = null, view: near = undefined, skipLinks = false, drawn = undefined }) => {
+  // parkCap (PXD-29): this frame parks at most that many far edges. The settle's slices park the rest.
+  // Null keeps the old walk, which removed every far edge in the one frame.
+  const render = ({ board, rects, links = [], coveredEdges = new Set(), selection = {}, zoom = 1, dirty = null, view: near = undefined, skipLinks = false, drawn = undefined, parkCap = null }) => {
     zoomCache = zoom;
     if (near !== undefined) view = near;
     if (drawn !== undefined) drawnFn = drawn;
     lastPass = { board, rects, coveredEdges, selection };
     const virt = Boolean(view) && virtualEdges(board);
+    let parksLeft = parkCap == null ? Infinity : parkCap;
     for (const uid of [...waiting]) if (!board.edges.has(uid)) waiting.delete(uid);
     for (const uid of [...edgeEls.keys()]) if (!board.edges.has(uid)) { waiting.delete(uid); removeEdge(uid); }
     for (const edge of board.edges.values()) {
@@ -892,7 +895,16 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         const attached = rec && !rec.parked;
         if (attached ? edgeFar(board, edge, rects) : !edgeNear(board, edge, rects)) {
           waiting.delete(edge.uid);
-          if (attached) parkLater(edge.uid, rec);
+          if (attached) {
+            // A zoom-in used to park every far edge in this frame (~1,300). Past the cap they stay for the slices.
+            let defer = false;
+            try { defer = deferPark() === true; } catch { defer = false; }
+            if (!defer && parksLeft <= 0) { /* the settle slice parks it */ }
+            else {
+              parkLater(edge.uid, rec);
+              if (rec.parked) parksLeft -= 1;
+            }
+          }
           else if (rec) parkEdge(rec);
           continue;
         }

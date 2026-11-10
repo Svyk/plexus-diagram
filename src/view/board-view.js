@@ -14,7 +14,7 @@ import { createHitShield } from "./hit-shield.js";
 import { createGestureUnderlay } from "./gesture-underlay.js";
 import { sharedTaskProbe } from "../long-tasks.js";
 import { createInputProfile } from "../input-profile.js";
-import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, readPlexus, semanticRef, plainText } from "../model/schema.js";
+import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, readPlexus, semanticRef, plainText, setPlainTextCache } from "../model/schema.js";
 import { TABLE_SIZE, keyGate, ownershipOf, tablePointerTarget } from "../model/roam-table.js";
 import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../model/drawing-card.js";
 import { annotatePlan } from "../model/annotate.js";
@@ -1007,6 +1007,9 @@ function buildBoardView(onFail, {
   let settingsRef = settings;
   const readSetting = (k) => (typeof settingsRef?.get === "function" ? settingsRef.get(k) : settingsRef?.[k]);
   const settingsProxy = { get: readSetting };
+  // PXD-29. Off is 3.40.0: a query refetches on a timer, every click settles, titles are measured on every paint.
+  const stepOn = () => { try { return notedSpeedFlags().stepSettle !== false; } catch { return true; } };
+  try { setPlainTextCache(stepOn); } catch { /* titles */ }
   // One bridge for the life of the board. enabled is read again on every tool lookup, including after setSettings.
   const bt = createBt({
     enabled: () => readSetting("better-tasks") === true,
@@ -4023,8 +4026,26 @@ function buildBoardView(onFail, {
   const markAll = () => { dirty.all = true; dirty.structural = true; schedule(); };
 
   // ------------------------------------------------------------ viewport
+  // A settle's heavy work (level of detail, attach, badges, thumbnails, covers) runs in parts under 8 ms on the
+  // shared background budget. The next camera move or gesture cancels the parts still waiting.
+  let settleGen = 0;
+  let settleJob = null;
+  let settleLive = false;
+  let settleYield = false;
+  // A settle that fired during a gesture is not done. A quiet click does not start one, but it does not drop this one.
+  let settleOwed = false;
+  let gestureSnap = "";
+  const gestureKey = () => `${vp.x}|${vp.y}|${vp.zoom}|${(selection.items || []).join("\u0001")}|${selection.edge || ""}|${selection.link || ""}|${selection.region ? `${selection.region.card || ""}:${selection.region.uid || ""}` : ""}`;
+  const cancelSettleParts = () => {
+    settleGen += 1;
+    const stop = settleJob;
+    settleJob = null;
+    settleLive = false;
+    try { stop?.(); } catch { /* gone */ }
+  };
   const setViewport = (next) => {
     if (!next) return;
+    if (stepOn()) cancelSettleParts();
     vp = { x: next.x, y: next.y, zoom: next.zoom };
     try { sharedBgBudget().noteCamera(); } catch { /* budget */ }
     if (hoverUid) hideHover();
@@ -4198,7 +4219,13 @@ function buildBoardView(onFail, {
     itemsR.setBadges(map);
   };
   const refreshBadges = () => {
-    if (disposed || gesturing || !board()) return;
+    if (disposed || !board()) return;
+    // A gesture swallows this read. With stepSettle the gesture-end of a click that changed nothing does not
+    // run, so the read arms again and goes once the gesture is over. The flag off keeps the old drop.
+    if (gesturing) {
+      if (stepOn()) scheduleBadges(RESUME_MS);
+      return;
+    }
     itemsR.setShowBadges(flag("show-card-badges", true));
     if (!flag("show-card-badges", true) || tier !== "detail" || typeof host?.cardStats !== "function") return;
     const items = visibleBadgeItems();
@@ -4321,6 +4348,8 @@ function buildBoardView(onFail, {
   let suspendedBoard = null;
   let edgesZoomAt = NaN;
   let wheelLayer = false;
+  // Query reads wait out a gesture, a wheel burst, and a settle that is still in parts.
+  try { itemsR.setQueryBusy(() => Boolean(gesturing || wheelLayer || settleLive)); } catch { /* query */ }
   // R4 (speed flag zoomNoLayer): a Ctrl/pinch zoom burst paints the world on the main thread each frame instead of
   // scaling a will-change layer. On a zoom-out the compositor showed the scaled layer before the newly revealed area
   // was rastered: a blank frame 3 ms after the last one (QA5 B/C zoom-out #10, checkerboarding). Pans keep the layer.
@@ -4831,6 +4860,131 @@ function buildBoardView(onFail, {
   const inputPending = () => {
     try { return Boolean(win?.navigator?.scheduling?.isInputPending?.({ includeContinuous: true })); } catch { return false; }
   };
+  // Arrow sizes, link heads and the label cut-off follow the zoom: re-place every edge only when they change.
+  // A pan settle on the PhD main board re-placed all 2,114 edges (~0.4 s each time the wheel paused).
+  const markEdgeZoom = () => {
+    if (vp.zoom === edgesZoomAt) return;
+    const full = edgeZoomKey(vp.zoom) !== edgeZoomKey(edgesZoomAt);
+    const zoomedOut = vp.zoom < (Number.isFinite(edgesZoomAt) ? edgesZoomAt : Number(edgesR.placedZoom?.()) || 0);
+    edgesZoomAt = vp.zoom;
+    // Zoom-out only: a zoom-in's old path (every edge dirty, EDGE_SLICE a frame, the far ones parked by the cull)
+    // kept the settle task smaller than resizing the near heads in it (bench, 3x CPU: max 431-467 vs 511-575 ms).
+    const heads = full && zoomHeadsOn() && zoomedOut && !dirty.all && !dirty.structural ? edgesR.resizeHeads?.(vp.zoom, size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null) : null;
+    if (heads) {
+      for (const uid of heads) dirty.edges.add(uid);
+      for (const e of board()?.edges.values() || []) if (e.fromBlock || e.toBlock) dirty.edges.add(e.uid);
+    } else if (full) {
+      dirty.edges = new Set(board()?.edges.keys() || []);
+      dirty.links = true;
+    } else {
+      // Block-end pills are sized in screen pixels.
+      for (const e of board()?.edges.values() || []) if (e.fromBlock || e.toBlock) dirty.edges.add(e.uid);
+    }
+  };
+  // One part, then yield. The shared slice is 30 ms; this job stops at 8 so a click never grows a long task.
+  // partMs jumps after a yield so the budget does not run a second part in the same idle callback.
+  const SETTLE_PART_MS = 8;
+  const queueSettleParts = (parts) => {
+    cancelSettleParts();
+    const gen = settleGen;
+    const list = parts.filter((fn) => typeof fn === "function");
+    if (!list.length || disposed) return;
+    settleLive = true;
+    settleYield = false;
+    const pump = (deadline) => {
+      if (gen !== settleGen || disposed) { settleLive = false; return true; }
+      settleYield = false;
+      const start = perfNow();
+      const roomOf = () => {
+        try { return typeof deadline?.timeRemaining === "function" ? deadline.timeRemaining() : SETTLE_PART_MS; }
+        catch { return SETTLE_PART_MS; }
+      };
+      while (list.length) {
+        if (gen !== settleGen || disposed) { settleLive = false; return true; }
+        if (perfNow() - start >= SETTLE_PART_MS || roomOf() < 1) {
+          settleYield = true;
+          return false;
+        }
+        const fn = list.shift();
+        try { fn(); } catch { /* one part must not drop the rest */ }
+      }
+      settleLive = false;
+      settleJob = null;
+      return true;
+    };
+    // A settle that fits in 8 ms finishes in this turn (a small board, and the tests). The rest waits on the budget.
+    if (pump(null) === true) return;
+    const stop = timers.bgRun((deadline) => pump(deadline), {
+      partMs: () => (settleYield ? 1e9 : 0),
+      urgent: true,
+      label: "settle-part",
+    });
+    settleJob = typeof stop === "function" ? stop : null;
+  };
+  // stepSettle off: the whole settle stays in this timer, as in 3.40.0.
+  const finishSettleSync = () => {
+    hitShield.drop();
+    endUnderlay();
+    paintGrid();
+    chrome.toolbar.setZoom(vp.zoom);
+    if (wheelLayer) {
+      wheelLayer = false;
+      zoomWheel = false;
+      world.style.willChange = "";
+      propsPanel.place();
+    }
+    syncShellHold();
+    const fromCanvas = tier === "overview" && underlayKind === "overview" && underlay.isShown();
+    applyLod();
+    beginSlice(fromCanvas && tier !== "overview" && adaptiveOn() ? RESUME_SLICE_SHELLS : 0);
+    scheduleContent();
+    vpStore.set(vpId, vp);
+    markEdgeZoom();
+    settleAttach();
+    dirty.minimap = true;
+    schedule();
+    updateBackToContent();
+    refreshBadges();
+    refreshThumbnails();
+    pdfFlip?.settle?.();
+    scheduleSharpCovers();
+    considerCoverWarm();
+    if (typeof onSettled === "function") { try { onSettled(); } catch { /* the owner's hook */ } }
+  };
+  // stepSettle on: the camera, the grid and the wheel layer end here. Level of detail, attach, badges, thumbnails
+  // and covers run in parts. The fromCanvas bit is read before the level of detail changes.
+  const finishSettleStep = () => {
+    hitShield.drop();
+    endUnderlay();
+    paintGrid();
+    chrome.toolbar.setZoom(vp.zoom);
+    if (wheelLayer) {
+      wheelLayer = false;
+      zoomWheel = false;
+      world.style.willChange = "";
+      propsPanel.place();
+    }
+    syncShellHold();
+    markEdgeZoom();
+    vpStore.set(vpId, vp);
+    dirty.minimap = true;
+    updateBackToContent();
+    const fromCanvas = tier === "overview" && underlayKind === "overview" && underlay.isShown();
+    queueSettleParts([
+      () => applyLod(),
+      () => beginSlice(fromCanvas && tier !== "overview" && adaptiveOn() ? RESUME_SLICE_SHELLS : 0),
+      () => scheduleContent(),
+      () => settleAttach(),
+      () => refreshBadges(),
+      () => refreshThumbnails(),
+      () => { try { pdfFlip?.settle?.(); } catch { /* pdf */ } },
+      () => scheduleSharpCovers(),
+      () => considerCoverWarm(),
+      () => { if (typeof onSettled === "function") { try { onSettled(); } catch { /* the owner's hook */ } } },
+    ]);
+    // The edge slice is queued inside the parts above. This render has to follow it, or it parks every far edge.
+    schedule();
+  };
   const settle = () => {
     settleWaitAt = 0;
     armSettle();
@@ -4847,56 +5001,14 @@ function buildBoardView(onFail, {
       // A Ctrl/pinch wheel zoom is a gesture too (interactions.js ends it 160 ms after the last tick, this timer is
       // 120 ms): returning here left the burst open for good (wheelLayer stuck on: the board stayed in burst mode, the
       // overview canvas never redrew, the zoom's edge re-place and the snapshot capture never ran). Wait for it.
-      if (gesturing) { if (wheelLayer) armSettle(); return; }
-      hitShield.drop();
-      endUnderlay();
-      paintGrid();
-      chrome.toolbar.setZoom(vp.zoom);
-      if (wheelLayer) {
-        wheelLayer = false;
-        zoomWheel = false;
-        world.style.willChange = "";
-        propsPanel.place();
+      if (gesturing) {
+        if (wheelLayer) { armSettle(); return; }
+        if (stepOn()) settleOwed = true;
+        return;
       }
-      syncShellHold();
-      const fromCanvas = tier === "overview" && underlayKind === "overview" && underlay.isShown();
-      applyLod();
-      beginSlice(fromCanvas && tier !== "overview" && adaptiveOn() ? RESUME_SLICE_SHELLS : 0);
-      scheduleContent();
-      vpStore.set(vpId, vp);
-      // Arrow sizes, link heads and the label cut-off follow the zoom: re-place every edge only when they change.
-      // A pan settle on the PhD main board re-placed all 2,114 edges (~0.4 s each time the wheel paused).
-      if (vp.zoom !== edgesZoomAt) {
-        const full = edgeZoomKey(vp.zoom) !== edgeZoomKey(edgesZoomAt);
-        const zoomedOut = vp.zoom < (Number.isFinite(edgesZoomAt) ? edgesZoomAt : Number(edgesR.placedZoom?.()) || 0);
-        edgesZoomAt = vp.zoom;
-        // Zoom-out only: a zoom-in's old path (every edge dirty, EDGE_SLICE a frame, the far ones parked by the cull)
-        // kept the settle task smaller than resizing the near heads in it (bench, 3x CPU: max 431-467 vs 511-575 ms).
-        const heads = full && zoomHeadsOn() && zoomedOut && !dirty.all && !dirty.structural ? edgesR.resizeHeads?.(vp.zoom, size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null) : null;
-        if (heads) {
-          for (const uid of heads) dirty.edges.add(uid);
-          for (const e of board()?.edges.values() || []) if (e.fromBlock || e.toBlock) dirty.edges.add(e.uid);
-        } else if (full) {
-          dirty.edges = new Set(board()?.edges.keys() || []);
-          dirty.links = true;
-        } else {
-          // Block-end pills are sized in screen pixels.
-          for (const e of board()?.edges.values() || []) if (e.fromBlock || e.toBlock) dirty.edges.add(e.uid);
-        }
-      }
-      // The shells and edges near the view come back (a slice per frame on a big board), then the underlay hides.
-      settleAttach();
-      dirty.minimap = true;
-      schedule();
-      updateBackToContent();
-      refreshBadges();
-      refreshThumbnails();
-      pdfFlip?.settle?.();
-      scheduleSharpCovers();
-      // Fit and other camera moves are not pointer gestures, so the gesture-end
-      // warm pass never runs. Look again once the viewport has settled.
-      considerCoverWarm();
-      if (typeof onSettled === "function") { try { onSettled(); } catch { /* the owner's hook */ } }
+      settleOwed = false;
+      if (stepOn()) finishSettleStep();
+      else finishSettleSync();
     }, RESUME_MS, "settle");
   };
   const refreshThumbnails = () => {
@@ -8841,6 +8953,9 @@ function buildBoardView(onFail, {
       world.style.willChange = worldLayer() ? "transform" : "";
       syncShellHold();
       if (gesturing) {
+        gestureSnap = gestureKey();
+        if (stepOn() && settleLive) settleOwed = true;
+        if (stepOn()) cancelSettleParts();
         resumeTimer?.();
         resumeTimer = null;
         itemsR.setPaused(true);
@@ -8857,23 +8972,51 @@ function buildBoardView(onFail, {
         liveRects = null;
         resetGrown();
         endDragRide();
+        // A click that changed neither the camera nor the selection has nothing to settle.
+        if (stepOn() && !info?.moved && gestureKey() === gestureSnap) {
+          itemsR.setPaused(false);
+          // No settle. A badge read that was waiting out the gesture still goes; it is not a camera settle.
+          if (settleOwed) { settleOwed = false; settle(); }
+          else refreshBadges();
+          return;
+        }
+        settleOwed = false;
         resumeTimer = timers.later(() => {
           resumeTimer = null;
           itemsR.setPaused(false);
-          applyLod();
+          if (!stepOn()) {
+            applyLod();
+            propsPanel.place();
+            paintGrid();
+            chrome.toolbar.setZoom(vp.zoom);
+            beginSlice();
+            scheduleContent();
+            settleAttach();
+            vpStore.set(vpId, vp);
+            dirty.selection = true;
+            schedule();
+            updateBackToContent();
+            refreshBadges();
+            considerCoverWarm();
+            scheduleSharpCovers();
+            return;
+          }
           propsPanel.place();
           paintGrid();
           chrome.toolbar.setZoom(vp.zoom);
-          beginSlice();
-          scheduleContent();
-          settleAttach();
           vpStore.set(vpId, vp);
           dirty.selection = true;
-          schedule();
           updateBackToContent();
-          refreshBadges();
-          considerCoverWarm();
-          scheduleSharpCovers();
+          queueSettleParts([
+            () => applyLod(),
+            () => beginSlice(),
+            () => scheduleContent(),
+            () => settleAttach(),
+            () => refreshBadges(),
+            () => considerCoverWarm(),
+            () => scheduleSharpCovers(),
+          ]);
+          schedule();
         }, RESUME_MS, "gesture-end");
       }
     },
@@ -10707,6 +10850,10 @@ function buildBoardView(onFail, {
       pdfBlockList = null;
       try { partsIdx?.invalidate(); } catch { /* index gone */ }
     }
+    // Query rows stay put across a zoom. A real graph change reads them again once the board is idle.
+    if (stepOn() && (structural || !d || (typeof d.size === "number" ? d.size > 0 : d.length > 0))) {
+      try { itemsR.noteQueryGraph(); } catch { /* query */ }
+    }
     const b = board();
     const current = crumbList[crumbList.length - 1];
     if (current && b) {
@@ -10930,7 +11077,7 @@ function buildBoardView(onFail, {
           for (const uid of sliceSource) (slice.size < EDGE_SLICE ? slice : edgeRest).add(uid);
           part = slice;
         }
-        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: part, view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null, skipLinks: edgeSlicing && !dirty.links, drawn: endpointReady });
+        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: part, view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null, skipLinks: edgeSlicing && !dirty.links, drawn: endpointReady, parkCap: stepOn() ? 400 : null });
         paintLegend();
         if (suggestMode !== "off") refreshSuggest();
       }

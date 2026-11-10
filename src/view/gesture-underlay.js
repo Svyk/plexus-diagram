@@ -1,4 +1,5 @@
 import { lodFonts } from "../model/geometry.js";
+import { notedSpeedFlags } from "../settings.js";
 
 // While the camera moves on a big board, no shell or edge joins the DOM: each attach dirtied the board for a style
 // recalc of 1,000-3,500 elements and a page hit test (PhD main board at map zoom: pan p95 184-215 ms; with no
@@ -217,6 +218,11 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
   // palette's text colour; the map tile wraps up to three lines at --pxd-map-font, detail is one 13 px line.
   // Below a readable size the title and a detail card's body are drawn as text-coloured bars ("greeked"): a zoom-out
   // burst at detail drew dark boxes with a faint border on a dark board, which read as a blank frame (QA3 C #9-#26).
+  // Fitted title lines for one font and width. stepSettle keeps them: a zoom step at the same font was measuring
+  // every title again (plainText and the binary search showed up in the zoom profile).
+  const titleLines = new Map();
+  const TITLE_LINE_MAX = 2000;
+  const cacheTitles = () => { try { return notedSpeedFlags().stepSettle !== false; } catch { return false; } };
   const paintTitles = (ctx, { items, c, tier, zoom, view }) => {
     const font = tier === "map" ? lodFonts(zoom).map : 13;
     const lines = tier === "map" ? 3 : 1;
@@ -231,6 +237,33 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
       while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (ctx.measureText(`${text.slice(0, mid)}…`).width <= width) lo = mid; else hi = mid - 1; }
       return `${text.slice(0, lo)}…`;
     };
+    const layout = (title, width, room) => {
+      const words = title.split(/\s+/);
+      const out = [];
+      let row = 0;
+      let line = "";
+      for (let i = 0; i < words.length && row < room; i += 1) {
+        const next = line ? `${line} ${words[i]}` : words[i];
+        if (!line || typeof ctx.measureText !== "function" || ctx.measureText(next).width <= width) { line = next; continue; }
+        const last = row === room - 1;
+        out.push(last ? fit(`${line} ${words.slice(i).join(" ")}`, width) : line);
+        row += 1;
+        line = last ? "" : words[i];
+        if (last) break;
+      }
+      if (line && row < room) out.push(fit(line, width));
+      return out;
+    };
+    const laidOut = (title, width, room) => {
+      if (!cacheTitles()) return layout(title, width, room);
+      const key = `${font}|${Math.round(width)}|${room}|${title}`;
+      const hit = titleLines.get(key);
+      if (hit) return hit;
+      const out = layout(title, width, room);
+      if (titleLines.size >= TITLE_LINE_MAX) titleLines.clear();
+      titleLines.set(key, out);
+      return out;
+    };
     let n = 0;
     for (const item of items) {
       if (item.cover) continue;
@@ -244,19 +277,8 @@ export function createGestureUnderlay({ doc, world, root, before = null } = {}) 
       const name = item.color && c.texts?.[item.color] ? item.color : "";
       ctx.fillStyle = name ? c.texts[name] : c.text;
       const room = Math.max(1, Math.min(lines, Math.floor((r.h - 12) / lineH)));
-      const words = title.split(/\s+/);
-      let row = 0;
-      let line = "";
-      for (let i = 0; i < words.length && row < room; i += 1) {
-        const next = line ? `${line} ${words[i]}` : words[i];
-        if (!line || typeof ctx.measureText !== "function" || ctx.measureText(next).width <= width) { line = next; continue; }
-        const last = row === room - 1;
-        ctx.fillText(last ? fit(`${line} ${words.slice(i).join(" ")}`, width) : line, r.x + 12, r.y + 6 + row * lineH);
-        row += 1;
-        line = last ? "" : words[i];
-        if (last) break;
-      }
-      if (line && row < room) ctx.fillText(fit(line, width), r.x + 12, r.y + 6 + row * lineH);
+      const drawn = laidOut(title, width, room);
+      for (let row = 0; row < drawn.length; row += 1) ctx.fillText(drawn[row], r.x + 12, r.y + 6 + row * lineH);
     }
   };
 

@@ -14,15 +14,21 @@ const BUDGETS_FILE = join(HERE, "budgets.json");
 
 // Quick check rows: edit here. [command, what it should print, how long]
 export const QUICK_CHECKS = [
-  ["node tools/live/stress/run.mjs --list", "one line per scenario, grouped move / open / edit / idle", "instant"],
-  ["node tools/live/stress/run.mjs --quick", "one JSON-like line per scenario, then `N lines in .../results.jsonl`; exit 0", "about 6 min"],
-  ["node tools/live/stress/run.mjs --cleanup", "a JSON line containing `\"clean\": true`", "under 1 min"],
-  ["node tools/live/stress/analyse.mjs <recording> --selftest", "`selftest ok`", "instant"],
-  ["node tools/live/stress/ab.mjs --aa --a deploy --scenario zoom-btn --dry", "a plan of 10 arms (n 5, A1/A2 interleaved), nothing connects", "instant"],
-  ["node tools/live/stress/lib/stats.mjs --selftest", "`selftest ok`", "instant"],
-  ["node tools/live/stress/lib/trace-analyse.mjs --selftest", "`selftest ok`", "instant"],
-  ["node tools/live/stress/report.mjs --selftest", "`selftest ok`", "instant"],
+  ["node tools/live/stress/run.mjs --list", "42 scenarios in the groups move, open, build, type, idle", "instant"],
+  ["node tools/live/stress/run.mjs --build ~/wo/pxd-fast/builds/3.39.1 --quick --scenario zoom-btn,click-empty,open-daily,build-setup,add-card,move-card,build-cleanup,type-card,follow-refresh --label verify", "one line per run for every group (9 lines appended to ~/wo/pxd-fast/results.jsonl), then `leftovers {\"markerBlocks\":0,\"ledgerLeft\":[],\"clean\":true}`; exit 0", "about 3 min, plus a wait when another run holds the lock"],
+  ["node tools/live/stress/run.mjs --build ~/wo/pxd-fast/builds/3.39.1 --quick", "all 40 quick scenarios, one line each, the same leftovers line", "about 7.5 min"],
+  ["node tools/live/stress/run.mjs --cleanup", "`cleanup {…\"markerBlocks\":0,\"ledgerLeft\":[],\"clean\":true}`; exit 0", "20 s"],
+  ["grep -c '\"label\":\"aa1\"' ~/wo/pxd-fast/noise.jsonl; tail -n 3 ~/wo/pxd-fast/noise.jsonl", "the A/A noise floor rows (scenario, metric, floor, delta, spread, n 5)", "instant"],
+  ["node tools/live/stress/record.mjs status E8A80A58", "`\"on\":true` with `secs` above 8000: the recorder in Svy's window has run since 19:00, so that window was never reloaded or navigated", "instant"],
+  ["node tools/live/stress/record.mjs status 882A1778", "`refusing the Svy window`", "instant"],
+  ["node tools/live/stress/report.mjs --label base --dev-label dev --rec rec/real-1.analysis.json --findings round0-findings.jsonl --notes round0-notes.jsonl --out /tmp/round0-check.md", "the path, and no `WARNING missing evidence` line; the `Evidence files:` block of the output says `ok` on every row", "2 s"],
+  ["node tools/live/stress/analyse.mjs ~/wo/pxd-fast/rec/real-1.json --wheel ~/wo/pxd-fast/rec/real-1-wheel.json", "the recording's report (135 stalls, 22,240 ms; presses and hover tables)", "1 s"],
+  ["for t in analyse.mjs report.mjs lib/stats.mjs lib/trace-analyse.mjs lib/whereis.mjs; do node tools/live/stress/$t --selftest; done", "`selftest ok` five times", "5 s"],
+  ["git diff --stat origin/main...HEAD", "only files under tools/live/stress/ and tools/live/README.md", "instant"],
+  ["npm run check > /tmp/check.log 2>&1; grep -E \"^# (tests|pass|fail)\" /tmp/check.log", "`# tests 4797`, `# fail 0`", "about 5 min"],
 ];
+
+const WINDOW_NOTE = "Window ids are those of 2026-11-09 and change when Roam restarts: the bench window is the Readwisenotes window marked `sessionStorage[\"pxd-bench\"]=\"1\"`, E8A80A58 is Svy's own window (recorder only), 882A1778 is the Svy graph window (never touched).";
 
 const STEP_KEYS = ["clickByBand", "downByBand", "press", "release", "hover", "presses", "fast", "tail", "keys", "typing"];
 const outDir = (o = {}) => (o.outDir ? resolve(o.outDir) : process.env.STRESS_OUT || join(homedir(), "wo", "pxd-fast"));
@@ -235,7 +241,7 @@ export function buildReport(opts = {}) {
   out.push(`${(first.at || new Date().toISOString()).slice(0, 10)}. Plexus ${first.version || "?"}. Window ${win.inner ? win.inner.join("x") : "?"}, dpr ${win.dpr ? r1(win.dpr) : "?"}, ${win.hz || "?"} Hz. ${mine.length} result lines (${timed.length} timed, ${traced.length} traced). Build sha ${[...new Set(mine.map((l) => l.build && l.build.sha).filter(Boolean))].join(", ") || "none (installed build)"}. ${runs.length} distinct run ids for label ${label}: ${runs.join(", ") || "none"}.`);
 
   // 2
-  out.push(`## Quick check\n\n${table(["Command", "Should print", "Takes"], QUICK_CHECKS.map((r) => r.map((c, i) => (i === 0 ? `\`${c}\`` : c))))}`);
+  out.push(`## Quick check\n\n${table(["Command", "Should print", "Takes"], QUICK_CHECKS.map((r) => r.map((c, i) => (i === 0 ? `\`${c}\`` : c))))}\n\n${WINDOW_NOTE}`);
 
   // 3
   const groups = [...new Set(timed.map((l) => l.group))];

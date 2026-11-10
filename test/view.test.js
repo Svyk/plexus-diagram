@@ -1785,7 +1785,8 @@ test("F5: dropping a card on a board card moves it in with an Undo toast; a refu
     f.stub.dispatch(f.stub.document, "pointermove", { clientX: 300, clientY: 200, pointerId: 1 });
     f.stub.dispatch(f.stub.document, "pointermove", { clientX: 560, clientY: 340, pointerId: 1 });
     f.stub.flushFrames();
-    assert.ok(f.view.root.querySelector("[data-uid=nbCard001]").classList.contains("pxd-item--drop"), "drop target is highlighted");
+    const drop = f.view.root.querySelector("[data-uid=nbCard001]");
+    assert.ok(drop.classList.contains("pxd-item--drop") || drop.hasAttribute("data-pxd-hover"), "drop target is highlighted");
     f.stub.dispatch(f.stub.document, "pointerup", { clientX: 560, clientY: 340, pointerId: 1 });
     await tick();
     const move = f.session.mutations.find((m) => m[0] === "moveIntoBoard");

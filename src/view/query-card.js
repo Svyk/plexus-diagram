@@ -1,6 +1,8 @@
 // Query card body. The list paints after first paint: cached rows at once, then one idle run.
 // A query Plexus cannot translate stays a live Roam render; its uids are kept as static rows for the next open.
 
+import { sharedBgBudget } from "../bg-budget.js";
+import { notedSpeedFlags } from "../settings.js";
 import { CARD_MIME } from "../model/drop.js";
 import {
   QUERY_SHOW,
@@ -17,6 +19,29 @@ import { createQueryBackend } from "../host/query-backend.js";
 const REUSE_MS = 15000;
 const FALLBACK_WAIT_MS = 1800;
 
+// A query leaf waits for a real idle slice. A spent deadline, or a pointer hold, is queued again
+// instead of running inside the callback that already ran out of time.
+export function gestureIdle(fn, win = globalThis) {
+  const ric = win?.requestIdleCallback;
+  if (typeof ric !== "function") {
+    const timer = typeof win?.setTimeout === "function" ? win.setTimeout.bind(win) : setTimeout;
+    return timer(fn, 0);
+  }
+  if (notedSpeedFlags().gestureJobs === false) return ric.call(win, () => fn(), { timeout: 1500 });
+  const run = (deadline) => {
+    const remaining = deadline?.timeRemaining;
+    if (typeof remaining !== "function") { fn(); return; }
+    let held = false;
+    try { held = Boolean(sharedBgBudget().held()); } catch { held = false; }
+    if ((remaining() <= 0 && !deadline.didTimeout) || held) {
+      setTimeout(() => ric.call(win, run, { timeout: 1500 }), 32);
+      return;
+    }
+    setTimeout(fn, 0);
+  };
+  return ric.call(win, run, { timeout: 1500 });
+}
+
 export function createQueryCards({ doc = globalThis.document, host, storage, graph = "", backend, now = Date.now, schedule, keep = null, busy = null, idle = null } = {}) {
   const cache = createQueryCache(storage, typeof graph === "function" ? graph() : graph);
   const source = backend || (host?.q ? createQueryBackend(host) : null);
@@ -29,7 +54,7 @@ export function createQueryCards({ doc = globalThis.document, host, storage, gra
   const astKey = (ast) => { try { return JSON.stringify(ast); } catch { return ""; } };
   const later = schedule || ((fn, ms = 0) => {
     const win = doc?.defaultView || globalThis;
-    if (!ms && typeof win.requestIdleCallback === "function") return win.requestIdleCallback(() => fn(), { timeout: 1500 });
+    if (!ms && typeof win.requestIdleCallback === "function") return gestureIdle(fn, win);
     return setTimeout(fn, ms);
   });
 

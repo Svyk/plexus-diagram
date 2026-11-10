@@ -8,6 +8,7 @@ const search = (m, text) => {
   const input = m.view.root.querySelector(".pxd-search__input");
   input.value = text;
   m.stub.dispatch(input, "input", {});
+  m.stub.flushTimers();
   return input;
 };
 

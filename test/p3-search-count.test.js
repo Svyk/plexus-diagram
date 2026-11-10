@@ -15,12 +15,14 @@ test("P3: typing in board search and pressing Enter keep the count's one text no
     assert.ok(input && count);
     input.value = "card 1";
     m.stub.dispatch(input, "input", {});
+    m.stub.flushTimers();
     const node = count.firstChild;
     assert.ok(node && node.nodeType === 3, "the count is one text node");
     const first = count.textContent;
     assert.ok(Number(first) > 0, `hits counted (${first})`);
     input.value = "card 12";
     m.stub.dispatch(input, "input", {});
+    m.stub.flushTimers();
     assert.equal(count.firstChild, node, "same text node after a second key");
     assert.notEqual(count.textContent, first);
     m.stub.dispatch(input, "keydown", { key: "Enter" });

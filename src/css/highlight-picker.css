@@ -99,6 +99,7 @@
 }
 
 .pxd-root .pxd-item:hover > .pxd-pdf-highlights.pxd-hl-add,
+.pxd-root .pxd-item[data-pxd-hover] > .pxd-pdf-highlights.pxd-hl-add,
 .pxd-root .pxd-item.pxd-item--selected > .pxd-pdf-highlights.pxd-hl-add,
 .pxd-root .pxd-pdf-highlights.pxd-hl-add:focus-visible {
   opacity: 1;

@@ -415,7 +415,8 @@ html:not(.rm-sidecar) > body.pxd-fs-cover .roam-article .pxd-mount--fullscreen {
   border-color: var(--pxd-accent);
 }
 
-.pxd-item--drop {
+.pxd-item--drop,
+.pxd-item[data-pxd-hover] {
   border-color: var(--pxd-accent);
   box-shadow: 0 0 0 3px var(--pxd-accent-soft);
 }
@@ -2434,7 +2435,8 @@ html:not(.rm-sidecar) > body.pxd-fs-cover .roam-article .pxd-mount--fullscreen {
 }
 
 /* Drop target while dragging cards onto a board card. */
-.pxd-item--board.pxd-item--drop {
+.pxd-item--board.pxd-item--drop,
+.pxd-item--board[data-pxd-hover] {
   outline: 2px solid var(--pxd-accent);
   outline-offset: 0;
   background: var(--pxd-accent-soft);

@@ -92,18 +92,24 @@
 
 /* Hand tool: grips show on hover so it is clear a press resizes. */
 .pxd-root[data-tool="hand"] .pxd-item:hover .pxd-grip.pxd-grip--corner,
-.pxd-root[data-tool="hand"] .pxd-section:hover .pxd-grip.pxd-grip--corner {
+.pxd-root[data-tool="hand"] .pxd-item[data-pxd-hover] .pxd-grip.pxd-grip--corner,
+.pxd-root[data-tool="hand"] .pxd-section:hover .pxd-grip.pxd-grip--corner,
+.pxd-root[data-tool="hand"] .pxd-section[data-pxd-hover] .pxd-grip.pxd-grip--corner {
   border-color: var(--pxd-accent);
 }
 
 .pxd-root[data-tool="hand"] .pxd-item:hover .pxd-grip.pxd-grip--right,
-.pxd-root[data-tool="hand"] .pxd-section:hover .pxd-grip.pxd-grip--right {
+.pxd-root[data-tool="hand"] .pxd-item[data-pxd-hover] .pxd-grip.pxd-grip--right,
+.pxd-root[data-tool="hand"] .pxd-section:hover .pxd-grip.pxd-grip--right,
+.pxd-root[data-tool="hand"] .pxd-section[data-pxd-hover] .pxd-grip.pxd-grip--right {
   border-right: 2px solid var(--pxd-accent);
   box-sizing: border-box;
 }
 
 .pxd-root[data-tool="hand"] .pxd-item:hover .pxd-grip.pxd-grip--bottom,
-.pxd-root[data-tool="hand"] .pxd-section:hover .pxd-grip.pxd-grip--bottom {
+.pxd-root[data-tool="hand"] .pxd-item[data-pxd-hover] .pxd-grip.pxd-grip--bottom,
+.pxd-root[data-tool="hand"] .pxd-section:hover .pxd-grip.pxd-grip--bottom,
+.pxd-root[data-tool="hand"] .pxd-section[data-pxd-hover] .pxd-grip.pxd-grip--bottom {
   border-bottom: 2px solid var(--pxd-accent);
   box-sizing: border-box;
 }

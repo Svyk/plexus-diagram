@@ -7,6 +7,7 @@
 
 import { COVER_MAX_W, WARM_MAX, coverKey, coverValid, scaleBox, isBlankCanvas } from "../model/pdf-cover.js";
 import { TITLE_REV } from "../model/title-cap.js";
+import { continueAfterBlob } from "./blob-yield.js";
 import { firstPageAllowed } from "./pdf-first-page.js";
 
 export const WARM_TIMEOUT_MS = 8000;
@@ -206,7 +207,7 @@ export function createPdfWarm({ doc, root, host, store, timers, now, renderFirst
         if (settled) return;
         settled = true;
         disarm(time, timer);
-        resolve(blob || null);
+        continueAfterBlob(() => resolve(blob || null));
       };
       try {
         if (!canvas || typeof canvas.toBlob !== "function") { finish(null); return; }

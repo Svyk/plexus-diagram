@@ -1181,7 +1181,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           end();
           throw error;
         }
-      }, { label: "derived", partMs: 4 });
+      }, { label: "derived", partMs: () => ((stage === "derive" && job.wholePart) || stage === "pack" ? Infinity : 4) });
       rederives.set(uid, stop);
       return;
     }
@@ -1570,6 +1570,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       },
       result: () => ({ badges, links }),
       get phase() { return phase; },
+      // True when the next part is one that cannot stop half way.
+      get wholePart() { return phase === "board" || phase === "reduce"; },
       parts,
     };
   };
@@ -1689,7 +1691,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           const ms = clock() - t0;
           if (ms > slowest.ms) { slowest.ms = Math.round(ms * 10) / 10; slowest.in = was; stats.keepSlowest = { ...slowest }; }
         }
-      }, { label: "model-keep", partMs: 4, firstQuiet: 1000 });
+        // The parts that cannot be split (the board build, about 40 ms on the PhD main board, and the pack) each
+        // start a slice of their own, so no slice is a run of small parts with one of those on top.
+      }, { label: "model-keep", partMs: () => ((stage === "derive" && job?.wholePart) || stage === "pack" ? Infinity : 4), firstQuiet: 1000 });
       keeps.set(uid, cancel);
       return;
     }

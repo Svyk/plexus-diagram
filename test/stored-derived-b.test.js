@@ -102,9 +102,19 @@ function plant(idb, derived) {
   else row.derived = derived;
 }
 
-function watchCalls(host) {
+function watchCalls(host, fake) {
   const stats = [];
   const links = [];
+  // PXD-26: the check's refresh reads the refs to a block of the board by pull_many, not through cardStats.
+  if (fake) {
+    const data = fake.api.data;
+    const many = data.pull_many.bind(data);
+    data.pull_many = (pattern, entities) => {
+      const p = String(pattern);
+      if (p.includes(":block/_refs") && !p.includes(":block/_parents")) stats.push([entities]);
+      return many(pattern, entities);
+    };
+  }
   const cardStatsJob = host.cardStatsJob.bind(host);
   const linkRows = host.linkRows.bind(host);
   // The board view's refreshBadges calls cardStatsJob. cardStats() uses the same job.
@@ -176,7 +186,7 @@ test("the check after a trusted hit recomputes badges and links and rewrites the
   plant(idb, GHOST);
   const { host, store } = hostOver(fake, idb);
   await store.ready;
-  const calls = watchCalls(host);
+  const calls = watchCalls(host, fake);
   await preread(host);
   const session = acquireSession("sb1", { host, settings: { get: () => undefined } });
   assert.equal(host.boardUnverified("sb1"), true);
@@ -186,7 +196,7 @@ test("the check after a trusted hit recomputes badges and links and rewrites the
     const derived = rowOf(idb)?.derived;
     return derived && !JSON.stringify(derived).includes("srcGhost");
   });
-  assert.ok(calls.stats.length > 0, "the check calls cardStats");
+  assert.ok(calls.stats.length > 0, "the check reads the card stats");
   assert.ok(calls.links.length > 0, "the check calls linkRows");
   assert.equal(session.links.some((l) => l.key === "c0_0->c2_0"), false, "the ghost link is gone after the check");
   const text = JSON.stringify(rowOf(idb).derived);

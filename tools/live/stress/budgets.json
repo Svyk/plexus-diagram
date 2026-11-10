@@ -1,0 +1,446 @@
+{
+  "note": "Goals from the PXD-25 plan, in ms unless stated. scenarios starts empty: report.mjs --write-budgets fills it from the baseline (median rounded up to the next 10) and only ever tightens.",
+  "targets": {
+    "gesture stall max (ms)": 50,
+    "click to next paint (ms)": 100,
+    "card readable on arrival (ms)": 0,
+    "card live after a pan (ms)": 300,
+    "card readable after a zoom (ms)": 150,
+    "card live after a zoom (ms)": 500,
+    "typing p95 (ms)": 50,
+    "open visible (ms)": 150,
+    "open usable (ms)": 500,
+    "reload paint after Roam shell (ms)": 300,
+    "reload usable after Roam shell (ms)": 1000,
+    "idle Plexus stalls (count)": 0,
+    "soak growth (percent)": 10
+  },
+  "scenarios": {
+    "move/zoom-btn": {
+      "ttnp": {
+        "max": 120
+      },
+      "stalls.total": {
+        "max": 5740
+      },
+      "stalls.worst": {
+        "max": 270
+      }
+    },
+    "move/drag-pan-reading": {
+      "ttnp": {
+        "max": 60
+      },
+      "stalls.total": {
+        "max": 530
+      },
+      "stalls.worst": {
+        "max": 90
+      }
+    },
+    "move/drag-pan-small": {
+      "ttnp": {
+        "max": 80
+      },
+      "stalls.total": {
+        "max": 280
+      },
+      "stalls.worst": {
+        "max": 80
+      }
+    },
+    "move/drag-pan-overview": {
+      "ttnp": {
+        "max": 110
+      },
+      "stalls.total": {
+        "max": 420
+      },
+      "stalls.worst": {
+        "max": 90
+      }
+    },
+    "move/drag-pan-map": {
+      "ttnp": {
+        "max": 80
+      },
+      "stalls.total": {
+        "max": 0
+      },
+      "stalls.worst": {
+        "max": 0
+      }
+    },
+    "move/click-empty": {
+      "ttnp": {
+        "max": 50
+      },
+      "stalls.total": {
+        "max": 580
+      },
+      "stalls.worst": {
+        "max": 80
+      }
+    },
+    "move/click-item": {
+      "ttnp": {
+        "max": 40
+      },
+      "stalls.total": {
+        "max": 910
+      },
+      "stalls.worst": {
+        "max": 80
+      }
+    },
+    "move/click-edge": {
+      "ttnp": {
+        "max": 20
+      },
+      "stalls.total": {
+        "max": 60
+      },
+      "stalls.worst": {
+        "max": 60
+      }
+    },
+    "move/hover-sweep": {
+      "ttnp": {
+        "max": 60
+      },
+      "stalls.total": {
+        "max": 390
+      },
+      "stalls.worst": {
+        "max": 140
+      }
+    },
+    "move/wheel-zoom": {
+      "ttnp": {
+        "max": 40
+      },
+      "stalls.total": {
+        "max": 940
+      },
+      "stalls.worst": {
+        "max": 170
+      }
+    },
+    "move/wheel-pan": {
+      "ttnp": {
+        "max": 50
+      },
+      "stalls.total": {
+        "max": 740
+      },
+      "stalls.worst": {
+        "max": 80
+      }
+    },
+    "move/trackpad": {
+      "ttnp": {
+        "max": 50
+      },
+      "stalls.total": {
+        "max": 820
+      },
+      "stalls.worst": {
+        "max": 240
+      }
+    },
+    "move/fit": {
+      "ttnp": {
+        "max": 110
+      },
+      "stalls.total": {
+        "max": 230
+      },
+      "stalls.worst": {
+        "max": 90
+      }
+    },
+    "move/replay-nav": {
+      "ttnp": {
+        "max": 110
+      },
+      "stalls.total": {
+        "max": 15340
+      },
+      "stalls.worst": {
+        "max": 700
+      }
+    },
+    "open/reload": {
+      "stalls.total": {
+        "max": 3770
+      },
+      "stalls.worst": {
+        "max": 430
+      }
+    },
+    "open/open-daily": {
+      "ttnp": {
+        "max": 530
+      },
+      "stalls.total": {
+        "max": 790
+      },
+      "stalls.worst": {
+        "max": 150
+      }
+    },
+    "open/first-pan": {
+      "ttnp": {
+        "max": 80
+      },
+      "stalls.total": {
+        "max": 350
+      },
+      "stalls.worst": {
+        "max": 190
+      }
+    },
+    "open/nested-enter": {
+      "ttnp": {
+        "max": 20
+      },
+      "stalls.total": {
+        "max": 170
+      },
+      "stalls.worst": {
+        "max": 100
+      }
+    },
+    "open/crumb-back": {
+      "ttnp": {
+        "max": 10
+      },
+      "stalls.total": {
+        "max": 400
+      },
+      "stalls.worst": {
+        "max": 170
+      }
+    },
+    "open/fullscreen-out": {
+      "ttnp": {
+        "max": 20
+      },
+      "stalls.total": {
+        "max": 300
+      },
+      "stalls.worst": {
+        "max": 300
+      }
+    },
+    "open/fullscreen-in": {
+      "ttnp": {
+        "max": 20
+      },
+      "stalls.total": {
+        "max": 450
+      },
+      "stalls.worst": {
+        "max": 360
+      }
+    },
+    "open/sidebar-open": {
+      "ttnp": {
+        "max": 390
+      },
+      "stalls.total": {
+        "max": 810
+      },
+      "stalls.worst": {
+        "max": 420
+      }
+    },
+    "build/build-setup": {
+      "ttnp": {
+        "max": 370
+      },
+      "stalls.total": {
+        "max": 480
+      },
+      "stalls.worst": {
+        "max": 300
+      }
+    },
+    "build/add-card": {
+      "ttnp": {
+        "max": 340
+      },
+      "stalls.total": {
+        "max": 1530
+      },
+      "stalls.worst": {
+        "max": 370
+      }
+    },
+    "build/move-card": {
+      "ttnp": {
+        "max": 80
+      },
+      "stalls.total": {
+        "max": 4000
+      },
+      "stalls.worst": {
+        "max": 3500
+      }
+    },
+    "build/resize-card": {
+      "ttnp": {
+        "max": 60
+      },
+      "stalls.total": {
+        "max": 420
+      },
+      "stalls.worst": {
+        "max": 170
+      }
+    },
+    "build/connect": {
+      "ttnp": {
+        "max": 70
+      },
+      "stalls.total": {
+        "max": 500
+      },
+      "stalls.worst": {
+        "max": 210
+      }
+    },
+    "build/undo-redo": {
+      "ttnp": {
+        "max": 40
+      },
+      "stalls.total": {
+        "max": 5350
+      },
+      "stalls.worst": {
+        "max": 3310
+      }
+    },
+    "build/delete-card": {
+      "ttnp": {
+        "max": 290
+      },
+      "stalls.total": {
+        "max": 440
+      },
+      "stalls.worst": {
+        "max": 260
+      }
+    },
+    "build/paste-20": {
+      "ttnp": {
+        "max": 360
+      },
+      "stalls.total": {
+        "max": 580
+      },
+      "stalls.worst": {
+        "max": 280
+      }
+    },
+    "build/api-create-50": {
+      "ttnp": {
+        "max": 870
+      },
+      "stalls.total": {
+        "max": 10240
+      },
+      "stalls.worst": {
+        "max": 320
+      }
+    },
+    "build/marquee": {
+      "ttnp": {
+        "max": 80
+      },
+      "stalls.total": {
+        "max": 210
+      },
+      "stalls.worst": {
+        "max": 80
+      }
+    },
+    "build/move-50": {
+      "ttnp": {
+        "max": 90
+      },
+      "stalls.total": {
+        "max": 3820
+      },
+      "stalls.worst": {
+        "max": 3360
+      }
+    },
+    "build/move-section": {
+      "ttnp": {
+        "max": 90
+      },
+      "stalls.total": {
+        "max": 430
+      },
+      "stalls.worst": {
+        "max": 180
+      }
+    },
+    "build/select-all": {
+      "ttnp": {
+        "max": 90
+      },
+      "stalls.total": {
+        "max": 0
+      },
+      "stalls.worst": {
+        "max": 0
+      }
+    },
+    "build/build-cleanup": {
+      "ttnp": {
+        "max": 320
+      },
+      "stalls.total": {
+        "max": 640
+      },
+      "stalls.worst": {
+        "max": 270
+      }
+    },
+    "type/type-card": {
+      "ttnp": {
+        "max": 60
+      },
+      "stalls.total": {
+        "max": 390
+      },
+      "stalls.worst": {
+        "max": 140
+      }
+    },
+    "type/type-block": {
+      "ttnp": {
+        "max": 60
+      },
+      "stalls.total": {
+        "max": 240
+      },
+      "stalls.worst": {
+        "max": 130
+      }
+    },
+    "type/search-type": {
+      "ttnp": {
+        "max": 60
+      },
+      "stalls.total": {
+        "max": 0
+      },
+      "stalls.worst": {
+        "max": 0
+      }
+    }
+  }
+}

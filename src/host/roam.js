@@ -332,6 +332,13 @@ const DIAGRAM_FIND = new RegExp(DIAGRAM_RE);
 // Index lookup. A `[?t ...]` binding on :block/refs scans every refs datom in the graph.
 const STATS_PULL = `[:db/id {(limit :block/_refs nil) [:db/id {:block/parents [:db/id :block/string]}]} {(limit :block/_parents nil) [:db/id {:block/refs [:db/id]}]} {:block/_page [:db/id {:block/refs [:db/id]}]}]`;
 
+// PXD-26: STATS_PULL in two halves, for the store job. The refs to a target; and, from the status side, the blocks
+// that reference a status page (TODO, DONE) with the uids of their page and ancestors, from which the TODO and DONE
+// blocks a target holds are counted without pulling the target's subtree.
+const STATS_REFS_PULL = "[:db/id {(limit :block/_refs nil) [:db/id {:block/parents [:db/id :block/string]}]}]";
+const STATS_STATUS_IDS = "[:find ?x :in $ ?status :where [?x :block/refs ?status]]";
+const STATS_HOLDERS_PULL = "[:db/id {:block/page [:block/uid :node/title]} {:block/parents [:block/uid]}]";
+
 function listOf(value) {
   if (value == null) return [];
   return Array.isArray(value) ? value : [value];
@@ -1141,6 +1148,46 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const slicedDerivedOn = () => { try { return notedSpeedFlags().slicedDerived !== false; } catch { return true; } };
   const refreshDerived = (uid, tree, stamp) => {
     rederives.get(uid)?.();
+    if (slicedKeepOn()) {
+      // PXD-26: the store job's parts. Here the links read and the pack were one part each (0.25-0.5 s tasks on the
+      // PhD main board after every trusted open), and a part that finds the page moved ends the refresh at once.
+      const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
+      const job = createDerivedJob(uid, tree, clock);
+      let stage = "derive";
+      let live = null;
+      let packed = null;
+      let stop = null;
+      const end = () => { if (rederives.get(uid) === stop) rederives.delete(uid); return true; };
+      stop = sharedBgBudget().run((deadline) => {
+        try {
+          if (pageStampOf(uid) !== stamp) return end();
+          if (stage === "derive") {
+            if (!job.step(Math.max(1, Math.min(KEEP_PART_MS, deadline.timeRemaining() - 2)))) return false;
+            stage = "pack";
+            return false;
+          }
+          if (stage === "pack") {
+            live = job.result();
+            try { packed = packDerived(live.badges, live.links, { search: true }); } catch { packed = null; }
+            stats.derivedPhases = job.parts.phases;
+            stage = "put";
+            return false;
+          }
+          end();
+          derivedLive.set(uid, { stamp: null, badges: live.badges, links: live.links });
+          if (modelStore?.stampOf(uid) === stamp) void modelStore.putDerived(uid, stamp, packed);
+          for (const fn of [...(derivedListeners.get(uid) || [])]) {
+            try { fn(); } catch (error) { console.warn("[plexus-diagram] derived listener failed", error); }
+          }
+          return true;
+        } catch (error) {
+          end();
+          throw error;
+        }
+      }, { label: "derived", partMs: () => ((stage === "derive" && job.wholePart) || stage === "pack" || stage === "put" ? Infinity : 4) });
+      rederives.set(uid, stop);
+      return;
+    }
     let found = null;
     let at = 0;
     let links = null;
@@ -1182,6 +1229,350 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     }, { label: "derived", partMs: 4 });
     rederives.set(uid, cancel);
   };
+  // PXD-26 (speed flag slicedKeep). Storing a big board's model after an edit recomputed its badges and links in the
+  // store job's last part: recomputeDerived in one task, 3.3-3.6 s on the PhD main board about a second after every
+  // edit went quiet. With the flag on the store job computes them in parts of about KEEP_PART_MS (the same result:
+  // every stat target, then the links), stops at the first part that finds the page stamp moved (an edit since the
+  // read: nothing is stored, the next refresh keeps the newer tree), and a refresh read an edit interrupted is tried
+  // again later instead of falling back to one whole pull.
+  const slicedKeepOn = () => { try { return notedSpeedFlags().slicedKeep !== false; } catch { return true; } };
+  const KEEP_PART_MS = 8;
+  // Targets outside the board (page cards, blocks of other pages) per cardStats read: one page can be a read of
+  // 0.1 s by itself (every block of the page, every block that references it), so they go one at a time until
+  // they prove cheap, and each read is a slice of its own.
+  const KEEP_STATS_MIN = 1;
+  const KEEP_STATS_FIRST = 1;
+  const KEEP_STATS_MAX = 8;
+  const KEEP_BATCH_MIN = 8;
+  const KEEP_OWN_FIRST = 100;
+  const KEEP_OWN_MAX = 500;
+  const KEEP_REFS_FIRST = 40;
+  const KEEP_REFS_MAX = 160;
+  // Link rows per read. A read costs about 9 ms on the PhD main board whatever it asks for, plus about 0.15 ms a
+  // card (more for a card many blocks reference): groups of 4 were 379 reads and 3.6 s for the board, 64 were 25
+  // reads of 27 ms with a few of 50-60 ms. Each read is a slice of its own.
+  const KEEP_LINKS_PART = 32;
+  // The refresh read behind a store: smaller pulls than the open check's (250 blocks were 40-46 ms slices there).
+  const KEEP_READ_SLICE_MS = 8;
+  const KEEP_READ_BATCH = 100;
+  const KEEP_RETRY_MS = 2000;
+  const KEEP_RETRY_MAX_MS = 8000;
+  // The next group size from what the last one cost: aimed at half of KEEP_PART_MS (what a block costs to read is
+  // uneven: a run of cheap ones is followed by cards every arrow references), grown by half at most per step and
+  // cut at once.
+  const keepGroup = (n, ms, min, max) => {
+    const next = ms > 0.05 ? Math.round((n * KEEP_PART_MS) / (2 * ms)) : Math.ceil(n * 1.5);
+    return Math.max(min, Math.min(max, Math.ceil(n * 1.5), next));
+  };
+  const statKeyOf = (t) => {
+    if (!t) return null;
+    if (t.kind === "page") return t.title ? `page:${t.title}` : null;
+    return t.uid ? `uid:${t.uid}` : null;
+  };
+  // recomputeDerived(uid, tree) in resumable parts: step(ms) does about ms of work and is true when the job is done;
+  // result() is then { badges, links }, the same maps and lists the one task builds.
+  // The one task reads every stat target with STATS_PULL, which brings each target's descendants (or a page's
+  // blocks): each block of the board is converted once per ancestor, and one section, or one card showing a block
+  // with thousands of descendants, is a single pull of 0.1-0.25 s that no part size can split. Here the two halves
+  // are read apart. TODO and DONE counts come from the status side: the blocks that reference the TODO and DONE
+  // pages (two queries for their ids, then their page and ancestors in batches), counted per ancestor and per page,
+  // for every target, every time (a few ms; an edit that adds a TODO under a section shows in that section's count).
+  // The refs to a target are read by STATS_REFS_PULL, in batches, and only for targets whose stat the cache does not
+  // hold (STATS_TTL_MS, as cardStats itself answers; an edit on the board does not change them: refs from under the
+  // board are not counted). When a status read fails, every target without a cached stat goes through cardStats,
+  // one at a time.
+  const createDerivedJob = (uid, tree, clock) => {
+    const walk = createTargetsWalk(tree);
+    let phase = "targets";
+    let targets = null;
+    let ti = 0;
+    const order = [];
+    const got = new Map();
+    const stale = []; // [key, target] whose refs are read
+    let si = 0;
+    let statN = KEEP_STATS_FIRST;
+    let statsFailed = false;
+    const many = typeof data.pull_many === "function";
+    let statBoardEid = -1;
+    // Status side: ids of the blocks that reference TODO / DONE, then who holds each (ancestor uids, page title).
+    let statusOk = many;
+    let statusIds = null; // [[eid, isTodo], ...]
+    let sti = 0;
+    let stN = KEEP_OWN_FIRST;
+    const openByUid = new Map();
+    const doneByUid = new Map();
+    const openByTitle = new Map();
+    const doneByTitle = new Map();
+    let ri = 0;
+    let refsN = KEEP_REFS_FIRST;
+    const badges = new Map();
+    let board = null;
+    let items = null;
+    let boardEid = null;
+    const resolved = new Map();
+    const eidToItems = new Map();
+    let eids = null;
+    let eidSet = null;
+    let li = 0;
+    const rows = [];
+    let links = [];
+    const parts = { n: 0, maxMs: 0, maxIn: "", pulled: 0, reused: 0, phases: {} };
+    const resolveOnce = (ref) => {
+      const key = ref.title != null ? `title:${ref.title}` : `uid:${ref.uid}`;
+      if (resolved.has(key)) return resolved.get(key);
+      let eid = null;
+      try { eid = host.resolveEid(ref); } catch { eid = null; }
+      resolved.set(key, eid);
+      return eid;
+    };
+    // As cardStats counts them: a ref from under this board is not a ref; other boards holding one are.
+    const refsOf = (node) => {
+      const refs = new Set();
+      const boards = new Set();
+      for (const block of listOf(node?.[":block/_refs"])) {
+        const bid = refEid(block);
+        if (bid == null) continue;
+        const parents = listOf(block?.[":block/parents"]);
+        if (bid !== statBoardEid && !parents.some((parent) => refEid(parent) === statBoardEid)) refs.add(bid);
+        for (const parent of parents) {
+          const pid = refEid(parent);
+          if (pid == null || pid === statBoardEid || !isDiagramBlock(parent)) continue;
+          boards.add(pid);
+        }
+      }
+      return { refs: refs.size, boards: boards.size };
+    };
+    const statusOf = (t) => (t.kind === "page"
+      ? { open: openByTitle.get(t.title) || 0, done: doneByTitle.get(t.title) || 0 }
+      : { open: openByUid.get(t.uid) || 0, done: doneByUid.get(t.uid) || 0 });
+    const bump = (map, key) => { map.set(key, (map.get(key) || 0) + 1); };
+    const part = (ms) => {
+      const t0 = clock();
+      const over = () => clock() - t0 >= ms;
+      if (phase === "targets") {
+        let done = true;
+        try { done = walk.step(ms, clock); } catch { done = true; statsFailed = true; }
+        if (!done) return false;
+        try { targets = walk.result()?.stats || []; } catch { targets = []; statsFailed = true; }
+        phase = statusOk ? "status" : "sort";
+        return false;
+      }
+      if (phase === "status") {
+        // Which blocks reference TODO or DONE: two index reads.
+        try {
+          statBoardEid = host.resolveEid({ uid }) ?? -1;
+          statusIds = [];
+          const todoEid = host.resolveEid({ title: "TODO" });
+          const doneEid = host.resolveEid({ title: "DONE" });
+          for (const [eid, isTodo] of [[todoEid, true], [doneEid, false]]) {
+            if (eid == null) continue;
+            for (const x of host.q(STATS_STATUS_IDS, eid) || []) { const id = refEid(Array.isArray(x) ? x[0] : x); if (id != null) statusIds.push([id, isTodo]); }
+          }
+          phase = "holders";
+        } catch { statusOk = false; phase = "sort"; }
+        return false;
+      }
+      if (phase === "holders") {
+        if (sti < statusIds.length) {
+          const group = statusIds.slice(sti, sti + stN);
+          const at = clock();
+          let res = null;
+          try { res = pullRows(data.pull_many(STATS_HOLDERS_PULL, group.map((row) => row[0]))); } catch { res = null; }
+          if (!res || res.length !== group.length) {
+            statusOk = false;
+            openByUid.clear(); doneByUid.clear(); openByTitle.clear(); doneByTitle.clear();
+            phase = "sort";
+            return false;
+          }
+          for (let j = 0; j < group.length; j += 1) {
+            const x = res[j];
+            if (!x) continue;
+            const isTodo = group[j][1];
+            const uids = new Set();
+            const pg = Array.isArray(x[":block/page"]) ? x[":block/page"][0] : x[":block/page"];
+            if (typeof pg?.[":block/uid"] === "string") uids.add(pg[":block/uid"]);
+            for (const parent of listOf(x[":block/parents"])) if (typeof parent?.[":block/uid"] === "string") uids.add(parent[":block/uid"]);
+            for (const u of uids) bump(isTodo ? openByUid : doneByUid, u);
+            if (typeof pg?.[":node/title"] === "string") bump(isTodo ? openByTitle : doneByTitle, pg[":node/title"]);
+          }
+          sti += group.length;
+          stN = keepGroup(stN, clock() - at, KEEP_BATCH_MIN, KEEP_OWN_MAX);
+          return false;
+        }
+        phase = "sort";
+        return false;
+      }
+      if (phase === "sort") {
+        while (ti < targets.length) {
+          const t = targets[ti];
+          ti += 1;
+          const key = statKeyOf(t);
+          if (key != null && !got.has(key)) {
+            order.push(key);
+            const hit = freshStat(uid, key);
+            if (hit) {
+              parts.reused += 1;
+              if (statusOk) {
+                // The cached refs with today's counts; the cache takes the counts too.
+                const st = statusOf(t);
+                hit.open = st.open;
+                hit.done = st.done;
+              }
+              got.set(key, { ...hit });
+            } else {
+              got.set(key, null);
+              stale.push([key, t]);
+            }
+          }
+          if ((ti & 255) === 0 && over()) return false;
+        }
+        phase = statusOk ? "refs" : "stats";
+        return false;
+      }
+      if (phase === "refs") {
+        if (ri < stale.length) {
+          const group = stale.slice(ri, ri + refsN);
+          const at = clock();
+          let res = null;
+          try { res = pullRows(data.pull_many(STATS_REFS_PULL, group.map(([, t]) => (t.kind === "page" ? [":node/title", t.title] : eidKey(t.uid))))); } catch { res = null; }
+          // A failed read: cardStats reads the targets that are left.
+          if (!res || res.length !== group.length) { si = ri; phase = "stats"; return false; }
+          const now = Date.now();
+          for (let j = 0; j < group.length; j += 1) {
+            const [key, t] = group[j];
+            const stat = res[j] == null ? { refs: 0, boards: 0, open: 0, done: 0 } : { ...refsOf(res[j]), ...statusOf(t) };
+            got.set(key, stat);
+            statsCache.set(`${uid || ""}\0${key}`, { at: now, stats: stat });
+          }
+          ri += group.length;
+          parts.pulled += group.length;
+          refsN = keepGroup(refsN, clock() - at, KEEP_BATCH_MIN, KEEP_REFS_MAX);
+          return false;
+        }
+        si = stale.length;
+        phase = "stats";
+        return false;
+      }
+      if (phase === "stats") {
+        // Only without the status side (no pull_many, or a read failed): the targets left go through cardStats.
+        if (!statsFailed && si < stale.length) {
+          const group = stale.slice(si, si + statN).map((row) => row[1]);
+          const at = clock();
+          try {
+            const res = host.cardStats(group, { boardUid: uid });
+            if (res instanceof Map) for (const [key, stat] of res) got.set(key, stat);
+          } catch { statsFailed = true; }
+          si += group.length;
+          parts.pulled += group.length;
+          statN = keepGroup(statN, clock() - at, KEEP_STATS_MIN, KEEP_STATS_MAX);
+          return false;
+        }
+        // One task leaves the badges empty when its stats read throws; so does this.
+        if (!statsFailed) for (const key of order) { const stat = got.get(key); if (stat) badges.set(key, stat); }
+        phase = "board";
+        return false;
+      }
+      if (phase === "board") {
+        try {
+          board = buildBoard(tree, {
+            resolve: (id) => {
+              try {
+                const text = host.blockString?.(id);
+                return typeof text === "string" ? text : null;
+              } catch { return null; }
+            },
+          });
+        } catch { board = null; }
+        if (!board) { phase = "done"; return true; }
+        boardEid = resolveOnce({ uid });
+        items = board.items.values();
+        phase = "eids";
+        return false;
+      }
+      if (phase === "eids") {
+        let n = 0;
+        for (;;) {
+          const next = items.next();
+          if (next.done) break;
+          const item = next.value;
+          if (item.type === "card" && item.target) {
+            const t = item.target;
+            const eid = resolveOnce(t.kind === "page" ? { title: t.title } : { uid: t.uid });
+            if (eid != null && eid !== boardEid) {
+              if (!eidToItems.has(eid)) eidToItems.set(eid, []);
+              eidToItems.get(eid).push(item.uid);
+            }
+          }
+          n += 1;
+          if ((n & 31) === 0 && over()) return false;
+        }
+        eids = [...eidToItems.keys()];
+        if (!eids.length || boardEid == null) { phase = "done"; return true; }
+        eidSet = new Set(eids);
+        phase = "rows";
+        return false;
+      }
+      if (phase === "rows") {
+        if (li < eids.length) {
+          const group = eids.slice(li, li + KEEP_LINKS_PART);
+          let chunk = null;
+          try { chunk = host.linkRows(boardEid, eidSet, group) || []; } catch { chunk = null; }
+          // One task has no links when its rows read throws; so does this.
+          if (!chunk) { phase = "done"; return true; }
+          for (const row of chunk) rows.push(row);
+          li += group.length;
+          return false;
+        }
+        phase = "reduce";
+        return false;
+      }
+      if (phase === "reduce") {
+        const parentStrings = new Map();
+        for (const row of rows) {
+          if (row.length > 4 && row[4] != null) parentStrings.set(row[2], row[4]);
+        }
+        try { links = reduceLinks(rows, { eidToItems, parentStrings }) || []; } catch { links = []; }
+        phase = "done";
+      }
+      return true;
+    };
+    return {
+      step(ms) {
+        const t0 = clock();
+        const was = phase;
+        const done = part(ms);
+        const spent = clock() - t0;
+        parts.n += 1;
+        if (spent > parts.maxMs) { parts.maxMs = spent; parts.maxIn = was; }
+        // Per phase: parts, total ms, longest part (stats.keepPhases / derivedPhases, for the live speed checks).
+        const ph = parts.phases[was] || (parts.phases[was] = [0, 0, 0]);
+        ph[0] += 1;
+        ph[1] = Math.round((ph[1] + spent) * 10) / 10;
+        if (spent > ph[2]) ph[2] = Math.round(spent * 10) / 10;
+        return done;
+      },
+      result: () => ({ badges, links }),
+      get phase() { return phase; },
+      // True when the next part is one that cannot stop half way.
+      get wholePart() { return phase === "board" || phase === "rows" || phase === "reduce" || phase === "status" || (phase === "stats" && !statsFailed && si < stale.length); },
+      parts,
+    };
+  };
+  // Boards whose derived listeners are owed a call when the next sliced store lands (the check found them changed).
+  const tellOwed = new Set();
+  const refreshTimers = new Map(); // uid -> timer of the next refresh try after an interrupted read or store
+  const refreshDelay = new Map(); // uid -> its growing wait
+  const retryRefresh = (uid) => {
+    if (refreshTimers.has(uid)) return;
+    const delay = refreshDelay.get(uid) || KEEP_RETRY_MS;
+    refreshDelay.set(uid, Math.min(delay * 2, KEEP_RETRY_MAX_MS));
+    const timer = setTimeout(() => {
+      refreshTimers.delete(uid);
+      try { host.refreshModel(uid); } catch { /* the next snapshot asks again */ }
+    }, delay);
+    try { timer.unref?.(); } catch { /* a fake timer has no unref */ }
+    refreshTimers.set(uid, timer);
+  };
   let modelStore = null;
   const unverified = new Map(); // uid -> stamp the model was read at
   const verifyListeners = new Map(); // uid -> Set(fn)
@@ -1213,6 +1604,83 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     keeps.get(uid)?.();
     const enc = createTreeEncoder(tree);
     const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
+    if (slicedKeepOn()) {
+      const want = derived === undefined && derivedOn();
+      let model = null;
+      let job = null;
+      let live = null;
+      let packed = derived;
+      let stage = "encode";
+      let cancel = null;
+      const end = () => { if (keeps.get(uid) === cancel) keeps.delete(uid); return true; };
+      // The job's longest part and where it was (stats.keepSlowest, for the live speed checks).
+      const slowest = { ms: 0, in: "" };
+      const part = (deadline) => {
+        // An edit since the read: this tree is no longer the page, so nothing of it is stored. The edit's own
+        // snapshot asks for a new read; the retry covers an edit that moved the page but not the board.
+        if (pageStampOf(uid) !== stamp) {
+          stats.keepsDropped = (stats.keepsDropped || 0) + 1;
+          end();
+          retryRefresh(uid);
+          return true;
+        }
+        const ms = Math.max(1, Math.min(KEEP_PART_MS, deadline.timeRemaining() - 2));
+        if (stage === "encode") {
+          if (!enc.step(ms, clock)) return false;
+          model = enc.result();
+          if (!model) { stats.modelsKept = (stats.modelsKept || 0) + 1; return end(); }
+          stage = want ? "derive" : "put";
+          return false;
+        }
+        if (stage === "derive") {
+          job ??= createDerivedJob(uid, tree, clock);
+          let done = true;
+          try { done = job.step(ms); } catch { done = true; job = null; }
+          if (!done) return false;
+          stage = "pack";
+          return false;
+        }
+        if (stage === "pack") {
+          packed = null;
+          if (job) {
+            live = job.result();
+            try { packed = packDerived(live.badges, live.links, { search: true }); } catch { packed = null; }
+            stats.keepParts = job.parts.n;
+            stats.keepPartMaxMs = Math.round(job.parts.maxMs * 10) / 10;
+            stats.keepPartMaxIn = job.parts.maxIn;
+            stats.keepStatsPulled = job.parts.pulled;
+            stats.keepStatsReused = job.parts.reused;
+            stats.keepPhases = job.parts.phases;
+          }
+          stage = "put";
+          return false;
+        }
+        end();
+        if (live) derivedLive.set(uid, { stamp: null, badges: live.badges, links: live.links });
+        if (packed !== undefined) model.derived = packed;
+        void modelStore.put(uid, stamp, model);
+        stats.modelsKept = (stats.modelsKept || 0) + 1;
+        refreshDelay.delete(uid);
+        if (live && tellOwed.delete(uid)) {
+          for (const fn of [...(derivedListeners.get(uid) || [])]) {
+            try { fn(); } catch (error) { console.warn("[plexus-diagram] derived listener failed", error); }
+          }
+        }
+        return true;
+      };
+      cancel = sharedBgBudget().run((deadline) => {
+        const t0 = clock();
+        const was = stage === "derive" && job ? `derive:${job.phase}` : stage;
+        try { return part(deadline); } finally {
+          const ms = clock() - t0;
+          if (ms > slowest.ms) { slowest.ms = Math.round(ms * 10) / 10; slowest.in = was; stats.keepSlowest = { ...slowest }; }
+        }
+        // The parts that cannot be split (the board build, about 40 ms on the PhD main board, and the pack) each
+        // start a slice of their own, so no slice is a run of small parts with one of those on top.
+      }, { label: "model-keep", partMs: () => ((stage === "derive" && job?.wholePart) || stage === "pack" || stage === "put" ? Infinity : 4), firstQuiet: 1000 });
+      keeps.set(uid, cancel);
+      return;
+    }
     const cancel = sharedBgBudget().run((deadline) => {
       if (!enc.step(Math.max(1, deadline.timeRemaining() - 2), clock)) return false;
       if (keeps.get(uid) === cancel) keeps.delete(uid);
@@ -1234,11 +1702,15 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // prepare(tree) runs in a part of its own between the read and done. The reader stays through the accept: done
   // runs only when the page stamp did not move, the folds still match (verifyOpen), and every copied block's
   // string, order, heading and props still match. A miss is a failed take. A frozen tree is never handed to done.
-  const backgroundRead = (uid, label, done, { stopIf = () => false, prepare = null } = {}) => {
+  // onMiss (PXD-26): a take an edit spoiled ends the read there and calls onMiss() instead of a retry and then one
+  // whole pull (the caller tries again later); a part that finds the page stamp moved since the read began ends it
+  // the same way, without reading the rest.
+  const backgroundRead = (uid, label, done, { stopIf = () => false, prepare = null, onMiss = null } = {}) => {
     let reader = null;
     let tries = 0;
     let cancel = null;
     let got = null;
+    let began = null;
     const whole = () => {
       reader = null;
       got = null;
@@ -1255,13 +1727,30 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       got = null;
       tries += 1;
       stats[`${label}Retries`] = (stats[`${label}Retries`] || 0) + 1;
+      if (onMiss) {
+        stats[`${label}Misses`] = (stats[`${label}Misses`] || 0) + 1;
+        try { onMiss(); } catch (error) { console.warn("[plexus-diagram] read miss", error); }
+        return true;
+      }
       return tries >= 2 ? whole() : false;
     };
     const part = () => {
       if (stopIf()) return true;
+      if (onMiss && reader && began != null && pageStampOf(uid) !== began) return mismatch();
       if (got) {
         if (!got.prepared && prepare) { got.prepared = true; prepare(got.tree); return false; }
         // The accept stamp pull is first, so an edit that lands on it is still unread when the compares run.
+        if (!got.checked && onMiss) {
+          // PXD-26: the fold compare one batch per part (it was one ~60 ms part on the PhD main board). The field
+          // compares already span tasks; the page stamp is read first, as below.
+          let open = "bad";
+          try { open = got.stamped || pageStampOf(uid) === got.stamp ? reader.verifyOpenPart() : "bad"; } catch { open = "bad"; }
+          got.stamped = true;
+          if (open === "more") return false;
+          if (open !== "ok") return mismatch();
+          got.checked = true;
+          return false;
+        }
         if (!got.checked) {
           let openOk = false;
           try { openOk = pageStampOf(uid) === got.stamp && reader.verifyOpen(); } catch { openOk = false; }
@@ -1282,13 +1771,15 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         let rootEid = null;
         try { rootEid = rawPull("[:db/id]", eidKey(uid))?.[":db/id"] ?? null; } catch { rootEid = null; }
         if (rootEid == null || typeof data.pull_many !== "function") return whole();
+        began = onMiss ? pageStampOf(uid) : null;
         reader = createSlicedRead({
           rootEid,
           pullMany: (pattern, eids) => data.pull_many(pattern, eids),
           stamp: () => pageStampOf(uid),
           clock: () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now()),
-          sliceMs: CHECK_SLICE_MS,
-          batch: CHECK_BATCH,
+          sliceMs: onMiss ? KEEP_READ_SLICE_MS : CHECK_SLICE_MS,
+          batch: onMiss ? KEEP_READ_BATCH : CHECK_BATCH,
+          softOpen: Boolean(onMiss),
         });
       }
       if (!reader.step()) return false;
@@ -1349,6 +1840,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!changed && derivedOn() && slicedDerivedOn() && modelStore?.stampOf(uid) === stamp) {
         markVerified(uid);
         refreshDerived(uid, tree, stamp);
+        return;
+      }
+      // PXD-26: a changed board (or one stored under another stamp) is verified at once, like an unchanged one, and
+      // the store job computes its badges and links in parts; the listeners are told when that store lands.
+      if (slicedKeepOn() && derivedOn() && modelStore && trustOn() && (changed || modelStore.stampOf(uid) !== stamp)) {
+        markVerified(uid);
+        tellOwed.add(uid);
+        keepModel(uid, tree, stamp);
         return;
       }
       // Recompute before the listeners run, so a seeded open replaces the stored links in the same turn.
@@ -2740,7 +3239,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const cancel = backgroundRead(id, "refresh", (tree, stamp) => {
         refreshes.delete(id);
         if (tree && stamp) keepModel(id, tree, stamp);
-      }, { stopIf: () => (splitWatches.get(id)?.held || !splitWatches.has(id) ? (refreshes.delete(id), true) : false) });
+      }, {
+        stopIf: () => (splitWatches.get(id)?.held || !splitWatches.has(id) ? (refreshes.delete(id), true) : false),
+        // PXD-26: an edit during the read ends it; a later try reads the newer page (no whole pull in one task).
+        onMiss: slicedKeepOn() ? () => { refreshes.delete(id); retryRefresh(id); } : null,
+      });
       refreshes.set(id, cancel);
       return true;
     },
@@ -2751,6 +3254,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       for (const timer of checkTimers.values()) clearTimeout(timer);
       checkTimers.clear();
       checkDelay.clear();
+      for (const timer of refreshTimers.values()) clearTimeout(timer);
+      refreshTimers.clear();
+      refreshDelay.clear();
+      tellOwed.clear();
       for (const jobs of [checks, keeps, refreshes, rederives]) {
         for (const cancel of jobs.values()) { try { cancel(); } catch { /* done */ } }
         jobs.clear();

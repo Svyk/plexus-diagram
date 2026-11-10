@@ -139,7 +139,10 @@ function clipId(value, max) {
   return typeof value === "string" && value.length > 0 && value.length <= max ? value : "";
 }
 
-export function packDerived(badges, links) {
+// search (PXD-26): the same result, found without stringifying the payload once per dropped link. Over the cap the
+// loop below drops one link and packs again, so a board whose badges alone are over it (the PhD main board: 28k
+// stat rows) stringified them once per link before giving up.
+export function packDerived(badges, links, { search = false } = {}) {
   const b = [];
   if (badges && typeof badges.forEach === "function") {
     badges.forEach((stat, key) => {
@@ -188,6 +191,18 @@ export function packDerived(badges, links) {
   }
   packed = fit(rows);
   if (packed) return packed;
+  if (search) {
+    // The size only grows with the rows: the most rows that fit, or none when the badges alone are over the cap.
+    if (!fit([])) return null;
+    let lo = 0;
+    let hi = rows.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (fit(rows.slice(0, mid))) lo = mid;
+      else hi = mid - 1;
+    }
+    return fit(rows.slice(0, lo));
+  }
   while (rows.length) {
     rows.pop();
     packed = fit(rows);

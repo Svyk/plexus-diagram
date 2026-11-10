@@ -1,7 +1,7 @@
 import pkg from "../package.json" with { type: "json" };
 import { createHost } from "./host/roam.js";
 import { acquireSession as acquireSessionDefault, hasSession } from "./session.js";
-import { resetSharedTaskProbe } from "./long-tasks.js";
+import { resetSharedTaskProbe, sharedTaskProbe } from "./long-tasks.js";
 import { bindBgBudgetFlag, bindBgGestureFlag, resetSharedBgBudget, sharedBgBudget } from "./bg-budget.js";
 import { clearPinnedToast, mountBoardView, viewportStorageId } from "./view/board-view.js";
 import {
@@ -4585,6 +4585,9 @@ export async function installPlexusDiagram({
     pieces: pieceLog,
     loadPieces: pieceLoadAll,
     bgOverruns: () => sharedBgBudget().overruns.slice(),
+    // PXD-26: the background budget's recent slices by job, [{ name: "bg:<label>", start, ms }] (2 ms and up, the
+    // last 600 spans of any kind), for the live speed checks: which job a 50-100 ms task was.
+    bgSpans: () => sharedTaskProbe().spans().filter((s) => typeof s.name === "string" && s.name.startsWith("bg:")).map((s) => ({ name: s.name, start: Math.round(s.start), ms: Math.round(s.ms * 10) / 10 })),
     snapshots: {
       size: () => snapStore.size(),
       has: (uid) => snapStore.has(uid),

@@ -4980,6 +4980,7 @@ function buildBoardView(onFail, {
       () => { try { pdfFlip?.settle?.(); } catch { /* pdf */ } },
       () => scheduleSharpCovers(),
       () => considerCoverWarm(),
+      () => { if (!gesturing && !wheelLayer) propsPanel.place(); },
       () => { if (typeof onSettled === "function") { try { onSettled(); } catch { /* the owner's hook */ } } },
     ]);
     // The edge slice is queued inside the parts above. This render has to follow it, or it parks every far edge.
@@ -11088,23 +11089,32 @@ function buildBoardView(onFail, {
       }
       if (lanePreviewLayout) updateLaneEdges(b);
     }
+    // PXD-29: a button, fit, or reset zoom is not a gesture, so deferReveal stays false and this frame used to
+    // attach and repaint the grid on the click (stress board: ~136 ms to paint). The camera transform is the frame.
+    // A zoom that crosses a tier still flips here, so search lands on the detail cover in that frame. Attach, the
+    // grid, the zoom label, the minimap and the panel wait for the settle, which the next press cancels.
+    let zoomStep = false;
     if (dirty.viewport) {
+      zoomStep = stepOn() && !gesturing && !wheelLayer && paintedVp != null && paintedVp.zoom !== vp.zoom;
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
       paintedVp = { x: vp.x, y: vp.y, zoom: vp.zoom };
       // Big boards keep far shells and edges out of the DOM: put back what this camera brings near.
-      if (size.width && !deferReveal()) {
+      if (!zoomStep && size.width && !deferReveal()) {
         // This frame already sliced the edge render. reveal() would build another batch of the same edges.
         if (edgeRest) itemsR.reveal?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
         else revealNear();
-      } else if (size.width) showUnderlay();
+      } else if (!zoomStep && size.width) showUnderlay();
       // Roam Caret re-places its caret when a field on the board is focused and the camera moves.
       const focused = doc.activeElement;
       if (focused?.tagName === "TEXTAREA" && root.contains(focused)) {
         try { win?.dispatchEvent?.(new win.CustomEvent("plexus-diagram:camera")); } catch { /* no caret */ }
       }
-      itemsR.setZoom(vp.zoom);
-      if (!gesturing) paintInvZoom(); // the resume path (applyLod) paints it once the gesture ends
-      // The tier flips (classes + font variables, once) the moment the zoom crosses the threshold, mid-gesture too.
+      if (!zoomStep) {
+        itemsR.setZoom(vp.zoom);
+        if (!gesturing) paintInvZoom(); // the resume path (applyLod) paints it once the gesture ends
+      }
+      // The tier still flips in this frame when the zoom crosses it. Search, outline and Enter land on the detail
+      // cover in the same frame. A zoom step that stays in the tier does not flip.
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
       // On a big board a mid-burst flip restyled every attached shell (PhD main board: 117-175 ms frames, twice in a
       // zoom from overview to detail); the shells scale with the world until the settle flips the tier.
@@ -11117,18 +11127,21 @@ function buildBoardView(onFail, {
         if (prevTier !== "detail" && tier === "detail" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0));
         if (prevTier === "overview" && size.width) itemsR.promoteQueue?.(visibleWorldRect(vp, size, 0), { nearest: true });
       }
-      // A moving grid is a repaint of the page every frame (PhD page: paint + layerize ~20 ms); with the world as
-      // its own layer and nothing else written, a frame is a compositor move. The grid holds still during a drag
-      // or a wheel burst on a big board and catches up when it settles.
-      if (!gesturing && !deferReveal()) paintGrid();
-      // The zoom label is text: a new value every zoom frame was a layout and a page hit test. Big-board bursts
-      // show the value at the settle.
-      if (!deferReveal()) chrome.toolbar.setZoom(vp.zoom);
+      if (!zoomStep) {
+        // A moving grid is a repaint of the page every frame (PhD page: paint + layerize ~20 ms); with the world as
+        // its own layer and nothing else written, a frame is a compositor move. The grid holds still during a drag
+        // or a wheel burst on a big board and catches up when it settles.
+        if (!gesturing && !deferReveal()) paintGrid();
+        // The zoom label is text: a new value every zoom frame was a layout and a page hit test. Big-board bursts
+        // show the value at the settle.
+        if (!deferReveal()) chrome.toolbar.setZoom(vp.zoom);
+      }
       if (tooltip.isVisible()) tooltip.hide();
       // offsetHeight in place() forces layout. During a gesture or a wheel burst the toolbar height
       // does not change, and that read was the long task on a 300-card board; the settle places it.
       // The frame that just built shells must not read it either: that read lands on the next frame.
-      if (!gesturing && !wheelLayer) {
+      // A zoom step places it from the settle parts, not from this frame.
+      if (!zoomStep && !gesturing && !wheelLayer) {
         if (itemsChanged) timers.frame(() => { if (!disposed && !suspended && !gesturing && !wheelLayer) propsPanel.place(); });
         else propsPanel.place();
       }
@@ -11154,7 +11167,7 @@ function buildBoardView(onFail, {
     // During a wheel pan or zoom the minimap and landmark dots repaint at most every MINIMAP_WHEEL_MS (they rebuilt
     // their marks every frame, and every DOM write inside Roam's block re-runs its :has() checks); the settle paints them.
     const wheelMinimap = (wheelLayer && !itemsChanged && !dirty.minimap) || (Boolean(dragRide) && !itemsChanged);
-    if ((itemsChanged || dirty.minimap || (dirty.viewport && !gesturing)) && !(wheelMinimap && perfNow() - minimapAt < MINIMAP_WHEEL_MS)) {
+    if ((itemsChanged || dirty.minimap || (dirty.viewport && !gesturing && !zoomStep)) && !(wheelMinimap && perfNow() - minimapAt < MINIMAP_WHEEL_MS)) {
       minimapAt = perfNow();
       const shown = paintRects();
       chrome.minimap.update({ board: b, rects: shown, vp, size });
@@ -11177,7 +11190,7 @@ function buildBoardView(onFail, {
     // The open's sliced edge render and a settle's badge pass leave the model as it was: no redraw for those.
     if (overviewCanvasOn()) {
       if (dirty.selection) ovDirty = true;
-      if (!wheelLayer) paintOverviewCanvas({ band: false });
+      if (!wheelLayer && !zoomStep) paintOverviewCanvas({ band: false });
     }
     dirty.minimap = false;
     dirty.viewport = false;

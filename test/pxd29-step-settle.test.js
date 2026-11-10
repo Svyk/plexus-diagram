@@ -235,7 +235,7 @@ test("PXD-29: plain text of a title is cached while the flag is on", () => {
   assert.equal(plainText(raw), "Hello world");
 });
 
-function mountTiny() {
+function mountTiny(viewport = null) {
   const stub = createDomStub({ width: 1400, height: 900 });
   const restore = stub.install();
   const raw = {
@@ -268,7 +268,7 @@ function mountTiny() {
   };
   const mountEl = stub.document.createElement("div");
   stub.document.body.append(mountEl);
-  const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "1.0.0" });
+  const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "1.0.0", ...(viewport ? { initialViewport: viewport } : {}) });
   const click = (world) => {
     const ev = (type, buttons) => ({
       type, screen: { x: 10, y: 10 }, world,
@@ -305,4 +305,64 @@ test("PXD-29: a click that changes neither camera nor selection does not settle"
   } finally {
     off.done();
   }
+});
+
+test("PXD-29: a zoom button paints the camera and leaves the zoom label to the settle", () => {
+  const paint = (stub) => { for (let i = 0; i < 12 && stub.flushFrames(); i += 1) { /* queued frames */ } };
+  const labelOf = (root) => root.querySelector(".pxd-toolbar__zoom").textContent;
+  const run = (stepSettle) => {
+    noteSpeedFlags({ stepSettle });
+    const m = mountTiny({ x: 0, y: 0, zoom: 0.6 });
+    paint(m.stub);
+    const before = {
+      label: labelOf(m.view.root),
+      lod: m.view.state().lod,
+      flips: m.view.flipStats().flips,
+    };
+    const queued = [];
+    const realTimeout = globalThis.setTimeout;
+    const realClear = globalThis.clearTimeout;
+    globalThis.setTimeout = (fn, ms) => {
+      const rec = { fn, ms, dead: false };
+      queued.push(rec);
+      return rec;
+    };
+    globalThis.clearTimeout = (id) => { if (id && typeof id === "object") id.dead = true; };
+    try {
+      m.view.root.querySelector(".pxd-rail__zoom-in").click();
+      m.stub.flushFrames();
+      const frame = {
+        label: labelOf(m.view.root),
+        lod: m.view.state().lod,
+        flips: m.view.flipStats().flips,
+        zoom: m.view.state().zoom,
+        transform: m.view.root.querySelector(".pxd-world").style.transform,
+      };
+      for (const rec of queued) if (!rec.dead && rec.ms === 120) rec.fn();
+      return {
+        before,
+        frame,
+        settled: { label: labelOf(m.view.root), lod: m.view.state().lod, flips: m.view.flipStats().flips },
+      };
+    } finally {
+      globalThis.setTimeout = realTimeout;
+      globalThis.clearTimeout = realClear;
+      m.done();
+    }
+  };
+  const on = run(true);
+  assert.equal(on.before.lod, "detail");
+  assert.equal(on.before.label, "60%");
+  assert.ok(on.frame.zoom > 0.6 && on.frame.zoom < 0.8, "the click stays inside the detail tier");
+  assert.match(on.frame.transform, new RegExp(`scale\\(${on.frame.zoom}\\)`));
+  assert.equal(on.frame.label, "60%", "the zoom click does not rewrite the zoom label");
+  assert.equal(on.frame.lod, "detail");
+  assert.equal(on.frame.flips, on.before.flips);
+  assert.equal(on.settled.label, "72%");
+  assert.equal(on.settled.lod, "detail");
+
+  const off = run(false);
+  assert.equal(off.frame.label, "72%", "with the flag off the click's frame rewrites the zoom label");
+  assert.equal(off.frame.lod, "detail");
+  assert.equal(off.frame.flips, off.before.flips);
 });

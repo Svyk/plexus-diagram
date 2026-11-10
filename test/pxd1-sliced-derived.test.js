@@ -150,12 +150,12 @@ async function checked(flags) {
   return { host, store, idb, session, calls };
 }
 
-// PXD-26: with slicedKeep on the refresh uses the store job's parts (sized by what the last one cost, at most 1,000
+// PXD-26: with slicedKeep on the refresh uses the store job's parts (sized by what the last one cost, at most 160
 // blocks of the board per read); off, it is PXD-1's fixed parts of 20.
 test("slicedDerived on: an unchanged board is verified when its check lands, then badges refresh in parts", { timeout: 60000 }, async () => {
   const { host, store, idb, session, calls } = await checked(null);
   assert.ok(calls.length > 3, `cardStats ran in several parts, got ${calls.length}`);
-  for (const c of calls) assert.ok(c.n >= 1 && c.n <= 1000, `part of ${c.n} targets`);
+  for (const c of calls) assert.ok(c.n >= 1 && c.n <= 160, `part of ${c.n} targets`);
   assert.ok(calls.every((c) => c.unverified === false), "the board is verified before the first refresh part");
   assert.equal(host.boardUnverified("sb1"), false);
   assert.equal(session.links.some((l) => l.key === "c0_0->c2_0"), false, "the ghost link is gone");

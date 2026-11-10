@@ -1167,6 +1167,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           if (stage === "pack") {
             live = job.result();
             try { packed = packDerived(live.badges, live.links, { search: true }); } catch { packed = null; }
+            stats.derivedPhases = job.parts.phases;
             stage = "put";
             return false;
           }
@@ -1181,7 +1182,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           end();
           throw error;
         }
-      }, { label: "derived", partMs: () => ((stage === "derive" && job.wholePart) || stage === "pack" ? Infinity : 4) });
+      }, { label: "derived", partMs: () => ((stage === "derive" && job.wholePart) || stage === "pack" || stage === "put" ? Infinity : 4) });
       rederives.set(uid, stop);
       return;
     }
@@ -1237,22 +1238,25 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const KEEP_STATS_MIN = 2;
   const KEEP_STATS_FIRST = 4;
   const KEEP_STATS_MAX = 240;
-  const KEEP_OWN_FIRST = 200;
-  const KEEP_OWN_MAX = 2000;
-  const KEEP_REFS_FIRST = 60;
-  const KEEP_REFS_MAX = 1000;
-  const KEEP_LINKS_FIRST = 24;
-  const KEEP_LINKS_MIN = 4;
-  const KEEP_LINKS_MAX = 240;
+  const KEEP_OWN_FIRST = 100;
+  const KEEP_OWN_MAX = 500;
+  const KEEP_REFS_FIRST = 40;
+  const KEEP_REFS_MAX = 160;
+  // Link rows per read. A read costs about 9 ms on the PhD main board whatever it asks for, plus about 0.15 ms a
+  // card: groups of 4 were 379 reads and 3.6 s for the board, 64 are 24 reads and about 0.45 s. Each read is a
+  // slice of its own.
+  const KEEP_LINKS_PART = 64;
   // The refresh read behind a store: smaller pulls than the open check's (250 blocks were 40-46 ms slices there).
   const KEEP_READ_SLICE_MS = 8;
   const KEEP_READ_BATCH = 100;
   const KEEP_RETRY_MS = 2000;
   const KEEP_RETRY_MAX_MS = 8000;
-  // The next group size from what the last one cost: aimed at KEEP_PART_MS, at most doubled per step.
+  // The next group size from what the last one cost: aimed at half of KEEP_PART_MS (what a block costs to read is
+  // uneven: a run of cheap ones is followed by cards every arrow references), grown by half at most per step and
+  // cut at once.
   const keepGroup = (n, ms, min, max) => {
-    const next = ms > 0.05 ? Math.round((n * KEEP_PART_MS) / ms) : n * 2;
-    return Math.max(min, Math.min(max, n * 2, next));
+    const next = ms > 0.05 ? Math.round((n * KEEP_PART_MS) / (2 * ms)) : Math.ceil(n * 1.5);
+    return Math.max(min, Math.min(max, Math.ceil(n * 1.5), next));
   };
   const statKeyOf = (t) => {
     if (!t) return null;
@@ -1315,10 +1319,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     let eids = null;
     let eidSet = null;
     let li = 0;
-    let linkN = KEEP_LINKS_FIRST;
     const rows = [];
     let links = [];
-    const parts = { n: 0, maxMs: 0, maxIn: "", pulled: 0, reused: 0 };
+    const parts = { n: 0, maxMs: 0, maxIn: "", pulled: 0, reused: 0, phases: {} };
     const resolveOnce = (ref) => {
       const key = ref.title != null ? `title:${ref.title}` : `uid:${ref.uid}`;
       if (resolved.has(key)) return resolved.get(key);
@@ -1534,15 +1537,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       }
       if (phase === "rows") {
         if (li < eids.length) {
-          const group = eids.slice(li, li + linkN);
-          const at = clock();
+          const group = eids.slice(li, li + KEEP_LINKS_PART);
           let chunk = null;
           try { chunk = host.linkRows(boardEid, eidSet, group) || []; } catch { chunk = null; }
           // One task has no links when its rows read throws; so does this.
           if (!chunk) { phase = "done"; return true; }
           for (const row of chunk) rows.push(row);
           li += group.length;
-          linkN = keepGroup(linkN, clock() - at, KEEP_LINKS_MIN, KEEP_LINKS_MAX);
           return false;
         }
         phase = "reduce";
@@ -1566,12 +1567,17 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         const spent = clock() - t0;
         parts.n += 1;
         if (spent > parts.maxMs) { parts.maxMs = spent; parts.maxIn = was; }
+        // Per phase: parts, total ms, longest part (stats.keepPhases / derivedPhases, for the live speed checks).
+        const ph = parts.phases[was] || (parts.phases[was] = [0, 0, 0]);
+        ph[0] += 1;
+        ph[1] = Math.round((ph[1] + spent) * 10) / 10;
+        if (spent > ph[2]) ph[2] = Math.round(spent * 10) / 10;
         return done;
       },
       result: () => ({ badges, links }),
       get phase() { return phase; },
       // True when the next part is one that cannot stop half way.
-      get wholePart() { return phase === "board" || phase === "reduce"; },
+      get wholePart() { return phase === "board" || phase === "rows" || phase === "reduce"; },
       parts,
     };
   };
@@ -1667,6 +1673,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
             stats.keepPartMaxIn = job.parts.maxIn;
             stats.keepStatsPulled = job.parts.pulled;
             stats.keepStatsReused = job.parts.reused;
+            stats.keepPhases = job.parts.phases;
           }
           stage = "put";
           return false;
@@ -1693,7 +1700,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         }
         // The parts that cannot be split (the board build, about 40 ms on the PhD main board, and the pack) each
         // start a slice of their own, so no slice is a run of small parts with one of those on top.
-      }, { label: "model-keep", partMs: () => ((stage === "derive" && job?.wholePart) || stage === "pack" ? Infinity : 4), firstQuiet: 1000 });
+      }, { label: "model-keep", partMs: () => ((stage === "derive" && job?.wholePart) || stage === "pack" || stage === "put" ? Infinity : 4), firstQuiet: 1000 });
       keeps.set(uid, cancel);
       return;
     }

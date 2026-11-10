@@ -1,5 +1,5 @@
 // Round report from the stress result files (PXD-25). Offline: reads OUT_DIR, never connects.
-//   node tools/live/stress/report.mjs [--label base] [--out report.md] [--rec rec/real-1.analysis.json] [--findings f.jsonl] [--notes n.jsonl]
+//   node tools/live/stress/report.mjs [--label base] [--out report.md] [--rec rec/real-1.analysis.json] [--findings f.jsonl] [--notes n.jsonl] [--dev-label dev]
 //        [--title "..."] [--write-budgets] [--selftest]
 // OUT_DIR is STRESS_OUT or ~/wo/pxd-fast.
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdtempSync } from "node:fs";
@@ -44,6 +44,12 @@ function readJsonl(file) {
   return out;
 }
 const key = (l) => `${l.group}/${l.scenario}`;
+// newest line per scenario by `at` (a re-analysed copy appended later replaces the original)
+function newestPerScenario(lines) {
+  const m = new Map();
+  for (const l of lines) { const p = m.get(key(l)); if (!p || String(l.at || "") >= String(p.at || "")) m.set(key(l), l); }
+  return [...m.values()];
+}
 function byScenario(lines) {
   const m = new Map();
   for (const l of lines) { if (!m.has(key(l))) m.set(key(l), []); m.get(key(l)).push(l); }
@@ -240,6 +246,8 @@ export function buildReport(opts = {}) {
     for (const [sc, ls] of byScenario(timed.filter((l) => l.group === g))) {
       for (const l of ls) { if (l.err) notes.push(`- ${sc}: error: ${l.err}`); else if (l.skip) notes.push(`- ${sc}: skipped: ${l.skip}`); }
       const gl = ls.filter(ok);
+      const nIn = ls.filter((l) => l.ctx?.fullscreen === false).length;
+      if (nIn && ls.some((l) => l.ctx?.fullscreen === true)) notes.push(`- ${sc}: ${nIn} runs inline`);
       const nSkip = ls.filter((l) => l.skip).length, nFail = ls.filter((l) => !l.skip && (l.err || l.extra?.ok === false)).length;
       const nOk = ls.filter((l) => !l.skip && !l.err && l.extra?.ok !== false).length;
       const okCol = `${nOk} / ${nSkip} / ${nFail}`;
@@ -262,11 +270,27 @@ export function buildReport(opts = {}) {
   out.push(`## Steps\n\n${steps.join("\n\n") || "(no scenario has step tables yet)"}`);
 
   // 5
-  const trows = traced.map((l) => {
+  const trows = newestPerScenario(traced).map((l) => {
     const t = l.trace;
-    return [key(l), f(t.script?.plexus), f(t.script?.roam), f(sumVals(t.script?.other)), f(t.style), f(t.layout), f(t.paint), f(t.gc), f(t.other), f(t.restyled), f(t.forcedMs), t.file ? basename(t.file) : "-"];
+    const script = (t.script?.plexus || 0) + (t.script?.roam || 0) + sumVals(t.script?.other) + (t.script?.unknown || 0);
+    const busy = script + (t.style || 0) + (t.layout || 0) + (t.paint || 0) + (t.gc || 0) + (t.other || 0);
+    const sh = (x) => (busy > 0 ? f((100 * (x || 0)) / busy) : "-");
+    return [key(l), f(t.script?.plexus), f(t.script?.roam), f(sumVals(t.script?.other)), f(t.style), f(t.layout), f(t.paint), f(t.gc), f(t.other), f(t.restyled), f(t.forcedMs), t.hitTest != null ? f(t.hitTest) : "-", t.profile?.sampledMs != null ? f(t.profile.sampledMs) : "-", sh(script), sh(t.style), sh(t.layout), sh(t.paint), sh(t.gc), t.file ? basename(t.file) : "-"];
   });
-  out.push(`## Where the time goes (traces)\n\n${trows.length ? table(["scenario", "script Plexus", "script Roam", "script other", "style", "layout", "paint", "gc", "other", "elements restyled", "forced style+layout ms", "trace file"], trows) : "(no traced lines)"}`);
+  out.push(`## Where the time goes (traces)\n\nNewest traced line per scenario. Shares are of the busy time (script + style + layout + paint + gc + other).\n\n${trows.length ? table(["scenario", "script Plexus", "script Roam", "script other", "style", "layout", "paint", "gc", "other", "elements restyled", "forced style+layout ms", "hit test ms", "profile ms", "script %", "style %", "layout %", "paint %", "gc %", "trace file"], trows) : "(no traced lines)"}`);
+
+  // 5b
+  const devLabel = opts.devLabel || "dev";
+  const dev = newestPerScenario(all.filter((l) => l.label === devLabel && l.traced === true && l.trace));
+  const hot = dev.map((l) => {
+    const fx = l.trace.functions || {};
+    const keep = (r) => !(/^\(anonymous\)$/.test(r.fn || "") && (r.ms ?? r.selfMs ?? 0) < 5);
+    const pl = (fx.plexus || []).filter(keep).slice(0, 12).map((r) => [r.fn, f(r.ms), f(r.selfMs)]);
+    const sf = (fx.self || []).filter(keep).slice(0, 8).map((r) => [r.owner, r.fn, f(r.ms)]);
+    if (!pl.length && !sf.length) return null;
+    return `### ${key(l)}\n\n${pl.length ? table(["function", "inclusive ms", "self ms"], pl) : "(no Plexus functions)"}\n\n${sf.length ? table(["owner", "function", "self ms"], sf) : "(no self-time rows)"}`;
+  }).filter(Boolean);
+  out.push(`## Hot functions (unminified build)\n\nSampled CPU time under tracing; use it to see which functions carry a scenario, not as timings.\n\n${hot.length ? hot.join("\n\n") : "(no traces from the unminified build)"}`);
 
   // 6
   const src = new Map();
@@ -372,6 +396,10 @@ function selftest() {
     mk("replay-nav", "move", 1, { presses: { "click|pxd-btn": { p50: 50, p90: 80 } } }),
     { ...mk("reload", "open", 1), traced: true, trace: { file: "/x/traces/r1-open-reload-1.json.gz", script: { plexus: 10, roam: 20, other: { a: 1 } }, style: 1, layout: 2, paint: 3, gc: 4, other: 5, restyled: 600, forcedMs: 7 } },
     { ...mk("reload", "open", 1), skip: "nope", stalls: undefined },
+    { ...mk("reload", "open", 1), at: "2026-11-09T12:00:00Z", traced: true, reanalysed: true, trace: { file: "/x/traces/r2-open-reload-1.json.gz", script: { plexus: 40, roam: 20, other: {} }, style: 10, layout: 10, paint: 10, gc: 10, other: 0, restyled: 5, forcedMs: 1, hitTest: 2, profile: { sampledMs: 99 } } },
+    { ...mk("zoom-btn", "move", 3), ctx: { fullscreen: true } },
+    { ...mk("zoom-btn", "move", 4), ctx: { fullscreen: false } },
+    { ...mk("zoom-btn", "move", 1), label: "dev", traced: true, trace: { file: "/x/d.json.gz", script: { plexus: 1 }, functions: { plexus: [{ fn: "hotFn", ms: 30, selfMs: 12 }, { fn: "(anonymous)", ms: 2, selfMs: 1 }], self: [{ owner: "plexus", fn: "selfFn", ms: 9 }] } } },
   ];
   const tmp = mkdtempSync(join(tmpdir(), "report-selftest-"));
   writeFileSync(join(tmp, "results.jsonl"), "");
@@ -383,9 +411,13 @@ function selftest() {
     notesData: [{ title: "Limit one.", text: "plain words" }],
   });
   assert.ok(md.includes("## Notes and limits") && md.includes("**Limit one.** plain words"), "notes");
-  assert.ok(md.includes("ok / skipped / failed") && md.includes("| 0 / 1 / 0 |") && md.includes("| 2 / 0 / 0 |"), "ok column");
+  assert.ok(md.includes("ok / skipped / failed") && md.includes("| 0 / 1 / 0 |") && md.includes("| 4 / 0 / 0 |"), "ok column");
   assert.ok(md.includes("results.jsonl: ok (1 file)") && md.includes("nope/missing-*.json: MISSING") && md.includes("- (report section)"), "evidence");
   assert.ok(md.includes("zoom-btn band"), "bench source");
+  assert.ok(md.includes("r2-open-reload-1.json.gz") && !md.includes("r1-open-reload-1.json.gz"), "newest traced line wins");
+  assert.ok(md.includes("| 99 |") && md.includes("| 60 |"), "profile ms and script share");
+  assert.ok(md.includes("## Hot functions (unminified build)") && md.includes("hotFn") && md.includes("selfFn") && !md.includes("(anonymous) |"), "hot functions");
+  assert.ok(md.includes("move/zoom-btn: 1 runs inline"), "inline note");
   assert.ok(md.includes("ext (Q, MessagePort.onmessage @31k)") && !md.includes("ext:abcdef"), "ext grouped");
   assert.ok(md.includes("(not written yet") === false);
   for (const h of ["# ", "## Quick check", "## Baseline", "## Steps", "## Where the time goes (traces)", "## Stall sources", "## Bench against the recording", "## Ranked top 10", "## Roam and other extensions", "## Noise floor", "## Budgets"]) assert.ok(md.includes(h), `missing ${h}`);
@@ -406,9 +438,9 @@ function parse(argv) {
     if (t === "--selftest" || t === "--write-budgets") { o[t.slice(2).replace(/-(\w)/g, (_, c) => c.toUpperCase())] = true; continue; }
     if (!t.startsWith("--")) throw new Error(`unexpected argument ${t}`);
     const k = t.slice(2);
-    if (!["label", "out", "rec", "findings", "title", "notes"].includes(k)) throw new Error(`unknown flag --${k}`);
+    if (!["label", "out", "rec", "findings", "title", "notes", "dev-label"].includes(k)) throw new Error(`unknown flag --${k}`);
     if (argv[i + 1] == null) throw new Error(`--${k} needs a value`);
-    o[k] = argv[++i];
+    o[k.replace(/-(\w)/g, (_, c) => c.toUpperCase())] = argv[++i];
   }
   return o;
 }

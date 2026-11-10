@@ -1182,6 +1182,211 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     }, { label: "derived", partMs: 4 });
     rederives.set(uid, cancel);
   };
+  // PXD-26 (speed flag slicedKeep). Storing a big board's model after an edit recomputed its badges and links in the
+  // store job's last part: recomputeDerived in one task, 3.3-3.6 s on the PhD main board about a second after every
+  // edit went quiet. With the flag on the store job computes them in parts of about KEEP_PART_MS (the same result:
+  // every stat target, then the links), stops at the first part that finds the page stamp moved (an edit since the
+  // read: nothing is stored, the next refresh keeps the newer tree), and a refresh read an edit interrupted is tried
+  // again later instead of falling back to one whole pull.
+  const slicedKeepOn = () => { try { return notedSpeedFlags().slicedKeep !== false; } catch { return true; } };
+  const KEEP_PART_MS = 8;
+  const KEEP_STATS_MIN = 4;
+  const KEEP_STATS_MAX = 240;
+  const KEEP_LINKS_FIRST = 24;
+  const KEEP_LINKS_MIN = 4;
+  const KEEP_LINKS_MAX = 240;
+  // The refresh read behind a store: smaller pulls than the open check's (250 blocks were 40-46 ms slices there).
+  const KEEP_READ_SLICE_MS = 8;
+  const KEEP_READ_BATCH = 100;
+  const KEEP_RETRY_MS = 2000;
+  const KEEP_RETRY_MAX_MS = 8000;
+  // The next group size from what the last one cost: aimed at KEEP_PART_MS, at most doubled per step.
+  const keepGroup = (n, ms, min, max) => {
+    const next = ms > 0.05 ? Math.round((n * KEEP_PART_MS) / ms) : n * 2;
+    return Math.max(min, Math.min(max, n * 2, next));
+  };
+  const statKeyOf = (t) => {
+    if (!t) return null;
+    if (t.kind === "page") return t.title ? `page:${t.title}` : null;
+    return t.uid ? `uid:${t.uid}` : null;
+  };
+  // recomputeDerived(uid, tree) in resumable parts: step(ms) does about ms of work and is true when the job is done;
+  // result() is then { badges, links }, the same maps and lists the one task builds. A stat the cache still holds
+  // (STATS_TTL_MS, as cardStats itself answers) is not pulled again, so a store that follows another one within two
+  // minutes only reads what is new.
+  const createDerivedJob = (uid, tree, clock) => {
+    const walk = createTargetsWalk(tree);
+    let phase = "targets";
+    let targets = null;
+    let ti = 0;
+    const order = [];
+    const got = new Map();
+    const stale = [];
+    let si = 0;
+    let statN = STATS_PART;
+    let statsFailed = false;
+    const badges = new Map();
+    let board = null;
+    let items = null;
+    let boardEid = null;
+    const resolved = new Map();
+    const eidToItems = new Map();
+    let eids = null;
+    let eidSet = null;
+    let li = 0;
+    let linkN = KEEP_LINKS_FIRST;
+    const rows = [];
+    let links = [];
+    const parts = { n: 0, maxMs: 0, pulled: 0, reused: 0 };
+    const resolveOnce = (ref) => {
+      const key = ref.title != null ? `title:${ref.title}` : `uid:${ref.uid}`;
+      if (resolved.has(key)) return resolved.get(key);
+      let eid = null;
+      try { eid = host.resolveEid(ref); } catch { eid = null; }
+      resolved.set(key, eid);
+      return eid;
+    };
+    const part = (ms) => {
+      const t0 = clock();
+      const over = () => clock() - t0 >= ms;
+      if (phase === "targets") {
+        let done = true;
+        try { done = walk.step(ms, clock); } catch { done = true; statsFailed = true; }
+        if (!done) return false;
+        try { targets = walk.result()?.stats || []; } catch { targets = []; statsFailed = true; }
+        phase = "sort";
+        return false;
+      }
+      if (phase === "sort") {
+        const seen = got;
+        while (ti < targets.length) {
+          const t = targets[ti];
+          ti += 1;
+          const key = statKeyOf(t);
+          if (key != null && !seen.has(key)) {
+            order.push(key);
+            const fresh = freshStat(uid, key);
+            seen.set(key, fresh ? { ...fresh } : null);
+            if (fresh) parts.reused += 1;
+            else stale.push(t);
+          }
+          if ((ti & 255) === 0 && over()) return false;
+        }
+        phase = "stats";
+        return false;
+      }
+      if (phase === "stats") {
+        if (!statsFailed && si < stale.length) {
+          const group = stale.slice(si, si + statN);
+          const at = clock();
+          try {
+            const res = host.cardStats(group, { boardUid: uid });
+            if (res instanceof Map) for (const [key, stat] of res) got.set(key, stat);
+          } catch { statsFailed = true; }
+          si += group.length;
+          parts.pulled += group.length;
+          statN = keepGroup(statN, clock() - at, KEEP_STATS_MIN, KEEP_STATS_MAX);
+          return false;
+        }
+        // One task leaves the badges empty when its stats read throws; so does this.
+        if (!statsFailed) for (const key of order) { const stat = got.get(key); if (stat) badges.set(key, stat); }
+        phase = "board";
+        return false;
+      }
+      if (phase === "board") {
+        try {
+          board = buildBoard(tree, {
+            resolve: (id) => {
+              try {
+                const text = host.blockString?.(id);
+                return typeof text === "string" ? text : null;
+              } catch { return null; }
+            },
+          });
+        } catch { board = null; }
+        if (!board) { phase = "done"; return true; }
+        boardEid = resolveOnce({ uid });
+        items = board.items.values();
+        phase = "eids";
+        return false;
+      }
+      if (phase === "eids") {
+        let n = 0;
+        for (;;) {
+          const next = items.next();
+          if (next.done) break;
+          const item = next.value;
+          if (item.type === "card" && item.target) {
+            const t = item.target;
+            const eid = resolveOnce(t.kind === "page" ? { title: t.title } : { uid: t.uid });
+            if (eid != null && eid !== boardEid) {
+              if (!eidToItems.has(eid)) eidToItems.set(eid, []);
+              eidToItems.get(eid).push(item.uid);
+            }
+          }
+          n += 1;
+          if ((n & 31) === 0 && over()) return false;
+        }
+        eids = [...eidToItems.keys()];
+        if (!eids.length || boardEid == null) { phase = "done"; return true; }
+        eidSet = new Set(eids);
+        phase = "rows";
+        return false;
+      }
+      if (phase === "rows") {
+        if (li < eids.length) {
+          const group = eids.slice(li, li + linkN);
+          const at = clock();
+          let chunk = null;
+          try { chunk = host.linkRows(boardEid, eidSet, group) || []; } catch { chunk = null; }
+          // One task has no links when its rows read throws; so does this.
+          if (!chunk) { phase = "done"; return true; }
+          for (const row of chunk) rows.push(row);
+          li += group.length;
+          linkN = keepGroup(linkN, clock() - at, KEEP_LINKS_MIN, KEEP_LINKS_MAX);
+          return false;
+        }
+        phase = "reduce";
+        return false;
+      }
+      if (phase === "reduce") {
+        const parentStrings = new Map();
+        for (const row of rows) {
+          if (row.length > 4 && row[4] != null) parentStrings.set(row[2], row[4]);
+        }
+        try { links = reduceLinks(rows, { eidToItems, parentStrings }) || []; } catch { links = []; }
+        phase = "done";
+      }
+      return true;
+    };
+    return {
+      step(ms) {
+        const t0 = clock();
+        const done = part(ms);
+        const spent = clock() - t0;
+        parts.n += 1;
+        if (spent > parts.maxMs) parts.maxMs = spent;
+        return done;
+      },
+      result: () => ({ badges, links }),
+      parts,
+    };
+  };
+  // Boards whose derived listeners are owed a call when the next sliced store lands (the check found them changed).
+  const tellOwed = new Set();
+  const refreshTimers = new Map(); // uid -> timer of the next refresh try after an interrupted read or store
+  const refreshDelay = new Map(); // uid -> its growing wait
+  const retryRefresh = (uid) => {
+    if (refreshTimers.has(uid)) return;
+    const delay = refreshDelay.get(uid) || KEEP_RETRY_MS;
+    refreshDelay.set(uid, Math.min(delay * 2, KEEP_RETRY_MAX_MS));
+    const timer = setTimeout(() => {
+      refreshTimers.delete(uid);
+      try { host.refreshModel(uid); } catch { /* the next snapshot asks again */ }
+    }, delay);
+    try { timer.unref?.(); } catch { /* a fake timer has no unref */ }
+    refreshTimers.set(uid, timer);
+  };
   let modelStore = null;
   const unverified = new Map(); // uid -> stamp the model was read at
   const verifyListeners = new Map(); // uid -> Set(fn)
@@ -1213,6 +1418,69 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     keeps.get(uid)?.();
     const enc = createTreeEncoder(tree);
     const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
+    if (slicedKeepOn()) {
+      const want = derived === undefined && derivedOn();
+      let model = null;
+      let job = null;
+      let live = null;
+      let packed = derived;
+      let stage = "encode";
+      let cancel = null;
+      const end = () => { if (keeps.get(uid) === cancel) keeps.delete(uid); return true; };
+      cancel = sharedBgBudget().run((deadline) => {
+        // An edit since the read: this tree is no longer the page, so nothing of it is stored. The edit's own
+        // snapshot asks for a new read; the retry covers an edit that moved the page but not the board.
+        if (pageStampOf(uid) !== stamp) {
+          stats.keepsDropped = (stats.keepsDropped || 0) + 1;
+          end();
+          retryRefresh(uid);
+          return true;
+        }
+        const ms = Math.max(1, Math.min(KEEP_PART_MS, deadline.timeRemaining() - 2));
+        if (stage === "encode") {
+          if (!enc.step(ms, clock)) return false;
+          model = enc.result();
+          if (!model) { stats.modelsKept = (stats.modelsKept || 0) + 1; return end(); }
+          stage = want ? "derive" : "put";
+          return false;
+        }
+        if (stage === "derive") {
+          job ??= createDerivedJob(uid, tree, clock);
+          let done = true;
+          try { done = job.step(ms); } catch { done = true; job = null; }
+          if (!done) return false;
+          stage = "pack";
+          return false;
+        }
+        if (stage === "pack") {
+          packed = null;
+          if (job) {
+            live = job.result();
+            try { packed = packDerived(live.badges, live.links, { search: true }); } catch { packed = null; }
+            stats.keepParts = job.parts.n;
+            stats.keepPartMaxMs = Math.max(stats.keepPartMaxMs || 0, Math.round(job.parts.maxMs * 10) / 10);
+            stats.keepStatsPulled = job.parts.pulled;
+            stats.keepStatsReused = job.parts.reused;
+          }
+          stage = "put";
+          return false;
+        }
+        end();
+        if (live) derivedLive.set(uid, { stamp: null, badges: live.badges, links: live.links });
+        if (packed !== undefined) model.derived = packed;
+        void modelStore.put(uid, stamp, model);
+        stats.modelsKept = (stats.modelsKept || 0) + 1;
+        refreshDelay.delete(uid);
+        if (live && tellOwed.delete(uid)) {
+          for (const fn of [...(derivedListeners.get(uid) || [])]) {
+            try { fn(); } catch (error) { console.warn("[plexus-diagram] derived listener failed", error); }
+          }
+        }
+        return true;
+      }, { label: "model-keep", partMs: 4, firstQuiet: 1000 });
+      keeps.set(uid, cancel);
+      return;
+    }
     const cancel = sharedBgBudget().run((deadline) => {
       if (!enc.step(Math.max(1, deadline.timeRemaining() - 2), clock)) return false;
       if (keeps.get(uid) === cancel) keeps.delete(uid);
@@ -1234,11 +1502,15 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // prepare(tree) runs in a part of its own between the read and done. The reader stays through the accept: done
   // runs only when the page stamp did not move, the folds still match (verifyOpen), and every copied block's
   // string, order, heading and props still match. A miss is a failed take. A frozen tree is never handed to done.
-  const backgroundRead = (uid, label, done, { stopIf = () => false, prepare = null } = {}) => {
+  // onMiss (PXD-26): a take an edit spoiled ends the read there and calls onMiss() instead of a retry and then one
+  // whole pull (the caller tries again later); a part that finds the page stamp moved since the read began ends it
+  // the same way, without reading the rest.
+  const backgroundRead = (uid, label, done, { stopIf = () => false, prepare = null, onMiss = null } = {}) => {
     let reader = null;
     let tries = 0;
     let cancel = null;
     let got = null;
+    let began = null;
     const whole = () => {
       reader = null;
       got = null;
@@ -1255,10 +1527,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       got = null;
       tries += 1;
       stats[`${label}Retries`] = (stats[`${label}Retries`] || 0) + 1;
+      if (onMiss) {
+        stats[`${label}Misses`] = (stats[`${label}Misses`] || 0) + 1;
+        try { onMiss(); } catch (error) { console.warn("[plexus-diagram] read miss", error); }
+        return true;
+      }
       return tries >= 2 ? whole() : false;
     };
     const part = () => {
       if (stopIf()) return true;
+      if (onMiss && reader && began != null && pageStampOf(uid) !== began) return mismatch();
       if (got) {
         if (!got.prepared && prepare) { got.prepared = true; prepare(got.tree); return false; }
         // The accept stamp pull is first, so an edit that lands on it is still unread when the compares run.
@@ -1267,6 +1545,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           try { openOk = pageStampOf(uid) === got.stamp && reader.verifyOpen(); } catch { openOk = false; }
           if (!openOk) return mismatch();
           got.checked = true;
+          // PXD-26: the fold compare was this part's work (about 60 ms on the PhD main board); the field compares
+          // already span tasks, so the first of them waits for the next part.
+          if (onMiss) return false;
         }
         let fields = "bad";
         try { fields = reader.verifyFieldsPart(); } catch { fields = "bad"; }
@@ -1282,13 +1563,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         let rootEid = null;
         try { rootEid = rawPull("[:db/id]", eidKey(uid))?.[":db/id"] ?? null; } catch { rootEid = null; }
         if (rootEid == null || typeof data.pull_many !== "function") return whole();
+        began = onMiss ? pageStampOf(uid) : null;
         reader = createSlicedRead({
           rootEid,
           pullMany: (pattern, eids) => data.pull_many(pattern, eids),
           stamp: () => pageStampOf(uid),
           clock: () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now()),
-          sliceMs: CHECK_SLICE_MS,
-          batch: CHECK_BATCH,
+          sliceMs: onMiss ? KEEP_READ_SLICE_MS : CHECK_SLICE_MS,
+          batch: onMiss ? KEEP_READ_BATCH : CHECK_BATCH,
         });
       }
       if (!reader.step()) return false;
@@ -1297,7 +1579,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (tree?.[":block/uid"] === uid) { got = { tree, stamp, prepared: false, checked: false }; return false; }
       return mismatch();
     };
-    cancel = sharedBgBudget().run(part, { label, partMs: 4, firstQuiet: CHECK_QUIET_MS });
+    // PXD-26: the two fold compares (the reader's own, then the accept's) each start a slice of their own.
+    const heavyNext = () => Boolean(onMiss) && ((got && !got.checked) || reader?.phase === "assemble");
+    cancel = sharedBgBudget().run(part, { label, partMs: () => (heavyNext() ? Infinity : 4), firstQuiet: CHECK_QUIET_MS });
     return () => cancel?.();
   };
   const clearCheckTimer = (uid) => {
@@ -1349,6 +1633,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!changed && derivedOn() && slicedDerivedOn() && modelStore?.stampOf(uid) === stamp) {
         markVerified(uid);
         refreshDerived(uid, tree, stamp);
+        return;
+      }
+      // PXD-26: a changed board (or one stored under another stamp) is verified at once, like an unchanged one, and
+      // the store job computes its badges and links in parts; the listeners are told when that store lands.
+      if (slicedKeepOn() && derivedOn() && modelStore && trustOn() && (changed || modelStore.stampOf(uid) !== stamp)) {
+        markVerified(uid);
+        tellOwed.add(uid);
+        keepModel(uid, tree, stamp);
         return;
       }
       // Recompute before the listeners run, so a seeded open replaces the stored links in the same turn.
@@ -2740,7 +3032,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const cancel = backgroundRead(id, "refresh", (tree, stamp) => {
         refreshes.delete(id);
         if (tree && stamp) keepModel(id, tree, stamp);
-      }, { stopIf: () => (splitWatches.get(id)?.held || !splitWatches.has(id) ? (refreshes.delete(id), true) : false) });
+      }, {
+        stopIf: () => (splitWatches.get(id)?.held || !splitWatches.has(id) ? (refreshes.delete(id), true) : false),
+        // PXD-26: an edit during the read ends it; a later try reads the newer page (no whole pull in one task).
+        onMiss: slicedKeepOn() ? () => { refreshes.delete(id); retryRefresh(id); } : null,
+      });
       refreshes.set(id, cancel);
       return true;
     },
@@ -2751,6 +3047,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       for (const timer of checkTimers.values()) clearTimeout(timer);
       checkTimers.clear();
       checkDelay.clear();
+      for (const timer of refreshTimers.values()) clearTimeout(timer);
+      refreshTimers.clear();
+      refreshDelay.clear();
+      tellOwed.clear();
       for (const jobs of [checks, keeps, refreshes, rederives]) {
         for (const cancel of jobs.values()) { try { cancel(); } catch { /* done */ } }
         jobs.clear();

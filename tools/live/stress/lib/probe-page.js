@@ -1,5 +1,5 @@
 (() => {
-  const V = 1;
+  const V = 2;
   try { if (window.__pxdStress && window.__pxdStress.v === V) return JSON.stringify({ already: true, v: V }); } catch (e) {}
   const now = () => performance.now();
   const safe = (fn, dflt = null) => { try { const r = fn(); return r === undefined ? dflt : r; } catch (e) { return dflt; } };
@@ -159,12 +159,17 @@
       afterPaint(() => { d.proxy = now() - d.ts; });
     }
   };
-  const L = (type, fn) => window.addEventListener(type, fn, { capture: true, passive: true });
-  L("wheel", onInput("wheel", false));
-  L("pointerdown", onInput("pointer", true));
-  L("pointerup", onInput("pointer", true));
-  L("click", onInput("pointer", true));
-  L("keydown", onInput("key", true));
+  // old listeners (from an earlier probe version) feed the newest probe through this holder
+  window.__pxdStressInput = (kind, discrete, e) => safe(() => onInput(kind, discrete)(e));
+  if (!window.__pxdStressListeners) {
+    window.__pxdStressListeners = true;
+    const L = (type, kind, discrete) => window.addEventListener(type, (e) => { const f = window.__pxdStressInput; if (f) f(kind, discrete, e); }, { capture: true, passive: true });
+    L("wheel", "wheel", false);
+    L("pointerdown", "pointer", true);
+    L("pointerup", "pointer", true);
+    L("click", "pointer", true);
+    L("keydown", "key", true);
+  }
 
   const api = {
     v: V,
@@ -287,8 +292,9 @@
       const t = Math.round(now());
       if (cold.title == null && document.querySelector(".roam-article .rm-title-display")) { cold.title = t; safe(() => performance.mark("cold-title")); }
       const roots = [...document.querySelectorAll(".roam-article .pxd-root")];
-      if (cold.paint == null && roots.some((r) => r.querySelector(".pxd-item, .pxd-section, canvas"))) { cold.paint = t; safe(() => performance.mark("cold-paint")); }
-      if (cold.live == null && roots.some((r) => !r.hasAttribute("data-pxd-snap") && !r.hasAttribute("data-pxd-parked") && r.querySelector(".pxd-item"))) { cold.live = t; safe(() => performance.mark("cold-live")); }
+      if (cold.paint == null && roots.some((r) => r.querySelector(".pxd-item, .pxd-section, canvas, .pxd-viewport"))) { cold.paint = t; safe(() => performance.mark("cold-paint")); }
+      // a live board can have its camera over empty space, so a snapshot source also counts
+      if (cold.live == null && (roots.some((r) => !r.hasAttribute("data-pxd-snap") && !r.hasAttribute("data-pxd-parked") && r.querySelector(".pxd-item")) || safe(() => { const v = view(); return !!(v && v.snapshotSource()); }, false))) { cold.live = t; safe(() => performance.mark("cold-live")); }
       if (t < 120000 && cold.live == null) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);

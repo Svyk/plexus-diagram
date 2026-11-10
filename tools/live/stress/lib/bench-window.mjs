@@ -103,10 +103,19 @@ export async function setCamera(c, vp) {
   await c.ev(`(localStorage.setItem(${JSON.stringify(VP_KEY)}, ${JSON.stringify(v)}), 1)`);
 }
 
+// the bench view's own camera must match too, or its next dispose writes the bench camera over the restored key
+async function showViewAt(c, vpString) {
+  try {
+    const moved = await c.ev(`(() => { const v = ${VIEW_JS}; if (!v) return false; v.showAt(${vpString}); return true; })()`, { timeout: 10000 });
+    if (moved) await sleep(400);
+  } catch { /* no live view, or the page is busy */ }
+}
+
 export async function restoreCamera(c) {
   const v = await c.ev(`(() => { try { const n = sessionStorage.getItem("pxd-stress-vp"); if (n) return n; } catch (e) {} return null; })()`);
   const use = v || remembered.get(id8(c)) || null;
   if (use != null) {
+    await showViewAt(c, use);
     await c.ev(`(localStorage.setItem(${JSON.stringify(VP_KEY)}, ${JSON.stringify(use)}), 1)`);
     try { unlinkSync(VP_DIRTY()); } catch { /* none */ }
   }
@@ -120,6 +129,7 @@ export async function repairCamera(c) {
   const was = await c.ev(`localStorage.getItem(${JSON.stringify(VP_KEY)})`);
   let repaired = false;
   if (was != null && was === rec.bench && typeof rec.saved === "string") {
+    await showViewAt(c, rec.saved);
     await c.ev(`(localStorage.setItem(${JSON.stringify(VP_KEY)}, ${JSON.stringify(rec.saved)}), 1)`);
     repaired = true;
   }
@@ -175,7 +185,7 @@ export async function waitLive(c, { timeout = 60000 } = {}) {
   const t0 = Date.now();
   for (;;) {
     let ok = false;
-    try { ok = await c.ev(`(() => { const v = ${VIEW_JS}; return !!(v && v.root.querySelector(".pxd-item")); })()`, { timeout: 10000 }); } catch { /* page busy or reloading */ }
+    try { ok = await c.ev(`(() => { const v = ${VIEW_JS}; return !!(v && v.snapshotSource()); })()`, { timeout: 10000 }); } catch { /* page busy or reloading */ }
     if (ok) return Date.now() - t0;
     if (Date.now() - t0 > timeout) throw new Error(`board not live after ${timeout} ms`);
     await sleep(200);

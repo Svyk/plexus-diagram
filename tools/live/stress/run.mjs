@@ -202,7 +202,7 @@ export async function main(argv, deps = {}) {
       log: (m) => console.log(`  ${m}`), probe, win, view: VIEW_JS, sleep,
       cam: { save: () => bw.saveCamera(c), set: (vp) => bw.setCamera(c, vp), restore: () => bw.restoreCamera(c) },
       pace: bw.pacer(40000), writes: bw.writeLimiter(1200), scratch: null, scratchModule: () => import("./lib/scratch.mjs"),
-      names, trace: { on: false, start: null, stop: null }, home: null, size: null, fsWanted: false, onCleanup,
+      editModule: (all.mods || {}).edit || null, names, trace: { on: false, start: null, stop: null }, home: null, size: null, fsWanted: false, onCleanup,
       result: (summary, extra) => ({ summary, extra }),
     };
 
@@ -216,11 +216,44 @@ export async function main(argv, deps = {}) {
     };
     ctx.findBtns = async (re) => c.evJson(`(() => { const v = ${VIEW_JS}; if (!v) return "[]"; const re = new RegExp(${J(re.source)}, ${J(re.flags)}); const out = [];
       for (const b of v.root.querySelectorAll(".pxd-rail .pxd-btn, .pxd-btn")) { const t = (b.getAttribute("title") || "") + " | " + (b.getAttribute("aria-label") || ""); if (!re.test(t)) continue;
-        const r = b.getBoundingClientRect(); if (r.width <= 0 || r.height <= 0 || r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth) continue;
+        const r = b.getBoundingClientRect(); if (r.width <= 0 || r.height <= 0) continue; { const cx = r.x + r.width / 2, cy = r.y + r.height / 2; if (cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight) continue; }
         if (out.some((o) => o.x === Math.round(r.x + r.width / 2) && o.y === Math.round(r.y + r.height / 2))) continue;
         out.push({ title: b.getAttribute("title") || b.getAttribute("aria-label") || "", x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }); }
       return JSON.stringify(out); })()`);
-    ctx.clickBtn = async (re) => { const l = await ctx.findBtns(re); if (!l.length) return null; await input.click(l[0].x, l[0].y); return l[0]; };
+    // rail button by its stable data-tip key; {covered: true} when something else is on top of it right now
+    ctx.railBtn = async (key) => c.evJson(`(() => { const v = ${VIEW_JS}; if (!v) return "null"; const b = v.root.querySelector('.pxd-rail .pxd-btn[data-tip=${J(key)}]'); if (!b) return "null";
+      const r = b.getBoundingClientRect(); if (r.width <= 0 || r.height <= 0) return "null"; const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2);
+      if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return JSON.stringify({ covered: true, x, y });
+      const el = document.elementFromPoint(x, y); if (!el || !(el === b || b.contains(el))) return JSON.stringify({ covered: true, x, y });
+      return JSON.stringify({ x, y, label: b.getAttribute("aria-label") || b.getAttribute("title") || "" }); })()`);
+    // Scroll an inline board into view (a scenario may have left the Roam page scrolled away); no-op when fullscreen. Returns the root rect.
+    ctx.revealBoard = async () => {
+      const r = await c.evJson(`(() => { const v = ${VIEW_JS}; if (!v) return "null"; const root = v.root;
+        if (window.__plexusDiagram.mounts().some((m) => m.connected && m.fullscreen)) { const q = root.getBoundingClientRect(); return JSON.stringify({ x: q.x, y: q.y, w: q.width, h: q.height, inline: false }); }
+        root.scrollIntoView({ block: "start" });
+        let q = root.getBoundingClientRect();
+        if (q.top < 0 || q.top > innerHeight - 200) {
+          let sc = document.querySelector(".rm-article-wrapper");
+          if (!sc || sc.scrollHeight <= sc.clientHeight) { sc = null; for (let p = root.parentElement; p; p = p.parentElement) { if (p.scrollHeight > p.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(p).overflowY)) { sc = p; break; } } }
+          if (sc) sc.scrollTop += root.getBoundingClientRect().top - 60;
+          q = root.getBoundingClientRect();
+        }
+        return JSON.stringify({ x: q.x, y: q.y, w: q.width, h: q.height, inline: true }); })()`);
+      if (r && r.inline) await sleep(300);
+      return r;
+    };
+    // move, settle, press, hold, release: how the recorded user clicks (a zero-length click can be dropped)
+    ctx.pressAt = async (x, y, { hold = 120, settle = 200 } = {}) => { await input.move(x, y); await sleep(settle); await input.down(x, y); await sleep(hold); await input.up(x, y); };
+    ctx.clickBtn = async (re) => {
+      const RAIL = [["zoom out", "rail.zoom-out"], ["zoom in", "rail.zoom-in"], ["fit view", "rail.fit"]];
+      const hit = RAIL.find(([label]) => re.test(label));
+      let b = hit ? await ctx.railBtn(hit[1]) : null;
+      if (b && !b.covered) { await ctx.pressAt(b.x, b.y); return { title: b.label, x: b.x, y: b.y }; }
+      const l = await ctx.findBtns(re);
+      if (!l.length) return null;
+      await ctx.pressAt(l[0].x, l[0].y);
+      return l[0];
+    };
     // A background point with room for a horizontal drag of dist px (dir -1 left, 1 right). Mirrors scenarios/move.mjs: the DOM
     // under the point is plain board surface AND no card, section title or section border is near it in world space
     // (a press on a card with no shell yet is still that card).
@@ -248,14 +281,26 @@ export async function main(argv, deps = {}) {
     ctx.fsState = () => c.evJson(`JSON.stringify(!!(window.__plexusDiagram && window.__plexusDiagram.mounts().some((m) => m.connected && m.fullscreen)))`);
     ctx.fullscreen = async (on) => {
       if ((await ctx.fsState()) === !!on) return;
-      const l = await ctx.findBtns(/maximi[sz]e|fullscreen|minimi[sz]e|exit/i);
-      for (const b of l) {
-        await input.click(b.x, b.y);
+      let used = null;
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        await probe.quiet({ gap: 400, max: 4000 });
+        if ((await ctx.fsState()) === !!on) break;
+        await ctx.revealBoard();
+        let b = await ctx.railBtn("rail.fullscreen");
+        if (!b) { const l = await ctx.findBtns(/maximi[sz]e|fullscreen|minimi[sz]e|exit/i); if (l.length) b = { x: l[0].x, y: l[0].y, label: l[0].title }; }
+        if (!b || b.covered) { used = b; await sleep(300); continue; }
+        used = b;
+        await ctx.pressAt(b.x, b.y);
         const t0 = Date.now();
-        while (Date.now() - t0 < 3000) { await sleep(150); if ((await ctx.fsState()) === !!on) return; }
+        while (Date.now() - t0 < 2500) { await sleep(100); if ((await ctx.fsState()) === !!on) break; }
+        if ((await ctx.fsState()) === !!on) break;
       }
-      const seen = (await ctx.findBtns(/./)).map((b) => b.title).join(", ");
-      throw new Error(`fullscreen button did not switch to ${on ? "fullscreen" : "inline"}; rail titles seen: ${seen || "(none)"}`);
+      if ((await ctx.fsState()) !== !!on) {
+        const seen = (await ctx.findBtns(/./)).map((b) => b.title).join(", ");
+        throw new Error(`fullscreen button did not switch to ${on ? "fullscreen" : "inline"} in 4 attempts; last button ${used ? `${used.covered ? "covered" : J(used.label)} at ${used.x},${used.y}` : "not found"}; rail labels seen: ${seen || "(none)"}`);
+      }
+      await ctx.refreshSize();
+      await probe.quiet({ gap: 600, max: 6000 });
     };
     ctx.refreshSize = async () => { const s = await c.evJson(`(() => { const v = ${VIEW_JS}; if (!v) return "null"; const r = v.root.getBoundingClientRect(); return JSON.stringify({ w: r.width, h: r.height }); })()`); if (s) ctx.size = s; return s; };
     ctx.at = (zoom, dx = 0, dy = 0) => {
@@ -266,23 +311,50 @@ export async function main(argv, deps = {}) {
       await c.ev(`(${VIEW_JS}).showAt(${J(cam)}), 1`);
       if (settle) await probe.quiet({ gap: 800, max: 8000 });
     };
+    // write the camera key and the live view together; the view's own throttled write must not land after ours
+    ctx.aim = async (cam) => {
+      const live = await c.ev(`(() => { const v = ${VIEW_JS}; if (!v) return false; v.showAt(${J(cam)}); return true; })()`);
+      await bw.setCamera(c, cam);
+      await sleep(350);
+      await bw.setCamera(c, cam);
+      return !!live;
+    };
     ctx.computeHome = async () => {
+      // home comes from Svy's saved camera (the first saveCamera) and the root size now; never from a later live camera
       const size = await ctx.refreshSize();
       let cam = null;
       try { cam = saved ? JSON.parse(saved) : null; } catch { cam = null; }
-      if (cam && size && cam.zoom) { ctx.home = { x: (size.w / 2 - cam.x) / cam.zoom, y: (size.h / 2 - cam.y) / cam.zoom }; return; }
+      if (cam && size && cam.zoom) {
+        ctx.home = { x: (size.w / 2 - cam.x) / cam.zoom, y: (size.h / 2 - cam.y) / cam.zoom };
+        await ctx.show(cam);
+        const cd = await probe.cards();
+        if (cd && cd.n > 0) { console.log(`home world point ${Math.round(ctx.home.x)}, ${Math.round(ctx.home.y)} from saved camera ${saved}`); return; }
+        console.log(`saved camera ${saved} shows no cards; using the densest cell`);
+      } else console.log("no saved camera; using the densest cell");
       const cells = await c.evJson(`(() => { const v = ${VIEW_JS}; const src = v && v.snapshotSource(); if (!src) return "[]"; const m = new Map();
         for (const [uid, it] of src.board.items) { if (it.type === "section") continue; const r = src.rects.get(uid); if (!r) continue; const k = Math.floor((r.x + r.w / 2) / 2000) + "," + Math.floor((r.y + r.h / 2) / 2000); m.set(k, (m.get(k) || 0) + 1); }
         return JSON.stringify([...m].map(([k, n]) => { const [x, y] = k.split(",").map(Number); return { x, y, n }; })); })()`);
       cells.sort((p, q) => q.n - p.n || p.x - q.x || p.y - q.y);
       ctx.home = cells.length ? { x: cells[0].x * 2000 + 1000, y: cells[0].y * 2000 + 1000 } : { x: 0, y: 0 };
+      console.log(`home world point ${ctx.home.x}, ${ctx.home.y} (densest cell)`);
     };
 
-    const atBoard = () => c.evJson(`JSON.stringify((() => { const v = ${VIEW_JS}; return !!(v && v.root.getAttribute("data-board") === ${J(BOARD)} && v.root.querySelector(".pxd-item")); })())`);
+    const atBoard = () => c.evJson(`JSON.stringify((() => { const v = ${VIEW_JS}; return !!(v && v.root.getAttribute("data-board") === ${J(BOARD)} && v.snapshotSource()); })())`);
+    // cards must be on screen: an empty camera is a live board but nothing to measure
+    const cardsOnScreen = async () => {
+      if (!ctx.home || !ctx.size) return;
+      const cd = await probe.cards();
+      if (cd && cd.n === 0) await ctx.show(ctx.at(1.07));
+    };
     const ensureBoard = async () => {
+      await ensureBoard0();
+      if (!(await ctx.fsState())) await ctx.revealBoard();
+      await cardsOnScreen();
+    };
+    const ensureBoard0 = async () => {
       if (await atBoard()) { if (ctx.fsWanted && !(await ctx.fsState())) await ctx.fullscreen(true); return; }
       const crumb = await c.evJson(`(() => { const v = ${VIEW_JS}; const b = v && v.root.querySelector('.pxd-crumb[data-index="0"]'); if (!b) return "null"; const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2 }); })()`);
-      if (crumb) { await input.click(crumb.x, crumb.y); await sleep(500); }
+      if (crumb) { await ctx.pressAt(crumb.x, crumb.y); await sleep(500); }
       if (!(await atBoard())) {
         if (ctx.home) await ctx.cam.set(ctx.at(1.07));
         await bw.openBoardPage(c);
@@ -298,6 +370,7 @@ export async function main(argv, deps = {}) {
       if (needs === "any") return;
       if (needs === "daily") {
         const h = await bw.hashOf(c);
+        if (ctx.home && (await atBoard())) await ctx.aim(ctx.at(1.07));
         if (/\/page\//.test(h) || (await atBoard())) { await bw.openDaily(c); await sleep(1500); await probe.quiet({ gap: 1500, max: 15000 }); }
         return;
       }
@@ -311,32 +384,46 @@ export async function main(argv, deps = {}) {
 
     // ---- build
     const build = { dir: a.build || "installed", sha: null };
-    if (a.build) {
+    if (a.build && !a.cleanup) {
       served = await serveBuild(c, resolve(a.build));
       build.sha = served.sha;
       await ensureBoard();
+      let svCam = null;
+      try { svCam = saved ? JSON.parse(saved) : null; } catch { svCam = null; }
+      if (svCam && (await c.ev(`!!(${VIEW_JS})`))) await ctx.aim(svCam); // the reload lands where Svy works
       await c.send("Page.reload", { ignoreCache: false });
       await sleep(1500);
       await bw.waitLive(c, { timeout: 120000 });
       await ctx.afterReload();
+      await bw.restoreSidebar(c);
+      await probe.quiet({ gap: 1000, max: 15000 });
       if (!(served.served.js >= 1 && served.served.css >= 1)) throw new Error(`the build was not served: js ${served.served.js}, css ${served.served.css} (the installed extension is still running)`);
       console.log(`serving ${build.dir} sha ${build.sha} (js ${served.served.js}, css ${served.served.css})`);
     }
 
     // ---- first board open, fullscreen, home
-    await ensureBoard();
-    if (!a.inline) { await ctx.fullscreen(true); ctx.fsWanted = true; }
+    await ensureBoard(); // no fullscreen is forced here (fsWanted is still false)
+    if (a.cleanup) {
+      await ctx.computeHome();
+      const mod = (all.mods || {}).edit;
+      if (!mod || typeof mod.cleanupAll !== "function") { console.log("cleanup " + J({ error: "scenarios/edit.mjs has no cleanupAll export" })); return 1; }
+      let res = null, ver = null;
+      res = await mod.cleanupAll(ctx);
+      try { ver = typeof mod.verifyClean === "function" ? await mod.verifyClean(ctx) : null; } catch { ver = null; /* no before-snapshot: the sweep result stands alone */ }
+      const len = (x) => (Array.isArray(x) ? x.length : Number(x) || 0);
+      const left = (res && res.left) || [];
+      const markers = ver && ver.markerBlocks != null ? ver.markerBlocks : null;
+      console.log("cleanup " + J({ found: res && res.found != null ? res.found : null, deleted: res && res.deleted != null ? res.deleted : null, left, refused: (res && res.refused) || [], clean: ver ? ver.clean : null, markerBlocks: markers }));
+      return len(left) === 0 && !(markers > 0) ? 0 : 1;
+    }
+    if (!a.inline) {
+      try { await ctx.fullscreen(true); ctx.fsWanted = true; }
+      catch (e) { console.error(`fullscreen failed, continuing inline: ${String(e.message || e).slice(0, 300)}`); ctx.fsWanted = false; }
+    }
     await ctx.computeHome();
     await ctx.cam.restore();
     await ctx.show(ctx.at(1.07));
     const version = (await probe.info()).version || win.version;
-
-    if (a.cleanup) {
-      const mod = (all.mods || {}).edit;
-      if (!mod || typeof mod.cleanupAll !== "function") console.log("scenarios/edit.mjs has no cleanupAll export; nothing to do");
-      else console.log(JSON.stringify(await mod.cleanupAll(ctx)));
-      return 0;
-    }
 
     // ---- one scenario run
     const recFails = { n: 0 };
@@ -358,11 +445,14 @@ export async function main(argv, deps = {}) {
 
     async function runOne(s, i, traced) {
       const line = baseLine(s, i, traced);
+      const tStart = Date.now();
       let info0 = null, tracing = false, traceFile = null;
       try {
         await ctx.ensure(s.needs);
         if (s.leaves) await ctx.pace();
         try { info0 = await probe.info(); } catch { /* board not mounted for daily */ }
+        let fs0 = null;
+        try { fs0 = await ctx.fsState(); } catch { /* ignore */ }
         if (traced) { await ctx.trace.start(); tracing = true; ctx.trace.on = true; }
         const res = (await withTimeout(Promise.resolve(s.run(ctx)), timeoutFor(s), `${s.name} timed out after ${Math.round(timeoutFor(s) / 1000)} s`)) || {};
         if (tracing) { traceFile = await ctx.trace.stop(`${s.group}-${s.name}-${i + 1}`); tracing = false; }
@@ -382,7 +472,7 @@ export async function main(argv, deps = {}) {
           line.ttnp = res.ttnp != null ? res.ttnp : null;
           if (res.extra) line.extra = res.extra;
         }
-        line.ctx = { board: info0 && info0.board, zoom0: info0 && info0.zoom, zoom1: info1 && info1.zoom, lod0: info0 && info0.lod, lod1: info1 && info1.lod, items: info0 && info0.items, camera: info0 ? { x: info0.x, y: info0.y, zoom: info0.zoom } : null };
+        line.ctx = { board: info0 && info0.board, zoom0: info0 && info0.zoom, zoom1: info1 && info1.zoom, lod0: info0 && info0.lod, lod1: info1 && info1.lod, items: info0 && info0.items, camera: info0 ? { x: info0.x, y: info0.y, zoom: info0.zoom } : null, fullscreen: fs0 };
         if (traceFile) {
           const split = await analyseTrace(traceFile.file, { names });
           const tasks = (split.tasks || []).slice().sort((p, q) => q.d - p.d).slice(0, 12);
@@ -411,6 +501,8 @@ export async function main(argv, deps = {}) {
       } finally {
         ctx.trace.on = false;
       }
+      line.secs = Math.round((Date.now() - tStart) / 100) / 10;
+      durs.push([`${s.group}/${s.name}${traced ? " (traced)" : ""}`, line.secs]);
       await appendFile(resultsFile, JSON.stringify(line) + "\n");
       lines.push(line);
       const sm = line;
@@ -419,10 +511,12 @@ export async function main(argv, deps = {}) {
       return !line.fatal;
     }
 
+    const durs = [];
     let go = true;
     for (let i = 0; i < a.n && go && !aborted; i++) for (const s of selected) { if (aborted || !(go = await runOne(s, i, false))) break; }
     if (a.trace && go) for (const s of selected) { if (aborted || !(go = await runOne(s, 0, true))) break; }
     if (!go) console.error("stopped: recovery failed twice in a row (use --keep-going to continue)");
+    if (a.quick) { for (const [n, t] of durs) console.log(`${n.padEnd(32)} ${t} s`); console.log(`${"total".padEnd(32)} ${Math.round(durs.reduce((x, [, t]) => x + t, 0) * 10) / 10} s`); }
     exitCode = lines.some((l) => l.err) ? 1 : 0;
     console.log(`${lines.length} lines in ${resultsFile}${exitCode ? " (some failed)" : ""}`);
     return exitCode;

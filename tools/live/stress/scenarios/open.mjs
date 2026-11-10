@@ -42,7 +42,7 @@ async function openTimed(ctx, extraPre = "") {
 
 async function reload(ctx) {
   const { c } = ctx;
-  await ctx.cam.set(ctx.at(1.07));
+  await ctx.aim(ctx.at(1.07));
   await saveSidebar(c);
   await c.send("Page.reload", { ignoreCache: false });
   await sleep(1500);
@@ -98,7 +98,7 @@ async function clickSel(ctx, sel) {
   const r = await ctx.c.evJson(`(() => { const el = document.querySelector(${J(sel)}); if (!el) return "null"; const b = el.getBoundingClientRect();
     const inside = b.width > 0 && b.height > 0 && b.left >= 0 && b.top >= 0 && b.right <= innerWidth && b.bottom <= innerHeight; return JSON.stringify({ inside, x: b.x + b.width / 2, y: b.y + b.height / 2 }); })()`);
   if (!r) return false;
-  if (r.inside) await ctx.input.click(r.x, r.y);
+  if (r.inside) await ctx.pressAt(r.x, r.y);
   else await ctx.c.ev(`(document.querySelector(${J(sel)}).click(), 1)`);
   return true;
 }
@@ -149,14 +149,21 @@ async function crumbBack(ctx) {
 async function fullscreenFlip(ctx, to) {
   if ((await ctx.fsState()) === to) await ctx.fullscreen(!to); // start from the other state
   await ctx.probe.quiet({ gap: 1000, max: 10000 });
+  let b = null;
+  for (let k = 0; k < 6; k++) { b = await ctx.railBtn("rail.fullscreen"); if (b && !b.covered) break; await sleep(300); b = null; }
+  if (!b) throw new Error("rail.fullscreen button not found or covered");
   await ctx.probe.arm({});
   const t0 = Date.now();
-  await ctx.fullscreen(to);
+  await ctx.pressAt(b.x, b.y, { settle: 200 });
+  let flipped = false;
+  while (Date.now() - t0 < 5000) { if ((await ctx.fsState()) === to) { flipped = true; break; } await sleep(100); }
   const flipMs = Date.now() - t0;
+  if (!flipped) { await ctx.probe.take(); throw new Error(`fullscreen press at ${b.x},${b.y} (${b.label}) did not flip within 5 s`); }
+  await ctx.refreshSize();
   await ctx.probe.quiet({ gap: 1500, max: 15000 });
   const summary = await take(ctx);
   if (!to && ctx.fsWanted) await ctx.fullscreen(true);
-  return { summary, extra: { flipMs, to: to ? "fullscreen" : "inline" } };
+  return { summary, extra: { flipMs, to: to ? "fullscreen" : "inline", label: b.label } };
 }
 
 async function sidebarOpen(ctx) {

@@ -62,7 +62,8 @@ async function soak(ctx) {
   const minutes = ctx.opts.soakMin || 30;
   const CYCLE = 30000;
   const cycles = Math.floor((minutes * 60000) / CYCLE);
-  const { c, input } = ctx;
+  const { c } = ctx;
+  const em = ctx.editModule && typeof ctx.editModule.soakEdit === "function" ? ctx.editModule : null;
   await c.send("Performance.enable");
   ctx.onCleanup(async () => { if (!c.closed) await c.send("Performance.disable"); }, "Performance.disable");
   await ctx.show(ctx.at(1.07));
@@ -77,7 +78,10 @@ async function soak(ctx) {
     did.pan = (await drag(ctx, -1)) && (await drag(ctx, 1));
     for (const re of [/zoom out/i, /zoom out/i, /zoom in/i, /zoom in/i]) { if (await ctx.clickBtn(re)) did.zoom++; await sleep(400); }
     const p = await ctx.freePoint(0, 1);
-    if (p) { await input.click(p.x, p.y); did.click = true; }
+    if (p) { await ctx.pressAt(p.x, p.y); did.click = true; }
+    if (em && k % 2 === 1) {
+      try { did.edit = (await em.soakEdit(ctx)) ?? "ok"; } catch (e) { did.edit = `error: ${String((e && e.message) || e).slice(0, 200)}`; }
+    }
     const rest = start + CYCLE - Date.now();
     if (rest > 0) await sleep(rest);
     summary = await ctx.probe.take();
@@ -95,7 +99,12 @@ async function soak(ctx) {
   const last5 = group(samples.filter((s) => s.t >= minutes * 60 - win));
   const pctOf = (a, b) => (a && b != null && a !== 0 ? r1(((b - a) / a) * 100) : null);
   const growth = first5 && last5 ? { heapPct: pctOf(first5.heap, last5.heap), nodesPct: pctOf(first5.nodes, last5.nodes), stallPct: pctOf(first5.stallMsPerMin, last5.stallMsPerMin) } : null;
-  return { summary, extra: { minutes, cycles, samples, first5, last5, growth } };
+  const extra = { minutes, cycles, samples, first5, last5, growth };
+  if (!em) extra.edits = "none (edit module not loaded)";
+  else if (typeof em.cleanupAll === "function") {
+    try { extra.clean = await em.cleanupAll(ctx); } catch (e) { extra.clean = `error: ${String((e && e.message) || e).slice(0, 200)}`; }
+  }
+  return { summary, extra };
 }
 
 export const scenarios = [

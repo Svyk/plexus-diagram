@@ -1235,17 +1235,21 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // again later instead of falling back to one whole pull.
   const slicedKeepOn = () => { try { return notedSpeedFlags().slicedKeep !== false; } catch { return true; } };
   const KEEP_PART_MS = 8;
-  const KEEP_STATS_MIN = 2;
-  const KEEP_STATS_FIRST = 4;
-  const KEEP_STATS_MAX = 240;
+  // Targets outside the board (page cards, blocks of other pages) per cardStats read: one page can be a read of
+  // 0.1 s by itself (every block of the page, every block that references it), so they go one at a time until
+  // they prove cheap, and each read is a slice of its own.
+  const KEEP_STATS_MIN = 1;
+  const KEEP_STATS_FIRST = 1;
+  const KEEP_STATS_MAX = 8;
+  const KEEP_BATCH_MIN = 8;
   const KEEP_OWN_FIRST = 100;
   const KEEP_OWN_MAX = 500;
   const KEEP_REFS_FIRST = 40;
   const KEEP_REFS_MAX = 160;
   // Link rows per read. A read costs about 9 ms on the PhD main board whatever it asks for, plus about 0.15 ms a
-  // card: groups of 4 were 379 reads and 3.6 s for the board, 64 are 24 reads and about 0.45 s. Each read is a
-  // slice of its own.
-  const KEEP_LINKS_PART = 64;
+  // card (more for a card many blocks reference): groups of 4 were 379 reads and 3.6 s for the board, 64 were 25
+  // reads of 27 ms with a few of 50-60 ms. Each read is a slice of its own.
+  const KEEP_LINKS_PART = 32;
   // The refresh read behind a store: smaller pulls than the open check's (250 blocks were 40-46 ms slices there).
   const KEEP_READ_SLICE_MS = 8;
   const KEEP_READ_BATCH = 100;
@@ -1422,7 +1426,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
             }
           }
           ni = end;
-          ownN = keepGroup(ownN, clock() - at, KEEP_STATS_MIN, KEEP_OWN_MAX);
+          ownN = keepGroup(ownN, clock() - at, KEEP_BATCH_MIN, KEEP_OWN_MAX);
           return false;
         }
         // Running sums: the TODO and DONE blocks under a block are a difference of two of them.
@@ -1468,7 +1472,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           }
           ri += group.length;
           parts.pulled += group.length;
-          refsN = keepGroup(refsN, clock() - at, KEEP_STATS_MIN, KEEP_REFS_MAX);
+          refsN = keepGroup(refsN, clock() - at, KEEP_BATCH_MIN, KEEP_REFS_MAX);
           return false;
         }
         // The cache takes them when the pass is whole, as a finished cardStats job does.
@@ -1577,7 +1581,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       result: () => ({ badges, links }),
       get phase() { return phase; },
       // True when the next part is one that cannot stop half way.
-      get wholePart() { return phase === "board" || phase === "rows" || phase === "reduce"; },
+      get wholePart() { return phase === "board" || phase === "rows" || phase === "reduce" || (phase === "stats" && !statsFailed && si < stale.length); },
       parts,
     };
   };

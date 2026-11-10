@@ -250,8 +250,10 @@ test("on the PhD-shaped board no part of the store job or its refresh read runs 
   assert.ok(readMax <= BUDGET_MS, `longest refresh read part ${readMax.toFixed(1)} ms (budget ${BUDGET_MS})`);
   assert.ok(run.reads.own.length > 5 && run.reads.refs.length > 5, `the board's blocks were read in ${run.reads.own.length} status pulls and ${run.reads.refs.length} ref pulls`);
   assert.ok(Math.max(...run.reads.own) <= 500 && Math.max(...run.reads.refs) <= 160, "bounded pulls");
-  assert.ok(run.reads.stats.length >= 1 && Math.max(...run.reads.stats) <= 240, `targets outside the board go through cardStats, a few at a time: ${run.reads.stats}`);
-  assert.ok(Math.max(...run.links) <= 64, `largest link read: ${Math.max(...run.links)} targets`);
+  // (The open's own badge priming also reads through cardStats, 20 targets a time; the store job's reads for the
+  // two targets outside the board are among these.)
+  assert.ok(run.reads.stats.length >= 1 && Math.max(...run.reads.stats) <= 80, `no stats read for the whole board: ${Math.max(...run.reads.stats)}`);
+  assert.ok(Math.max(...run.links) <= 32, `largest link read: ${Math.max(...run.links)} targets`);
   // The second store follows the first within the stats cache's two minutes: only the new card is read.
   assert.ok(run.second.stats.keepStatsPulled <= 4, `stats pulled for the edit: ${run.second.stats.keepStatsPulled}`);
   assert.ok(run.second.stats.keepStatsReused > 20000, `stats reused: ${run.second.stats.keepStatsReused}`);

@@ -163,20 +163,29 @@ export async function main(argv, deps = {}) {
 
     const probeSrc = await readFile(join(HERE, "lib", "probe-page.js"), "utf8");
     await c.ev(probeSrc);
+    await c.send("Page.enable"); // the new-document script does nothing on this target until Page is enabled
     const added = await c.send("Page.addScriptToEvaluateOnNewDocument", { source: probeSrc });
     scriptId = added && added.result && added.result.identifier;
 
     input = createInput(c);
     const J = (s) => JSON.stringify(s);
     const evj = (expr, o) => c.evJson(`JSON.stringify((${expr}) ?? null)`, o);
+    // a probe call that finds no probe (new document without the script) installs it once and retries
+    const guard = async (fn) => {
+      try { return await fn(); } catch (e) {
+        if (!/__pxdStress|Cannot read properties of undefined/.test(String((e && e.message) || e))) throw e;
+        await c.ev(probeSrc);
+        return fn();
+      }
+    };
     const probe = {
-      arm: (o = {}) => evj(`${PX}.arm(${J(o)})`),
-      take: () => evj(`${PX}.take()`),
-      quiet: (o = {}) => c.ev(`${PX}.quiet(${J(o)})`, { timeout: (o.max || 20000) + 30000 }),
-      info: () => evj(`${PX}.info()`),
-      cards: () => evj(`${PX}.cards()`),
-      mark: (n) => c.ev(`(${PX}.mark(${J(n)}), 1)`),
-      act: () => c.ev(`(${PX}.act(), 1)`),
+      arm: (o = {}) => guard(() => evj(`${PX}.arm(${J(o)})`)),
+      take: () => guard(() => evj(`${PX}.take()`)),
+      quiet: (o = {}) => guard(() => c.ev(`${PX}.quiet(${J(o)})`, { timeout: (o.max || 20000) + 30000 })),
+      info: () => guard(() => evj(`${PX}.info()`)),
+      cards: () => guard(() => evj(`${PX}.cards()`)),
+      mark: (n) => guard(() => c.ev(`(${PX}.mark(${J(n)}), 1)`)),
+      act: () => guard(() => c.ev(`(${PX}.act(), 1)`)),
       install: async () => { await c.ev(probeSrc); },
     };
 
@@ -188,6 +197,7 @@ export async function main(argv, deps = {}) {
       input = createInput(c);
       if (ctx) { ctx.c = c; ctx.input = input; }
       await c.ev(probeSrc);
+      await c.send("Page.enable");
       const r = await c.send("Page.addScriptToEvaluateOnNewDocument", { source: probeSrc });
       scriptId = r && r.result && r.result.identifier;
       restoreConfirm = await bw.stubConfirm(c, false);
@@ -208,6 +218,7 @@ export async function main(argv, deps = {}) {
 
     // ---- helpers shared with the scenarios
     ctx.afterReload = async () => {
+      if ((await c.ev(`typeof window.__pxdStress`)) === "undefined") { await c.ev(probeSrc); console.log("probe was not installed by the new-document script; installed late (cold marks lost)"); }
       if (restoreConfirm) { try { await restoreConfirm(); } catch { /* old document */ } }
       restoreConfirm = await bw.stubConfirm(c, false);
       await bw.saveCamera(c);
@@ -407,14 +418,16 @@ export async function main(argv, deps = {}) {
       await ctx.computeHome();
       const mod = (all.mods || {}).edit;
       if (!mod || typeof mod.cleanupAll !== "function") { console.log("cleanup " + J({ error: "scenarios/edit.mjs has no cleanupAll export" })); return 1; }
-      let res = null, ver = null;
-      res = await mod.cleanupAll(ctx);
-      try { ver = typeof mod.verifyClean === "function" ? await mod.verifyClean(ctx) : null; } catch { ver = null; /* no before-snapshot: the sweep result stands alone */ }
+      const res = await mod.cleanupAll(ctx);
+      let ver = null;
+      if (typeof mod.leftovers === "function") { try { ver = await mod.leftovers(ctx); } catch { ver = null; } }
+      else if (typeof mod.verifyClean === "function") { try { ver = await mod.verifyClean(ctx); } catch { ver = null; /* no before-snapshot */ } }
       const len = (x) => (Array.isArray(x) ? x.length : Number(x) || 0);
-      const left = (res && res.left) || [];
+      const left = (res && res.left) || [], refused = (res && res.refused) || [];
       const markers = ver && ver.markerBlocks != null ? ver.markerBlocks : null;
-      console.log("cleanup " + J({ found: res && res.found != null ? res.found : null, deleted: res && res.deleted != null ? res.deleted : null, left, refused: (res && res.refused) || [], clean: ver ? ver.clean : null, markerBlocks: markers }));
-      return len(left) === 0 && !(markers > 0) ? 0 : 1;
+      const ledgerLeft = ver && ver.ledgerLeft != null ? ver.ledgerLeft : [];
+      console.log("cleanup " + J({ found: res && res.found != null ? res.found : null, deleted: res && res.deleted != null ? res.deleted : null, left, refused, markerBlocks: markers, ledgerLeft, clean: ver ? ver.clean : null }));
+      return len(left) === 0 && markers === 0 && len(ledgerLeft) === 0 && len(refused) === 0 ? 0 : 1;
     }
     if (!a.inline) {
       try { await ctx.fullscreen(true); ctx.fsWanted = true; }
@@ -518,6 +531,17 @@ export async function main(argv, deps = {}) {
     if (!go) console.error("stopped: recovery failed twice in a row (use --keep-going to continue)");
     if (a.quick) { for (const [n, t] of durs) console.log(`${n.padEnd(32)} ${t} s`); console.log(`${"total".padEnd(32)} ${Math.round(durs.reduce((x, [, t]) => x + t, 0) * 10) / 10} s`); }
     exitCode = lines.some((l) => l.err) ? 1 : 0;
+    const em = (all.mods || {}).edit;
+    if (em && typeof em.leftovers === "function" && selected.some((s) => (s.group === "build" || s.group === "type") && lines.some((l) => l.scenario === s.name && l.group === s.group))) {
+      // the scenarios' own cleanups first (they run once; the final cleanup finds the list empty)
+      for (const [label, fn] of cleanups.splice(0).reverse()) { try { await fn(); console.log(`cleanup: ${label} ok`); } catch (e) { console.error(`cleanup: ${label} failed: ${String((e && e.message) || e).slice(0, 200)}`); } }
+      try {
+        const lo = await em.leftovers(ctx);
+        const bad = !(lo && lo.clean);
+        console.log(`${bad ? "WARNING " : ""}leftovers ${J(lo)}`);
+        if (bad) exitCode = 1;
+      } catch (e) { console.log(`WARNING leftovers failed: ${String((e && e.message) || e).slice(0, 200)}`); exitCode = 1; }
+    }
     console.log(`${lines.length} lines in ${resultsFile}${exitCode ? " (some failed)" : ""}`);
     return exitCode;
   } catch (e) {

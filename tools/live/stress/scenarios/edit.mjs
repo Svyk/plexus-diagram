@@ -444,6 +444,18 @@ export async function verifyClean(ctx) {
   return res;
 }
 
+// leftovers of earlier runs, by marker and ledger only (no before-snapshot; Roam API only, works with the board closed)
+export async function leftovers(ctx) {
+  try {
+    const marker = await findMarker(ctx);
+    const uids = [...new Set([...S.ledger, ...(await readLedger()).map((r) => r.uid)])];
+    const ledgerLeft = await existing(ctx, uids);
+    return { markerBlocks: marker.length, ledgerLeft, clean: marker.length === 0 && ledgerLeft.length === 0 };
+  } catch (e) {
+    return { error: String((e && e.message) || e).slice(0, 300), clean: false };
+  }
+}
+
 // ---- the scratch section
 async function onBoard(ctx, uid) { return !!(uid && (await page(ctx, `rectOf(${J(uid)})`))); }
 
@@ -719,22 +731,35 @@ async function undoRedo(ctx) {
   if (b) await look(ctx, b.x + b.w + 80, b.y + 30);
   const p = await emptyScratchPoint(ctx);
   if (!p) return { skip: "no empty in-scratch point" };
-  if (await page(ctx, "editing()") || await page(ctx, "fieldFocused()")) return { skip: "a text field has focus" };
+  if ((await page(ctx, "editing()")) || (await page(ctx, "fieldFocused()"))) return { skip: "a text field has focus" };
   const hasEdge = async () => { const snap = await readSnap(ctx); return [...snap.edges.values()].find((e) => e.from === e0.from && e.to === e0.to) || null; };
-  const s1 = await estep(ctx, "undo", async () => { await ctx.input.key("z", { mods: ["meta"] }); });
-  let back = null, why = null;
-  const gone = !(await hasEdge());
-  if (!gone) {
-    why = "undo did not remove the edge (it undid something else); redone once";
-    await ctx.input.key("z", { mods: ["meta", "shift"] });
-    await sleep(800);
-    return finish(s1, { ok: false, why, undo: row(s1) }, evd(s1, "keydown"));
+  const descSet = async () => { const snap = await readSnap(ctx); return new Set(descendantsOf(snap, S.section)); };
+  const d0 = await descSet();
+  const sums = [], rows = [];
+  let n = 0, gone = false, why = null;
+  // the top of the undo stack is not always the edge (the board can write a second change of its own after a connect)
+  for (let i = 1; i <= 3 && !gone; i++) {
+    const s = await estep(ctx, `undo-${i}`, async () => { await ctx.input.key("z", { mods: ["meta"] }); });
+    sums.push(s); rows.push(row(s)); n = i;
+    gone = !(await hasEdge());
   }
-  const s2 = await estep(ctx, "redo", async () => { await ctx.input.key("z", { mods: ["meta", "shift"] }); });
+  const undoRow = rows[rows.length - 1];
+  const firstKey = evd(sums[0], "keydown");
+  let redoRow = null, back = null;
+  for (let i = 1; i <= n; i++) {
+    const s = await estep(ctx, `redo-${i}`, async () => { await ctx.input.key("z", { mods: ["meta", "shift"] }); });
+    sums.push(s); redoRow = row(s); rows.push(redoRow);
+  }
   back = await hasEdge();
-  if (back) { S.edge = { uid: back.uid, from: back.from, to: back.to }; if (!S.ledger.includes(back.uid)) await ledger(back.uid, "edge"); } else why = "redo did not bring the edge back";
-  const sum = merge("undo-redo", [s1, s2]);
-  return { summary: sum, ttnp: med([evd(s1, "keydown") ?? FAST, evd(s2, "keydown") ?? FAST]), extra: { undo: row(s1), redo: row(s2), ok: gone && !!back, why, tail: tailOf([s1, s2]) } };
+  if (back) { S.edge = { uid: back.uid, from: back.from, to: back.to }; if (!S.ledger.includes(back.uid)) await ledger(back.uid, "edge"); }
+  const d1 = await descSet();
+  const added = [...d1].filter((u) => !d0.has(u)), missing = [...d0].filter((u) => !d1.has(u));
+  const scratchSame = missing.length === 0 && added.length <= 1;
+  if (!gone) why = "3 undos did not remove the edge; redone 3 times";
+  else if (!back) why = "redo did not bring the edge back";
+  else if (!scratchSame) why = "scratch descendants differ after undo and redo";
+  const sum = merge("undo-redo", sums);
+  return { summary: sum, ttnp: firstKey ?? FAST, extra: { undos: n, undo: undoRow, redo: redoRow, steps: rows, ok: gone && !!back, why, scratchSame, scratchDiff: { added: added.slice(0, 5), missing: missing.slice(0, 5) }, tail: tailOf(sums) } };
 }
 
 async function deleteCard(ctx) {

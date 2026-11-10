@@ -8,11 +8,14 @@ The board is block `KT_KHnsXe` in the `Readwisenotes` graph (about 1500 items, n
 
 - **Bench window.** Only a `Readwisenotes` window marked `sessionStorage["pxd-bench"] === "1"` may be reloaded, navigated, sent input, or used to write Roam data.
 - **Svy's own window** runs the passive recorder (`window.__pxdRec`). `record.mjs` may install observers in it and read it. Nothing else touches it. A window whose title starts with `Svy` is never touched at all.
-- **Lock file** `~/wo/bench-<first 8 chars of target id>.lock` (`<session> <ISO time> pid=<pid>`). A live lock held by another process stops the run. A dead or six-hour-old lock is replaced.
-- **Camera key** `plexus-diagram:vp:Readwisenotes:KT_KHnsXe` is shared by both windows. The runner saves it, and puts back the newest value Svy's window wrote (or the saved one) on every exit.
-- **Scratch section and cleanup.** Edit scenarios write only inside a scratch section far from real cards. `run.mjs --cleanup` removes what they made and must print `"clean": true`.
-- **Write pacing.** At most 1200 Roam writes a minute (the app's limit is 1500), and a leave-and-return scenario waits 40 s after the last one.
-- `window.confirm` is stubbed to answer "no" during a run and restored on exit.
+- **Lock file** `~/wo/bench-<first 8 chars of target id>.lock` (`<session> <ISO time> pid=<pid>`). A live lock held by another process stops the run. A dead or six-hour-old lock is replaced. The lock is released between `run.mjs` calls and between `ab.mjs` arms, never inside one.
+- **Input.** Every press is hit-tested against the DOM and the world rects first (a card without a shell is still pressable). Clicks are held 120 ms.
+- **Camera.** The key `plexus-diagram:vp:Readwisenotes:KT_KHnsXe` is shared by both windows. The runner aims the camera before a reload and leaves the bench view at the saved camera when it ends. It puts back the newest value Svy's window wrote (or the saved one) on every exit.
+- **Sidebar.** A right sidebar left open is closed before the next scenario.
+- **CDP.** `Page.enable` is sent so the probe installs on reload. Script sources are never pulled over CDP (large replies close the socket). `window.confirm` is stubbed to answer "no" during a run and restored on exit.
+- **Scratch section and cleanup.** Edit scenarios write only inside a scratch section far from real cards. Every run that edits prints a `leftovers {...}` line at its end. `run.mjs --cleanup` removes what is left and prints one `cleanup {...}` line with `markerBlocks`, `ledgerLeft` and `clean`; it exits 0 only when `clean` is true.
+- **Write pacing.** At most 1200 Roam writes a minute (the app's limit is 1500). A leave-and-return scenario waits 40 s after the last one.
+- **Edits sync.** Edits made in the bench window sync to every other window of the graph and cost each of them a freeze on 3.39.1 (Svy's window included). Keep edit passes few.
 
 ## Set-up
 
@@ -29,60 +32,140 @@ Results go to `OUT_DIR`, which is `$STRESS_OUT` or `~/wo/pxd-fast`:
 | `state/` | saved camera and similar |
 | `noise.jsonl` | A/A noise floors |
 | `ab.jsonl` | A/B tables |
+| `builds/` | frozen copies of builds (`extension.js` + `extension.css`) |
+
+## Typical round
+
+```bash
+# 1. record real use in Svy's window, then analyse it
+node tools/live/stress/record.mjs start <svyId>
+node tools/live/stress/record.mjs dump  <svyId> ~/wo/pxd-fast/rec/real-2.json --stop
+node tools/live/stress/analyse.mjs ~/wo/pxd-fast/rec/real-2.json --json ~/wo/pxd-fast/rec/real-2.analysis.json
+
+# 2. baseline on a frozen build
+node tools/live/stress/run.mjs --build ~/wo/pxd-fast/builds/3.39.1 --n 3 --label base
+
+# 3. traced pass (no timed repeats), then readable profiles from an unminified build
+node tools/live/stress/run.mjs --build ~/wo/pxd-fast/builds/3.39.1 --trace-only --label base
+node tools/live/stress/devbuild.mjs . ~/wo/pxd-fast/builds/dev
+node tools/live/stress/run.mjs --build ~/wo/pxd-fast/builds/dev --trace-only --label dev
+
+# 4. noise floor, then the comparison
+node tools/live/stress/ab.mjs --aa --a ~/wo/pxd-fast/builds/3.39.1 --group move --label aa1
+node tools/live/stress/ab.mjs --a ~/wo/pxd-fast/builds/3.39.1 --b deploy --group move --label ab1
+
+# 5. report
+node tools/live/stress/report.mjs --label base --dev-label dev --rec rec/real-2.analysis.json --findings round-findings.jsonl --notes notes.jsonl --out ~/wo/pxd-fast/round.md
+```
 
 ## Commands
 
-```bash
-# real-use recorder, passive, in Svy's window
-node tools/live/stress/record.mjs start  <idPrefix>
-node tools/live/stress/record.mjs status <idPrefix>
-node tools/live/stress/record.mjs dump   <idPrefix> ~/wo/pxd-fast/rec/real-2.json [--stop]
-node tools/live/stress/record.mjs stop   <idPrefix>
+Always pass `--build <dir>` for numbers you mean to keep: the bench window may be running another task's build. Use a frozen copy such as `~/wo/pxd-fast/builds/3.39.1`.
 
-# turn a recording into stalls, owners, gestures and a "reproduce" block
-node tools/live/stress/analyse.mjs ~/wo/pxd-fast/rec/real-1.json --json rec/real-1.analysis.json
+```bash
+# recorder (passive, Svy's window)
+node tools/live/stress/record.mjs start|status|stop <idPrefix>
+node tools/live/stress/record.mjs dump <idPrefix> <out.json> [--stop]
+
+# recording -> stalls, owners, gestures, presses, hover, reproduce block
+node tools/live/stress/analyse.mjs <dump.json> [--wheel <recw.json>] [--json <out.json>] [--top 25]
 node tools/live/stress/analyse.mjs --selftest
 
-# the suite, in the bench window
+# suite
 node tools/live/stress/run.mjs --list
-node tools/live/stress/run.mjs --quick                      # one run of everything not heavy, about 6 min
-node tools/live/stress/run.mjs --group move --n 5 --label base
-node tools/live/stress/run.mjs --scenario zoom-btn,fit --n 3 --trace
-node tools/live/stress/run.mjs --build deploy --label try   # serve another build (extension.js + extension.css)
+node tools/live/stress/run.mjs --build <dir> --quick
+node tools/live/stress/run.mjs --build <dir> --group move --n 5 --label base
+node tools/live/stress/run.mjs --build <dir> --scenario zoom-btn,fit --n 3 --trace
+node tools/live/stress/run.mjs --label base --reanalyse
 node tools/live/stress/run.mjs --cleanup
 
-# compare two builds, interleaved
-node tools/live/stress/ab.mjs --aa --a deploy --scenario zoom-btn --label aa1       # noise floor first
-node tools/live/stress/ab.mjs --a ../base/deploy --b deploy --scenario zoom-btn --label ab1
+# unminified build for readable profiles (its timings are not baselines)
+node tools/live/stress/devbuild.mjs <repoRoot> <outDir>
 
-# round report
-node tools/live/stress/report.mjs --label base --rec rec/real-1.analysis.json --out ~/wo/pxd-fast/round0.md
-node tools/live/stress/report.mjs --label base --write-budgets
-node tools/live/stress/report.mjs --label base --findings round0-findings.jsonl --notes notes.jsonl   # ranked list with evidence check, closing notes
+# two builds, interleaved
+node tools/live/stress/ab.mjs --aa --a <dir> --scenario zoom-btn --label aa1
+node tools/live/stress/ab.mjs --a <dirA> --b <dirB> --scenario zoom-btn --label ab1
 
-# split a trace into script / style / layout / paint / gc
-node tools/live/stress/lib/trace-analyse.mjs ~/wo/pxd-fast/traces/<file>.json.gz [--json]
+# report
+node tools/live/stress/report.mjs --label base --out round.md
+
+# traces and bundles
+node tools/live/stress/lib/trace-analyse.mjs <file.json.gz> [--json]
+node tools/live/stress/lib/whereis.mjs <bundle.js> <pos> [--line N] [--src src] [--context 400]
 ```
 
-`run.mjs` flags: `--group a,b`, `--scenario a,b`, `--n 3`, `--label base`, `--build <dir>`, `--trace` (one extra traced pass per scenario), `--selectors` (selector stats in traces), `--quick` (n 1, short variants), `--soak-min 30`, `--target <idPrefix>`, `--out <dir>`, `--list`, `--dry` (print the plan, never connect), `--cleanup`, `--keep-going`, `--inline` (stay out of fullscreen), `--chain a,b`, `--timeout <ms>`. Heavy scenarios (`idle-2min`, `soak`) run only when named.
+`run.mjs` flags:
+
+| Flag | Meaning |
+|---|---|
+| `--group a,b` / `--scenario a,b` | what to run (groups: move, open, build, type, idle) |
+| `--n 3` | timed repeats |
+| `--label base` | label written on every line |
+| `--build <dir>` | serve that build (`extension.js` + `extension.css`) by Fetch interception and prove it was served |
+| `--trace` | one extra traced pass after the timed ones |
+| `--trace-only` | the traced pass only, no timed repeats |
+| `--reanalyse` | re-read the trace files of the label and append `reanalysed: true` lines |
+| `--selectors` | selector stats in traces |
+| `--quick` | n 1, short variants |
+| `--soak-min 30` | length of the soak |
+| `--target <idPrefix>`, `--out <dir>` | window and output folder |
+| `--inline` | stay out of fullscreen |
+| `--chain a,b` | nested-board uid chain |
+| `--timeout <ms>` | per-scenario limit (default 240000) |
+| `--keep-going` | continue after two recovery failures |
+| `--cleanup` | remove leftovers of edit scenarios (see Safety) |
+| `--list`, `--dry` | print scenarios or the plan; never connect |
+
+Heavy scenarios (`idle-2min`, `soak`) run only when named.
+
+Measured durations on the stress board:
+
+| Run | About |
+|---|---|
+| `--quick` (40 scenarios) | 7.5 min (move 2, open 2, build 2, type 1, idle 0.5) |
+| full pass, no `--quick` | 10 min |
+| `--trace-only`, everything | 10 min |
+| soak | 30 min |
+| A/A, 9 scenarios, n 5 | 30 min |
 
 `ab.mjs` runs `n` rounds (at least 5 unless `--force`). In even rounds the order is A then B, in odd rounds B then A. Each arm is one `run.mjs` call with `--build <dir> --n 1 --label <label>:<arm>`. It waits 40 s between arms (`--wait <s>`). `--aa` serves the same build as arms `A1` and `A2` and appends one line per scenario and metric to `noise.jsonl`. An A/B run reads the newest floor for each scenario and metric from there; a difference is only called better when it is larger than the floor. Lower is better for every metric. Metrics: `ttnp`, `stalls.total`, `stalls.worst`, `stalls.n`, `frames.max`, `content.live.p95`, `long.total`, plus numeric leaves under a scenario's `extra.metrics`.
 
-`--findings` takes JSON lines `{rank, title, cost, owner, evidence[], fix, code[], belongs}`; each evidence entry starts with a path under OUT_DIR (one `*` per segment allowed), and the report lists which files exist and warns on stderr about missing ones. `--notes` takes JSON lines `{title, text}` and prints them as the last section.
+## Report
 
-`budgets.json` holds the plan's goals under `targets` and per-scenario limits under `scenarios`. `report.mjs --write-budgets` sets `ttnp`, `stalls.total` and `stalls.worst` limits to the baseline median rounded up to the next 10. It never raises a limit.
+`report.mjs` flags: `--label`, `--out`, `--rec <analysis.json>`, `--findings <jsonl>`, `--notes <jsonl>`, `--dev-label dev`, `--title`, `--write-budgets`, `--selftest`. Paths are relative to `OUT_DIR` unless absolute.
+
+- `--findings`: JSON lines `{rank, title, cost, owner, evidence[], fix, code[], belongs}`. Each evidence entry starts with a path under `OUT_DIR` (one `*` per segment); the report checks the files and warns on stderr about missing ones.
+- `--notes`: JSON lines `{title, text}`, printed as the last section.
+- `--dev-label`: label of the traced runs on the unminified build (default `dev`).
+- `--write-budgets`: for every scenario of the label, sets `ttnp`, `stalls.total` and `stalls.worst` limits in `budgets.json` to the baseline median rounded up to the next 10. It only tightens.
+
+| Section | Holds |
+|---|---|
+| title line | date, version, window, build sha, run ids |
+| Quick check | commands a verifier can run, what they print, how long |
+| Baseline | per group: runs, ok / skipped / failed, time to next paint, stalls, frames, card delays, owner split |
+| Steps | per-step tables (bands, presses, fast clicks, hover, tail, keys, typing) |
+| Where the time goes | newest trace per scenario: ms and shares of script, style, layout, paint, gc |
+| Hot functions | top functions from the `--dev-label` traces |
+| Stall sources | stalls grouped by their biggest script, top 25 |
+| Bench against the recording | presses, hover, tail and session totals beside the recording |
+| Ranked top 10 | the findings file, with the evidence file check |
+| Roam and other extensions | time inside stalls for every owner except Plexus |
+| Noise floor | newest A/A line per scenario and metric |
+| Budgets | goals and per-scenario limits against the baseline |
+| Notes and limits | the notes file |
 
 ## Scenarios
 
-Names and titles are copied from `run.mjs --list`. Run it for the current list.
+Names and titles are copied from `run.mjs --list`.
 
-| Group | Scenario | What it does |
+| Group | Scenario | Title |
 |---|---|---|
 | move | `zoom-btn` | Rail zoom out x13 then zoom in x13, one click at a time |
 | move | `drag-pan-reading` | Drag the background 370 px at 107% zoom |
-| move | `drag-pan-small` | Same at 63% |
-| move | `drag-pan-overview` | Same at 30% |
-| move | `drag-pan-map` | Same at 12% |
+| move | `drag-pan-small` | Drag the background 370 px at 63% zoom |
+| move | `drag-pan-overview` | Drag the background 370 px at 30% zoom |
+| move | `drag-pan-map` | Drag the background 370 px at 12% zoom |
 | move | `click-empty` | Click empty background (107%, 63%, 30%) |
 | move | `click-item` | Click a card to select it, click away |
 | move | `click-edge` | Click an arrow to select it |
@@ -100,16 +183,34 @@ Names and titles are copied from `run.mjs --list`. Run it for the current list.
 | open | `fullscreen-out` | Leave fullscreen |
 | open | `fullscreen-in` | Enter fullscreen |
 | open | `sidebar-open` | Open the board in the right sidebar |
+| build | `build-setup` | Create the scratch section (PXD-BENCH, far right of the board) |
+| build | `add-card` | Double-click empty scratch background, type a card |
+| build | `move-card` | Drag the new card 260 px |
+| build | `resize-card` | Drag the card's corner grip |
+| build | `connect` | Drag from the card's right port to a second card |
+| build | `undo-redo` | Cmd+Z then Cmd+Shift+Z on the connection |
+| build | `delete-card` | Select the second card and press Delete |
+| build | `paste-20` | Paste 20 lines of text onto the board |
+| build | `api-create-50` | Create a 10 x 5 grid of 50 cards by API |
+| build | `marquee` | Shift+drag a selection box around the grid |
+| build | `move-50` | Drag the 50 selected cards down |
+| build | `move-section` | Drag the scratch section by its title |
+| build | `select-all` | Cmd+A then Escape |
+| build | `build-cleanup` | Delete the scratch section and prove the board is as it was |
+| type | `type-card` | Type 200 characters into a card on the scratch section |
+| type | `type-block` | Type 200 characters into a plain Roam block with the board mounted |
+| type | `search-type` | Type a search into Find on board |
 | idle | `idle-2min` | Two minutes with no input: stalls and frames at rest (heavy) |
 | idle | `follow-refresh` | Follow source refresh while idle |
 | idle | `soak` | 30 minute soak: pans, zoom clicks, idle; heap, nodes, listeners, stalls (heavy) |
-| edit | (scenarios/edit.mjs) | Card edit and typing scenarios; the file is skipped with a warning while it does not exist |
 
 ## Result line
 
 One JSON object per line in `results.jsonl`:
 
-`run` (id of the run), `at`, `label`, `build {dir, sha}` (`installed` and `null` when no `--build`), `version`, `group`, `scenario`, `i` and `n` (repeat number and count), `traced`, `window {id, inner, dpr, vis, hz}`, `load` (machine load average), `ctx {board, zoom0, zoom1, lod0, lod1, items}`, `stalls {n, total, worst, list}`, `long {n, total, worst}`, `ttnp`, `frames {n, p50, p95, p99, max, over34, over50, over100}`, `input {n, events}`, `content {...}`, `owner {plexus, roam, other, forced, render, unattributed}`, `plexus {longTasks, slowMounts, paintAudit, bgOverruns}`, `trace` (traced lines only), `extra` (scenario-specific), `skip` (reason), `err` (message).
+`run` (id of the run), `at`, `label`, `build {dir, sha}` (`installed` and `null` when no `--build`), `version`, `group`, `scenario`, `i` and `n` (repeat number and count), `traced`, `secs` (wall time of the scenario), `window {id, inner, dpr, vis, hz}`, `load` (machine load average), `ctx {board, zoom0, zoom1, lod0, lod1, items, camera, fullscreen, size}`, `stalls {n, total, worst, list}`, `long {n, total, worst}`, `ttnp`, `frames {n, p50, p95, p99, max, over34, over50, over100}`, `input {n, events}`, `content {...}`, `owner {plexus, roam, other, forced, render, unattributed}`, `plexus {longTasks, slowMounts, paintAudit, bgOverruns}`, `extra` (scenario-specific), `skip` (reason), `err` (message).
+
+Traced lines (`traced: true`) add `trace {file, ms, script, style, layout, paint, gc, other, idle, hitTest, restyled, recalcs, layouts, forcedMs, tasks, profile {samples, sampledMs, mainTidMatched}, functions {self, plexus}, names, plexusUrl}`. `reanalysed: true` marks a copy appended later by `--reanalyse`; the report uses the newest line per scenario.
 
 ## How the numbers are measured
 
@@ -117,7 +218,7 @@ One JSON object per line in `results.jsonl`:
 - **Time to next paint (`ttnp`)** is the Event Timing duration of the input (press to the frame that paints after it). When the scenario cannot get an Event Timing row it uses the frame-after-action proxy. Rows under 16 ms do not exist, so a missing row counts as 12 ms.
 - **Card states.** Each card in view is `missing` (no shell), `empty` (shell without content), `preview` (static preview rows) or `live` (real content). **Readable** delay is the time from entering view until the card is preview or live; **live** delay until it is live. `content.readable` and `content.live` give n, p50, p95 and max of those delays.
 - **Owner split.** From LoAF script attribution each stall's script time goes to Plexus, Roam, or another extension (named by reading the head of the blob script). `render` is style and layout inside stalls, `unattributed` is what no script or render time explains. A traced run gives a second split from the Chrome trace: script by owner, style, layout, paint, gc, other, elements restyled, forced style and layout.
-- Timed runs are never traced. `--trace` adds a separate pass per scenario; traced lines carry `traced: true` and are not used for timings.
+- Timed runs are never traced. Traced lines are not used for timings; the sampled CPU profile in them shows which functions carry a scenario.
 
 ## Adding a scenario
 
@@ -130,6 +231,6 @@ One JSON object per line in `results.jsonl`:
 
 - CDP input is not a real hand: no pointer jitter, no OS-level scheduling, wheel events arrive at exact intervals.
 - Event Timing has a 16 ms floor and reports in 8 ms steps, so small differences in `ttnp` are invisible.
-- Traced runs are slower than timed ones and are never used as timings.
-- The scratch section for edit scenarios sits far from real cards, so drags there have fewer neighbours than a real board.
+- Traced runs are slower than timed ones and are never used as timings. Timings from the unminified `devbuild.mjs` build are not baselines either.
+- The scratch section sits far from real cards, so drags there have fewer neighbours than a real board.
 - The bench window must be visible; a hidden window throttles frames and the runner refuses it.

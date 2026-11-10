@@ -26,6 +26,8 @@ export const QUICK_CHECKS = [
   ["for t in analyse.mjs report.mjs lib/stats.mjs lib/trace-analyse.mjs lib/whereis.mjs; do node tools/live/stress/$t --selftest; done", "`selftest ok` five times", "5 s"],
   ["git diff --stat origin/main...HEAD", "only files under tools/live/stress/ and tools/live/README.md", "instant"],
   ["npm run check > /tmp/check.log 2>&1; grep -E \"^# (tests|pass|fail)\" /tmp/check.log", "`# tests 4797`, `# fail 0`", "about 5 min"],
+  ["node tools/live/stress/run.mjs --build ~/wo/pxd-fast/builds/3.39.1 --scenario idle-2min --n 1 --label base", "NOT RUN in round 0 (stopped for the evening): one line with the stalls of 2 idle minutes", "3 min"],
+  ["node tools/live/stress/run.mjs --build ~/wo/pxd-fast/builds/3.39.1 --scenario soak --n 1 --label base", "NOT RUN in round 0 (long use was the lowest priority): one line with heap, nodes and stall rate over 30 min, first 5 min against last 5 min", "31 min"],
 ];
 
 const WINDOW_NOTE = "Window ids are those of 2026-11-09 and change when Roam restarts: the bench window is the Readwisenotes window marked `sessionStorage[\"pxd-bench\"]=\"1\"`, E8A80A58 is Svy's own window (recorder only), 882A1778 is the Svy graph window (never touched).";

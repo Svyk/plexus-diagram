@@ -22,8 +22,13 @@ const BUDGET_MS = 50;
 const UID = "bigroot";
 
 let own = null;
+// The stats cache keeps a stat for two minutes of Date.now. A slow machine takes longer than that over the
+// PhD-shaped board, so the wall clock stands still here: what is reused does not depend on how fast the test ran.
+const realDateNow = Date.now;
+const FROZEN_NOW = realDateNow();
 beforeEach(() => {
   own = installOwnClock();
+  Date.now = () => FROZEN_NOW;
   resetSharedBgBudget();
   resetSharedTaskProbe();
 });
@@ -32,6 +37,7 @@ afterEach(() => {
   resetSharedBgBudget();
   resetSharedTaskProbe();
   noteSpeedFlags(null);
+  Date.now = realDateNow;
   own?.restore();
   own = null;
 });
@@ -173,6 +179,8 @@ function chargeReads(fake) {
       own.advance(cost);
       return out;
     }
+    // The first level pull after calls.mark is armed: a new board read began (how many derived reads came before it).
+    if (p.includes(":block/children") && calls.mark === "armed") calls.mark = calls.derived();
     const per = p.includes(":block/children") ? COST.level : p === "[:db/id :block/open]" ? COST.open : p.includes(":block/props") ? COST.field : COST.other;
     own.advance(per * entities.length);
     return many(pattern, entities);
@@ -367,8 +375,11 @@ test("an edit during the store job stops it: nothing is stored for the old page,
   const stamp = S.pageStamp();
   assert.notEqual(stamp, old);
   const seen = S.reads.derived();
+  S.reads.mark = "armed";
   await untilTurns(own, () => (S.host.stats.keepsDropped || 0) >= 1, 20000);
-  assert.ok(S.reads.derived() - seen <= 1, "no stats part after the one that found the page moved");
+  // The retry's read is the next thing that reads the board: the stopped job read nothing more before it.
+  await untilTurns(own, () => typeof S.reads.mark === "number", 20000);
+  assert.ok(S.reads.mark - seen <= 1, `no stats part after the one that found the page moved (${S.reads.mark - seen})`);
   assert.equal(S.puts.includes(old), false, "nothing was stored under the old stamp");
   // The retry reads the newer page and stores it.
   await untilTurns(own, () => S.store.stampOf(UID) === stamp && rowOf(S.idb)?.stamp === stamp, 20000);

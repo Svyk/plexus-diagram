@@ -166,13 +166,16 @@ async function fullscreenFlip(ctx, to) {
   return { summary, extra: { flipMs, to: to ? "fullscreen" : "inline", label: b.label } };
 }
 
+const listWindows = (c) => c.evJson(`(async () => { const w = (await window.roamAlphaAPI.ui.rightSidebar.getWindows()) || []; return JSON.stringify(w.map((x) => ({ type: x.type || "block", "block-uid": x["block-uid"] || "", "window-id": x["window-id"] || "" }))); })()`);
+
 async function sidebarOpen(ctx) {
   const { c } = ctx;
-  const before = await c.evJson(`(async () => { const w = (await window.roamAlphaAPI.ui.rightSidebar.getWindows()) || []; return JSON.stringify(w.map((x) => ({ type: x.type || "block", "block-uid": x["block-uid"] || "", "window-id": x["window-id"] || "" }))); })()`);
+  const wasOpen = await ctx.sidebarOpen();
+  const before = await listWindows(c);
   const spec = { window: { type: "block", "block-uid": BOARD } };
   await ctx.probe.quiet({ gap: 1000, max: 10000 });
   await ctx.probe.arm({});
-  let w = null, summary = null;
+  let w = null, summary = null, restored = null;
   try {
     await c.ev(watchJs("#right-sidebar .pxd-root", "", `window.__pxdStress.act(); window.__pxdSbErr = null; Promise.resolve(window.roamAlphaAPI.ui.rightSidebar.addWindow(${J(spec)})).catch((e) => { window.__pxdSbErr = String(e && e.message || e); });`));
     w = await waitWatch(c, 30000);
@@ -180,17 +183,26 @@ async function sidebarOpen(ctx) {
     await ctx.probe.quiet({ gap: 1500, max: 15000 });
     summary = await take(ctx);
   } finally {
-    // remove only the window this run added; a pinned window would ask before closing, so unpin first
+    // put back exactly what was there: a pinned window would ask before closing, so unpin first
     const had = before.some((x) => x["block-uid"] === BOARD);
     if (!had) {
-      await c.ev(`(async () => { const api = window.roamAlphaAPI.ui.rightSidebar; const spec = ${J(spec)}; const cap = (p, ms) => Promise.race([Promise.resolve(p), new Promise((r) => setTimeout(r, ms))]);
-        try { await cap(api.unpinWindow && api.unpinWindow(spec), 3000); } catch (e) {}
-        try { await cap(api.removeWindow(spec), 5000); } catch (e) {}
-        if (${before.length} === 0) { try { await cap(api.close && api.close(), 2000); } catch (e) {} }
-        return 1; })()`, { timeout: 20000 });
+      await c.ev(`(async () => { const api = window.roamAlphaAPI.ui.rightSidebar; const cap = (p, ms) => Promise.race([Promise.resolve(p), new Promise((r) => setTimeout(r, ms))]);
+        for (const type of ["block", "outline"]) { const spec = { window: { type, "block-uid": ${J(BOARD)} } };
+          try { await cap(api.unpinWindow && api.unpinWindow(spec), 3000); } catch (e) {}
+          try { await cap(api.removeWindow(spec), 5000); } catch (e) {} }
+        return 1; })()`, { timeout: 30000 }).catch(() => {});
     }
+    let after = [];
+    try { after = await listWindows(c); } catch { /* page busy */ }
+    let openAfter = null;
+    try {
+      if (!wasOpen) await ctx.closeSidebar();
+      openAfter = await ctx.sidebarOpen();
+    } catch { /* reported below */ }
+    restored = { windowsBefore: before, windowsAfter: after, wasOpen, openAfter };
+    if (!wasOpen && openAfter) ctx.log("WARNING: the right sidebar is still open after sidebar-open");
   }
-  return { summary, extra: { paint: w.paint, live: w.live } };
+  return { summary, extra: { paint: w.paint, live: w.live, restored } };
 }
 
 export const scenarios = [

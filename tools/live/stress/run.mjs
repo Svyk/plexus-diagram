@@ -1,6 +1,6 @@
 // Suite runner for the stress board (PXD-25). Bench window only.
 //   node tools/live/stress/run.mjs [--group move,open,build,type,idle] [--scenario a,b] [--n 3] [--label base]
-//        [--build <dir>] [--trace] [--selectors] [--quick] [--soak-min 30] [--target <idPrefix>] [--out <dir>]
+//        [--build <dir>] [--trace] [--trace-only] [--selectors] [--quick] [--soak-min 30] [--target <idPrefix>] [--out <dir>]
 //        [--list] [--dry] [--cleanup] [--keep-going] [--inline] [--chain a,b]
 // --list and --dry never connect. Everything else drives the marked bench window over CDP.
 import { readFile, appendFile, mkdir } from "node:fs/promises";
@@ -20,10 +20,10 @@ const SCENARIO_FILES = ["move", "open", "edit", "idle"];
 const PX = "window.__pxdStress";
 
 const VALUE_FLAGS = new Set(["group", "scenario", "n", "label", "build", "soak-min", "target", "out", "chain", "timeout"]);
-const BOOL_FLAGS = new Set(["trace", "selectors", "quick", "list", "dry", "cleanup", "keep-going", "inline"]);
+const BOOL_FLAGS = new Set(["trace", "trace-only", "selectors", "quick", "list", "dry", "cleanup", "keep-going", "inline"]);
 
 export function parseArgs(argv) {
-  const a = { group: null, scenario: null, n: 3, label: "base", build: null, trace: false, selectors: false, quick: false, soakMin: 30, target: null, out: null, list: false, dry: false, cleanup: false, keepGoing: false, inline: false, chain: null, timeoutMs: 240000 };
+  const a = { group: null, scenario: null, n: 3, label: "base", build: null, trace: false, traceOnly: false, selectors: false, quick: false, soakMin: 30, target: null, out: null, list: false, dry: false, cleanup: false, keepGoing: false, inline: false, chain: null, timeoutMs: 240000 };
   const camel = (k) => k.replace(/-(\w)/g, (_, c) => c.toUpperCase());
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
@@ -40,6 +40,7 @@ export function parseArgs(argv) {
     else if (k === "timeout") a.timeoutMs = Number(v) || 240000;
     else a[camel(k)] = v;
   }
+  if (a.traceOnly) a.trace = true; // the traced pass only: no timed repeats
   if (a.quick) a.n = 1;
   return a;
 }
@@ -102,9 +103,9 @@ export async function main(argv, deps = {}) {
   if (a.dry) {
     const bw = await import("./lib/bench-window.mjs");
     console.log(`out ${bw.OUT_DIR}  label ${a.label}  n ${a.n}  build ${a.build || "installed"}  trace ${a.trace}  quick ${a.quick}`);
-    for (let i = 0; i < a.n; i++) for (const s of selected) console.log(`  run ${i + 1}/${a.n}  ${s.group}/${s.name}  needs ${s.needs}${s.leaves ? "  (40 s pacer)" : ""}${s.heavy ? "  [heavy]" : ""}`);
+    if (!a.traceOnly) for (let i = 0; i < a.n; i++) for (const s of selected) console.log(`  run ${i + 1}/${a.n}  ${s.group}/${s.name}  needs ${s.needs}${s.leaves ? "  (40 s pacer)" : ""}${s.heavy ? "  [heavy]" : ""}`);
     if (a.trace) for (const s of selected) console.log(`  trace pass  ${s.group}/${s.name}${a.selectors ? "  (selectors)" : ""}`);
-    console.log(`${selected.length * a.n} timed runs${a.trace ? ` + ${selected.length} traced` : ""}`);
+    console.log(`${a.traceOnly ? 0 : selected.length * a.n} timed runs${a.trace ? ` + ${selected.length} traced` : ""}`);
     return 0;
   }
   if (!selected.length && !a.cleanup) { console.error("no scenarios selected"); return 2; }
@@ -158,6 +159,10 @@ export async function main(argv, deps = {}) {
     const win = await bw.windowInfo(c);
     if (win.vis !== "visible" || !(win.hz >= 20)) throw new Error(`the bench window must be on screen: visibility ${win.vis}, refresh ${win.hz} Hz (needs visible and 20 Hz or more)`);
     await bw.saveSidebar(c);
+    // the right sidebar takes about 438 px from the board: it must be as closed as it was at start-up before every scenario
+    const sidebarOpenNow = () => c.evJson(`JSON.stringify((() => { const el = document.querySelector("#right-sidebar"); return !!el && el.getBoundingClientRect().width > 40; })())`);
+    const sidebarWasOpen = await sidebarOpenNow();
+    let prevName = "start-up";
     const saved = await bw.saveCamera(c);
     restoreConfirm = await bw.stubConfirm(c, false);
 
@@ -333,6 +338,7 @@ export async function main(argv, deps = {}) {
     ctx.computeHome = async () => {
       // home comes from Svy's saved camera (the first saveCamera) and the root size now; never from a later live camera
       const size = await ctx.refreshSize();
+      ctx.homeSize = size;
       let cam = null;
       try { cam = saved ? JSON.parse(saved) : null; } catch { cam = null; }
       if (cam && size && cam.zoom) {
@@ -377,7 +383,22 @@ export async function main(argv, deps = {}) {
       if (!(await atBoard())) throw new Error("could not get back to the stress board");
       if (ctx.fsWanted && !(await ctx.fsState())) await ctx.fullscreen(true);
     };
+    ctx.sidebarOpen = sidebarOpenNow;
+    ctx.closeSidebar = async () => {
+      try { await c.ev(`Promise.resolve(window.roamAlphaAPI.ui.rightSidebar.close()).then(() => 1)`, { timeout: 5000 }); } catch { /* ignore */ }
+      const t0 = Date.now();
+      while (Date.now() - t0 < 2000) { if (!(await sidebarOpenNow())) return true; await sleep(100); }
+      return !(await sidebarOpenNow());
+    };
     ctx.ensure = async (needs = "board") => {
+      await ensure0(needs);
+      if (!sidebarWasOpen && (await sidebarOpenNow())) {
+        console.log(`closed a right sidebar left open by ${prevName}`);
+        await ctx.closeSidebar();
+        await ctx.refreshSize();
+      }
+    };
+    const ensure0 = async (needs = "board") => {
       if (needs === "any") return;
       if (needs === "daily") {
         const h = await bw.hashOf(c);
@@ -462,6 +483,12 @@ export async function main(argv, deps = {}) {
       let info0 = null, tracing = false, traceFile = null;
       try {
         await ctx.ensure(s.needs);
+        {
+          const was = ctx.homeSize;
+          const now = await ctx.refreshSize().catch(() => null);
+          if (now && was && (Math.abs(now.w - was.w) > 4 || Math.abs(now.h - was.h) > 4)) { console.log(`board size changed ${Math.round(was.w)}x${Math.round(was.h)} -> ${Math.round(now.w)}x${Math.round(now.h)}`); ctx.homeSize = now; }
+        }
+        const size0 = ctx.size ? { w: Math.round(ctx.size.w), h: Math.round(ctx.size.h) } : null;
         if (s.leaves) await ctx.pace();
         try { info0 = await probe.info(); } catch { /* board not mounted for daily */ }
         let fs0 = null;
@@ -485,9 +512,9 @@ export async function main(argv, deps = {}) {
           line.ttnp = res.ttnp != null ? res.ttnp : null;
           if (res.extra) line.extra = res.extra;
         }
-        line.ctx = { board: info0 && info0.board, zoom0: info0 && info0.zoom, zoom1: info1 && info1.zoom, lod0: info0 && info0.lod, lod1: info1 && info1.lod, items: info0 && info0.items, camera: info0 ? { x: info0.x, y: info0.y, zoom: info0.zoom } : null, fullscreen: fs0 };
+        line.ctx = { board: info0 && info0.board, zoom0: info0 && info0.zoom, zoom1: info1 && info1.zoom, lod0: info0 && info0.lod, lod1: info1 && info1.lod, items: info0 && info0.items, camera: info0 ? { x: info0.x, y: info0.y, zoom: info0.zoom } : null, fullscreen: fs0, size: size0 };
         if (traceFile) {
-          const split = await analyseTrace(traceFile.file, { names });
+          const split = await (deps.analyse || analyseTrace)(traceFile.file, { names });
           const tasks = (split.tasks || []).slice().sort((p, q) => q.d - p.d).slice(0, 12);
           line.trace = { file: traceFile.file, ...split, tasks };
         }
@@ -518,15 +545,20 @@ export async function main(argv, deps = {}) {
       durs.push([`${s.group}/${s.name}${traced ? " (traced)" : ""}`, line.secs]);
       await appendFile(resultsFile, JSON.stringify(line) + "\n");
       lines.push(line);
+      prevName = `${s.group}/${s.name}`;
       const sm = line;
       const oth = sm.owner ? Object.values(sm.owner.other || {}).reduce((p, q) => p + q, 0) : null;
       console.log(`${s.group}/${s.name} ${i + 1}${traced ? " traced" : ""}  ttnp ${f1(sm.ttnp)}  stalls ${sm.stalls ? `${sm.stalls.n}/${f1(sm.stalls.total)}/${f1(sm.stalls.worst)}` : "-"}  frames ${sm.frames ? `${f1(sm.frames.p95)}/${f1(sm.frames.max)}` : "-"}  content ${sm.content ? `${f1(sm.content.readable.p95)}/${f1(sm.content.live.p95)}` : "-"}  owner ${sm.owner ? `${f1(sm.owner.plexus)}/${f1(sm.owner.roam)}/${f1(oth)}/${f1(sm.owner.render)}` : "-"}${sm.skip ? `  skip: ${sm.skip}` : ""}${sm.err ? `  ERR ${sm.err}` : ""}`);
+      if (sm.trace && sm.trace.script) {
+        const t = sm.trace, oth = Object.values(t.script.other || {}).reduce((p, q) => p + q, 0) + (t.script.unknown || 0);
+        console.log(`trace ${s.group}/${s.name}  script ${f1(t.script.plexus)}/${f1(t.script.roam)}/${f1(oth)}  style ${f1(t.style)}  layout ${f1(t.layout)}  paint ${f1(t.paint)}  gc ${f1(t.gc)}  restyled ${t.restyled}  file ${String(t.file).split("/").pop()}`);
+      }
       return !line.fatal;
     }
 
     const durs = [];
     let go = true;
-    for (let i = 0; i < a.n && go && !aborted; i++) for (const s of selected) { if (aborted || !(go = await runOne(s, i, false))) break; }
+    for (let i = 0; i < (a.traceOnly ? 0 : a.n) && go && !aborted; i++) for (const s of selected) { if (aborted || !(go = await runOne(s, i, false))) break; }
     if (a.trace && go) for (const s of selected) { if (aborted || !(go = await runOne(s, 0, true))) break; }
     if (!go) console.error("stopped: recovery failed twice in a row (use --keep-going to continue)");
     if (a.quick) { for (const [n, t] of durs) console.log(`${n.padEnd(32)} ${t} s`); console.log(`${"total".padEnd(32)} ${Math.round(durs.reduce((x, [, t]) => x + t, 0) * 10) / 10} s`); }

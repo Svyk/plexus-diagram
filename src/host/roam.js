@@ -332,10 +332,12 @@ const DIAGRAM_FIND = new RegExp(DIAGRAM_RE);
 // Index lookup. A `[?t ...]` binding on :block/refs scans every refs datom in the graph.
 const STATS_PULL = `[:db/id {(limit :block/_refs nil) [:db/id {:block/parents [:db/id :block/string]}]} {(limit :block/_parents nil) [:db/id {:block/refs [:db/id]}]} {:block/_page [:db/id {:block/refs [:db/id]}]}]`;
 
-// PXD-26: the two halves of STATS_PULL the store job reads apart for a block of the board it holds: the block's own
-// status refs (its TODO and DONE descendants are counted from the tree), and the blocks that reference it.
-const STATS_OWN_PULL = "[:db/id {:block/refs [:db/id]}]";
+// PXD-26: STATS_PULL in two halves, for the store job. The refs to a target; and, from the status side, the blocks
+// that reference a status page (TODO, DONE) with the uids of their page and ancestors, from which the TODO and DONE
+// blocks a target holds are counted without pulling the target's subtree.
 const STATS_REFS_PULL = "[:db/id {(limit :block/_refs nil) [:db/id {:block/parents [:db/id :block/string]}]}]";
+const STATS_STATUS_IDS = "[:find ?x :in $ ?status :where [?x :block/refs ?status]]";
+const STATS_HOLDERS_PULL = "[:db/id {:block/page [:block/uid :node/title]} {:block/parents [:block/uid]}]";
 
 function listOf(value) {
   if (value == null) return [];
@@ -1268,14 +1270,17 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     return t.uid ? `uid:${t.uid}` : null;
   };
   // recomputeDerived(uid, tree) in resumable parts: step(ms) does about ms of work and is true when the job is done;
-  // result() is then { badges, links }, the same maps and lists the one task builds. A stat the cache still holds
-  // (STATS_TTL_MS, as cardStats itself answers) is not pulled again, so a store that follows another one within two
-  // minutes only reads what is new.
-  // A block of the board itself is not read with STATS_PULL: that pull brings every descendant of the block, so the
-  // one task converts each block once per ancestor (a section of thousands of blocks is one pull of 0.1-0.25 s that
-  // no part size can split). The tree in hand names the descendants: each block's own status refs are read once, in
-  // batches, and counted per subtree; the refs to the block are read by STATS_REFS_PULL. Page targets and blocks
-  // outside the board go through cardStats as before, a few per part.
+  // result() is then { badges, links }, the same maps and lists the one task builds.
+  // The one task reads every stat target with STATS_PULL, which brings each target's descendants (or a page's
+  // blocks): each block of the board is converted once per ancestor, and one section, or one card showing a block
+  // with thousands of descendants, is a single pull of 0.1-0.25 s that no part size can split. Here the two halves
+  // are read apart. TODO and DONE counts come from the status side: the blocks that reference the TODO and DONE
+  // pages (two queries for their ids, then their page and ancestors in batches), counted per ancestor and per page,
+  // for every target, every time (a few ms; an edit that adds a TODO under a section shows in that section's count).
+  // The refs to a target are read by STATS_REFS_PULL, in batches, and only for targets whose stat the cache does not
+  // hold (STATS_TTL_MS, as cardStats itself answers; an edit on the board does not change them: refs from under the
+  // board are not counted). When a status read fails, every target without a cached stat goes through cardStats,
+  // one at a time.
   const createDerivedJob = (uid, tree, clock) => {
     const walk = createTargetsWalk(tree);
     let phase = "targets";
@@ -1283,37 +1288,23 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     let ti = 0;
     const order = [];
     const got = new Map();
-    const stale = [];
+    const stale = []; // [key, target] whose refs are read
     let si = 0;
     let statN = KEEP_STATS_FIRST;
     let statsFailed = false;
-    // The tree in document order: uid, how many blocks sit under it, and where a uid is.
-    const ixUids = [];
-    const ixSize = [];
-    const ixAt = new Map();
-    const ixStack = [];
-    let ixBegun = false;
-    const inTree = typeof data.pull_many === "function";
-    const treeStale = []; // [index, key, target] of board blocks whose stat is not in the cache
-    let need = null; // indexes whose own status refs are read
-    let ni = 0;
-    let ownN = KEEP_OWN_FIRST;
-    let todo = null;
-    let done = null;
-    let sumTodo = null;
-    let sumDone = null;
+    const many = typeof data.pull_many === "function";
+    let statBoardEid = -1;
+    // Status side: ids of the blocks that reference TODO / DONE, then who holds each (ancestor uids, page title).
+    let statusOk = many;
+    let statusIds = null; // [[eid, isTodo], ...]
+    let sti = 0;
+    let stN = KEEP_OWN_FIRST;
+    const openByUid = new Map();
+    const doneByUid = new Map();
+    const openByTitle = new Map();
+    const doneByTitle = new Map();
     let ri = 0;
     let refsN = KEEP_REFS_FIRST;
-    let statBoardEid = -1;
-    let todoEid = null;
-    let doneEid = null;
-    const treeFailed = () => {
-      // The board blocks go through cardStats like the others.
-      for (const row of treeStale) stale.push(row[2]);
-      treeStale.length = 0;
-      need = null;
-      phase = "stats";
-    };
     const badges = new Map();
     let board = null;
     let items = null;
@@ -1334,6 +1325,27 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       resolved.set(key, eid);
       return eid;
     };
+    // As cardStats counts them: a ref from under this board is not a ref; other boards holding one are.
+    const refsOf = (node) => {
+      const refs = new Set();
+      const boards = new Set();
+      for (const block of listOf(node?.[":block/_refs"])) {
+        const bid = refEid(block);
+        if (bid == null) continue;
+        const parents = listOf(block?.[":block/parents"]);
+        if (bid !== statBoardEid && !parents.some((parent) => refEid(parent) === statBoardEid)) refs.add(bid);
+        for (const parent of parents) {
+          const pid = refEid(parent);
+          if (pid == null || pid === statBoardEid || !isDiagramBlock(parent)) continue;
+          boards.add(pid);
+        }
+      }
+      return { refs: refs.size, boards: boards.size };
+    };
+    const statusOf = (t) => (t.kind === "page"
+      ? { open: openByTitle.get(t.title) || 0, done: doneByTitle.get(t.title) || 0 }
+      : { open: openByUid.get(t.uid) || 0, done: doneByUid.get(t.uid) || 0 });
+    const bump = (map, key) => { map.set(key, (map.get(key) || 0) + 1); };
     const part = (ms) => {
       const t0 = clock();
       const over = () => clock() - t0 >= ms;
@@ -1342,148 +1354,109 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         try { done = walk.step(ms, clock); } catch { done = true; statsFailed = true; }
         if (!done) return false;
         try { targets = walk.result()?.stats || []; } catch { targets = []; statsFailed = true; }
-        phase = inTree ? "index" : "sort";
+        phase = statusOk ? "status" : "sort";
         return false;
       }
-      if (phase === "index") {
-        const enter = (node) => {
-          const i = ixUids.length;
-          const u = node[":block/uid"];
-          ixUids.push(typeof u === "string" ? u : "");
-          ixSize.push(0);
-          if (typeof u === "string" && u && !ixAt.has(u)) ixAt.set(u, i);
-          ixStack.push({ kids: childNodes(node), k: 0, i });
-        };
-        if (!ixBegun) { ixBegun = true; enter(tree); }
-        let n = 0;
-        while (ixStack.length) {
-          const f = ixStack[ixStack.length - 1];
-          if (f.k < f.kids.length) {
-            const kid = f.kids[f.k];
-            f.k += 1;
-            if (kid && typeof kid === "object") enter(kid);
-          } else {
-            ixSize[f.i] = ixUids.length - f.i - 1;
-            ixStack.pop();
+      if (phase === "status") {
+        // Which blocks reference TODO or DONE: two index reads.
+        try {
+          statBoardEid = host.resolveEid({ uid }) ?? -1;
+          statusIds = [];
+          const todoEid = host.resolveEid({ title: "TODO" });
+          const doneEid = host.resolveEid({ title: "DONE" });
+          for (const [eid, isTodo] of [[todoEid, true], [doneEid, false]]) {
+            if (eid == null) continue;
+            for (const x of host.q(STATS_STATUS_IDS, eid) || []) { const id = refEid(Array.isArray(x) ? x[0] : x); if (id != null) statusIds.push([id, isTodo]); }
           }
-          n += 1;
-          if ((n & 255) === 0 && over()) return false;
+          phase = "holders";
+        } catch { statusOk = false; phase = "sort"; }
+        return false;
+      }
+      if (phase === "holders") {
+        if (sti < statusIds.length) {
+          const group = statusIds.slice(sti, sti + stN);
+          const at = clock();
+          let res = null;
+          try { res = pullRows(data.pull_many(STATS_HOLDERS_PULL, group.map((row) => row[0]))); } catch { res = null; }
+          if (!res || res.length !== group.length) {
+            statusOk = false;
+            openByUid.clear(); doneByUid.clear(); openByTitle.clear(); doneByTitle.clear();
+            phase = "sort";
+            return false;
+          }
+          for (let j = 0; j < group.length; j += 1) {
+            const x = res[j];
+            if (!x) continue;
+            const isTodo = group[j][1];
+            const uids = new Set();
+            const pg = Array.isArray(x[":block/page"]) ? x[":block/page"][0] : x[":block/page"];
+            if (typeof pg?.[":block/uid"] === "string") uids.add(pg[":block/uid"]);
+            for (const parent of listOf(x[":block/parents"])) if (typeof parent?.[":block/uid"] === "string") uids.add(parent[":block/uid"]);
+            for (const u of uids) bump(isTodo ? openByUid : doneByUid, u);
+            if (typeof pg?.[":node/title"] === "string") bump(isTodo ? openByTitle : doneByTitle, pg[":node/title"]);
+          }
+          sti += group.length;
+          stN = keepGroup(stN, clock() - at, KEEP_BATCH_MIN, KEEP_OWN_MAX);
+          return false;
         }
         phase = "sort";
         return false;
       }
       if (phase === "sort") {
-        const seen = got;
         while (ti < targets.length) {
           const t = targets[ti];
           ti += 1;
           const key = statKeyOf(t);
-          if (key != null && !seen.has(key)) {
+          if (key != null && !got.has(key)) {
             order.push(key);
-            const fresh = freshStat(uid, key);
-            seen.set(key, fresh ? { ...fresh } : null);
-            if (fresh) parts.reused += 1;
-            else if (inTree && t.kind !== "page" && ixAt.has(t.uid)) treeStale.push([ixAt.get(t.uid), key, t]);
-            else stale.push(t);
+            const hit = freshStat(uid, key);
+            if (hit) {
+              parts.reused += 1;
+              if (statusOk) {
+                // The cached refs with today's counts; the cache takes the counts too.
+                const st = statusOf(t);
+                hit.open = st.open;
+                hit.done = st.done;
+              }
+              got.set(key, { ...hit });
+            } else {
+              got.set(key, null);
+              stale.push([key, t]);
+            }
           }
           if ((ti & 255) === 0 && over()) return false;
         }
-        if (!treeStale.length) { phase = "stats"; return false; }
-        // The blocks under a stale board block, each once (document order keeps a subtree in one run).
-        const starts = treeStale.map((row) => row[0]).sort((a, b) => a - b);
-        need = [];
-        let covered = 0;
-        for (const i of starts) {
-          const end = i + ixSize[i];
-          for (let j = Math.max(i + 1, covered); j <= end; j += 1) need.push(j);
-          if (end + 1 > covered) covered = end + 1;
-        }
-        todo = new Uint8Array(ixUids.length);
-        done = new Uint8Array(ixUids.length);
-        try {
-          statBoardEid = host.resolveEid({ uid }) ?? -1;
-          todoEid = host.resolveEid({ title: "TODO" });
-          doneEid = host.resolveEid({ title: "DONE" });
-        } catch { treeFailed(); return false; }
-        phase = "own";
-        return false;
-      }
-      if (phase === "own") {
-        if (ni < need.length && (todoEid != null || doneEid != null)) {
-          const end = Math.min(need.length, ni + ownN);
-          const ids = [];
-          for (let j = ni; j < end; j += 1) ids.push(eidKey(ixUids[need[j]]));
-          const at = clock();
-          let res = null;
-          try { res = pullRows(data.pull_many(STATS_OWN_PULL, ids)); } catch { res = null; }
-          if (!res || res.length !== ids.length) { treeFailed(); return false; }
-          for (let j = 0; j < res.length; j += 1) {
-            for (const ref of listOf(res[j]?.[":block/refs"])) {
-              const id = refEid(ref);
-              if (id == null) continue;
-              if (todoEid != null && id === todoEid) todo[need[ni + j]] = 1;
-              if (doneEid != null && id === doneEid) done[need[ni + j]] = 1;
-            }
-          }
-          ni = end;
-          ownN = keepGroup(ownN, clock() - at, KEEP_BATCH_MIN, KEEP_OWN_MAX);
-          return false;
-        }
-        // Running sums: the TODO and DONE blocks under a block are a difference of two of them.
-        sumTodo = new Int32Array(ixUids.length + 1);
-        sumDone = new Int32Array(ixUids.length + 1);
-        for (let j = 0; j < ixUids.length; j += 1) {
-          sumTodo[j + 1] = sumTodo[j] + todo[j];
-          sumDone[j + 1] = sumDone[j] + done[j];
-        }
-        phase = "refs";
+        phase = statusOk ? "refs" : "stats";
         return false;
       }
       if (phase === "refs") {
-        if (ri < treeStale.length) {
-          const group = treeStale.slice(ri, ri + refsN);
+        if (ri < stale.length) {
+          const group = stale.slice(ri, ri + refsN);
           const at = clock();
           let res = null;
-          try { res = pullRows(data.pull_many(STATS_REFS_PULL, group.map((row) => eidKey(ixUids[row[0]])))); } catch { res = null; }
-          if (!res || res.length !== group.length) { treeFailed(); return false; }
+          try { res = pullRows(data.pull_many(STATS_REFS_PULL, group.map(([, t]) => (t.kind === "page" ? [":node/title", t.title] : eidKey(t.uid))))); } catch { res = null; }
+          // A failed read: cardStats reads the targets that are left.
+          if (!res || res.length !== group.length) { si = ri; phase = "stats"; return false; }
+          const now = Date.now();
           for (let j = 0; j < group.length; j += 1) {
-            const [i, key] = group[j];
-            const refs = new Set();
-            const boards = new Set();
-            // As cardStats counts them: a ref from under this board is not a ref; other boards holding one are.
-            for (const block of listOf(res[j]?.[":block/_refs"])) {
-              const bid = refEid(block);
-              if (bid == null) continue;
-              const parents = listOf(block?.[":block/parents"]);
-              if (bid !== statBoardEid && !parents.some((parent) => refEid(parent) === statBoardEid)) refs.add(bid);
-              for (const parent of parents) {
-                const pid = refEid(parent);
-                if (pid == null || pid === statBoardEid || !isDiagramBlock(parent)) continue;
-                boards.add(pid);
-              }
-            }
-            const gone = res[j] == null;
-            got.set(key, {
-              refs: refs.size,
-              boards: boards.size,
-              open: gone ? 0 : sumTodo[i + ixSize[i] + 1] - sumTodo[i + 1],
-              done: gone ? 0 : sumDone[i + ixSize[i] + 1] - sumDone[i + 1],
-            });
+            const [key, t] = group[j];
+            const stat = res[j] == null ? { refs: 0, boards: 0, open: 0, done: 0 } : { ...refsOf(res[j]), ...statusOf(t) };
+            got.set(key, stat);
+            statsCache.set(`${uid || ""}\0${key}`, { at: now, stats: stat });
           }
           ri += group.length;
           parts.pulled += group.length;
           refsN = keepGroup(refsN, clock() - at, KEEP_BATCH_MIN, KEEP_REFS_MAX);
           return false;
         }
-        // The cache takes them when the pass is whole, as a finished cardStats job does.
-        const now = Date.now();
-        for (const row of treeStale) statsCache.set(`${uid || ""}\0${row[1]}`, { at: now, stats: got.get(row[1]) });
+        si = stale.length;
         phase = "stats";
         return false;
       }
       if (phase === "stats") {
+        // Only without the status side (no pull_many, or a read failed): the targets left go through cardStats.
         if (!statsFailed && si < stale.length) {
-          const group = stale.slice(si, si + statN);
+          const group = stale.slice(si, si + statN).map((row) => row[1]);
           const at = clock();
           try {
             const res = host.cardStats(group, { boardUid: uid });
@@ -1581,7 +1554,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       result: () => ({ badges, links }),
       get phase() { return phase; },
       // True when the next part is one that cannot stop half way.
-      get wholePart() { return phase === "board" || phase === "rows" || phase === "reduce" || (phase === "stats" && !statsFailed && si < stale.length); },
+      get wholePart() { return phase === "board" || phase === "rows" || phase === "reduce" || phase === "status" || (phase === "stats" && !statsFailed && si < stale.length); },
       parts,
     };
   };

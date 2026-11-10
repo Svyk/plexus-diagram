@@ -59,19 +59,25 @@ const COST = { level: 0.08, field: 0.1, open: 0.005, target: 0.01, under: 0.04, 
 function chargeReads(fake) {
   const data = fake.api.data;
   const many = data.pull_many.bind(data);
-  const calls = { stats: [], own: [], refs: [], n: 0 };
-  calls.derived = () => calls.stats.length + calls.own.length + calls.refs.length;
+  const calls = { stats: [], holders: [], refs: [], status: 0, n: 0 };
+  calls.derived = () => calls.stats.length + calls.holders.length + calls.refs.length;
   const quietly = (fn) => { const log = fake.pullLog; fake.pullLog = null; try { return fn(); } finally { fake.pullLog = log; } };
   const eids = new Map();
+  const uidOf = new Map();
   const eidOf = (entity) => {
     const key = JSON.stringify(entity);
-    if (!eids.has(key)) eids.set(key, quietly(() => data.pull("[:db/id]", entity))?.[":db/id"] ?? null);
+    if (!eids.has(key)) {
+      eids.set(key, quietly(() => data.pull("[:db/id]", entity))?.[":db/id"] ?? null);
+      if (entity[0] === ":block/uid" && eids.get(key) != null) uidOf.set(eids.get(key), entity[1]);
+    }
     return eids.get(key);
   };
   const todoEid = eidOf([":node/title", "TODO"]);
   const doneEid = eidOf([":node/title", "DONE"]);
   assert.ok(todoEid != null && doneEid != null, "the TODO and DONE pages are seeded");
-  const statusRefs = (e) => [...(e % 11 === 0 ? [{ ":db/id": todoEid }] : []), ...(e % 13 === 0 ? [{ ":db/id": doneEid }] : [])];
+  // The blocks outside the board, by page (when the fixture has them). The one on Page B is always a TODO.
+  const OUTSIDE = [["outside1", "Page A"], ["outside2", "Page B"]];
+  const statusRefs = (e) => [...(e % 11 === 0 || (e != null && e === eidOf([":block/uid", "outside2"])) ? [{ ":db/id": todoEid }] : []), ...(e % 13 === 0 ? [{ ":db/id": doneEid }] : [])];
   const refsTo = (e) => {
     const boardEid = eidOf([":block/uid", UID]);
     const out = Array.from({ length: e % 4 }, (_, i) => ({ ":db/id": 9_000_000 + e * 8 + i }));
@@ -79,9 +85,12 @@ function chargeReads(fake) {
     if (e % 7 === 0) out.push({ ":db/id": 9_000_000 + e * 8 + 6, ":block/parents": [{ ":db/id": 8_000_000 + (e % 3), ":block/string": "{{[[diagram]]}}" }] });
     return out;
   };
-  // eid -> the eids under it, for the board as it is now.
+  // eid -> the eids under it, for the board as it is now (and, the other way, a block's ancestors).
   let under = null;
+  let above = null;
   let underAt = null;
+  const pageEid = () => eidOf([":block/uid", "bpage"]);
+  const outsideOn = (pageE) => OUTSIDE.filter(([, title]) => eidOf([":node/title", title]) === pageE).map(([u]) => eidOf([":block/uid", u])).filter((e) => e != null);
   const descendants = () => quietly(() => {
     const p = data.pull("[:page/edit-time :page/edit-nonce]", [":block/uid", "bpage"]);
     const at = `${p?.[":page/edit-time"]}|${p?.[":page/edit-nonce"]}`;
@@ -98,8 +107,36 @@ function chargeReads(fake) {
       return mine;
     };
     walk(data.pull(String(BOARD_PATTERN), [":block/uid", UID]));
+    above = new Map();
+    for (const [a, list] of under) for (const d of list) { if (!above.has(d)) above.set(d, []); above.get(d).push(a); }
     return under;
   });
+  // The status side: the eids of the blocks that carry a status, and who holds each (its page, its ancestors).
+  const pageOfOutside = new Map();
+  const statusBlocks = (flag) => {
+    const below = descendants();
+    const out = [];
+    for (const e of below.keys()) if (e != null && statusRefs(e).some((r) => r[":db/id"] === flag)) out.push(e);
+    for (const [u, title] of OUTSIDE) {
+      const o = eidOf([":block/uid", u]);
+      if (o == null) continue;
+      pageOfOutside.set(o, title);
+      if (statusRefs(o).some((r) => r[":db/id"] === flag)) out.push(o);
+    }
+    return out;
+  };
+  const holdersOf = (e) => {
+    descendants();
+    if (pageOfOutside.has(e)) { const title = pageOfOutside.get(e); return { ":db/id": e, ":block/page": { ":block/uid": title === "Page A" ? "pagea" : "pageb", ":node/title": title }, ":block/parents": [] }; }
+    return { ":db/id": e, ":block/page": { ":block/uid": "bpage", ":node/title": "Board page" }, ":block/parents": (above.get(e) || []).map((a) => ({ ":block/uid": uidOf.get(a) })) };
+  };
+  for (const where of [data, data.fast]) {
+    const q = where.q.bind(where);
+    where.q = (query, ...inputs) => {
+      if (String(query).includes("[?x :block/refs ?status]")) { calls.status += 1; own.advance(1); return statusBlocks(inputs[0]).map((e) => [e]); }
+      return q(query, ...inputs);
+    };
+  }
   data.pull_many = (pattern, entities) => {
     const p = String(pattern);
     calls.n += 1;
@@ -111,21 +148,23 @@ function chargeReads(fake) {
         const kids = below.get(e) || [];
         const refs = refsTo(Number(e));
         cost += COST.target + COST.under * kids.length + COST.ref * refs.length;
-        return { ":db/id": e, ":block/_refs": refs, ":block/_parents": kids.map((d) => ({ ":db/id": d, ":block/refs": statusRefs(d) })) };
+        // A page's blocks come under :block/_page (Page A holds the one block outside the board).
+        const onPage = outsideOn(e);
+        return { ":db/id": e, ":block/_refs": refs, ":block/_parents": kids.map((d) => ({ ":db/id": d, ":block/refs": statusRefs(d) })), ":block/_page": onPage.map((d) => ({ ":db/id": d, ":block/refs": statusRefs(d) })) };
       });
       own.advance(cost);
       return out;
     }
-    if (p === "[:db/id {:block/refs [:db/id]}]") {
-      calls.own.push(entities.length);
+    if (p.includes(":block/page [:block/uid :node/title]")) {
+      calls.holders.push(entities.length);
       own.advance(0.2 + COST.own * entities.length);
-      return entities.map((entity) => { const e = eidOf(entity); return e == null ? null : { ":db/id": e, ":block/refs": statusRefs(e) }; });
+      return entities.map((e) => holdersOf(e));
     }
     if (p.includes(":block/_refs")) {
       calls.refs.push(entities.length);
       let cost = 0.2;
       const out = entities.map((entity) => {
-        const e = eidOf(entity);
+        const e = typeof entity === "number" ? entity : eidOf(entity);
         if (e == null) return null;
         const refs = refsTo(e);
         cost += COST.target + COST.ref * refs.length;
@@ -174,6 +213,7 @@ function setup(flags, shape) {
   fake.seedPage({ title: "TODO", uid: "todopage", children: [] });
   fake.seedPage({ title: "DONE", uid: "donepage", children: [] });
   fake.seedPage({ title: "Page A", uid: "pagea", children: [{ uid: "outside1", string: "a block outside the board" }] });
+  fake.seedPage({ title: "Page B", uid: "pageb", children: [{ uid: "outside2", string: "{{[[TODO]]}} another block outside the board" }] });
   fake.quiet("bc00001", { string: "[[Page A]]" });
   fake.quiet("bc00002", { string: "((outside1))" });
   const reads = chargeReads(fake);
@@ -213,6 +253,9 @@ async function openEditStore(flags, shape, spans) {
   const first = { row: structuredClone(rowOf(S.idb)), live: liveOf(S.host), statCalls: S.reads.derived(), stats: { ...S.host.stats } };
   const statsAt = S.reads.stats.length;
   await S.fake.api.data.block.create({ location: { "parent-uid": "bs0", order: "last" }, block: { uid: "pxd26new", string: "A new card", props: { plexus: { type: "card", x: 10, y: 10, w: 200, h: 120, v: 2 } } } });
+  // And two cards whose targets are outside the board: a page, and a block of that page.
+  await S.fake.api.data.block.create({ location: { "parent-uid": "bs0", order: "last" }, block: { uid: "pxd26pg", string: "[[Page B]]", props: { plexus: { type: "card", x: 230, y: 10, w: 200, h: 120, v: 2 } } } });
+  await S.fake.api.data.block.create({ location: { "parent-uid": "bs0", order: "last" }, block: { uid: "pxd26rf", string: "((outside2))", props: { plexus: { type: "card", x: 450, y: 10, w: 200, h: 120, v: 2 } } } });
   const stamp = S.pageStamp();
   assert.equal(S.host.refreshModel(UID), true, "the refresh read starts");
   await turn(() => rowOf(S.idb)?.stamp === stamp && S.store.stampOf(UID) === stamp, 20000);
@@ -248,14 +291,15 @@ test("on the PhD-shaped board no part of the store job or its refresh read runs 
   assert.ok(spans.log.some((s) => s.name === "bg:model-keep"), "the store job ran");
   assert.ok(keepMax <= BUDGET_MS, `longest store part ${keepMax.toFixed(1)} ms (budget ${BUDGET_MS})`);
   assert.ok(readMax <= BUDGET_MS, `longest refresh read part ${readMax.toFixed(1)} ms (budget ${BUDGET_MS})`);
-  assert.ok(run.reads.own.length > 5 && run.reads.refs.length > 5, `the board's blocks were read in ${run.reads.own.length} status pulls and ${run.reads.refs.length} ref pulls`);
-  assert.ok(Math.max(...run.reads.own) <= 500 && Math.max(...run.reads.refs) <= 160, "bounded pulls");
+  assert.ok(run.reads.refs.length > 20, `the refs were read in ${run.reads.refs.length} pulls`);
+  assert.ok(Math.max(...run.reads.refs) <= 160 && Math.max(...run.reads.holders) <= 500, "bounded pulls");
+  assert.ok(run.reads.status >= 2, "TODO and DONE blocks are found from the status side");
   // (The open's own badge priming also reads through cardStats, 20 targets a time; the store job's reads for the
   // two targets outside the board are among these.)
   assert.ok(run.reads.stats.length >= 1 && Math.max(...run.reads.stats) <= 80, `no stats read for the whole board: ${Math.max(...run.reads.stats)}`);
   assert.ok(Math.max(...run.links) <= 32, `largest link read: ${Math.max(...run.links)} targets`);
   // The second store follows the first within the stats cache's two minutes: only the new card is read.
-  assert.ok(run.second.stats.keepStatsPulled <= 4, `stats pulled for the edit: ${run.second.stats.keepStatsPulled}`);
+  assert.ok(run.second.stats.keepStatsPulled <= 8, `refs read for the edit: ${run.second.stats.keepStatsPulled}`);
   assert.ok(run.second.stats.keepStatsReused > 20000, `stats reused: ${run.second.stats.keepStatsReused}`);
   assert.ok(run.second.stats.keepPartMaxMs <= BUDGET_MS, `the job's own longest derived part: ${run.second.stats.keepPartMaxMs} ms`);
 });
@@ -279,6 +323,7 @@ test("the stored model and derived data equal the one-task result, after the ope
     assert.ok(a.row.derived.b.some((r) => r[2] > 0), `${when}: badges are not all zero`);
     assert.ok(a.row.derived.b.some((r) => r[3] > 0) && a.row.derived.b.some((r) => r[4] > 0) && a.row.derived.b.some((r) => r[5] > 0), `${when}: boards, open and done counts too`);
     assert.ok(a.row.derived.b.some((r) => r[0] === "p" && r[1] === "Page A"), `${when}: the page card's badge`);
+    assert.ok(a.row.derived.b.some((r) => r[0] === "u" && r[1] === "outside1"), `${when}: the badge of the block shown from another page`);
     assert.ok(a.row.derived.l.length > 20, `${when}: links are stored (${a.row.derived.l.length})`);
     assert.ok(a.row.derived.l.some((r) => r[2] === 1), `${when}: attribute links too`);
     assert.equal(JSON.stringify(a.row.derived), JSON.stringify(b.row.derived), `${when}: stored derived data`);
@@ -289,6 +334,11 @@ test("the stored model and derived data equal the one-task result, after the ope
   }
   assert.ok(on.second.row.parts.join("").includes("pxd26new"), "the edit is in the second store");
   assert.ok(on.first.statCalls > 5, `sliced: ${on.first.statCalls} stats pulls for the open`);
+  assert.ok(on.reads.status >= 2, `TODO and DONE counts come from the status side (${on.reads.status} reads)`);
+  assert.equal(off.reads.status, 0, "the one task does not use the status-side read");
+  const pageB = on.second.row.derived.b.find((r) => r[0] === "p" && r[1] === "Page B");
+  assert.deepEqual(pageB?.slice(4), [1, 0], "Page B holds one TODO block, counted from the status side");
+  assert.ok(on.second.row.derived.b.some((r) => r[0] === "u" && r[1] === "outside2"), "the badge of the block shown from Page B");
 });
 
 test("on the PhD-shaped board the derived data in memory equals the one-task result (over the stored cap both store none)", { timeout: 240000 }, async () => {

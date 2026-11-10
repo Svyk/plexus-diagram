@@ -88,6 +88,7 @@ const ALL_ON = {
   lateChips: true,
   warmWait: true,
   slicedKeep: true,
+  stepSettle: true,
 };
 
 test("the panel has no speed-flags control, and bad JSON leaves the defaults (every flag on but edgeFingerprint, idlePark, quietBodies and sliceGrow)", () => {

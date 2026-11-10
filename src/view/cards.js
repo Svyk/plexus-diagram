@@ -1106,13 +1106,27 @@ export function createItemRenderer({
   };
 
   let queryCards = null;
+  let queryBusy = () => false;
+  const setQueryBusy = (fn) => { queryBusy = typeof fn === "function" ? fn : () => false; };
   const queryCardsOf = () => {
     if (queryCards) return queryCards;
     let storage = null;
     try { storage = (doc?.defaultView || globalThis).localStorage || null; } catch { storage = null; }
-    queryCards = createQueryCards({ doc, host, storage, graph: () => host?.graph || "" });
+    const step = () => speedOf().stepSettle !== false;
+    queryCards = createQueryCards({
+      doc, host, storage, graph: () => host?.graph || "",
+      keep: step,
+      busy: () => step() && queryBusy(),
+      idle: (fn) => {
+        if (typeof timers?.bgIdle === "function") timers.bgIdle(() => fn(), "query");
+        else if (typeof timers?.idle === "function") timers.idle(() => fn());
+        else setTimeout(fn, 0);
+      },
+    });
     return queryCards;
   };
+  const noteQueryGraph = () => { try { queryCards?.noteGraph?.(); } catch { /* query */ } };
+  const invalidateQueries = (uid) => { try { queryCards?.invalidate?.(uid); } catch { /* query */ } };
   // A query Plexus can translate paints its own list after first paint. The rest stay a live Roam render.
   const mountQuery = (parent, uid, string) => {
     const own = typeof string === "string" ? queryCardsOf().mount(parent, uid, string) : null;
@@ -6699,8 +6713,22 @@ export function createItemRenderer({
     changedUids = set instanceof Set && set.size ? set : null;
     for (const rec of shells.values()) renderBadges(rec);
   };
+  let badgeSig = null;
+  const badgeStatsSig = (map) => {
+    if (!map?.size) return "";
+    const parts = [];
+    for (const [uid, info] of map) parts.push(`${uid}:${info?.refs}|${info?.boards}|${info?.open}|${info?.done}|${info?.comments}`);
+    parts.sort();
+    return parts.join(";");
+  };
   const setBadges = (map) => {
-    badgeMap = map instanceof Map ? map : new Map();
+    const next = map instanceof Map ? map : new Map();
+    if (speedOf().stepSettle !== false) {
+      const sig = badgeStatsSig(next);
+      if (badgeSig !== null && sig === badgeSig) { badgeMap = next; return; }
+      badgeSig = sig;
+    }
+    badgeMap = next;
     if (badgesOn()) for (const rec of shells.values()) renderBadges(rec);
   };
   // The Task Status Tags list changed (ready, unload, rename, recolour): rebuild the palette and repaint tasks.
@@ -7888,6 +7916,9 @@ export function createItemRenderer({
     setPeekBlocked,
     hotRow: () => hotRow,
     setBadges,
+    setQueryBusy,
+    noteQueryGraph,
+    invalidateQueries,
     setChanged,
     setFollowLeft,
     setFilterCard,

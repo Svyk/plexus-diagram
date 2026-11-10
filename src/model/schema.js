@@ -425,8 +425,26 @@ export function isUntitledBoard(title) {
   return t === "" || t === UNTITLED_BOARD.toLowerCase();
 }
 
+// PXD-29: the canvas paints the same titles on every zoom step. The cache stays off unless a view turns it
+// on (speed flag stepSettle). This file does not import settings.
+let plainCacheOn = () => false;
+const plainCache = new Map();
+const PLAIN_CACHE_MAX = 4000;
+export function setPlainTextCache(fn) {
+  plainCacheOn = typeof fn === "function" ? fn : () => false;
+  if (!plainCacheOn()) plainCache.clear();
+}
+
 export function plainText(s, max = 200) {
-  let t = String(s ?? "");
+  const raw = String(s ?? "");
+  let use = false;
+  try { use = plainCacheOn() === true; } catch { use = false; }
+  const key = use ? `${max}\u0000${raw}` : "";
+  if (use) {
+    const hit = plainCache.get(key);
+    if (hit !== undefined) return hit;
+  }
+  let t = raw;
   t = t.replace(/!\[[^\]]*\]\([^)]*\)/g, "");
   t = t.replace(/\[([^[\]]*)\]\([^)]*\)/g, "$1");
   t = t.replace(/\(\([\w-]+\)\)/g, "");
@@ -444,6 +462,10 @@ export function plainText(s, max = 200) {
     .replace(/`([^`]*)`/g, "$1");
   t = t.replace(/\s+/g, " ").trim();
   if (t.length > max) t = `${t.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+  if (use) {
+    if (plainCache.size >= PLAIN_CACHE_MAX) plainCache.clear();
+    plainCache.set(key, t);
+  }
   return t;
 }
 

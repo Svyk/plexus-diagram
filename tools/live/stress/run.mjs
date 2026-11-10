@@ -115,7 +115,9 @@ export async function main(argv, deps = {}) {
   const resultsFile = join(OUT_DIR, "results.jsonl");
   await mkdir(join(OUT_DIR, "traces"), { recursive: true });
 
-  const c = await (deps.connect || connectBench)({ target: a.target });
+  const connectFn = deps.connect || connectBench;
+  let c = await connectFn({ target: a.target });
+  let input = null, reconnectFn = null;
   const cleanups = []; // [label, fn] in start-up order; run in reverse
   const onCleanup = (fn, label = "cleanup") => { cleanups.push([label, fn]); };
   let release = null, restoreConfirm = null, served = null, scriptId = null, cleaned = false, aborted = false;
@@ -127,6 +129,8 @@ export async function main(argv, deps = {}) {
     const step = async (label, fn) => {
       try { await fn(); console.log(`cleanup: ${label} ok`); } catch (e) { console.error(`cleanup: ${label} failed: ${String(e.message || e).slice(0, 200)}`); }
     };
+    // restores must run on a live connection whenever one can be had
+    if (c.closed && reconnectFn) await step("reconnect", () => reconnectFn());
     for (const [label, fn] of cleanups.slice().reverse()) await step(label, fn);
     await step("camera restore", () => bw.restoreCamera(c));
     await step("sidebar restore", () => bw.restoreSidebar(c));
@@ -149,6 +153,8 @@ export async function main(argv, deps = {}) {
     const session = process.env.SHEPHERDR_CHAT || "manual";
     console.log("waiting for the bench window lock");
     release = await bw.acquireLock(c, session);
+    const fix = await bw.repairCamera(c);
+    if (fix.repaired) console.log(`repaired the shared camera key left by an earlier run: ${fix.was} -> ${fix.now}`);
     const win = await bw.windowInfo(c);
     if (win.vis !== "visible" || !(win.hz >= 20)) throw new Error(`the bench window must be on screen: visibility ${win.vis}, refresh ${win.hz} Hz (needs visible and 20 Hz or more)`);
     await bw.saveSidebar(c);
@@ -160,7 +166,7 @@ export async function main(argv, deps = {}) {
     const added = await c.send("Page.addScriptToEvaluateOnNewDocument", { source: probeSrc });
     scriptId = added && added.result && added.result.identifier;
 
-    const input = createInput(c);
+    input = createInput(c);
     const J = (s) => JSON.stringify(s);
     const evj = (expr, o) => c.evJson(`JSON.stringify((${expr}) ?? null)`, o);
     const probe = {
@@ -172,6 +178,22 @@ export async function main(argv, deps = {}) {
       mark: (n) => c.ev(`(${PX}.mark(${J(n)}), 1)`),
       act: () => c.ev(`(${PX}.act(), 1)`),
       install: async () => { await c.ev(probeSrc); },
+    };
+
+    let reconnects = 0;
+    reconnectFn = async () => {
+      try { c.close(); } catch { /* dead */ }
+      if (served) { try { await served.stop(); } catch { /* socket gone */ } }
+      c = await connectFn({ target: a.target });
+      input = createInput(c);
+      if (ctx) { ctx.c = c; ctx.input = input; }
+      await c.ev(probeSrc);
+      const r = await c.send("Page.addScriptToEvaluateOnNewDocument", { source: probeSrc });
+      scriptId = r && r.result && r.result.identifier;
+      restoreConfirm = await bw.stubConfirm(c, false);
+      await bw.saveCamera(c);
+      if (a.build) { const old = served; served = await serveBuild(c, resolve(a.build)); if (old && old.served) { served.served.js += old.served.js; served.served.css += old.served.css; } }
+      console.log("reconnected to the bench window");
     };
 
     let names = {}, origin = await c.ev(`performance.timeOrigin`);
@@ -199,14 +221,29 @@ export async function main(argv, deps = {}) {
         out.push({ title: b.getAttribute("title") || b.getAttribute("aria-label") || "", x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }); }
       return JSON.stringify(out); })()`);
     ctx.clickBtn = async (re) => { const l = await ctx.findBtns(re); if (!l.length) return null; await input.click(l[0].x, l[0].y); return l[0]; };
-    // a background point inside the board root with room for a horizontal drag of dist px (dir -1 left, 1 right)
-    ctx.freePoint = async (dist = 370, dir = -1) => c.evJson(`(() => { const v = ${VIEW_JS}; if (!v) return "null"; const r = v.root.getBoundingClientRect();
-      const cx = r.x + r.width / 2, cy = r.y + r.height / 2, bad = ".pxd-item, .pxd-section, .pxd-port, .pxd-grip, .pxd-edge, .pxd-btn, .pxd-link, .pxd-chrome";
-      const cand = []; for (const dx of [0, -150, 150, -300, 300]) for (const dy of [0, -120, 120, -240, 240]) cand.push([dx, dy]);
-      cand.sort((p, q) => Math.hypot(p[0], p[1]) - Math.hypot(q[0], q[1]));
-      for (const [dx, dy] of cand.slice(0, 12)) { const x = Math.round(cx + dx), y = Math.round(cy + dy), x2 = x + ${dir} * ${dist};
-        if (x2 < r.left + 10 || x2 > r.right - 10 || y < r.top + 10 || y > r.bottom - 10 || x < r.left + 10 || x > r.right - 10) continue;
-        const el = document.elementFromPoint(x, y); if (!el || !el.closest(".pxd-root") || el.closest(bad)) continue; return JSON.stringify({ x, y }); }
+    // A background point with room for a horizontal drag of dist px (dir -1 left, 1 right). Mirrors scenarios/move.mjs: the DOM
+    // under the point is plain board surface AND no card, section title or section border is near it in world space
+    // (a press on a card with no shell yet is still that card).
+    ctx.freePoint = async (dist = 370, dir = -1) => c.evJson(`(() => { const v = ${VIEW_JS}; if (!v) return "null";
+      const rr = v.root.getBoundingClientRect(), vp = v.viewport(), src = v.snapshotSource(); if (!src || !vp || !vp.zoom) return "null";
+      const BAD = ".pxd-chrome, .pxd-out, .pxd-port, .pxd-grip, .pxd-edge, .pxd-label, .pxd-link, .pxd-section__title, .pxd-section__edge, .pxd-item, .pxd-btn, button, a, input, textarea, select, [contenteditable]";
+      const central = (x, y) => x > rr.left + 90 && x < rr.right - 90 && y > rr.top + 90 && y < rr.bottom - 90;
+      const surface = v.root.querySelector(".pxd-viewport");
+      const empty = (x, y) => { const el = document.elementFromPoint(x, y); if (!el || !surface || !surface.contains(el) || el.closest(BAD)) return false;
+        const wx = (x - rr.left - vp.x) / vp.zoom, wy = (y - rr.top - vp.y) / vp.zoom, p = 14 / vp.zoom, tb = 28 / vp.zoom;
+        for (const [uid, it] of src.board.items) { const r = src.rects.get(uid); if (!r) continue;
+          if (it.type === "section") {
+            if (wx >= r.x - p && wx <= r.x + r.w + p && wy >= r.y - tb - p && wy <= r.y + p) return false;
+            const outer = wx >= r.x - p && wx <= r.x + r.w + p && wy >= r.y - p && wy <= r.y + r.h + p;
+            const inner = wx >= r.x + p && wx <= r.x + r.w - p && wy >= r.y + p && wy <= r.y + r.h - p;
+            if (outer && !inner) return false;
+          } else if (wx >= r.x - p && wx <= r.x + r.w + p && wy >= r.y - p && wy <= r.y + r.h + p) return false; }
+        return true; };
+      const cx = rr.left + rr.width / 2, cy = rr.top + rr.height / 2;
+      for (let ring = 0; ring <= 16; ring++) for (let i = -ring; i <= ring; i++) for (let j = -ring; j <= ring; j++) {
+        if (Math.max(Math.abs(i), Math.abs(j)) !== ring) continue;
+        const x = cx + i * 26, y = cy + j * 26;
+        if (central(x, y) && central(x + ${dir} * ${dist}, y) && empty(x, y)) return JSON.stringify({ x: Math.round(x), y: Math.round(y) }); }
       return "null"; })()`);
     ctx.fsState = () => c.evJson(`JSON.stringify(!!(window.__plexusDiagram && window.__plexusDiagram.mounts().some((m) => m.connected && m.fullscreen)))`);
     ctx.fullscreen = async (on) => {
@@ -306,13 +343,17 @@ export async function main(argv, deps = {}) {
     const baseLine = (s, i, traced) => ({ run, at: new Date().toISOString(), label: a.label, build: { dir: build.dir, sha: build.sha }, version, group: s.group, scenario: s.name, i: i + 1, n: a.n, traced, window: { id: win.id, inner: win.inner, dpr: win.dpr, vis: win.vis, hz: win.hz }, load: loadavg().map((x) => Math.round(x * 100) / 100) });
     const timeoutFor = (s) => (s.heavy ? Math.max(45 * 60 * 1000, (a.soakMin + 10) * 60 * 1000) : a.timeoutMs);
 
+    const nameFailed = new Set();
     async function nameFor(summary) {
       const urls = new Set();
       for (const st of (summary && summary.stalls && summary.stalls.list) || []) for (const sc of st.scripts || []) if (sc.u && sc.u.startsWith("blob:")) urls.add(sc.u);
       const o = await c.ev(`performance.timeOrigin`);
       if (o !== origin) { for (const k of Object.keys(names)) delete names[k]; origin = o; }
-      const missing = [...urls].filter((u) => !names[u]);
-      if (missing.length) { try { Object.assign(names, await nameScripts(c, missing)); } catch (e) { console.error(`nameScripts failed: ${String(e.message).slice(0, 120)}`); } }
+      const missing = [...urls].filter((u) => !names[u] && !nameFailed.has(u));
+      if (missing.length) {
+        try { Object.assign(names, await nameScripts(c, missing)); }
+        catch (e) { for (const u of missing) nameFailed.add(u); console.error(`nameScripts failed (not retried for these scripts): ${String(e.message).slice(0, 120)}`); }
+      }
     }
 
     async function runOne(s, i, traced) {
@@ -341,7 +382,7 @@ export async function main(argv, deps = {}) {
           line.ttnp = res.ttnp != null ? res.ttnp : null;
           if (res.extra) line.extra = res.extra;
         }
-        line.ctx = { board: info0 && info0.board, zoom0: info0 && info0.zoom, zoom1: info1 && info1.zoom, lod0: info0 && info0.lod, lod1: info1 && info1.lod, items: info0 && info0.items };
+        line.ctx = { board: info0 && info0.board, zoom0: info0 && info0.zoom, zoom1: info1 && info1.zoom, lod0: info0 && info0.lod, lod1: info1 && info1.lod, items: info0 && info0.items, camera: info0 ? { x: info0.x, y: info0.y, zoom: info0.zoom } : null };
         if (traceFile) {
           const split = await analyseTrace(traceFile.file, { names });
           const tasks = (split.tasks || []).slice().sort((p, q) => q.d - p.d).slice(0, 12);
@@ -351,6 +392,13 @@ export async function main(argv, deps = {}) {
       } catch (e) {
         line.err = String((e && e.message) || e).slice(0, 300);
         if (tracing) { try { await ctx.trace.stop(`${s.group}-${s.name}-${i + 1}-err`); } catch { /* trace lost */ } }
+        if (c.closed || /cdp closed/.test(line.err)) {
+          if (reconnects < 3) {
+            reconnects++;
+            console.error(`connection lost (${reconnects}/3), reconnecting`);
+            try { await reconnectFn(); } catch (e3) { console.error(`reconnect failed: ${String(e3.message || e3).slice(0, 200)}`); recFails.n++; if (recFails.n >= 2 && !a.keepGoing) line.fatal = true; }
+          } else if (!a.keepGoing) line.fatal = true;
+        }
         try {
           await input.key("Escape"); await input.key("Escape");
           await ctx.ensure("board");

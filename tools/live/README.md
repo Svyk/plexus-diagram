@@ -63,3 +63,11 @@ The gate builds one fixture on `Plexus Diagram/Test Lab`: 40 note cards, 3 image
 The version line is `window.__plexusDiagram.version` from the build running in that window. For one board open it wraps every function on `roamAlphaAPI.data`, `data.block`, and `data.fast`, opens Daily Notes, waits, opens the fixture board, and restores the functions. The data-calls row is the count whose stack contains this build's blob URL. The log also prints the total.
 
 It refuses a window titled `plx typing bench`. It adds one right-sidebar window for the fixture board. Collapse uses `rightSidebar.collapseWindow({ window: { type: "block", "block-uid" } })`. Remove uses `unpinWindow` and `removeWindow` with that same block uid, and only for the window this run added. It does not call `rightSidebar.close`. A sidebar failure is printed and the typing rows still run. Parking the main board for those rows schedules `data.block.move` into the closed folder and polls `.roam-main .pxd-root`. That move promise stays pending while the evaluate awaits it, even after the root is gone. On every exit, including a failed row, it removes that window and checks the earlier window list is intact. `ledger cleanup` then deletes ledgered blocks on the test pages. Page lookup uses `roamAlphaAPI.pull("[:block/string {:block/page [:node/title]}]")`, because `data.pull` omits `:block/page`.
+
+## Stress suite
+
+```bash
+node tools/live/stress/run.mjs --list    # scenarios for the stress board, run in the marked bench window
+```
+
+Speed suite for the stress board (recorder, scenarios, A/B runner, round report). Safety rules, set-up and every command are in `tools/live/stress/README.md`.

@@ -153,7 +153,8 @@ export async function analyseTrace(file, { names = {}, from, to } = {}) {
   const spanMs = (E - S) / 1000;
 
   // script by owner
-  const owners = ownersFromProfile(profUse, S, E, names);
+  const prof = ownersFromProfile(profUse, S, E, names);
+  const owners = prof && prof.owners;
   const script = { plexus: 0, roam: 0, other: {}, unknown: 0 };
   const put = (o, ms) => {
     if (o === "plexus") script.plexus += ms;
@@ -175,11 +176,20 @@ export async function analyseTrace(file, { names = {}, from, to } = {}) {
     hitTest: r3(hitTest), restyled, recalcs, layouts, forcedMs: r3(forced),
     tasks, scriptMs: r3(sums.script), ownerSource: owners ? "profile" : "events",
   };
+  // functions: raw sampled ms, not scaled to the event-walk script time
+  split.functions = { self: [], plexus: [] };
+  if (prof) {
+    const fnName = (cf) => cf.functionName || "(anonymous)";
+    split.functions.self = [...prof.selfM.values()].sort((a, b) => b.ms - a.ms).slice(0, 25).map((a) => ({ owner: a.owner, fn: fnName(a.cf), line: a.cf.lineNumber, pos: a.cf.columnNumber, url6: (a.cf.url || "").slice(-6), ms: r3(a.ms) }));
+    split.functions.plexus = [...prof.inclM.values()].sort((a, b) => b.ms - a.ms).slice(0, 25).map((a) => ({ fn: fnName(a.cf), line: a.cf.lineNumber, pos: a.cf.columnNumber, ms: r3(a.ms), selfMs: r3(a.self) }));
+  }
   if (selAgg.size) split.selectors = [...selAgg].sort((a, b) => b[1].us - a[1].us).slice(0, 30).map(([selector, a]) => ({ selector, ms: r3(a.us / 1000), attempts: a.att, matches: a.mc }));
   return split;
 }
 
-// owner shares (ms) from CPU profile samples inside [S, E]; null when the trace has none
+const fkey = (cf) => (cf.url || "") + "|" + (cf.functionName || "") + "|" + cf.lineNumber + "|" + cf.columnNumber;
+
+// owner shares (ms) plus per-function self and plexus-inclusive time from CPU profile samples inside [S, E]; null when the trace has none
 function ownersFromProfile(profEvents, S, E, names) {
   const byId = new Map();
   const key = (e) => String(e.id ?? (e.id2 && (e.id2.local ?? e.id2.global)) ?? "0");
@@ -190,7 +200,7 @@ function ownersFromProfile(profEvents, S, E, names) {
     if (p.name === "Profile") pr.start = p.args && p.args.data && p.args.data.startTime != null ? p.args.data.startTime : p.ts;
     else pr.chunks.push(p);
   }
-  const out = new Map();
+  const out = new Map(), selfM = new Map(), inclM = new Map();
   let any = false;
   for (const pr of byId.values()) {
     pr.chunks.sort((a, b) => a.ts - b.ts);
@@ -210,19 +220,26 @@ function ownersFromProfile(profEvents, S, E, names) {
         if (!leaf) continue;
         if (/^\((idle|program|garbage collector)\)$/.test(leaf.cf.functionName || "")) continue;
         let outer = null, roam = false;
+        const dt = (deltas[i] || 0) / 1000, seen = new Set();
         for (let n = leaf, g = 0; n && g < 4000; n = n.parent != null ? nodes.get(n.parent) : null, g++) {
           const u = n.cf.url || "";
           if (u.startsWith("blob:")) outer = u;
           else if (u.includes("roamresearch.com")) roam = true;
+          if (ownerOf(u, names) === "plexus") {
+            const k = fkey(n.cf);
+            if (!seen.has(k)) { seen.add(k); const a = inclM.get(k) || { cf: n.cf, ms: 0, self: 0 }; a.ms += dt; if (n === leaf) a.self += dt; inclM.set(k, a); }
+          }
         }
         const o = outer ? ownerOf(outer, names) : roam ? "roam" : "unknown";
         // time until the next sample is not known across chunks, so bill this sample its own delta
-        out.set(o, (out.get(o) || 0) + (deltas[i] || 0) / 1000);
+        out.set(o, (out.get(o) || 0) + dt);
+        const sk = fkey(leaf.cf), sa = selfM.get(sk) || { cf: leaf.cf, owner: o, ms: 0 };
+        sa.ms += dt; selfM.set(sk, sa);
         any = true;
       }
     }
   }
-  return any ? out : null;
+  return any ? { owners: out, selfM, inclM } : null;
 }
 
 // ---- CLI
@@ -238,6 +255,12 @@ function table(s, file) {
   row("gc", s.gc); row("other", s.other); row("idle", s.idle);
   lines.push("", `restyled ${s.restyled} elements in ${s.recalcs} recalcs, ${s.layouts} layouts, forced style/layout ${s.forcedMs} ms`);
   if (s.tasks.length) { lines.push("", "tasks >= 50 ms:"); for (const t of s.tasks) lines.push(`  at ${String(t.st).padStart(9)}  ${String(t.d).padStart(8)} ms  ` + t.top.map(([l, v]) => `${l} ${v}`).join(", ")); }
+  if (s.functions && s.functions.self.length) {
+    lines.push("", "functions by self time (raw sampled ms):");
+    for (const x of s.functions.self.slice(0, 15)) lines.push(`  ${String(x.ms).padStart(9)}  ${x.owner.padEnd(10)} ${x.fn.slice(0, 40)}  pos ${x.pos} (line ${x.line}, ${x.url6})`);
+    lines.push("", "plexus functions by inclusive time (ms, self):");
+    for (const x of s.functions.plexus.slice(0, 15)) lines.push(`  ${String(x.ms).padStart(9)}  ${String(x.selfMs).padStart(8)}  ${x.fn.slice(0, 40)}  pos ${x.pos} (line ${x.line})`);
+  }
   if (s.selectors) { lines.push("", "selectors (ms, attempts, matches):"); for (const x of s.selectors.slice(0, 15)) lines.push(`  ${String(x.ms).padStart(8)} ${String(x.attempts).padStart(8)} ${String(x.matches).padStart(7)}  ${x.selector.slice(0, 110)}`); }
   return lines.join("\n");
 }
@@ -307,6 +330,20 @@ async function selftest() {
     const ro = await analyseTrace(join(dir, "r.json"), { names });
     // samples: plexus 500+500, roam 1000, blobB (parent roam frame, outermost blob = B) 1000, roam 1000 -> 1000 plexus, 2000 roam, 1000 Other Ext
     near(ro.script.plexus, 4 * 1000 / 4000, "r plexus"); near(ro.script.roam, 4 * 2000 / 4000, "r roam"); near(ro.script.other["Other Ext"], 1, "r other");
+    // function level: A (plexus) -> B (plexus) -> C (roam)
+    const cfn = (id, parent, functionName, url, col) => ({ id, parent, callFrame: { functionName, url, lineNumber: 0, columnNumber: col } });
+    const ft = trace.filter((e) => e.ph !== "P").concat([
+      { ph: "P", name: "Profile", pid: 1, tid: 1, ts: 2000, id: "0x2", args: { data: { startTime: 2000 } } },
+      { ph: "P", name: "ProfileChunk", pid: 1, tid: 1, ts: 3000, id: "0x2", args: { data: { cpuProfile: { nodes: [cfn(1, null, "(root)", "", 0), cfn(2, 1, "A", blobA, 100), cfn(3, 2, "B", blobA, 200), cfn(4, 3, "C", "https://roamresearch.com/app.js", 300), cfn(5, 1, "(idle)", "", 0)], samples: [2, 3, 4, 5] }, timeDeltas: [1000, 2000, 4000, 8000] } } }]);
+    await writeFile(join(dir, "f.json"), JSON.stringify(ft));
+    const fs = (await analyseTrace(join(dir, "f.json"), { names })).functions;
+    const inc = (n) => fs.plexus.find((x) => x.fn === n);
+    near(inc("A").ms, 7, "A inclusive"); near(inc("A").selfMs, 1, "A self"); near(inc("B").ms, 6, "B inclusive"); near(inc("B").selfMs, 2, "B self");
+    assert.strictEqual(fs.plexus.length, 2); assert.strictEqual(inc("A").pos, 100);
+    const c = fs.self.find((x) => x.fn === "C"); near(c.ms, 4, "C self"); assert.strictEqual(c.owner, "plexus"); /* the outermost blob frame owns the sample */ assert.strictEqual(c.url6, "app.js"); assert.strictEqual(c.pos, 300);
+    assert.ok(!fs.self.some((x) => x.fn === "(idle)")); assert.strictEqual(fs.self.length, 3);
+    assert.deepStrictEqual((await analyseTrace(plain, { names, from: 0, to: 13 })).functions.plexus.length, 1);
+    assert.deepStrictEqual((await analyseTrace(join(dir, "np.json"), { names })).functions, { self: [], plexus: [] });
   } finally { await rm(dir, { recursive: true, force: true }); }
   console.log("synthetic ok");
   const real = join(homedir(), "wo/pxd-20/tr-nm1.json");

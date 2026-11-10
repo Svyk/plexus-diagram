@@ -42,7 +42,7 @@ function lockHeld(file, session, stalePidlessMs) {
   if (!existsSync(file)) return null;
   const txt = readFileSync(file, "utf8").trim();
   const age = Date.now() - statSync(file).mtimeMs;
-  const pid = Number((txt.match(/pid=(\d+)/) || [])[1]);
+  const pid = Number((txt.match(/pid[ =](\d+)/) || [])[1]);
   if (pid) return pid !== process.pid && pidAlive(pid) && age < 6 * 3600 * 1000 ? txt : null;
   return txt.split(/\s+/)[0] !== session && age < stalePidlessMs ? txt : null;
 }
@@ -92,16 +92,39 @@ export async function saveCamera(c) {
   return remembered.get(key);
 }
 
+const VP_DIRTY = () => join(stateDir(), "vp-dirty.json");
+
 export async function setCamera(c, vp) {
   const v = typeof vp === "string" ? vp : JSON.stringify(vp);
+  // crash record: the next run puts Svy's value back when this one never got to restoreCamera
+  await ensureState();
+  const prev = remembered.get(id8(c));
+  await writeFile(VP_DIRTY(), JSON.stringify({ at: new Date().toISOString(), target: id8(c), saved: typeof prev === "string" ? prev : null, bench: v }));
   await c.ev(`(localStorage.setItem(${JSON.stringify(VP_KEY)}, ${JSON.stringify(v)}), 1)`);
 }
 
 export async function restoreCamera(c) {
   const v = await c.ev(`(() => { try { const n = sessionStorage.getItem("pxd-stress-vp"); if (n) return n; } catch (e) {} return null; })()`);
   const use = v || remembered.get(id8(c)) || null;
-  if (use != null) await c.ev(`(localStorage.setItem(${JSON.stringify(VP_KEY)}, ${JSON.stringify(use)}), 1)`);
+  if (use != null) {
+    await c.ev(`(localStorage.setItem(${JSON.stringify(VP_KEY)}, ${JSON.stringify(use)}), 1)`);
+    try { unlinkSync(VP_DIRTY()); } catch { /* none */ }
+  }
   return use;
+}
+
+// A previous run died with the bench camera still in the shared key: put Svy's value back when nobody changed it since.
+export async function repairCamera(c) {
+  let rec = null;
+  try { rec = JSON.parse(await readFile(VP_DIRTY(), "utf8")); } catch { return { repaired: false, was: null, now: null }; }
+  const was = await c.ev(`localStorage.getItem(${JSON.stringify(VP_KEY)})`);
+  let repaired = false;
+  if (was != null && was === rec.bench && typeof rec.saved === "string") {
+    await c.ev(`(localStorage.setItem(${JSON.stringify(VP_KEY)}, ${JSON.stringify(rec.saved)}), 1)`);
+    repaired = true;
+  }
+  try { unlinkSync(VP_DIRTY()); } catch { /* gone */ }
+  return { repaired, was, now: repaired ? rec.saved : was };
 }
 
 export async function stubConfirm(c, answer = false) {

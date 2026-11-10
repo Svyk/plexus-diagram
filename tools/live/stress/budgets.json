@@ -1,0 +1,19 @@
+{
+  "note": "Goals from the PXD-25 plan, in ms unless stated. scenarios starts empty: report.mjs --write-budgets fills it from the baseline (median rounded up to the next 10) and only ever tightens.",
+  "targets": {
+    "gesture stall max (ms)": 50,
+    "click to next paint (ms)": 100,
+    "card readable on arrival (ms)": 0,
+    "card live after a pan (ms)": 300,
+    "card readable after a zoom (ms)": 150,
+    "card live after a zoom (ms)": 500,
+    "typing p95 (ms)": 50,
+    "open visible (ms)": 150,
+    "open usable (ms)": 500,
+    "reload paint after Roam shell (ms)": 300,
+    "reload usable after Roam shell (ms)": 1000,
+    "idle Plexus stalls (count)": 0,
+    "soak growth (percent)": 10
+  },
+  "scenarios": {}
+}

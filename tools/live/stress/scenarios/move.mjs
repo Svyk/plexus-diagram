@@ -111,6 +111,10 @@ async function step(ctx, label, fn, { wait = 430, content = true, settle = 150, 
   sum.label = label;
   return sum;
 }
+// A click the way the recorded session clicked: the button stays down 135 ms (median), so the press and the release
+// each get their own frame and their own Event Timing row. A zero-length CDP click would merge them.
+const HOLD = 135;
+async function press(ctx, x, y, hold = HOLD) { await ctx.input.down(x, y); await sleep(hold); await ctx.input.up(x, y); }
 const row = (sum, more = {}) => ({
   label: sum.label, z0: sum.c0?.zoom ?? null, z1: sum.c1?.zoom ?? null, band: band(sum.c1?.zoom), lod: sum.c1?.lod ?? null,
   down: evd(sum, "pointerdown"), up: evd(sum, "pointerup"), click: evd(sum, "click"), ttnp: sum.ttnp,
@@ -173,7 +177,7 @@ async function zoomButtons(ctx) {
     await ctx.input.move(b.x, b.y);
     await sleep(300);
     for (let k = 0; k < n; k++) {
-      const s = await step(ctx, `${dir}-${k + 1}`, () => ctx.input.click(b.x, b.y));
+      const s = await step(ctx, `${dir}-${k + 1}`, () => press(ctx, b.x, b.y));
       sums.push(s); rows.push(row(s, { dir }));
     }
     await ctx.probe.quiet({ gap: 800, max: 6000 });
@@ -184,7 +188,7 @@ async function zoomButtons(ctx) {
     const b = await page(ctx, `btn(${JSON.stringify(dir === "out" ? "^zoom out" : "^zoom in")})`);
     await ctx.input.move(b.x, b.y);
     await sleep(300);
-    const s = await step(ctx, `fast-${dir}`, async () => { for (let k = 0; k < n; k++) { const t = Date.now(); await ctx.input.click(b.x, b.y); await sleep(Math.max(0, 262 - (Date.now() - t))); } }, { wait: 300, settle: 400, max: 6000 });
+    const s = await step(ctx, `fast-${dir}`, async () => { for (let k = 0; k < n; k++) { const t = Date.now(); await press(ctx, b.x, b.y, 120); await sleep(Math.max(0, 262 - (Date.now() - t))); } }, { wait: 300, settle: 400, max: 6000 });
     sums.push(s);
     fast[dir] = { clicks: n, click: dist(evAll(s, "click", "pxd-btn", n)), down: dist(evAll(s, "pointerdown", "pxd-btn", n)), up: dist(evAll(s, "pointerup", "pxd-btn", n)), stalls: s.stalls.n, stallMs: Math.round(s.stalls.total), worst: Math.round(s.stalls.worst), fmax: s.frames?.max, z1: s.c1?.zoom };
   }
@@ -219,7 +223,7 @@ async function clickEmpty(ctx) {
     await go(ctx, ZOOMS[name]);
     const p = await page(ctx, "findEmpty()");
     if (!p) continue;
-    for (let k = 0; k < (ctx.opts.quick ? 2 : 5); k++) { const s = await step(ctx, `empty ${name} ${k + 1}`, () => ctx.input.click(p.x, p.y)); sums.push(s); rows.push(row(s)); }
+    for (let k = 0; k < (ctx.opts.quick ? 2 : 5); k++) { const s = await step(ctx, `empty ${name} ${k + 1}`, () => press(ctx, p.x, p.y, 112)); sums.push(s); rows.push(row(s)); }
   }
   if (!sums.length) return { skip: "no empty background found" };
   await go(ctx, ZOOMS.reading);
@@ -234,11 +238,11 @@ async function clickItem(ctx) {
     for (const p of pts || []) {
       const t = await guardedClick(ctx, p, (x) => x.kind === "item" && x.uid === p.uid && x.plain);
       if (!t) { rows.push({ label: "skip", uid: p.uid, why: "not the card's own surface once hovered" }); continue; }
-      const s = await step(ctx, `item ${name} ${p.kind}`, async () => { await ctx.input.down(p.x, p.y); await ctx.input.up(p.x, p.y); });
+      const s = await step(ctx, `item ${name} ${p.kind}`, () => press(ctx, p.x, p.y));
       const sel = await page(ctx, "sel()");
       sums.push(s); rows.push(row(s, { uid: p.uid, kind: p.kind, selected: Array.isArray(sel) && sel.length === 1 && sel[0] === p.uid }));
       const e = await page(ctx, "findEmpty()");
-      if (e) { const d = await step(ctx, `deselect ${name}`, () => ctx.input.click(e.x, e.y)); sums.push(d); rows.push(row(d, { deselect: true })); }
+      if (e) { const d = await step(ctx, `deselect ${name}`, () => press(ctx, e.x, e.y, 112)); sums.push(d); rows.push(row(d, { deselect: true })); }
       else await clearSelection(ctx);
     }
   }
@@ -257,7 +261,7 @@ async function clickEdge(ctx) {
     for (const p of pts || []) {
       const t = await guardedClick(ctx, p, (x) => x.kind === "edge" && x.uid === p.uid);
       if (!t) { rows.push({ label: "skip", uid: p.uid }); continue; }
-      const s = await step(ctx, `edge ${name}`, async () => { await ctx.input.down(p.x, p.y); await ctx.input.up(p.x, p.y); });
+      const s = await step(ctx, `edge ${name}`, () => press(ctx, p.x, p.y));
       sums.push(s); rows.push(row(s, { uid: p.uid }));
       const e = await page(ctx, "findEmpty()");
       if (e) { await ctx.input.click(e.x, e.y); await sleep(250); } else { await ctx.input.key("Escape"); await sleep(250); }
@@ -346,7 +350,7 @@ async function fit(ctx) {
   if (!b) return { skip: "no fit button on the rail" };
   await ctx.input.move(b.x, b.y);
   await sleep(300);
-  const s = await step(ctx, "fit", () => ctx.input.click(b.x, b.y), { wait: 600, settle: 600, max: 8000 });
+  const s = await step(ctx, "fit", () => press(ctx, b.x, b.y), { wait: 600, settle: 600, max: 8000 });
   const back = await step(ctx, "back to reading", () => ctx.c.ev(`(window.__pxdStress.act(), window.__pxdStress.view().showAt(${JSON.stringify(ctx.at(ZOOMS.reading))}), 1)`), { wait: 600, settle: 600, max: 8000 });
   await install(ctx);
   return { summary: merge("fit", [s, back]), ttnp: evd(s, "click") ?? FAST, extra: { steps: [row(s), row(back)] } };
@@ -383,9 +387,9 @@ async function replay(ctx) {
   const sums = [], sent = { btn: 0, drag: 0, empty: 0, wheel: 0 };
   let skipped = 0;
   const run = async (a) => {
-    if (a.k === "btn") { const b = await page(ctx, `btn(${JSON.stringify(a.dir === "out" ? "^zoom out" : "^zoom in")})`); if (!b) return false; await ctx.input.click(b.x, b.y); return true; }
+    if (a.k === "btn") { const b = await page(ctx, `btn(${JSON.stringify(a.dir === "out" ? "^zoom out" : "^zoom in")})`); if (!b) return false; await ctx.input.move(b.x, b.y); await press(ctx, b.x, b.y, 120); return true; }
     if (a.k === "drag") { const p = await page(ctx, `findEmpty(${a.x1}, ${a.y1}, ${a.dx}, ${a.dy})`); if (!p) return false; await ctx.input.drag({ x1: p.x, y1: p.y, x2: p.x + a.dx, y2: p.y + a.dy, steps: Math.max(4, Math.round(a.dur / 16)), delay: 16 }); return true; }
-    if (a.k === "empty") { const p = await page(ctx, `findEmpty(${a.x1}, ${a.y1})`); if (!p) return false; await ctx.input.click(p.x, p.y); return true; }
+    if (a.k === "empty") { const p = await page(ctx, `findEmpty(${a.x1}, ${a.y1})`); if (!p) return false; await ctx.input.move(p.x, p.y); await press(ctx, p.x, p.y, 112); return true; }
     await ctx.input.wheelSeries(box.x + box.w / 2, box.y + box.h / 2, a.list); return true;
   };
   for (const burst of bursts) {

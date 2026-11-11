@@ -15,6 +15,7 @@ import { createDomStub } from "./fixtures/dom-stub.js";
 import { BIG_BUDGETS_PATH, checkBigCeilings, lowerBigCeilings, readBigBudgets } from "../tools/live/big-board-budgets.mjs";
 import { dragSelection, mountBig, settledIn, zoomBurst, tick } from "./fixtures/big-mount.js";
 import { noteSpeedFlags } from "../src/settings.js";
+import { acquireSession, resetSessions } from "../src/session.js";
 import { gestureIdle } from "../src/view/query-card.js";
 import { continueAfterBlob } from "../src/view/blob-yield.js";
 
@@ -439,6 +440,91 @@ test("PXD-31: twelve cards do not raise the hit shield", () => {
     view.dispose();
     restore();
     noteSpeedFlags(null);
+  }
+});
+
+test("PXD-34: a layout publish skips buildBoard, and a new block does not", { timeout: 120000 }, async () => {
+  const open = () => {
+    const fake = createFakeRoam({ echoDelay: 0 });
+    const seed = toSeed(bigBoardTree());
+    seed.children.push({ uid: "brefcard", string: "((outsideref))", props: { plexus: { type: "card", x: 9000, y: 9000, w: 200, h: 80, v: 2 } }, children: [] });
+    fake.seedBoard({ uid: seed.uid, string: seed.string, props: seed.props, children: seed.children });
+    const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+    let lookups = 0;
+    const read = host.blockString.bind(host);
+    host.blockString = (id) => { lookups += 1; return read(id); };
+    const session = acquireSession(seed.uid, { host, linkDelay: 0 });
+    lookups = 0;
+    return { session, count: () => lookups, reset() { lookups = 0; } };
+  };
+  let offN = 0;
+  let onN = 0;
+  let createN = 0;
+  let sectionN = 0;
+  let addHits = -1;
+  let moveHits = 0;
+  try {
+    noteSpeedFlags({ layoutPatch: false });
+    const off = open();
+    try {
+      await off.session.commitMove(["bc00000"], 30, 10);
+      offN = off.count();
+      assert.ok(offN >= 2, `off lookups ${offN}`);
+      const moved = off.session.board.items.get("bc00000");
+      assert.ok(Math.abs(moved.x - 54) < 0.2, `x ${moved.x}`);
+      assert.equal(moved.parentUid, "bs0");
+      assert.equal(off.session.layoutPatchHits(), 0);
+    } finally {
+      off.session.release?.();
+      resetSessions();
+    }
+    noteSpeedFlags({ layoutPatch: true });
+    const on = open();
+    try {
+      await on.session.commitMove(["bc00000"], 30, 10);
+      onN = on.count();
+      assert.equal(onN, 0);
+      const moved = on.session.board.items.get("bc00000");
+      assert.ok(Math.abs(moved.x - 54) < 0.2, `x ${moved.x}`);
+      assert.equal(moved.title, "Card 1");
+      moveHits = on.session.layoutPatchHits();
+      assert.ok(moveHits > 0, `move hits ${moveHits}`);
+      on.reset();
+      const hitsAtCreate = on.session.layoutPatchHits();
+      const made = await on.session.createCard({ x: 20000, y: 20000, string: "New" });
+      createN = on.count();
+      assert.ok(createN > 0, `create lookups ${createN}`);
+      assert.equal(on.session.layoutPatchHits(), hitsAtCreate);
+      assert.equal(on.session.board.items.get(made)?.string, "New");
+      on.reset();
+      const section = await on.session.createSection({ rect: { x: 20000, y: 20000, w: 400, h: 300 }, title: "Far" });
+      sectionN = on.count();
+      assert.ok(sectionN > 0, `section lookups ${sectionN}`);
+      assert.equal(on.session.board.items.get(section)?.title, "Far");
+      assert.equal(on.session.layoutPatchHits(), hitsAtCreate);
+    } finally {
+      on.session.release?.();
+      resetSessions();
+    }
+    noteSpeedFlags({ layoutPatch: true });
+    const add = open();
+    try {
+      const made = await add.session.createCard({ x: 20000, y: 20000, string: "PXD-BENCH add" });
+      await add.session.setString(made, "PXD-BENCH add");
+      await add.session.growToFit(made, 500);
+      addHits = add.session.layoutPatchHits();
+      assert.equal(addHits, 0, `add entered layoutPatch ${addHits}`);
+      const card = add.session.board.items.get(made);
+      assert.equal(card?.string, "PXD-BENCH add");
+      assert.ok(card.h >= 500);
+    } finally {
+      add.session.release?.();
+      resetSessions();
+    }
+  } finally {
+    console.log(`PXD-34 lookups off=${offN} on=${onN} create=${createN} section=${sectionN} addHits=${addHits} moveHits=${moveHits}`);
+    noteSpeedFlags(null);
+    resetSessions();
   }
 });
 

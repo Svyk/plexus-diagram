@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.41.0 — 2026-11-10
+
+A large board stays more responsive while you zoom, hover, and move a card.
+
+- **Zoom clicks paint sooner.** On the stress board, a rail zoom click paints in 80 ms, down from 144 ms. The worst stall on that burst went from 219 ms to 167 ms, and the time stalled on the burst from 7,212 ms to 4,501 ms. A click on empty space stalls at worst 55 ms, down from 84 ms. A click that changes nothing no longer settles the board, and a query card keeps its rows until the notes change. The 50 ms targets were not met.
+- **Hovering does less work.** Hover stall time went from 351 ms to 82 ms, and hover long tasks from 259 to 0. On a zoom, stall time went from 12,014 ms to 8,709 ms, long tasks from 11,365 ms to 7,867 ms, and the worst stall from 637 ms to 269 ms. The 50 ms targets were not met.
+- **Moving a card skips a full rebuild.** On a card move, long tasks went from 256 ms to 187 ms and stall time from 383.9 ms to 254.3 ms. Making a section paints in 329.9 ms, down from 351.8 ms. Adding a card does not use this path. The 50 ms targets were not met.
+- **A small board stays quick.** A move on a 12-card board was 15 ms after the zoom change (17 ms before) and 9 ms after the move change (11 ms before). After the hover change it was 26 ms (21 ms before).
+- **Kill switches.** The hidden speed flags `stepSettle`, `gestureJobs` and `layoutPatch` turn these three changes off and restore 3.40.0 behaviour.
+
 ## 3.40.0 — 2026-11-09
 
 No more freeze after an edit on very large boards.

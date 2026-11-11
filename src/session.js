@@ -56,6 +56,7 @@ import {
   edgeString,
   mergePropsForWrite,
   normalizeEdge,
+  normalizeItemLayout,
   plainKeys,
   readPlexus,
   semanticRef,
@@ -609,8 +610,90 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return out;
   }
 
+  // PXD-34: a publish that only moved or resized cards patches those rects. A create or a delete never arms this,
+  // so it still builds the whole tree. Type "card" is the default and is dropped on write; x/y/w/h are the layout.
+  let treeId = null;
+  let layoutArmed = false;
+  let skipLayoutOnce = false;
+  let booted = false;
+  let layoutPatchHits = 0;
+  const LAYOUT_POS = new Set(["x", "y", "w", "h"]);
+  function propsBody(props) {
+    if (props == null) return stable(null);
+    const plain = plainKeys(props);
+    if (!plain || typeof plain !== "object" || Array.isArray(plain)) return stable(plain ?? null);
+    if (plain.plexus && typeof plain.plexus === "object" && !Array.isArray(plain.plexus)) {
+      const body = {};
+      for (const [k, v] of Object.entries(plain.plexus)) {
+        if (LAYOUT_POS.has(k)) continue;
+        if (k === "type" && v === "card") continue;
+        body[k] = v;
+      }
+      plain.plexus = body;
+    }
+    return stable(plain);
+  }
+  function captureTree(node) {
+    const walk = (n) => ({
+      uid: n[UID] ?? null,
+      string: n[STR] ?? "",
+      order: n[ORD] ?? null,
+      open: n[OPEN] !== false,
+      heading: n[":block/heading"] || 0,
+      props: propsBody(n[PROPS]),
+      kids: kidsOf(n).map(walk),
+    });
+    return walk(node);
+  }
+  function sameLayoutTree(node, snap) {
+    if (!node || !snap) return false;
+    if ((node[UID] ?? null) !== snap.uid) return false;
+    if ((node[STR] ?? "") !== snap.string) return false;
+    if ((node[ORD] ?? null) !== snap.order) return false;
+    if ((node[OPEN] !== false) !== snap.open) return false;
+    if ((node[":block/heading"] || 0) !== snap.heading) return false;
+    if (propsBody(node[PROPS]) !== snap.props) return false;
+    const kids = kidsOf(node);
+    if (kids.length !== snap.kids.length) return false;
+    for (let i = 0; i < kids.length; i++) if (!sameLayoutTree(kids[i], snap.kids[i])) return false;
+    return true;
+  }
+  function patchLayout() {
+    if (treeId == null || !sameLayoutTree(raw, treeId)) return false;
+    const changed = new Map();
+    const walk = (node) => {
+      for (const child of kidsOf(node)) {
+        const item = board.items.get(child[UID]);
+        if (item) {
+          const layout = normalizeItemLayout(readPlexus(child[PROPS]));
+          const x = layout.x ?? item.x;
+          const y = layout.y ?? item.y;
+          const w = layout.w ?? item.w;
+          const h = layout.h ?? item.h;
+          if (x !== item.x || y !== item.y || w !== item.w || h !== item.h) changed.set(item.uid, { ...item, x, y, w, h });
+        }
+        walk(child);
+      }
+    };
+    walk(raw);
+    if (!changed.size) return true;
+    const items = new Map();
+    for (const [id, item] of board.items) items.set(id, changed.get(id) ?? item);
+    board = { ...board, items };
+    return true;
+  }
+
   const rebuild = () => {
     rix = null;
+    const flagOn = notedSpeedFlags().layoutPatch !== false;
+    const wantPatch = flagOn && layoutArmed && !skipLayoutOnce && pendingPdfPages.size === 0;
+    skipLayoutOnce = false;
+    let patched = false;
+    if (wantPatch) {
+      layoutPatchHits += 1;
+      if (treeId) patched = patchLayout();
+    }
+    if (!patched) {
     const plexusApi = globalThis.window?.RoamPlexus ?? globalThis.RoamPlexus ?? null;
     board = raw ? buildBoard(raw, {
       resolve: (id) => {
@@ -641,6 +724,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         return pending;
       },
     }) : null;
+      if (flagOn && raw && board && (layoutArmed || !booted)) treeId = captureTree(raw);
+      if (!flagOn) treeId = null;
+    }
+    booted = true;
     annotateLanes(board);
     if (board && outlineRev.size) {
       for (const [id, rev] of outlineRev) {
@@ -1218,6 +1305,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     if (destroyed || pausedHolds >= holders || !highlightDirty) return;
     highlightDirty = false;
     propsCache.clear();
+    skipLayoutOnce = true;
     onBoard(host.pullBoard(uid, { light: true }));
   };
   syncHighlightWatches = () => {
@@ -1541,6 +1629,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   }
 
   function txn(fn, custom = null) {
+    layoutArmed = false;
     if (!board || destroyed || gone) return Promise.resolve(undefined);
     const ops = [];
     const t = {
@@ -2352,10 +2441,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     },
     refreshLinks,
 
+    layoutPatchHits() { return layoutPatchHits; },
+
     commitMove(uids, dx, dy) {
       if (!board || (!dx && !dy)) return Promise.resolve();
       const { remember, track, custom, wrap } = dragUndo();
       return txn((t) => {
+        if (notedSpeedFlags().layoutPatch !== false) layoutArmed = true;
         wrap(t);
         const top = topLevelOf(board, uids).filter((id) => !board.items.get(id).pinned);
         if (!top.length) return;
@@ -2406,6 +2498,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       if (!board || !list?.length) return Promise.resolve();
       const { track, custom, wrap } = dragUndo();
       return txn((t) => {
+        if (notedSpeedFlags().layoutPatch !== false) layoutArmed = true;
         wrap(t);
         const changedSections = [];
         const fitTouched = [];

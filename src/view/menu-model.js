@@ -350,7 +350,7 @@ export function buildMenu(kind, ctx = {}) {
         ...(c.isBoard ? [make("open-own-page", "Open nested board in its own page")] : []),
         make("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
         ...(c.canDesk ? [make("add-to-desk", "Add to Desk")] : []),
-        ...(c.compass && c.interop !== false ? [make("open-compass", "Open in Compass")] : []),
+        ...(c.compass && c.interop !== false ? [make("open-compass", "Open in Compass"), ...(c.compassExpand ? [make("expand-compass", "Expand with Compass")] : [])] : []),
         ...(c.isPdf ? [make("read-inline", c.inlineReader ? "Show the cover" : "Read inside the card")] : []),
         ...(c.isPdf ? [make("parse-pdf", "Parse PDF…")] : []),
         ...(c.isPdf && c.hasParse ? [make("open-parsed", "Open parsed")] : []),

@@ -19,6 +19,7 @@ import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SI
 import { TABLE_SIZE, keyGate, ownershipOf, tablePointerTarget } from "../model/roam-table.js";
 import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../model/drawing-card.js";
 import { annotatePlan } from "../model/annotate.js";
+import { canExpandCard, compassExpandTarget, planCompassExpand, writeCompassExpand } from "../model/compass-expand.js";
 import { bindingLabel, parseBinding } from "../model/bucket.js";
 import { rewriteBgTag } from "../model/highlighter.js";
 import { boardContents } from "../model/contents.js";
@@ -6186,6 +6187,9 @@ function buildBoardView(onFail, {
         const canExpand = item?.kind === "page" || item?.kind === "note" || item?.kind === "block";
         const compassApi = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
         const plexusApi = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
+        const compassOpen = typeof compassApi?.open === "function";
+        const interopOn = readSetting("interop") !== false;
+        const compassExpand = compassOpen && interopOn && Number(compassApi?.apiVersion) >= 2 && typeof compassApi?.neighborhood === "function" && canExpandCard(item);
         const task = isTaskItem(item) ? taskMeta(item.string, item.content) : null;
         const pdfUrl = item?.kind === "pdf" ? (pdfMacroUrl(item?.string || "") || "") : "";
         let officeText = item?.string || "";
@@ -6207,7 +6211,7 @@ function buildBoardView(onFail, {
           followed: Boolean(item.src) && followKeys.has(item.src),
           left: Boolean(followCtl?.left?.().includes(item.uid)),
         } : null;
-        return { ...(task ? { statusTags, status: task.status || "" } : {}), follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", canDesk: Boolean(deskTargetOf(item)) && typeof host?.addToDesk === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), filtering: Boolean(item) && filterCard === item.uid, canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        return { ...(task ? { statusTags, status: task.status || "" } : {}), follow, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", canDesk: Boolean(deskTargetOf(item)) && typeof host?.addToDesk === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), filtering: Boolean(item) && filterCard === item.uid, canExpand, mindPreset: readMindPreset(storage), compass: compassOpen, interop: interopOn, compassExpand, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -6926,6 +6930,54 @@ function buildBoardView(onFail, {
         else if (item.target?.kind === "block") uid = item.target.uid || null;
         else uid = item.uid || null;
         if (uid) api.open(uid);
+        break;
+      }
+      case "expand-compass": {
+        if (!item) break;
+        const api = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
+        if (!(Number(api?.apiVersion) >= 2) || typeof api?.neighborhood !== "function") break;
+        const target = compassExpandTarget(item);
+        if (!target) break;
+        void (async () => {
+          let uid = target.uid || null;
+          if (!uid && target.kind === "page") {
+            try { uid = host?.pageUid?.(target.title) || null; } catch { uid = null; }
+          }
+          const nothing = () => { if (!disposed) toast("Compass found nothing connected to this card."); };
+          if (!uid) { nothing(); return; }
+          let hood = null;
+          try { hood = api.neighborhood(uid); } catch { hood = null; }
+          if (!hood || hood.missing) { nothing(); return; }
+          const b = board();
+          if (!b) return;
+          const live = rects();
+          const anchorRect = live.get(item.uid);
+          const anchor = anchorRect || { x: item.x, y: item.y, w: item.w, h: item.h };
+          const occupied = [];
+          for (const it of b.items.values()) {
+            if (it.type === "section") continue;
+            const r = live.get(it.uid);
+            if (r) occupied.push(r);
+          }
+          const cards = planCompassExpand({
+            anchor: { ...anchor, uid: item.uid },
+            nodes: hood.nodes,
+            items: b.items.values(),
+            occupied,
+          });
+          if (!cards.length) { nothing(); return; }
+          let n = 0;
+          try {
+            const ids = await writeCompassExpand(session, item.uid, cards);
+            n = Array.isArray(ids) ? ids.length : 0;
+          } catch {
+            if (!disposed) toast("Couldn't add cards from Compass");
+            return;
+          }
+          if (disposed) return;
+          if (!n) nothing();
+          else toast(`Added ${n} ${n === 1 ? "card" : "cards"} from Compass.`, true);
+        })();
         break;
       }
       case "annotate-drawing": {

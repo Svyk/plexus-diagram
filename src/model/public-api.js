@@ -1,11 +1,23 @@
 // ECO-2. Frozen window.PlexusDiagram. Reads go through the host.
-// addCard is the only write, and only after the ref and v2 checks.
+// addCard checks the ref and v2. addCards, addSection and connect share the AI writers and run as the human.
 // Thumbnail width is capped. It is never doubled the way rasterizeSvg doubles a canvas.
 
 import { buildBoard } from "./board.js";
+import {
+  assertCardBatch,
+  loadPlexusBoard,
+  placeCards,
+  prepareEdges,
+  prepareSection,
+  publicBoardRows,
+  runBoardWrite,
+  writeEdges,
+} from "./board-writes.js";
 import { isShowableCard } from "./deeplink.js";
 import { regionsOf as regionList } from "./regions.js";
 import { parseBoardTitle, readPlexus } from "./schema.js";
+
+const WRITE_CAPABILITIES = ["listBoards", "addCards", "addSection", "connect"];
 
 export const API_VERSION = 1;
 export const API_EVENTS = Object.freeze(["change", "mount", "unmount"]);
@@ -155,8 +167,18 @@ function fire(win, type, detail, Ctor) {
   }
 }
 
-export function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbnail: thumbnailFn, tablesFromPdf: tablesFn, capabilities: capList } = {}) {
-  const capabilities = Object.freeze(Array.isArray(capList) ? capList.map(String) : []);
+function capabilityList(capList) {
+  const out = [];
+  const passed = Array.isArray(capList) ? capList.map(String) : [];
+  for (const name of [...passed, ...WRITE_CAPABILITIES]) {
+    if (!out.includes(name)) out.push(name);
+  }
+  return Object.freeze(out);
+}
+
+export function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbnail: thumbnailFn, tablesFromPdf: tablesFn, capabilities: capList, withSession } = {}) {
+  const capabilities = capabilityList(capList);
+  const pull = (uid) => pullBlock(host, uid);
   const buckets = new Map();
 
   function emit(type, detail) {
@@ -265,6 +287,59 @@ export function createPublicApi({ host, version, addCard: addCardFn, openBoard, 
       const uid = made && typeof made === "object" ? made.uid : made;
       emit("change", { boardUid, uid });
       return { uid };
+    },
+    listBoards(opts) {
+      try {
+        const page = opts == null ? undefined : opts.page;
+        return publicBoardRows(host?.listBoards?.() ?? [], page);
+      } catch {
+        return [];
+      }
+    },
+    async addCards(boardUid, cards, opts) {
+      const list = assertCardBatch(cards);
+      const { board, uid } = loadPlexusBoard(boardUid, pull);
+      const planned = placeCards(board, list, opts?.section, { joinPlaced: true });
+      const made = await runBoardWrite({
+        raw: uid,
+        withSession,
+        pullBoard: pull,
+        fn: (session) => session.addRefCards(planned),
+      });
+      const ids = Array.isArray(made) ? made : [];
+      const added = ids.map((id, i) => ({
+        uid: typeof id === "string" ? id : id?.uid,
+        text: planned[i]?.string ?? "",
+      }));
+      if (added.length) emit("change", { boardUid: uid, uids: added.map((row) => row.uid) });
+      return { added, count: added.length };
+    },
+    async addSection(boardUid, spec) {
+      const { board, uid } = loadPlexusBoard(boardUid, pull);
+      const prepared = prepareSection(board, spec || {});
+      const made = await runBoardWrite({
+        raw: uid,
+        withSession,
+        pullBoard: pull,
+        fn: (session) => session.createSection(prepared),
+      });
+      const sectionUid = typeof made === "string" ? made : made?.uid;
+      if (sectionUid) emit("change", { boardUid: uid, uids: [sectionUid] });
+      return { uid: sectionUid, rect: prepared.rect };
+    },
+    async connect(boardUid, edges) {
+      const { board, uid } = loadPlexusBoard(boardUid, pull);
+      const prepared = prepareEdges(board, edges);
+      const made = await runBoardWrite({
+        raw: uid,
+        withSession,
+        pullBoard: pull,
+        fn: (session) => writeEdges(session, prepared),
+      });
+      const uids = Array.isArray(made) ? made : [];
+      if (uids.some((id) => !id)) throw new Error("Could not connect these two");
+      emit("change", { boardUid: uid, uids });
+      return { uids };
     },
     async tablesFromPdf(opts) {
       if (typeof tablesFn !== "function") throw new Error("PDF tables are not available");

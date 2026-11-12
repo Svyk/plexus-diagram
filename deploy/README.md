@@ -163,7 +163,7 @@ An enhanced board keeps Roam's diagram controls and adds to them (the 1.3 native
 | Linked references as cards | On a page or block card, the menu's Add linked references as cards turns every block that references it into a `((ref))` card, so you can sort the backlinks on the board. Flat puts them in one grid beside the card; Grouped by page makes one section per page, titled with the page name. The new cards go to the right of anything already beside the card. When the card is in a section, they go into that section, which grows to hold them, unless growing would cover something beside it or the section does not grow (fit off); then they go outside it and keep clear of it. Blocks already on the board and blocks inside it are skipped. Up to 22 cards and sections in one undo step (fewer if auto-fit must also move cards in a crowded section); the toast says how many were left out |
 | Save view | More → Save view…, or Shift+V, stores the camera as one view block. With cards selected, the context bar saves a view of that selection. The Boards tab lists the views. Go restores the camera and writes nothing |
 | Connection why | Double-click a label to set the label and a why note. Enter saves both. The outline chip adds because. Shift+T opens a memory lane. The links menu can suggest shared references. Plexus Commands can insert a resurface button. |
-| Public API | `window.PlexusDiagram` lists boards, opens a card or a saved view, adds one card, and returns a small PNG of a board. |
+| Public API | `window.PlexusDiagram` lists boards, opens a card or a saved view, adds cards, sections and arrows, and returns a small PNG of a board. |
 | Roam Plexus on a board | A block ref of a Roam Plexus region shows the caption, a crop, Open drawing, and Open in sidebar. Without Roam Plexus the card is an ordinary block ref |
 | Drawing on a board | A block ref of a Roam drawing shows the picture. Regions lists its regions and adds a reference. New drawing here creates the drawing and the reference. The drawing block stays where it is |
 
@@ -388,7 +388,7 @@ Plexus Diagram, Roam Compass, and Roam Plexus notice each other. Settings → In
 | Better Tasks | Task chips (due, project, priority, repeat, status, waiting-for, GTD), the light checkbox, and task edits. Plexus never writes a `BT_attr` block. Off leaves the TODO marker to Roam. Without Better Tasks the Task tool still makes a plain TODO and the chips are read-only | Better Tasks integration. Off by default. Task tool is its own switch, off unless you already saved it on |
 | Task Status Tags | The status glyph, the status chip, the ring chooser, and Kanban lanes by status. The extension writes the tag. Plexus writes nothing. `[` and `]` move a focused card between lanes | Status line only. No on/off switch |
 | Roam Plexus | A region ref shows the caption, a crop, Open drawing, and Open in sidebar. A drawing ref shows the picture. New drawing here creates the drawing and the reference. An image card can start an empty drawing beside it. If Roam Plexus is missing, the card is an ordinary block ref and that menu row stays hidden | Roam Plexus and Compass, shared with Compass |
-| Compass | A card menu can open Compass on that page, and Compass can open the board that holds it. If Compass is missing, that menu row stays hidden | Roam Plexus and Compass, the same switch. Off hides Open in Compass and stops thumbnail calls |
+| Compass | A card menu can open Compass on that page, and Compass can open the board that holds it. Expand with Compass pulls that card's neighbors onto the board. Compass can add cards, sections and arrows through the public API. If Compass is missing, those menu rows stay hidden | Roam Plexus and Compass, the same switch. Off hides Open in Compass and Expand with Compass, and stops thumbnail calls |
 | Colour highlighter | A card with `#bg-blue` or `#[[bg-blue]]` uses that colour. A fill set on the card wins until you clear it. Write as highlighter tag stores one `#[[bg-name]]` and clears the fill. One undo restores both. Hex, darker, and lighter stay on the card. `#c:red` still colours text inside the card | Status line only. No on/off switch |
 
 ## Shortcuts
@@ -517,7 +517,7 @@ In Roam's **Settings**, open the **Plexus Diagram** tab under **Extension Settin
 | Integrations | Task tool | Show the Task tool (K) in the dock. Starts off. A saved on stays on. |
 | Integrations | Task chips | Full (due date, project, priority, repeat, status), due only, or none. |
 | Integrations | Default project for new tasks | A page name. A task made from the board gets it as its Better Tasks project. Empty uses Better Tasks' own default. |
-| Integrations | Roam Plexus and Compass | Use Roam Plexus and Compass when they are loaded. Off hides Open in Compass and stops thumbnail calls. |
+| Integrations | Roam Plexus and Compass | Use Roam Plexus and Compass when they are loaded. Off hides Open in Compass and Expand with Compass, and stops thumbnail calls. |
 | Integrations | Board chips | Show a board chip under a block that is a card on a board. |
 | Integrations | Resurface | Allow the resurface macro. A daily page can list cards from earlier days, and Plexus Commands can insert the button. |
 | Integrations | Inline region crops | Show a region crop beside its button. Off leaves the button and hides the crop. |

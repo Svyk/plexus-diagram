@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+- **Other extensions can write a board.** `listBoards`, `addCards`, `addSection` and `connect` are on `window.PlexusDiagram`. Adding cards or a section is one undo step. Connecting several items is one undo step when the board groups writes, and one step per arrow when it does not.
+- **Expand with Compass.** A page or block card can pull its Compass neighbors onto the board, with labelled arrows. The whole action is one undo step when the board groups writes.
+
 ## 3.41.0 — 2026-11-10
 
 A large board stays more responsive while you zoom, hover, and move a card.

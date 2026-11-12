@@ -2,45 +2,28 @@
 // come in through deps, so the tools run under node:test without Roam.
 import { buildBoard, worldRects } from "./board.js";
 import { boardToMarkdown, titleOf } from "./export.js";
-import { boardVersion } from "./public-api.js";
+import {
+  ADD_CAP,
+  assertCardBatch,
+  boardUidOf,
+  boardsMatching,
+  loadPlexusBoard,
+  placeCards,
+  prepareEdges,
+  prepareSection,
+  runBoardWrite,
+  writeEdges,
+} from "./board-writes.js";
 import { DIRS } from "./schema.js";
-import { MAX_GROUP_WRITES } from "../host/roam.js";
+
+export { autoPlace, boardUidOf } from "./board-writes.js";
 
 const MAX_TOOLS = 25;
 const LIST_CAP = 200;
 const CARD_CAP = 500;
 const TEXT_CAP = 40000;
-const ADD_CAP = 45;
-
-export function boardUidOf(raw) {
-  const s = String(raw ?? "").trim().replace(/^\(\(/, "").replace(/\)\)$/, "").trim();
-  if (!s) throw new Error("Give a board uid");
-  return s;
-}
 
 const round = (r) => ({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
-
-// Where new things go: left of the board, below everything (or the origin on an empty board).
-function boardArea(board, rects) {
-  let left = Infinity;
-  let bottom = -Infinity;
-  for (const item of board.items.values()) {
-    if (item.parentUid !== board.uid) continue;
-    const r = rects.get(item.uid);
-    if (!r) continue;
-    left = Math.min(left, r.x);
-    bottom = Math.max(bottom, r.y + r.h);
-  }
-  return Number.isFinite(left) ? { x: left, y: bottom + 80 } : { x: 0, y: 0 };
-}
-
-export function autoPlace(n, area, { w = 280, h = 160, gap = 40, cols = 4 } = {}) {
-  const out = [];
-  for (let i = 0; i < n; i++) {
-    out.push({ x: area.x + (i % cols) * (w + gap), y: area.y + Math.floor(i / cols) * (h + gap) });
-  }
-  return out;
-}
 
 const str = (description) => ({ type: "string", description });
 const boardProp = str("Board block uid, with or without (( )). Get it from list_boards.");
@@ -48,38 +31,8 @@ const boardProp = str("Board block uid, with or without (( )). Get it from list_
 export function createAiTools(deps) {
   const { listBoards, pullBoard, withSession } = deps;
 
-  const load = (raw) => {
-    const uid = boardUidOf(raw);
-    const pulled = pullBoard(uid);
-    if (boardVersion(pulled) !== 2) {
-      throw new Error("Not a Plexus board. Open it in Roam and run Plexus: Enhance this diagram first.");
-    }
-    const board = buildBoard(pulled);
-    if (!board) throw new Error("Not a Plexus board. Open it in Roam and run Plexus: Enhance this diagram first.");
-    return { uid, board };
-  };
-
-  const run = async (context, raw, fn) => {
-    const { uid } = load(raw);
-    return withSession(uid, async (session) => {
-      if (!session?.board) throw new Error("Board not loaded");
-      let pending;
-      let ran = false;
-      const go = () => {
-        ran = true;
-        pending = session.asUser(context?.tokenUserUid, () => fn(session), { maxWrites: MAX_GROUP_WRITES });
-        return pending;
-      };
-      if (typeof context?.asTokenUser === "function") context.asTokenUser(go); else go();
-      if (!ran) throw new Error("Roam did not run the write");
-      try {
-        return await pending;
-      } catch (err) {
-        if (/one undo step holds/.test(String(err?.message))) throw err;
-        throw new Error(`Roam did not save this change (${err?.message || err}). Plexus reloaded the board: read it and try again.`);
-      }
-    });
-  };
+  const load = (raw) => loadPlexusBoard(raw, pullBoard);
+  const run = (context, raw, fn) => runBoardWrite({ context, raw, withSession, pullBoard, fn });
 
   const list_boards = {
     name: "list_boards",
@@ -91,8 +44,7 @@ export function createAiTools(deps) {
       additionalProperties: false,
     },
     handler(args) {
-      const needle = String(args?.page ?? "").trim().toLowerCase();
-      const rows = (listBoards() ?? []).filter((r) => !needle || String(r.pageTitle ?? "").toLowerCase().includes(needle));
+      const rows = boardsMatching(listBoards() ?? [], args?.page);
       const boards = rows.slice(0, LIST_CAP).map((r) => ({ uid: r.uid, title: r.title, page: r.pageTitle, pageUid: r.pageUid, cards: r.count }));
       return { boards, count: rows.length, truncated: rows.length > LIST_CAP };
     },
@@ -165,32 +117,9 @@ export function createAiTools(deps) {
       additionalProperties: false,
     },
     async handler(args, context) {
-      const cards = Array.isArray(args?.cards) ? args.cards : [];
-      if (!cards.length) throw new Error("Give at least one card");
-      if (cards.length > ADD_CAP) throw new Error("At most 45 cards per call (Roam undo holds 50 changes)");
+      const cards = assertCardBatch(args?.cards);
       const { board } = load(args?.board);
-      const rects = worldRects(board);
-      let area = boardArea(board, rects);
-      let cols = 4;
-      let into = null;
-      if (args?.section) {
-        const sec = board.items.get(boardUidOf(args.section));
-        if (!sec || sec.type !== "section") throw new Error(`Not a section on this board: ${args.section}`);
-        const r = rects.get(sec.uid);
-        area = { x: r.x + 24, y: r.y + 60 };
-        cols = Math.max(1, Math.floor((r.w - 24) / 320));
-        into = sec.uid;
-      }
-      const slots = autoPlace(cards.length, area, { cols });
-      const list = cards.map((c, i) => {
-        const text = String(c?.text ?? "").trim();
-        if (!text) throw new Error("Every card needs text");
-        const placed = Number.isFinite(c.x) && Number.isFinite(c.y);
-        const card = { string: text, x: placed ? c.x : slots[i].x, y: placed ? c.y : slots[i].y };
-        // Auto-placed rows past the section's bottom still join it; auto-fit grows the section around them.
-        if (into && !placed) card.into = into;
-        return card;
-      });
+      const list = placeCards(board, cards, args?.section, { joinPlaced: false });
       const added = await run(context, args.board, (session) => session.addRefCards(list));
       return { added: added ?? [], count: (added ?? []).length };
     },
@@ -215,10 +144,8 @@ export function createAiTools(deps) {
     },
     async handler(args, context) {
       const { board } = load(args?.board);
-      const area = boardArea(board, worldRects(board));
-      const num = (v, d) => (Number.isFinite(v) ? v : d);
-      const rect = { x: num(args.x, area.x), y: num(args.y, area.y), w: num(args.w, 640), h: num(args.h, 400) };
-      const uid = await run(context, args.board, (session) => session.createSection({ rect, title: String(args.title ?? "").trim() || "Section" }));
+      const prepared = prepareSection(board, args);
+      const uid = await run(context, args.board, (session) => session.createSection(prepared));
       return { uid };
     },
   };
@@ -241,11 +168,8 @@ export function createAiTools(deps) {
     },
     async handler(args, context) {
       const { board } = load(args?.board);
-      const from = boardUidOf(args?.from);
-      const to = boardUidOf(args?.to);
-      for (const id of [from, to]) if (!board.items.has(id)) throw new Error(`Not an item on this board: ${id}`);
-      const dir = DIRS.includes(args.direction) ? args.direction : "one";
-      const uid = await run(context, args.board, (session) => session.addEdge({ from, to, label: String(args.label ?? ""), dir }));
+      const [edge] = prepareEdges(board, { from: args?.from, to: args?.to, label: args?.label, direction: args?.direction });
+      const [uid] = await run(context, args.board, (session) => writeEdges(session, [edge]));
       if (!uid) throw new Error("Could not connect these two");
       return { uid };
     },

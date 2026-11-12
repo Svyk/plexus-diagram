@@ -4514,6 +4514,10 @@ export async function installPlexusDiagram({
       return new Uint8Array(await res.arrayBuffer());
     },
   });
+  const withSession = async (boardUid, fn) => {
+    const session = acquireSession(boardUid, { host, settings: liveSettings });
+    try { return await fn(session); } finally { try { session?.release?.(); } catch { /* released */ } }
+  };
   const publicApi = createPublicApi({
     tablesFromPdf: (...args) => pdfTables.tablesFromPdf(...args),
     capabilities: PDF_TABLES_CAPABILITIES,
@@ -4524,6 +4528,7 @@ export async function installPlexusDiagram({
       pullBoard: (uid) => host.pullBoard?.(uid),
     },
     version: badge,
+    withSession,
     addCard: (boardUid, string, x, y) => {
       const session = acquireSession(boardUid, { host, settings: liveSettings });
       return Promise.resolve(session?.addPublicCard?.({ string, x, y })).finally(() => {
@@ -4538,10 +4543,7 @@ export async function installPlexusDiagram({
   lifecycle.add(installAiTools(extensionAPI, createAiTools({
     listBoards: () => host.listBoards?.() ?? [],
     pullBoard: (uid) => host.pullBoard?.(uid),
-    withSession: async (boardUid, fn) => {
-      const session = acquireSession(boardUid, { host, settings: liveSettings });
-      try { return await fn(session); } finally { try { session?.release?.(); } catch { /* released */ } }
-    },
+    withSession,
   })));
 
   const api = {

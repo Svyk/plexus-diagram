@@ -173,6 +173,8 @@ test("public API: tablesFromPdf and capabilities are feature-detectable", async 
   assert.deepEqual(await api.tablesFromPdf({ url: "u" }), { tables: [] });
   assert.deepEqual(calls, [{ url: "u" }]);
   const bare = createPublicApi({ host: { graphName: () => "g" } });
-  assert.deepEqual([...bare.capabilities], []);
+  assert.deepEqual([...bare.capabilities], ["listBoards", "addCards", "addSection", "connect"]);
+  assert.deepEqual([...api.capabilities].slice(0, PDF_TABLES_CAPABILITIES.length), [...PDF_TABLES_CAPABILITIES]);
+  assert.deepEqual([...api.capabilities].slice(-4), ["listBoards", "addCards", "addSection", "connect"]);
   await assert.rejects(() => bare.tablesFromPdf({ url: "u" }), /not available/);
 });

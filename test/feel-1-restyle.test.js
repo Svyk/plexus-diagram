@@ -46,12 +46,12 @@ test("a burst of ctrl-wheel ticks is one gesture that ends 160 ms after the last
     h.wheel({ ctrl: true });
     if (i < 5) t.mock.timers.tick(50);
   }
-  assert.deepEqual(h.gest(), [["gesturing", true, undefined]]);
+  assert.deepEqual(h.gest(), [["gesturing", true, { wheelZoom: true }]]);
   assert.equal(h.calls.filter((c) => c[0] === "vp").length, 6);
   t.mock.timers.tick(159);
   assert.equal(h.gest().length, 1);
   t.mock.timers.tick(1);
-  assert.deepEqual(h.gest(), [["gesturing", true, undefined], ["gesturing", false, { moved: false }]]);
+  assert.deepEqual(h.gest(), [["gesturing", true, { wheelZoom: true }], ["gesturing", false, { moved: false }]]);
 });
 
 test("a pointerdown during a wheel-zoom burst ends it first and leaves no stuck timer", (t) => {
@@ -61,7 +61,7 @@ test("a pointerdown during a wheel-zoom burst ends it first and leaves no stuck 
   h.wheel({ ctrl: true });
   h.ctl.handle({ type: "pointerdown", button: 0, screen: { x: 5, y: 5 }, world: { x: 5, y: 5 }, target: { kind: "empty" }, pointerId: 1, isPrimary: true });
   const g = h.gest();
-  assert.deepEqual(g[0], ["gesturing", true, undefined]);
+  assert.deepEqual(g[0], ["gesturing", true, { wheelZoom: true }]);
   assert.deepEqual(g[1], ["gesturing", false, { moved: false }], "the wheel gesture ends before the press starts its own");
   const before = h.gest().length;
   t.mock.timers.tick(1000);

@@ -79,7 +79,7 @@ test("an overview open with overviewCanvas builds no card shell and draws the ca
 
 test("overviewCanvas off keeps the 3.34.0 overview: card shells are built", async () => {
   await withFrozenClock(async () => {
-    const m = mount(OVERVIEW, {});
+    const m = mount(OVERVIEW, { overviewCanvas: false });
     try {
       await m.pump(200);
       assert.equal(m.view.overviewCanvasStats().on, false);
